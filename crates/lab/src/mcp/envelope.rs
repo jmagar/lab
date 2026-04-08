@@ -264,7 +264,7 @@ mod tests {
 
     // ── JSON shape (kind field is the semantic tag, not the variant name) ────
 
-    fn json(e: &ToolError) -> serde_json::Value {
+    fn json(e: &ToolError) -> Value {
         serde_json::to_value(e).expect("ToolError is always serializable")
     }
 
@@ -332,8 +332,7 @@ mod tests {
             param: "q".into(),
         };
         let s = e.to_string();
-        let parsed: serde_json::Value =
-            serde_json::from_str(&s).expect("Display output must be valid JSON");
+        let parsed: Value = serde_json::from_str(&s).expect("Display output must be valid JSON");
         assert_eq!(parsed["kind"], "missing_param");
     }
 
@@ -344,7 +343,7 @@ mod tests {
             message: "slow down".into(),
         };
         let s = e.to_string();
-        let parsed: serde_json::Value = serde_json::from_str(&s).unwrap();
+        let parsed: Value = serde_json::from_str(&s).unwrap();
         assert_eq!(parsed["kind"], "rate_limited");
     }
 

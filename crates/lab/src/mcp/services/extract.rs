@@ -64,7 +64,7 @@ pub const ACTIONS: &[ActionSpec] = &[
             name: "uri",
             ty: "string",
             required: true,
-            description: "",
+            description: "Local path or 'host:/abs/path' for SSH — same format as scan",
         }],
         returns: "WritePlan",
     },
