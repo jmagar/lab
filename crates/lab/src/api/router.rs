@@ -159,14 +159,9 @@ async fn service_actions(
         .services
         .iter()
         .find(|s| s.name == service)
-        .ok_or_else(|| crate::mcp::envelope::ToolError::UnknownInstance {
+        .ok_or_else(|| crate::mcp::envelope::ToolError::Sdk {
+            sdk_kind: "not_found".into(),
             message: format!("unknown service `{service}`"),
-            valid: state
-                .catalog
-                .services
-                .iter()
-                .map(|s| s.name.clone())
-                .collect(),
         })?;
     Ok(axum::Json(
         serde_json::to_value(&entry.actions).unwrap_or(serde_json::Value::Array(vec![])),
@@ -204,7 +199,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn actions_unknown_service_returns_400() {
+    async fn actions_unknown_service_returns_404() {
         let state = AppState::new();
         let app = build_router(state);
         let response = app
@@ -217,11 +212,11 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["kind"], "unknown_instance");
+        assert_eq!(json["kind"], "not_found");
     }
 }
