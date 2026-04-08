@@ -12,9 +12,23 @@ pub struct PluginRow {
     pub category: &'static str,
 }
 
-/// Return every compiled-in plugin. Empty in the skeleton — services
-/// will be wired in as they come online.
+/// Return every compiled-in plugin.
 #[must_use]
 pub fn all_plugins() -> Vec<PluginRow> {
-    Vec::new()
+    let mut rows = Vec::new();
+
+    #[cfg(feature = "radarr")]
+    {
+        let meta = lab_apis::radarr::META;
+        rows.push(PluginRow {
+            name: meta.name,
+            description: meta.description,
+            category: match meta.category {
+                lab_apis::core::Category::Servarr => "servarr",
+                _ => "other",
+            },
+        });
+    }
+
+    rows
 }
