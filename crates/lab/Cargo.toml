@@ -52,7 +52,7 @@ tower.workspace              = true
 tower-http.workspace         = true
 
 [features]
-default = ["radarr"]
+default = ["radarr", "sonarr", "prowlarr", "plex", "sabnzbd", "qbittorrent"]
 
 # media stack
 radarr      = ["lab-apis/radarr"]
