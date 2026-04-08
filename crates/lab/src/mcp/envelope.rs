@@ -147,6 +147,69 @@ impl ToolError {
     }
 }
 
+// ── Spec-conformant envelope builders ────────────────────────────────────────
+//
+// `serve.rs` uses these to produce the wire shape required by the MCP spec:
+//   success: `{ ok: true,  service, action, data }`
+//   error:   `{ ok: false, service, action, error: { kind, message, … } }`
+
+use serde_json::{Value, json};
+
+/// Build a success envelope.
+///
+/// ```json
+/// { "ok": true, "service": "radarr", "action": "movie.list", "data": […] }
+/// ```
+#[must_use]
+pub fn build_success(service: &str, action: &str, data: Value) -> Value {
+    json!({
+        "ok": true,
+        "service": service,
+        "action": action,
+        "data": data,
+    })
+}
+
+/// Build an error envelope.
+///
+/// ```json
+/// { "ok": false, "service": "radarr", "action": "movie.add",
+///   "error": { "kind": "missing_param", "message": "…" } }
+/// ```
+#[must_use]
+pub fn build_error(service: &str, action: &str, kind: &str, message: &str) -> Value {
+    json!({
+        "ok": false,
+        "service": service,
+        "action": action,
+        "error": {
+            "kind": kind,
+            "message": message,
+        },
+    })
+}
+
+/// Build an error envelope with extra structured fields (e.g. `valid`, `param`).
+#[must_use]
+pub fn build_error_extra(
+    service: &str,
+    action: &str,
+    kind: &str,
+    message: &str,
+    extra: Value,
+) -> Value {
+    let mut obj = build_error(service, action, kind, message);
+    if let (Some(err), Some(ext_map)) = (
+        obj.get_mut("error").and_then(Value::as_object_mut),
+        extra.as_object(),
+    ) {
+        for (k, v) in ext_map {
+            err.insert(k.clone(), v.clone());
+        }
+    }
+    obj
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,5 +346,55 @@ mod tests {
         let s = e.to_string();
         let parsed: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(parsed["kind"], "rate_limited");
+    }
+
+    // ── build_success / build_error wire shape ───────────────────────────────
+
+    #[test]
+    fn success_envelope_shape() {
+        let env = build_success("radarr", "movie.list", json!([{"id": 1}]));
+        assert_eq!(env["ok"], json!(true));
+        assert_eq!(env["service"], json!("radarr"));
+        assert_eq!(env["action"], json!("movie.list"));
+        assert!(env["data"].is_array());
+        assert!(env.get("error").is_none());
+    }
+
+    #[test]
+    fn error_envelope_shape() {
+        let env = build_error("radarr", "movie.add", "missing_param", "missing `title`");
+        assert_eq!(env["ok"], json!(false));
+        assert_eq!(env["service"], json!("radarr"));
+        assert_eq!(env["action"], json!("movie.add"));
+        assert_eq!(env["error"]["kind"], json!("missing_param"));
+        assert!(env["error"]["message"].as_str().is_some());
+        assert!(env.get("data").is_none());
+    }
+
+    #[test]
+    fn error_extra_merges_valid_list() {
+        let env = build_error_extra(
+            "radarr",
+            "bad.action",
+            "unknown_action",
+            "unknown action",
+            json!({ "valid": ["movie.list"], "param": null, "hint": null }),
+        );
+        assert_eq!(env["error"]["kind"], json!("unknown_action"));
+        assert!(env["error"]["valid"].is_array());
+    }
+
+    #[test]
+    fn success_has_no_error_key() {
+        let env = build_success("extract", "scan", json!({}));
+        let s = serde_json::to_string(&env).unwrap();
+        assert!(!s.contains("\"error\""));
+    }
+
+    #[test]
+    fn error_has_no_data_key() {
+        let env = build_error("extract", "scan", "network_error", "refused");
+        let s = serde_json::to_string(&env).unwrap();
+        assert!(!s.contains("\"data\""));
     }
 }
