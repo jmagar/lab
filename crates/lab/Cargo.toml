@@ -1,0 +1,88 @@
+[package]
+name                   = "lab"
+description            = "Pluggable homelab CLI + MCP server. One binary, 21 services, runtime tool selection."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[[bin]]
+name = "lab"
+path = "src/main.rs"
+
+[dependencies]
+lab-apis           = { path = "../lab-apis", default-features = false }
+
+tokio.workspace              = true
+futures.workspace            = true
+reqwest.workspace            = true
+url.workspace                = true
+serde.workspace              = true
+serde_json.workspace         = true
+anyhow.workspace             = true
+thiserror.workspace          = true
+jiff.workspace               = true
+
+tracing.workspace            = true
+tracing-subscriber.workspace = true
+
+clap.workspace               = true
+clap_complete.workspace      = true
+tabled.workspace             = true
+owo-colors.workspace         = true
+is-terminal.workspace        = true
+indicatif.workspace          = true
+dialoguer.workspace          = true
+
+dotenvy.workspace            = true
+toml.workspace               = true
+
+ratatui.workspace            = true
+crossterm.workspace          = true
+
+rmcp.workspace               = true
+
+axum.workspace               = true
+tower.workspace              = true
+tower-http.workspace         = true
+
+[features]
+default = ["radarr", "sonarr", "prowlarr", "plex", "sabnzbd", "qbittorrent"]
+
+# media stack
+radarr      = ["lab-apis/radarr"]
+sonarr      = ["lab-apis/sonarr"]
+prowlarr    = ["lab-apis/prowlarr"]
+overseerr   = ["lab-apis/overseerr"]
+plex        = ["lab-apis/plex"]
+tautulli    = ["lab-apis/tautulli"]
+sabnzbd     = ["lab-apis/sabnzbd"]
+qbittorrent = ["lab-apis/qbittorrent"]
+
+# network / infrastructure
+tailscale   = ["lab-apis/tailscale"]
+unraid      = ["lab-apis/unraid"]
+unifi       = ["lab-apis/unifi"]
+arcane      = ["lab-apis/arcane"]
+
+# notes / docs / bookmarks
+linkding    = ["lab-apis/linkding"]
+memos       = ["lab-apis/memos"]
+bytestash   = ["lab-apis/bytestash"]
+paperless   = ["lab-apis/paperless"]
+
+# notifications
+gotify      = ["lab-apis/gotify"]
+apprise     = ["lab-apis/apprise"]
+
+# ai / vector / inference
+openai      = ["lab-apis/openai"]
+qdrant      = ["lab-apis/qdrant"]
+tei         = ["lab-apis/tei"]
+
+all         = ["lab-apis/all"]
+
+[lints]
+workspace = true
