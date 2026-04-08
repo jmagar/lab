@@ -69,3 +69,41 @@ pub const META: PluginMeta = PluginMeta {
     optional_env: &[],
     default_port: Some(7878),
 };
+
+use std::time::Instant;
+
+use crate::core::{ApiError, ServiceClient, ServiceStatus};
+
+impl ServiceClient for RadarrClient {
+    fn name(&self) -> &str {
+        "radarr"
+    }
+
+    fn service_type(&self) -> &str {
+        "servarr"
+    }
+
+    async fn health(&self) -> Result<ServiceStatus, ApiError> {
+        let start = Instant::now();
+        match self.system_status().await {
+            Ok(status) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: Some(status.version),
+                latency_ms: start.elapsed().as_millis() as u64,
+                message: None,
+            }),
+            Err(RadarrError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: false,
+                version: None,
+                latency_ms: start.elapsed().as_millis() as u64,
+                message: Some("auth failed".into()),
+            }),
+            Err(RadarrError::Api(e)) => {
+                Ok(ServiceStatus::unreachable(e.to_string()))
+            }
+            Err(e) => Ok(ServiceStatus::unreachable(e.to_string())),
+        }
+    }
+}

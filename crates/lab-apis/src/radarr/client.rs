@@ -107,7 +107,6 @@ impl RadarrClient {
     /// Returns `RadarrError::Api` if the request fails or the server
     /// returns a non-2xx status.
     pub async fn health(&self) -> Result<(), RadarrError> {
-        // TODO: GET /api/v3/system/status
-        Ok(())
+        self.system_status().await.map(|_| ())
     }
 }
