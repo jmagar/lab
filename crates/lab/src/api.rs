@@ -22,6 +22,18 @@ pub mod health;
 /// Per-service HTTP route handlers (one module per service).
 pub mod services;
 
+/// Shared request type for all service action dispatchers.
+///
+/// Every service handler deserializes `POST /v1/<service>` bodies into this
+/// struct and forwards `action` + `params` to the corresponding MCP dispatch
+/// function, keeping the HTTP and MCP surfaces byte-compatible.
+#[derive(Debug, serde::Deserialize)]
+pub struct ActionRequest {
+    pub action: String,
+    #[serde(default)]
+    pub params: serde_json::Value,
+}
+
 #[allow(unused_imports)]
 pub use error::{ApiError, ApiResult};
 #[allow(unused_imports)]

@@ -1,17 +1,9 @@
 //! HTTP route group for the `unifi` service.
 
 use axum::{Json, Router, extract::State, routing::post};
-use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::state::AppState;
-
-#[derive(Debug, Deserialize)]
-pub struct ActionRequest {
-    pub action: String,
-    #[serde(default)]
-    pub params: Value,
-}
+use crate::api::{ActionRequest, state::AppState};
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
@@ -23,12 +15,7 @@ async fn handle(
 ) -> Result<Json<Value>, crate::mcp::envelope::ToolError> {
     let start = std::time::Instant::now();
     let action = req.action.clone();
-    let result = crate::mcp::services::unifi::dispatch(&req.action, req.params)
-        .await
-        .map_err(|e| crate::mcp::envelope::ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: e.to_string(),
-        });
+    let result = crate::mcp::services::unifi::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
         Ok(_) => tracing::info!(service = "unifi", action, elapsed_ms, "dispatch ok"),
