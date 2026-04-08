@@ -49,5 +49,34 @@ impl ToolRegistry {
 /// online.
 #[must_use]
 pub fn build_default_registry() -> ToolRegistry {
-    ToolRegistry::new()
+    let mut reg = ToolRegistry::new();
+
+    #[cfg(feature = "radarr")]
+    {
+        let meta = lab_apis::radarr::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    reg
+}
+
+#[cfg(feature = "radarr")]
+const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
+    use lab_apis::core::Category;
+    match cat {
+        Category::Media => "media",
+        Category::Servarr => "servarr",
+        Category::Indexer => "indexer",
+        Category::Download => "download",
+        Category::Notes => "notes",
+        Category::Documents => "documents",
+        Category::Network => "network",
+        Category::Notifications => "notifications",
+        Category::Ai => "ai",
+        Category::Bootstrap => "bootstrap",
+    }
 }
