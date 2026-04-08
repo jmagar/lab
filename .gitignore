@@ -55,7 +55,7 @@ Thumbs.db
 # ── Caches (ALL tool caches go here) ─────────────────────────────────────────
 .cache/
 
-# ── Documentation artifacts (session/plan docs, not reference) ───────────────
+# ── Documentation artifacts (session/plan docs, not reference) ──────────────
 .docs/
 docs/plans/
 docs/sessions/
@@ -65,10 +65,13 @@ docs/superpowers/
 specs/
 
 # ── Rust ─────────────────────────────────────────────────────────────────────
+/debug/
 /target/
 **/*.rs.bk
+*.pdb
 *.profraw
 *.profdata
+**/mutants.out*/
 
 # ── Repo-specific ────────────────────────────────────────────────────────────
 data/
