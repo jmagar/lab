@@ -64,7 +64,6 @@ pub fn build_default_registry() -> ToolRegistry {
     reg
 }
 
-#[cfg(feature = "radarr")]
 const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
     use lab_apis::core::Category;
     match cat {
