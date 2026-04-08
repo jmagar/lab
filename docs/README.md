@@ -10,6 +10,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Read [CONVENTIONS.md](./CONVENTIONS.md) before changing implementation patterns or core APIs.
 - Use [SERVICES.md](./SERVICES.md), [CLI.md](./CLI.md), [MCP.md](./MCP.md), and [TUI.md](./TUI.md) for surface-specific behavior.
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
+- Use [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md) when you are bringing a new service online end to end.
 
 ## Reading Paths
 
@@ -51,7 +52,9 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [MCP.md](./MCP.md)
   Transport model, one-tool-per-service design, discovery, envelopes, and destructive-op elicitation.
 - [SERVICES.md](./SERVICES.md)
-  Service inventory, feature gates, plugin metadata, multi-instance support, and add-a-service workflow.
+  Service inventory, feature gates, plugin metadata, multi-instance support, coverage docs, and add-a-service workflow.
+- [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
+  End-to-end checklist for adding a new service, from upstream spec to verification.
 - [CLI.md](./CLI.md)
   Command structure, output rules, confirmation rules, install/uninstall, and operator commands.
 - [TUI.md](./TUI.md)
