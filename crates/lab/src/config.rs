@@ -53,11 +53,19 @@ pub struct McpPreferences {
 /// present. Returns `Err` only for parse failures — missing files are
 /// not errors.
 pub fn load() -> Result<LabConfig> {
+    // Load ~/.lab/.env first (user-level secrets).
     if let Some(env_path) = dotenv_path()
         && env_path.exists()
     {
         dotenvy::from_path(&env_path)
             .with_context(|| format!("failed to load {}", env_path.display()))?;
+    }
+
+    // Also load .env from the current working directory (dev convenience).
+    // Does not override vars already set by the user-level file.
+    let cwd_env = std::path::Path::new(".env");
+    if cwd_env.exists() {
+        drop(dotenvy::from_path(cwd_env));
     }
 
     let cfg = if let Some(path) = toml_path() {
