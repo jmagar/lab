@@ -48,17 +48,17 @@ pub enum Category {
     Servarr,
     /// Indexer managers (Prowlarr).
     Indexer,
-    /// Download clients (SABnzbd, qBittorrent).
+    /// Download clients (`SABnzbd`, `qBittorrent`).
     Download,
-    /// Note-taking and bookmarks (Memos, Linkding, ByteStash).
+    /// Note-taking and bookmarks (`Memos`, `Linkding`, `ByteStash`).
     Notes,
     /// Document management (Paperless).
     Documents,
-    /// Network and infrastructure (Tailscale, UniFi, Unraid, Arcane).
+    /// Network and infrastructure (Tailscale, `UniFi`, Unraid, Arcane).
     Network,
     /// Push-notification dispatchers (Gotify, Apprise).
     Notifications,
-    /// AI / inference / vector search (OpenAI, Qdrant, TEI).
+    /// AI / inference / vector search (`OpenAI`, Qdrant, TEI).
     Ai,
     /// Bootstrap utilities (extract, init, doctor).
     Bootstrap,

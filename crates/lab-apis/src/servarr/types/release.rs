@@ -6,7 +6,7 @@ use super::protocol::DownloadProtocol;
 
 /// One release returned from an indexer search.
 ///
-/// Mirrors `ReleaseResource` from the Radarr v3 / Sonarr v3 OpenAPI specs.
+/// Mirrors `ReleaseResource` from the Radarr v3 / Sonarr v3 `OpenAPI` specs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Release {

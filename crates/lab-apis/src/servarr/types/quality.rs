@@ -13,7 +13,7 @@ pub struct QualityProfileId(pub i64);
 /// A quality profile — the set of qualities an *arr service is willing to
 /// accept, plus the upgrade rules between them.
 ///
-/// Mirrors `QualityProfileResource` from the Radarr v3 / Sonarr v3 OpenAPI specs.
+/// Mirrors `QualityProfileResource` from the Radarr v3 / Sonarr v3 `OpenAPI` specs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QualityProfile {
@@ -27,7 +27,7 @@ pub struct QualityProfile {
 
 /// A quality definition — size/megabit rules per quality level.
 ///
-/// Mirrors `QualityDefinitionResource` from the Radarr v3 / Sonarr v3 OpenAPI specs.
+/// Mirrors `QualityDefinitionResource` from the Radarr v3 / Sonarr v3 `OpenAPI` specs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QualityDefinition {

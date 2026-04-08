@@ -6,7 +6,7 @@ use crate::core::{Auth, HttpClient};
 
 use super::error::OpenAiError;
 
-/// Client for the OpenAI API.
+/// Client for the `OpenAI` API.
 pub struct OpenAiClient {
     #[allow(dead_code)]
     http: HttpClient,

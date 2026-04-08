@@ -5,7 +5,6 @@
 
 use std::process::ExitCode;
 
-use anyhow::Result;
 use clap::Args;
 
 /// `lab install` arguments.
@@ -25,19 +24,19 @@ pub struct UninstallArgs {
 }
 
 /// Run `lab install`. Stub.
-pub fn run_install(args: InstallArgs) -> Result<ExitCode> {
+pub fn run_install(args: &InstallArgs) -> ExitCode {
     tracing::warn!(services = ?args.services, "lab install: not yet implemented");
-    Ok(ExitCode::SUCCESS)
+    ExitCode::SUCCESS
 }
 
 /// Run `lab uninstall`. Stub.
-pub fn run_uninstall(args: UninstallArgs) -> Result<ExitCode> {
+pub fn run_uninstall(args: &UninstallArgs) -> ExitCode {
     tracing::warn!(services = ?args.services, "lab uninstall: not yet implemented");
-    Ok(ExitCode::SUCCESS)
+    ExitCode::SUCCESS
 }
 
 /// Run `lab init` setup wizard. Stub.
-pub fn run_init() -> Result<ExitCode> {
+pub fn run_init() -> ExitCode {
     tracing::warn!("lab init: setup wizard not yet implemented");
-    Ok(ExitCode::SUCCESS)
+    ExitCode::SUCCESS
 }

@@ -20,7 +20,7 @@ pub struct MovieId(pub i64);
 #[serde(transparent)]
 pub struct TmdbId(pub i64);
 
-/// IMDb id (e.g. "tt0133093").
+/// `IMDb` id (e.g. "tt0133093").
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ImdbId(pub String);

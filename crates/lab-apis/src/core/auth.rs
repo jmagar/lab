@@ -25,7 +25,7 @@ pub enum Auth {
         /// Token value.
         token: String,
     },
-    /// `Authorization: Bearer <token>` (Memos, ByteStash, ...).
+    /// `Authorization: Bearer <token>` (`Memos`, `ByteStash`, ...).
     Bearer {
         /// Bearer token value.
         token: String,

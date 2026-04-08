@@ -2,7 +2,6 @@
 
 use std::{io, process::ExitCode};
 
-use anyhow::Result;
 use clap::{Args, CommandFactory};
 use clap_complete::{Shell, generate};
 
@@ -17,9 +16,9 @@ pub struct CompletionsArgs {
 }
 
 /// Run the completions subcommand.
-pub fn run(args: CompletionsArgs) -> Result<ExitCode> {
+pub fn run(args: &CompletionsArgs) -> ExitCode {
     let mut cmd = Cli::command();
     let bin_name = cmd.get_name().to_string();
     generate(args.shell, &mut cmd, bin_name, &mut io::stdout());
-    Ok(ExitCode::SUCCESS)
+    ExitCode::SUCCESS
 }

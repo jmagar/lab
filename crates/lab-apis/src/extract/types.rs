@@ -26,7 +26,7 @@ pub enum Uri {
 impl Uri {
     /// Returns the appdata-root path component, regardless of transport.
     #[must_use]
-    pub fn path(&self) -> &PathBuf {
+    pub const fn path(&self) -> &PathBuf {
         match self {
             Self::Local(p) | Self::Ssh { path: p, .. } => p,
         }
@@ -49,7 +49,7 @@ impl FromStr for Uri {
             return Ok(Self::Local(PathBuf::from(s)));
         }
         // SSH form: `host:/abs/path`
-        let (host, path) = s.split_once(":/").ok_or(ExtractError::InvalidUri {
+        let (host, path) = s.split_once(":/").ok_or_else(|| ExtractError::InvalidUri {
             input: s.to_owned(),
             reason: "expected '/abs/path', '~/path', or 'host:/abs/path'",
         })?;

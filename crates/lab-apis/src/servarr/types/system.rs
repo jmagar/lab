@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 /// services; `app_name` disambiguates which product is responding.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
 pub struct SystemStatus {
     pub version: String,
     pub build_time: String,

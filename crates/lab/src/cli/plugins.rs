@@ -2,10 +2,8 @@
 
 use std::process::ExitCode;
 
-use anyhow::Result;
-
 /// Run the plugins subcommand.
-pub fn run() -> Result<ExitCode> {
-    crate::tui::run()?;
-    Ok(ExitCode::SUCCESS)
+pub fn run() -> ExitCode {
+    crate::tui::run();
+    ExitCode::SUCCESS
 }

@@ -14,7 +14,7 @@ pub struct ImportListId(pub i64);
 #[serde(transparent)]
 pub struct ImportListExclusionId(pub i64);
 
-/// A configured import list (TMDB collection, Trakt user list, IMDb list,
+/// A configured import list (TMDB collection, Trakt user list, `IMDb` list,
 /// Letterboxd list, …).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

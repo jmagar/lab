@@ -49,18 +49,18 @@ impl Transport {
 pub struct LocalFs;
 
 impl LocalFs {
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, ExtractError> {
+    async fn read(&self, path: &Path) -> Result<Vec<u8>, ExtractError> {
         // Real impl: tokio::fs::read(path).await.map_err(|e| ExtractError::Io { ... })
         Err(ExtractError::Io {
-            path: _path.to_path_buf(),
+            path: path.to_path_buf(),
             source: std::io::Error::other("LocalFs::read not yet implemented"),
         })
     }
 
-    async fn list_subdirs(&self, _dir: &Path) -> Result<Vec<PathBuf>, ExtractError> {
+    async fn list_subdirs(&self, dir: &Path) -> Result<Vec<PathBuf>, ExtractError> {
         // Real impl: tokio::fs::read_dir + filter is_dir
         Err(ExtractError::Io {
-            path: _dir.to_path_buf(),
+            path: dir.to_path_buf(),
             source: std::io::Error::other("LocalFs::list_subdirs not yet implemented"),
         })
     }

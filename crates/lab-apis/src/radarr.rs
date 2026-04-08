@@ -75,11 +75,11 @@ use std::time::Instant;
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 impl ServiceClient for RadarrClient {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "radarr"
     }
 
-    fn service_type(&self) -> &str {
+    fn service_type(&self) -> &'static str {
         "servarr"
     }
 
@@ -90,19 +90,17 @@ impl ServiceClient for RadarrClient {
                 reachable: true,
                 auth_ok: true,
                 version: Some(status.version),
-                latency_ms: start.elapsed().as_millis() as u64,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: None,
             }),
             Err(RadarrError::Api(ApiError::Auth)) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: false,
                 version: None,
-                latency_ms: start.elapsed().as_millis() as u64,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed".into()),
             }),
-            Err(RadarrError::Api(e)) => {
-                Ok(ServiceStatus::unreachable(e.to_string()))
-            }
+            Err(RadarrError::Api(e)) => Ok(ServiceStatus::unreachable(e.to_string())),
             Err(e) => Ok(ServiceStatus::unreachable(e.to_string())),
         }
     }

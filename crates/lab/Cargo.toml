@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace      = true
 repository.workspace   = true
 authors.workspace      = true
+readme                 = "../../README.md"
+keywords               = ["homelab", "mcp", "cli", "tui"]
+categories             = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "lab"

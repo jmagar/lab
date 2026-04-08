@@ -66,7 +66,7 @@ pub enum ToolError {
 impl ToolError {
     /// Canonical stable string tag.
     #[must_use]
-    pub fn kind(&self) -> &str {
+    pub const fn kind(&self) -> &str {
         match self {
             Self::UnknownAction { .. } => "unknown_action",
             Self::MissingParam { .. } => "missing_param",

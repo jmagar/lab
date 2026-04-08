@@ -18,7 +18,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn system_status(&self) -> Result<SystemStatus, RadarrError> {
-        self.http.get_json("/api/v3/system/status").await.map_err(RadarrError::from)
+        self.http
+            .get_json("/api/v3/system/status")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List health-check warnings.

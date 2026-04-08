@@ -1,3 +1,4 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 //! Integration test — `RadarrClient::system_status` must hit
 //! `GET /api/v3/system/status` with the `X-Api-Key` header and decode the
 //! minimal `SystemStatus` shape Radarr returns.
@@ -42,7 +43,10 @@ async fn system_status_ok() {
 
     let client = RadarrClient::new(
         &server.uri(),
-        Auth::ApiKey { header: "X-Api-Key".into(), key: "abc123".into() },
+        Auth::ApiKey {
+            header: "X-Api-Key".into(),
+            key: "abc123".into(),
+        },
     );
 
     let status = client.system_status().await.expect("system_status");

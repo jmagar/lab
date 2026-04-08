@@ -64,7 +64,10 @@ fn filter_registry(registry: ToolRegistry, services: &[String]) -> ToolRegistry 
 async fn run_stdio(registry: ToolRegistry) -> Result<ExitCode> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-    tracing::info!(services = registry.services().len(), "lab serve (stdio) ready");
+    tracing::info!(
+        services = registry.services().len(),
+        "lab serve (stdio) ready"
+    );
 
     let stdin = tokio::io::stdin();
     let mut reader = BufReader::new(stdin).lines();
@@ -86,7 +89,10 @@ async fn run_stdio(registry: ToolRegistry) -> Result<ExitCode> {
 
         let service = req.get("service").and_then(|v| v.as_str()).unwrap_or("");
         let action = req.get("action").and_then(|v| v.as_str()).unwrap_or("");
-        let params = req.get("params").cloned().unwrap_or(serde_json::Value::Null);
+        let params = req
+            .get("params")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
 
         let result = dispatch(&registry, service, action, params).await;
         let body = match result {

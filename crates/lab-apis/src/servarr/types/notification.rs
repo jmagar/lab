@@ -11,13 +11,14 @@ pub struct NotificationId(pub i64);
 
 /// A configured notification provider.
 ///
-/// Mirrors `NotificationResource` from the Radarr v3 / Sonarr v3 OpenAPI
+/// Mirrors `NotificationResource` from the Radarr v3 / Sonarr v3 `OpenAPI`
 /// specs. Service-specific event flags (radarr's `on_movie_delete`, sonarr's
 /// `on_series_delete`, etc.) are intentionally not modeled here — they round-
 /// trip through `fields` as raw JSON. If a caller needs strict typing for
 /// those flags, it should define a per-service extension struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Notification {
     /// Notification id.
     pub id: NotificationId,
