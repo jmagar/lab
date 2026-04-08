@@ -143,7 +143,7 @@ impl ServerHandler for LabMcpServer {
             match result {
                 Ok(v) => {
                     tracing::info!(service, action, elapsed_ms, "dispatch ok");
-                    let envelope = build_success(&service, &action, v);
+                    let envelope = build_success(&service, &action, &v);
                     Ok(CallToolResult::success(vec![Content::text(
                         envelope.to_string(),
                     )]))
@@ -151,11 +151,10 @@ impl ServerHandler for LabMcpServer {
                 Err(e) => {
                     let (kind, message, extra) = extract_error_info(&e);
                     tracing::warn!(service, action, elapsed_ms, kind, "dispatch error");
-                    let envelope = if let Some(extra) = extra {
-                        build_error_extra(&service, &action, kind, &message, extra)
-                    } else {
-                        build_error(&service, &action, kind, &message)
-                    };
+                    let envelope = extra.map_or_else(
+                        || build_error(&service, &action, kind, &message),
+                        |ref extra| build_error_extra(&service, &action, kind, &message, extra),
+                    );
                     Ok(CallToolResult::error(vec![Content::text(
                         envelope.to_string(),
                     )]))
@@ -263,27 +262,25 @@ fn extract_error_info(e: &anyhow::Error) -> (&'static str, String, Option<Value>
     }
     // 2. ToolError serialized as JSON string (legacy radarr path)
     let msg = e.to_string();
-    if let Ok(v) = serde_json::from_str::<Value>(&msg) {
-        if let Some(kind_str) = v.get("kind").and_then(|k| k.as_str()) {
-            let kind: &'static str = static_kind(kind_str);
-            let message = v["message"].as_str().unwrap_or(&msg).to_string();
-            // Preserve structured extras (valid list, param name, hint) if present.
-            let extra = {
-                let has_valid = v.get("valid").map_or(false, |v| !v.is_null());
-                let has_param = v.get("param").map_or(false, |v| !v.is_null());
-                let has_hint = v.get("hint").map_or(false, |v| !v.is_null());
-                if has_valid || has_param || has_hint {
-                    Some(serde_json::json!({
-                        "valid": v.get("valid"),
-                        "param": v.get("param"),
-                        "hint":  v.get("hint"),
-                    }))
-                } else {
-                    None
-                }
-            };
-            return (kind, message, extra);
-        }
+    if let Ok(v) = serde_json::from_str::<Value>(&msg)
+        && let Some(kind_str) = v.get("kind").and_then(|k| k.as_str())
+    {
+        let kind: &'static str = static_kind(kind_str);
+        let message = v["message"].as_str().unwrap_or(&msg).to_string();
+        // Preserve structured extras (valid list, param name, hint) if present.
+        let has_valid = v.get("valid").is_some_and(|v| !v.is_null());
+        let has_param = v.get("param").is_some_and(|v| !v.is_null());
+        let has_hint = v.get("hint").is_some_and(|v| !v.is_null());
+        let extra = if has_valid || has_param || has_hint {
+            Some(serde_json::json!({
+                "valid": v.get("valid"),
+                "param": v.get("param"),
+                "hint":  v.get("hint"),
+            }))
+        } else {
+            None
+        };
+        return (kind, message, extra);
     }
     // 3. Generic fallback
     ("internal_error", msg, None)

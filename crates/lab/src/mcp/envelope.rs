@@ -161,7 +161,7 @@ use serde_json::{Value, json};
 /// { "ok": true, "service": "radarr", "action": "movie.list", "data": […] }
 /// ```
 #[must_use]
-pub fn build_success(service: &str, action: &str, data: Value) -> Value {
+pub fn build_success(service: &str, action: &str, data: &Value) -> Value {
     json!({
         "ok": true,
         "service": service,
@@ -196,7 +196,7 @@ pub fn build_error_extra(
     action: &str,
     kind: &str,
     message: &str,
-    extra: Value,
+    extra: &Value,
 ) -> Value {
     let mut obj = build_error(service, action, kind, message);
     if let (Some(err), Some(ext_map)) = (
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn success_envelope_shape() {
-        let env = build_success("radarr", "movie.list", json!([{"id": 1}]));
+        let env = build_success("radarr", "movie.list", &json!([{"id": 1}]));
         assert_eq!(env["ok"], json!(true));
         assert_eq!(env["service"], json!("radarr"));
         assert_eq!(env["action"], json!("movie.list"));
@@ -378,7 +378,7 @@ mod tests {
             "bad.action",
             "unknown_action",
             "unknown action",
-            json!({ "valid": ["movie.list"], "param": null, "hint": null }),
+            &json!({ "valid": ["movie.list"], "param": null, "hint": null }),
         );
         assert_eq!(env["error"]["kind"], json!("unknown_action"));
         assert!(env["error"]["valid"].is_array());
@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn success_has_no_error_key() {
-        let env = build_success("extract", "scan", json!({}));
+        let env = build_success("extract", "scan", &json!({}));
         let s = serde_json::to_string(&env).unwrap();
         assert!(!s.contains("\"error\""));
     }
