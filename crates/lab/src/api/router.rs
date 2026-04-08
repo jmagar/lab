@@ -163,9 +163,12 @@ async fn service_actions(
             sdk_kind: "not_found".into(),
             message: format!("unknown service `{service}`"),
         })?;
-    Ok(axum::Json(
-        serde_json::to_value(&entry.actions).unwrap_or(serde_json::Value::Array(vec![])),
-    ))
+    let actions =
+        serde_json::to_value(&entry.actions).map_err(|e| crate::mcp::envelope::ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: format!("serialize actions: {e}"),
+        })?;
+    Ok(axum::Json(actions))
 }
 
 #[cfg(test)]
