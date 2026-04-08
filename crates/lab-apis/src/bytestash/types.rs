@@ -1,0 +1,47 @@
+//! Request models for documented ByteStash payloads.
+
+use serde::{Deserialize, Serialize};
+
+/// Username/password payload used by auth endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuthCredentials {
+    /// Login or registration username.
+    pub username: String,
+    /// Login or registration password.
+    pub password: String,
+}
+
+/// One file fragment inside a snippet.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SnippetFragment {
+    /// File name shown in the UI.
+    pub file_name: String,
+    /// Snippet contents.
+    pub code: String,
+}
+
+/// Create/update payload for a snippet.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SnippetWriteRequest {
+    /// Snippet title.
+    pub title: String,
+    /// Optional description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Optional language label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// File fragments.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fragments: Vec<SnippetFragment>,
+    /// Category names.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
+}
+
+/// Create-category payload.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CategoryWriteRequest {
+    /// Category name.
+    pub name: String,
+}

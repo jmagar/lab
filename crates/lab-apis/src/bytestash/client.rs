@@ -1,0 +1,210 @@
+//! `ByteStashClient` — snippet management methods.
+
+use std::time::Instant;
+
+use serde_json::Value;
+
+use crate::core::{ApiError, Auth, HttpClient, ServiceClient, ServiceStatus};
+
+use super::error::ByteStashError;
+use super::types::{AuthCredentials, CategoryWriteRequest, SnippetWriteRequest};
+
+/// Client for a `ByteStash` instance.
+pub struct ByteStashClient {
+    http: HttpClient,
+}
+
+impl ByteStashClient {
+    /// Build a client against `base_url` with the given auth.
+    ///
+    /// `ByteStash` uses JWT bearer auth: pass `Auth::Bearer { token: jwt }`.
+    ///
+    /// # Errors
+    /// Returns [`ByteStashError::Api`] if the TLS backend fails to initialise.
+    pub fn new(base_url: &str, auth: Auth) -> Result<Self, ByteStashError> {
+        Ok(Self {
+            http: HttpClient::new(base_url, auth)?,
+        })
+    }
+
+    async fn get_value(&self, path: &str) -> Result<Value, ByteStashError> {
+        Ok(self.http.get_json(path).await?)
+    }
+
+    async fn post_value<B: serde::Serialize + Sync>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<Value, ByteStashError> {
+        Ok(self.http.post_json(path, body).await?)
+    }
+
+    async fn put_value<B: serde::Serialize + Sync>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<Value, ByteStashError> {
+        Ok(self.http.put_json(path, body).await?)
+    }
+
+    async fn patch_value<B: serde::Serialize + Sync>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<Value, ByteStashError> {
+        Ok(self.http.patch_json(path, body).await?)
+    }
+
+    async fn delete_value(&self, path: &str) -> Result<(), ByteStashError> {
+        Ok(self.http.delete(path).await?)
+    }
+
+    /// Health check. Uses the auth configuration endpoint as a cheap probe.
+    ///
+    /// # Errors
+    /// Returns `ByteStashError::Api` on HTTP failure.
+    pub async fn probe(&self) -> Result<(), ByteStashError> {
+        drop(self.get_value("/api/auth/config").await?);
+        Ok(())
+    }
+
+    /// Retrieve auth-provider configuration.
+    pub async fn auth_config(&self) -> Result<Value, ByteStashError> {
+        self.get_value("/api/auth/config").await
+    }
+
+    /// Register a new user.
+    pub async fn auth_register(&self, body: &AuthCredentials) -> Result<Value, ByteStashError> {
+        self.post_value("/api/auth/register", body).await
+    }
+
+    /// Log in and receive a token.
+    pub async fn auth_login(&self, body: &AuthCredentials) -> Result<Value, ByteStashError> {
+        self.post_value("/api/auth/login", body).await
+    }
+
+    /// Refresh the current token.
+    pub async fn auth_refresh<B: serde::Serialize + Sync>(
+        &self,
+        body: &B,
+    ) -> Result<Value, ByteStashError> {
+        self.post_value("/api/auth/refresh", body).await
+    }
+
+    /// List the caller's snippets.
+    pub async fn snippets_list(&self) -> Result<Value, ByteStashError> {
+        self.get_value("/api/snippets").await
+    }
+
+    /// Get one snippet.
+    pub async fn snippet_get(&self, id: &str) -> Result<Value, ByteStashError> {
+        self.get_value(&format!("/api/snippets/{id}")).await
+    }
+
+    /// Create a snippet.
+    pub async fn snippets_create(
+        &self,
+        body: &SnippetWriteRequest,
+    ) -> Result<Value, ByteStashError> {
+        self.post_value("/api/snippets", body).await
+    }
+
+    /// Update a snippet.
+    pub async fn snippets_update<B: serde::Serialize + Sync>(
+        &self,
+        id: &str,
+        body: &B,
+    ) -> Result<Value, ByteStashError> {
+        self.put_value(&format!("/api/snippets/{id}"), body).await
+    }
+
+    /// Delete a snippet.
+    pub async fn snippets_delete(&self, id: &str) -> Result<(), ByteStashError> {
+        self.delete_value(&format!("/api/snippets/{id}")).await
+    }
+
+    /// List public snippets.
+    pub async fn snippets_public_list(&self) -> Result<Value, ByteStashError> {
+        self.get_value("/api/snippets/public").await
+    }
+
+    /// Get one public snippet.
+    pub async fn snippets_public_get(&self, id: &str) -> Result<Value, ByteStashError> {
+        self.get_value(&format!("/api/snippets/public/{id}")).await
+    }
+
+    /// Create a share link for a snippet.
+    pub async fn snippets_share_create(&self, id: &str) -> Result<Value, ByteStashError> {
+        self.post_value(&format!("/api/snippets/share/{id}"), &serde_json::json!({}))
+            .await
+    }
+
+    /// Get a shared snippet.
+    pub async fn snippets_share_get(&self, share_id: &str) -> Result<Value, ByteStashError> {
+        self.get_value(&format!("/api/snippets/share/{share_id}"))
+            .await
+    }
+
+    /// List categories.
+    pub async fn categories_list(&self) -> Result<Value, ByteStashError> {
+        self.get_value("/api/categories").await
+    }
+
+    /// Create a category.
+    pub async fn categories_create(
+        &self,
+        body: &CategoryWriteRequest,
+    ) -> Result<Value, ByteStashError> {
+        self.post_value("/api/categories", body).await
+    }
+
+    /// List users.
+    pub async fn users_list(&self) -> Result<Value, ByteStashError> {
+        self.get_value("/api/users").await
+    }
+
+    /// Patch a user.
+    pub async fn users_patch<B: serde::Serialize + Sync>(
+        &self,
+        id: &str,
+        body: &B,
+    ) -> Result<Value, ByteStashError> {
+        self.patch_value(&format!("/api/users/{id}"), body).await
+    }
+
+    /// Delete a user.
+    pub async fn users_delete(&self, id: &str) -> Result<(), ByteStashError> {
+        self.delete_value(&format!("/api/users/{id}")).await
+    }
+}
+
+impl ServiceClient for ByteStashClient {
+    fn name(&self) -> &'static str {
+        "bytestash"
+    }
+
+    fn service_type(&self) -> &'static str {
+        "notes"
+    }
+
+    async fn health(&self) -> Result<ServiceStatus, ApiError> {
+        let start = Instant::now();
+        match self.probe().await {
+            Ok(()) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: None,
+            }),
+            Err(ByteStashError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: false,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some("auth failed".into()),
+            }),
+            Err(ByteStashError::Api(e)) => Ok(ServiceStatus::unreachable(e.to_string())),
+        }
+    }
+}

@@ -1,6 +1,5 @@
 //! `lab serve` — start the MCP server.
 
-use std::future::Future;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -118,11 +117,11 @@ impl ServerHandler for LabMcpServer {
         ServerInfo::default()
     }
 
-    fn list_tools(
+    async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
+    ) -> Result<ListToolsResult, ErrorData> {
         let schema = Arc::new(action_schema());
         let tools: Vec<Tool> = self
             .registry
@@ -130,48 +129,45 @@ impl ServerHandler for LabMcpServer {
             .iter()
             .map(|svc| Tool::new(svc.name, svc.description, Arc::clone(&schema)))
             .collect();
-        async move { Ok(ListToolsResult::with_all_items(tools)) }
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
-        let registry = Arc::clone(&self.registry);
-        async move {
-            let service = request.name.as_ref().to_string();
-            let args = request.arguments.unwrap_or_default();
-            let action = args
-                .get("action")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let params = args.get("params").cloned().unwrap_or(Value::Null);
+    ) -> Result<CallToolResult, ErrorData> {
+        let service = request.name.as_ref().to_string();
+        let args = request.arguments.unwrap_or_default();
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let params = args.get("params").cloned().unwrap_or(Value::Null);
 
-            let start = std::time::Instant::now();
-            let result = dispatch_service(&registry, &service, &action, params).await;
-            let elapsed_ms = start.elapsed().as_millis();
+        let start = std::time::Instant::now();
+        let result = dispatch_service(&service, &action, params).await;
+        let elapsed_ms = start.elapsed().as_millis();
 
-            match result {
-                Ok(v) => {
-                    tracing::info!(service, action, elapsed_ms, "dispatch ok");
-                    let envelope = build_success(&service, &action, &v);
-                    Ok(CallToolResult::success(vec![Content::text(
-                        envelope.to_string(),
-                    )]))
-                }
-                Err(e) => {
-                    let (kind, message, extra) = extract_error_info(&e);
-                    tracing::warn!(service, action, elapsed_ms, kind, "dispatch error");
-                    let envelope = extra.map_or_else(
-                        || build_error(&service, &action, kind, &message),
-                        |ref extra| build_error_extra(&service, &action, kind, &message, extra),
-                    );
-                    Ok(CallToolResult::error(vec![Content::text(
-                        envelope.to_string(),
-                    )]))
-                }
+        match result {
+            Ok(v) => {
+                tracing::info!(service, action, elapsed_ms, "dispatch ok");
+                let envelope = build_success(&service, &action, &v);
+                Ok(CallToolResult::success(vec![Content::text(
+                    envelope.to_string(),
+                )]))
+            }
+            Err(e) => {
+                let (kind, message, extra) = extract_error_info(&e);
+                tracing::warn!(service, action, elapsed_ms, kind, "dispatch error");
+                let envelope = extra.map_or_else(
+                    || build_error(&service, &action, kind, &message),
+                    |ref extra| build_error_extra(&service, &action, kind, &message, extra),
+                );
+                Ok(CallToolResult::error(vec![Content::text(
+                    envelope.to_string(),
+                )]))
             }
         }
     }
@@ -189,15 +185,7 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
 }
 
 #[allow(clippy::too_many_lines)]
-async fn dispatch_service(
-    registry: &ToolRegistry,
-    service: &str,
-    action: &str,
-    params: Value,
-) -> Result<Value> {
-    if !registry.services().iter().any(|s| s.name == service) {
-        anyhow::bail!("unknown service `{service}`");
-    }
+async fn dispatch_service(service: &str, action: &str, params: Value) -> Result<Value> {
     match service {
         "extract" => crate::mcp::services::extract::dispatch(action, params)
             .await
