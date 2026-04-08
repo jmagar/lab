@@ -1,10 +1,29 @@
 //! MCP dispatch for the Radarr tool.
 
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use lab_apis::core::Auth;
+use lab_apis::core::action::ActionSpec;
 use lab_apis::radarr::RadarrClient;
+
+/// Action catalog for the radarr tool.
+pub const ACTIONS: &[ActionSpec] = &[
+    ActionSpec {
+        name: "system.status",
+        description: "Return Radarr system status and version",
+        destructive: false,
+        returns: "SystemStatus",
+        params: &[],
+    },
+    ActionSpec {
+        name: "help",
+        description: "Show this catalog",
+        destructive: false,
+        returns: "Catalog",
+        params: &[],
+    },
+];
 
 /// Build a Radarr client from the default-instance env vars.
 #[must_use]
@@ -25,12 +44,19 @@ pub fn client_from_env() -> Option<RadarrClient> {
 /// # Errors
 pub async fn dispatch(action: &str, _params: Value) -> Result<Value> {
     match action {
-        "help" => Ok(json!({
+        "help" => Ok(serde_json::json!({
             "service": "radarr",
-            "actions": [
-                { "name": "system.status", "description": "Return Radarr system status", "destructive": false },
-                { "name": "help", "description": "Show this catalog", "destructive": false },
-            ]
+            "actions": ACTIONS.iter().map(|a| serde_json::json!({
+                "name": a.name,
+                "description": a.description,
+                "destructive": a.destructive,
+                "params": a.params.iter().map(|p| serde_json::json!({
+                    "name": p.name,
+                    "type": p.ty,
+                    "required": p.required,
+                    "description": p.description,
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
         })),
         "system.status" => {
             let client = client_from_env()

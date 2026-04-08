@@ -37,8 +37,7 @@ pub struct ActionEntry {
     pub destructive: bool,
 }
 
-/// Build a [`Catalog`] from the current tool registry. The registry is
-/// the authoritative source — never hand-roll catalog entries.
+/// Build a [`Catalog`] from the current tool registry.
 #[must_use]
 pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
     let services = registry
@@ -55,21 +54,23 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
     Catalog { services }
 }
 
+/// Convert a service's `&[ActionSpec]` into `Vec<ActionEntry>` for the catalog.
+fn convert_actions(specs: &[lab_apis::core::action::ActionSpec]) -> Vec<ActionEntry> {
+    specs
+        .iter()
+        .map(|s| ActionEntry {
+            name: s.name.into(),
+            description: s.description.into(),
+            destructive: s.destructive,
+        })
+        .collect()
+}
+
 fn actions_for(service: &str) -> Vec<ActionEntry> {
     match service {
+        "extract" => convert_actions(crate::mcp::services::extract::ACTIONS),
         #[cfg(feature = "radarr")]
-        "radarr" => vec![
-            ActionEntry {
-                name: "system.status".into(),
-                description: "Return Radarr system status".into(),
-                destructive: false,
-            },
-            ActionEntry {
-                name: "help".into(),
-                description: "Show this catalog".into(),
-                destructive: false,
-            },
-        ],
+        "radarr" => convert_actions(crate::mcp::services::radarr::ACTIONS),
         _ => Vec::new(),
     }
 }
