@@ -13,6 +13,7 @@ Start with `docs/README.md` for the docs index. The topic docs in `docs/` are th
 - `crates/lab/src/mcp/` — dispatch, envelopes, elicitation, catalog
 - `crates/lab/src/cli/` — thin-shim pattern, destructive flags, batch commands
 - `crates/lab/src/tui/` — plugin manager UX, `.mcp.json` patching
+- `crates/lab/src/api/` — axum HTTP surface, status code mapping, middleware stack
 
 ## Repository Structure
 
@@ -54,13 +55,24 @@ lab/
 │       ├── Cargo.toml                # deps: lab-apis, clap, rmcp, ratatui, anyhow, tabled
 │       └── src/
 │           ├── main.rs
+│           ├── api.rs                # axum surface module declaration
+│           ├── catalog.rs            # build_catalog() — single source for help/resource/CLI
 │           ├── cli/                  # clap subcommands per service (thin shims)
+│           ├── cli.rs
 │           ├── mcp/
 │           │   ├── registry.rs       # runtime tool registration
 │           │   ├── resources.rs      # action catalog as MCP resources
 │           │   ├── error.rs          # structured JSON errors
 │           │   └── services/         # one dispatch module per service
+│           ├── mcp.rs
+│           ├── api/                  # axum HTTP API (mirrors MCP action dispatch)
+│           │   ├── state.rs          # AppState — Arc<lab-apis clients>
+│           │   ├── error.rs          # ApiError + IntoResponse mapping
+│           │   ├── router.rs         # build_router() + middleware stack
+│           │   ├── health.rs         # /health + /ready endpoints
+│           │   └── services/         # per-service route groups (feature-gated)
 │           ├── tui/                  # ratatui plugin manager
+│           ├── tui.rs
 │           ├── config.rs             # ~/.lab/.env + config.toml loading
 │           └── output.rs             # table/json formatting
 ├── Cargo.toml                        # workspace
@@ -229,8 +241,11 @@ just check      # cargo check --workspace
 just test       # cargo nextest run
 just lint       # cargo clippy + cargo fmt --check
 just deny       # cargo deny check
-just build      # cargo build --features all
-just run        # cargo run --features all -- <args>
+just build      # cargo build --workspace --all-features
+just build-release  # cargo build --workspace --all-features --release
+just run        # cargo run --all-features -- <args>
+just fmt        # cargo fmt --all
+just clean      # cargo clean
 just release    # cargo release
 just mcp-token  # rotate the MCP bearer token in ~/.lab/.env
 ```
