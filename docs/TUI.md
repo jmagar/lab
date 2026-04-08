@@ -1,16 +1,16 @@
 # TUI
 
-The TUI is a focused plugin manager, not a second full control plane.
+The TUI is a Claude Code marketplace browser and plugin manager.
 
 ## Scope
 
 The TUI exists to help users:
 
-- inspect available services
-- see install state
-- toggle or apply plugin selections
-- manage `.mcp.json` integration
-- understand required env setup
+- browse Claude Code plugin marketplaces
+- inspect available plugins with metadata and descriptions
+- install and remove plugins
+- update the `lab` binary itself
+- understand required env setup for installed plugins
 
 It is not intended to replicate every CLI or MCP operation.
 
@@ -22,20 +22,22 @@ It is not intended to replicate every CLI or MCP operation.
 
 ## Primary Screen
 
-The core experience is a service list grouped by category with install state and concise metadata.
+The core experience is a plugin list grouped by category with install state and concise metadata.
 
 Each row should reflect:
 
-- service name
+- plugin name
 - short description
-- install state
-- availability or missing config state
+- install state (installed / available / update available)
+- marketplace source
+- env readiness hints
 
 An example mental model is:
 
-- installed vs available
+- installed vs available vs updatable
 - category grouping
-- env readiness hints
+- marketplace source label
+- env readiness indicators
 
 ## Data Source
 
@@ -47,32 +49,40 @@ That keeps:
 - env requirements consistent
 - display names consistent
 
+Marketplace data is fetched from configured registry endpoints and merged with local install state.
+
 ## Interaction Model
 
 Expected interaction is simple:
 
 - navigate
-- toggle
-- apply
+- install / remove
+- update binary
 - quit
 
 Complex modal workflows should be the exception, not the baseline.
 
-The TUI should stay optimized for quick operator setup tasks rather than deep service management.
+The TUI should stay optimized for quick plugin setup tasks rather than deep service management.
 
-## `.mcp.json` Integration
+## Plugin Install / Remove
 
-The TUI is allowed to drive `.mcp.json` patching, but it should use the same atomic patching semantics as the CLI install/uninstall path.
+The TUI drives plugin installation and removal using the same atomic semantics as the CLI install/uninstall path:
 
-That means:
+- fetch plugin manifest from marketplace
+- validate env requirements
+- write plugin files atomically
+- verify after write
+- update `.mcp.json` if applicable (using CLI install/uninstall semantics — no custom patching logic)
 
-- parse existing config
-- compute updated service args
-- back up first
-- write atomically
-- verify parse after write
+## Binary Updates
 
-The TUI should not invent its own patching logic. It should reuse the same semantic rules as CLI install/uninstall.
+The TUI exposes a binary update flow:
+
+- check latest release from the configured update source
+- display current vs available version
+- prompt user to confirm before downloading
+- download and replace binary atomically
+- verify the new binary reports the expected version
 
 ## State Policy
 
@@ -96,4 +106,4 @@ If the TUI prompts for env values:
 
 ## Relationship to CLI
 
-The TUI is a convenience layer for plugin and setup workflows. The CLI remains the general-purpose operator surface.
+The TUI is a convenience layer for marketplace browsing and plugin lifecycle. The CLI remains the general-purpose operator surface.
