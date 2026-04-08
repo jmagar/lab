@@ -1,0 +1,6 @@
+pre-commit:
+  commands:
+    rustfmt:
+      run: cargo fmt --all --check
+    clippy:
+      run: cargo clippy --workspace --all-features -- -D warnings

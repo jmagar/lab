@@ -1,0 +1,61 @@
+[package]
+name                   = "lab-apis"
+description            = "Pure Rust SDK for homelab service APIs (Servarr, Plex, qBittorrent, Unraid, UniFi, etc.)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
+
+[dependencies]
+tokio.workspace       = true
+futures.workspace     = true
+reqwest.workspace     = true
+url.workspace         = true
+serde.workspace       = true
+serde_json.workspace  = true
+thiserror.workspace   = true
+jiff.workspace        = true
+tracing.workspace     = true
+
+[dev-dependencies]
+tokio       = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
+wiremock.workspace = true
+insta.workspace    = true
+
+[features]
+default = []
+radarr      = ["servarr"]
+sonarr      = ["servarr"]
+prowlarr    = ["servarr"]
+overseerr   = []
+plex        = []
+tautulli    = []
+sabnzbd     = []
+qbittorrent = []
+tailscale   = []
+linkding    = []
+memos       = []
+bytestash   = []
+paperless   = []
+arcane      = []
+unraid      = []
+unifi       = []
+gotify      = []
+openai      = []
+qdrant      = []
+tei         = []
+apprise     = []
+servarr     = []
+test-utils  = []
+all = [
+    "radarr", "sonarr", "prowlarr", "overseerr", "plex", "tautulli",
+    "sabnzbd", "qbittorrent", "tailscale", "linkding",
+    "memos", "bytestash", "paperless",
+    "arcane", "unraid", "unifi",
+    "gotify", "openai", "qdrant", "tei", "apprise",
+]
+
+[lints]
+workspace = true
