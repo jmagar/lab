@@ -3,6 +3,18 @@
 //! This module exists so the `sonarr` feature compiles. The real client,
 //! types, and MCP dispatch are deferred to a per-service plan.
 
+/// `SonarrClient` — TV series management methods.
+pub mod client;
+
+/// Sonarr request/response types (serde).
+pub mod types;
+
+/// `SonarrError` (thiserror).
+pub mod error;
+
+pub use client::SonarrClient;
+pub use error::SonarrError;
+
 use crate::core::plugin::{Category, PluginMeta};
 
 /// Compile-time metadata for the sonarr module.

@@ -40,6 +40,64 @@ impl UnifiClient {
             .map_err(Into::into)
     }
 
+    async fn get_json_query<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<T, UnifiError> {
+        self.http
+            .get_json_query(&Self::path(path), query)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn post_json<B: serde::Serialize + Sync, T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, UnifiError> {
+        self.http
+            .post_json(&Self::path(path), body)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn put_json<B: serde::Serialize + Sync, T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, UnifiError> {
+        self.http
+            .put_json(&Self::path(path), body)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn patch_json<B: serde::Serialize + Sync, T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, UnifiError> {
+        self.http
+            .patch_json(&Self::path(path), body)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn delete(&self, path: &str) -> Result<(), UnifiError> {
+        self.http
+            .delete(&Self::path(path))
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn delete_query(&self, path: &str, query: &[(String, String)]) -> Result<(), UnifiError> {
+        self.http
+            .delete_query(&Self::path(path), query)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Return application version and runtime metadata.
     pub async fn info(&self) -> Result<ApplicationInfo, UnifiError> {
         self.get_json("/info").await
@@ -128,5 +186,60 @@ impl UnifiClient {
             "/sites/{site_id}/wifi/broadcasts/{wifi_broadcast_id}"
         ))
         .await
+    }
+
+    /// Generic JSON GET helper for the remaining endpoints.
+    pub async fn get_value(&self, path: &str) -> Result<Value, UnifiError> {
+        self.get_json(path).await
+    }
+
+    /// Generic JSON GET helper with query parameters.
+    pub async fn get_value_query(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<Value, UnifiError> {
+        self.get_json_query(path, query).await
+    }
+
+    /// Generic JSON POST helper.
+    pub async fn post_value<B: serde::Serialize + Sync>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<Value, UnifiError> {
+        self.post_json(path, body).await
+    }
+
+    /// Generic JSON PUT helper.
+    pub async fn put_value<B: serde::Serialize + Sync>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<Value, UnifiError> {
+        self.put_json(path, body).await
+    }
+
+    /// Generic JSON PATCH helper.
+    pub async fn patch_value<B: serde::Serialize + Sync>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<Value, UnifiError> {
+        self.patch_json(path, body).await
+    }
+
+    /// Generic JSON DELETE helper.
+    pub async fn delete_value(&self, path: &str) -> Result<(), UnifiError> {
+        self.delete(path).await
+    }
+
+    /// Generic JSON DELETE helper with query parameters.
+    pub async fn delete_value_query(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<(), UnifiError> {
+        self.delete_query(path, query).await
     }
 }
