@@ -18,11 +18,13 @@ impl AppriseClient {
     /// apprise-api is typically unauthenticated (pass `Auth::None`) but can
     /// be fronted by a reverse proxy that injects basic auth or a bearer
     /// token — use `Auth::Basic { .. }` or `Auth::Bearer { .. }` accordingly.
-    #[must_use]
-    pub fn new(base_url: &str, auth: Auth) -> Self {
-        Self {
-            http: HttpClient::new(base_url, auth),
-        }
+    ///
+    /// # Errors
+    /// Returns [`AppriseError::Api`] if the TLS backend fails to initialise.
+    pub fn new(base_url: &str, auth: Auth) -> Result<Self, AppriseError> {
+        Ok(Self {
+            http: HttpClient::new(base_url, auth)?,
+        })
     }
 
     /// Health check — `GET /status`.

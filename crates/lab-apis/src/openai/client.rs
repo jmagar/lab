@@ -18,13 +18,15 @@ impl OpenAiClient {
     /// ```no_run
     /// use lab_apis::core::Auth;
     /// use lab_apis::openai::OpenAiClient;
-    /// let c = OpenAiClient::new("https://api.openai.com", Auth::Bearer { token: "sk-...".into() });
+    /// let c = OpenAiClient::new("https://api.openai.com", Auth::Bearer { token: "sk-...".into() }).unwrap();
     /// ```
-    #[must_use]
-    pub fn new(base_url: &str, auth: Auth) -> Self {
-        Self {
-            http: HttpClient::new(base_url, auth),
-        }
+    ///
+    /// # Errors
+    /// Returns [`OpenAiError::Api`] if the TLS backend fails to initialise.
+    pub fn new(base_url: &str, auth: Auth) -> Result<Self, OpenAiError> {
+        Ok(Self {
+            http: HttpClient::new(base_url, auth)?,
+        })
     }
 
     /// Ping the models endpoint as a cheap health probe.

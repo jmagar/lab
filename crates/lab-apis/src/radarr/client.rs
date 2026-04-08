@@ -94,11 +94,13 @@ impl RadarrClient {
     ///
     /// Radarr uses header-token auth:
     /// `Auth::ApiKey { header: "X-Api-Key".into(), key: <api_key> }`.
-    #[must_use]
-    pub fn new(base_url: &str, auth: Auth) -> Self {
-        Self {
-            http: HttpClient::new(base_url, auth),
-        }
+    ///
+    /// # Errors
+    /// Returns [`RadarrError::Api`] if the TLS backend fails to initialise.
+    pub fn new(base_url: &str, auth: Auth) -> Result<Self, RadarrError> {
+        Ok(Self {
+            http: HttpClient::new(base_url, auth)?,
+        })
     }
 
     /// Probe `GET /api/v3/system/status` as a liveness check.

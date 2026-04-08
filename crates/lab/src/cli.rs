@@ -177,7 +177,7 @@ pub async fn dispatch(cli: Cli) -> Result<ExitCode> {
         Command::Serve(args) => serve::run(args).await,
         Command::Doctor => doctor::run(format).await,
         Command::Health => health::run(format).await,
-        Command::Plugins => Ok(plugins::run()),
+        Command::Plugins => plugins::run(),
         Command::Install(args) => Ok(install::run_install(&args)),
         Command::Uninstall(args) => Ok(install::run_uninstall(&args)),
         Command::Init => Ok(install::run_init()),

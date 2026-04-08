@@ -33,7 +33,8 @@ async fn get_json_injects_api_key_header_and_decodes_body() {
             header: "X-Api-Key".into(),
             key: "secret".into(),
         },
-    );
+    )
+    .expect("HttpClient::new");
 
     let pong: Pong = client.get_json("/ping").await.expect("get_json");
     assert_eq!(
