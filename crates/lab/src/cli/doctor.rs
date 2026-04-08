@@ -44,20 +44,37 @@ pub struct Report {
 
 /// Run the doctor subcommand.
 pub async fn run(format: OutputFormat) -> Result<ExitCode> {
-    let report = Report {
-        findings: Vec::new(),
-    };
+    let mut findings: Vec<Finding> = Vec::new();
+
+    #[cfg(feature = "radarr")]
+    {
+        let meta = lab_apis::radarr::META;
+        for env in meta.required_env {
+            let present = std::env::var(env.name).is_ok();
+            findings.push(Finding {
+                service: meta.name.into(),
+                check: format!("env:{}", env.name),
+                severity: if present { Severity::Ok } else { Severity::Fail },
+                message: if present {
+                    format!("{} is set", env.name)
+                } else {
+                    format!("{} is missing ({})", env.name, env.description)
+                },
+            });
+        }
+    }
+
+    let report = Report { findings };
     print(&report, format)?;
 
-    let worst = report
-        .findings
-        .iter()
-        .map(|f| f.severity)
-        .fold(Severity::Ok, |acc, s| match (acc, s) {
+    let worst = report.findings.iter().map(|f| f.severity).fold(
+        Severity::Ok,
+        |acc, s| match (acc, s) {
             (Severity::Fail, _) | (_, Severity::Fail) => Severity::Fail,
             (Severity::Warn, _) | (_, Severity::Warn) => Severity::Warn,
             _ => Severity::Ok,
-        });
+        },
+    );
 
     Ok(match worst {
         Severity::Ok => ExitCode::SUCCESS,
