@@ -2,6 +2,7 @@
 
 use std::{io, process::ExitCode};
 
+use anyhow::Result;
 use clap::{Args, CommandFactory};
 use clap_complete::{Shell, generate};
 
@@ -16,9 +17,13 @@ pub struct CompletionsArgs {
 }
 
 /// Run the completions subcommand.
-pub fn run(args: &CompletionsArgs) -> ExitCode {
+///
+/// # Errors
+/// Returns an error if writing to stdout fails.
+#[allow(clippy::unnecessary_wraps)]
+pub fn run(args: &CompletionsArgs) -> Result<ExitCode> {
     let mut cmd = Cli::command();
     let bin_name = cmd.get_name().to_string();
     generate(args.shell, &mut cmd, bin_name, &mut io::stdout());
-    ExitCode::SUCCESS
+    Ok(ExitCode::SUCCESS)
 }
