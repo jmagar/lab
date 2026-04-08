@@ -9,8 +9,9 @@
 //! shim translates the MCP request shape into client calls and the client's
 //! return values into `ToolEnvelope` JSON.
 
-use anyhow::Result;
 use serde_json::Value;
+
+use crate::mcp::envelope::ToolError;
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use lab_apis::extract::{ExtractClient, Uri};
@@ -83,22 +84,35 @@ pub const ACTIONS: &[ActionSpec] = &[
 /// Returns errors from URI parsing, client scan, or unknown action lookup.
 /// All errors are caught upstream and converted into the structured MCP
 /// envelope by the registry.
-pub async fn dispatch(action: &str, params: Value) -> Result<Value> {
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
         "scan" => {
-            let uri = parse_uri(&params)?;
+            let uri = parse_uri(&params).map_err(|e| ToolError::MissingParam {
+                message: e.to_string(),
+                param: "uri".into(),
+            })?;
             let client = ExtractClient::new();
-            let report = client.scan(uri).await?;
-            Ok(serde_json::to_value(report)?)
+            let report = client.scan(uri).await.map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: e.to_string(),
+            })?;
+            serde_json::to_value(report).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: e.to_string(),
+            })
         }
         "apply" => {
             // Destructive — the registry has already invoked elicitation
             // before we get here, otherwise dispatch would have short-circuited.
-            anyhow::bail!("apply not yet implemented")
+            Err(ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: "apply not yet implemented".into(),
+            })
         }
-        "diff" => {
-            anyhow::bail!("diff not yet implemented")
-        }
+        "diff" => Err(ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: "diff not yet implemented".into(),
+        }),
         "help" => Ok(serde_json::json!({
             "service": "extract",
             "actions": ACTIONS.iter().map(|a| serde_json::json!({
@@ -113,13 +127,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value> {
                 })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
         })),
-        unknown => {
-            anyhow::bail!("unknown action 'extract.{unknown}' — call extract.help for the catalog")
-        }
+        unknown => Err(ToolError::UnknownAction {
+            message: format!("unknown action 'extract.{unknown}'"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
     }
 }
 
-fn parse_uri(params: &Value) -> Result<Uri> {
+fn parse_uri(params: &Value) -> anyhow::Result<Uri> {
     let s = params
         .get("uri")
         .and_then(Value::as_str)
