@@ -1,15 +1,30 @@
 //! Shared application state for axum handlers.
-//!
-//! Intentionally minimal — service clients are constructed per-request
-//! inside each handler's MCP dispatch call via `client_from_env()`.
+
+use std::sync::Arc;
+
+use crate::catalog::{Catalog, build_catalog};
+use crate::mcp::registry::build_default_registry;
 
 /// Application state passed to every axum handler via `State<AppState>`.
-#[derive(Clone, Default)]
-pub struct AppState;
+#[derive(Clone)]
+pub struct AppState {
+    /// Pre-built service+action catalog for discovery endpoints.
+    pub catalog: Arc<Catalog>,
+}
 
 impl AppState {
+    /// Build state from the default (all enabled features) registry.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        let registry = build_default_registry();
+        Self {
+            catalog: Arc::new(build_catalog(&registry)),
+        }
+    }
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
     }
 }
