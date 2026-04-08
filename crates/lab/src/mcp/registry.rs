@@ -71,6 +71,206 @@ pub fn build_default_registry() -> ToolRegistry {
         });
     }
 
+    #[cfg(feature = "sonarr")]
+    {
+        let meta = lab_apis::sonarr::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "prowlarr")]
+    {
+        let meta = lab_apis::prowlarr::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "plex")]
+    {
+        let meta = lab_apis::plex::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "tautulli")]
+    {
+        let meta = lab_apis::tautulli::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "sabnzbd")]
+    {
+        let meta = lab_apis::sabnzbd::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "qbittorrent")]
+    {
+        let meta = lab_apis::qbittorrent::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "tailscale")]
+    {
+        let meta = lab_apis::tailscale::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "linkding")]
+    {
+        let meta = lab_apis::linkding::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "memos")]
+    {
+        let meta = lab_apis::memos::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "bytestash")]
+    {
+        let meta = lab_apis::bytestash::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "paperless")]
+    {
+        let meta = lab_apis::paperless::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "arcane")]
+    {
+        let meta = lab_apis::arcane::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "unraid")]
+    {
+        let meta = lab_apis::unraid::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "unifi")]
+    {
+        let meta = lab_apis::unifi::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "overseerr")]
+    {
+        let meta = lab_apis::overseerr::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "gotify")]
+    {
+        let meta = lab_apis::gotify::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "openai")]
+    {
+        let meta = lab_apis::openai::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "qdrant")]
+    {
+        let meta = lab_apis::qdrant::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "tei")]
+    {
+        let meta = lab_apis::tei::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
+    #[cfg(feature = "apprise")]
+    {
+        let meta = lab_apis::apprise::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
     reg
 }
 
@@ -101,5 +301,18 @@ mod tests {
             reg.services().iter().any(|s| s.name == "extract"),
             "extract must be in the default registry"
         );
+    }
+
+    #[test]
+    fn all_features_registers_all_services() {
+        let reg = build_default_registry();
+        let names: Vec<&str> = reg.services().iter().map(|s| s.name).collect();
+        assert!(names.contains(&"extract"), "extract missing");
+        #[cfg(feature = "radarr")]
+        assert!(names.contains(&"radarr"), "radarr missing");
+        #[cfg(feature = "sonarr")]
+        assert!(names.contains(&"sonarr"), "sonarr missing");
+        #[cfg(feature = "apprise")]
+        assert!(names.contains(&"apprise"), "apprise missing");
     }
 }
