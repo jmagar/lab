@@ -12,6 +12,9 @@ pub mod install;
 pub mod plugins;
 pub mod serve;
 
+#[cfg(feature = "radarr")]
+pub mod radarr;
+
 use std::process::ExitCode;
 
 use anyhow::Result;
@@ -62,6 +65,9 @@ pub enum Command {
     Help,
     /// Generate shell completions.
     Completions(completions::CompletionsArgs),
+    /// Radarr movie collection manager.
+    #[cfg(feature = "radarr")]
+    Radarr(radarr::RadarrArgs),
 }
 
 /// Dispatch a parsed [`Cli`] to the correct handler.
@@ -77,5 +83,7 @@ pub async fn dispatch(cli: Cli) -> Result<ExitCode> {
         Command::Init => Ok(install::run_init()),
         Command::Help => help::run(format),
         Command::Completions(args) => Ok(completions::run(&args)),
+        #[cfg(feature = "radarr")]
+        Command::Radarr(args) => radarr::run(args, format).await,
     }
 }
