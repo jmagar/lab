@@ -34,11 +34,9 @@ pub struct Report {
     pub findings: Vec<Finding>,
 }
 
-/// Returns (service_name, required_env_vars) for every enabled service.
+/// Returns `(service_name, required_env_vars)` for every enabled service.
 pub fn service_env_checks() -> Vec<(&'static str, &'static [EnvVar])> {
-    let mut list: Vec<(&'static str, &'static [EnvVar])> = Vec::new();
-
-    list.push((lab_apis::extract::META.name, lab_apis::extract::META.required_env));
+    let mut list = vec![(lab_apis::extract::META.name, lab_apis::extract::META.required_env)];
 
     #[cfg(feature = "radarr")]
     list.push((lab_apis::radarr::META.name, lab_apis::radarr::META.required_env));

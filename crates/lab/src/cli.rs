@@ -120,7 +120,7 @@ pub enum Command {
     /// Tautulli Plex analytics.
     #[cfg(feature = "tautulli")]
     Tautulli(tautulli::TautulliArgs),
-    /// SABnzbd download client.
+    /// `SABnzbd` download client.
     #[cfg(feature = "sabnzbd")]
     Sabnzbd(sabnzbd::SabnzbdArgs),
     /// qBittorrent download client.
@@ -147,7 +147,7 @@ pub enum Command {
     /// Unraid server management.
     #[cfg(feature = "unraid")]
     Unraid(unraid::UnraidArgs),
-    /// UniFi network management.
+    /// `UniFi` network management.
     #[cfg(feature = "unifi")]
     Unifi(unifi::UnifiArgs),
     /// Overseerr media request manager.
@@ -156,7 +156,7 @@ pub enum Command {
     /// Gotify push notifications.
     #[cfg(feature = "gotify")]
     Gotify(gotify::GotifyArgs),
-    /// OpenAI API client.
+    /// `OpenAI` API client.
     #[cfg(feature = "openai")]
     Openai(openai::OpenaiArgs),
     /// Qdrant vector database.

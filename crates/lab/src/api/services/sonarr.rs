@@ -13,7 +13,6 @@ pub struct ActionRequest {
     pub params: Value,
 }
 
-#[must_use]
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/", post(handle))
