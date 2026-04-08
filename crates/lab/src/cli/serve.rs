@@ -235,7 +235,14 @@ async fn dispatch_service(
         #[cfg(feature = "unraid")]
         "unraid" => crate::mcp::services::unraid::dispatch(action, params).await,
         #[cfg(feature = "unifi")]
-        "unifi" => crate::mcp::services::unifi::dispatch(action, params).await,
+        "unifi" => crate::mcp::services::unifi::dispatch(action, params)
+            .await
+            .map_err(|te| {
+                anyhow::anyhow!(
+                    "{}",
+                    serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
+                )
+            }),
         #[cfg(feature = "overseerr")]
         "overseerr" => crate::mcp::services::overseerr::dispatch(action, params).await,
         #[cfg(feature = "gotify")]
