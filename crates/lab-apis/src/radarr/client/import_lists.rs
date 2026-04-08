@@ -18,8 +18,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn import_list_list(&self) -> Result<Vec<ImportList>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/importlist")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List every import-list exclusion.
@@ -33,7 +35,9 @@ impl RadarrClient {
     pub async fn import_list_exclusion_list(
         &self,
     ) -> Result<Vec<ImportListExclusion>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/importlistexclusion")
+            .await
+            .map_err(RadarrError::from)
     }
 }

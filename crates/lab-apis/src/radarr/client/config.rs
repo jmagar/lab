@@ -20,10 +20,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn host_config_get(&self) -> Result<HostConfig, RadarrError> {
-        let _ = &self.http;
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "host_config_get not yet implemented".into(),
-        )))
+        self.http
+            .get_json("/api/v3/config/host")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Fetch the naming config (movie filename format, folder format, …).
@@ -33,10 +33,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn naming_config_get(&self) -> Result<NamingConfig, RadarrError> {
-        let _ = &self.http;
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "naming_config_get not yet implemented".into(),
-        )))
+        self.http
+            .get_json("/api/v3/config/naming")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Fetch the UI config (theme, date format, …).
@@ -46,9 +46,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn ui_config_get(&self) -> Result<UiConfig, RadarrError> {
-        let _ = &self.http;
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "ui_config_get not yet implemented".into(),
-        )))
+        self.http
+            .get_json("/api/v3/config/ui")
+            .await
+            .map_err(RadarrError::from)
     }
 }

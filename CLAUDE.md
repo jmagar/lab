@@ -204,6 +204,32 @@ Every service entry-point file (e.g., `radarr.rs`) declares a `pub const META: P
 - Always return `Result<T>`, never panic.
 - **`ApiError::kind()` taxonomy** (stable string tags consumed by MCP envelopes): `auth_failed`, `not_found`, `rate_limited`, `validation_failed`, `network_error`, `server_error`, `decode_error`, `internal_error`. Dispatchers add `unknown_action`, `unknown_subaction`, `missing_param`, `invalid_param`, `unknown_instance` on top. Never invent new kinds without updating `docs/MCP.md` and `docs/CONVENTIONS.md`.
 
+### Logging
+
+Use `tracing` everywhere. Never use `println!` for debug info.
+
+**Standard structured fields** — all dispatch events must include these:
+
+| Field | Type | Present when |
+|-------|------|--------------|
+| `service` | `&str` | always (MCP/HTTP/CLI dispatch) |
+| `action` | `&str` | always |
+| `elapsed_ms` | `u128` | always |
+| `kind` | `&str` | errors only — from `ToolError::kind()` |
+
+HTTP spans (from `TraceLayer`) additionally carry `method`, `path`, `request_id`, `status`.
+
+**Level conventions:**
+- `INFO` — successful dispatch
+- `WARN` — user/caller errors (`missing_param`, `unknown_action`, `auth_failed`, etc.)
+- `ERROR` — unhandled / fatal errors (panics, internal_error)
+
+**Environment variables:**
+- `LAB_LOG` — tracing filter directive (default: `lab=info,lab_apis=warn`)
+- `LAB_LOG_FORMAT=json` — emit newline-delimited JSON (for prod/CI)
+
+ANSI colors are enabled only when `stderr` is a TTY (`std::io::stderr().is_terminal()`).
+
 ### Async trait style
 
 Use **native `async fn in trait`** (stable in Rust 1.75+). Do **not** add the `async-trait` crate. Do **not** use `Box<dyn ServiceClient>` — prefer generics or concrete types. This is a hard rule; PRs that reintroduce `#[async_trait]` will be rejected.

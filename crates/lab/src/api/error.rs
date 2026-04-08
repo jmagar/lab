@@ -29,13 +29,13 @@ pub enum ApiError {
 
     /// Required parameter missing from request body.
     #[error("missing parameter: {0}")]
-    MissingParam(&'static str),
+    MissingParam(String),
 
     /// Parameter present but wrong type or value.
     #[error("invalid parameter `{param}`: {message}")]
     InvalidParam {
         /// Parameter name.
-        param: &'static str,
+        param: String,
         /// Human-readable reason.
         message: String,
     },

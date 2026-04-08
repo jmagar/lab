@@ -16,7 +16,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn metadata_list(&self) -> Result<Vec<Metadata>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/metadata")
+            .await
+            .map_err(RadarrError::from)
     }
 }

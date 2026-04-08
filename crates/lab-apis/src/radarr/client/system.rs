@@ -31,8 +31,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn health_checks(&self) -> Result<Vec<HealthCheck>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/health")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List recent log files.
@@ -42,8 +44,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn log_files(&self) -> Result<Vec<LogFile>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/log/file")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List available updates.
@@ -53,8 +57,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn updates(&self) -> Result<Vec<UpdateInfo>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/update")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Report free/used space for every known root folder.
@@ -64,7 +70,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn disk_space(&self) -> Result<Vec<DiskSpace>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/diskspace")
+            .await
+            .map_err(RadarrError::from)
     }
 }

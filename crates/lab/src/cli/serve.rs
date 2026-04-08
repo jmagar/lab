@@ -1,9 +1,18 @@
 //! `lab serve` — start the MCP server.
 
+use std::future::Future;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Args, ValueEnum};
+use rmcp::model::{
+    CallToolRequestParams, CallToolResult, Content, ListToolsResult, PaginatedRequestParams,
+    ServerInfo, Tool,
+};
+use rmcp::service::RequestContext;
+use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
+use serde_json::Value;
 
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
 
@@ -38,6 +47,7 @@ pub struct ServeArgs {
 pub async fn run(args: ServeArgs) -> Result<ExitCode> {
     let registry = build_default_registry();
     let registry = filter_registry(registry, &args.services);
+    let registry = Arc::new(registry);
 
     match args.transport {
         Transport::Stdio => run_stdio(registry).await,
@@ -61,64 +71,123 @@ fn filter_registry(registry: ToolRegistry, services: &[String]) -> ToolRegistry 
     out
 }
 
-async fn run_stdio(registry: ToolRegistry) -> Result<ExitCode> {
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+/// JSON Schema for every service tool's input: `action` (required) + `params` (optional object).
+#[allow(clippy::expect_used)]
+fn action_schema() -> serde_json::Map<String, Value> {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "description": "Action to perform (e.g. \"movie.search\"). Use \"help\" to list all actions."
+            },
+            "params": {
+                "type": "object",
+                "description": "Action-specific parameters (varies per action)"
+            }
+        },
+        "required": ["action"]
+    })
+    .as_object()
+    .cloned()
+    .expect("schema literal is always an object")
+}
 
+/// MCP server handler — one tool per registered service.
+struct LabMcpServer {
+    registry: Arc<ToolRegistry>,
+}
+
+impl ServerHandler for LabMcpServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::default()
+    }
+
+    fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
+        let schema = Arc::new(action_schema());
+        let tools: Vec<Tool> = self
+            .registry
+            .services()
+            .iter()
+            .map(|svc| Tool::new(svc.name, svc.description, Arc::clone(&schema)))
+            .collect();
+        async move { Ok(ListToolsResult::with_all_items(tools)) }
+    }
+
+    fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
+        let registry = Arc::clone(&self.registry);
+        async move {
+            let service = request.name.as_ref().to_string();
+            let args = request.arguments.unwrap_or_default();
+            let action = args
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let params = args.get("params").cloned().unwrap_or(Value::Null);
+
+            let start = std::time::Instant::now();
+            let result = dispatch_service(&registry, &service, &action, params).await;
+            let elapsed_ms = start.elapsed().as_millis();
+
+            match result {
+                Ok(v) => {
+                    tracing::info!(service, action, elapsed_ms, "dispatch ok");
+                    Ok(CallToolResult::success(vec![Content::text(v.to_string())]))
+                }
+                Err(e) => {
+                    // Error message is serialized ToolError JSON — extract kind for the log field.
+                    let kind = serde_json::from_str::<Value>(&e.to_string())
+                        .ok()
+                        .and_then(|v| v["kind"].as_str().map(ToOwned::to_owned))
+                        .unwrap_or_else(|| "internal_error".to_string());
+                    tracing::warn!(service, action, elapsed_ms, kind, "dispatch error");
+                    Ok(CallToolResult::error(vec![Content::text(e.to_string())]))
+                }
+            }
+        }
+    }
+}
+
+async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
     tracing::info!(
         services = registry.services().len(),
         "lab serve (stdio) ready"
     );
-
-    let stdin = tokio::io::stdin();
-    let mut reader = BufReader::new(stdin).lines();
-    let mut stdout = tokio::io::stdout();
-
-    while let Some(line) = reader.next_line().await? {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let req: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(e) => {
-                let err = serde_json::json!({ "kind": "decode_error", "message": e.to_string() });
-                stdout.write_all(err.to_string().as_bytes()).await?;
-                stdout.write_all(b"\n").await?;
-                continue;
-            }
-        };
-
-        let service = req.get("service").and_then(|v| v.as_str()).unwrap_or("");
-        let action = req.get("action").and_then(|v| v.as_str()).unwrap_or("");
-        let params = req
-            .get("params")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-
-        let result = dispatch(&registry, service, action, params).await;
-        let body = match result {
-            Ok(v) => serde_json::json!({ "data": v }),
-            Err(e) => serde_json::json!({ "kind": "internal_error", "message": e.to_string() }),
-        };
-        stdout.write_all(body.to_string().as_bytes()).await?;
-        stdout.write_all(b"\n").await?;
-    }
-
+    let server = LabMcpServer { registry };
+    let running = server.serve(rmcp::transport::stdio()).await?;
+    running.waiting().await?;
     Ok(ExitCode::SUCCESS)
 }
 
-async fn dispatch(
+async fn dispatch_service(
     registry: &ToolRegistry,
     service: &str,
     action: &str,
-    params: serde_json::Value,
-) -> Result<serde_json::Value> {
+    params: Value,
+) -> Result<Value> {
     if !registry.services().iter().any(|s| s.name == service) {
         anyhow::bail!("unknown service `{service}`");
     }
     match service {
         "extract" => crate::mcp::services::extract::dispatch(action, params).await,
         #[cfg(feature = "radarr")]
-        "radarr" => crate::mcp::services::radarr::dispatch(action, params).await,
+        "radarr" => crate::mcp::services::radarr::dispatch(action, params)
+            .await
+            .map_err(|te| {
+                anyhow::anyhow!(
+                    "{}",
+                    serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
+                )
+            }),
         #[cfg(feature = "sonarr")]
         "sonarr" => crate::mcp::services::sonarr::dispatch(action, params).await,
         #[cfg(feature = "prowlarr")]

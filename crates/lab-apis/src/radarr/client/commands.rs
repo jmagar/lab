@@ -21,10 +21,14 @@ impl RadarrClient {
         &self,
         movie_id: Option<MovieId>,
     ) -> Result<Command, RadarrError> {
-        let _ = movie_id;
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "command_refresh_movie not yet implemented".into(),
-        )))
+        let body = movie_id.map_or_else(
+            || serde_json::json!({ "name": "RefreshMovie" }),
+            |id| serde_json::json!({ "name": "RefreshMovie", "movieIds": [id.0] }),
+        );
+        self.http
+            .post_json("/api/v3/command", &body)
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Queue a `MoviesSearch` command — tells Radarr to search the
@@ -36,10 +40,12 @@ impl RadarrClient {
         &self,
         movie_ids: &[MovieId],
     ) -> Result<Command, RadarrError> {
-        let _ = movie_ids;
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "command_movies_search not yet implemented".into(),
-        )))
+        let ids: Vec<i64> = movie_ids.iter().map(|m| m.0).collect();
+        let body = serde_json::json!({ "name": "MoviesSearch", "movieIds": ids });
+        self.http
+            .post_json("/api/v3/command", &body)
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Poll a queued command by id.
@@ -51,10 +57,9 @@ impl RadarrClient {
     /// Returns `RadarrError::NotFound` if the id does not exist,
     /// `RadarrError::Api` on any other HTTP failure.
     pub async fn command_get(&self, id: CommandId) -> Result<Command, RadarrError> {
-        let _ = id;
-        Err(RadarrError::NotFound {
-            kind: "command",
-            id: id.0,
-        })
+        self.http
+            .get_json(&format!("/api/v3/command/{}", id.0))
+            .await
+            .map_err(RadarrError::from)
     }
 }

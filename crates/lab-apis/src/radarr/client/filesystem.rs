@@ -16,10 +16,16 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn filesystem_list(&self, path: &str) -> Result<FilesystemListing, RadarrError> {
-        let _ = (path, &self.http);
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "filesystem_list not yet implemented".into(),
-        )))
+        let url_path = {
+            let q = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("path", path)
+                .finish();
+            format!("/api/v3/filesystem?{q}")
+        };
+        self.http
+            .get_json(&url_path)
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List items available for manual import from a folder.
@@ -32,7 +38,15 @@ impl RadarrClient {
         &self,
         folder: &str,
     ) -> Result<Vec<ManualImportItem>, RadarrError> {
-        let _ = (folder, &self.http);
-        Ok(Vec::new())
+        let url_path = {
+            let q = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("folder", folder)
+                .finish();
+            format!("/api/v3/manualimport?{q}")
+        };
+        self.http
+            .get_json(&url_path)
+            .await
+            .map_err(RadarrError::from)
     }
 }

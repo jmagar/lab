@@ -4,7 +4,7 @@ use axum::{Json, Router, extract::State, routing::post};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::{error::{ApiError, ApiResult}, state::AppState};
+use crate::api::state::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct ActionRequest {
@@ -14,16 +14,26 @@ pub struct ActionRequest {
 }
 
 pub fn routes(_state: AppState) -> Router<AppState> {
-    Router::new()
-        .route("/", post(handle))
+    Router::new().route("/", post(handle))
 }
 
 async fn handle(
     State(_state): State<AppState>,
     Json(req): Json<ActionRequest>,
-) -> ApiResult<Json<Value>> {
-    crate::mcp::services::radarr::dispatch(&req.action, req.params)
-        .await
-        .map(Json)
-        .map_err(|e| ApiError::Internal(e.to_string()))
+) -> Result<Json<Value>, crate::mcp::envelope::ToolError> {
+    let start = std::time::Instant::now();
+    let action = req.action.clone();
+    let result = crate::mcp::services::radarr::dispatch(&req.action, req.params).await;
+    let elapsed_ms = start.elapsed().as_millis();
+    match &result {
+        Ok(_) => tracing::info!(service = "radarr", action, elapsed_ms, "dispatch ok"),
+        Err(e) => tracing::warn!(
+            service = "radarr",
+            action,
+            elapsed_ms,
+            kind = e.kind(),
+            "dispatch error"
+        ),
+    }
+    result.map(Json)
 }
