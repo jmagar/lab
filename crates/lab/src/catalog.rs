@@ -48,9 +48,28 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
             name: svc.name.to_string(),
             description: svc.description.to_string(),
             category: svc.category.to_string(),
-            actions: Vec::new(),
+            actions: actions_for(svc.name),
         })
         .collect();
 
     Catalog { services }
+}
+
+fn actions_for(service: &str) -> Vec<ActionEntry> {
+    match service {
+        #[cfg(feature = "radarr")]
+        "radarr" => vec![
+            ActionEntry {
+                name: "system.status".into(),
+                description: "Return Radarr system status".into(),
+                destructive: false,
+            },
+            ActionEntry {
+                name: "help".into(),
+                description: "Show this catalog".into(),
+                destructive: false,
+            },
+        ],
+        _ => Vec::new(),
+    }
 }
