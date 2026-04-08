@@ -1,27 +1,105 @@
-//! Top-level axum router builder.
-//!
-//! Composes feature-gated service routers under `/v1/<service>` and mounts
-//! cross-cutting middleware (tracing, CORS, compression, timeout).
+//! Top-level axum router — mounts `POST /v1/<service>` for every enabled service.
 
 use std::time::Duration;
 
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+use axum::{Router, http::StatusCode, routing::get};
 use tower_http::{
     compression::CompressionLayer, cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer,
 };
 
-use super::{error::ApiResult, health, state::AppState};
+use super::{health, services, state::AppState};
 
-/// Build the full `lab` HTTP router with all enabled service route groups
-/// and the standard middleware stack applied.
+#[must_use]
 pub fn build_router(state: AppState) -> Router {
     let mut router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready));
 
+    router = router.nest("/v1/extract", services::extract::routes(state.clone()));
+
     #[cfg(feature = "radarr")]
     {
-        router = router.route("/v1/radarr/system/status", get(radarr_system_status));
+        router = router.nest("/v1/radarr", services::radarr::routes(state.clone()));
+    }
+    #[cfg(feature = "sonarr")]
+    {
+        router = router.nest("/v1/sonarr", services::sonarr::routes(state.clone()));
+    }
+    #[cfg(feature = "prowlarr")]
+    {
+        router = router.nest("/v1/prowlarr", services::prowlarr::routes(state.clone()));
+    }
+    #[cfg(feature = "plex")]
+    {
+        router = router.nest("/v1/plex", services::plex::routes(state.clone()));
+    }
+    #[cfg(feature = "tautulli")]
+    {
+        router = router.nest("/v1/tautulli", services::tautulli::routes(state.clone()));
+    }
+    #[cfg(feature = "sabnzbd")]
+    {
+        router = router.nest("/v1/sabnzbd", services::sabnzbd::routes(state.clone()));
+    }
+    #[cfg(feature = "qbittorrent")]
+    {
+        router = router.nest("/v1/qbittorrent", services::qbittorrent::routes(state.clone()));
+    }
+    #[cfg(feature = "tailscale")]
+    {
+        router = router.nest("/v1/tailscale", services::tailscale::routes(state.clone()));
+    }
+    #[cfg(feature = "linkding")]
+    {
+        router = router.nest("/v1/linkding", services::linkding::routes(state.clone()));
+    }
+    #[cfg(feature = "memos")]
+    {
+        router = router.nest("/v1/memos", services::memos::routes(state.clone()));
+    }
+    #[cfg(feature = "bytestash")]
+    {
+        router = router.nest("/v1/bytestash", services::bytestash::routes(state.clone()));
+    }
+    #[cfg(feature = "paperless")]
+    {
+        router = router.nest("/v1/paperless", services::paperless::routes(state.clone()));
+    }
+    #[cfg(feature = "arcane")]
+    {
+        router = router.nest("/v1/arcane", services::arcane::routes(state.clone()));
+    }
+    #[cfg(feature = "unraid")]
+    {
+        router = router.nest("/v1/unraid", services::unraid::routes(state.clone()));
+    }
+    #[cfg(feature = "unifi")]
+    {
+        router = router.nest("/v1/unifi", services::unifi::routes(state.clone()));
+    }
+    #[cfg(feature = "overseerr")]
+    {
+        router = router.nest("/v1/overseerr", services::overseerr::routes(state.clone()));
+    }
+    #[cfg(feature = "gotify")]
+    {
+        router = router.nest("/v1/gotify", services::gotify::routes(state.clone()));
+    }
+    #[cfg(feature = "openai")]
+    {
+        router = router.nest("/v1/openai", services::openai::routes(state.clone()));
+    }
+    #[cfg(feature = "qdrant")]
+    {
+        router = router.nest("/v1/qdrant", services::qdrant::routes(state.clone()));
+    }
+    #[cfg(feature = "tei")]
+    {
+        router = router.nest("/v1/tei", services::tei::routes(state.clone()));
+    }
+    #[cfg(feature = "apprise")]
+    {
+        router = router.nest("/v1/apprise", services::apprise::routes(state.clone()));
     }
 
     router
@@ -33,18 +111,4 @@ pub fn build_router(state: AppState) -> Router {
         ))
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
-}
-
-#[cfg(feature = "radarr")]
-async fn radarr_system_status(State(state): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
-    let Some(client) = state.radarr() else {
-        return Err(super::error::ApiError::UnknownInstance("radarr".into()));
-    };
-    let status = client.system_status().await.map_err(|e| match e {
-        lab_apis::radarr::RadarrError::Api(sdk_err) => super::error::ApiError::Sdk(sdk_err),
-        lab_apis::radarr::RadarrError::NotFound { kind, id } => {
-            super::error::ApiError::UnknownAction(format!("{kind} id {id} not found"))
-        }
-    })?;
-    Ok(Json(serde_json::to_value(status).unwrap_or_default()))
 }

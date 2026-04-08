@@ -19,6 +19,9 @@ pub mod router;
 /// `GET /health` and `GET /ready` liveness/readiness probes.
 pub mod health;
 
+/// Per-service HTTP route handlers (one module per service).
+pub mod services;
+
 #[allow(unused_imports)]
 pub use error::{ApiError, ApiResult};
 #[allow(unused_imports)]
