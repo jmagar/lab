@@ -100,8 +100,9 @@ impl ServiceClient for RadarrClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed".into()),
             }),
-            Err(RadarrError::Api(e)) => Ok(ServiceStatus::unreachable(e.to_string())),
-            Err(e) => Ok(ServiceStatus::unreachable(e.to_string())),
+            Err(RadarrError::Api(ApiError::Network(e))) => Ok(ServiceStatus::unreachable(e)),
+            Err(RadarrError::Api(e)) => Ok(ServiceStatus::degraded(e.to_string())),
+            Err(e) => Ok(ServiceStatus::degraded(e.to_string())),
         }
     }
 }

@@ -44,9 +44,12 @@ impl HttpClient {
     }
 
     fn url(&self, path: &str) -> String {
-        // Only relative paths are accepted. Absolute URLs are rejected upstream
-        // (callers pass validated paths from their own types) — allowing them
-        // would forward auth headers to a foreign origin.
+        // Only relative paths are accepted. Absolute URLs would forward auth
+        // headers to a foreign origin — explicitly rejected here.
+        debug_assert!(
+            !path.starts_with("http://") && !path.starts_with("https://"),
+            "absolute URLs are not permitted; callers must pass relative paths"
+        );
         if path.starts_with('/') {
             format!("{}{path}", self.base_url.trim_end_matches('/'))
         } else {
@@ -241,7 +244,10 @@ impl HttpClient {
             return Ok(());
         }
         let code = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<failed to read response body: {e}>"));
         Err(match code {
             401 | 403 => ApiError::Auth,
             404 => ApiError::NotFound,
@@ -261,7 +267,10 @@ impl HttpClient {
                 .map_err(|e| ApiError::Decode(e.to_string()));
         }
         let code = status.as_u16();
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<failed to read response body: {e}>"));
         Err(match code {
             401 | 403 => ApiError::Auth,
             404 => ApiError::NotFound,
