@@ -182,7 +182,7 @@ pub async fn dispatch(cli: Cli) -> Result<ExitCode> {
         Command::Uninstall(args) => install::run_uninstall(&args).map(|()| ExitCode::SUCCESS),
         Command::Init => install::run_init().map(|()| ExitCode::SUCCESS),
         Command::Help => help::run(format),
-        Command::Completions(args) => Ok(completions::run(&args)),
+        Command::Completions(args) => completions::run(&args),
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,
         #[cfg(feature = "sonarr")]
