@@ -53,11 +53,11 @@ pub struct McpPreferences {
 /// present. Returns `Err` only for parse failures — missing files are
 /// not errors.
 pub fn load() -> Result<LabConfig> {
-    if let Some(env_path) = dotenv_path() {
-        if env_path.exists() {
-            dotenvy::from_path(&env_path)
-                .with_context(|| format!("failed to load {}", env_path.display()))?;
-        }
+    if let Some(env_path) = dotenv_path()
+        && env_path.exists()
+    {
+        dotenvy::from_path(&env_path)
+            .with_context(|| format!("failed to load {}", env_path.display()))?;
     }
 
     let cfg = if let Some(path) = toml_path() {
@@ -114,13 +114,13 @@ pub fn scan_instances(prefix: &str) -> HashMap<String, HashMap<String, String>> 
                     .insert((*suffix).to_string(), value.clone());
                 break;
             }
-            if let Some(label) = rest.strip_suffix(&format!("_{suffix}")) {
-                if !label.is_empty() {
-                    out.entry(label.to_ascii_lowercase())
-                        .or_default()
-                        .insert((*suffix).to_string(), value.clone());
-                    break;
-                }
+            if let Some(label) = rest.strip_suffix(&format!("_{suffix}"))
+                && !label.is_empty()
+            {
+                out.entry(label.to_ascii_lowercase())
+                    .or_default()
+                    .insert((*suffix).to_string(), value.clone());
+                break;
             }
         }
     }

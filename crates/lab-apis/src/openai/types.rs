@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Newtype wrapper around an OpenAI model identifier (e.g. "gpt-4o-mini").
+/// Newtype wrapper around an `OpenAI` model identifier (e.g. "gpt-4o-mini").
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModelId(pub String);

@@ -13,7 +13,10 @@ pub fn client_from_env() -> Option<RadarrClient> {
     let key = std::env::var("RADARR_API_KEY").ok()?;
     Some(RadarrClient::new(
         &url,
-        Auth::ApiKey { header: "X-Api-Key".into(), key },
+        Auth::ApiKey {
+            header: "X-Api-Key".into(),
+            key,
+        },
     ))
 }
 
@@ -35,8 +38,8 @@ pub async fn dispatch(action: &str, _params: Value) -> Result<Value> {
             let status = client.system_status().await?;
             Ok(serde_json::to_value(status)?)
         }
-        unknown => anyhow::bail!(
-            "unknown action `radarr.{unknown}` — call `radarr.help` for the catalog"
-        ),
+        unknown => {
+            anyhow::bail!("unknown action `radarr.{unknown}` — call `radarr.help` for the catalog")
+        }
     }
 }

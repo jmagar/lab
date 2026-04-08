@@ -11,7 +11,7 @@ pub struct QueueItemId(pub i64);
 
 /// One item in the download queue.
 ///
-/// Mirrors `QueueResource` from the Radarr v3 OpenAPI spec.
+/// Mirrors `QueueResource` from the Radarr v3 `OpenAPI` spec.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueItem {

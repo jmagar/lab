@@ -1,7 +1,7 @@
 //! Shared *arr types, one sub-module per resource.
 //!
 //! Each sub-module mirrors the matching `*Resource` shape from the Radarr /
-//! Sonarr / Prowlarr OpenAPI specs. Only the fields that are identical across
+//! Sonarr / Prowlarr `OpenAPI` specs. Only the fields that are identical across
 //! services live here; service-specific fields stay in the per-service
 //! `types/<name>.rs` file alongside a `pub use` of these shapes.
 

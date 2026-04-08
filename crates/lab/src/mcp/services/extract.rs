@@ -21,31 +21,48 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "scan",
         description: "Scan an appdata path and return discovered service credentials",
         destructive: false,
-        params: &[
-            ParamSpec { name: "uri", ty: "string", required: true,
-                description: "Local path or 'host:/abs/path' for SSH" },
-        ],
+        params: &[ParamSpec {
+            name: "uri",
+            ty: "string",
+            required: true,
+            description: "Local path or 'host:/abs/path' for SSH",
+        }],
     },
     ActionSpec {
         name: "apply",
         description: "Scan and write discovered credentials into ~/.lab/.env (with backup)",
         destructive: true,
         params: &[
-            ParamSpec { name: "uri", ty: "string", required: true,
-                description: "Same as scan" },
-            ParamSpec { name: "services", ty: "string[]", required: false,
-                description: "Optional filter; defaults to everything found" },
-            ParamSpec { name: "env_path", ty: "string", required: false,
-                description: "Override target env file path" },
+            ParamSpec {
+                name: "uri",
+                ty: "string",
+                required: true,
+                description: "Same as scan",
+            },
+            ParamSpec {
+                name: "services",
+                ty: "string[]",
+                required: false,
+                description: "Optional filter; defaults to everything found",
+            },
+            ParamSpec {
+                name: "env_path",
+                ty: "string",
+                required: false,
+                description: "Override target env file path",
+            },
         ],
     },
     ActionSpec {
         name: "diff",
         description: "Show what 'apply' would change vs the current env file (no writes)",
         destructive: false,
-        params: &[
-            ParamSpec { name: "uri", ty: "string", required: true, description: "" },
-        ],
+        params: &[ParamSpec {
+            name: "uri",
+            ty: "string",
+            required: true,
+            description: "",
+        }],
     },
     ActionSpec {
         name: "help",
@@ -91,9 +108,9 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value> {
                 })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
         })),
-        unknown => anyhow::bail!(
-            "unknown action 'extract.{unknown}' — call extract.help for the catalog"
-        ),
+        unknown => {
+            anyhow::bail!("unknown action 'extract.{unknown}' — call extract.help for the catalog")
+        }
     }
 }
 

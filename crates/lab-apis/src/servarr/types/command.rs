@@ -20,7 +20,7 @@ pub enum CommandStatus {
 
 /// A queued / running / completed *arr command.
 ///
-/// Mirrors `CommandResource` from the Radarr v3 / Sonarr v3 OpenAPI specs.
+/// Mirrors `CommandResource` from the Radarr v3 / Sonarr v3 `OpenAPI` specs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Command {

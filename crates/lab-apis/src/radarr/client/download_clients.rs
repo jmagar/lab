@@ -8,7 +8,7 @@ use crate::radarr::error::RadarrError;
 use crate::radarr::types::download_client::{DownloadClient, DownloadClientId, RemotePathMapping};
 
 impl RadarrClient {
-    /// List every configured download client (SABnzbd, qBittorrent, …).
+    /// List every configured download client (`SABnzbd`, `qBittorrent`, …).
     ///
     /// Maps to `GET /api/v3/downloadclient`.
     ///

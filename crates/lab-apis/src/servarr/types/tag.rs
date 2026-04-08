@@ -23,7 +23,7 @@ pub struct Tag {
 
 /// A tag plus the ids of every resource currently carrying it.
 ///
-/// Mirrors `TagDetailsResource` from the Radarr v3 / Sonarr v3 OpenAPI specs.
+/// Mirrors `TagDetailsResource` from the Radarr v3 / Sonarr v3 `OpenAPI` specs.
 /// The per-service resource-id array (`movie_ids` on radarr, `series_ids` on
 /// sonarr) is kept separately on each service; the cross-service arrays
 /// (indexers, download clients, notifications) live here.

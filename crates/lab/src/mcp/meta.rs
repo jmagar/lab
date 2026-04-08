@@ -2,14 +2,12 @@
 //! envelope form so agents can discover every enabled service and
 //! action in one call.
 
-use anyhow::Result;
-
 use crate::{
     catalog::{Catalog, build_catalog},
     mcp::{envelope::ToolEnvelope, registry::ToolRegistry},
 };
 
 /// Dispatch the `lab.help` meta-tool.
-pub fn help(registry: &ToolRegistry) -> Result<ToolEnvelope<Catalog>> {
-    Ok(ToolEnvelope::new(build_catalog(registry)))
+pub fn help(registry: &ToolRegistry) -> ToolEnvelope<Catalog> {
+    ToolEnvelope::new(build_catalog(registry))
 }

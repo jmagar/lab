@@ -65,7 +65,9 @@ wiremock     = "0.6"
 insta        = { version = "1", features = ["json", "yaml"] }
 
 [workspace.lints.rust]
-missing_docs                = "warn"
+# TODO(docs-pass): re-enable once every service has real types + docstrings.
+# Tracked in docs/superpowers/plans/ (follow-up after all 21 services land).
+missing_docs                = "allow"
 unsafe_code                 = "forbid"
 unreachable_pub             = "warn"
 rust_2018_idioms            = { level = "warn", priority = -1 }
@@ -95,6 +97,9 @@ module_name_repetitions = "allow"
 must_use_candidate      = "allow"
 missing_errors_doc      = "allow"
 multiple_crate_versions = "allow"
+# TODO(stubs): re-enable once every service's real impl calls self.http — these
+# fire on stub method bodies that will become async the moment the HTTP call lands.
+unused_async            = "allow"
 
 [profile.release]
 lto              = "thin"

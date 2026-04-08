@@ -1,7 +1,8 @@
-//! Radarr-specific filesystem types. The generic browse shapes
-//! (`FilesystemEntry`, `FilesystemListing`, `FilesystemEntryType`) live in
-//! [`crate::servarr::types::filesystem`]; manual-import carries a `MovieId`
-//! reference and therefore stays here.
+//! Radarr-specific filesystem types.
+//!
+//! The generic browse shapes (`FilesystemEntry`, `FilesystemListing`,
+//! `FilesystemEntryType`) live in [`crate::servarr::types::filesystem`];
+//! manual-import carries a `MovieId` reference and therefore stays here.
 
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +30,7 @@ pub struct ManualImportItem {
     /// Movie the file was matched to, if any.
     #[serde(default)]
     pub movie_id: Option<MovieId>,
-    /// Detected quality (dynamic shape — see Radarr OpenAPI spec).
+    /// Detected quality (dynamic shape — see Radarr `OpenAPI` spec).
     #[serde(default)]
     pub quality: serde_json::Value,
     /// Reasons the import was rejected, if any.

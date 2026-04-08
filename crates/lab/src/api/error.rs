@@ -49,7 +49,7 @@ impl ApiError {
     /// Canonical stable string tag for this error. Identical to the tag
     /// used in MCP error envelopes.
     #[must_use]
-    pub fn kind(&self) -> &'static str {
+    pub const fn kind(&self) -> &'static str {
         match self {
             Self::Sdk(e) => e.kind(),
             Self::UnknownAction(_) => "unknown_action",
@@ -70,9 +70,7 @@ impl ApiError {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             "unknown_action" | "unknown_instance" => StatusCode::BAD_REQUEST,
-            "network_error" => StatusCode::BAD_GATEWAY,
-            "server_error" => StatusCode::BAD_GATEWAY,
-            "decode_error" | "internal_error" => StatusCode::INTERNAL_SERVER_ERROR,
+            "network_error" | "server_error" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

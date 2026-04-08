@@ -15,12 +15,19 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// Construct a new client with a base URL and auth strategy.
+    ///
+    /// # Panics
+    /// Panics if the system TLS backend cannot initialize. This only happens
+    /// in environments without a working rustls / system crypto provider,
+    /// which would make every subsequent request fail anyway — panicking here
+    /// surfaces the misconfiguration at startup instead of on first call.
+    #[allow(clippy::expect_used)] // startup TLS init — see # Panics doc
     #[must_use]
     pub fn new(base_url: impl Into<String>, auth: Auth) -> Self {
         let inner = Client::builder()
             .user_agent(concat!("lab-apis/", env!("CARGO_PKG_VERSION")))
             .build()
-            .expect("reqwest::Client::build");
+            .expect("reqwest::Client::build (rustls TLS backend must initialize)");
         Self {
             base_url: base_url.into(),
             auth,
@@ -82,7 +89,7 @@ impl HttpClient {
     ///
     /// # Errors
     /// Returns [`ApiError`] on transport, status, or decode failure.
-    pub async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
+    pub async fn post_json<B: serde::Serialize + Sync, T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         body: &B,
