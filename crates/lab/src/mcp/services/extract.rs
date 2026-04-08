@@ -12,6 +12,7 @@
 use anyhow::Result;
 use serde_json::Value;
 
+use lab_apis::core::action::{ActionSpec, ParamSpec};
 use lab_apis::extract::{ExtractClient, Uri};
 
 /// Action catalog — read by `extract.help`, the `lab.help` meta-tool, and
@@ -27,6 +28,7 @@ pub const ACTIONS: &[ActionSpec] = &[
             required: true,
             description: "Local path or 'host:/abs/path' for SSH",
         }],
+        returns: "DiscoveredService[]",
     },
     ActionSpec {
         name: "apply",
@@ -52,6 +54,7 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Override target env file path",
             },
         ],
+        returns: "WritePlan",
     },
     ActionSpec {
         name: "diff",
@@ -63,12 +66,14 @@ pub const ACTIONS: &[ActionSpec] = &[
             required: true,
             description: "",
         }],
+        returns: "WritePlan",
     },
     ActionSpec {
         name: "help",
         description: "Show this catalog, or one action's detail with params.action='<name>'",
         destructive: false,
         params: &[],
+        returns: "Catalog",
     },
 ];
 
@@ -122,30 +127,3 @@ fn parse_uri(params: &Value) -> Result<Uri> {
     s.parse().map_err(Into::into)
 }
 
-// ─── Local stand-ins for the shared types in lab_apis::core::action ───────────
-// Once that module is fleshed out these become re-exports:
-//   use lab_apis::core::action::{ActionSpec, ParamSpec};
-
-/// Compile-time action metadata. Mirrors the eventual `lab_apis::core::action::ActionSpec`.
-pub struct ActionSpec {
-    /// Dotted action name, e.g. `scan` or `apply`.
-    pub name: &'static str,
-    /// One-line human-readable description.
-    pub description: &'static str,
-    /// True if this action mutates external state and requires confirmation.
-    pub destructive: bool,
-    /// Declared parameter list.
-    pub params: &'static [ParamSpec],
-}
-
-/// One declared action parameter.
-pub struct ParamSpec {
-    /// Parameter name.
-    pub name: &'static str,
-    /// Type label (`"string"`, `"integer"`, `"string[]"`, etc.).
-    pub ty: &'static str,
-    /// True if this parameter must be present.
-    pub required: bool,
-    /// Description shown by `help`.
-    pub description: &'static str,
-}
