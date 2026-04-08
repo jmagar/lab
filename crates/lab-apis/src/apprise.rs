@@ -40,13 +40,17 @@ pub const META: PluginMeta = PluginMeta {
     description: "Universal notification dispatcher (100+ services behind one URL scheme)",
     category: Category::Notifications,
     docs_url: "https://github.com/caronc/apprise-api",
-    required_env: &[
-        EnvVar { name: "APPRISE_URL", description: "Base URL of the apprise-api server",
-                 example: "http://localhost:8000", secret: false },
-    ],
-    optional_env: &[
-        EnvVar { name: "APPRISE_TOKEN", description: "Bearer token if behind auth proxy",
-                 example: "abc123...", secret: true },
-    ],
+    required_env: &[EnvVar {
+        name: "APPRISE_URL",
+        description: "Base URL of the apprise-api server",
+        example: "http://localhost:8000",
+        secret: false,
+    }],
+    optional_env: &[EnvVar {
+        name: "APPRISE_TOKEN",
+        description: "Bearer token if behind auth proxy",
+        example: "abc123...",
+        secret: true,
+    }],
     default_port: Some(8000),
 };

@@ -1,5 +1,4 @@
-//! `ServiceClient` trait — shared surface every service implements
-//! (DESIGN.md §Core Trait Contract + §Async Trait Style).
+//! `ServiceClient` trait — shared surface every service implements.
 //!
 //! Uses native `async fn in trait` (Rust 1.75+), no `async-trait` macro.
 //! Per the locked conventions, `dyn ServiceClient` is forbidden — health
@@ -24,8 +23,8 @@ pub trait ServiceClient: Send + Sync {
     ///
     /// # Errors
     /// Returns [`ApiError`] for transport-level failures the probe could not
-    /// translate into a [`ServiceStatus`]. Per DESIGN.md §1, well-behaved
-    /// implementations should map network errors into
+    /// translate into a [`ServiceStatus`]. Well-behaved implementations should
+    /// map network errors into
     /// `ServiceStatus { reachable: false, .. }` and return `Ok(...)` instead.
     fn health(&self) -> impl Future<Output = Result<ServiceStatus, ApiError>> + Send;
 }

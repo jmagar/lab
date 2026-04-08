@@ -1,4 +1,4 @@
-//! `PluginMeta` — per-service compile-time constants (DESIGN.md §9).
+//! `PluginMeta` — per-service compile-time constants.
 //!
 //! Each service module exposes `pub const META: PluginMeta` describing its
 //! display name, category, docs URL, required/optional env vars, and default

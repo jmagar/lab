@@ -90,7 +90,11 @@ impl ExtractClient {
     ///
     /// # Errors
     /// Returns `ExtractError::Parse` from the last parser tried if none match.
-    pub fn parse_one(&self, parser_name: &str, contents: &[u8]) -> Result<ServiceCreds, ExtractError> {
+    pub fn parse_one(
+        &self,
+        parser_name: &str,
+        contents: &[u8],
+    ) -> Result<ServiceCreds, ExtractError> {
         let parser = self
             .parsers
             .iter()

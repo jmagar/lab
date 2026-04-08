@@ -29,7 +29,10 @@ impl RadarrClient {
     /// `RadarrError::Api` on any other HTTP failure.
     pub async fn movie_get(&self, id: MovieId) -> Result<Movie, RadarrError> {
         let _ = id;
-        Err(RadarrError::NotFound { kind: "movie", id: id.0 })
+        Err(RadarrError::NotFound {
+            kind: "movie",
+            id: id.0,
+        })
     }
 
     /// Search the Radarr metadata provider (TMDB-backed) for a title.
@@ -70,6 +73,9 @@ impl RadarrClient {
     /// `RadarrError::Api` on any other HTTP failure.
     pub async fn movie_delete(&self, id: MovieId, delete_files: bool) -> Result<(), RadarrError> {
         let _ = (id, delete_files);
-        Err(RadarrError::NotFound { kind: "movie", id: id.0 })
+        Err(RadarrError::NotFound {
+            kind: "movie",
+            id: id.0,
+        })
     }
 }

@@ -15,12 +15,12 @@ use std::path::{Path, PathBuf};
 use super::error::ExtractError;
 use super::types::ServiceCreds;
 
+/// Prowlarr parser (same XML shape as Radarr).
+pub mod prowlarr;
 /// Concrete parsers for the Servarr stack.
 pub mod radarr;
 /// Sonarr parser (same XML shape as Radarr).
 pub mod sonarr;
-/// Prowlarr parser (same XML shape as Radarr).
-pub mod prowlarr;
 
 /// One per-app parser. All methods are sync; I/O is the transport layer's job.
 pub trait Parser: Send + Sync {

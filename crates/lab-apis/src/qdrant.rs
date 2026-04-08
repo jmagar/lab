@@ -31,13 +31,17 @@ pub const META: PluginMeta = PluginMeta {
     description: "Vector database for similarity search and RAG",
     category: Category::Ai,
     docs_url: "https://api.qdrant.tech/",
-    required_env: &[
-        EnvVar { name: "QDRANT_URL", description: "Base URL of the Qdrant server",
-                 example: "http://localhost:6333", secret: false },
-    ],
-    optional_env: &[
-        EnvVar { name: "QDRANT_API_KEY", description: "API key (only if Qdrant is auth-protected)",
-                 example: "abc123...", secret: true },
-    ],
+    required_env: &[EnvVar {
+        name: "QDRANT_URL",
+        description: "Base URL of the Qdrant server",
+        example: "http://localhost:6333",
+        secret: false,
+    }],
+    optional_env: &[EnvVar {
+        name: "QDRANT_API_KEY",
+        description: "API key (only if Qdrant is auth-protected)",
+        example: "abc123...",
+        secret: true,
+    }],
     default_port: Some(6333),
 };

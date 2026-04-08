@@ -31,13 +31,17 @@ pub const META: PluginMeta = PluginMeta {
     description: "Hugging Face TEI server — embeddings, rerankers, sequence classification",
     category: Category::Ai,
     docs_url: "https://huggingface.github.io/text-embeddings-inference/",
-    required_env: &[
-        EnvVar { name: "TEI_URL", description: "Base URL of the TEI server",
-                 example: "http://localhost:8080", secret: false },
-    ],
-    optional_env: &[
-        EnvVar { name: "TEI_API_KEY", description: "Bearer token (only when launched with --api-key)",
-                 example: "abc123...", secret: true },
-    ],
+    required_env: &[EnvVar {
+        name: "TEI_URL",
+        description: "Base URL of the TEI server",
+        example: "http://localhost:8080",
+        secret: false,
+    }],
+    optional_env: &[EnvVar {
+        name: "TEI_API_KEY",
+        description: "Bearer token (only when launched with --api-key)",
+        example: "abc123...",
+        secret: true,
+    }],
     default_port: Some(80),
 };

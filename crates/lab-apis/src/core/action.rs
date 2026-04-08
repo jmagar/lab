@@ -4,7 +4,7 @@
 //! actions. The MCP `help` action, the `lab://<service>/actions` resource,
 //! the top-level `lab.help` meta-tool, the `lab://catalog` resource, and
 //! the CLI `lab help` command all read from this same slice. One source of
-//! truth for discovery (DESIGN.md §7).
+//! truth for discovery.
 
 /// Compile-time metadata for one dotted action exposed by a service.
 #[derive(Debug, Clone, Copy)]

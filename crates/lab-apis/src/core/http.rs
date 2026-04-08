@@ -44,8 +44,13 @@ impl HttpClient {
     ///
     /// # Errors
     /// Returns [`ApiError`] on transport, status, or decode failure.
-    pub async fn get_json<T: serde::de::DeserializeOwned>(&self, _path: &str) -> Result<T, ApiError> {
-        Err(ApiError::Internal("HttpClient::get_json not yet implemented".into()))
+    pub async fn get_json<T: serde::de::DeserializeOwned>(
+        &self,
+        _path: &str,
+    ) -> Result<T, ApiError> {
+        Err(ApiError::Internal(
+            "HttpClient::get_json not yet implemented".into(),
+        ))
     }
 
     /// POST a JSON body and decode the JSON response.
@@ -57,6 +62,8 @@ impl HttpClient {
         _path: &str,
         _body: &B,
     ) -> Result<T, ApiError> {
-        Err(ApiError::Internal("HttpClient::post_json not yet implemented".into()))
+        Err(ApiError::Internal(
+            "HttpClient::post_json not yet implemented".into(),
+        ))
     }
 }

@@ -28,7 +28,10 @@ impl RadarrClient {
     ///
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
-    pub async fn manual_import_list(&self, folder: &str) -> Result<Vec<ManualImportItem>, RadarrError> {
+    pub async fn manual_import_list(
+        &self,
+        folder: &str,
+    ) -> Result<Vec<ManualImportItem>, RadarrError> {
         let _ = (folder, &self.http);
         Ok(Vec::new())
     }

@@ -83,8 +83,12 @@ fn dotenv_path() -> Option<PathBuf> {
 
 /// Standard location for the TOML config: `$HOME/.config/lab/config.toml`.
 fn toml_path() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join(".config").join("lab").join("config.toml"))
+    std::env::var_os("HOME").map(|home| {
+        PathBuf::from(home)
+            .join(".config")
+            .join("lab")
+            .join("config.toml")
+    })
 }
 
 /// Parse multi-instance env vars for a given service prefix.

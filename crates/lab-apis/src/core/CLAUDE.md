@@ -1,6 +1,6 @@
 # core/ — Cross-cutting primitives
 
-This directory is the foundation every service module depends on. Changes here ripple across 21 clients — be conservative and align with `docs/DESIGN.md` before editing.
+This directory is the foundation every service module depends on. Changes here ripple across 21 clients — be conservative and align with `docs/ARCH.md`, `docs/MCP.md`, and `docs/CONVENTIONS.md` before editing.
 
 ## Files
 
@@ -16,7 +16,7 @@ This directory is the foundation every service module depends on. Changes here r
 
 ## ApiError.kind() — canonical stable tags
 
-These strings appear verbatim in MCP error envelopes. Adding a new kind is a **spec change** — update `docs/DESIGN.md` first.
+These strings appear verbatim in MCP error envelopes. Adding a new kind is a **spec change** — update `docs/MCP.md` and `docs/CONVENTIONS.md` first.
 
 | Variant | `kind()` |
 |---------|----------|
@@ -36,5 +36,5 @@ Dispatchers in `lab/src/mcp/` layer additional kinds on top: `unknown_action`, `
 - **No `clap`, `rmcp`, `tabled`, `anyhow`** in this directory — ever.
 - **No file or env I/O.** `Auth::from_env()` helpers are allowed to *accept* env values, but the binary calls them. `lab-apis` never reads `std::env` on its own.
 - **Debug impls for anything holding secrets must redact.** Test this.
-- **Keep `ParamSpec.ty` as `&'static str`** (e.g., `"string"`, `"integer"`, `"bool"`). Do not reintroduce a `ParamType` enum — DESIGN.md §463 is reconciled to string labels.
+- **Keep `ParamSpec.ty` as `&'static str`** (e.g., `"string"`, `"integer"`, `"bool"`). Do not reintroduce a `ParamType` enum — the topic docs standardize on string labels.
 - **`ActionSpec.destructive` is the single source of truth** for elicitation + CLI confirm flows. Never hide destructive ops behind a non-destructive action.

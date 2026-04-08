@@ -1,7 +1,7 @@
 //! Canonical error taxonomy.
 //!
 //! `ApiError::kind()` returns one of a small set of `&'static str` tags
-//! (matching DESIGN.md §6) so the binary can map any service error into the
+//! so the binary can map any service error into the
 //! structured MCP envelope and the CLI can render consistent messages.
 
 use std::time::Duration;
@@ -58,8 +58,7 @@ pub enum ApiError {
 }
 
 impl ApiError {
-    /// Stable string tag for the MCP error envelope. Matches the canonical
-    /// `kind` vocabulary in DESIGN.md §4.
+    /// Stable string tag for the MCP error envelope.
     #[must_use]
     pub const fn kind(&self) -> &'static str {
         match self {
