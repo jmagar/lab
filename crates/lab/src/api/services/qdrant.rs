@@ -1,17 +1,9 @@
 //! HTTP route group for the `qdrant` service.
 
 use axum::{Json, Router, extract::State, routing::post};
-use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::state::AppState;
-
-#[derive(Debug, Deserialize)]
-pub struct ActionRequest {
-    pub action: String,
-    #[serde(default)]
-    pub params: Value,
-}
+use crate::api::{ActionRequest, state::AppState};
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
