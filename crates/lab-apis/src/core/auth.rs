@@ -54,7 +54,10 @@ impl fmt::Debug for Auth {
             Self::Token { .. } => f.write_str("Auth::Token { token: <redacted> }"),
             Self::Bearer { .. } => f.write_str("Auth::Bearer { token: <redacted> }"),
             Self::Basic { username, .. } => {
-                write!(f, "Auth::Basic {{ username: {username}, password: <redacted> }}")
+                write!(
+                    f,
+                    "Auth::Basic {{ username: {username}, password: <redacted> }}"
+                )
             }
             Self::Session { .. } => f.write_str("Auth::Session { cookie: <redacted> }"),
         }

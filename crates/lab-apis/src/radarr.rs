@@ -53,10 +53,18 @@ pub const META: PluginMeta = PluginMeta {
     category: Category::Servarr,
     docs_url: "https://radarr.video/docs/api/",
     required_env: &[
-        EnvVar { name: "RADARR_URL", description: "Base URL of the Radarr instance",
-                 example: "http://localhost:7878", secret: false },
-        EnvVar { name: "RADARR_API_KEY", description: "API key from Settings → General",
-                 example: "abc123def456...", secret: true },
+        EnvVar {
+            name: "RADARR_URL",
+            description: "Base URL of the Radarr instance",
+            example: "http://localhost:7878",
+            secret: false,
+        },
+        EnvVar {
+            name: "RADARR_API_KEY",
+            description: "API key from Settings → General",
+            example: "abc123def456...",
+            secret: true,
+        },
     ],
     optional_env: &[],
     default_port: Some(7878),

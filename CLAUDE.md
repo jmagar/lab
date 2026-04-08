@@ -4,7 +4,7 @@
 
 `lab` is a pluggable homelab CLI + MCP server SDK in Rust. One binary, **21 services** (20 feature-gated + always-on `extract`), runtime MCP tool selection via a single tool per service with an `action` + `params` dispatch shape (~20 MCP tools max, not hundreds).
 
-Read `docs/DESIGN.md` for the full architecture and decisions. **`docs/DESIGN.md` is the source of truth** — if this file disagrees, DESIGN wins and this file is stale.
+Start with `docs/README.md` for the docs index. The topic docs in `docs/` are the source of truth; if this file disagrees with them, this file is stale.
 
 **Nested guides.** Subdirectories carry their own `CLAUDE.md` with rules that don't belong at the root. Read the nearest one when working in:
 - `crates/lab-apis/src/core/` — trait contracts, error taxonomy, HttpClient invariants
@@ -66,7 +66,7 @@ lab/
 ├── Cargo.toml                        # workspace
 ├── Justfile
 ├── deny.toml
-├── docs/DESIGN.md
+├── docs/README.md
 └── CLAUDE.md
 ```
 
@@ -131,7 +131,7 @@ Every MCP tool failure returns a JSON envelope with a stable `kind` tag so agent
 { "kind": "rate_limited", "message": "...", "retry_after_ms": 5000 }
 ```
 
-See `docs/DESIGN.md` for the full MCP spec and envelope taxonomy.
+See `docs/MCP.md` for the MCP surface and `docs/CONVENTIONS.md` for the canonical error vocabulary rules.
 
 ### Adding a New Service
 
@@ -190,7 +190,7 @@ Every service entry-point file (e.g., `radarr.rs`) declares a `pub const META: P
 - `lab-apis`: use `thiserror` for typed errors per service; every service error wraps `ApiError` transparently.
 - `lab` binary: use `anyhow` to wrap everything.
 - Always return `Result<T>`, never panic.
-- **`ApiError::kind()` taxonomy** (stable string tags consumed by MCP envelopes): `auth_failed`, `not_found`, `rate_limited`, `validation_failed`, `network_error`, `server_error`, `decode_error`, `internal_error`. Dispatchers add `unknown_action`, `unknown_subaction`, `missing_param`, `invalid_param`, `unknown_instance` on top. Never invent new kinds without updating DESIGN.md.
+- **`ApiError::kind()` taxonomy** (stable string tags consumed by MCP envelopes): `auth_failed`, `not_found`, `rate_limited`, `validation_failed`, `network_error`, `server_error`, `decode_error`, `internal_error`. Dispatchers add `unknown_action`, `unknown_subaction`, `missing_param`, `invalid_param`, `unknown_instance` on top. Never invent new kinds without updating `docs/MCP.md` and `docs/CONVENTIONS.md`.
 
 ### Async trait style
 

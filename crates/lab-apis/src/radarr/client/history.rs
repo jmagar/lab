@@ -15,7 +15,11 @@ impl RadarrClient {
     ///
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
-    pub async fn history_list(&self, page: u32, page_size: u32) -> Result<HistoryPage, RadarrError> {
+    pub async fn history_list(
+        &self,
+        page: u32,
+        page_size: u32,
+    ) -> Result<HistoryPage, RadarrError> {
         let _ = (page, page_size, &self.http);
         Err(RadarrError::Api(crate::core::error::ApiError::Internal(
             "history_list not yet implemented".into(),

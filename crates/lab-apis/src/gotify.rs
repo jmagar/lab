@@ -29,10 +29,18 @@ pub const META: PluginMeta = PluginMeta {
     category: Category::Notifications,
     docs_url: "https://gotify.net/api-docs",
     required_env: &[
-        EnvVar { name: "GOTIFY_URL", description: "Base URL of the Gotify server",
-                 example: "http://localhost:8080", secret: false },
-        EnvVar { name: "GOTIFY_TOKEN", description: "App token from Gotify (X-Gotify-Key)",
-                 example: "A1b2C3d4E5...", secret: true },
+        EnvVar {
+            name: "GOTIFY_URL",
+            description: "Base URL of the Gotify server",
+            example: "http://localhost:8080",
+            secret: false,
+        },
+        EnvVar {
+            name: "GOTIFY_TOKEN",
+            description: "App token from Gotify (X-Gotify-Key)",
+            example: "A1b2C3d4E5...",
+            secret: true,
+        },
     ],
     optional_env: &[],
     default_port: Some(80),

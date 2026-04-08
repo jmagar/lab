@@ -23,7 +23,9 @@ impl ToolRegistry {
     /// Create an empty registry.
     #[must_use]
     pub const fn new() -> Self {
-        Self { services: Vec::new() }
+        Self {
+            services: Vec::new(),
+        }
     }
 
     /// Register a service. Duplicates are ignored (first registration wins).

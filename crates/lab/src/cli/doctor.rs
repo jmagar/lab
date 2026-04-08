@@ -44,17 +44,20 @@ pub struct Report {
 
 /// Run the doctor subcommand.
 pub async fn run(format: OutputFormat) -> Result<ExitCode> {
-    let report = Report { findings: Vec::new() };
+    let report = Report {
+        findings: Vec::new(),
+    };
     print(&report, format)?;
 
-    let worst = report.findings.iter().map(|f| f.severity).fold(
-        Severity::Ok,
-        |acc, s| match (acc, s) {
+    let worst = report
+        .findings
+        .iter()
+        .map(|f| f.severity)
+        .fold(Severity::Ok, |acc, s| match (acc, s) {
             (Severity::Fail, _) | (_, Severity::Fail) => Severity::Fail,
             (Severity::Warn, _) | (_, Severity::Warn) => Severity::Warn,
             _ => Severity::Ok,
-        },
-    );
+        });
 
     Ok(match worst {
         Severity::Ok => ExitCode::SUCCESS,

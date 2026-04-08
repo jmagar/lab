@@ -31,15 +31,25 @@ pub const META: PluginMeta = PluginMeta {
     description: "OpenAI API (chat, embeddings, models, images, audio)",
     category: Category::Ai,
     docs_url: "https://platform.openai.com/docs/api-reference",
-    required_env: &[
-        EnvVar { name: "OPENAI_API_KEY", description: "OpenAI API key",
-                 example: "sk-proj-...", secret: true },
-    ],
+    required_env: &[EnvVar {
+        name: "OPENAI_API_KEY",
+        description: "OpenAI API key",
+        example: "sk-proj-...",
+        secret: true,
+    }],
     optional_env: &[
-        EnvVar { name: "OPENAI_URL", description: "Override base URL (for OpenAI-compatible servers)",
-                 example: "http://localhost:11434/v1", secret: false },
-        EnvVar { name: "OPENAI_ORG_ID", description: "Organization id for billing/quota",
-                 example: "org-...", secret: false },
+        EnvVar {
+            name: "OPENAI_URL",
+            description: "Override base URL (for OpenAI-compatible servers)",
+            example: "http://localhost:11434/v1",
+            secret: false,
+        },
+        EnvVar {
+            name: "OPENAI_ORG_ID",
+            description: "Organization id for billing/quota",
+            example: "org-...",
+            secret: false,
+        },
     ],
     default_port: None,
 };

@@ -56,8 +56,6 @@ pub fn parse_servarr_config_xml(
     Err(ExtractError::Parse {
         service: service.to_owned(),
         path: PathBuf::new(),
-        message: format!(
-            "parse_servarr_config_xml not yet implemented (would write {env_field})"
-        ),
+        message: format!("parse_servarr_config_xml not yet implemented (would write {env_field})"),
     })
 }

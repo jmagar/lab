@@ -52,6 +52,9 @@ impl RadarrClient {
     /// `RadarrError::Api` on any other HTTP failure.
     pub async fn command_get(&self, id: CommandId) -> Result<Command, RadarrError> {
         let _ = id;
-        Err(RadarrError::NotFound { kind: "command", id: id.0 })
+        Err(RadarrError::NotFound {
+            kind: "command",
+            id: id.0,
+        })
     }
 }

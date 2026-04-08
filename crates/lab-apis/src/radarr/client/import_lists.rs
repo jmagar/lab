@@ -30,7 +30,9 @@ impl RadarrClient {
     ///
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
-    pub async fn import_list_exclusion_list(&self) -> Result<Vec<ImportListExclusion>, RadarrError> {
+    pub async fn import_list_exclusion_list(
+        &self,
+    ) -> Result<Vec<ImportListExclusion>, RadarrError> {
         let _ = &self.http;
         Ok(Vec::new())
     }

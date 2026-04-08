@@ -4,7 +4,7 @@
 //! `lab health`, `lab doctor`, the TUI, and the `system.status` MCP action
 //! on every service.
 //!
-//! Rules (per DESIGN.md §1):
+//! Rules:
 //! - `reachable = false` ⇒ `auth_ok = false` and `version = None`
 //! - Never panic; network errors map to `reachable = false` + `message`
 //! - Health probes have a hard 5s timeout regardless of `HttpClient` defaults

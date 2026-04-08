@@ -7,8 +7,7 @@ use std::time::Duration;
 
 use axum::{Router, http::StatusCode, routing::get};
 use tower_http::{
-    compression::CompressionLayer, cors::CorsLayer, timeout::TimeoutLayer,
-    trace::TraceLayer,
+    compression::CompressionLayer, cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer,
 };
 
 use super::{health, state::AppState};
