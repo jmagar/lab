@@ -151,7 +151,7 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
 
     for (service_name, required_env) in service_env_checks() {
         for env in required_env {
-            let present = std::env::var(env.name).is_ok();
+            let present = std::env::var(env.name).is_ok_and(|v| !v.is_empty());
             findings.push(Finding {
                 service: service_name.into(),
                 check: format!("env:{}", env.name),

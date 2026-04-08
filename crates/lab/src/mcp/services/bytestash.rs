@@ -339,10 +339,19 @@ pub const ACTIONS: &[ActionSpec] = &[
 ];
 
 /// Build a `ByteStash` client from the default-instance env vars.
+///
+/// `ByteStash` uses a non-standard auth header: `bytestashauth: Bearer <jwt>`.
 pub fn client_from_env() -> Option<ByteStashClient> {
     let url = std::env::var("BYTESTASH_URL").ok()?;
     let token = std::env::var("BYTESTASH_TOKEN").ok()?;
-    ByteStashClient::new(&url, Auth::Bearer { token }).ok()
+    ByteStashClient::new(
+        &url,
+        Auth::ApiKey {
+            header: "bytestashauth".into(),
+            key: format!("Bearer {token}"),
+        },
+    )
+    .ok()
 }
 
 /// Dispatch one MCP call against the `ByteStash` tool.
