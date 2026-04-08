@@ -3,7 +3,7 @@
 use std::process::ExitCode;
 
 /// Run the plugins subcommand.
-pub fn run() -> ExitCode {
-    crate::tui::run();
-    ExitCode::SUCCESS
+pub fn run() -> anyhow::Result<ExitCode> {
+    crate::tui::run()?;
+    Ok(ExitCode::SUCCESS)
 }

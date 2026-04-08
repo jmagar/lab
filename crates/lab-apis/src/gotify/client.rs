@@ -19,11 +19,13 @@ impl GotifyClient {
     ///
     /// Gotify uses header-token auth: pass
     /// `Auth::ApiKey { header: "X-Gotify-Key".into(), key: token }`.
-    #[must_use]
-    pub fn new(base_url: &str, auth: Auth) -> Self {
-        Self {
-            http: HttpClient::new(base_url, auth),
-        }
+    ///
+    /// # Errors
+    /// Returns [`GotifyError::Api`] if the TLS backend fails to initialise.
+    pub fn new(base_url: &str, auth: Auth) -> Result<Self, GotifyError> {
+        Ok(Self {
+            http: HttpClient::new(base_url, auth)?,
+        })
     }
 
     /// Health check.

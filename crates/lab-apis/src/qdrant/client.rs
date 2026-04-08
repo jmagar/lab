@@ -18,11 +18,13 @@ impl QdrantClient {
     /// Qdrant uses an `api-key` header when auth is enabled:
     /// `Auth::ApiKey { header: "api-key".into(), key: <key> }`. Pass
     /// `Auth::None` for an unauthenticated local instance.
-    #[must_use]
-    pub fn new(base_url: &str, auth: Auth) -> Self {
-        Self {
-            http: HttpClient::new(base_url, auth),
-        }
+    ///
+    /// # Errors
+    /// Returns [`QdrantError::Api`] if the TLS backend fails to initialise.
+    pub fn new(base_url: &str, auth: Auth) -> Result<Self, QdrantError> {
+        Ok(Self {
+            http: HttpClient::new(base_url, auth)?,
+        })
     }
 
     /// Health check — `GET /healthz`.

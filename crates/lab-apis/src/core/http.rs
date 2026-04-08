@@ -16,23 +16,19 @@ pub struct HttpClient {
 impl HttpClient {
     /// Construct a new client with a base URL and auth strategy.
     ///
-    /// # Panics
-    /// Panics if the system TLS backend cannot initialize. This only happens
-    /// in environments without a working rustls / system crypto provider,
-    /// which would make every subsequent request fail anyway — panicking here
-    /// surfaces the misconfiguration at startup instead of on first call.
-    #[allow(clippy::expect_used)] // startup TLS init — see # Panics doc
-    #[must_use]
-    pub fn new(base_url: impl Into<String>, auth: Auth) -> Self {
+    /// # Errors
+    /// Returns [`ApiError::Internal`] if the TLS backend fails to initialise
+    /// (e.g. missing system crypto provider with rustls).
+    pub fn new(base_url: impl Into<String>, auth: Auth) -> Result<Self, ApiError> {
         let inner = Client::builder()
             .user_agent(concat!("lab-apis/", env!("CARGO_PKG_VERSION")))
             .build()
-            .expect("reqwest::Client::build (rustls TLS backend must initialize)");
-        Self {
+            .map_err(|e| ApiError::Internal(format!("reqwest::Client::build: {e}")))?;
+        Ok(Self {
             base_url: base_url.into(),
             auth,
             inner,
-        }
+        })
     }
 
     /// Base URL this client targets.
@@ -48,9 +44,10 @@ impl HttpClient {
     }
 
     fn url(&self, path: &str) -> String {
-        if path.starts_with("http://") || path.starts_with("https://") {
-            path.to_string()
-        } else if path.starts_with('/') {
+        // Only relative paths are accepted. Absolute URLs are rejected upstream
+        // (callers pass validated paths from their own types) — allowing them
+        // would forward auth headers to a foreign origin.
+        if path.starts_with('/') {
             format!("{}{path}", self.base_url.trim_end_matches('/'))
         } else {
             format!("{}/{path}", self.base_url.trim_end_matches('/'))

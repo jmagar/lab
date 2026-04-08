@@ -17,11 +17,13 @@ impl TeiClient {
     ///
     /// TEI uses `Authorization: Bearer <token>` when launched with
     /// `--api-key`. For unauthenticated local instances, pass `Auth::None`.
-    #[must_use]
-    pub fn new(base_url: &str, auth: Auth) -> Self {
-        Self {
-            http: HttpClient::new(base_url, auth),
-        }
+    ///
+    /// # Errors
+    /// Returns [`TeiError::Api`] if the TLS backend fails to initialise.
+    pub fn new(base_url: &str, auth: Auth) -> Result<Self, TeiError> {
+        Ok(Self {
+            http: HttpClient::new(base_url, auth)?,
+        })
     }
 
     /// Health check — `GET /health`.
