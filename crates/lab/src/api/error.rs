@@ -43,6 +43,10 @@ pub enum ApiError {
     /// Multi-instance label not found.
     #[error("unknown instance: {0}")]
     UnknownInstance(String),
+
+    /// Internal server error.
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 impl ApiError {
@@ -56,6 +60,7 @@ impl ApiError {
             Self::MissingParam(_) => "missing_param",
             Self::InvalidParam { .. } => "invalid_param",
             Self::UnknownInstance(_) => "unknown_instance",
+            Self::Internal(_) => "internal_error",
         }
     }
 
