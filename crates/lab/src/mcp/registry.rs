@@ -51,6 +51,16 @@ impl ToolRegistry {
 pub fn build_default_registry() -> ToolRegistry {
     let mut reg = ToolRegistry::new();
 
+    // extract is always-on (no feature flag).
+    {
+        let meta = lab_apis::extract::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+        });
+    }
+
     #[cfg(feature = "radarr")]
     {
         let meta = lab_apis::radarr::META;
@@ -77,5 +87,19 @@ const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
         Category::Notifications => "notifications",
         Category::Ai => "ai",
         Category::Bootstrap => "bootstrap",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_default_registry;
+
+    #[test]
+    fn extract_is_always_registered() {
+        let reg = build_default_registry();
+        assert!(
+            reg.services().iter().any(|s| s.name == "extract"),
+            "extract must be in the default registry"
+        );
     }
 }
