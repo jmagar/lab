@@ -38,4 +38,19 @@ impl ServiceStatus {
             message: Some(message.into()),
         }
     }
+
+    /// Construct a degraded status: service is reachable but returning errors.
+    ///
+    /// Use this for `Server`, `RateLimited`, `Decode`, etc. where the host
+    /// responded — as opposed to `unreachable()` for network-level failures.
+    #[must_use]
+    pub fn degraded(message: impl Into<String>) -> Self {
+        Self {
+            reachable: true,
+            auth_ok: true,
+            version: None,
+            latency_ms: 0,
+            message: Some(message.into()),
+        }
+    }
 }
