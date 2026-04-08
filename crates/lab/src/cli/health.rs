@@ -69,7 +69,7 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     #[cfg(feature = "memos")]
     rows.push(HealthRow::not_configured("memos"));
     #[cfg(feature = "bytestash")]
-    rows.push(HealthRow::not_configured("bytestash"));
+    rows.push(bytestash_row().await);
     #[cfg(feature = "paperless")]
     rows.push(HealthRow::not_configured("paperless"));
     #[cfg(feature = "arcane")]
@@ -156,6 +156,41 @@ async fn unifi_row() -> HealthRow {
         },
         Err(e) => HealthRow {
             service: "unifi".into(),
+            reachable: false,
+            auth_ok: false,
+            version: None,
+            latency_ms: 0,
+            message: Some(e.to_string()),
+        },
+    }
+}
+
+#[cfg(feature = "bytestash")]
+async fn bytestash_row() -> HealthRow {
+    use lab_apis::core::ServiceClient;
+
+    let Some(client) = crate::mcp::services::bytestash::client_from_env() else {
+        return HealthRow {
+            service: "bytestash".into(),
+            reachable: false,
+            auth_ok: false,
+            version: None,
+            latency_ms: 0,
+            message: Some("BYTESTASH_URL / BYTESTASH_TOKEN not set".into()),
+        };
+    };
+
+    match <_ as ServiceClient>::health(&client).await {
+        Ok(s) => HealthRow {
+            service: "bytestash".into(),
+            reachable: s.reachable,
+            auth_ok: s.auth_ok,
+            version: s.version,
+            latency_ms: s.latency_ms,
+            message: s.message,
+        },
+        Err(e) => HealthRow {
+            service: "bytestash".into(),
             reachable: false,
             auth_ok: false,
             version: None,

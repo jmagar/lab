@@ -24,8 +24,16 @@ pub fn all_plugins() -> Vec<PluginRow> {
             name: meta.name,
             description: meta.description,
             category: match meta.category {
+                lab_apis::core::Category::Media => "media",
                 lab_apis::core::Category::Servarr => "servarr",
-                _ => "other",
+                lab_apis::core::Category::Indexer => "indexer",
+                lab_apis::core::Category::Download => "download",
+                lab_apis::core::Category::Notes => "notes",
+                lab_apis::core::Category::Documents => "documents",
+                lab_apis::core::Category::Network => "network",
+                lab_apis::core::Category::Notifications => "notifications",
+                lab_apis::core::Category::Ai => "ai",
+                lab_apis::core::Category::Bootstrap => "bootstrap",
             },
         });
     }
