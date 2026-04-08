@@ -15,7 +15,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn language_list(&self) -> Result<Vec<Language>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/language")
+            .await
+            .map_err(RadarrError::from)
     }
 }

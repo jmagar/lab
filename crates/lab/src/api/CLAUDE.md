@@ -13,7 +13,7 @@ POST /v1/radarr
 
 - **One route group per service**, mounted at `/v1/<service>`.
 - Handlers dispatch on `action` exactly like `mcp/services/<service>.rs`.
-- **Error envelopes are byte-identical to MCP envelopes** (`{ "kind", "message", ... }`). See `error.rs` — the `kind()` method returns the same stable tags as `ApiError::kind()` in the SDK. HTTP status is derived from `kind()`, never hand-assigned per-handler.
+- **Error envelopes are byte-identical to MCP envelopes.** Handlers return `Result<Json<T>, ToolError>` from `crate::mcp::envelope`. `ToolError` implements `IntoResponse` — HTTP status is derived from `kind()`, never hand-assigned per-handler. Do **not** wrap `ToolError` in `ApiError::Internal`.
 - Built-in per-service `GET /v1/<service>/actions` mirrors the `lab://<service>/actions` MCP resource. Use the shared `build_catalog()` — do not duplicate catalog logic.
 
 ## Files

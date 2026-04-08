@@ -18,8 +18,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn login(&self, req: &LoginRequest) -> Result<(), RadarrError> {
-        let _ = req;
-        Ok(())
+        self.http
+            .post_void("/login", req)
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Invalidate the current session cookie.
@@ -29,7 +31,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn logout(&self) -> Result<(), RadarrError> {
-        let _ = &self.http;
-        Ok(())
+        // Radarr invalidates the session via GET /logout; we discard the redirect body.
+        self.http
+            .get_void("/logout")
+            .await
+            .map_err(RadarrError::from)
     }
 }

@@ -15,9 +15,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn movie_list(&self) -> Result<Vec<Movie>, RadarrError> {
-        // TODO: GET /api/v3/movie
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/movie")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Fetch a single movie by its internal Radarr id.
@@ -28,11 +29,10 @@ impl RadarrClient {
     /// Returns `RadarrError::NotFound` if the id does not exist,
     /// `RadarrError::Api` on any other HTTP failure.
     pub async fn movie_get(&self, id: MovieId) -> Result<Movie, RadarrError> {
-        let _ = id;
-        Err(RadarrError::NotFound {
-            kind: "movie",
-            id: id.0,
-        })
+        self.http
+            .get_json(&format!("/api/v3/movie/{}", id.0))
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Search the Radarr metadata provider (TMDB-backed) for a title.
@@ -43,8 +43,13 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn movie_lookup(&self, term: &str) -> Result<Vec<MovieLookup>, RadarrError> {
-        let _ = term;
-        Ok(Vec::new())
+        let q = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("term", term)
+            .finish();
+        self.http
+            .get_json(&format!("/api/v3/movie/lookup?{q}"))
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Add a previously-looked-up movie to the library.
@@ -56,10 +61,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn movie_add(&self, movie: &Movie) -> Result<Movie, RadarrError> {
-        let _ = movie;
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "movie_add not yet implemented".into(),
-        )))
+        self.http
+            .post_json("/api/v3/movie", movie)
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Delete a movie by id.
@@ -72,10 +77,12 @@ impl RadarrClient {
     /// Returns `RadarrError::NotFound` if the id does not exist,
     /// `RadarrError::Api` on any other HTTP failure.
     pub async fn movie_delete(&self, id: MovieId, delete_files: bool) -> Result<(), RadarrError> {
-        let _ = (id, delete_files);
-        Err(RadarrError::NotFound {
-            kind: "movie",
-            id: id.0,
-        })
+        self.http
+            .delete(&format!(
+                "/api/v3/movie/{}?deleteFiles={delete_files}",
+                id.0
+            ))
+            .await
+            .map_err(RadarrError::from)
     }
 }

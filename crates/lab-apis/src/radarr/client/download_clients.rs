@@ -15,8 +15,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn download_client_list(&self) -> Result<Vec<DownloadClient>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/downloadclient")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Test connectivity to a download client.
@@ -26,8 +28,11 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` if the test fails or HTTP errors.
     pub async fn download_client_test(&self, id: DownloadClientId) -> Result<(), RadarrError> {
-        let _ = id;
-        Ok(())
+        let body = serde_json::json!({ "id": id.0 });
+        self.http
+            .post_void("/api/v3/downloadclient/test", &body)
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List every remote-path mapping.
@@ -39,7 +44,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn remote_path_mapping_list(&self) -> Result<Vec<RemotePathMapping>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/remotepathmapping")
+            .await
+            .map_err(RadarrError::from)
     }
 }

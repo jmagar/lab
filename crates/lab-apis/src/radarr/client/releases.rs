@@ -18,7 +18,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn release_search(&self, movie_id: MovieId) -> Result<Vec<Release>, RadarrError> {
-        let _ = movie_id;
-        Ok(Vec::new())
+        self.http
+            .get_json(&format!("/api/v3/release?movieId={}", movie_id.0))
+            .await
+            .map_err(RadarrError::from)
     }
 }

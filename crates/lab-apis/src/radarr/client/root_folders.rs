@@ -15,7 +15,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn root_folder_list(&self) -> Result<Vec<RootFolder>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/rootfolder")
+            .await
+            .map_err(RadarrError::from)
     }
 }

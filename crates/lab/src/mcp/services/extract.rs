@@ -126,4 +126,3 @@ fn parse_uri(params: &Value) -> Result<Uri> {
         .ok_or_else(|| anyhow::anyhow!("missing required param 'uri'"))?;
     s.parse().map_err(Into::into)
 }
-

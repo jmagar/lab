@@ -20,7 +20,21 @@ impl RadarrClient {
         start: Option<&str>,
         end: Option<&str>,
     ) -> Result<Vec<CalendarEntry>, RadarrError> {
-        let _ = (start, end, &self.http);
-        Ok(Vec::new())
+        let path = {
+            let mut qs = url::form_urlencoded::Serializer::new(String::new());
+            if let Some(s) = start {
+                qs.append_pair("start", s);
+            }
+            if let Some(e) = end {
+                qs.append_pair("end", e);
+            }
+            let q = qs.finish();
+            if q.is_empty() {
+                "/api/v3/calendar".to_string()
+            } else {
+                format!("/api/v3/calendar?{q}")
+            }
+        };
+        self.http.get_json(&path).await.map_err(RadarrError::from)
     }
 }

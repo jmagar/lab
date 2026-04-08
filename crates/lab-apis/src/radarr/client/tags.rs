@@ -15,8 +15,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn tag_list(&self) -> Result<Vec<Tag>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/tag")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List tags with usage detail (which resources carry them).
@@ -26,7 +28,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn tag_detail_list(&self) -> Result<Vec<TagDetail>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/tag/detail")
+            .await
+            .map_err(RadarrError::from)
     }
 }

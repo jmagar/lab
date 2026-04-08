@@ -19,18 +19,36 @@ mod tui;
 use std::process::ExitCode;
 
 use clap::Parser;
+use is_terminal::IsTerminal;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use crate::cli::Cli;
 
+/// Initialize tracing.
+///
+/// - `LAB_LOG` — filter directive (default: `lab=info,lab_apis=warn`).
+/// - `LAB_LOG_FORMAT=json` — emit newline-delimited JSON instead of human-readable text.
 fn init_tracing() {
     let filter = EnvFilter::try_from_env("LAB_LOG")
         .unwrap_or_else(|_| EnvFilter::new("lab=info,lab_apis=warn"));
 
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(fmt::layer().with_target(false))
-        .init();
+    let use_json = std::env::var("LAB_LOG_FORMAT")
+        .map(|v| v.eq_ignore_ascii_case("json"))
+        .unwrap_or(false);
+
+    if use_json {
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt::layer().json())
+            .init();
+    } else {
+        // Enable ANSI colors only when stderr is an interactive terminal.
+        let ansi = std::io::stderr().is_terminal();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt::layer().with_target(false).with_ansi(ansi))
+            .init();
+    }
 }
 
 #[tokio::main(flavor = "multi_thread")]

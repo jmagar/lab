@@ -20,10 +20,10 @@ impl RadarrClient {
         page: u32,
         page_size: u32,
     ) -> Result<HistoryPage, RadarrError> {
-        let _ = (page, page_size, &self.http);
-        Err(RadarrError::Api(crate::core::error::ApiError::Internal(
-            "history_list not yet implemented".into(),
-        )))
+        self.http
+            .get_json(&format!("/api/v3/history?page={page}&pageSize={page_size}"))
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List every blocklisted release.
@@ -33,7 +33,12 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn blocklist_list(&self) -> Result<Vec<BlocklistItem>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        let val: serde_json::Value = self
+            .http
+            .get_json("/api/v3/blocklist?pageSize=1000")
+            .await
+            .map_err(RadarrError::from)?;
+        serde_json::from_value(val["records"].clone())
+            .map_err(|e| RadarrError::Api(crate::core::error::ApiError::Decode(e.to_string())))
     }
 }

@@ -24,7 +24,15 @@ registry.register("radarr", services::radarr::dispatch);
 
 ## Structured error envelopes
 
-Every failure returns JSON with a stable `kind` tag. Dispatcher-layer kinds (wrap `ApiError::kind()` tags from the SDK):
+`ToolError` in `envelope.rs` is the **single canonical error type** across all three surfaces — MCP, HTTP API, and CLI. Every failure returns the same JSON shape:
+
+```jsonc
+{ "kind": "missing_param", "message": "missing required parameter `query`", "param": "query" }
+{ "kind": "unknown_action", "message": "...", "valid": ["movie.list", ...], "hint": null }
+{ "kind": "auth_failed",    "message": "authentication failed" }   // SDK pass-through
+```
+
+Dispatcher-layer kinds:
 
 | `kind` | When |
 |--------|------|
@@ -34,7 +42,23 @@ Every failure returns JSON with a stable `kind` tag. Dispatcher-layer kinds (wra
 | `invalid_param` | param present but wrong type/value. |
 | `unknown_instance` | multi-instance label not found. Include `valid: [...]`. |
 
-SDK-layer kinds (pass through from `ApiError::kind()`): `auth_failed`, `not_found`, `rate_limited` (+ `retry_after_ms`), `validation_failed`, `network_error`, `server_error`, `decode_error`, `internal_error`.
+SDK-layer kinds pass through from `ApiError::kind()` via `From<SdkError> for ToolError`: `auth_failed`, `not_found`, `rate_limited`, `validation_failed`, `network_error`, `server_error`, `decode_error`, `internal_error`.
+
+### Serialization contract
+
+`ToolError` uses a **custom `Serialize`** (not `#[derive(Serialize)]`) so that the `Sdk` variant promotes its `sdk_kind` field to the top-level `kind` field. The result is byte-identical across MCP and HTTP — never `{"kind":"sdk","sdk_kind":"auth_failed"}`.
+
+- `Display` delegates to `serde_json::to_string(&self)` — output is always valid JSON.
+- `IntoResponse` serializes `self` directly; HTTP status is derived from `kind()`.
+- Tests in `envelope.rs` lock in this contract — do not break them.
+
+### Wiring per service
+
+Each service dispatcher must:
+1. Return `Result<Value, ToolError>` (not `anyhow::Result`).
+2. Implement `From<ServiceError> for ToolError` mapping via `ApiError::kind()`.
+3. Use `ToolError::MissingParam` / `UnknownAction` for dispatcher-layer errors.
+4. Never use `anyhow::bail!` or `anyhow::anyhow!` inside a dispatch function.
 
 ## Elicitation for destructive ops
 

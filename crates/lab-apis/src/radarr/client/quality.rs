@@ -15,8 +15,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn quality_profile_list(&self) -> Result<Vec<QualityProfile>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/qualityprofile")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// List every quality definition (the size/megabit rules Radarr uses
@@ -27,7 +29,9 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn quality_definition_list(&self) -> Result<Vec<QualityDefinition>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/qualitydefinition")
+            .await
+            .map_err(RadarrError::from)
     }
 }

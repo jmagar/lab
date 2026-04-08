@@ -8,10 +8,10 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-use lab_apis::radarr::types::{CommandId, IndexerId, Movie, MovieId, QueueItemId};
 use lab_apis::radarr::types::download_client::DownloadClientId;
 use lab_apis::radarr::types::movie::TmdbId;
 use lab_apis::radarr::types::notification::NotificationId;
+use lab_apis::radarr::types::{CommandId, IndexerId, Movie, MovieId, QueueItemId};
 
 use crate::output::{OutputFormat, print};
 
@@ -259,7 +259,13 @@ pub async fn run(args: RadarrArgs, format: OutputFormat) -> Result<ExitCode> {
         RadarrCommand::MovieLookup { query } => {
             print(&client.movie_lookup(&query).await?, format)?;
         }
-        RadarrCommand::MovieAdd { tmdb_id, title, quality_profile_id, root_folder_path, monitored } => {
+        RadarrCommand::MovieAdd {
+            tmdb_id,
+            title,
+            quality_profile_id,
+            root_folder_path,
+            monitored,
+        } => {
             let movie = Movie {
                 id: MovieId(0),
                 title,
@@ -275,7 +281,11 @@ pub async fn run(args: RadarrArgs, format: OutputFormat) -> Result<ExitCode> {
             };
             print(&client.movie_add(&movie).await?, format)?;
         }
-        RadarrCommand::MovieDelete { id, delete_files, yes } => {
+        RadarrCommand::MovieDelete {
+            id,
+            delete_files,
+            yes,
+        } => {
             confirm_destructive(yes, &format!("delete movie {id}"))?;
             client.movie_delete(MovieId(id), delete_files).await?;
             tracing::info!("Deleted movie {id}");
@@ -285,20 +295,35 @@ pub async fn run(args: RadarrArgs, format: OutputFormat) -> Result<ExitCode> {
         RadarrCommand::QueueList => {
             print(&client.queue_list().await?, format)?;
         }
-        RadarrCommand::QueueRemove { id, remove_from_client, blocklist, yes } => {
+        RadarrCommand::QueueRemove {
+            id,
+            remove_from_client,
+            blocklist,
+            yes,
+        } => {
             confirm_destructive(yes, &format!("remove queue item {id}"))?;
-            client.queue_remove(QueueItemId(id), remove_from_client, blocklist).await?;
+            client
+                .queue_remove(QueueItemId(id), remove_from_client, blocklist)
+                .await?;
             tracing::info!("Removed queue item {id}");
         }
 
         // ── calendar ─────────────────────────────────────────────────────
         RadarrCommand::CalendarList { start, end } => {
-            print(&client.calendar_list(start.as_deref(), end.as_deref()).await?, format)?;
+            print(
+                &client
+                    .calendar_list(start.as_deref(), end.as_deref())
+                    .await?,
+                format,
+            )?;
         }
 
         // ── commands ──────────────────────────────────────────────────────
         RadarrCommand::CommandRefresh { movie_id } => {
-            print(&client.command_refresh_movie(movie_id.map(MovieId)).await?, format)?;
+            print(
+                &client.command_refresh_movie(movie_id.map(MovieId)).await?,
+                format,
+            )?;
         }
         RadarrCommand::CommandSearch { movie_ids } => {
             let ids: Vec<MovieId> = movie_ids.into_iter().map(MovieId).collect();

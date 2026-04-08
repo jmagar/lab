@@ -17,8 +17,13 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn queue_list(&self) -> Result<Vec<QueueItem>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        let val: serde_json::Value = self
+            .http
+            .get_json("/api/v3/queue?pageSize=1000")
+            .await
+            .map_err(RadarrError::from)?;
+        serde_json::from_value(val["records"].clone())
+            .map_err(|e| RadarrError::Api(crate::core::error::ApiError::Decode(e.to_string())))
     }
 
     /// Remove an item from the queue.
@@ -35,7 +40,12 @@ impl RadarrClient {
         remove_from_client: bool,
         blocklist: bool,
     ) -> Result<(), RadarrError> {
-        let _ = (id, remove_from_client, blocklist);
-        Ok(())
+        self.http
+            .delete(&format!(
+                "/api/v3/queue/{}?removeFromClient={remove_from_client}&blocklist={blocklist}",
+                id.0
+            ))
+            .await
+            .map_err(RadarrError::from)
     }
 }

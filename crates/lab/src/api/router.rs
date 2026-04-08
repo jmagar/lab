@@ -2,13 +2,23 @@
 
 use std::time::Duration;
 
-use axum::{Router, http::StatusCode, routing::get};
-use tower_http::{
-    compression::CompressionLayer, cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer,
+use axum::{
+    Router,
+    http::{HeaderName, StatusCode},
+    routing::get,
 };
+use tower_http::{
+    compression::CompressionLayer,
+    cors::CorsLayer,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    timeout::TimeoutLayer,
+    trace::TraceLayer,
+};
+use tracing::Level;
 
 use super::{health, services, state::AppState};
 
+#[allow(clippy::too_many_lines)]
 pub fn build_router(state: AppState) -> Router {
     let mut router = Router::new()
         .route("/health", get(health::health))
@@ -42,7 +52,10 @@ pub fn build_router(state: AppState) -> Router {
     }
     #[cfg(feature = "qbittorrent")]
     {
-        router = router.nest("/v1/qbittorrent", services::qbittorrent::routes(state.clone()));
+        router = router.nest(
+            "/v1/qbittorrent",
+            services::qbittorrent::routes(state.clone()),
+        );
     }
     #[cfg(feature = "tailscale")]
     {
@@ -101,13 +114,36 @@ pub fn build_router(state: AppState) -> Router {
         router = router.nest("/v1/apprise", services::apprise::routes(state.clone()));
     }
 
+    let x_request_id = HeaderName::from_static("x-request-id");
+
     router
         .with_state(state)
-        .layer(TraceLayer::new_for_http())
+        // TraceLayer reads x-request-id set by SetRequestId below.
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
+                let request_id = req
+                    .headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("-");
+                tracing::span!(
+                    Level::INFO,
+                    "request",
+                    method = %req.method(),
+                    path = %req.uri().path(),
+                    request_id,
+                    status = tracing::field::Empty,
+                )
+            }),
+        )
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
             Duration::from_secs(30),
         ))
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
+        // PropagateRequestId echoes the id back in the response header.
+        .layer(PropagateRequestIdLayer::new(x_request_id.clone()))
+        // SetRequestId generates a UUID for every request that lacks one.
+        .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid))
 }

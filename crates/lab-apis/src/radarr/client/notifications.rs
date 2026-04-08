@@ -15,8 +15,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn notification_list(&self) -> Result<Vec<Notification>, RadarrError> {
-        let _ = &self.http;
-        Ok(Vec::new())
+        self.http
+            .get_json("/api/v3/notification")
+            .await
+            .map_err(RadarrError::from)
     }
 
     /// Fire a test notification.
@@ -26,7 +28,10 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn notification_test(&self, id: NotificationId) -> Result<(), RadarrError> {
-        let _ = id;
-        Ok(())
+        let body = serde_json::json!({ "id": id.0 });
+        self.http
+            .post_void("/api/v3/notification/test", &body)
+            .await
+            .map_err(RadarrError::from)
     }
 }

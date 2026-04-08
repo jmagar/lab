@@ -103,6 +103,66 @@ impl HttpClient {
         Self::decode(resp).await
     }
 
+    /// GET a path, discarding the response body on success.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport or status failure.
+    pub async fn get_void(&self, path: &str) -> Result<(), ApiError> {
+        let url = self.url(path);
+        let resp = self
+            .apply_auth(self.inner.get(&url))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::check_status(resp).await
+    }
+
+    /// DELETE a path, discarding the response body on success.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn delete(&self, path: &str) -> Result<(), ApiError> {
+        let url = self.url(path);
+        let resp = self
+            .apply_auth(self.inner.delete(&url))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::check_status(resp).await
+    }
+
+    /// POST a JSON body, discarding the response body on success.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn post_void<B: serde::Serialize + Sync>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<(), ApiError> {
+        let url = self.url(path);
+        let resp = self
+            .apply_auth(self.inner.post(&url).json(body))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::check_status(resp).await
+    }
+
+    async fn check_status(resp: reqwest::Response) -> Result<(), ApiError> {
+        if resp.status().is_success() {
+            return Ok(());
+        }
+        let code = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        Err(match code {
+            401 | 403 => ApiError::Auth,
+            404 => ApiError::NotFound,
+            429 => ApiError::RateLimited { retry_after: None },
+            _ => ApiError::Server { status: code, body },
+        })
+    }
+
     async fn decode<T: serde::de::DeserializeOwned>(
         resp: reqwest::Response,
     ) -> Result<T, ApiError> {
