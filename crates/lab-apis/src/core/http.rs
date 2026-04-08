@@ -82,6 +82,33 @@ impl HttpClient {
         Self::decode(resp).await
     }
 
+    /// GET a path with query parameters and decode JSON.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn get_json_query<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<T, ApiError> {
+        let mut url = reqwest::Url::parse(&self.url(path))
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        if !query.is_empty() {
+            {
+                let mut pairs = url.query_pairs_mut();
+                for (k, v) in query {
+                    pairs.append_pair(k, v);
+                }
+            }
+        }
+        let resp = self
+            .apply_auth(self.inner.get(url))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::decode(resp).await
+    }
+
     /// POST a JSON body and decode the JSON response.
     ///
     /// # Errors
@@ -94,6 +121,42 @@ impl HttpClient {
         let url = self.url(path);
         let resp = self
             .apply_auth(self.inner.post(&url).json(body))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::decode(resp).await
+    }
+
+    /// PUT a JSON body and decode the JSON response.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn put_json<B: serde::Serialize + Sync, T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ApiError> {
+        let url = self.url(path);
+        let resp = self
+            .apply_auth(self.inner.put(&url).json(body))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::decode(resp).await
+    }
+
+    /// PATCH a JSON body and decode the JSON response.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn patch_json<B: serde::Serialize + Sync, T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ApiError> {
+        let url = self.url(path);
+        let resp = self
+            .apply_auth(self.inner.patch(&url).json(body))
             .send()
             .await
             .map_err(|e| ApiError::Network(e.to_string()))?;
@@ -122,6 +185,33 @@ impl HttpClient {
         let url = self.url(path);
         let resp = self
             .apply_auth(self.inner.delete(&url))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        Self::check_status(resp).await
+    }
+
+    /// DELETE a path with query parameters.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport or status failure.
+    pub async fn delete_query(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<(), ApiError> {
+        let mut url = reqwest::Url::parse(&self.url(path))
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        if !query.is_empty() {
+            {
+                let mut pairs = url.query_pairs_mut();
+                for (k, v) in query {
+                    pairs.append_pair(k, v);
+                }
+            }
+        }
+        let resp = self
+            .apply_auth(self.inner.delete(url))
             .send()
             .await
             .map_err(|e| ApiError::Network(e.to_string()))?;
