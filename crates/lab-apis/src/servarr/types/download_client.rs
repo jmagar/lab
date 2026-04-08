@@ -15,7 +15,7 @@ pub struct DownloadClientId(pub i64);
 #[serde(transparent)]
 pub struct RemotePathMappingId(pub i64);
 
-/// A configured download client (`SABnzbd`, `qBittorrent`, Deluge, …).
+/// A configured download client (`SABnzbd`, `qBittorrent`, `Deluge`, …).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadClient {
