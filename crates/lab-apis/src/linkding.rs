@@ -3,6 +3,18 @@
 //! This module exists so the `linkding` feature compiles. The real client,
 //! types, and MCP dispatch are deferred to a per-service plan.
 
+/// `LinkdingClient` — bookmark management methods.
+pub mod client;
+
+/// Linkding request/response types (serde).
+pub mod types;
+
+/// `LinkdingError` (thiserror).
+pub mod error;
+
+pub use client::LinkdingClient;
+pub use error::LinkdingError;
+
 use crate::core::plugin::{Category, PluginMeta};
 
 /// Compile-time metadata for the linkding module.

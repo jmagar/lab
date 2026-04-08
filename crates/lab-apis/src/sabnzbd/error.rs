@@ -1,10 +1,10 @@
-//! Arcane-specific errors.
+//! SABnzbd-specific errors.
 
 use crate::core::error::ApiError;
 
-/// Errors returned by `ArcaneClient`.
+/// Errors returned by `SabnzbdClient`.
 #[derive(Debug, thiserror::Error)]
-pub enum ArcaneError {
+pub enum SabnzbdError {
     /// Upstream HTTP/transport error.
     #[error(transparent)]
     Api(#[from] ApiError),
