@@ -12,6 +12,7 @@ Reference documentation for every service `lab-apis` wraps. Used by humans and a
 | Plex | `plex.openapi.yaml` | OpenAPI 3.x | [LukeHagar/plex-api-spec](https://github.com/LukeHagar/plex-api-spec) |
 | Tailscale | `tailscale.openapi.yaml` | OpenAPI 3.x | `https://api.tailscale.com/api/v2?outputOpenapiSchema=true` |
 | Memos | `memos.openapi.yaml` | OpenAPI from protobuf | [usememos/memos](https://github.com/usememos/memos/blob/main/proto/gen/openapi.yaml) |
+| Overseerr | `overseerr.openapi.yaml` | OpenAPI 3.0.2 | [sct/overseerr](https://github.com/sct/overseerr/blob/develop/openapi.yaml) |
 | Tautulli | `tautulli.md` | hand-scraped wiki | [Tautulli wiki](https://github.com/Tautulli/Tautulli/wiki/Tautulli-API-Reference) |
 | SABnzbd | `sabnzbd.md` | hand-scraped wiki | [sabnzbd.org wiki](https://sabnzbd.org/wiki/configuration/4.5/api) |
 | qBittorrent | `qbittorrent.md` | hand-scraped wiki | [qbit wiki](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)) + [qbittorrent-api docs](https://qbittorrent-api.readthedocs.io/en/latest/api.html) |
@@ -45,6 +46,9 @@ curl -fsSL "https://api.tailscale.com/api/v2?outputOpenapiSchema=true" > docs/ap
 
 # Memos
 curl -fsSL https://raw.githubusercontent.com/usememos/memos/main/proto/gen/openapi.yaml > docs/api-specs/memos.openapi.yaml
+
+# Overseerr
+curl -fsSL https://raw.githubusercontent.com/sct/overseerr/develop/openapi.yaml > docs/api-specs/overseerr.openapi.yaml
 
 # Paperless / ByteStash — fetch from YOUR instance, see paperless.md / bytestash.md
 

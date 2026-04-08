@@ -128,21 +128,18 @@ The service library layer stays unaware of instance naming. Instance lookup is a
 
 ## Adding a New Service
 
-The expected workflow is:
+Use [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md) as the authoritative end-to-end checklist.
 
-1. add the `lab-apis` module
-2. define client, types, and error
-3. implement health checks
-4. add the feature flag to `lab-apis`
-5. add the passthrough feature to `lab`
-6. add CLI dispatch
-7. add MCP dispatch
-8. register service metadata
-9. add tests
+At a high level:
 
-When available, OpenAPI is the preferred starting point. When it is not available, the hand-written contract should still land in the same structural shape.
+1. start from the upstream spec in `docs/upstream-api/`
+2. build the `lab-apis` client and types
+3. wire CLI, MCP, and HTTP shims
+4. register the service in feature flags, discovery, and metadata
+5. update the coverage doc under `docs/coverage/`
+6. test locally and verify against a real instance when possible
 
-The important rule is that the service client owns logic. CLI and MCP layers only adapt inputs and outputs.
+The important rule is that the service client owns logic. CLI, MCP, and HTTP layers only adapt inputs and outputs.
 
 ## Service Inventory Direction
 
