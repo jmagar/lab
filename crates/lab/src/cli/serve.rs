@@ -116,6 +116,7 @@ async fn dispatch(
         anyhow::bail!("unknown service `{service}`");
     }
     match service {
+        "extract" => crate::mcp::services::extract::dispatch(action, params).await,
         #[cfg(feature = "radarr")]
         "radarr" => crate::mcp::services::radarr::dispatch(action, params).await,
         other => anyhow::bail!("service `{other}` has no dispatcher wired"),
