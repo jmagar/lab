@@ -1,10 +1,10 @@
-//! Arcane-specific errors.
+//! Paperless-ngx-specific errors.
 
 use crate::core::error::ApiError;
 
-/// Errors returned by `ArcaneClient`.
+/// Errors returned by `PaperlessClient`.
 #[derive(Debug, thiserror::Error)]
-pub enum ArcaneError {
+pub enum PaperlessError {
     /// Upstream HTTP/transport error.
     #[error(transparent)]
     Api(#[from] ApiError),
