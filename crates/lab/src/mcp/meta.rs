@@ -4,10 +4,17 @@
 
 use crate::{
     catalog::{Catalog, build_catalog},
-    mcp::{envelope::ToolEnvelope, registry::ToolRegistry},
+    mcp::{
+        envelope::{ToolEnvelope, ToolError},
+        registry::ToolRegistry,
+    },
 };
 
 /// Dispatch the `lab.help` meta-tool.
-pub fn help(registry: &ToolRegistry) -> ToolEnvelope<Catalog> {
-    ToolEnvelope::new(build_catalog(registry))
+///
+/// Returns `Result` to match the repo-wide contract that all dispatch helpers
+/// are fallible, even though this particular helper is currently infallible.
+#[allow(clippy::unnecessary_wraps)]
+pub fn help(registry: &ToolRegistry) -> Result<ToolEnvelope<Catalog>, ToolError> {
+    Ok(ToolEnvelope::new(build_catalog(registry)))
 }

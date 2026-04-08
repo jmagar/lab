@@ -308,11 +308,49 @@ mod tests {
     fn all_features_registers_all_services() {
         let reg = build_default_registry();
         let names: Vec<&str> = reg.services().iter().map(|s| s.name).collect();
+        // extract is always-on (no feature flag)
         assert!(names.contains(&"extract"), "extract missing");
+        // feature-gated services — present only when the flag is enabled
         #[cfg(feature = "radarr")]
         assert!(names.contains(&"radarr"), "radarr missing");
         #[cfg(feature = "sonarr")]
         assert!(names.contains(&"sonarr"), "sonarr missing");
+        #[cfg(feature = "prowlarr")]
+        assert!(names.contains(&"prowlarr"), "prowlarr missing");
+        #[cfg(feature = "plex")]
+        assert!(names.contains(&"plex"), "plex missing");
+        #[cfg(feature = "tautulli")]
+        assert!(names.contains(&"tautulli"), "tautulli missing");
+        #[cfg(feature = "sabnzbd")]
+        assert!(names.contains(&"sabnzbd"), "sabnzbd missing");
+        #[cfg(feature = "qbittorrent")]
+        assert!(names.contains(&"qbittorrent"), "qbittorrent missing");
+        #[cfg(feature = "tailscale")]
+        assert!(names.contains(&"tailscale"), "tailscale missing");
+        #[cfg(feature = "linkding")]
+        assert!(names.contains(&"linkding"), "linkding missing");
+        #[cfg(feature = "memos")]
+        assert!(names.contains(&"memos"), "memos missing");
+        #[cfg(feature = "bytestash")]
+        assert!(names.contains(&"bytestash"), "bytestash missing");
+        #[cfg(feature = "paperless")]
+        assert!(names.contains(&"paperless"), "paperless missing");
+        #[cfg(feature = "arcane")]
+        assert!(names.contains(&"arcane"), "arcane missing");
+        #[cfg(feature = "unraid")]
+        assert!(names.contains(&"unraid"), "unraid missing");
+        #[cfg(feature = "unifi")]
+        assert!(names.contains(&"unifi"), "unifi missing");
+        #[cfg(feature = "overseerr")]
+        assert!(names.contains(&"overseerr"), "overseerr missing");
+        #[cfg(feature = "gotify")]
+        assert!(names.contains(&"gotify"), "gotify missing");
+        #[cfg(feature = "openai")]
+        assert!(names.contains(&"openai"), "openai missing");
+        #[cfg(feature = "qdrant")]
+        assert!(names.contains(&"qdrant"), "qdrant missing");
+        #[cfg(feature = "tei")]
+        assert!(names.contains(&"tei"), "tei missing");
         #[cfg(feature = "apprise")]
         assert!(names.contains(&"apprise"), "apprise missing");
     }
