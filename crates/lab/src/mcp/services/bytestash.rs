@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use lab_apis::bytestash::ByteStashClient;
 use lab_apis::bytestash::error::ByteStashError;
-use lab_apis::bytestash::types::{AuthCredentials, CategoryWriteRequest, SnippetWriteRequest};
+use lab_apis::bytestash::types::{AuthCredentials, ShareCreateRequest, SnippetWriteRequest};
 use lab_apis::core::Auth;
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
@@ -90,7 +90,7 @@ fn snippet_write_from_params(params: &Value) -> Result<SnippetWriteRequest, Tool
     })
 }
 
-fn category_write_from_params(params: &Value) -> Result<CategoryWriteRequest, ToolError> {
+fn share_create_from_params(params: &Value) -> Result<ShareCreateRequest, ToolError> {
     serde_json::from_value(body_from_params(params, &["payload", "body"])).map_err(|e| {
         ToolError::InvalidParam {
             message: e.to_string(),
@@ -154,13 +154,6 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Password",
             },
         ],
-    },
-    ActionSpec {
-        name: "auth.refresh",
-        description: "Refresh a JWT",
-        destructive: false,
-        returns: "Value",
-        params: &[],
     },
     ActionSpec {
         name: "snippets.list",
@@ -267,12 +260,26 @@ pub const ACTIONS: &[ActionSpec] = &[
         description: "Create a share link for a snippet",
         destructive: true,
         returns: "Value",
-        params: &[ParamSpec {
-            name: "id",
-            ty: "string",
-            required: true,
-            description: "Snippet ID",
-        }],
+        params: &[
+            ParamSpec {
+                name: "snippetId",
+                ty: "string",
+                required: true,
+                description: "Snippet ID to share",
+            },
+            ParamSpec {
+                name: "requiresAuth",
+                ty: "bool",
+                required: false,
+                description: "Whether the link requires auth to view",
+            },
+            ParamSpec {
+                name: "expiresIn",
+                ty: "integer",
+                required: false,
+                description: "Expiry in seconds (null = never)",
+            },
+        ],
     },
     ActionSpec {
         name: "snippets.share.get",
@@ -288,22 +295,10 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "categories.list",
-        description: "List categories",
+        description: "List snippet metadata including all categories in use",
         destructive: false,
         returns: "Value",
         params: &[],
-    },
-    ActionSpec {
-        name: "categories.create",
-        description: "Create a category",
-        destructive: true,
-        returns: "Value",
-        params: &[ParamSpec {
-            name: "name",
-            ty: "string",
-            required: true,
-            description: "Category name",
-        }],
     },
     ActionSpec {
         name: "users.list",
@@ -313,8 +308,8 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[],
     },
     ActionSpec {
-        name: "users.patch",
-        description: "Patch a user",
+        name: "users.toggle-active",
+        description: "Toggle a user's active status (admin only)",
         destructive: true,
         returns: "Value",
         params: &[ParamSpec {
@@ -385,11 +380,6 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let body = credentials_from_params(&params)?;
             to_json(require_client()?.auth_login(&body).await?)
         }
-        "auth.refresh" => {
-            let body = body_from_params(&params, &["payload", "body"]);
-            to_json(require_client()?.auth_refresh(&body).await?)
-        }
-
         "snippets.list" => to_json(require_client()?.snippets_list().await?),
         "snippets.get" => {
             let id = require_str(&params, "id")?;
@@ -416,8 +406,8 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             to_json(require_client()?.snippets_public_get(&id).await?)
         }
         "snippets.share.create" => {
-            let id = require_str(&params, "id")?;
-            to_json(require_client()?.snippets_share_create(&id).await?)
+            let body = share_create_from_params(&params)?;
+            to_json(require_client()?.snippets_share_create(&body).await?)
         }
         "snippets.share.get" => {
             let share_id = require_str(&params, "share_id")?;
@@ -425,16 +415,11 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
 
         "categories.list" => to_json(require_client()?.categories_list().await?),
-        "categories.create" => {
-            let body = category_write_from_params(&params)?;
-            to_json(require_client()?.categories_create(&body).await?)
-        }
 
         "users.list" => to_json(require_client()?.users_list().await?),
-        "users.patch" => {
+        "users.toggle-active" => {
             let id = require_str(&params, "id")?;
-            let body = body_from_params(&params, &["id", "payload", "body"]);
-            to_json(require_client()?.users_patch(&id, &body).await?)
+            to_json(require_client()?.users_toggle_active(&id).await?)
         }
         "users.delete" => {
             let id = require_str(&params, "id")?;

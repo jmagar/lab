@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::core::{ApiError, Auth, HttpClient, ServiceClient, ServiceStatus};
 
 use super::error::ByteStashError;
-use super::types::{AuthCredentials, CategoryWriteRequest, SnippetWriteRequest};
+use super::types::{AuthCredentials, ShareCreateRequest, SnippetWriteRequest};
 
 /// Client for a `ByteStash` instance.
 pub struct ByteStashClient {
@@ -83,14 +83,6 @@ impl ByteStashClient {
         self.post_value("/api/auth/login", body).await
     }
 
-    /// Refresh the current token.
-    pub async fn auth_refresh<B: serde::Serialize + Sync>(
-        &self,
-        body: &B,
-    ) -> Result<Value, ByteStashError> {
-        self.post_value("/api/auth/refresh", body).await
-    }
-
     /// List the caller's snippets.
     pub async fn snippets_list(&self) -> Result<Value, ByteStashError> {
         self.get_value("/api/snippets").await
@@ -125,56 +117,68 @@ impl ByteStashClient {
 
     /// List public snippets.
     pub async fn snippets_public_list(&self) -> Result<Value, ByteStashError> {
-        self.get_value("/api/snippets/public").await
+        self.get_value("/api/public/snippets").await
     }
 
     /// Get one public snippet.
     pub async fn snippets_public_get(&self, id: &str) -> Result<Value, ByteStashError> {
-        self.get_value(&format!("/api/snippets/public/{id}")).await
+        self.get_value(&format!("/api/public/snippets/{id}")).await
     }
 
     /// Create a share link for a snippet.
-    pub async fn snippets_share_create(&self, id: &str) -> Result<Value, ByteStashError> {
-        self.post_value(&format!("/api/snippets/share/{id}"), &serde_json::json!({}))
-            .await
+    pub async fn snippets_share_create(
+        &self,
+        body: &ShareCreateRequest,
+    ) -> Result<Value, ByteStashError> {
+        self.post_value("/api/share", body).await
     }
 
     /// Get a shared snippet.
     pub async fn snippets_share_get(&self, share_id: &str) -> Result<Value, ByteStashError> {
-        self.get_value(&format!("/api/snippets/share/{share_id}"))
-            .await
+        self.get_value(&format!("/api/share/{share_id}")).await
     }
 
-    /// List categories.
+    /// List all categories in use across the caller's snippets.
+    ///
+    /// `ByteStash` has no dedicated categories endpoint — this derives the list
+    /// from the snippets response and deduplicates.
     pub async fn categories_list(&self) -> Result<Value, ByteStashError> {
-        self.get_value("/api/categories").await
+        let snippets = self.snippets_list().await?;
+        let mut cats: Vec<String> = snippets
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .flat_map(|s| {
+                s["categories"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|c| c.as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        cats.sort_unstable();
+        cats.dedup();
+        Ok(serde_json::json!(cats))
     }
 
-    /// Create a category.
-    pub async fn categories_create(
-        &self,
-        body: &CategoryWriteRequest,
-    ) -> Result<Value, ByteStashError> {
-        self.post_value("/api/categories", body).await
-    }
-
-    /// List users.
+    /// List users (admin only — requires `ByteStash` with admin routes).
     pub async fn users_list(&self) -> Result<Value, ByteStashError> {
-        self.get_value("/api/users").await
+        self.get_value("/api/admin/users").await
     }
 
-    /// Patch a user.
-    pub async fn users_patch<B: serde::Serialize + Sync>(
-        &self,
-        id: &str,
-        body: &B,
-    ) -> Result<Value, ByteStashError> {
-        self.patch_value(&format!("/api/users/{id}"), body).await
+    /// Toggle a user's active status (admin only — requires `ByteStash` with admin routes).
+    pub async fn users_toggle_active(&self, id: &str) -> Result<Value, ByteStashError> {
+        self.patch_value(
+            &format!("/api/admin/users/{id}/toggle-active"),
+            &serde_json::json!({}),
+        )
+        .await
     }
 
-    /// Delete a user.
+    /// Delete a user (admin only — requires `ByteStash` with admin routes).
     pub async fn users_delete(&self, id: &str) -> Result<(), ByteStashError> {
-        self.delete_value(&format!("/api/users/{id}")).await
+        self.delete_value(&format!("/api/admin/users/{id}")).await
     }
 }
 

@@ -39,9 +39,16 @@ pub struct SnippetWriteRequest {
     pub categories: Vec<String>,
 }
 
-/// Create-category payload.
+/// Create-share payload.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CategoryWriteRequest {
-    /// Category name.
-    pub name: String,
+pub struct ShareCreateRequest {
+    /// ID of the snippet to share.
+    #[serde(rename = "snippetId")]
+    pub snippet_id: String,
+    /// Whether the share link requires auth to view.
+    #[serde(rename = "requiresAuth", skip_serializing_if = "Option::is_none")]
+    pub requires_auth: Option<bool>,
+    /// Expiry in seconds from now (null = never).
+    #[serde(rename = "expiresIn", skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<u64>,
 }
