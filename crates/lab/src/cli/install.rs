@@ -1,10 +1,9 @@
 //! `lab install` / `lab uninstall` / `lab init`.
 //!
 //! These subcommands mutate the user's `.mcp.json` and/or `~/.lab/.env`.
-//! Real logic lives in later plans — stubs just log intent.
+//! Real logic lives in later plans — stubs return a clear not-implemented error.
 
-use std::process::ExitCode;
-
+use anyhow::Result;
 use clap::Args;
 
 /// `lab install` arguments.
@@ -24,19 +23,25 @@ pub struct UninstallArgs {
 }
 
 /// Run `lab install`. Stub.
-pub fn run_install(args: &InstallArgs) -> ExitCode {
-    tracing::warn!(services = ?args.services, "lab install: not yet implemented");
-    ExitCode::SUCCESS
+///
+/// # Errors
+/// Always returns a not-yet-implemented error.
+pub fn run_install(_args: &InstallArgs) -> Result<()> {
+    anyhow::bail!("lab install: not yet implemented")
 }
 
 /// Run `lab uninstall`. Stub.
-pub fn run_uninstall(args: &UninstallArgs) -> ExitCode {
-    tracing::warn!(services = ?args.services, "lab uninstall: not yet implemented");
-    ExitCode::SUCCESS
+///
+/// # Errors
+/// Always returns a not-yet-implemented error.
+pub fn run_uninstall(_args: &UninstallArgs) -> Result<()> {
+    anyhow::bail!("lab uninstall: not yet implemented")
 }
 
 /// Run `lab init` setup wizard. Stub.
-pub fn run_init() -> ExitCode {
-    tracing::warn!("lab init: setup wizard not yet implemented");
-    ExitCode::SUCCESS
+///
+/// # Errors
+/// Always returns a not-yet-implemented error.
+pub fn run_init() -> Result<()> {
+    anyhow::bail!("lab init: setup wizard not yet implemented")
 }

@@ -178,9 +178,9 @@ pub async fn dispatch(cli: Cli) -> Result<ExitCode> {
         Command::Doctor => doctor::run(format).await,
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
-        Command::Install(args) => Ok(install::run_install(&args)),
-        Command::Uninstall(args) => Ok(install::run_uninstall(&args)),
-        Command::Init => Ok(install::run_init()),
+        Command::Install(args) => install::run_install(&args).map(|()| ExitCode::SUCCESS),
+        Command::Uninstall(args) => install::run_uninstall(&args).map(|()| ExitCode::SUCCESS),
+        Command::Init => install::run_init().map(|()| ExitCode::SUCCESS),
         Command::Help => help::run(format),
         Command::Completions(args) => Ok(completions::run(&args)),
         #[cfg(feature = "radarr")]
