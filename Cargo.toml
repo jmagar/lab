@@ -12,7 +12,7 @@ authors      = ["jmagar"]
 
 [workspace.dependencies]
 # runtime
-tokio        = { version = "1.51", features = ["rt-multi-thread", "macros", "signal", "fs", "io-util"] }
+tokio        = { version = "1.51", features = ["rt-multi-thread", "macros", "signal", "fs", "io-util", "io-std"] }
 futures      = "0.3"
 
 # http / serde / errors
