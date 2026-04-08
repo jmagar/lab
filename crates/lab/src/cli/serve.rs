@@ -14,6 +14,8 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
 use serde_json::Value;
 
+use crate::mcp::envelope::{build_error, build_error_extra, build_success};
+use crate::mcp::error::DispatchError;
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
 
 /// Transport choices for `lab serve`.
@@ -141,16 +143,22 @@ impl ServerHandler for LabMcpServer {
             match result {
                 Ok(v) => {
                     tracing::info!(service, action, elapsed_ms, "dispatch ok");
-                    Ok(CallToolResult::success(vec![Content::text(v.to_string())]))
+                    let envelope = build_success(&service, &action, v);
+                    Ok(CallToolResult::success(vec![Content::text(
+                        envelope.to_string(),
+                    )]))
                 }
                 Err(e) => {
-                    // Error message is serialized ToolError JSON — extract kind for the log field.
-                    let kind = serde_json::from_str::<Value>(&e.to_string())
-                        .ok()
-                        .and_then(|v| v["kind"].as_str().map(ToOwned::to_owned))
-                        .unwrap_or_else(|| "internal_error".to_string());
+                    let (kind, message, extra) = extract_error_info(&e);
                     tracing::warn!(service, action, elapsed_ms, kind, "dispatch error");
-                    Ok(CallToolResult::error(vec![Content::text(e.to_string())]))
+                    let envelope = if let Some(extra) = extra {
+                        build_error_extra(&service, &action, kind, &message, extra)
+                    } else {
+                        build_error(&service, &action, kind, &message)
+                    };
+                    Ok(CallToolResult::error(vec![Content::text(
+                        envelope.to_string(),
+                    )]))
                 }
             }
         }
@@ -229,5 +237,73 @@ async fn dispatch_service(
         #[cfg(feature = "apprise")]
         "apprise" => crate::mcp::services::apprise::dispatch(action, params).await,
         other => anyhow::bail!("service `{other}` has no dispatcher wired"),
+    }
+}
+
+/// Recover a stable kind tag and message from an `anyhow::Error`.
+///
+/// Priority:
+/// 1. Downcast to [`DispatchError`] — gives structured kind + optional extras.
+/// 2. Parse `e.to_string()` as JSON `{ "kind": "…" }` — covers `ToolError`
+///    errors that were serialized to string before entering anyhow (radarr).
+/// 3. Fall back to `"internal_error"`.
+fn extract_error_info(e: &anyhow::Error) -> (&'static str, String, Option<Value>) {
+    // 1. Structured DispatchError
+    if let Some(de) = e.downcast_ref::<DispatchError>() {
+        let extra = if de.valid.is_some() || de.param.is_some() || de.hint.is_some() {
+            Some(serde_json::json!({
+                "valid": de.valid,
+                "param": de.param,
+                "hint":  de.hint,
+            }))
+        } else {
+            None
+        };
+        return (de.kind, de.message.clone(), extra);
+    }
+    // 2. ToolError serialized as JSON string (legacy radarr path)
+    let msg = e.to_string();
+    if let Ok(v) = serde_json::from_str::<Value>(&msg) {
+        if let Some(kind_str) = v.get("kind").and_then(|k| k.as_str()) {
+            let kind: &'static str = static_kind(kind_str);
+            let message = v["message"].as_str().unwrap_or(&msg).to_string();
+            // Preserve structured extras (valid list, param name, hint) if present.
+            let extra = {
+                let has_valid = v.get("valid").map_or(false, |v| !v.is_null());
+                let has_param = v.get("param").map_or(false, |v| !v.is_null());
+                let has_hint = v.get("hint").map_or(false, |v| !v.is_null());
+                if has_valid || has_param || has_hint {
+                    Some(serde_json::json!({
+                        "valid": v.get("valid"),
+                        "param": v.get("param"),
+                        "hint":  v.get("hint"),
+                    }))
+                } else {
+                    None
+                }
+            };
+            return (kind, message, extra);
+        }
+    }
+    // 3. Generic fallback
+    ("internal_error", msg, None)
+}
+
+/// Map a serialized kind string to a `&'static str` from the canonical vocabulary.
+fn static_kind(s: &str) -> &'static str {
+    match s {
+        "unknown_action" => "unknown_action",
+        "unknown_subaction" => "unknown_subaction",
+        "missing_param" => "missing_param",
+        "invalid_param" => "invalid_param",
+        "unknown_instance" => "unknown_instance",
+        "auth_failed" => "auth_failed",
+        "not_found" => "not_found",
+        "rate_limited" => "rate_limited",
+        "validation_failed" => "validation_failed",
+        "network_error" => "network_error",
+        "server_error" => "server_error",
+        "decode_error" => "decode_error",
+        _ => "internal_error",
     }
 }
