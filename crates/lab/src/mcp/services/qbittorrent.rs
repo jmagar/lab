@@ -14,7 +14,7 @@ pub const ACTIONS: &[ActionSpec] = &[];
 /// Dispatch one MCP call against the qbittorrent tool.
 ///
 /// # Errors
-/// Returns not_implemented for all actions until the service is wired.
+/// Returns `not_implemented` for all actions until the service is wired.
 pub async fn dispatch(action: &str, _params: Value) -> Result<Value> {
     match action {
         "help" => Ok(serde_json::json!({

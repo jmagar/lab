@@ -9,7 +9,6 @@ use tower_http::{
 
 use super::{health, services, state::AppState};
 
-#[must_use]
 pub fn build_router(state: AppState) -> Router {
     let mut router = Router::new()
         .route("/health", get(health::health))

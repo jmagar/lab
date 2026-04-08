@@ -48,6 +48,7 @@ impl ToolRegistry {
 /// Service entries are added in alphabetical order as services come
 /// online.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn build_default_registry() -> ToolRegistry {
     let mut reg = ToolRegistry::new();
 
