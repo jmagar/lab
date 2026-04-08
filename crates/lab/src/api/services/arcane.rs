@@ -15,12 +15,7 @@ async fn handle(
 ) -> Result<Json<Value>, crate::mcp::envelope::ToolError> {
     let start = std::time::Instant::now();
     let action = req.action.clone();
-    let result = crate::mcp::services::arcane::dispatch(&req.action, req.params)
-        .await
-        .map_err(|e| crate::mcp::envelope::ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: e.to_string(),
-        });
+    let result = crate::mcp::services::arcane::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
         Ok(_) => tracing::info!(service = "arcane", action, elapsed_ms, "dispatch ok"),
