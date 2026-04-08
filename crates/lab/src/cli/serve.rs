@@ -48,7 +48,7 @@ pub struct ServeArgs {
 /// Run the serve subcommand.
 pub async fn run(args: ServeArgs) -> Result<ExitCode> {
     let registry = build_default_registry();
-    let registry = filter_registry(registry, &args.services);
+    let registry = filter_registry(registry, &args.services)?;
     let registry = Arc::new(registry);
 
     match args.transport {
@@ -60,9 +60,22 @@ pub async fn run(args: ServeArgs) -> Result<ExitCode> {
     }
 }
 
-fn filter_registry(registry: ToolRegistry, services: &[String]) -> ToolRegistry {
+fn filter_registry(registry: ToolRegistry, services: &[String]) -> Result<ToolRegistry> {
     if services.is_empty() {
-        return registry;
+        return Ok(registry);
+    }
+    let valid: Vec<&str> = registry.services().iter().map(|e| e.name).collect();
+    let unknown: Vec<&str> = services
+        .iter()
+        .filter(|s| !valid.contains(&s.as_str()))
+        .map(String::as_str)
+        .collect();
+    if !unknown.is_empty() {
+        anyhow::bail!(
+            "unknown service(s): {}. Valid services: {}",
+            unknown.join(", "),
+            valid.join(", ")
+        );
     }
     let mut out = ToolRegistry::new();
     for entry in registry.services() {
@@ -70,7 +83,7 @@ fn filter_registry(registry: ToolRegistry, services: &[String]) -> ToolRegistry 
             out.register(entry.clone());
         }
     }
-    out
+    Ok(out)
 }
 
 /// JSON Schema for every service tool's input: `action` (required) + `params` (optional object).
