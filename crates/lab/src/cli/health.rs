@@ -77,7 +77,7 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     #[cfg(feature = "unraid")]
     rows.push(HealthRow::not_configured("unraid"));
     #[cfg(feature = "unifi")]
-    rows.push(HealthRow::not_configured("unifi"));
+    rows.push(unifi_row().await);
     #[cfg(feature = "overseerr")]
     rows.push(HealthRow::not_configured("overseerr"));
     #[cfg(feature = "gotify")]
@@ -121,6 +121,41 @@ async fn radarr_row() -> HealthRow {
         },
         Err(e) => HealthRow {
             service: "radarr".into(),
+            reachable: false,
+            auth_ok: false,
+            version: None,
+            latency_ms: 0,
+            message: Some(e.to_string()),
+        },
+    }
+}
+
+#[cfg(feature = "unifi")]
+async fn unifi_row() -> HealthRow {
+    use lab_apis::core::ServiceClient;
+
+    let Some(client) = crate::mcp::services::unifi::client_from_env() else {
+        return HealthRow {
+            service: "unifi".into(),
+            reachable: false,
+            auth_ok: false,
+            version: None,
+            latency_ms: 0,
+            message: Some("UNIFI_URL / UNIFI_API_KEY not set".into()),
+        };
+    };
+
+    match <_ as ServiceClient>::health(&client).await {
+        Ok(s) => HealthRow {
+            service: "unifi".into(),
+            reachable: s.reachable,
+            auth_ok: s.auth_ok,
+            version: s.version,
+            latency_ms: s.latency_ms,
+            message: s.message,
+        },
+        Err(e) => HealthRow {
+            service: "unifi".into(),
             reachable: false,
             auth_ok: false,
             version: None,
