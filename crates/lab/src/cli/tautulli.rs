@@ -1,6 +1,6 @@
 //! `lab tautulli` — CLI stub (not yet implemented).
 //!
-//! Replace this stub once `tautulli` SDK client is complete.
+//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -8,19 +8,38 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::output::OutputFormat;
+use crate::output::{OutputFormat, print};
 
 /// `lab tautulli` arguments.
 #[derive(Debug, Args)]
 pub struct TautulliArgs {
     /// Action to run (e.g. help).
     pub action: Option<String>,
+    /// Action-specific parameters as JSON.
+    #[arg(long)]
+    pub params: Option<String>,
 }
 
-/// Run the `lab tautulli` subcommand stub.
+/// Run the `lab tautulli` subcommand.
 ///
 /// # Errors
-/// Always returns a not-yet-implemented message.
-pub async fn run(_args: TautulliArgs, _format: OutputFormat) -> Result<ExitCode> {
-    anyhow::bail!("tautulli is not yet implemented — run `lab help` for available services")
+/// Returns an error if dispatch fails.
+pub async fn run(args: TautulliArgs, format: OutputFormat) -> Result<ExitCode> {
+    let action = args.action.as_deref().unwrap_or("help");
+    let params = args
+        .params
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()?
+        .unwrap_or(serde_json::Value::Null);
+    let result = crate::mcp::services::tautulli::dispatch(action, params)
+        .await
+        .map_err(|te| {
+            anyhow::anyhow!(
+                "{}",
+                serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
+            )
+        })?;
+    print(&result, format)?;
+    Ok(ExitCode::SUCCESS)
 }

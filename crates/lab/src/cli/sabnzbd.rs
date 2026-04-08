@@ -1,6 +1,6 @@
 //! `lab sabnzbd` — CLI stub (not yet implemented).
 //!
-//! Replace this stub once `sabnzbd` SDK client is complete.
+//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -8,19 +8,38 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::output::OutputFormat;
+use crate::output::{OutputFormat, print};
 
 /// `lab sabnzbd` arguments.
 #[derive(Debug, Args)]
 pub struct SabnzbdArgs {
     /// Action to run (e.g. help).
     pub action: Option<String>,
+    /// Action-specific parameters as JSON.
+    #[arg(long)]
+    pub params: Option<String>,
 }
 
-/// Run the `lab sabnzbd` subcommand stub.
+/// Run the `lab sabnzbd` subcommand.
 ///
 /// # Errors
-/// Always returns a not-yet-implemented message.
-pub async fn run(_args: SabnzbdArgs, _format: OutputFormat) -> Result<ExitCode> {
-    anyhow::bail!("sabnzbd is not yet implemented — run `lab help` for available services")
+/// Returns an error if dispatch fails.
+pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
+    let action = args.action.as_deref().unwrap_or("help");
+    let params = args
+        .params
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()?
+        .unwrap_or(serde_json::Value::Null);
+    let result = crate::mcp::services::sabnzbd::dispatch(action, params)
+        .await
+        .map_err(|te| {
+            anyhow::anyhow!(
+                "{}",
+                serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
+            )
+        })?;
+    print(&result, format)?;
+    Ok(ExitCode::SUCCESS)
 }
