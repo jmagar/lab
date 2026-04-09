@@ -3,6 +3,9 @@
 //! Each module exposes `pub fn routes(state: AppState) -> Router` that mounts
 //! a single `POST /` handler dispatching on `action` — identical shape to MCP.
 
+/// Shared dispatch wrapper: confirmation gate, timing, logging.
+pub mod helpers;
+
 pub mod extract;
 
 #[cfg(feature = "radarr")]
