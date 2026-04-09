@@ -90,6 +90,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 required: true,
                 description: "Password",
             },
+            ParamSpec {
+                name: "payload",
+                ty: "json",
+                required: false,
+                description: "Alternative: full JSON body (overrides individual params)",
+            },
         ],
     },
     ActionSpec {
@@ -109,6 +115,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "string",
                 required: true,
                 description: "Password",
+            },
+            ParamSpec {
+                name: "payload",
+                ty: "json",
+                required: false,
+                description: "Alternative: full JSON body (overrides individual params)",
             },
         ],
     },
@@ -167,6 +179,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 required: false,
                 description: "Category list JSON",
             },
+            ParamSpec {
+                name: "payload",
+                ty: "json",
+                required: false,
+                description: "Alternative: full JSON body (overrides individual params)",
+            },
         ],
     },
     ActionSpec {
@@ -174,12 +192,50 @@ pub const ACTIONS: &[ActionSpec] = &[
         description: "Update a snippet",
         destructive: true,
         returns: "Value",
-        params: &[ParamSpec {
-            name: "id",
-            ty: "string",
-            required: true,
-            description: "Snippet ID",
-        }],
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "string",
+                required: true,
+                description: "Snippet ID",
+            },
+            ParamSpec {
+                name: "title",
+                ty: "string",
+                required: false,
+                description: "Snippet title",
+            },
+            ParamSpec {
+                name: "description",
+                ty: "string",
+                required: false,
+                description: "Optional description",
+            },
+            ParamSpec {
+                name: "language",
+                ty: "string",
+                required: false,
+                description: "Optional language label",
+            },
+            ParamSpec {
+                name: "fragments",
+                ty: "json",
+                required: false,
+                description: "Snippet fragments JSON",
+            },
+            ParamSpec {
+                name: "categories",
+                ty: "json",
+                required: false,
+                description: "Category list JSON",
+            },
+            ParamSpec {
+                name: "payload",
+                ty: "json",
+                required: false,
+                description: "Alternative: full JSON body (overrides individual params)",
+            },
+        ],
     },
     ActionSpec {
         name: "snippets.delete",
@@ -235,6 +291,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "integer",
                 required: false,
                 description: "Expiry in seconds (null = never)",
+            },
+            ParamSpec {
+                name: "payload",
+                ty: "json",
+                required: false,
+                description: "Alternative: full JSON body (overrides individual params)",
             },
         ],
     },

@@ -269,10 +269,10 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
             handles.push(tokio::spawn(async move {
                 let _permit = sem.acquire_owned().await.ok()?;
                 let start = std::time::Instant::now();
-                let result: Result<(), _> = $client.health().await;
+                let result = $client.health().await;
                 let latency_ms = Some(start.elapsed().as_millis() as u64);
                 let (reachable, auth_ok, message) = match result {
-                    Ok(()) => (true, true, None),
+                    Ok(_) => (true, true, None),
                     Err(e) => {
                         let msg = e.to_string();
                         // Classify error by string heuristics since error types differ.
@@ -377,15 +377,8 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
     #[cfg(feature = "sabnzbd")]
     {
         if let (Some(url), Some(key)) = (vars.get("SABNZBD_URL"), vars.get("SABNZBD_API_KEY")) {
-            use lab_apis::core::Auth;
-            if let Ok(client) = lab_apis::sabnzbd::SabnzbdClient::new(
-                url,
-                Auth::ApiKey {
-                    header: "X-Api-Key".to_owned(),
-                    key: key.clone(),
-                },
-            ) {
-                spawn_health!("sabnzbd", client);
+            if let Ok(client) = lab_apis::sabnzbd::SabnzbdClient::new(url, key.clone()) {
+                spawn_health_trait!("sabnzbd", client);
             }
         }
     }
