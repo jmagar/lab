@@ -42,7 +42,10 @@ fn coerce_value(raw: &str) -> Value {
     if let Ok(n) = raw.parse::<f64>()
         && let Some(num) = serde_json::Number::from_f64(n)
     {
-        return Value::Number(num);
+        // Round-trip check for floats too: '01234' parses as 1234.0 but must stay a string.
+        if n.to_string() == raw {
+            return Value::Number(num);
+        }
     }
     Value::String(raw.to_string())
 }
