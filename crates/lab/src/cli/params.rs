@@ -1,8 +1,11 @@
-//! Shared key=value param parsing for action-style CLI subcommands.
+//! CLI key=value param parsing for action-style subcommands.
 //!
 //! Both ByteStash and UniFi (and future services) expose an `action + params`
-//! dispatch surface. This module owns the canonical parse/coerce logic so it
+//! CLI surface. This module owns the canonical parse/coerce logic so it
 //! is not duplicated per service.
+//!
+//! MCP and HTTP surfaces receive JSON directly from the protocol and never
+//! call this function — it belongs in cli/, not services/.
 
 use anyhow::Result;
 use serde_json::{Map, Value};

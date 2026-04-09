@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::Args;
 
 use crate::output::{OutputFormat, print};
-use crate::services::params::parse_kv_params;
+use crate::cli::params::parse_kv_params;
 
 /// `lab bytestash` arguments.
 #[derive(Debug, Args)]

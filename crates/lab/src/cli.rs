@@ -9,6 +9,7 @@ pub mod doctor;
 pub mod health;
 pub mod help;
 pub mod install;
+pub mod params;
 pub mod plugins;
 pub mod serve;
 
