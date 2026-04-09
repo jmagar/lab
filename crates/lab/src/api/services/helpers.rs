@@ -111,6 +111,14 @@ where
             elapsed_ms,
             "dispatch ok"
         ),
+        Err(e) if e.is_internal() => tracing::error!(
+            surface = ctx.surface,
+            service,
+            action = action_log,
+            elapsed_ms,
+            kind = e.kind(),
+            "dispatch error"
+        ),
         Err(e) => tracing::warn!(
             surface = ctx.surface,
             service,
