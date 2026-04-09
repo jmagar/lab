@@ -21,7 +21,7 @@ pub enum AppEvent {
         latest: Option<String>,
     },
     /// Plugin preview data ready to display.
-    PreviewReady(crate::tui::preview::PreviewState),
+    PreviewReady(crate::tui::preview::PreviewReady),
     /// Health check results for all enabled services.
     HealthChecksDone(Vec<ServiceHealth>),
 }
