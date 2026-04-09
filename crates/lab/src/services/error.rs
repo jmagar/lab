@@ -95,9 +95,8 @@ impl IntoResponse for ToolError {
             "auth_failed" => StatusCode::UNAUTHORIZED,
             "not_found" => StatusCode::NOT_FOUND,
             "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
-            "missing_param" | "invalid_param" | "validation_failed" => {
-                StatusCode::UNPROCESSABLE_ENTITY
-            }
+            "missing_param" | "invalid_param" | "validation_failed"
+            | "confirmation_required" => StatusCode::UNPROCESSABLE_ENTITY,
             "unknown_action" | "unknown_subaction" | "unknown_instance" => StatusCode::BAD_REQUEST,
             "network_error" | "server_error" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
