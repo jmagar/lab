@@ -1,0 +1,232 @@
+# Testing
+
+Last updated: 2026-04-09
+
+This document is the canonical testing contract for `lab`.
+
+It defines:
+
+- which layer owns which tests
+- that implementation work must follow TDD
+- the minimum required test coverage for new services
+- what must be verified locally before claiming work complete
+- what belongs in CI-safe tests versus live verification
+
+## Goal
+
+Testing should prove:
+
+- shared behavior is correct
+- surface adapters are aligned
+- public contracts stay stable
+- service integrations are observable and diagnosable
+- destructive operations are not casually exercised
+
+## TDD Rule
+
+Implementation work must follow test-driven development.
+
+Rules:
+
+- write or update the failing test first for the behavior being added, fixed, or refactored
+- make the smallest implementation change that makes the test pass
+- refactor only after the behavior is covered
+- if true test-first sequencing is not possible, document the reason explicitly in the task or review note
+
+This applies to:
+
+- new service endpoints
+- shared contract changes
+- bug fixes
+- refactors that change observable behavior
+
+Pure docs changes are excluded.
+
+## Test Layers
+
+There are four testing layers.
+
+### 1. SDK Tests
+
+Owned by `lab-apis`.
+
+Purpose:
+
+- request construction
+- response decoding
+- transport error mapping
+- service client behavior
+
+Rules:
+
+- use mock HTTP where practical
+- do not depend on real external services in CI-safe tests
+- test shared HTTP behavior in `lab-apis`
+
+### 2. Shared Dispatch-Layer Tests
+
+Owned by `crates/lab/src/services`.
+
+Purpose:
+
+- operation matching
+- param validation
+- shared schema behavior
+- client / instance resolution
+- shared `ToolError` behavior
+
+Rules:
+
+- these tests must not require CLI, MCP, or HTTP protocol setup
+- they should be the primary place to test shared product-surface orchestration
+
+### 3. Surface Adapter Tests
+
+Owned by `crates/lab/src/cli`, `crates/lab/src/mcp`, and `crates/lab/src/api`.
+
+Purpose:
+
+- CLI parsing and output behavior
+- MCP envelope shape, help, schema, and elicitation behavior
+- HTTP request extraction, status mapping, and response shape
+
+Rules:
+
+- do not re-test shared operation semantics here unless the transport changes them
+- keep these tests focused on adapter behavior
+
+### 4. Live Verification
+
+Owned by the implementation task for the service or feature.
+
+Purpose:
+
+- confirm real integration behavior against a running service
+- verify observability and operator-facing behavior
+- catch mismatches between upstream docs and the real system
+
+Rules:
+
+- live verification is opt-in and environment-dependent
+- destructive actions must not be exercised unless explicitly intended and safe
+
+## CI-Safe Versus Live
+
+### CI-Safe Tests Must Cover
+
+- SDK behavior with mocks
+- shared dispatch validation and error behavior
+- MCP and HTTP envelope shape
+- CLI parsing and machine-readable output behavior
+- contract-level serialization and error shape tests
+
+### Live Verification Must Cover When Available
+
+- at least one successful read-only path
+- at least one failing path with the expected stable `kind`
+- observability evidence for the path
+- docs/coverage alignment with the actual implementation
+
+## Required Minimums For New Services
+
+A new service is not fully online until all of the following exist:
+
+1. SDK tests for core client behavior
+2. shared dispatch-layer tests for operation matching and validation
+3. MCP adapter tests for envelope and schema behavior
+4. HTTP API adapter tests for status and JSON shape
+5. CLI tests for parsing and machine-readable output where the service exposes CLI behavior
+6. non-destructive live verification for CLI and MCP when a real instance is available
+7. observability verification according to [OBSERVABILITY.md](./OBSERVABILITY.md)
+
+## Required Minimums For Non-Service Refactors
+
+If a change affects shared contracts such as:
+
+- observability
+- errors
+- serialization
+- dispatch
+- CLI behavior
+- MCP behavior
+- HTTP API behavior
+
+then the change must add or update tests at the layer where the contract actually lives.
+
+Those tests should be introduced before or alongside the implementation change, not added as cleanup afterward.
+
+## Destructive-Operation Rule
+
+Destructive operations must be tested differently from read-only operations.
+
+Rules:
+
+- destructive behavior may be covered by unit tests or mocked integration tests
+- destructive live verification is not required by default
+- if destructive live verification is performed, it must be intentional, documented, and safe
+- non-destructive paths must still be live-tested when the user asked for real verification
+
+## Contract Tests
+
+The following contracts should have focused tests:
+
+- error kind stability
+- MCP success and error envelope shape
+- HTTP JSON error shape and status mapping
+- shared operation schema projection
+- observability field presence
+
+These tests should be narrow and stable. They exist to prevent silent contract drift.
+
+## Verification Before Completion
+
+Before claiming work complete, run the smallest set of commands that proves the touched contract still holds.
+
+Minimum expectation:
+
+- the change followed the TDD rule above unless explicitly documented otherwise
+- targeted tests for the touched files or contract
+- crate-level tests for the touched crate when the change is non-trivial
+- broader verification when the change affects shared infrastructure
+
+If tests were not run, say so explicitly.
+
+## Command Guidance
+
+Common commands:
+
+```bash
+just check
+just test
+just lint
+cargo test -p lab-apis
+cargo test -p lab
+```
+
+Use narrower commands first when iterating, then broaden before completion.
+
+## Coverage Docs
+
+Coverage docs in `docs/coverage/` are part of verification, not a substitute for tests.
+
+Rules:
+
+- coverage docs must reflect the real implementation surface
+- coverage docs must not claim live-tested status unless that testing actually happened
+- implementation counts and file references must stay aligned with code
+
+## Ownership Summary
+
+- `lab-apis` owns SDK tests
+- `crates/lab/src/services` owns shared dispatch tests
+- `cli`, `mcp`, and `api` own adapter tests
+- implementation tasks own live verification
+
+## Related Docs
+
+- [OBSERVABILITY.md](./OBSERVABILITY.md)
+- [ERRORS.md](./ERRORS.md)
+- [SERIALIZATION.md](./SERIALIZATION.md)
+- [DISPATCH.md](./DISPATCH.md)
+- [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
+- [OPERATIONS.md](./OPERATIONS.md)
