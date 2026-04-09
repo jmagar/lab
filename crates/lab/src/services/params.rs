@@ -34,7 +34,10 @@ fn coerce_value(raw: &str) -> Value {
         return Value::Bool(false);
     }
     if let Ok(n) = raw.parse::<i64>() {
-        return Value::Number(n.into());
+        // Round-trip check: '01' parses as 1 but must stay a string.
+        if n.to_string() == raw {
+            return Value::Number(n.into());
+        }
     }
     if let Ok(n) = raw.parse::<f64>()
         && let Some(num) = serde_json::Number::from_f64(n)
@@ -67,6 +70,21 @@ mod tests {
     fn parse_kv_params_rejects_missing_equals() {
         let err = parse_kv_params(vec!["broken".to_string()]).unwrap_err();
         assert!(err.to_string().contains("expected key=value"));
+    }
+
+    #[test]
+    fn coerce_preserves_leading_zeros_as_strings() {
+        let value = parse_kv_params(vec![
+            "zip=01234".to_string(),
+            "code=007".to_string(),
+            "padded=01".to_string(),
+            "plain=7".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(value["zip"], "01234");
+        assert_eq!(value["code"], "007");
+        assert_eq!(value["padded"], "01");
+        assert_eq!(value["plain"], 7);
     }
 
     #[test]
