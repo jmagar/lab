@@ -13,6 +13,7 @@ use std::future::Future;
 
 use axum::Json;
 use serde_json::Value;
+use tracing::Instrument;
 
 use lab_apis::core::action::ActionSpec;
 
@@ -99,8 +100,9 @@ where
 
     // Clone action before the move into dispatch — needed for post-dispatch logging.
     let action_log = action.clone();
+    let dispatch_span = tracing::info_span!("dispatch", surface = ctx.surface, service, action = action_log);
     let start = std::time::Instant::now();
-    let result = dispatch(action, params).await;
+    let result = dispatch(action, params).instrument(dispatch_span).await;
     let elapsed_ms = start.elapsed().as_millis();
 
     match &result {
