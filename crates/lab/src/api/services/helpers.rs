@@ -96,23 +96,24 @@ where
         m.remove("confirm");
     }
 
-    // Timed dispatch — no params in log fields.
+    // Clone action before the move into dispatch — needed for post-dispatch logging.
+    let action_log = action.clone();
     let start = std::time::Instant::now();
     let result = dispatch(action, params).await;
     let elapsed_ms = start.elapsed().as_millis();
 
-    // Borrow action from result context via the closure's captured binding — already moved.
-    // Re-borrow service/ctx for logging.
     match &result {
         Ok(_) => tracing::info!(
             surface = ctx.surface,
             service,
+            action = action_log,
             elapsed_ms,
             "dispatch ok"
         ),
         Err(e) => tracing::warn!(
             surface = ctx.surface,
             service,
+            action = action_log,
             elapsed_ms,
             kind = e.kind(),
             "dispatch error"
