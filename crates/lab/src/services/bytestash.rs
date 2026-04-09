@@ -13,25 +13,12 @@
 use serde_json::Value;
 
 use lab_apis::bytestash::ByteStashClient;
-use lab_apis::bytestash::error::ByteStashError;
 use lab_apis::bytestash::types::{AuthCredentials, ShareCreateRequest, SnippetWriteRequest};
 use lab_apis::core::Auth;
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
 use crate::services::error::ToolError;
 use crate::services::helpers::{body_from_params, require_str, to_json};
-
-impl From<ByteStashError> for ToolError {
-    fn from(e: ByteStashError) -> Self {
-        let kind = match &e {
-            ByteStashError::Api(api) => api.kind(),
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
 
 fn require_client() -> Result<ByteStashClient, ToolError> {
     client_from_env().ok_or_else(|| ToolError::Sdk {
@@ -350,6 +337,16 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }));
     }
 
+    // Validate action before constructing the client — callers get a clear
+    // "unknown_action" error rather than a confusing "not configured" error.
+    if !ACTIONS.iter().any(|a| a.name == action) {
+        return Err(ToolError::UnknownAction {
+            message: format!("unknown action '{action}'"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        });
+    }
+
     // Hoist client construction: one client per dispatch, fail early if not configured.
     let client = require_client()?;
 
@@ -374,7 +371,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         "snippets.update" => {
             let id = require_str(&params, "id")?;
-            let body = body_from_params(&params, &["id", "payload", "body"]);
+            let body = snippet_write_from_params(&params)?;
             to_json(client.snippets_update(&id, &body).await?)
         }
         "snippets.delete" => {
