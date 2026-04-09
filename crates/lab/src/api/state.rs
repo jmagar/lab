@@ -3,13 +3,15 @@
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
-use crate::mcp::registry::build_default_registry;
+use crate::mcp::registry::{ToolRegistry, build_default_registry};
 
 /// Application state passed to every axum handler via `State<AppState>`.
 #[derive(Clone)]
 pub struct AppState {
     /// Pre-built service+action catalog for discovery endpoints.
     pub catalog: Arc<Catalog>,
+    /// Tool registry with dispatch functions for each service.
+    pub registry: Arc<ToolRegistry>,
 }
 
 impl AppState {
@@ -17,8 +19,10 @@ impl AppState {
     #[must_use]
     pub fn new() -> Self {
         let registry = build_default_registry();
+        let catalog = Arc::new(build_catalog(&registry));
         Self {
-            catalog: Arc::new(build_catalog(&registry)),
+            catalog,
+            registry: Arc::new(registry),
         }
     }
 }

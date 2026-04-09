@@ -17,50 +17,17 @@ use tower_http::{
 };
 use tracing::Level;
 
-use super::{health, services, state::AppState};
+use super::{ActionRequest, health, state::AppState};
+use crate::services::context::DispatchContext;
+use crate::services::error::ToolError;
 
 #[allow(clippy::too_many_lines)]
 pub fn build_router(state: AppState) -> Router {
-    let mut router = Router::new()
+    let router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
-        .route("/v1/{service}/actions", get(service_actions));
-
-    // Mount each feature-gated service. Adding a new service: add one line here.
-    macro_rules! mount {
-        ($feat:literal => $module:ident) => {
-            #[cfg(feature = $feat)]
-            {
-                router = router.nest(
-                    concat!("/v1/", $feat),
-                    services::$module::routes(state.clone()),
-                );
-            }
-        };
-    }
-
-    router = router.nest("/v1/extract", services::extract::routes(state.clone()));
-    mount!("radarr"      => radarr);
-    mount!("sonarr"      => sonarr);
-    mount!("prowlarr"    => prowlarr);
-    mount!("plex"        => plex);
-    mount!("tautulli"    => tautulli);
-    mount!("sabnzbd"     => sabnzbd);
-    mount!("qbittorrent" => qbittorrent);
-    mount!("tailscale"   => tailscale);
-    mount!("linkding"    => linkding);
-    mount!("memos"       => memos);
-    mount!("bytestash"   => bytestash);
-    mount!("paperless"   => paperless);
-    mount!("arcane"      => arcane);
-    mount!("unraid"      => unraid);
-    mount!("unifi"       => unifi);
-    mount!("overseerr"   => overseerr);
-    mount!("gotify"      => gotify);
-    mount!("openai"      => openai);
-    mount!("qdrant"      => qdrant);
-    mount!("tei"         => tei);
-    mount!("apprise"     => apprise);
+        .route("/v1/{service}/actions", get(service_actions))
+        .route("/v1/{service}", axum::routing::post(dispatch_service));
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
@@ -99,24 +66,57 @@ pub fn build_router(state: AppState) -> Router {
         .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid))
 }
 
+/// Generic dispatch handler: looks up the service in the registry and
+/// calls its `DispatchFn` through the shared `handle_action` wrapper.
+async fn dispatch_service(
+    State(state): State<AppState>,
+    axum::extract::Path(service): axum::extract::Path<String>,
+    axum::Json(req): axum::Json<ActionRequest>,
+) -> Result<axum::Json<serde_json::Value>, ToolError> {
+    let svc = state
+        .registry
+        .services()
+        .iter()
+        .find(|s| s.name == service)
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("unknown service `{service}`"),
+        })?;
+
+    let dispatch = svc.dispatch;
+    let actions = svc.actions;
+    let ctx = DispatchContext {
+        surface: "api",
+        instance: None,
+    };
+
+    super::services::helpers::handle_action(
+        svc.name,
+        ctx,
+        req,
+        actions,
+        move |action, params| dispatch(action, params),
+    )
+    .await
+}
+
 async fn service_actions(
     State(state): State<AppState>,
     axum::extract::Path(service): axum::extract::Path<String>,
-) -> Result<axum::Json<serde_json::Value>, crate::mcp::envelope::ToolError> {
+) -> Result<axum::Json<serde_json::Value>, ToolError> {
     let entry = state
         .catalog
         .services
         .iter()
         .find(|s| s.name == service)
-        .ok_or_else(|| crate::mcp::envelope::ToolError::Sdk {
+        .ok_or_else(|| ToolError::Sdk {
             sdk_kind: "not_found".into(),
             message: format!("unknown service `{service}`"),
         })?;
-    let actions =
-        serde_json::to_value(&entry.actions).map_err(|e| crate::mcp::envelope::ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("serialize actions: {e}"),
-        })?;
+    let actions = serde_json::to_value(&entry.actions).map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".into(),
+        message: format!("serialize actions: {e}"),
+    })?;
     Ok(axum::Json(actions))
 }
 
