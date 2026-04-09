@@ -331,8 +331,9 @@ pub fn client_from_env() -> Option<ByteStashClient> {
 /// # Errors
 #[allow(clippy::too_many_lines)]
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    match action {
-        "help" => Ok(serde_json::json!({
+    // Handle help before client construction — it doesn't need a configured service.
+    if action == "help" {
+        return Ok(serde_json::json!({
             "service": "bytestash",
             "actions": ACTIONS.iter().map(|a| serde_json::json!({
                 "name": a.name,
@@ -346,61 +347,66 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                     "description": p.description,
                 })).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
-        })),
+        }));
+    }
 
-        "auth.config" => to_json(require_client()?.auth_config().await?),
+    // Hoist client construction: one client per dispatch, fail early if not configured.
+    let client = require_client()?;
+
+    match action {
+        "auth.config" => to_json(client.auth_config().await?),
         "auth.register" => {
             let body = credentials_from_params(&params)?;
-            to_json(require_client()?.auth_register(&body).await?)
+            to_json(client.auth_register(&body).await?)
         }
         "auth.login" => {
             let body = credentials_from_params(&params)?;
-            to_json(require_client()?.auth_login(&body).await?)
+            to_json(client.auth_login(&body).await?)
         }
-        "snippets.list" => to_json(require_client()?.snippets_list().await?),
+        "snippets.list" => to_json(client.snippets_list().await?),
         "snippets.get" => {
             let id = require_str(&params, "id")?;
-            to_json(require_client()?.snippet_get(&id).await?)
+            to_json(client.snippet_get(&id).await?)
         }
         "snippets.create" => {
             let body = snippet_write_from_params(&params)?;
-            to_json(require_client()?.snippets_create(&body).await?)
+            to_json(client.snippets_create(&body).await?)
         }
         "snippets.update" => {
             let id = require_str(&params, "id")?;
             let body = body_from_params(&params, &["id", "payload", "body"]);
-            to_json(require_client()?.snippets_update(&id, &body).await?)
+            to_json(client.snippets_update(&id, &body).await?)
         }
         "snippets.delete" => {
             let id = require_str(&params, "id")?;
-            require_client()?.snippets_delete(&id).await?;
+            client.snippets_delete(&id).await?;
             Ok(Value::Null)
         }
 
-        "snippets.public.list" => to_json(require_client()?.snippets_public_list().await?),
+        "snippets.public.list" => to_json(client.snippets_public_list().await?),
         "snippets.public.get" => {
             let id = require_str(&params, "id")?;
-            to_json(require_client()?.snippets_public_get(&id).await?)
+            to_json(client.snippets_public_get(&id).await?)
         }
         "snippets.share.create" => {
             let body = share_create_from_params(&params)?;
-            to_json(require_client()?.snippets_share_create(&body).await?)
+            to_json(client.snippets_share_create(&body).await?)
         }
         "snippets.share.get" => {
             let share_id = require_str(&params, "share_id")?;
-            to_json(require_client()?.snippets_share_get(&share_id).await?)
+            to_json(client.snippets_share_get(&share_id).await?)
         }
 
-        "categories.list" => to_json(require_client()?.categories_list().await?),
+        "categories.list" => to_json(client.categories_list().await?),
 
-        "users.list" => to_json(require_client()?.users_list().await?),
+        "users.list" => to_json(client.users_list().await?),
         "users.toggle-active" => {
             let id = require_str(&params, "id")?;
-            to_json(require_client()?.users_toggle_active(&id).await?)
+            to_json(client.users_toggle_active(&id).await?)
         }
         "users.delete" => {
             let id = require_str(&params, "id")?;
-            require_client()?.users_delete(&id).await?;
+            client.users_delete(&id).await?;
             Ok(Value::Null)
         }
 
