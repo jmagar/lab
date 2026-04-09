@@ -18,9 +18,9 @@ async fn handle(
     let result = crate::mcp::services::plex::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
-        Ok(_) => tracing::info!(service = "plex", action, elapsed_ms, "dispatch ok"),
+        Ok(_) => tracing::info!(surface = "api", service = "plex", action, elapsed_ms, "dispatch ok"),
         Err(e) => tracing::warn!(
-            service = "plex",
+            surface = "api", service = "plex",
             action,
             elapsed_ms,
             kind = e.kind(),

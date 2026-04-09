@@ -18,9 +18,9 @@ async fn handle(
     let result = crate::mcp::services::tailscale::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
-        Ok(_) => tracing::info!(service = "tailscale", action, elapsed_ms, "dispatch ok"),
+        Ok(_) => tracing::info!(surface = "api", service = "tailscale", action, elapsed_ms, "dispatch ok"),
         Err(e) => tracing::warn!(
-            service = "tailscale",
+            surface = "api", service = "tailscale",
             action,
             elapsed_ms,
             kind = e.kind(),

@@ -18,9 +18,9 @@ async fn handle(
     let result = crate::mcp::services::apprise::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
-        Ok(_) => tracing::info!(service = "apprise", action, elapsed_ms, "dispatch ok"),
+        Ok(_) => tracing::info!(surface = "api", service = "apprise", action, elapsed_ms, "dispatch ok"),
         Err(e) => tracing::warn!(
-            service = "apprise",
+            surface = "api", service = "apprise",
             action,
             elapsed_ms,
             kind = e.kind(),

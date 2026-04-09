@@ -18,9 +18,9 @@ async fn handle(
     let result = crate::mcp::services::paperless::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
-        Ok(_) => tracing::info!(service = "paperless", action, elapsed_ms, "dispatch ok"),
+        Ok(_) => tracing::info!(surface = "api", service = "paperless", action, elapsed_ms, "dispatch ok"),
         Err(e) => tracing::warn!(
-            service = "paperless",
+            surface = "api", service = "paperless",
             action,
             elapsed_ms,
             kind = e.kind(),

@@ -18,9 +18,9 @@ async fn handle(
     let result = crate::mcp::services::tautulli::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
-        Ok(_) => tracing::info!(service = "tautulli", action, elapsed_ms, "dispatch ok"),
+        Ok(_) => tracing::info!(surface = "api", service = "tautulli", action, elapsed_ms, "dispatch ok"),
         Err(e) => tracing::warn!(
-            service = "tautulli",
+            surface = "api", service = "tautulli",
             action,
             elapsed_ms,
             kind = e.kind(),
