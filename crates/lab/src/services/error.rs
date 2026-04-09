@@ -131,4 +131,18 @@ impl ToolError {
             Self::Sdk { sdk_kind, .. } => sdk_kind.as_str(),
         }
     }
+
+    /// Whether this error represents an internal/fatal failure (ERROR level)
+    /// vs a caller/user error (WARN level).
+    ///
+    /// Per OBSERVABILITY.md:
+    /// - WARN: user/caller errors the caller can fix
+    /// - ERROR: unhandled/fatal errors requiring operator investigation
+    #[must_use]
+    pub fn is_internal(&self) -> bool {
+        matches!(
+            self.kind(),
+            "internal_error" | "server_error" | "decode_error"
+        )
+    }
 }
