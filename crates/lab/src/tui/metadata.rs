@@ -1,247 +1,25 @@
-//! Collected `PluginMeta` references for every compiled-in service.
-//! The TUI reads this list to render the plugin browser.
+//! Collected service metadata for every compiled-in service.
+//! The TUI reads from the shared tool registry to render the plugin browser,
+//! avoiding duplication with `RegisteredService` in `mcp/registry.rs`.
+
+use std::sync::OnceLock;
 
 use lab_apis::core::ServiceClient;
 
+use crate::mcp::registry::{RegisteredService, ToolRegistry, build_default_registry};
 use crate::tui::events::ServiceHealth;
 
-/// One row in the plugin manager view.
-#[derive(Debug, Clone)]
-pub struct PluginRow {
-    /// Service identifier.
-    pub name: &'static str,
-    /// Short description.
-    pub description: &'static str,
-    /// Category slug.
-    pub category: &'static str,
+/// Lazily-initialized default registry shared by the TUI.
+static DEFAULT_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
+
+fn registry() -> &'static ToolRegistry {
+    DEFAULT_REGISTRY.get_or_init(build_default_registry)
 }
 
-/// Return every compiled-in plugin.
+/// Return every compiled-in service from the shared registry.
 #[must_use]
-pub fn all_plugins() -> Vec<PluginRow> {
-    let mut rows = Vec::new();
-
-    // extract is always-on (Bootstrap) — no feature flag needed
-    {
-        let meta = lab_apis::extract::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "radarr")]
-    {
-        let meta = lab_apis::radarr::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "sonarr")]
-    {
-        let meta = lab_apis::sonarr::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "prowlarr")]
-    {
-        let meta = lab_apis::prowlarr::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "overseerr")]
-    {
-        let meta = lab_apis::overseerr::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "plex")]
-    {
-        let meta = lab_apis::plex::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "tautulli")]
-    {
-        let meta = lab_apis::tautulli::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "sabnzbd")]
-    {
-        let meta = lab_apis::sabnzbd::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "qbittorrent")]
-    {
-        let meta = lab_apis::qbittorrent::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "tailscale")]
-    {
-        let meta = lab_apis::tailscale::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "unraid")]
-    {
-        let meta = lab_apis::unraid::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "unifi")]
-    {
-        let meta = lab_apis::unifi::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "arcane")]
-    {
-        let meta = lab_apis::arcane::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "linkding")]
-    {
-        let meta = lab_apis::linkding::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "memos")]
-    {
-        let meta = lab_apis::memos::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "bytestash")]
-    {
-        let meta = lab_apis::bytestash::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "paperless")]
-    {
-        let meta = lab_apis::paperless::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "gotify")]
-    {
-        let meta = lab_apis::gotify::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "apprise")]
-    {
-        let meta = lab_apis::apprise::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "openai")]
-    {
-        let meta = lab_apis::openai::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "qdrant")]
-    {
-        let meta = lab_apis::qdrant::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    #[cfg(feature = "tei")]
-    {
-        let meta = lab_apis::tei::META;
-        rows.push(PluginRow {
-            name: meta.name,
-            description: meta.description,
-            category: meta.category.as_str(),
-        });
-    }
-
-    rows
+pub fn all_services() -> &'static [RegisteredService] {
+    registry().services()
 }
 
 /// Run health checks for all enabled services concurrently (max 5 in parallel).
@@ -362,18 +140,6 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
-    #[cfg(feature = "plex")]
-    {
-        if let (Some(url), Some(token)) = (vars.get("PLEX_URL"), vars.get("PLEX_TOKEN")) {
-            use lab_apis::core::Auth;
-            if let Ok(client) =
-                lab_apis::plex::PlexClient::new(url, Auth::Token { token: token.clone() })
-            {
-                spawn_health!("plex", client);
-            }
-        }
-    }
-
     #[cfg(feature = "sabnzbd")]
     {
         if let (Some(url), Some(key)) = (vars.get("SABNZBD_URL"), vars.get("SABNZBD_API_KEY")) {
@@ -383,153 +149,22 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
-    #[cfg(feature = "linkding")]
+    #[cfg(feature = "unifi")]
     {
-        if let (Some(url), Some(token)) = (vars.get("LINKDING_URL"), vars.get("LINKDING_TOKEN")) {
+        if let (Some(url), Some(user), Some(pass)) = (
+            vars.get("UNIFI_URL"),
+            vars.get("UNIFI_USERNAME"),
+            vars.get("UNIFI_PASSWORD"),
+        ) {
             use lab_apis::core::Auth;
-            if let Ok(client) =
-                lab_apis::linkding::LinkdingClient::new(url, Auth::Token { token: token.clone() })
-            {
-                spawn_health!("linkding", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "memos")]
-    {
-        if let (Some(url), Some(token)) = (vars.get("MEMOS_URL"), vars.get("MEMOS_TOKEN")) {
-            use lab_apis::core::Auth;
-            if let Ok(client) =
-                lab_apis::memos::MemosClient::new(url, Auth::Token { token: token.clone() })
-            {
-                spawn_health!("memos", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "bytestash")]
-    {
-        if let (Some(url), Some(token)) = (vars.get("BYTESTASH_URL"), vars.get("BYTESTASH_TOKEN")) {
-            use lab_apis::core::Auth;
-            if let Ok(client) = lab_apis::bytestash::ByteStashClient::new(
+            if let Ok(client) = lab_apis::unifi::UnifiClient::new(
                 url,
-                Auth::Bearer { token: token.clone() },
-            ) {
-                spawn_health_trait!("bytestash", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "paperless")]
-    {
-        if let (Some(url), Some(token)) =
-            (vars.get("PAPERLESS_URL"), vars.get("PAPERLESS_TOKEN"))
-        {
-            use lab_apis::core::Auth;
-            if let Ok(client) = lab_apis::paperless::PaperlessClient::new(
-                url,
-                Auth::Token { token: token.clone() },
-            ) {
-                spawn_health!("paperless", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "gotify")]
-    {
-        if let (Some(url), Some(token)) = (vars.get("GOTIFY_URL"), vars.get("GOTIFY_TOKEN")) {
-            use lab_apis::core::Auth;
-            if let Ok(client) = lab_apis::gotify::GotifyClient::new(
-                url,
-                Auth::ApiKey {
-                    header: "X-Gotify-Key".to_owned(),
-                    key: token.clone(),
+                Auth::Basic {
+                    username: user.clone(),
+                    password: pass.clone(),
                 },
             ) {
-                spawn_health!("gotify", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "apprise")]
-    {
-        if let Some(url) = vars.get("APPRISE_URL") {
-            use lab_apis::core::Auth;
-            let auth = vars
-                .get("APPRISE_TOKEN")
-                .map(|t| Auth::Bearer { token: t.clone() })
-                .unwrap_or(Auth::None);
-            if let Ok(client) = lab_apis::apprise::AppriseClient::new(url, auth) {
-                spawn_health!("apprise", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "openai")]
-    {
-        if let Some(key) = vars.get("OPENAI_API_KEY") {
-            use lab_apis::core::Auth;
-            let base = vars
-                .get("OPENAI_URL")
-                .map(String::as_str)
-                .unwrap_or("https://api.openai.com");
-            if let Ok(client) = lab_apis::openai::OpenAiClient::new(
-                base,
-                Auth::Bearer { token: key.clone() },
-            ) {
-                spawn_health!("openai", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "qdrant")]
-    {
-        if let Some(url) = vars.get("QDRANT_URL") {
-            use lab_apis::core::Auth;
-            let auth = vars
-                .get("QDRANT_API_KEY")
-                .map(|k| Auth::ApiKey {
-                    header: "api-key".to_owned(),
-                    key: k.clone(),
-                })
-                .unwrap_or(Auth::None);
-            if let Ok(client) = lab_apis::qdrant::QdrantClient::new(url, auth) {
-                spawn_health!("qdrant", client);
-            }
-        }
-    }
-
-    #[cfg(feature = "tei")]
-    {
-        if let Some(url) = vars.get("TEI_URL") {
-            use lab_apis::core::Auth;
-            let auth = vars
-                .get("TEI_API_KEY")
-                .map(|k| Auth::ApiKey {
-                    header: "api-key".to_owned(),
-                    key: k.clone(),
-                })
-                .unwrap_or(Auth::None);
-            if let Ok(client) = lab_apis::tei::TeiClient::new(url, auth) {
-                spawn_health!("tei", client);
-            }
-        }
-    }
-
-    // unifi: UnifiClient does not implement ServiceClient health() — skip health probing.
-    #[cfg(feature = "unifi")]
-    let _ = vars.get("UNIFI_URL"); // suppress unused-vars lint
-
-    #[cfg(feature = "arcane")]
-    {
-        if let Some(url) = vars.get("ARCANE_URL") {
-            use lab_apis::core::Auth;
-            let auth = vars
-                .get("ARCANE_TOKEN")
-                .map(|t| Auth::Bearer { token: t.clone() })
-                .unwrap_or(Auth::None);
-            if let Ok(client) = lab_apis::arcane::ArcaneClient::new(url, auth) {
-                spawn_health!("arcane", client);
+                spawn_health_trait!("unifi", client);
             }
         }
     }

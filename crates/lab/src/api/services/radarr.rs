@@ -15,7 +15,7 @@ async fn handle(
     State(_state): State<AppState>,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, crate::services::error::ToolError> {
-    handle_action("radarr", DispatchContext { surface: "api", instance: None }, req, crate::mcp::services::radarr::ACTIONS, |action, params| async move {
+    handle_action("radarr", DispatchContext { surface: "api", instance: None }, req, crate::mcp::services::radarr::actions(), |action, params| async move {
         crate::mcp::services::radarr::dispatch(&action, params).await
     })
     .await

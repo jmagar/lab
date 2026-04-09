@@ -10,11 +10,11 @@ It defines:
 - what must never be logged
 - what must be verified before a service is considered online
 
-This is not optional guidance. Service integrations and shared infrastructure should conform to it.
+This is not optional guidance. Service integrations and shared infrastructure must conform to it.
 
 ## Goal
 
-Every user-visible service action should be traceable end to end across:
+Every user-visible service action must be traceable end to end across:
 
 - CLI dispatch
 - MCP dispatch
@@ -22,7 +22,7 @@ Every user-visible service action should be traceable end to end across:
 - shared SDK transport
 - service health probes
 
-When a request fails, operators should be able to answer:
+When a request fails, operators must be able to answer:
 
 - which surface invoked it
 - which service and action ran
@@ -129,7 +129,7 @@ When a health check runs, logs must include:
 
 - `operation = "health"`
 
-Health probes should also preserve the normal dispatch and request fields for their surface.
+Health probes must also preserve the normal dispatch and request fields for their surface.
 
 ### Destructive Actions
 
@@ -138,7 +138,7 @@ Destructive actions must log:
 - intent before execution
 - outcome after execution
 
-Intent logs should make it clear which action is about to mutate state. Outcome logs should indicate success or failure.
+Intent logs must make it clear which action is about to mutate state. Outcome logs must indicate success or failure.
 
 ## Required Fields
 
@@ -193,7 +193,7 @@ Rules:
 - HTTP spans must wrap SDK calls
 - `HttpClient` request events must inherit those spans rather than creating detached logs
 
-The practical result should be:
+The practical result must be:
 
 - outbound request logs can be tied back to the invoking surface
 - HTTP-originated requests can be tied back to a `request_id`

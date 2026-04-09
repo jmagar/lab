@@ -185,6 +185,19 @@ impl From<lab_apis::radarr::error::RadarrError> for ToolError {
     }
 }
 
+#[cfg(feature = "sabnzbd")]
+impl From<lab_apis::sabnzbd::error::SabnzbdError> for ToolError {
+    fn from(e: lab_apis::sabnzbd::error::SabnzbdError) -> Self {
+        let kind = match &e {
+            lab_apis::sabnzbd::error::SabnzbdError::Api(api) => api.kind(),
+        };
+        Self::Sdk {
+            sdk_kind: kind.to_string(),
+            message: e.to_string(),
+        }
+    }
+}
+
 #[cfg(feature = "unifi")]
 impl From<lab_apis::unifi::error::UnifiError> for ToolError {
     fn from(e: lab_apis::unifi::error::UnifiError) -> Self {

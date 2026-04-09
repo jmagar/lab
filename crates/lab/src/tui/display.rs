@@ -13,3 +13,13 @@ pub fn sanitize_display(s: &str, max_len: usize) -> String {
         truncated
     }
 }
+
+const SPINNER_FRAMES: [&str; 8] = [
+    "\u{280b}", "\u{2819}", "\u{2839}", "\u{2838}", "\u{283c}", "\u{2834}", "\u{2826}", "\u{2827}",
+];
+
+/// Return the spinner frame for the given tick count.
+/// Uses 8-frame braille spinner cycling at tick rate.
+pub fn spinner_frame(tick: u64) -> &'static str {
+    SPINNER_FRAMES[(tick as usize) % SPINNER_FRAMES.len()]
+}

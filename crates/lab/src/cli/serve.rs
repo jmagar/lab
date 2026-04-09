@@ -147,7 +147,13 @@ impl ServerHandler for LabMcpServer {
         let params = args.get("params").cloned().unwrap_or(Value::Null);
 
         let start = std::time::Instant::now();
-        let result = dispatch_service(&service, &action, params).await;
+        let svc = self.registry.services().iter().find(|s| s.name == service);
+        let result = match svc {
+            Some(entry) => (entry.dispatch)(action.clone(), params)
+                .await
+                .map_err(|te| anyhow::anyhow!("{te}")),
+            None => Err(anyhow::anyhow!("service `{service}` has no dispatcher wired")),
+        };
         let elapsed_ms = start.elapsed().as_millis();
 
         match result {
@@ -182,110 +188,6 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
     Ok(ExitCode::SUCCESS)
-}
-
-#[allow(clippy::too_many_lines)]
-async fn dispatch_service(service: &str, action: &str, params: Value) -> Result<Value> {
-    match service {
-        "extract" => crate::mcp::services::extract::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "radarr")]
-        "radarr" => crate::mcp::services::radarr::dispatch(action, params)
-            .await
-            .map_err(|te| {
-                anyhow::anyhow!(
-                    "{}",
-                    serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
-                )
-            }),
-        #[cfg(feature = "sonarr")]
-        "sonarr" => crate::mcp::services::sonarr::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "prowlarr")]
-        "prowlarr" => crate::mcp::services::prowlarr::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "plex")]
-        "plex" => crate::mcp::services::plex::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "tautulli")]
-        "tautulli" => crate::mcp::services::tautulli::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "sabnzbd")]
-        "sabnzbd" => crate::mcp::services::sabnzbd::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "qbittorrent")]
-        "qbittorrent" => crate::mcp::services::qbittorrent::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "tailscale")]
-        "tailscale" => crate::mcp::services::tailscale::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "linkding")]
-        "linkding" => crate::mcp::services::linkding::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "memos")]
-        "memos" => crate::mcp::services::memos::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "bytestash")]
-        "bytestash" => crate::services::bytestash::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "paperless")]
-        "paperless" => crate::mcp::services::paperless::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "arcane")]
-        "arcane" => crate::mcp::services::arcane::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "unraid")]
-        "unraid" => crate::mcp::services::unraid::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "unifi")]
-        "unifi" => crate::mcp::services::unifi::dispatch(action, params)
-            .await
-            .map_err(|te| {
-                anyhow::anyhow!(
-                    "{}",
-                    serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
-                )
-            }),
-        #[cfg(feature = "overseerr")]
-        "overseerr" => crate::mcp::services::overseerr::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "gotify")]
-        "gotify" => crate::mcp::services::gotify::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "openai")]
-        "openai" => crate::mcp::services::openai::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "qdrant")]
-        "qdrant" => crate::mcp::services::qdrant::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "tei")]
-        "tei" => crate::mcp::services::tei::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        #[cfg(feature = "apprise")]
-        "apprise" => crate::mcp::services::apprise::dispatch(action, params)
-            .await
-            .map_err(|te| anyhow::anyhow!("{te}")),
-        other => anyhow::bail!("service `{other}` has no dispatcher wired"),
-    }
 }
 
 /// Recover a stable kind tag and message from an `anyhow::Error`.

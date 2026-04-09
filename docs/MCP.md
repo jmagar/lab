@@ -13,7 +13,7 @@ Rules:
 
 - `stdio` is the default
 - HTTP requires a bearer token via `LAB_MCP_HTTP_TOKEN`
-- transport changes should not change dispatch or catalog behavior
+- transport changes must not change dispatch or catalog behavior
 - HTTP transport may expose opt-in CORS origins
 
 ## One Tool Per Service
@@ -94,7 +94,7 @@ It handles:
 
 Its job is discovery and server-level visibility, not service-specific business logic.
 
-The top-level catalog is generated from the same action metadata that powers per-service help. It should never be maintained as a second hand-written registry.
+The top-level catalog is generated from the same action metadata that powers per-service help. It must never be maintained as a second hand-written registry.
 
 ## Result Envelope
 
@@ -186,7 +186,7 @@ Modes:
 
 The default is to require confirmation, not to silently proceed.
 
-Prompts should include:
+Prompts must include:
 
 - service
 - action
@@ -203,7 +203,7 @@ That means:
 - `--services` filtering matters
 - `lab.help` only shows what is actually available
 
-The same catalog builder should feed:
+The same catalog builder must feed:
 
 - `lab.help`
 - `lab://catalog`

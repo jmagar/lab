@@ -99,7 +99,7 @@ fn tui_main(rx: mpsc::Receiver<AppEvent>) -> Result<()> {
     let mut app = App::new();
 
     // Initial render.
-    terminal.draw(|f| ui(f, &app))?;
+    terminal.draw(|f| ui(f, &mut app))?;
     app.dirty = false;
 
     while let Ok(ev) = rx.recv() {
@@ -110,7 +110,7 @@ fn tui_main(rx: mpsc::Receiver<AppEvent>) -> Result<()> {
         }
 
         if app.dirty {
-            terminal.draw(|f| ui(f, &app))?;
+            terminal.draw(|f| ui(f, &mut app))?;
             app.dirty = false;
         }
     }
@@ -207,7 +207,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         (_, KeyCode::Char('j')) | (_, KeyCode::Down) => {
             match app.current_tab {
                 Tab::Services => {
-                    app.services.selected = app.services.selected.saturating_add(1);
+                    app.services.select_next();
                 }
                 Tab::Plugins => {
                     let len = app.marketplace.plugins.len();
@@ -225,7 +225,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         (_, KeyCode::Char('k')) | (_, KeyCode::Up) => {
             match app.current_tab {
                 Tab::Services => {
-                    app.services.selected = app.services.selected.saturating_sub(1);
+                    app.services.select_prev();
                 }
                 Tab::Plugins => {
                     app.marketplace.selected =
@@ -248,7 +248,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 /// Render the full TUI frame.
-fn ui(f: &mut Frame<'_>, app: &App) {
+fn ui(f: &mut Frame<'_>, app: &mut App) {
     let area = f.area();
 
     // Vertical layout: tab bar | content | toasts | key hints
@@ -291,7 +291,7 @@ fn render_tabs(f: &mut Frame<'_>, app: &App, area: Rect) {
     f.render_widget(tabs, area);
 }
 
-fn render_content(f: &mut Frame<'_>, app: &App, area: Rect) {
+fn render_content(f: &mut Frame<'_>, app: &mut App, area: Rect) {
     match app.current_tab {
         Tab::Services => render_services(f, app, area),
         Tab::Plugins => render_plugins(f, app, area),
@@ -299,92 +299,16 @@ fn render_content(f: &mut Frame<'_>, app: &App, area: Rect) {
     }
 }
 
-fn render_services(f: &mut Frame<'_>, app: &App, area: Rect) {
-    let plugins = crate::tui::metadata::all_plugins();
-    let content = if plugins.is_empty() {
-        "No services compiled in.".to_owned()
-    } else {
-        plugins
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                let marker = if i == app.services.selected { "> " } else { "  " };
-                format!(
-                    "{marker}[{cat}] {name} — {desc}",
-                    cat = p.category,
-                    name = p.name,
-                    desc = p.description
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Services ");
-    let para = Paragraph::new(content).block(block);
-    f.render_widget(para, area);
+fn render_services(f: &mut Frame<'_>, app: &mut App, area: Rect) {
+    app.services.render(f, area, app.tick_count);
 }
 
-fn render_plugins(f: &mut Frame<'_>, app: &App, area: Rect) {
-    let content = if app.marketplace.loading {
-        spinner_frame(app.tick_count).to_owned() + " Loading marketplace\u{2026}"
-    } else if app.marketplace.plugins.is_empty() {
-        "No plugins loaded. Press <Enter> to fetch marketplace catalog.".to_owned()
-    } else {
-        app.marketplace
-            .plugins
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                let marker = if i == app.marketplace.selected { "> " } else { "  " };
-                format!("{marker}{} ({})", p.name, p.ecosystem.as_str())
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Plugins ");
-    let para = Paragraph::new(content).block(block);
-    f.render_widget(para, area);
+fn render_plugins(f: &mut Frame<'_>, app: &mut App, area: Rect) {
+    app.marketplace.render(f, area, app.tick_count);
 }
 
-fn render_update(f: &mut Frame<'_>, app: &App, area: Rect) {
-    use crate::tui::update::UpdateState;
-
-    let content = match &app.update {
-        UpdateState::Idle => format!(
-            "Current version: {}\nPress <Enter> to check for updates.",
-            env!("CARGO_PKG_VERSION")
-        ),
-        UpdateState::Checking => {
-            format!("{} Checking for updates\u{2026}", spinner_frame(app.tick_count))
-        }
-        UpdateState::Available { current, latest } => {
-            format!("Update available: {current} \u{2192} {latest}\nPress <Enter> to download.")
-        }
-        UpdateState::Downloading { progress } => {
-            format!(
-                "{} Downloading\u{2026} {:.0}%",
-                spinner_frame(app.tick_count),
-                progress * 100.0
-            )
-        }
-        UpdateState::Verifying => {
-            format!("{} Verifying\u{2026}", spinner_frame(app.tick_count))
-        }
-        UpdateState::Done => "Up to date.".to_owned(),
-        UpdateState::Error { message } => format!("Error: {message}"),
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Update ");
-    let para = Paragraph::new(content).block(block);
-    f.render_widget(para, area);
+fn render_update(f: &mut Frame<'_>, app: &mut App, area: Rect) {
+    app.update.render(f, area, app.tick_count);
 }
 
 fn render_toasts(f: &mut Frame<'_>, app: &App, area: Rect) {
@@ -413,12 +337,4 @@ fn render_hints(f: &mut Frame<'_>, area: Rect) {
         Span::raw(" quit"),
     ]);
     f.render_widget(Paragraph::new(hints), area);
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const SPINNER_FRAMES: [&str; 8] = ["\u{280b}", "\u{2819}", "\u{2839}", "\u{2838}", "\u{283c}", "\u{2834}", "\u{2826}", "\u{2827}"];
-
-fn spinner_frame(tick: u64) -> &'static str {
-    SPINNER_FRAMES[(tick as usize) % SPINNER_FRAMES.len()]
 }

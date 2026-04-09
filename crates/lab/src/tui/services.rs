@@ -13,7 +13,7 @@ use secrecy::SecretString;
 
 use crate::tui::display::sanitize_display;
 use crate::tui::events::ServiceHealth;
-use crate::tui::metadata::all_plugins;
+use crate::tui::metadata::all_services;
 
 /// Visual health indicator for a single service row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +102,7 @@ fn load_env_vars() -> HashMap<String, String> {
 impl LabServicesState {
     /// Move selection down by one row.
     pub fn select_next(&mut self) {
-        let count = all_plugins().len();
+        let count = all_services().len();
         if count == 0 {
             return;
         }
@@ -130,7 +130,7 @@ impl LabServicesState {
 
     /// Toggle whether a service is enabled in `.mcp.json`.
     pub fn toggle_enabled(&mut self) -> anyhow::Result<()> {
-        let plugins = all_plugins();
+        let plugins = all_services();
         let Some(plugin) = plugins.get(self.selected) else {
             return Ok(());
         };
@@ -188,7 +188,7 @@ impl LabServicesState {
     }
 
     /// Render the full Services tab into `area`.
-    pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, _tick_count: u64) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -211,7 +211,7 @@ impl LabServicesState {
     }
 
     fn render_service_list(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        let plugins = all_plugins();
+        let plugins = all_services();
         let items: Vec<ListItem<'_>> = plugins
             .iter()
             .map(|p| {
@@ -258,7 +258,7 @@ impl LabServicesState {
     }
 
     fn render_detail_panel(&self, frame: &mut Frame<'_>, area: Rect) {
-        let plugins = all_plugins();
+        let plugins = all_services();
         let Some(plugin) = plugins.get(self.selected) else {
             return;
         };
@@ -325,8 +325,7 @@ impl LabServicesState {
         lines.push(Line::from(""));
 
         // Required env vars
-        // Build meta from all_plugins — we only have PluginRow here, so read from
-        // lab_apis META constants directly via a helper.
+        // Read env vars from lab_apis META constants via a helper.
         let required = plugin_required_env(plugin.name);
         let optional = plugin_optional_env(plugin.name);
 

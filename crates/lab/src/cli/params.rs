@@ -107,4 +107,50 @@ mod tests {
         let value = parse_kv_params(vec![]).unwrap();
         assert!(value.as_object().unwrap().is_empty());
     }
+
+    #[test]
+    fn empty_value_yields_empty_string() {
+        let value = parse_kv_params(vec!["key=".to_string()]).unwrap();
+        assert_eq!(value["key"], "");
+    }
+
+    #[test]
+    fn empty_key_yields_empty_string_key() {
+        let value = parse_kv_params(vec!["=value".to_string()]).unwrap();
+        assert_eq!(value[""], "value");
+    }
+
+    #[test]
+    fn value_containing_equals_uses_split_once() {
+        let value = parse_kv_params(vec!["key=foo=bar".to_string()]).unwrap();
+        assert_eq!(value["key"], "foo=bar");
+    }
+
+    #[test]
+    fn boolean_case_insensitive() {
+        let value = parse_kv_params(vec![
+            "a=TRUE".to_string(),
+            "b=False".to_string(),
+            "c=FALSE".to_string(),
+            "d=True".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(value["a"], true);
+        assert_eq!(value["b"], false);
+        assert_eq!(value["c"], false);
+        assert_eq!(value["d"], true);
+    }
+
+    #[test]
+    fn nan_inf_stay_as_strings() {
+        let value = parse_kv_params(vec![
+            "a=NaN".to_string(),
+            "b=inf".to_string(),
+            "c=-inf".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(value["a"], "NaN");
+        assert_eq!(value["b"], "inf");
+        assert_eq!(value["c"], "-inf");
+    }
 }

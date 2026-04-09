@@ -1,6 +1,6 @@
 # CLI
 
-The CLI is the human-facing surface for `lab`. It should feel thin, predictable, and strongly aligned with the underlying service clients.
+The CLI is the human-facing surface for `lab`. It must remain thin, predictable, and strongly aligned with the underlying service clients.
 
 ## Design Rules
 
@@ -42,7 +42,7 @@ lab
 
 ## Per-Service Commands
 
-Each service subcommand should expose operations in a way that mirrors the service model cleanly.
+Each service subcommand must expose operations in a way that mirrors the service model cleanly.
 
 Examples:
 
@@ -53,7 +53,7 @@ Examples:
 - `lab openai models`
 - `lab qdrant collections`
 
-The CLI should not invent a second semantic model that drifts from MCP or the SDK.
+The CLI must not invent a second semantic model that drifts from MCP or the SDK.
 
 ## Output Formats
 
@@ -70,7 +70,7 @@ Rules:
 
 - pretty JSON is acceptable for human-facing TTY output
 - compact JSON is preferred for pipes
-- tables should be derived from local row wrappers, not SDK types
+- tables must be derived from local row wrappers, not SDK types
 
 Rules:
 
@@ -95,19 +95,19 @@ Relevant flags:
 - `--no-confirm`
 - `--dry-run`
 
-Policy knobs may also exist via env, but non-interactive shells should still refuse destructive work unless confirmation has been made explicit.
+Policy knobs may also exist via env, but non-interactive shells must still refuse destructive work unless confirmation has been made explicit.
 
 The CLI reads the same destructive flag from `ActionSpec` that MCP uses for elicitation.
 
 ## Multi-Instance Services
 
-The CLI should support explicit instance selection where relevant:
+The CLI must support explicit instance selection where relevant:
 
 ```bash
 lab unraid array status --instance shart
 ```
 
-If there is a clear default instance, that can be used implicitly. Otherwise the command should fail loudly and ask for an instance.
+If there is a clear default instance, that can be used implicitly. Otherwise the command must fail loudly and ask for an instance.
 
 ## `lab doctor`
 
@@ -121,7 +121,7 @@ It checks:
 - auth
 - service version visibility
 
-It should support:
+It must support:
 
 - all services
 - one service
@@ -138,7 +138,7 @@ Exit semantics:
 
 `lab health` is the product-level health-check surface. It is distinct from repo-level shell helpers.
 
-It should expose normalized service health results using the shared `ServiceStatus` model.
+It must expose normalized service health results using the shared `ServiceStatus` model.
 
 ## Install and Uninstall
 
@@ -148,7 +148,7 @@ It should expose normalized service health results using the shared `ServiceStat
 - `.mcp.json` patching
 - service enablement changes
 
-These commands are operationally sensitive and should use atomic file writes and backup behavior.
+These commands are operationally sensitive and must use atomic file writes and backup behavior.
 
 Expected `.mcp.json` behavior:
 
@@ -162,7 +162,7 @@ Expected `.mcp.json` behavior:
 
 ## Shell Completions
 
-The CLI should generate completions rather than hand-maintaining shell-specific assets.
+The CLI must generate completions rather than hand-maintaining shell-specific assets.
 
 ## Self-Update
 
@@ -172,5 +172,5 @@ Rules:
 
 - no automatic update polling
 - update checks happen only when invoked
-- replacement should verify release integrity
+- replacement must verify release integrity
 - GitHub releases are the distribution source

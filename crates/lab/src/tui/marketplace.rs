@@ -143,28 +143,52 @@ pub struct MarketplaceState {
 
 impl MarketplaceState {
     /// Render the marketplace list into the given area.
-    pub fn render(&self, f: &mut Frame<'_>, area: Rect) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(" Plugins — Marketplace ");
+    pub fn render(&self, f: &mut Frame<'_>, area: Rect, tick_count: u64) {
+        use crate::tui::display::spinner_frame;
+        use ratatui::widgets::Paragraph;
+
+        if self.loading {
+            let spinner = spinner_frame(tick_count);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(" Plugins — Marketplace ");
+            let para = Paragraph::new(format!("{spinner} Loading marketplace catalogs\u{2026}"))
+                .block(block);
+            f.render_widget(para, area);
+            return;
+        }
 
         let visible: Vec<&MarketplacePlugin> = match self.filter_ecosystem {
             None => self.plugins.iter().collect(),
             Some(eco) => self.plugins.iter().filter(|p| p.ecosystem == eco).collect(),
         };
 
+        if visible.is_empty() {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(" Plugins — Marketplace ");
+            let para = Paragraph::new("Press i to add a marketplace or extension").block(block);
+            f.render_widget(para, area);
+            return;
+        }
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Plugins — Marketplace ");
+
         let items: Vec<ListItem<'_>> = visible
             .iter()
             .map(|p| {
                 let name = sanitize_display(&p.name, 30);
                 let desc = sanitize_display(&p.description, 40);
-                let version = p
-                    .version
-                    .as_deref()
-                    .map(|v| sanitize_display(v, 12))
-                    .unwrap_or_else(|| "-".to_string());
                 let eco = p.ecosystem.display_name();
                 let state_badge = p.install_state.badge();
+
+                let eco_color = match p.ecosystem {
+                    Ecosystem::ClaudeCode => Color::Cyan,
+                    Ecosystem::Codex => Color::Yellow,
+                    Ecosystem::Gemini => Color::Blue,
+                };
 
                 let line = Line::from(vec![
                     Span::styled(
@@ -178,13 +202,8 @@ impl MarketplaceState {
                     ),
                     Span::raw(" "),
                     Span::styled(
-                        format!("{version:<12}"),
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                    Span::raw(" "),
-                    Span::styled(
                         format!("{eco:<11}"),
-                        Style::default().fg(Color::Cyan),
+                        Style::default().fg(eco_color),
                     ),
                     Span::raw(" "),
                     Span::styled(
