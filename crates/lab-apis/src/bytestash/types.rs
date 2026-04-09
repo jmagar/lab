@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Username/password payload used by auth endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct AuthCredentials {
     /// Login or registration username.
     pub username: String,
@@ -22,6 +23,7 @@ pub struct SnippetFragment {
 
 /// Create/update payload for a snippet.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SnippetWriteRequest {
     /// Snippet title.
     pub title: String,
@@ -41,6 +43,7 @@ pub struct SnippetWriteRequest {
 
 /// Create-share payload.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ShareCreateRequest {
     /// ID of the snippet to share.
     #[serde(rename = "snippetId")]
