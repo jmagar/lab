@@ -56,13 +56,17 @@ fn init_tracing() {
 async fn main() -> ExitCode {
     init_tracing();
 
-    if let Err(err) = config::load() {
-        tracing::warn!("config load warning: {err:#}");
-    }
+    let config = match config::load() {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            tracing::error!("config parse error: {err:#}");
+            return ExitCode::from(2);
+        }
+    };
 
     let cli = Cli::parse();
 
-    match cli::dispatch(cli).await {
+    match cli::dispatch(cli, config).await {
         Ok(code) => code,
         Err(err) => {
             tracing::error!("{err:#}");

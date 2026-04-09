@@ -60,6 +60,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::config::LabConfig;
 use crate::output::OutputFormat;
 
 /// `lab` — pluggable homelab CLI + MCP server SDK.
@@ -171,7 +172,7 @@ pub enum Command {
 }
 
 /// Dispatch a parsed [`Cli`] to the correct handler.
-pub async fn dispatch(cli: Cli) -> Result<ExitCode> {
+pub async fn dispatch(cli: Cli, _config: LabConfig) -> Result<ExitCode> {
     let format = cli.format();
     match cli.command {
         Command::Serve(args) => serve::run(args).await,
