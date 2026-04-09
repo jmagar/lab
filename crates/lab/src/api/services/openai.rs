@@ -18,9 +18,9 @@ async fn handle(
     let result = crate::mcp::services::openai::dispatch(&req.action, req.params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
-        Ok(_) => tracing::info!(service = "openai", action, elapsed_ms, "dispatch ok"),
+        Ok(_) => tracing::info!(surface = "api", service = "openai", action, elapsed_ms, "dispatch ok"),
         Err(e) => tracing::warn!(
-            service = "openai",
+            surface = "api", service = "openai",
             action,
             elapsed_ms,
             kind = e.kind(),
