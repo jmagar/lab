@@ -2,10 +2,37 @@
 //! startup; the MCP server walks the registry to expose tools and the
 //! catalog module walks it to produce discovery docs.
 
+use std::future::Future;
+use std::pin::Pin;
+
 use lab_apis::core::action::ActionSpec;
+use serde_json::Value;
+
+use crate::services::error::ToolError;
+
+/// A dispatch function pointer: takes an owned action name and params,
+/// returns a boxed future resolving to `Result<Value, ToolError>`.
+pub type DispatchFn =
+    fn(String, Value) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send>>;
+
+/// Wrap an `async fn(&str, Value) -> Result<Value, ToolError>` into a [`DispatchFn`].
+///
+/// Bridges the `&str`-taking dispatch signatures into the owned-`String`
+/// function pointer stored in the registry.
+macro_rules! dispatch_fn {
+    ($f:path) => {
+        |action: String, params: serde_json::Value| -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<serde_json::Value, $crate::services::error::ToolError>,
+                    > + Send,
+            >,
+        > { Box::pin(async move { $f(&action, params).await }) }
+    };
+}
 
 /// Metadata the registry keeps about each registered service.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RegisteredService {
     /// Service / tool name.
     pub name: &'static str,
@@ -15,6 +42,19 @@ pub struct RegisteredService {
     pub category: &'static str,
     /// Actions exposed by this service.
     pub actions: &'static [ActionSpec],
+    /// Dispatch function for routing action calls.
+    pub dispatch: DispatchFn,
+}
+
+impl std::fmt::Debug for RegisteredService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegisteredService")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("category", &self.category)
+            .field("actions", &self.actions)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Collection of registered services, built at startup.
@@ -64,6 +104,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::extract::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::extract::dispatch),
         });
     }
 
@@ -75,6 +116,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::radarr::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::radarr::dispatch),
         });
     }
 
@@ -86,6 +128,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::sonarr::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::sonarr::dispatch),
         });
     }
 
@@ -97,6 +140,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::prowlarr::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::prowlarr::dispatch),
         });
     }
 
@@ -108,6 +152,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::plex::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::plex::dispatch),
         });
     }
 
@@ -119,6 +164,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::tautulli::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::tautulli::dispatch),
         });
     }
 
@@ -130,6 +176,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::sabnzbd::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::sabnzbd::dispatch),
         });
     }
 
@@ -141,6 +188,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::qbittorrent::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::qbittorrent::dispatch),
         });
     }
 
@@ -152,6 +200,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::tailscale::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::tailscale::dispatch),
         });
     }
 
@@ -163,6 +212,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::linkding::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::linkding::dispatch),
         });
     }
 
@@ -174,6 +224,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::memos::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::memos::dispatch),
         });
     }
 
@@ -185,6 +236,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::services::bytestash::ACTIONS,
+            dispatch: dispatch_fn!(crate::services::bytestash::dispatch),
         });
     }
 
@@ -196,6 +248,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::paperless::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::paperless::dispatch),
         });
     }
 
@@ -207,6 +260,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::arcane::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::arcane::dispatch),
         });
     }
 
@@ -218,6 +272,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::unraid::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::unraid::dispatch),
         });
     }
 
@@ -229,6 +284,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::unifi::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::unifi::dispatch),
         });
     }
 
@@ -240,6 +296,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::overseerr::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::overseerr::dispatch),
         });
     }
 
@@ -251,6 +308,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::gotify::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::gotify::dispatch),
         });
     }
 
@@ -262,6 +320,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::openai::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::openai::dispatch),
         });
     }
 
@@ -273,6 +332,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::qdrant::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::qdrant::dispatch),
         });
     }
 
@@ -284,6 +344,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::tei::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::tei::dispatch),
         });
     }
 
@@ -295,6 +356,7 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             actions: crate::mcp::services::apprise::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::apprise::dispatch),
         });
     }
 
@@ -379,5 +441,17 @@ mod tests {
         assert!(names.contains(&"tei"), "tei missing");
         #[cfg(feature = "apprise")]
         assert!(names.contains(&"apprise"), "apprise missing");
+    }
+
+    #[tokio::test]
+    async fn dispatch_fn_round_trips() {
+        let reg = build_default_registry();
+        let extract = reg
+            .services()
+            .iter()
+            .find(|s| s.name == "extract")
+            .expect("extract must be registered");
+        let result = (extract.dispatch)("help".to_string(), serde_json::json!({})).await;
+        assert!(result.is_ok(), "extract help dispatch should succeed");
     }
 }
