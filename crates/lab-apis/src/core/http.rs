@@ -243,43 +243,44 @@ impl HttpClient {
         Self::check_status(resp).await
     }
 
-    async fn check_status(resp: reqwest::Response) -> Result<(), ApiError> {
-        if resp.status().is_success() {
-            return Ok(());
+    /// Map a non-success HTTP status code and response body into an [`ApiError`].
+    fn error_for_status(code: u16, body: String) -> ApiError {
+        match code {
+            401 | 403 => ApiError::Auth,
+            404 => ApiError::NotFound,
+            429 => ApiError::RateLimited { retry_after: None },
+            _ => ApiError::Server { status: code, body },
         }
+    }
+
+    /// Read the response body as text, preserving read errors.
+    async fn read_error_body(resp: reqwest::Response) -> (u16, String) {
         let code = resp.status().as_u16();
         let body = resp
             .text()
             .await
             .unwrap_or_else(|e| format!("<failed to read response body: {e}>"));
-        Err(match code {
-            401 | 403 => ApiError::Auth,
-            404 => ApiError::NotFound,
-            429 => ApiError::RateLimited { retry_after: None },
-            _ => ApiError::Server { status: code, body },
-        })
+        (code, body)
+    }
+
+    async fn check_status(resp: reqwest::Response) -> Result<(), ApiError> {
+        if resp.status().is_success() {
+            return Ok(());
+        }
+        let (code, body) = Self::read_error_body(resp).await;
+        Err(Self::error_for_status(code, body))
     }
 
     async fn decode<T: serde::de::DeserializeOwned>(
         resp: reqwest::Response,
     ) -> Result<T, ApiError> {
-        let status = resp.status();
-        if status.is_success() {
+        if resp.status().is_success() {
             return resp
                 .json::<T>()
                 .await
                 .map_err(|e| ApiError::Decode(e.to_string()));
         }
-        let code = status.as_u16();
-        let body = resp
-            .text()
-            .await
-            .unwrap_or_else(|e| format!("<failed to read response body: {e}>"));
-        Err(match code {
-            401 | 403 => ApiError::Auth,
-            404 => ApiError::NotFound,
-            429 => ApiError::RateLimited { retry_after: None },
-            _ => ApiError::Server { status: code, body },
-        })
+        let (code, body) = Self::read_error_body(resp).await;
+        Err(Self::error_for_status(code, body))
     }
 }
