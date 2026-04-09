@@ -106,10 +106,10 @@ impl ExtractCmd {
             // serde_json::to_string_pretty(report)? — printed via output module
             return Ok(());
         }
-        // Real impl: render via crates/lab/src/output.rs as a tabled::Table
-        eprintln!("found {} services under {}", report.found.len(), report.uri.path().display());
+        // TODO: render via crates/lab/src/output.rs as a tabled::Table
+        println!("found {} services under {}", report.found.len(), report.uri.path().display());
         for cred in &report.creds {
-            eprintln!(
+            println!(
                 "  {:<12} url={:<32} secret={}",
                 cred.service,
                 cred.url.as_deref().unwrap_or("?"),
@@ -117,7 +117,7 @@ impl ExtractCmd {
             );
         }
         for w in &report.warnings {
-            eprintln!("  ! {}: {}", w.service, w.message);
+            println!("  ! {}: {}", w.service, w.message);
         }
         Ok(())
     }
