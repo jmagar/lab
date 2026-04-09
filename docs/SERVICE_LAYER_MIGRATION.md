@@ -296,12 +296,12 @@ Use this checklist while executing the migration.
 
 ### ByteStash
 
-- [ ] Create `crates/lab/src/services/bytestash.rs`
-- [ ] Move operation matching and validation there
-- [ ] Make MCP wrap `services::bytestash`
-- [ ] Make CLI wrap `services::bytestash`
-- [ ] Make HTTP API wrap `services::bytestash`
-- [ ] Verify behavior stays stable
+- [x] Create `crates/lab/src/services/bytestash.rs`
+- [x] Move operation matching and validation there
+- [x] Make MCP wrap `services::bytestash`
+- [x] Make CLI wrap `services::bytestash`
+- [x] Make HTTP API wrap `services::bytestash`
+- [x] Verify behavior stays stable
 
 ### UniFi
 

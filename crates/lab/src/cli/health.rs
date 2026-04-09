@@ -169,7 +169,7 @@ async fn unifi_row() -> HealthRow {
 async fn bytestash_row() -> HealthRow {
     use lab_apis::core::ServiceClient;
 
-    let Some(client) = crate::mcp::services::bytestash::client_from_env() else {
+    let Some(client) = crate::services::bytestash::client_from_env() else {
         return HealthRow {
             service: "bytestash".into(),
             reachable: false,

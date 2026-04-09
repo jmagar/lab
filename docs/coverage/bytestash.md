@@ -1,11 +1,12 @@
 # ByteStash API Coverage
 
-**Last updated:** 2026-04-08  
+**Last updated:** 2026-04-09  
 **Source spec:** `docs/upstream-api/bytestash.md`  
 **SDK surface:** `crates/lab-apis/src/bytestash/client.rs` (18 public methods: 17 wrappers + `probe()`)  
-**MCP actions:** `crates/lab/src/mcp/services/bytestash.rs` (17 actions + built-in `help`)  
-**CLI surface:** `crates/lab/src/cli/bytestash.rs` (generic `action` + `key=value` params)  
-**HTTP API handler:** `crates/lab/src/api/services/bytestash.rs` (same dispatch contract as MCP)
+**Shared dispatch:** `crates/lab/src/services/bytestash.rs` (ACTIONS catalog, `dispatch`, `client_from_env`, all helpers)  
+**MCP adapter:** `crates/lab/src/mcp/services/bytestash.rs` (thin re-export of `ACTIONS` and `dispatch` from shared layer)  
+**CLI surface:** `crates/lab/src/cli/bytestash.rs` (generic `action` + `key=value` params → calls shared `dispatch`)  
+**HTTP API handler:** `crates/lab/src/api/services/bytestash.rs` (calls shared `dispatch` and `ACTIONS`)
 
 ## Legend
 
