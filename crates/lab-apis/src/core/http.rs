@@ -1,5 +1,7 @@
 //! Shared HTTP client — thin reqwest wrapper with auth injection and JSON helpers.
 
+use std::time::Duration;
+
 use reqwest::{Client, RequestBuilder};
 
 use crate::core::auth::Auth;
@@ -22,6 +24,8 @@ impl HttpClient {
     pub fn new(base_url: impl Into<String>, auth: Auth) -> Result<Self, ApiError> {
         let inner = Client::builder()
             .user_agent(concat!("lab-apis/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| ApiError::Internal(format!("reqwest::Client::build: {e}")))?;
         Ok(Self {
