@@ -464,8 +464,12 @@ pub const ACTIONS: &[ActionSpec] = &[
 
 /// Build a Radarr client from the default-instance env vars.
 pub fn client_from_env() -> Option<RadarrClient> {
-    let url = std::env::var("RADARR_URL").ok()?;
-    let key = std::env::var("RADARR_API_KEY").ok()?;
+    let url = std::env::var("RADARR_URL")
+        .ok()
+        .filter(|v| !v.is_empty())?;
+    let key = std::env::var("RADARR_API_KEY")
+        .ok()
+        .filter(|v| !v.is_empty())?;
     RadarrClient::new(
         &url,
         Auth::ApiKey {

@@ -31,6 +31,15 @@ If the source document is missing or stale, refresh it first and then generate o
 
 The coverage doc is planning and verification support. The source spec remains the contract.
 
+For non-HTTP capability modules, the "source spec" may instead be:
+
+- a local file format contract
+- an SSH-backed workflow contract
+- a shell or tool invocation contract
+- an internal synthetic capability contract documented in `docs/`
+
+`extract` is the reference example. The capability contract still needs to be documented before implementation starts.
+
 ## Working Rules
 
 - business logic belongs in `crates/lab-apis/src/<service>/client.rs`
@@ -138,6 +147,41 @@ In the client:
 The canonical error and serialization contracts live in [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
 
 Do not add transport-specific concerns here. No `clap`, no MCP envelopes, no output formatting.
+
+## Non-HTTP Capability Modules
+
+Not every `lab` service is an HTTP API client.
+
+Some modules are implemented primarily through our own code and may rely on:
+
+- local filesystem access
+- SSH-backed reads
+- parsing local app data or config files
+- shell or system-tool execution
+- synthetic workflows that do not map to an upstream network API
+
+For these modules:
+
+- `lab-apis` still owns the core capability logic
+- the shared `services` layer still owns operation schema, validation, client or target resolution, and surface-neutral execution
+- CLI, MCP, and HTTP API remain thin adapters
+- the module is not required to use `HttpClient`
+
+What still applies:
+
+- [DISPATCH.md](./DISPATCH.md)
+- [OBSERVABILITY.md](./OBSERVABILITY.md)
+- [ERRORS.md](./ERRORS.md)
+- [SERIALIZATION.md](./SERIALIZATION.md)
+- [TESTING.md](./TESTING.md)
+
+What changes:
+
+- health checks may use a lightweight local or SSH-backed capability probe instead of an HTTP request
+- the source contract may be a documented file, parser, or workflow contract rather than an OpenAPI or vendor REST spec
+- observability should instrument the real execution boundary for the module, not fabricate fake HTTP request logs
+
+`extract` is the reference pattern for this class of module.
 
 ## Step 3: Add Observability
 
