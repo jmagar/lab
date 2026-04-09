@@ -54,9 +54,10 @@ pub fn run() -> Result<()> {
         original_hook(info);
     }));
 
-    // Tokio runtime for background tasks (dropped after tui_main returns).
-    let rt = tokio::runtime::Runtime::new()?;
-    let _handle = rt.handle().clone();
+    // Handle to the ambient tokio runtime (created by #[tokio::main] in main.rs).
+    // Do NOT create a new Runtime here — dropping a Runtime inside an async context panics.
+    // Use this handle to spawn background tasks (marketplace load, health checks, etc.).
+    let _rt_handle = tokio::runtime::Handle::current();
 
     let (tx, rx) = mpsc::channel::<AppEvent>();
 
@@ -88,12 +89,7 @@ pub fn run() -> Result<()> {
         }
     });
 
-    let result = tui_main(rx);
-
-    // rt is dropped here — after tui_main returns.
-    drop(rt);
-
-    result
+    tui_main(rx)
 }
 
 // ── Main render loop ──────────────────────────────────────────────────────────
