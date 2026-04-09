@@ -4,6 +4,8 @@ use axum::{Json, Router, extract::State, routing::post};
 use serde_json::Value;
 
 use crate::api::{ActionRequest, state::AppState};
+use crate::api::services::helpers::handle_action;
+use crate::mcp::services::bytestash::ACTIONS;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
@@ -13,19 +15,8 @@ async fn handle(
     State(_state): State<AppState>,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, crate::mcp::envelope::ToolError> {
-    let start = std::time::Instant::now();
-    let action = req.action.clone();
-    let result = crate::mcp::services::bytestash::dispatch(&req.action, req.params).await;
-    let elapsed_ms = start.elapsed().as_millis();
-    match &result {
-        Ok(_) => tracing::info!(service = "bytestash", action, elapsed_ms, "dispatch ok"),
-        Err(e) => tracing::warn!(
-            service = "bytestash",
-            action,
-            elapsed_ms,
-            kind = e.kind(),
-            "dispatch error"
-        ),
-    }
-    result.map(Json)
+    handle_action("bytestash", req, ACTIONS, |action, params| {
+        crate::mcp::services::bytestash::dispatch(&action, params)
+    })
+    .await
 }
