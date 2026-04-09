@@ -7,6 +7,7 @@ use crate::mcp::registry::{ToolRegistry, build_default_registry};
 
 /// Application state passed to every axum handler via `State<AppState>`.
 #[derive(Clone)]
+#[allow(dead_code)] // constructed in tests and will be wired into serve command
 pub struct AppState {
     /// Pre-built service+action catalog for discovery endpoints.
     pub catalog: Arc<Catalog>,

@@ -6,7 +6,6 @@
 
 #![allow(clippy::multiple_crate_versions)]
 #![allow(unreachable_pub)] // binary crate — `pub` items are crate-internal by design
-#![allow(dead_code)] // skeleton: many surfaces are wired but not yet consumed
 
 mod api;
 mod catalog;
