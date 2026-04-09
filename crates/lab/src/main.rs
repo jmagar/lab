@@ -14,6 +14,7 @@ mod cli;
 mod config;
 mod mcp;
 mod output;
+mod services;
 mod tui;
 
 use std::process::ExitCode;
