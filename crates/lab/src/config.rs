@@ -84,19 +84,23 @@ pub fn load() -> Result<LabConfig> {
     Ok(cfg)
 }
 
-/// Standard location for the `.env` file: `$HOME/.lab/.env`.
-fn dotenv_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".lab").join(".env"))
+/// Cross-platform home directory.
+///
+/// Checks `HOME` (Unix) then `USERPROFILE` (Windows). No external crate needed.
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
 }
 
-/// Standard location for the TOML config: `$HOME/.config/lab/config.toml`.
+/// Standard location for the `.env` file: `~/.lab/.env`.
+fn dotenv_path() -> Option<PathBuf> {
+    home_dir().map(|home| home.join(".lab").join(".env"))
+}
+
+/// Standard location for the TOML config: `~/.config/lab/config.toml`.
 fn toml_path() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| {
-        PathBuf::from(home)
-            .join(".config")
-            .join("lab")
-            .join("config.toml")
-    })
+    home_dir().map(|home| home.join(".config").join("lab").join("config.toml"))
 }
 
 /// A string value that redacts itself in `Debug` and `Display` output.
