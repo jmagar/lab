@@ -4,6 +4,8 @@ use axum::{Json, Router, extract::State, routing::post};
 use serde_json::Value;
 
 use crate::api::{ActionRequest, state::AppState};
+use crate::api::services::helpers::handle_action;
+use crate::services::context::DispatchContext;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
@@ -12,20 +14,9 @@ pub fn routes(_state: AppState) -> Router<AppState> {
 async fn handle(
     State(_state): State<AppState>,
     Json(req): Json<ActionRequest>,
-) -> Result<Json<Value>, crate::mcp::envelope::ToolError> {
-    let start = std::time::Instant::now();
-    let action = req.action.clone();
-    let result = crate::mcp::services::qbittorrent::dispatch(&req.action, req.params).await;
-    let elapsed_ms = start.elapsed().as_millis();
-    match &result {
-        Ok(_) => tracing::info!(surface = "api", service = "qbittorrent", action, elapsed_ms, "dispatch ok"),
-        Err(e) => tracing::warn!(
-            surface = "api", service = "qbittorrent",
-            action,
-            elapsed_ms,
-            kind = e.kind(),
-            "dispatch error"
-        ),
-    }
-    result.map(Json)
+) -> Result<Json<Value>, crate::services::error::ToolError> {
+    handle_action("qbittorrent", DispatchContext { surface: "api", instance: None }, req, crate::mcp::services::qbittorrent::ACTIONS, |action, params| async move {
+        crate::mcp::services::qbittorrent::dispatch(&action, params).await
+    })
+    .await
 }
