@@ -23,6 +23,9 @@ pub fn parse_kv_params(params: Vec<String>) -> Result<Value> {
         let Some((key, raw)) = item.split_once('=') else {
             anyhow::bail!("invalid param `{item}`; expected key=value");
         };
+        if map.contains_key(key) {
+            anyhow::bail!("duplicate param key: `{key}`");
+        }
         map.insert(key.to_string(), coerce_value(raw));
     }
     Ok(Value::Object(map))
@@ -91,6 +94,12 @@ mod tests {
         assert_eq!(value["code"], "007");
         assert_eq!(value["padded"], "01");
         assert_eq!(value["plain"], 7);
+    }
+
+    #[test]
+    fn parse_kv_params_rejects_duplicate_keys() {
+        let err = parse_kv_params(vec!["k=1".to_string(), "k=2".to_string()]).unwrap_err();
+        assert!(err.to_string().contains("duplicate param key: `k`"));
     }
 
     #[test]
