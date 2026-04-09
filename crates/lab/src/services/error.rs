@@ -151,3 +151,49 @@ impl ToolError {
         )
     }
 }
+
+// ── From<ServiceError> for ToolError ─────────────────────────────────────
+//
+// All SDK error → ToolError conversions live here (not in MCP or HTTP
+// surface modules) so both surfaces share one conversion path.
+// Each impl is feature-gated to match its service.
+
+#[cfg(feature = "bytestash")]
+impl From<lab_apis::bytestash::error::ByteStashError> for ToolError {
+    fn from(e: lab_apis::bytestash::error::ByteStashError) -> Self {
+        let kind = match &e {
+            lab_apis::bytestash::error::ByteStashError::Api(api) => api.kind(),
+        };
+        Self::Sdk {
+            sdk_kind: kind.to_string(),
+            message: e.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "radarr")]
+impl From<lab_apis::radarr::error::RadarrError> for ToolError {
+    fn from(e: lab_apis::radarr::error::RadarrError) -> Self {
+        let kind = match &e {
+            lab_apis::radarr::error::RadarrError::Api(api) => api.kind(),
+            lab_apis::radarr::error::RadarrError::NotFound { .. } => "not_found",
+        };
+        Self::Sdk {
+            sdk_kind: kind.to_string(),
+            message: e.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "unifi")]
+impl From<lab_apis::unifi::error::UnifiError> for ToolError {
+    fn from(e: lab_apis::unifi::error::UnifiError) -> Self {
+        let kind = match &e {
+            lab_apis::unifi::error::UnifiError::Api(api) => api.kind(),
+        };
+        Self::Sdk {
+            sdk_kind: kind.to_string(),
+            message: e.to_string(),
+        }
+    }
+}

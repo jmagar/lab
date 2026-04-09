@@ -5,21 +5,8 @@ use serde_json::{Map, Value};
 use lab_apis::core::Auth;
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use lab_apis::unifi::UnifiClient;
-use lab_apis::unifi::error::UnifiError;
 
 use crate::mcp::envelope::ToolError;
-
-impl From<UnifiError> for ToolError {
-    fn from(e: UnifiError) -> Self {
-        let kind = match &e {
-            UnifiError::Api(api) => api.kind(),
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
 
 fn to_json<T: serde::Serialize>(v: T) -> Result<Value, ToolError> {
     serde_json::to_value(v).map_err(|e| ToolError::Sdk {

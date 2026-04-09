@@ -94,6 +94,31 @@ Service-specific errors should:
 
 Public surface code should not stringify and discard the error kind.
 
+### `From<ServiceError> for ToolError` Placement
+
+All `From<XError> for ToolError` impls live in `crates/lab/src/services/error.rs`,
+feature-gated to their service. This ensures both MCP and HTTP surfaces share a
+single conversion path. Do not place these impls in `mcp/services/` or
+`api/services/` — that traps the conversion in one surface module.
+
+Pattern:
+
+```rust
+#[cfg(feature = "foo")]
+impl From<lab_apis::foo::error::FooError> for ToolError {
+    fn from(e: lab_apis::foo::error::FooError) -> Self {
+        let kind = match &e {
+            FooError::Api(api) => api.kind(),
+            FooError::NotFound { .. } => "not_found",  // service-specific variants
+        };
+        Self::Sdk {
+            sdk_kind: kind.to_string(),
+            message: e.to_string(),
+        }
+    }
+}
+```
+
 ## MCP Contract
 
 MCP error responses must be structured and machine-readable.
