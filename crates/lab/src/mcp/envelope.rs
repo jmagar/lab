@@ -199,6 +199,54 @@ mod tests {
         assert_eq!(v["kind"], "not_found");
     }
 
+    // ── Snapshot: kind() always matches serialized kind ────────────────────
+
+    #[test]
+    fn wire_kind_matches_programmatic_kind_for_all_variants() {
+        let variants: Vec<ToolError> = vec![
+            ToolError::UnknownAction {
+                message: "m".into(),
+                valid: vec!["a".into()],
+                hint: None,
+            },
+            ToolError::MissingParam {
+                message: "m".into(),
+                param: "p".into(),
+            },
+            ToolError::InvalidParam {
+                message: "m".into(),
+                param: "p".into(),
+            },
+            ToolError::UnknownInstance {
+                message: "m".into(),
+                valid: vec!["default".into()],
+            },
+            ToolError::Sdk {
+                sdk_kind: "auth_failed".into(),
+                message: "m".into(),
+            },
+            ToolError::Sdk {
+                sdk_kind: "rate_limited".into(),
+                message: "m".into(),
+            },
+            ToolError::Sdk {
+                sdk_kind: "not_found".into(),
+                message: "m".into(),
+            },
+        ];
+
+        for e in &variants {
+            let v = json(e);
+            let wire_kind = v["kind"].as_str().unwrap_or("<missing>");
+            assert_eq!(
+                wire_kind,
+                e.kind(),
+                "wire kind {wire_kind:?} != kind() {:?} for variant {e:?}",
+                e.kind()
+            );
+        }
+    }
+
     // ── Display produces valid parseable JSON ────────────────────────────────
 
     #[test]

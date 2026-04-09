@@ -6,11 +6,17 @@
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// Error variants that dispatchers can produce on top of SDK errors.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+///
+/// **Serialization contract:** `Serialize` is hand-written so the `Sdk` variant
+/// promotes `sdk_kind` to the top-level `kind` field. `Deserialize` is NOT
+/// derived — the derived impl would expect `{"kind":"sdk","sdk_kind":"..."}`,
+/// which disagrees with the wire format `{"kind":"auth_failed","message":"..."}`.
+/// If you need deserialization, deserialize into `serde_json::Value` and
+/// construct variants manually.
+#[derive(Debug, Clone)]
 pub enum ToolError {
     /// Action name not recognized for this service.
     UnknownAction {
@@ -45,7 +51,6 @@ pub enum ToolError {
     /// Pass-through of an `ApiError::kind()` tag from the SDK.
     Sdk {
         /// Stable kind tag (`auth_failed`, `rate_limited`, …).
-        #[serde(rename = "sdk_kind")]
         sdk_kind: String,
         /// Human-readable message.
         message: String,
