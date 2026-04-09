@@ -6,6 +6,10 @@
 
 Start with `docs/README.md` for the docs index. The topic docs in `docs/` are the source of truth; if this file disagrees with them, this file is stale.
 
+Observability is governed by `docs/OBSERVABILITY.md`. When adding or changing request paths, treat that file as the source of truth for logging boundaries, required fields, correlation, redaction, and verification.
+Errors are governed by `docs/ERRORS.md`. Serialization and output-boundary rules are governed by `docs/SERIALIZATION.md`.
+Shared dispatch ownership and adapter direction are governed by `docs/DISPATCH.md`.
+
 **Nested guides.** Subdirectories carry their own `CLAUDE.md` with rules that don't belong at the root. Read the nearest one when working in:
 - `crates/lab-apis/src/core/` — trait contracts, error taxonomy, HttpClient invariants
 - `crates/lab-apis/src/servarr/` — shared *arr primitives
@@ -145,19 +149,24 @@ Every MCP tool failure returns a JSON envelope with a stable `kind` tag so agent
 
 See `docs/MCP.md` for the MCP surface and `docs/CONVENTIONS.md` for the canonical error vocabulary rules.
 
+`docs/ERRORS.md` is the canonical source of truth for stable kinds, envelope expectations, and status mapping.
+
 ### Adding a New Service
 
 1. `mkdir crates/lab-apis/src/foo/`
 2. Define types in `types.rs` from API spec/docs
 3. Implement `FooClient` methods in `client.rs`
-4. Implement `ServiceClient` trait for health checks
-5. Add `#[cfg(feature = "foo")] pub mod foo;` to `lab-apis/src/lib.rs`
-6. Add `foo = []` feature to `crates/lab-apis/Cargo.toml`
-7. Create MCP dispatch in `crates/lab/src/mcp/services/foo.rs`
-8. Create CLI subcommands in `crates/lab/src/cli/foo.rs`
-9. Register in `crates/lab/src/mcp/registry.rs` and `crates/lab/src/cli.rs`
-10. Add `foo = ["lab-apis/foo"]` passthrough to `crates/lab/Cargo.toml`
-11. Add to plugin metadata in `crates/lab/src/tui/metadata.rs`
+4. Add observability at the shared boundary and confirm it matches `docs/OBSERVABILITY.md`
+5. Implement `ServiceClient` trait for health checks
+6. Add `#[cfg(feature = "foo")] pub mod foo;` to `lab-apis/src/lib.rs`
+7. Add `foo = []` feature to `crates/lab-apis/Cargo.toml`
+8. Create MCP dispatch in `crates/lab/src/mcp/services/foo.rs`
+9. Create CLI subcommands in `crates/lab/src/cli/foo.rs`
+10. Register in `crates/lab/src/mcp/registry.rs` and `crates/lab/src/cli.rs`
+11. Add `foo = ["lab-apis/foo"]` passthrough to `crates/lab/Cargo.toml`
+12. Add to plugin metadata in `crates/lab/src/tui/metadata.rs`
+
+A service is not fully online until one successful path and one failing path are traceable end to end without leaking secrets.
 
 ### Auth
 
@@ -202,22 +211,36 @@ Every service entry-point file (e.g., `radarr.rs`) declares a `pub const META: P
 - `lab-apis`: use `thiserror` for typed errors per service; every service error wraps `ApiError` transparently.
 - `lab` binary: use `anyhow` to wrap everything.
 - Always return `Result<T>`, never panic.
-- **`ApiError::kind()` taxonomy** (stable string tags consumed by MCP envelopes): `auth_failed`, `not_found`, `rate_limited`, `validation_failed`, `network_error`, `server_error`, `decode_error`, `internal_error`. Dispatchers add `unknown_action`, `unknown_subaction`, `missing_param`, `invalid_param`, `unknown_instance` on top. Never invent new kinds without updating `docs/MCP.md` and `docs/CONVENTIONS.md`.
+- `docs/ERRORS.md` is canonical for stable `kind` values, dispatcher-level kinds, MCP and HTTP envelope behavior, and status mapping.
+- Do not invent service-local error vocabularies or drift MCP and HTTP error semantics apart.
+- Adding or renaming an error `kind` is a spec change and must be reflected in the owning docs and surface code together.
 
 ### Logging
 
 Use `tracing` everywhere. Never use `println!` for debug info.
 
-**Standard structured fields** — all dispatch events must include these:
+`docs/OBSERVABILITY.md` is the canonical source of truth. Do not invent per-service log shapes.
+
+Minimum required rules:
+
+- CLI, MCP, and HTTP dispatch must emit one structured dispatch event per user-visible action
+- `HttpClient` must emit `request.start` and `request.finish` or `request.error` for every outbound request
+- request logs must inherit caller context from the invoking surface
+- health probes must be distinguishable from normal actions
+- destructive actions must log intent and outcome
+- secrets, auth headers, tokens, cookies, and secret env values must never be logged
+
+**Standard dispatch fields** — all dispatch events must include these:
 
 | Field | Type | Present when |
 |-------|------|--------------|
+| `surface` | `&str` | always |
 | `service` | `&str` | always (MCP/HTTP/CLI dispatch) |
 | `action` | `&str` | always |
 | `elapsed_ms` | `u128` | always |
 | `kind` | `&str` | errors only — from `ToolError::kind()` |
 
-HTTP spans (from `TraceLayer`) additionally carry `method`, `path`, `request_id`, `status`.
+HTTP dispatch additionally carries `request_id` when available. Outbound request events carry `method`, `path`, `host`, and `status` on success.
 
 **Level conventions:**
 - `INFO` — successful dispatch
@@ -237,6 +260,8 @@ Use **native `async fn in trait`** (stable in Rust 1.75+). Do **not** add the `a
 ### Output Formatting
 
 All formatting lives in `crates/lab/src/output.rs`. `lab-apis` types are pure data.
+
+`docs/SERIALIZATION.md` is the canonical source of truth for serde ownership, stable envelopes, and output boundaries.
 
 - Derive `Tabled` on wrapper types in `lab` (not on `lab-apis` types — keeps `tabled` out of the SDK)
 - Support `--json` by serializing the underlying `lab-apis` type with `serde_json`

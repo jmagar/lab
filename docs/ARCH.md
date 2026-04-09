@@ -129,15 +129,27 @@ The same service logic is exposed through three product surfaces:
 
 All three consume the same service metadata and service clients.
 
+The canonical ownership and dependency rules between `lab-apis`, the shared dispatch layer, and the product surfaces live in [DISPATCH.md](./DISPATCH.md).
+
 ## Logging Shape
 
-`HttpClient` is expected to emit one standard `tracing` span per service call. That makes CLI and MCP activity comparable and machine-parseable without each service inventing its own log format.
+Observability is a mandatory shared contract, not a per-service convention.
 
-The binary adds the caller context:
+The canonical source of truth is [OBSERVABILITY.md](./OBSERVABILITY.md).
 
-- CLI span parent
-- MCP span parent
-- optional operator context from higher-level commands such as `doctor`
+High-level ownership is:
+
+- `lab` owns caller context and dispatch logging
+- `lab-apis::core::HttpClient` owns outbound request logging and transport failure detail
+
+Required boundary rules:
+
+- CLI, MCP, and HTTP must emit one dispatch event per user-visible action
+- `HttpClient` must emit `request.start` plus `request.finish` or `request.error` for every outbound call
+- health probes must be distinguishable from normal actions
+- destructive actions must log intent and outcome
+
+Field-level requirements, redaction rules, and verification gates live in [OBSERVABILITY.md](./OBSERVABILITY.md). Do not redefine them piecemeal in service modules.
 
 ## Data Flow
 

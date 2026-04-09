@@ -100,6 +100,8 @@ The top-level catalog is generated from the same action metadata that powers per
 
 All MCP tool responses follow a consistent envelope so callers do not need to parse arbitrary strings.
 
+The canonical envelope and error contract lives in [SERIALIZATION.md](./SERIALIZATION.md) and [ERRORS.md](./ERRORS.md).
+
 Success shape:
 
 - `ok: true`
@@ -141,6 +143,8 @@ Additional dispatch-level cases include:
 - `elicitation_unsupported`
 
 The goal is self-correcting clients, not human-only diagnostics.
+
+The stable semantics for these kinds are defined in [ERRORS.md](./ERRORS.md). Do not invent transport-local variants.
 
 ## Multi-Instance Services
 

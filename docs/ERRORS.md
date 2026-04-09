@@ -1,0 +1,184 @@
+# Errors
+
+This document is the canonical error-handling contract for `lab`.
+
+It defines:
+
+- the shared transport error taxonomy
+- the dispatcher-level error vocabulary
+- the required envelope shapes for MCP and HTTP
+- status-code mapping expectations
+- when changing error kinds is a spec change
+
+## Goal
+
+Errors should be:
+
+- stable across services
+- machine-readable across transports
+- structured enough for agents and operators to react programmatically
+- specific enough to diagnose the failure class without inventing per-service vocabularies
+
+## Ownership
+
+Error handling is split across layers:
+
+- `lab-apis` owns the canonical shared transport taxonomy via `ApiError`
+- service modules may wrap `ApiError` with service-specific errors
+- `lab` dispatch layers add caller and validation errors on top
+- MCP and HTTP must emit stable structured envelopes derived from those kinds
+
+## Canonical SDK Taxonomy
+
+The shared transport taxonomy lives in `lab-apis::core::ApiError`.
+
+Stable `kind()` values are:
+
+- `auth_failed`
+- `not_found`
+- `rate_limited`
+- `validation_failed`
+- `network_error`
+- `server_error`
+- `decode_error`
+- `internal_error`
+
+These kinds are consumed by MCP and HTTP callers. Changing them is a spec change.
+
+## Dispatcher-Level Kinds
+
+Dispatch layers may add the following kinds on top of SDK errors:
+
+- `unknown_action`
+- `unknown_subaction`
+- `missing_param`
+- `invalid_param`
+- `unknown_instance`
+
+Additional MCP-only flow-control cases may include:
+
+- `elicitation_declined`
+- `elicitation_unsupported`
+
+Do not invent new kinds casually. If a new cross-service kind is needed, update the owning docs and all public surfaces together.
+
+## Wrapping Rules
+
+Service-specific errors should:
+
+- wrap `ApiError` transparently where possible
+- preserve the underlying `kind()` semantics for transport-layer failures
+- avoid forking the shared taxonomy into service-local equivalents
+
+Public surface code should not stringify and discard the error kind.
+
+## MCP Contract
+
+MCP error responses must be structured and machine-readable.
+
+Canonical MCP error envelope:
+
+```json
+{
+  "ok": false,
+  "service": "radarr",
+  "action": "movie.add",
+  "error": {
+    "kind": "missing_param",
+    "message": "missing parameter: root_folder"
+  }
+}
+```
+
+Rules:
+
+- `kind` is the stable semantic tag
+- `message` is human-readable diagnostic text
+- additional structured keys such as `param`, `valid`, or `hint` may be included where relevant
+- clients should not need to parse free-form prose to classify the error
+
+## HTTP Contract
+
+HTTP error responses must use the same semantic `kind` vocabulary as MCP.
+
+Canonical HTTP error envelope:
+
+```json
+{
+  "kind": "auth_failed",
+  "message": "authentication failed"
+}
+```
+
+Rules:
+
+- HTTP and MCP must agree on the semantic kind
+- HTTP may use transport-appropriate status codes, but the JSON body remains structured
+- HTTP must not invent a second vocabulary for the same failure class
+
+## HTTP Status Mapping
+
+Default mapping expectations:
+
+- `auth_failed` -> `401 Unauthorized`
+- `not_found` -> `404 Not Found`
+- `rate_limited` -> `429 Too Many Requests`
+- `validation_failed` -> `422 Unprocessable Entity`
+- `missing_param` -> `422 Unprocessable Entity`
+- `invalid_param` -> `422 Unprocessable Entity`
+- `unknown_action` -> `400 Bad Request`
+- `unknown_instance` -> `400 Bad Request`
+- `network_error` -> `502 Bad Gateway`
+- `server_error` -> `502 Bad Gateway`
+- `internal_error` -> `500 Internal Server Error`
+
+## Message Rules
+
+Messages should help diagnose the issue without changing the stable kind.
+
+Rules:
+
+- keep `kind` stable and small
+- put diagnostic detail in `message`
+- preserve enough detail to distinguish likely transport classes inside `network_error`
+- do not leak secrets, tokens, cookies, or auth headers in messages
+
+Examples of acceptable `network_error` message detail:
+
+- DNS resolution failure
+- TCP connect refused
+- TLS validation failure
+- timeout
+
+## Spec-Change Rules
+
+The following are spec changes:
+
+- adding a new `ApiError::kind()` value
+- renaming an existing `kind`
+- changing MCP or HTTP envelope structure in a breaking way
+- changing the expected status-code mapping for an existing kind
+
+When making one of those changes, update:
+
+- `docs/ERRORS.md`
+- `docs/MCP.md`
+- `docs/CONVENTIONS.md`
+- `CLAUDE.md`
+- any affected surface code and tests
+
+## Verification Requirements
+
+At minimum, verify:
+
+1. SDK errors preserve the expected `kind()`
+2. MCP emits the expected structured error envelope
+3. HTTP emits the expected structured JSON error with the matching semantic kind
+4. messages do not leak secrets
+
+## Related Docs
+
+- [CONVENTIONS.md](./CONVENTIONS.md)
+- [MCP.md](./MCP.md)
+- [CLI.md](./CLI.md)
+- [OBSERVABILITY.md](./OBSERVABILITY.md)

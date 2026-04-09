@@ -15,6 +15,7 @@ Bringing a service online means all of the following are true:
 - the HTTP API dispatcher exists
 - the service is registered in the MCP registry, CLI router, HTTP router, and TUI metadata
 - the service has a coverage doc under `docs/coverage/`
+- the request path is observable end to end under the shared observability contract
 - the implementation is tested at the unit level and verified against a live instance when possible
 
 The service is not considered done if only one surface works.
@@ -33,11 +34,13 @@ The coverage doc is planning and verification support. The source spec remains t
 ## Working Rules
 
 - business logic belongs in `crates/lab-apis/src/<service>/client.rs`
-- CLI, MCP, and HTTP are thin shims
+- CLI, MCP, and HTTP are thin adapters over the shared dispatch layer
 - `lab-apis` must not read config files or ambient env directly
 - every service is feature-gated
 - destructive operations must be marked at the action level and honored consistently across surfaces
 - one MCP tool per service, with `action`-based dispatch
+
+The canonical adapter and dependency-direction rules live in [DISPATCH.md](./DISPATCH.md).
 
 If you are writing logic in `crates/lab/src/cli/<service>.rs`, `crates/lab/src/mcp/services/<service>.rs`, or `crates/lab/src/api/services/<service>.rs`, the logic probably belongs in `lab-apis` instead.
 
@@ -58,6 +61,7 @@ If the service needs shared primitives, add them in the service module tree rath
 
 Surface code lives in:
 
+- `crates/lab/src/services/<service>.rs`
 - `crates/lab/src/cli/<service>.rs`
 - `crates/lab/src/mcp/services/<service>.rs`
 - `crates/lab/src/api/services/<service>.rs`
@@ -82,14 +86,15 @@ Bring a service online in this order:
 2. create the `lab-apis` module
 3. define types and the service error
 4. implement the client methods
-5. implement health
-6. add feature flags and module re-exports
-7. wire the CLI shim
-8. wire the MCP dispatcher
-9. wire the HTTP dispatcher
-10. register metadata and runtime discovery
-11. add and update docs
-12. run tests and live verification
+5. add observability
+6. implement health
+7. add feature flags and module re-exports
+8. wire the CLI shim
+9. wire the MCP dispatcher
+10. wire the HTTP dispatcher
+11. register metadata and runtime discovery
+12. add and update docs
+13. run tests and live verification
 
 That order keeps the service boundary stable before the public surfaces are wired.
 
@@ -130,9 +135,27 @@ In the client:
 - use service-specific ID newtypes where appropriate
 - return `Result<T, <Service>Error>`
 
+The canonical error and serialization contracts live in [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
+
 Do not add transport-specific concerns here. No `clap`, no MCP envelopes, no output formatting.
 
-## Step 3: Add Health
+## Step 3: Add Observability
+
+Observability is required before the service is considered online.
+
+The canonical contract lives in [OBSERVABILITY.md](./OBSERVABILITY.md).
+
+Minimum requirements:
+
+- outbound service calls must flow through `HttpClient`
+- the service must inherit dispatch context from CLI, MCP, and HTTP
+- request logs must be traceable back to the invoking surface
+- failure paths must preserve stable `kind` values and useful diagnostic detail
+- logs must comply with the redaction rules
+
+Do not treat observability as cleanup or post-implementation polish. Add it before public-surface verification.
+
+## Step 4: Add Health
 
 Every service should implement a health surface for `lab doctor` and `lab health`.
 
@@ -144,7 +167,9 @@ Use the lightest request that proves:
 
 The health check should be shorter-lived than ordinary requests and should not do destructive work.
 
-## Step 4: Add Feature Gating
+Health checks should also be distinguishable in logs via the shared observability contract.
+
+## Step 5: Add Feature Gating
 
 Feature gating must be mirrored in both crates:
 
@@ -156,7 +181,7 @@ Feature gating must be mirrored in both crates:
 
 If the service should be available by default, add it to the `default` feature set in `crates/lab/Cargo.toml`.
 
-## Step 5: Wire The CLI
+## Step 6: Wire The CLI
 
 Create `crates/lab/src/cli/<service>.rs` and keep it thin.
 
@@ -168,11 +193,15 @@ The CLI should:
 - respect destructive confirmation rules
 - support `--json` through the common output layer
 
+CLI output and machine-readable shape must follow [SERIALIZATION.md](./SERIALIZATION.md).
+
 Then register it in `crates/lab/src/cli.rs`.
 
 If the command is destructive, require `-y` / `--yes` or `--no-confirm`, and support `--dry-run` where the command semantics allow it.
 
-## Step 6: Wire The MCP Dispatcher
+CLI verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
+
+## Step 7: Wire The MCP Dispatcher
 
 Create `crates/lab/src/mcp/services/<service>.rs`.
 
@@ -185,6 +214,8 @@ The dispatcher should:
 - return `Result<Value, ToolError>`
 - use the shared `ToolError` envelope on every failure
 
+The canonical error and envelope behavior lives in [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
+
 Register the service in `crates/lab/src/mcp/registry.rs`.
 
 Important rules:
@@ -195,7 +226,9 @@ Important rules:
 - the dispatcher must not contain business logic
 - the dispatcher must not bypass elicitation for destructive actions
 
-## Step 7: Wire The HTTP API
+MCP verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
+
+## Step 8: Wire The HTTP API
 
 Create `crates/lab/src/api/services/<service>.rs`.
 
@@ -206,11 +239,15 @@ The HTTP route should mirror the MCP dispatch shape:
 - same dispatch behavior as MCP
 - same error envelope shape
 
+HTTP error semantics must stay aligned with [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
+
 Then register the module in `crates/lab/src/api/services.rs`.
 
 If the service has an HTTP router entry point elsewhere, keep it thin and route through the same service dispatch code.
 
-## Step 8: Register Metadata
+HTTP verification is not complete unless request IDs and dispatch context are observable under the shared contract.
+
+## Step 9: Register Metadata
 
 Add the service metadata in the right places:
 
@@ -231,7 +268,7 @@ Metadata should include:
 
 The TUI should not duplicate service-specific logic. It should render from metadata.
 
-## Step 9: Add Config And Env Wiring
+## Step 10: Add Config And Env Wiring
 
 All config ownership stays in `lab`, not `lab-apis`.
 
@@ -248,7 +285,7 @@ If the service supports multiple instances, follow the established pattern:
 
 Do not hardcode instance names in the service layer.
 
-## Step 10: Update Docs
+## Step 11: Update Docs
 
 Update these docs as part of the same change:
 
@@ -257,37 +294,26 @@ Update these docs as part of the same change:
 - `docs/README.md` if a new docs entry is needed
 - `docs/CONFIG.md` if the service introduces new env or instance naming rules
 - `docs/MCP.md` or `docs/CLI.md` if the public surface model changes
+- `docs/OBSERVABILITY.md` if the shared contract changes
+- `docs/ERRORS.md` if the shared error contract changes
+- `docs/SERIALIZATION.md` if the shared serde or envelope contract changes
+
+## Step 12: Test And Verify
+
+Verification must cover behavior, observability, error shape, and serialization shape.
+
+Required minimums:
+
+- unit tests for the SDK and shared helpers
+- non-destructive CLI verification against a live instance when possible
+- matching non-destructive MCP verification when possible
+- evidence that one successful path and one failing path are traceable end to end
+- evidence that error kinds and envelopes match the shared contract where touched
+- evidence that machine-readable output matches the intended shape where touched
+
+If a service works but its request path is still a black box, it is not fully online.
 
 The coverage doc should stay aligned with the actual implementation counts and file paths.
-
-## Step 11: Test
-
-Run the relevant unit and workspace checks.
-
-At minimum:
-
-- `cargo test -p lab-apis`
-- `cargo test -p lab`
-- `just check`
-
-If the change touches command parsing or surface wiring, also run:
-
-- `just lint`
-- `just fmt`
-
-If the service has live dependencies available, add a real integration verification against the target service.
-
-## Step 12: Verify Against A Real Instance
-
-For a service that is meant to be operational, verify all three surfaces against a real instance:
-
-- CLI
-- MCP
-- HTTP API
-
-The coverage doc should not claim green status for any handler surface unless you actually tested it.
-
-If live testing is not possible yet, leave the doc honest about that.
 
 ## Completion Checklist
 
@@ -300,6 +326,7 @@ A service is ready when:
 - feature flags are wired in both crates
 - metadata and discovery are wired
 - the coverage doc is up to date
+- error and serialization behavior match the shared contracts
 - live verification is done or explicitly marked as pending
 
 ## Common Failure Modes
@@ -320,3 +347,6 @@ A service is ready when:
 - [MCP.md](./MCP.md)
 - [OPERATIONS.md](./OPERATIONS.md)
 - [CONVENTIONS.md](./CONVENTIONS.md)
+- [OBSERVABILITY.md](./OBSERVABILITY.md)
+- [ERRORS.md](./ERRORS.md)
+- [SERIALIZATION.md](./SERIALIZATION.md)

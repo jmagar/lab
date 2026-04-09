@@ -1,18 +1,33 @@
 # tui/ — Ratatui plugin manager
 
-The TUI is the **discovery and installation UX** for `lab`. CLI is for automation, TUI is for humans browsing what's available and flipping services on/off.
+The TUI is the **discovery, configuration, and installation UX** for `lab`. CLI is for automation, TUI is for humans browsing what's available and flipping things on/off.
 
-## Responsibilities
+## Two tabs
 
-- Enumerate all compiled-in services by reading `PluginMeta` constants.
+The TUI has two top-level tabs (see `docs/TUI.md` for full spec):
+
+| Tab | Responsibility |
+|-----|---------------|
+| **Services** | Browse compiled-in `lab` services, configure env vars, toggle `.mcp.json` wiring, surface health dots |
+| **Plugins** | Browse/add marketplaces (Claude Code, Codex) and Gemini CLI extensions; install/remove plugins |
+
+## Services tab — implementation notes
+
+- Enumerate all compiled-in services by reading `PluginMeta` constants via `metadata.rs`.
 - Group by `Category` (Media, Servarr, Indexer, Download, Notes, Documents, Network, Notifications, Ai, Bootstrap).
 - Show env var requirements (`required_env` / `optional_env`), masking values where `EnvVar.secret == true`.
-- Install/uninstall services into the user's `.mcp.json` — adding or removing entries in the `--services` array.
+- Toggle enabled/disabled by writing the `lab` entry's `--services` array in `.mcp.json`.
 - Surface `lab doctor` results inline (per-service health dots).
+
+## Plugins tab — implementation notes
+
+- Fetch marketplace catalogs from local files (already-added) or remotely via raw GitHub URLs (preview).
+- Support Claude Code (`claude plugin` CLI), Codex (file-based), and Gemini CLI (`gemini extensions` CLI).
+- Never invent install logic for Claude Code or Gemini CLI — delegate to their CLIs.
 
 ## Metadata aggregation
 
-`metadata.rs` collects every service's `pub const META: PluginMeta` into a static list at compile time. Adding a new service means updating `metadata.rs` to include its module — **not** editing the TUI render loop. The render code is data-driven over the metadata list.
+`metadata.rs` collects every service's `pub const META: PluginMeta` into a static list at compile time. Adding a new service means updating `metadata.rs` — **not** editing the TUI render loop. The render code is data-driven over the metadata list.
 
 ## `.mcp.json` patching
 
@@ -28,8 +43,9 @@ The TUI is the only part of `lab` that writes `.mcp.json`. Rules:
 
 | Task | Tool |
 |------|------|
-| "What services are available?" | TUI |
-| "Enable radarr with env vars prompted" | TUI |
+| "What services are available?" | TUI — Services tab |
+| "Enable radarr, set env vars" | TUI — Services tab |
+| "Add a Claude Code marketplace" | TUI — Plugins tab |
 | "Run `radarr movie.search matrix` in a script" | CLI |
 | "CI health check of all enabled services" | `lab doctor --json` |
 
