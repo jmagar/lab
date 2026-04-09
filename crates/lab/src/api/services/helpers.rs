@@ -63,9 +63,10 @@ where
             action,
             "unknown_action rejected at gate"
         );
-        return Err(ToolError::Sdk {
-            sdk_kind: "unknown_action".into(),
+        return Err(ToolError::UnknownAction {
             message: format!("unknown action: `{action}`"),
+            valid: actions.iter().map(|s| s.name.to_string()).collect(),
+            hint: None,
         });
     };
 
@@ -279,6 +280,11 @@ mod tests {
             "expected unknown_action kind, got {}",
             err.kind()
         );
+        // Envelope must include valid actions for agent discoverability.
+        let envelope = serde_json::to_value(&err).unwrap();
+        let valid = envelope["valid"].as_array().expect("unknown_action envelope must include `valid` array");
+        assert!(valid.iter().any(|v| v == "safe.read"), "valid must include known actions");
+        assert!(valid.iter().any(|v| v == "danger.delete"), "valid must include known actions");
         assert!(
             !dispatch_called.load(Ordering::SeqCst),
             "dispatch closure must NOT be called for unknown actions"
