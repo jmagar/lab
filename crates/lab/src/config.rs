@@ -99,27 +99,102 @@ fn toml_path() -> Option<PathBuf> {
     })
 }
 
+/// A string value that redacts itself in `Debug` and `Display` output.
+///
+/// Use for secret env values (`API_KEY`, `TOKEN`, `PASSWORD`) so they
+/// never leak through `Debug`-printing config structs or tracing fields.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    #[must_use]
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    #[must_use]
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
+impl std::fmt::Display for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
+/// Value from an instance env var — either plain text or a secret.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum InstanceValue {
+    Plain(String),
+    Redacted(Secret),
+}
+
+impl InstanceValue {
+    #[must_use]
+    pub fn expose(&self) -> &str {
+        match self {
+            Self::Plain(s) => s,
+            Self::Redacted(s) => s.expose(),
+        }
+    }
+}
+
+/// Suffixes that carry secret values and must be wrapped in [`Secret`].
+const SECRET_SUFFIXES: &[&str] = &["API_KEY", "TOKEN", "PASSWORD"];
+
 /// Parse multi-instance env vars for a given service prefix.
 ///
 /// Returns a map from instance label (`"default"` or `"<label>"`) to the
 /// set of `(suffix, value)` pairs. Example: for prefix `UNRAID`, env vars
 /// `UNRAID_URL`, `UNRAID_API_KEY`, `UNRAID_NODE2_URL`, `UNRAID_NODE2_API_KEY`
 /// yield two entries keyed `"default"` and `"node2"`.
+///
+/// Suffixes are matched longest-first to avoid collisions when a label
+/// contains a shorter suffix as a substring.
 #[must_use]
-pub fn scan_instances(prefix: &str) -> HashMap<String, HashMap<String, String>> {
-    let mut out: HashMap<String, HashMap<String, String>> = HashMap::new();
-    let known_suffixes = ["URL", "API_KEY", "TOKEN", "USERNAME", "PASSWORD"];
+pub fn scan_instances(prefix: &str) -> HashMap<String, HashMap<String, InstanceValue>> {
+    scan_instances_from(prefix, std::env::vars())
+}
 
-    for (key, value) in std::env::vars() {
-        let Some(rest) = key.strip_prefix(&format!("{prefix}_")) else {
+/// Inner implementation testable without mutating process env.
+fn scan_instances_from(
+    prefix: &str,
+    vars: impl Iterator<Item = (String, String)>,
+) -> HashMap<String, HashMap<String, InstanceValue>> {
+    let mut out: HashMap<String, HashMap<String, InstanceValue>> = HashMap::new();
+
+    let mut known_suffixes = ["URL", "API_KEY", "TOKEN", "USERNAME", "PASSWORD"];
+    known_suffixes.sort_by(|a, b| b.len().cmp(&a.len()));
+
+    let prefix_under = format!("{prefix}_");
+
+    for (key, value) in vars {
+        let Some(rest) = key.strip_prefix(&prefix_under) else {
             continue;
         };
 
         for suffix in &known_suffixes {
+            let wrap = |v: String| {
+                if SECRET_SUFFIXES.contains(suffix) {
+                    InstanceValue::Redacted(Secret::new(v))
+                } else {
+                    InstanceValue::Plain(v)
+                }
+            };
+
             if rest == *suffix {
                 out.entry("default".to_string())
                     .or_default()
-                    .insert((*suffix).to_string(), value.clone());
+                    .insert((*suffix).to_string(), wrap(value.clone()));
                 break;
             }
             if let Some(label) = rest.strip_suffix(&format!("_{suffix}"))
@@ -127,11 +202,88 @@ pub fn scan_instances(prefix: &str) -> HashMap<String, HashMap<String, String>> 
             {
                 out.entry(label.to_ascii_lowercase())
                     .or_default()
-                    .insert((*suffix).to_string(), value.clone());
+                    .insert((*suffix).to_string(), wrap(value.clone()));
                 break;
             }
         }
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vars<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Iterator<Item = (String, String)> + 'a {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+    }
+
+    #[test]
+    fn secret_debug_redacts() {
+        let s = Secret::new("hunter2".into());
+        assert_eq!(format!("{s:?}"), "[REDACTED]");
+        assert_eq!(format!("{s}"), "[REDACTED]");
+        assert_eq!(s.expose(), "hunter2");
+    }
+
+    #[test]
+    fn suffix_collision_longest_wins() {
+        let env = [("S_NODE_API_KEY_URL", "http://example.com")];
+        let result = scan_instances_from("S", vars(&env));
+        let inst = result
+            .get("node_api_key")
+            .expect("should find instance node_api_key");
+        assert_eq!(
+            inst.get("URL").expect("should have URL").expose(),
+            "http://example.com"
+        );
+    }
+
+    #[test]
+    fn default_instance_parsed() {
+        let env = [
+            ("SVC_URL", "http://localhost"),
+            ("SVC_API_KEY", "secret123"),
+        ];
+        let result = scan_instances_from("SVC", vars(&env));
+        let def = result.get("default").expect("should find default");
+        assert_eq!(def.get("URL").expect("URL").expose(), "http://localhost");
+        assert_eq!(def.get("API_KEY").expect("API_KEY").expose(), "secret123");
+        assert!(format!("{:?}", def.get("API_KEY").unwrap()).contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn named_instance_parsed() {
+        let env = [
+            ("UNRAID_NODE2_URL", "http://node2"),
+            ("UNRAID_NODE2_TOKEN", "tok"),
+        ];
+        let result = scan_instances_from("UNRAID", vars(&env));
+        let inst = result.get("node2").expect("should find node2");
+        assert_eq!(inst.get("URL").expect("URL").expose(), "http://node2");
+        assert_eq!(inst.get("TOKEN").expect("TOKEN").expose(), "tok");
+        assert!(format!("{:?}", inst.get("TOKEN").unwrap()).contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn unrelated_vars_ignored() {
+        let env = [
+            ("SVC_URL", "http://localhost"),
+            ("OTHER_URL", "http://other"),
+        ];
+        let result = scan_instances_from("SVC", vars(&env));
+        assert_eq!(result.len(), 1);
+        assert!(result.contains_key("default"));
+    }
+
+    #[test]
+    fn username_is_plain_not_secret() {
+        let env = [("SVC_USERNAME", "admin")];
+        let result = scan_instances_from("SVC", vars(&env));
+        let def = result.get("default").expect("should find default");
+        assert!(!format!("{:?}", def.get("USERNAME").unwrap()).contains("[REDACTED]"));
+    }
 }
