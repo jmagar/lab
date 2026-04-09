@@ -64,9 +64,20 @@ pub fn build_router(state: AppState) -> Router {
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
+    // Layers apply bottom-up: last .layer() call = outermost middleware.
+    // Desired execution order (outermost → innermost → handler):
+    //   SetRequestId → TraceLayer → PropagateRequestId → Timeout → Compression → CORS → handler
     router
         .with_state(state)
-        // TraceLayer reads x-request-id set by SetRequestId below.
+        .layer(CorsLayer::permissive())
+        .layer(CompressionLayer::new())
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_secs(30),
+        ))
+        // PropagateRequestId echoes the id back in the response header.
+        .layer(PropagateRequestIdLayer::new(x_request_id.clone()))
+        // TraceLayer reads x-request-id set by SetRequestId (outermost).
         .layer(
             TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
                 let request_id = req
@@ -84,14 +95,6 @@ pub fn build_router(state: AppState) -> Router {
                 )
             }),
         )
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::GATEWAY_TIMEOUT,
-            Duration::from_secs(30),
-        ))
-        .layer(CompressionLayer::new())
-        .layer(CorsLayer::permissive())
-        // PropagateRequestId echoes the id back in the response header.
-        .layer(PropagateRequestIdLayer::new(x_request_id.clone()))
         // SetRequestId generates a UUID for every request that lacks one.
         .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid))
 }
