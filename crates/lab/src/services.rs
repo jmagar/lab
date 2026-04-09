@@ -3,4 +3,3 @@ pub mod bytestash;
 pub mod context;
 pub mod error;
 pub mod helpers;
-pub mod params;
