@@ -46,6 +46,8 @@ It owns:
 
 Service modules should not re-implement those concerns.
 
+The mandatory observability contract for dispatch logging, request logging, correlation, redaction, and verification lives in [OBSERVABILITY.md](./OBSERVABILITY.md).
+
 Additional rules:
 
 - retry only retryable failures
@@ -57,6 +59,8 @@ Additional rules:
 Use the canonical `ApiError` taxonomy for shared transport-layer failures.
 
 Service-specific errors may wrap that taxonomy, but they should not fork it.
+
+The canonical error contract for stable kinds, envelopes, and mapping rules lives in [ERRORS.md](./ERRORS.md).
 
 ## Action Metadata
 
@@ -129,6 +133,8 @@ Rules:
 - `lab-apis` types stay free of presentation concerns
 - avoid ad-hoc `println!`-driven UX logic
 
+The canonical serialization and output-boundary contract lives in [SERIALIZATION.md](./SERIALIZATION.md).
+
 ## Security and Privacy
 
 - no telemetry
@@ -136,3 +142,5 @@ Rules:
 - no credential logging
 - no secret echo in prompts or doctor output
 - no surprise persistence for convenience features
+
+Observability must preserve those privacy rules. If a proposed log shape conflicts with [OBSERVABILITY.md](./OBSERVABILITY.md) redaction requirements, the log shape is wrong.

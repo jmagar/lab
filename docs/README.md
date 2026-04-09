@@ -10,6 +10,11 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Read [CONVENTIONS.md](./CONVENTIONS.md) before changing implementation patterns or core APIs.
 - Use [SERVICES.md](./SERVICES.md), [CLI.md](./CLI.md), [MCP.md](./MCP.md), and [TUI.md](./TUI.md) for surface-specific behavior.
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
+- Use [OBSERVABILITY.md](./OBSERVABILITY.md) for the mandatory logging, correlation, redaction, and verification contract.
+- Use [ERRORS.md](./ERRORS.md) for the shared error taxonomy, envelope shapes, and status mapping contract.
+- Use [SERIALIZATION.md](./SERIALIZATION.md) for the shared serde, envelope, and output-boundary contract.
+- Use [DISPATCH.md](./DISPATCH.md) for the shared surface-neutral dispatch-layer contract and dependency rules.
+- Use [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md) when executing the refactor from surface-coupled dispatch to the shared `services` layer.
 - Use [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md) when you are bringing a new service online end to end.
 
 ## Reading Paths
@@ -28,6 +33,11 @@ The docs are split by topic so contributors do not have to recover architecture,
 2. [MCP.md](./MCP.md) for tool and envelope behavior
 3. [TUI.md](./TUI.md) for plugin manager behavior
 4. [CONFIG.md](./CONFIG.md) for config and env implications
+5. [OBSERVABILITY.md](./OBSERVABILITY.md) for logging, request tracing, and redaction rules
+6. [ERRORS.md](./ERRORS.md) for stable kinds and structured error behavior
+7. [SERIALIZATION.md](./SERIALIZATION.md) for serde and output-boundary rules
+8. [DISPATCH.md](./DISPATCH.md) for layer ownership and adapter direction
+9. [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md) for the concrete migration phases and checklists
 
 ### If You Are Working on a Service Integration
 
@@ -35,6 +45,10 @@ The docs are split by topic so contributors do not have to recover architecture,
 2. [ARCH.md](./ARCH.md)
 3. [CONVENTIONS.md](./CONVENTIONS.md)
 4. [MCP.md](./MCP.md) and [CLI.md](./CLI.md) for the public surfaces
+5. [OBSERVABILITY.md](./OBSERVABILITY.md) for instrumentation and verification requirements
+6. [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md) for transport and envelope consistency
+7. [DISPATCH.md](./DISPATCH.md) for shared operation ownership across CLI, MCP, and HTTP API
+8. [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md) for the refactor sequence if you are migrating existing services
 
 ### If You Are Operating the Project
 
@@ -61,6 +75,16 @@ The docs are split by topic so contributors do not have to recover architecture,
   Plugin manager scope, interaction model, `.mcp.json` behavior, and TUI state rules.
 - [CONFIG.md](./CONFIG.md)
   Env and TOML config ownership, load order, secrets handling, and instance naming.
+- [OBSERVABILITY.md](./OBSERVABILITY.md)
+  Mandatory logging boundaries, required fields, correlation rules, redaction, and verification gates.
+- [ERRORS.md](./ERRORS.md)
+  Shared error taxonomy, stable `kind` values, MCP and HTTP error envelopes, and status mapping.
+- [SERIALIZATION.md](./SERIALIZATION.md)
+  Serde ownership, stable envelope shapes, CLI output boundaries, and naming rules.
+- [DISPATCH.md](./DISPATCH.md)
+  Surface-neutral dispatch ownership, dependency direction, operation metadata, and adapter responsibilities.
+- [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md)
+  Phase-by-phase guide and checklist for moving existing services into the shared dispatch layer.
 - [CONVENTIONS.md](./CONVENTIONS.md)
   Locked engineering rules around async, HTTP, testing, docs, API surface, and privacy.
 - [EXTRACT.md](./EXTRACT.md)
@@ -89,6 +113,11 @@ Use the smallest correct doc:
 - MCP tool, discovery, or envelope behavior: [MCP.md](./MCP.md)
 - TUI behavior: [TUI.md](./TUI.md)
 - config, env, secrets, instance naming: [CONFIG.md](./CONFIG.md)
+- observability, request tracing, redaction: [OBSERVABILITY.md](./OBSERVABILITY.md)
+- error taxonomy and envelope rules: [ERRORS.md](./ERRORS.md)
+- serialization and output-shape rules: [SERIALIZATION.md](./SERIALIZATION.md)
+- dispatch-layer ownership and adapter rules: [DISPATCH.md](./DISPATCH.md)
+- service-layer migration execution plan: [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md)
 - extract/bootstrap flows: [EXTRACT.md](./EXTRACT.md)
 - operator workflows, CI, releases: [OPERATIONS.md](./OPERATIONS.md)
 - stack and toolchain choices: [TECH.md](./TECH.md)

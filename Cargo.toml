@@ -44,7 +44,7 @@ dotenvy      = "0.15"
 toml         = "1.1"
 
 # tui
-ratatui      = "0.29"
+ratatui      = "0.30.0"
 crossterm    = "0.29"
 
 # mcp
@@ -56,9 +56,9 @@ tower        = { version = "0.5", features = ["util"] }
 tower-http   = { version = "0.6", features = ["trace", "cors", "compression-gzip", "timeout", "request-id"] }
 
 # extract (always compiled — synthetic service)
-russh        = "0.45"
-russh-keys   = "0.45"
-quick-xml    = { version = "0.36", features = ["serialize"] }
+russh        = "0.60.0"
+russh-keys   = "0.60.0"
+quick-xml    = { version = "0.39.2", features = ["serialize"] }
 
 # tests
 wiremock     = "0.6"

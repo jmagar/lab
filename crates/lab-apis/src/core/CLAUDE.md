@@ -1,6 +1,6 @@
 # core/ — Cross-cutting primitives
 
-This directory is the foundation every service module depends on. Changes here ripple across 21 clients — be conservative and align with `docs/ARCH.md`, `docs/MCP.md`, and `docs/CONVENTIONS.md` before editing.
+This directory is the foundation every service module depends on. Changes here ripple across 21 clients — be conservative and align with `docs/ARCH.md`, `docs/CONVENTIONS.md`, `docs/OBSERVABILITY.md`, `docs/ERRORS.md`, and `docs/SERIALIZATION.md` before editing.
 
 ## Files
 
@@ -16,7 +16,7 @@ This directory is the foundation every service module depends on. Changes here r
 
 ## ApiError.kind() — canonical stable tags
 
-These strings appear verbatim in MCP error envelopes. Adding a new kind is a **spec change** — update `docs/MCP.md` and `docs/CONVENTIONS.md` first.
+These strings appear verbatim in MCP and HTTP error surfaces. Adding a new kind is a **spec change** — update `docs/ERRORS.md`, `docs/MCP.md`, and `docs/CONVENTIONS.md` first.
 
 | Variant | `kind()` |
 |---------|----------|

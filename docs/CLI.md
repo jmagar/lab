@@ -64,6 +64,8 @@ Supported output modes are:
 - compact JSON
 - YAML
 
+The canonical serialization and output-boundary contract lives in [SERIALIZATION.md](./SERIALIZATION.md).
+
 Rules:
 
 - pretty JSON is acceptable for human-facing TTY output
