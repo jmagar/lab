@@ -153,8 +153,9 @@ fn handle_event(app: &mut App, ev: AppEvent) {
             }
             app.dirty = true;
         }
-        AppEvent::PreviewReady(state) => {
-            app.marketplace.preview = Some(state);
+        AppEvent::PreviewReady(ready) => {
+            app.marketplace.preview =
+                Some(crate::tui::preview::PreviewState::Ready { plugin: ready.plugin });
             app.dirty = true;
         }
         AppEvent::HealthChecksDone(_results) => {
