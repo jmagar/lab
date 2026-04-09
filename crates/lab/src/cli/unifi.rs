@@ -7,9 +7,9 @@ use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::Args;
-use serde_json::{Map, Value};
 
 use crate::output::{OutputFormat, print};
+use crate::services::params::parse_kv_params;
 
 /// `lab unifi` arguments.
 #[derive(Debug, Args)]
@@ -27,7 +27,7 @@ pub struct UnifiArgs {
 /// # Errors
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
-    let params = parse_params(args.params)?;
+    let params = parse_kv_params(args.params)?;
     let result = crate::mcp::services::unifi::dispatch(&args.action, params)
         .await
         .map_err(|e| {
@@ -40,31 +40,4 @@ pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn parse_params(params: Vec<String>) -> Result<Value> {
-    let mut map = Map::new();
-    for item in params {
-        let Some((key, raw)) = item.split_once('=') else {
-            anyhow::bail!("invalid param `{item}`; expected key=value");
-        };
-        map.insert(key.to_string(), coerce_value(raw));
-    }
-    Ok(Value::Object(map))
-}
 
-fn coerce_value(raw: &str) -> Value {
-    if raw.eq_ignore_ascii_case("true") {
-        return Value::Bool(true);
-    }
-    if raw.eq_ignore_ascii_case("false") {
-        return Value::Bool(false);
-    }
-    if let Ok(n) = raw.parse::<i64>() {
-        return Value::Number(n.into());
-    }
-    if let Ok(n) = raw.parse::<f64>()
-        && let Some(num) = serde_json::Number::from_f64(n)
-    {
-        return Value::Number(num);
-    }
-    Value::String(raw.to_string())
-}
