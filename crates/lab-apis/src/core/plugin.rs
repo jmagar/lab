@@ -63,3 +63,22 @@ pub enum Category {
     /// Bootstrap utilities (extract, init, doctor).
     Bootstrap,
 }
+
+impl Category {
+    /// Return a lowercase static string label for this category.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Media => "media",
+            Self::Servarr => "servarr",
+            Self::Indexer => "indexer",
+            Self::Download => "download",
+            Self::Notes => "notes",
+            Self::Documents => "documents",
+            Self::Network => "network",
+            Self::Notifications => "notifications",
+            Self::Ai => "ai",
+            Self::Bootstrap => "bootstrap",
+        }
+    }
+}

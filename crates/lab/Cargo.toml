@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 lab-apis           = { path = "../lab-apis", default-features = false }
 
-tokio.workspace              = true
+tokio                        = { workspace = true, features = ["process"] }
 futures.workspace            = true
 reqwest.workspace            = true
 url.workspace                = true
@@ -44,6 +44,14 @@ toml.workspace               = true
 
 ratatui.workspace            = true
 crossterm.workspace          = true
+
+fd-lock                      = "4"
+tempfile                     = "3.10"
+indexmap                     = { version = "2", features = ["serde"] }
+secrecy                      = "0.8"
+sha2                         = "0.10"
+tokio-util                   = { version = "0.7", features = ["rt"] }
+strip-ansi-escapes           = "0.2"
 
 rmcp.workspace               = true
 
