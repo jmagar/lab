@@ -146,7 +146,7 @@ pub fn service_env_checks() -> Vec<(&'static str, &'static [EnvVar])> {
 }
 
 /// Run the doctor subcommand.
-pub async fn run(format: OutputFormat) -> Result<ExitCode> {
+pub fn run(format: OutputFormat) -> Result<ExitCode> {
     let mut findings: Vec<Finding> = Vec::new();
 
     for (service_name, required_env) in service_env_checks() {

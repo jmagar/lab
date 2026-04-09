@@ -177,7 +177,7 @@ pub async fn dispatch(cli: Cli, _config: LabConfig) -> Result<ExitCode> {
     let format = cli.format();
     match cli.command {
         Command::Serve(args) => serve::run(args).await,
-        Command::Doctor => doctor::run(format).await,
+        Command::Doctor => doctor::run(format),
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
         Command::Install(args) => install::run_install(&args).map(|()| ExitCode::SUCCESS),
