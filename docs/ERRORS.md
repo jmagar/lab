@@ -60,6 +60,28 @@ Additional MCP-only flow-control cases may include:
 - `elicitation_declined`
 - `elicitation_unsupported`
 
+### HTTP-Only Dispatcher Kinds
+
+The following kinds are emitted exclusively by the HTTP surface. MCP handles the same guard differently (via elicitation), and CLI handles it via `--yes` / `-y`.
+
+#### `confirmation_required`
+
+**When:** A destructive action (`ActionSpec.destructive == true`) is dispatched over HTTP without `params["confirm"] == true`.
+
+**Surface:** HTTP only. MCP uses elicitation; CLI requires `--yes`.
+
+**Resolution:** Set `"confirm": true` inside the request body's `params` object and re-submit.
+
+**Status code:** `422 Unprocessable Entity`
+
+**Envelope:**
+
+```json
+{ "kind": "confirmation_required", "message": "action `snippets.delete` is destructive — set `confirm: true` in params to proceed" }
+```
+
+**Implementation note:** Emitted as `ToolError::Sdk { sdk_kind: "confirmation_required" }` from `handle_action` in `crates/lab/src/api/services/helpers.rs`.
+
 Do not invent new kinds casually. If a new cross-service kind is needed, update the owning docs and all public surfaces together.
 
 ## Wrapping Rules
@@ -128,6 +150,7 @@ Default mapping expectations:
 - `invalid_param` -> `422 Unprocessable Entity`
 - `unknown_action` -> `400 Bad Request`
 - `unknown_instance` -> `400 Bad Request`
+- `confirmation_required` -> `422 Unprocessable Entity`
 - `network_error` -> `502 Bad Gateway`
 - `server_error` -> `502 Bad Gateway`
 - `internal_error` -> `500 Internal Server Error`
