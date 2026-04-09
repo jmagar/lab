@@ -52,7 +52,7 @@ fn init_tracing() {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() -> ExitCode {
     init_tracing();
 
