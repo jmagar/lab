@@ -12,7 +12,7 @@ It defines:
 
 ## Goal
 
-Errors should be:
+Errors must be:
 
 - stable across services
 - machine-readable across transports
@@ -86,13 +86,13 @@ Do not invent new kinds casually. If a new cross-service kind is needed, update 
 
 ## Wrapping Rules
 
-Service-specific errors should:
+Service-specific errors must:
 
 - wrap `ApiError` transparently where possible
 - preserve the underlying `kind()` semantics for transport-layer failures
 - avoid forking the shared taxonomy into service-local equivalents
 
-Public surface code should not stringify and discard the error kind.
+Public surface code must not stringify and discard the error kind.
 
 ### `From<ServiceError> for ToolError` Placement
 
@@ -142,7 +142,7 @@ Rules:
 - `kind` is the stable semantic tag
 - `message` is human-readable diagnostic text
 - additional structured keys such as `param`, `valid`, or `hint` may be included where relevant
-- clients should not need to parse free-form prose to classify the error
+- clients must not need to parse free-form prose to classify the error
 
 ## HTTP Contract
 
@@ -182,7 +182,7 @@ Default mapping expectations:
 
 ## Message Rules
 
-Messages should help diagnose the issue without changing the stable kind.
+Messages must help diagnose the issue without changing the stable kind.
 
 Rules:
 
