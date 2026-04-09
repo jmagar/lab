@@ -10,7 +10,7 @@
 /// Shared application state (service clients, config).
 pub mod state;
 
-/// `ApiError` → HTTP response mapping with structured envelopes.
+/// HTTP error re-exports — canonical type is `ToolError` from `services::error`.
 pub mod error;
 
 /// Router builder — composes all feature-gated route groups.
@@ -35,7 +35,7 @@ pub struct ActionRequest {
 }
 
 #[allow(unused_imports)]
-pub use error::{ApiError, ApiResult};
+pub use error::ToolError;
 #[allow(unused_imports)]
 pub use router::build_router;
 #[allow(unused_imports)]
