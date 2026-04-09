@@ -19,6 +19,7 @@ use lab_apis::core::Auth;
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
 use crate::services::error::ToolError;
+use crate::services::helpers::{body_from_params, require_str, to_json};
 
 impl From<ByteStashError> for ToolError {
     fn from(e: ByteStashError) -> Self {
@@ -32,54 +33,11 @@ impl From<ByteStashError> for ToolError {
     }
 }
 
-fn to_json<T: serde::Serialize>(v: T) -> Result<Value, ToolError> {
-    serde_json::to_value(v).map_err(|e| ToolError::Sdk {
-        sdk_kind: "decode_error".to_string(),
-        message: e.to_string(),
-    })
-}
-
 fn require_client() -> Result<ByteStashClient, ToolError> {
     client_from_env().ok_or_else(|| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: "BYTESTASH_URL or BYTESTASH_TOKEN not configured".to_string(),
     })
-}
-
-fn require_str(params: &Value, key: &str) -> Result<String, ToolError> {
-    params
-        .get(key)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| ToolError::MissingParam {
-            message: format!("missing required parameter `{key}`"),
-            param: key.to_string(),
-        })
-}
-
-fn object_without(params: &Value, strip: &[&str]) -> Value {
-    let mut map = params.as_object().cloned().unwrap_or_default();
-    for key in strip {
-        map.remove(*key);
-    }
-    Value::Object(map)
-}
-
-fn body_from_params(params: &Value, strip: &[&str]) -> Value {
-    for key in ["payload", "body"] {
-        if let Some(value) = params.get(key) {
-            match value {
-                Value::Object(map) => return Value::Object(map.clone()),
-                Value::String(raw) => {
-                    if let Ok(parsed) = serde_json::from_str(raw) {
-                        return parsed;
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    object_without(params, strip)
 }
 
 fn credentials_from_params(params: &Value) -> Result<AuthCredentials, ToolError> {
