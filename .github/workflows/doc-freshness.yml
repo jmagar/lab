@@ -1,0 +1,50 @@
+name: Doc Freshness
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: doc-freshness-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-docs:
+    name: Check doc freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are a documentation freshness checker for the `lab` Rust project.
+
+            Review the PR diff and identify which documentation files in `docs/` and
+            `CLAUDE.md` files may be stale or need updating based on the code changes.
+
+            For each potentially stale doc, explain:
+            1. Which doc file is affected
+            2. What changed in the code that makes it stale
+            3. What specifically needs updating
+
+            If no docs are stale, say so explicitly.
+
+            Focus on:
+            - docs/*.md files (ARCH.md, CLI.md, CONVENTIONS.md, ERRORS.md, MCP.md,
+              OBSERVABILITY.md, SERIALIZATION.md, DISPATCH.md, SERVICE_ONBOARDING.md,
+              TUI.md, README.md)
+            - CLAUDE.md files at any level (root, crate, subdirectory)
+            - .github/CLAUDE.md for CI/CD changes
+
+            Ignore:
+            - Typos or formatting-only changes
+            - Test-only changes that don't affect documented behavior
+            - Internal refactors that don't change public contracts
