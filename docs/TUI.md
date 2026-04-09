@@ -1,5 +1,7 @@
 # TUI
 
+Last updated: 2026-04-09
+
 The TUI is a plugin marketplace browser and manager for Claude Code, Codex, and Gemini CLI.
 
 ## Scope
@@ -100,12 +102,13 @@ Cross-referencing catalog + install state produces: installed+enabled, installed
 
 ## Primary Screen
 
-The TUI has two top-level tabs, switchable with `Tab` / `Shift-Tab`:
+The TUI has three top-level tabs, switchable with `1` / `2` / `3` or `Tab`:
 
-| Tab | Purpose |
-|-----|---------|
-| **Services** (default) | Browse and configure `lab`'s compiled-in services; toggle `.mcp.json` wiring |
-| **Plugins** | Browse marketplaces and install plugins/extensions for Claude Code, Codex, Gemini |
+| Tab | Key | Purpose |
+|-----|-----|---------|
+| **Services** (default) | `1` | Browse and configure `lab`'s compiled-in services; toggle `.mcp.json` wiring |
+| **Plugins** | `2` | Browse marketplaces and install plugins/extensions for Claude Code, Codex, Gemini |
+| **Update** | `3` | Check for and install a new `lab` binary |
 
 ### Services tab
 
@@ -142,11 +145,13 @@ Expected interaction is simple:
 - update all or a specific marketplace
 
 **Global:**
-- `Tab` / `Shift-Tab` — switch tabs
-- update the `lab` binary
+- `1` / `2` / `3` or `Tab` — switch tabs
+- `j` / `k` or `↑` / `↓` — navigate list
+- `Enter` — select / confirm
+- `Esc` — back / cancel
 - `q` / `Ctrl-C` — quit
 
-Complex modal workflows should be the exception, not the baseline.
+Complex modal workflows must be the exception, not the baseline.
 
 ## Adding a New Marketplace or Extension (Preview Flow)
 
@@ -231,7 +236,7 @@ The TUI must not invent its own install logic for Claude Code or Gemini CLI. For
 
 ## Lab Service Manager
 
-The primary tab of the TUI is a browser for `lab`'s own compiled-in services. This is the main reason to run `lab tui` — it lets you see what's available and wire services into your MCP config without hand-editing files.
+The primary tab of the TUI is a browser for `lab`'s own compiled-in services. This is the main reason to run `lab plugins` — it lets you see what's available and wire services into your MCP config without hand-editing files.
 
 ### Service list
 
