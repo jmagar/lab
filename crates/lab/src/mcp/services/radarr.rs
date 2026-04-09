@@ -5,26 +5,12 @@ use serde_json::Value;
 use lab_apis::core::Auth;
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use lab_apis::radarr::RadarrClient;
-use lab_apis::radarr::error::RadarrError;
 use lab_apis::radarr::types::download_client::DownloadClientId;
 use lab_apis::radarr::types::movie::TmdbId;
 use lab_apis::radarr::types::notification::NotificationId;
 use lab_apis::radarr::types::{CommandId, IndexerId, Movie, MovieId, QueueItemId};
 
 use crate::mcp::envelope::ToolError;
-
-impl From<RadarrError> for ToolError {
-    fn from(e: RadarrError) -> Self {
-        let kind = match &e {
-            RadarrError::Api(api) => api.kind(),
-            RadarrError::NotFound { .. } => "not_found",
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
 
 fn to_json<T: serde::Serialize>(v: T) -> Result<Value, ToolError> {
     serde_json::to_value(v).map_err(|e| ToolError::Sdk {
