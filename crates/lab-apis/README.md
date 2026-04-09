@@ -1,6 +1,8 @@
 # lab-apis
 
-Pure Rust SDK for homelab service APIs. **Zero binary dependencies** — reusable in any Rust project.
+Last updated: 2026-04-09
+
+Pure Rust capability layer for homelab services and synthetic modules. **Zero binary dependencies** — reusable in any Rust project.
 
 ```
 tokio | reqwest | serde | thiserror
@@ -8,7 +10,9 @@ tokio | reqwest | serde | thiserror
 
 ## What It Is
 
-HTTP client library for 21 homelab services: Radarr, Sonarr, Prowlarr, Plex, qBittorrent, UniFi, Unraid, Overseerr, Tailscale, and others. Each service exposes a typed async client with request/response types and structured error handling.
+Core library for 21 homelab capability modules: HTTP-backed integrations such as Radarr, Sonarr, Prowlarr, Plex, qBittorrent, UniFi, Unraid, Overseerr, and Tailscale, plus non-HTTP modules such as `extract`.
+
+HTTP-backed services expose typed async clients with request/response types and structured error handling. Non-HTTP modules follow the same crate-level contracts while implementing local, SSH-backed, parser-driven, or synthetic workflows in our own code.
 
 Designed to be a library — not a binary, not an MCP server. Use it in your own Rust projects.
 
@@ -49,6 +53,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### HttpClient
 Shared HTTP wrapper around `reqwest::Client`. Hardcoded timeouts: 5s connect, 30s request. TLS via rustls. Fallible constructor — TLS init failure returns `ApiError::Internal`.
 
+`HttpClient` is required for HTTP-backed modules. Non-HTTP capability modules are not required to use it.
+
 ### Auth Enum
 ```rust
 pub enum Auth {
@@ -64,7 +70,7 @@ pub enum Auth {
 Header name for `ApiKey` is caller-chosen. Most *arr services use `X-Api-Key`.
 
 ### ServiceClient Trait
-Every service implements a health check:
+Every service or capability module implements a health check:
 ```rust
 pub trait ServiceClient: Send + Sync {
     fn name(&self) -> &'static str;
@@ -93,7 +99,7 @@ See `docs/ERRORS.md` in the monorepo for the canonical error vocabulary.
 | **Fully Implemented** | Radarr, UniFi, ByteStash |
 | **Partially Implemented** | OpenAI (Chat, Embeddings), Overseerr (search, request management) |
 | **Client Stub** | Sonarr, Prowlarr, Plex, Tautulli, SABnzbd, qBittorrent, Tailscale, Linkding, Memos, Paperless, Arcane, Gotify, Qdrant, TEI, Apprise |
-| **Extract** | Service credential scanner — architecture present, transport/parsing in progress |
+| **Extract** | Synthetic capability module for service credential scanning |
 
 "Stub" means the client struct exists and compiles, but methods are minimal or unimplemented. Contributions welcome.
 
@@ -103,14 +109,14 @@ Every service follows:
 ```
 foo.rs              # pub const META: PluginMeta, ServiceClient impl
 foo/
-  client.rs         # FooClient struct and async methods
-  types.rs          # Request/response types (serde)
+  client.rs         # FooClient or equivalent capability entrypoint
+  types.rs          # Request/response or input/output types (serde)
   error.rs          # Service-specific error enum (thiserror)
 ```
 
 No `mod.rs` files — modern Rust 1.56+ module style.
 
-Large clients (Radarr, OpenAI) organize methods into sub-modules. Each `impl RadarrClient { ... }` block is a separate file under `client/` — methods accumulate across files without a monolithic `client.rs`.
+Large modules (Radarr, OpenAI, and future non-HTTP capability modules) must organize methods into sub-modules rather than accumulating a monolithic `client.rs`.
 
 ## Metadata
 
@@ -146,6 +152,8 @@ Standard env var naming:
 
 Multi-instance services append a label: `RADARR_URL` (default), `RADARR_NODE2_URL` (instance `node2`).
 
+Non-HTTP modules may not use these env keys at all. Their config still must be supplied by the caller rather than read implicitly inside `lab-apis`.
+
 ## Feature Flags
 
 21 opt-in features. `core` and `extract` always compile.
@@ -161,12 +169,12 @@ Convenience: `features = ["all"]` enables all 21.
 
 ## Testing
 
-Unit tests use `wiremock` for HTTP mocking:
+HTTP-backed unit tests use `wiremock` for HTTP mocking:
 ```bash
 cargo test -p lab-apis
 ```
 
-Integration tests (marked `#[ignore]`) require live services:
+Live integration tests (marked `#[ignore]`) require real services or real capability environments:
 ```bash
 cargo test -p lab-apis -- --ignored --nocapture
 ```
@@ -174,18 +182,20 @@ cargo test -p lab-apis -- --ignored --nocapture
 ## Invariants
 
 - **No `clap`, `rmcp`, `ratatui`, `anyhow`, `tabled`** — they belong in the `lab` binary only
-- **No file or env I/O** — `Auth::from_env()` accepts values; the caller reads them
+- **No ambient file or env config I/O** — the caller supplies values and paths explicitly
 - **Native async fn in trait** (Rust 1.75+) — no `#[async_trait]`, no `Box<dyn>`
 - **Debug impls redact secrets** — test this for any new auth variant
-- **TLS is always rustls** — hardcoded, not configurable
+- **TLS is always rustls** for HTTP-backed modules — hardcoded, not configurable
 
 ## Architecture
 
 For full context, see the monorepo docs:
 - `docs/README.md` — architecture index
+- `docs/ARCH.md` — crate boundaries and service model
 - `docs/ERRORS.md` — error taxonomy and stability guarantees
 - `docs/OBSERVABILITY.md` — logging and tracing rules
 - `docs/SERIALIZATION.md` — serde ownership and output boundaries
+- `docs/TESTING.md` — testing and TDD contract
 - `CLAUDE.md` (this directory) — per-crate development rules
 
 ## License

@@ -115,7 +115,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            actions: crate::mcp::services::radarr::ACTIONS,
+            actions: crate::mcp::services::radarr::actions(),
             dispatch: dispatch_fn!(crate::mcp::services::radarr::dispatch),
         });
     }
@@ -283,7 +283,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            actions: crate::mcp::services::unifi::ACTIONS,
+            actions: crate::mcp::services::unifi::actions(),
             dispatch: dispatch_fn!(crate::mcp::services::unifi::dispatch),
         });
     }

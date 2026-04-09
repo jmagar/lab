@@ -116,7 +116,7 @@ Start by deciding which source document owns the API:
 
 Then create or update the coverage doc in `docs/coverage/<service>.md`.
 
-Coverage docs should answer:
+Coverage docs must answer:
 
 - what the upstream surface contains
 - what `lab-apis` methods exist
@@ -125,7 +125,7 @@ Coverage docs should answer:
 - what the HTTP handler exposes
 - what is still missing
 
-For openapi-backed services, the coverage doc should be a matrix. For vendor docs or flatter RPC APIs, a section inventory is acceptable until the service is implemented.
+For openapi-backed services, the coverage doc must be a matrix. For vendor docs or flatter RPC APIs, a section inventory is acceptable until the service is implemented.
 
 ## Step 2: Create The SDK Module
 
@@ -179,7 +179,7 @@ What changes:
 
 - health checks may use a lightweight local or SSH-backed capability probe instead of an HTTP request
 - the source contract may be a documented file, parser, or workflow contract rather than an OpenAPI or vendor REST spec
-- observability should instrument the real execution boundary for the module, not fabricate fake HTTP request logs
+- observability must instrument the real execution boundary for the module, not fabricate fake HTTP request logs
 
 `extract` is the reference pattern for this class of module.
 
@@ -201,7 +201,7 @@ Do not treat observability as cleanup or post-implementation polish. Add it befo
 
 ## Step 4: Add Health
 
-Every service should implement a health surface for `lab doctor` and `lab health`.
+Every service must implement a health surface for `lab doctor` and `lab health`.
 
 Use the lightest request that proves:
 
@@ -209,9 +209,9 @@ Use the lightest request that proves:
 - auth is accepted
 - version or status can be read if the API exposes it
 
-The health check should be shorter-lived than ordinary requests and should not do destructive work.
+The health check must be shorter-lived than ordinary requests and must not do destructive work.
 
-Health checks should also be distinguishable in logs via the shared observability contract.
+Health checks must also be distinguishable in logs via the shared observability contract.
 
 ## Step 5: Add Feature Gating
 
@@ -223,13 +223,13 @@ Feature gating must be mirrored in both crates:
 `lab-apis` exports the service module behind the feature.
 `lab` passes that feature through to `lab-apis`.
 
-If the service should be available by default, add it to the `default` feature set in `crates/lab/Cargo.toml`.
+If the service must be available by default, add it to the `default` feature set in `crates/lab/Cargo.toml`.
 
 ## Step 6: Wire The CLI
 
 Create `crates/lab/src/cli/<service>.rs` and keep it thin.
 
-The CLI should:
+The CLI must:
 
 - parse arguments with `clap`
 - call the `lab-apis` client
@@ -249,7 +249,7 @@ CLI verification is not complete unless dispatch logs carry the required caller 
 
 Create `crates/lab/src/mcp/services/<service>.rs`.
 
-The dispatcher should:
+The dispatcher must:
 
 - define the `ActionSpec` catalog for the service
 - parse `params.action`
@@ -276,7 +276,7 @@ MCP verification is not complete unless dispatch logs carry the required caller 
 
 Create `crates/lab/src/api/services/<service>.rs`.
 
-The HTTP route should mirror the MCP dispatch shape:
+The HTTP route must mirror the MCP dispatch shape:
 
 - one `POST /` handler
 - `action` plus `params`
@@ -299,7 +299,7 @@ Add the service metadata in the right places:
 - `crates/lab/src/tui/metadata.rs`
 - any install or doctor logic that enumerates services
 
-Metadata should include:
+Metadata must include:
 
 - canonical service name
 - display name
@@ -310,7 +310,7 @@ Metadata should include:
 - optional env vars
 - default port
 
-The TUI should not duplicate service-specific logic. It should render from metadata.
+The TUI must not duplicate service-specific logic. It must render from metadata.
 
 ## Step 10: Add Config And Env Wiring
 
@@ -357,7 +357,7 @@ Required minimums:
 
 If a service works but its request path is still a black box, it is not fully online.
 
-The coverage doc should stay aligned with the actual implementation counts and file paths.
+The coverage doc must stay aligned with the actual implementation counts and file paths.
 
 ## Completion Checklist
 

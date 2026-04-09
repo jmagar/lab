@@ -39,7 +39,7 @@ It does not own CLI parsing, MCP transport, TUI rendering, `.env` file loading, 
 - install/uninstall flows
 - doctor and operator workflows
 
-It should stay thin. Business logic belongs in `lab-apis`.
+It must stay thin. Business logic belongs in `lab-apis`.
 
 ## Golden Rule
 
@@ -113,7 +113,7 @@ Rules:
 
 ### ID Newtypes
 
-Service identifiers should use service-local newtypes rather than raw integers everywhere. The goal is to prevent mixing:
+Service identifiers must use service-local newtypes rather than raw integers everywhere. The goal is to prevent mixing:
 
 - internal ids
 - external provider ids

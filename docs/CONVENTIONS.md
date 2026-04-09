@@ -14,7 +14,7 @@ These are locked implementation rules. They are not optional style suggestions.
 
 - no `mod.rs`
 - sibling `foo.rs` plus `foo/`
-- public API should be explicit rather than incidental
+- public API must be explicit rather than incidental
 
 ## Async Trait Style
 
@@ -44,7 +44,7 @@ It owns:
 - error mapping
 - tracing
 
-Service modules should not re-implement those concerns.
+Service modules must not re-implement those concerns.
 
 The mandatory observability contract for dispatch logging, request logging, correlation, redaction, and verification lives in [OBSERVABILITY.md](./OBSERVABILITY.md).
 
@@ -58,7 +58,7 @@ Additional rules:
 
 Use the canonical `ApiError` taxonomy for shared transport-layer failures.
 
-Service-specific errors may wrap that taxonomy, but they should not fork it.
+Service-specific errors may wrap that taxonomy, but they must not fork it.
 
 The canonical error contract for stable kinds, envelopes, and mapping rules lives in [ERRORS.md](./ERRORS.md).
 
@@ -75,7 +75,7 @@ Do not maintain separate hand-written copies of action metadata.
 
 ## Batch Operations
 
-Batch APIs should be explicit and limited to real use cases.
+Batch APIs must be explicit and limited to real use cases.
 
 Rules:
 
@@ -88,7 +88,7 @@ Rules:
 
 Long-running CLI operations may use a sink-based progress abstraction.
 
-MCP calls should remain progress-free.
+MCP calls must remain progress-free.
 
 ## Public API Surface
 
@@ -101,13 +101,13 @@ At the `lab-apis` crate root:
 
 ## Documentation Policy
 
-`lab-apis` is a real SDK and should behave like one.
+`lab-apis` is a real SDK and must behave like one.
 
 Rules:
 
-- public items should be documented
-- feature-gated items should surface that gating in docs
-- rustdoc warnings should be treated seriously
+- public items must be documented
+- feature-gated items must surface that gating in docs
+- rustdoc warnings must be treated seriously
 - examples on public client methods should be real and compilable when practical
 
 The `lab` binary does not need the same level of public rustdoc coverage.
@@ -124,7 +124,7 @@ Rules:
 
 - CI must not require real services
 - live integration tests must be opt-in
-- shared client logic should be tested in `lab-apis`
+- shared client logic must be tested in `lab-apis`
 - snapshot tests are appropriate for wire-shape stability
 
 ## Output Rules

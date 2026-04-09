@@ -8,6 +8,8 @@ This directory contains the GitHub Actions workflows for `lab`. The authoritativ
 |------|---------|---------|
 | `workflows/ci.yml` | push/PR to `main` | Fast correctness checks |
 | `workflows/release.yml` | push of `v*` tag | Release builds + GitHub Release |
+| `workflows/doc-freshness.yml` | PR to `main` | Claude-powered doc staleness check |
+| `workflows/code-conventions.yml` | PR to `main` | Claude-powered convention violation check |
 
 ## CI Checks (ci.yml)
 
@@ -60,6 +62,21 @@ Release builds use `--features all`, not `--all-features`. These are equivalent 
 ## Integration Tests
 
 Never run in CI. Marked `#[ignore]` in code. Run locally with `just test-integration`.
+
+## Claude-Powered PR Checks
+
+Two workflows use `anthropics/claude-code-action@v1` to review PRs:
+
+| Workflow | What it checks |
+|----------|----------------|
+| `doc-freshness.yml` | Whether docs in `docs/` and `CLAUDE.md` files are stale relative to the diff |
+| `code-conventions.yml` | Convention violations against CONVENTIONS.md, OBSERVABILITY.md, ERRORS.md, DISPATCH.md, SERIALIZATION.md, and CLAUDE.md |
+
+Both workflows post a PR comment with findings. They use concurrency groups keyed on PR number to cancel stale runs.
+
+**Required secret:** `ANTHROPIC_API_KEY` must be set in the repository's Actions secrets. Without it, both workflows will fail.
+
+See `docs/CICD.md` for the full CI/CD contract.
 
 ## Gotchas
 

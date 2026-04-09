@@ -43,7 +43,7 @@ Supported forms:
 - `/absolute/path`
 - `~/path`
 
-SSH host resolution should follow the user’s SSH configuration rather than inventing a second host lookup mechanism.
+SSH host resolution must follow the user’s SSH configuration rather than inventing a second host lookup mechanism.
 
 ## Parser Strategy
 
@@ -52,7 +52,7 @@ Each parser knows:
 - where an app stores config under an appdata root
 - how to turn that config into service credentials
 
-Missing apps should be skipped quietly. Corrupt configs should produce warnings rather than abort the whole scan.
+Missing apps must be skipped quietly. Corrupt configs must produce warnings rather than abort the whole scan.
 
 ## Actions
 
@@ -98,11 +98,11 @@ The CLI remains a thin shim over the client.
 
 The MCP tool exposes the same operations as dotted or flat actions within the normal one-tool-per-service model.
 
-It should also participate in the normal discovery surfaces:
+It must also participate in the normal discovery surfaces:
 
 - `extract help`
 - `lab://extract/actions`
 
 ## Safety
 
-`extract` exists to save setup time, but it should default toward preserving existing config rather than overwriting it.
+`extract` exists to save setup time, but it must default toward preserving existing config rather than overwriting it.

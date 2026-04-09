@@ -145,7 +145,7 @@ async fn unifi_row() -> HealthRow {
         };
     };
 
-    match <_ as ServiceClient>::health(&client).await {
+    match ServiceClient::health(&client).await {
         Ok(s) => HealthRow {
             service: "unifi".into(),
             reachable: s.reachable,

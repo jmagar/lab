@@ -14,7 +14,7 @@ It defines:
 
 ## Goal
 
-Testing should prove:
+Testing must prove:
 
 - shared behavior is correct
 - surface adapters are aligned
@@ -78,7 +78,7 @@ Purpose:
 Rules:
 
 - these tests must not require CLI, MCP, or HTTP protocol setup
-- they should be the primary place to test shared product-surface orchestration
+- they must be the primary place to test shared product-surface orchestration
 
 ### 3. Surface Adapter Tests
 
@@ -153,7 +153,7 @@ If a change affects shared contracts such as:
 
 then the change must add or update tests at the layer where the contract actually lives.
 
-Those tests should be introduced before or alongside the implementation change, not added as cleanup afterward.
+Those tests must be introduced before or alongside the implementation change, not added as cleanup afterward.
 
 ## Destructive-Operation Rule
 
@@ -168,7 +168,7 @@ Rules:
 
 ## Contract Tests
 
-The following contracts should have focused tests:
+The following contracts must have focused tests:
 
 - error kind stability
 - MCP success and error envelope shape
@@ -176,7 +176,7 @@ The following contracts should have focused tests:
 - shared operation schema projection
 - observability field presence
 
-These tests should be narrow and stable. They exist to prevent silent contract drift.
+These tests must be narrow and stable. They exist to prevent silent contract drift.
 
 ## Verification Before Completion
 

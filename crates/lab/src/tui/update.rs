@@ -302,7 +302,10 @@ async fn fetch_latest_release() -> anyhow::Result<GhRelease> {
 
 impl UpdateState {
     /// Render the update tab into `area` on `f`.
-    pub fn render(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+    pub fn render(&self, f: &mut ratatui::Frame<'_>, area: Rect, tick_count: u64) {
+        use crate::tui::display::spinner_frame;
+        use ratatui::layout::{Constraint, Direction, Layout};
+
         let block = Block::default()
             .title(" Self-Update ")
             .borders(Borders::ALL);
@@ -312,36 +315,50 @@ impl UpdateState {
         let text: Vec<Line<'_>> = match self {
             Self::Idle => vec![Line::from("Press 'u' to check for updates")],
 
-            Self::Checking => vec![Line::from("Checking for updates\u{2026}")],
+            Self::Checking => {
+                let s = spinner_frame(tick_count);
+                vec![Line::from(format!("{s} Checking for updates\u{2026}"))]
+            }
 
             Self::Available { current, latest } => vec![
                 Line::from(vec![
                     Span::raw("Update available: "),
-                    Span::styled(current.as_str(), Style::default().fg(Color::Yellow)),
+                    Span::styled(
+                        current.as_str(),
+                        Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD),
+                    ),
                     Span::raw(" \u{2192} "),
-                    Span::styled(latest.as_str(), Style::default().fg(Color::Green)),
+                    Span::styled(
+                        latest.as_str(),
+                        Style::default().fg(Color::Green).add_modifier(ratatui::style::Modifier::BOLD),
+                    ),
                 ]),
                 Line::from(""),
-                Line::from("Press Enter to update."),
+                Line::from("Press Enter to download"),
             ],
 
             Self::Downloading { progress } => {
+                let s = spinner_frame(tick_count);
                 let pct = (*progress * 100.0) as u32;
                 let filled = (*progress * 20.0) as usize;
                 let empty = 20usize.saturating_sub(filled);
                 let bar = format!(
-                    "[{filled}{empty}] {pct}%",
+                    "{s} Downloading\u{2026} [{filled}{empty}] {pct}%",
                     filled = "\u{2588}".repeat(filled),
                     empty = "\u{2591}".repeat(empty),
                 );
                 vec![Line::from(bar)]
             }
 
-            Self::Verifying => vec![Line::from("Verifying SHA-256\u{2026}")],
+            Self::Verifying => {
+                let s = spinner_frame(tick_count);
+                vec![Line::from(format!("{s} Verifying SHA-256\u{2026}"))]
+            }
 
-            Self::Done => vec![Line::from(
-                "Update complete. Restart lab to use the new version.",
-            )],
+            Self::Done => vec![Line::from(vec![Span::styled(
+                "\u{2713} Update complete \u{2014} restart lab to use the new version",
+                Style::default().fg(Color::Green),
+            )])],
 
             Self::Error { message } => vec![Line::from(vec![Span::styled(
                 message.as_str(),
@@ -349,8 +366,24 @@ impl UpdateState {
             )])],
         };
 
+        // Center vertically inside inner area.
+        let text_height = text.len() as u16;
+        let padding = inner.height.saturating_sub(text_height) / 2;
+        let centered = if padding > 0 {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(padding),
+                    Constraint::Length(text_height.max(1)),
+                    Constraint::Min(0),
+                ])
+                .split(inner)[1]
+        } else {
+            inner
+        };
+
         let para = Paragraph::new(text);
-        f.render_widget(para, inner);
+        f.render_widget(para, centered);
     }
 }
 
@@ -431,7 +464,7 @@ mod tests {
             terminal
                 .draw(|f| {
                     let area = f.area();
-                    state.render(f, area);
+                    state.render(f, area, 0);
                 })
                 .expect("draw");
             // Ensure the frame buffer has content (non-empty)

@@ -331,4 +331,30 @@ mod tests {
         let err = result.unwrap_err();
         assert_eq!(err.kind(), "missing_param");
     }
+
+    // ── confirm as string "true" must NOT pass the gate ─────────────────────
+
+    #[tokio::test]
+    async fn destructive_with_confirm_string_true_does_not_pass() {
+        // confirm: "true" (string) — Value::as_bool returns None for strings.
+        let req = make_req("danger.delete", json!({"id": "abc", "confirm": "true"}));
+        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| ok_dispatch(a, p)).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.kind(),
+            "confirmation_required",
+            "string 'true' must not pass the boolean confirm gate"
+        );
+    }
+
+    // ── Empty ACTIONS slice: any action is unknown ──────────────────────────
+
+    #[tokio::test]
+    async fn empty_actions_rejects_everything() {
+        let req = make_req("anything", json!({}));
+        let result = handle_action("testsvc", test_ctx(), req, &[], |a, p| ok_dispatch(a, p)).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), "unknown_action");
+    }
 }

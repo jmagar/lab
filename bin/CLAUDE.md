@@ -7,6 +7,7 @@ Shell helpers for CI/CD and local operations. All scripts in this directory are 
 | Script | Purpose |
 |--------|---------|
 | `health-check` | Smoke-test all enabled services; used in CI. Exits non-zero if any service is unreachable. |
+| `link-claude-mds` | For every `CLAUDE.md` found in the repo, replaces sibling `AGENTS.md` and `GEMINI.md` with symlinks pointing to `CLAUDE.md`. Keeps multi-agent memory in sync from a single source. Run after adding a new `CLAUDE.md`. Usage: `bin/link-claude-mds [repo-root]` |
 
 ## Rules
 

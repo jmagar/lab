@@ -4,7 +4,7 @@
 
 ## Per-Service Shape
 
-Each service should provide:
+Each service must provide:
 
 - a `lab-apis` module
 - a typed client

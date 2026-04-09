@@ -13,7 +13,7 @@ It defines:
 
 ## Goal
 
-Every service operation should have one shared execution path regardless of which product surface invokes it.
+Every service operation must have one shared execution path regardless of which product surface invokes it.
 
 The contract is:
 
@@ -88,7 +88,7 @@ CLI owns:
 
 CLI does not own shared operation semantics.
 
-CLI should consume the shared operation schema where practical for:
+CLI must consume the shared operation schema for:
 
 - help text
 - validation consistency
@@ -108,7 +108,7 @@ MCP owns:
 
 MCP does not own shared operation semantics.
 
-MCP should project the shared operation schema rather than acting as the source of truth for it.
+MCP must project the shared operation schema rather than acting as the source of truth for it.
 
 #### HTTP API
 
@@ -121,7 +121,7 @@ HTTP API owns:
 
 HTTP API does not own shared operation semantics.
 
-HTTP API should use the shared operation schema for validation and documentation where practical.
+HTTP API must use the shared operation schema for validation. When HTTP API documentation is exposed, it must derive from that same shared schema.
 
 ## Allowed Dependency Direction
 
@@ -152,13 +152,13 @@ That catalog owns:
 - destructive flag
 - result description
 
-Operation names should remain stable and machine-oriented. Dotted names such as `movie.get` or `sites.list` are appropriate for shared internal identity even when the CLI exposes a different typed syntax.
+Operation names must remain stable and machine-oriented. Dotted names such as `movie.get` or `sites.list` are appropriate for shared internal identity even when the CLI exposes a different typed syntax.
 
 ## Shared Operation Schema
 
-The operation catalog should be represented as a shared surface-neutral schema.
+The operation catalog must be represented as a shared surface-neutral schema.
 
-That schema should define:
+That schema must define:
 
 - operation name
 - description
@@ -194,7 +194,7 @@ That includes:
 - destructive flags
 - return descriptions
 
-In practice, this should be modeled as the shared operation schema rather than as transport-local copies.
+In practice, this must be modeled as the shared operation schema rather than as transport-local copies.
 
 Transport layers may project that metadata into:
 
@@ -231,7 +231,7 @@ The canonical shared error vocabulary remains defined by [ERRORS.md](./ERRORS.md
 
 ## Result Contract
 
-The dispatch layer should return a surface-neutral result.
+The dispatch layer must return a surface-neutral result.
 
 For initial migration, returning `serde_json::Value` is acceptable if it reduces churn and keeps the refactor incremental.
 
@@ -239,7 +239,7 @@ Longer term, the dispatch layer may grow a more typed result wrapper if needed, 
 
 The important rule is:
 
-- surfaces should not re-execute operation logic to reshape results
+- surfaces must not re-execute operation logic to reshape results
 
 The canonical serialization rules remain defined by [SERIALIZATION.md](./SERIALIZATION.md).
 
@@ -249,9 +249,9 @@ Client and instance resolution belong below or inside `services`.
 
 Rules:
 
-- surfaces should not read env directly to construct service clients
+- surfaces must not read env directly to construct service clients
 - default-instance and named-instance behavior must be consistent across CLI, MCP, and HTTP API
-- client construction should use shared helpers where possible
+- client construction must use shared helpers
 
 This is a primary reason the dispatch layer exists.
 
@@ -261,9 +261,9 @@ Typed CLI is the human-facing contract.
 
 Rules:
 
-- new services should default to typed subcommands
+- new services must default to typed subcommands
 - typed CLI commands may map to shared machine-oriented operation names internally
-- CLI syntax should not force MCP-style `action + params` onto human users
+- CLI syntax must not force MCP-style `action + params` onto human users
 
 The CLI remains free to choose ergonomic command names and flags as long as those map to the canonical service operations.
 
@@ -278,7 +278,7 @@ Rules:
 - `help` and `schema` are projections of the shared operation schema
 - elicitation behavior is driven by the shared destructive metadata
 
-MCP should not be the owner of shared operation execution.
+MCP must not be the owner of shared operation execution.
 
 ## HTTP API Contract
 
@@ -288,13 +288,13 @@ Rules:
 
 - request shape remains `action + params`
 - HTTP owns routing, extraction, and status mapping only
-- HTTP should use the same semantic operation catalog and execution path as MCP and CLI
+- HTTP must use the same semantic operation catalog and execution path as MCP and CLI
 
-HTTP API should not call MCP dispatchers directly.
+HTTP API must not call MCP dispatchers directly.
 
 ## Observability Boundary
 
-Dispatch observability should be centered around the shared `services` execution boundary.
+Dispatch observability must be centered around the shared `services` execution boundary.
 
 That means:
 
@@ -315,7 +315,7 @@ That allows:
 - dispatch error tests
 - service execution tests
 
-Surface layers should then need only:
+Surface layers must then need only:
 
 - adapter tests
 - envelope/status mapping tests
@@ -340,16 +340,16 @@ One acceptable layout is:
 
 ```text
 crates/lab/src/
+  services.rs
   services/
-    mod.rs
-    types.rs
-    helpers.rs
+    context.rs
+    params.rs
     radarr.rs
     bytestash.rs
     unifi.rs
 ```
 
-The exact file breakdown may evolve, but the ownership and dependency rules in this document should remain stable.
+The exact file breakdown may evolve, but the ownership and dependency rules in this document must remain stable.
 
 ## Related Docs
 

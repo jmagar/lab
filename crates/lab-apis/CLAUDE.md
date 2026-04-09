@@ -55,3 +55,17 @@ sub-modules (`client/chat.rs`, etc.) — same pattern applied recursively. `open
 
 ```rust
 fn health(&self) -> impl Future<Output = Result<ServiceStatus, ApiError>> + Send;
+```
+
+`ServiceClient` is implemented in `foo.rs` (the module entry point), not in `client.rs`. The trait is for `lab doctor` health polling only. Do not add operational methods to it.
+
+- **No `Box<dyn ServiceClient>`** — use generics or concrete types.
+- **Native `async fn in trait`** (Rust 1.75+) — do not use `#[async_trait]`.
+
+## Library Invariants
+
+- **No `clap`, `rmcp`, `ratatui`, `anyhow`, `tabled`** — ever. These belong in `lab` only.
+- **No file or env I/O** — `lab-apis` never reads `std::env` or the filesystem. Config flows from `lab/src/config.rs` into constructors.
+- **`HttpClient::new()` is fallible** — all service `Client::new()` constructors must propagate `Result`.
+- **`Debug` impls for anything holding secrets must redact** — test this explicitly.
+- **Always `Result<T>`, never panic** — use `thiserror` for typed errors, never `unwrap()` in library code.
