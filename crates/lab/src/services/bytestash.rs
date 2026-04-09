@@ -295,14 +295,19 @@ pub const ACTIONS: &[ActionSpec] = &[
 /// `ByteStash` uses a non-standard auth header: `bytestashauth: Bearer <jwt>`.
 /// Returns `None` if either env var is absent or empty.
 pub fn client_from_env() -> Option<ByteStashClient> {
-    let url = std::env::var("BYTESTASH_URL")
-        .ok()
-        .filter(|v| !v.is_empty())?;
-    let token = std::env::var("BYTESTASH_TOKEN")
-        .ok()
-        .filter(|v| !v.is_empty())?;
+    let url = std::env::var("BYTESTASH_URL").ok();
+    let token = std::env::var("BYTESTASH_TOKEN").ok();
+    client_from_vars(url.as_deref(), token.as_deref())
+}
+
+/// Build a client from explicit URL and token values.
+///
+/// Returns `None` if either value is `None` or empty.
+fn client_from_vars(url: Option<&str>, token: Option<&str>) -> Option<ByteStashClient> {
+    let url = url.filter(|v| !v.is_empty())?;
+    let token = token.filter(|v| !v.is_empty())?;
     ByteStashClient::new(
-        &url,
+        url,
         Auth::ApiKey {
             header: "bytestashauth".into(),
             key: format!("Bearer {token}"),
@@ -460,18 +465,24 @@ mod tests {
     }
 
     #[test]
-    fn client_from_env_filter_logic_rejects_empty() {
-        // Verify the filter predicate used in client_from_env rejects empty strings.
-        // This mirrors the `.filter(|v| !v.is_empty())` guard in client_from_env.
-        let empty: Option<String> = Some(String::new());
-        let filtered = empty.filter(|v| !v.is_empty());
-        assert!(
-            filtered.is_none(),
-            "empty string must be filtered out by client_from_env guard"
-        );
+    fn client_from_vars_rejects_empty_url() {
+        assert!(client_from_vars(Some(""), Some("tok")).is_none());
+    }
 
-        let non_empty: Option<String> = Some("http://localhost:8080".to_string());
-        let filtered = non_empty.filter(|v| !v.is_empty());
-        assert!(filtered.is_some(), "non-empty string must pass the guard");
+    #[test]
+    fn client_from_vars_rejects_empty_token() {
+        assert!(client_from_vars(Some("http://localhost"), Some("")).is_none());
+    }
+
+    #[test]
+    fn client_from_vars_rejects_missing() {
+        assert!(client_from_vars(None, Some("tok")).is_none());
+        assert!(client_from_vars(Some("http://localhost"), None).is_none());
+        assert!(client_from_vars(None, None).is_none());
+    }
+
+    #[test]
+    fn client_from_vars_accepts_valid() {
+        assert!(client_from_vars(Some("http://localhost:8080"), Some("jwt-token")).is_some());
     }
 }
