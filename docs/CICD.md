@@ -16,6 +16,8 @@ Every push and pull request must pass all of the following:
 | Deny | `cargo deny check` |
 | Tests | `cargo nextest run --workspace --all-features` |
 | Docs | `cargo doc --no-deps --all-features` (must be warning-free) |
+| Doc Freshness | Claude Code action — flags stale docs based on PR diff |
+| Code Conventions | Claude Code action — flags convention violations in changed code |
 
 Clippy runs with `-D warnings` — zero warnings are permitted. This is enforced at the workspace lint layer.
 
@@ -78,6 +80,22 @@ Binary size is tracked but not hard-gated in CI unless repo tooling enforces a m
 - no startup polling
 - no background update checks
 - verify release integrity before replacement
+
+## Claude-Powered PR Checks
+
+Two additional jobs run on every PR against `main`. They use `anthropics/claude-code-action@v1` in automation mode (prompt-driven, no `@claude` trigger required).
+
+Both require `ANTHROPIC_API_KEY` set as a repository secret.
+
+### Doc Freshness (`doc-freshness.yml`)
+
+Compares the PR diff against `docs/` and per-directory `CLAUDE.md` files. Posts a single comment listing which docs are stale and what changed. Reports "No documentation updates needed" when nothing is affected.
+
+### Code Conventions (`code-conventions.yml`)
+
+Compares the PR diff against the locked rules in `docs/CONVENTIONS.md`, `docs/OBSERVABILITY.md`, `docs/ERRORS.md`, `docs/DISPATCH.md`, `docs/SERIALIZATION.md`, `CLAUDE.md`, and any nearby `CLAUDE.md` files. Reports violations with file path, line number, rule citation, and fix guidance. Reports "No convention violations found" when the diff is clean.
+
+Both workflows use `concurrency` groups to cancel stale runs when new commits are pushed to the same PR branch.
 
 ## Non-Goals
 
