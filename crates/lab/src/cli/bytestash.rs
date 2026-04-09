@@ -28,7 +28,7 @@ pub struct BytestashArgs {
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: BytestashArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = parse_kv_params(args.params)?;
-    let result = crate::mcp::services::bytestash::dispatch(&args.action, params)
+    let result = crate::services::bytestash::dispatch(&args.action, params)
         .await
         .map_err(|te| {
             anyhow::anyhow!(
