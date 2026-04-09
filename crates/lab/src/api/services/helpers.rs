@@ -111,6 +111,7 @@ where
             service,
             action = action_log,
             elapsed_ms,
+            destructive = spec.destructive,
             "dispatch ok"
         ),
         Err(e) if e.is_internal() => tracing::error!(
