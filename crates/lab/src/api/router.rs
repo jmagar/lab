@@ -23,11 +23,14 @@ use crate::services::error::ToolError;
 
 #[allow(clippy::too_many_lines)]
 pub fn build_router(state: AppState) -> Router {
+    let v1 = Router::new()
+        .route("/{service}/actions", get(service_actions))
+        .route("/{service}", axum::routing::post(dispatch_service));
+
     let router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
-        .route("/v1/{service}/actions", get(service_actions))
-        .route("/v1/{service}", axum::routing::post(dispatch_service));
+        .nest("/v1", v1);
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
