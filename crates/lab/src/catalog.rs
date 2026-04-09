@@ -90,7 +90,7 @@ fn actions_for(service: &str) -> Vec<ActionEntry> {
         #[cfg(feature = "memos")]
         "memos" => convert_actions(crate::mcp::services::memos::ACTIONS),
         #[cfg(feature = "bytestash")]
-        "bytestash" => convert_actions(crate::mcp::services::bytestash::ACTIONS),
+        "bytestash" => convert_actions(crate::services::bytestash::ACTIONS),
         #[cfg(feature = "paperless")]
         "paperless" => convert_actions(crate::mcp::services::paperless::ACTIONS),
         #[cfg(feature = "arcane")]

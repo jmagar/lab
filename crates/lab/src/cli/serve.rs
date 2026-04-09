@@ -236,7 +236,7 @@ async fn dispatch_service(service: &str, action: &str, params: Value) -> Result<
             .await
             .map_err(|te| anyhow::anyhow!("{te}")),
         #[cfg(feature = "bytestash")]
-        "bytestash" => crate::mcp::services::bytestash::dispatch(action, params)
+        "bytestash" => crate::services::bytestash::dispatch(action, params)
             .await
             .map_err(|te| anyhow::anyhow!("{te}")),
         #[cfg(feature = "paperless")]
