@@ -18,7 +18,7 @@ use lab_apis::bytestash::types::{AuthCredentials, ShareCreateRequest, SnippetWri
 use lab_apis::core::Auth;
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
-use crate::mcp::envelope::ToolError;
+use crate::services::error::ToolError;
 
 impl From<ByteStashError> for ToolError {
     fn from(e: ByteStashError) -> Self {

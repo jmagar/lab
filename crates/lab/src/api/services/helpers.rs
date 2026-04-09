@@ -17,7 +17,7 @@ use serde_json::Value;
 use lab_apis::core::action::ActionSpec;
 
 use crate::api::ActionRequest;
-use crate::mcp::envelope::ToolError;
+use crate::services::error::ToolError;
 use crate::services::context::DispatchContext;
 
 /// Dispatch a service action request with unknown-action gate, confirmation gate, and logging.
