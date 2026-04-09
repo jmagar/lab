@@ -2,6 +2,8 @@
 //! startup; the MCP server walks the registry to expose tools and the
 //! catalog module walks it to produce discovery docs.
 
+use lab_apis::core::action::ActionSpec;
+
 /// Metadata the registry keeps about each registered service.
 #[derive(Debug, Clone)]
 pub struct RegisteredService {
@@ -11,6 +13,8 @@ pub struct RegisteredService {
     pub description: &'static str,
     /// Category slug.
     pub category: &'static str,
+    /// Actions exposed by this service.
+    pub actions: &'static [ActionSpec],
 }
 
 /// Collection of registered services, built at startup.
@@ -59,6 +63,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::extract::ACTIONS,
         });
     }
 
@@ -69,6 +74,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::radarr::ACTIONS,
         });
     }
 
@@ -79,6 +85,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::sonarr::ACTIONS,
         });
     }
 
@@ -89,6 +96,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::prowlarr::ACTIONS,
         });
     }
 
@@ -99,6 +107,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::plex::ACTIONS,
         });
     }
 
@@ -109,6 +118,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::tautulli::ACTIONS,
         });
     }
 
@@ -119,6 +129,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::sabnzbd::ACTIONS,
         });
     }
 
@@ -129,6 +140,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::qbittorrent::ACTIONS,
         });
     }
 
@@ -139,6 +151,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::tailscale::ACTIONS,
         });
     }
 
@@ -149,6 +162,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::linkding::ACTIONS,
         });
     }
 
@@ -159,6 +173,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::memos::ACTIONS,
         });
     }
 
@@ -169,6 +184,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::services::bytestash::ACTIONS,
         });
     }
 
@@ -179,6 +195,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::paperless::ACTIONS,
         });
     }
 
@@ -189,6 +206,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::arcane::ACTIONS,
         });
     }
 
@@ -199,6 +217,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::unraid::ACTIONS,
         });
     }
 
@@ -209,6 +228,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::unifi::ACTIONS,
         });
     }
 
@@ -219,6 +239,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::overseerr::ACTIONS,
         });
     }
 
@@ -229,6 +250,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::gotify::ACTIONS,
         });
     }
 
@@ -239,6 +261,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::openai::ACTIONS,
         });
     }
 
@@ -249,6 +272,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::qdrant::ACTIONS,
         });
     }
 
@@ -259,6 +283,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::tei::ACTIONS,
         });
     }
 
@@ -269,6 +294,7 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
+            actions: crate::mcp::services::apprise::ACTIONS,
         });
     }
 
