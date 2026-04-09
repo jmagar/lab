@@ -47,70 +47,17 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
             name: svc.name.to_string(),
             description: svc.description.to_string(),
             category: svc.category.to_string(),
-            actions: actions_for(svc.name),
+            actions: svc
+                .actions
+                .iter()
+                .map(|a| ActionEntry {
+                    name: a.name.into(),
+                    description: a.description.into(),
+                    destructive: a.destructive,
+                })
+                .collect(),
         })
         .collect();
 
     Catalog { services }
-}
-
-/// Convert a service's `&[ActionSpec]` into `Vec<ActionEntry>` for the catalog.
-fn convert_actions(specs: &[lab_apis::core::action::ActionSpec]) -> Vec<ActionEntry> {
-    specs
-        .iter()
-        .map(|s| ActionEntry {
-            name: s.name.into(),
-            description: s.description.into(),
-            destructive: s.destructive,
-        })
-        .collect()
-}
-
-fn actions_for(service: &str) -> Vec<ActionEntry> {
-    match service {
-        "extract" => convert_actions(crate::mcp::services::extract::ACTIONS),
-        #[cfg(feature = "radarr")]
-        "radarr" => convert_actions(crate::mcp::services::radarr::ACTIONS),
-        #[cfg(feature = "sonarr")]
-        "sonarr" => convert_actions(crate::mcp::services::sonarr::ACTIONS),
-        #[cfg(feature = "prowlarr")]
-        "prowlarr" => convert_actions(crate::mcp::services::prowlarr::ACTIONS),
-        #[cfg(feature = "plex")]
-        "plex" => convert_actions(crate::mcp::services::plex::ACTIONS),
-        #[cfg(feature = "tautulli")]
-        "tautulli" => convert_actions(crate::mcp::services::tautulli::ACTIONS),
-        #[cfg(feature = "sabnzbd")]
-        "sabnzbd" => convert_actions(crate::mcp::services::sabnzbd::ACTIONS),
-        #[cfg(feature = "qbittorrent")]
-        "qbittorrent" => convert_actions(crate::mcp::services::qbittorrent::ACTIONS),
-        #[cfg(feature = "tailscale")]
-        "tailscale" => convert_actions(crate::mcp::services::tailscale::ACTIONS),
-        #[cfg(feature = "linkding")]
-        "linkding" => convert_actions(crate::mcp::services::linkding::ACTIONS),
-        #[cfg(feature = "memos")]
-        "memos" => convert_actions(crate::mcp::services::memos::ACTIONS),
-        #[cfg(feature = "bytestash")]
-        "bytestash" => convert_actions(crate::services::bytestash::ACTIONS),
-        #[cfg(feature = "paperless")]
-        "paperless" => convert_actions(crate::mcp::services::paperless::ACTIONS),
-        #[cfg(feature = "arcane")]
-        "arcane" => convert_actions(crate::mcp::services::arcane::ACTIONS),
-        #[cfg(feature = "unraid")]
-        "unraid" => convert_actions(crate::mcp::services::unraid::ACTIONS),
-        #[cfg(feature = "unifi")]
-        "unifi" => convert_actions(crate::mcp::services::unifi::ACTIONS),
-        #[cfg(feature = "overseerr")]
-        "overseerr" => convert_actions(crate::mcp::services::overseerr::ACTIONS),
-        #[cfg(feature = "gotify")]
-        "gotify" => convert_actions(crate::mcp::services::gotify::ACTIONS),
-        #[cfg(feature = "openai")]
-        "openai" => convert_actions(crate::mcp::services::openai::ACTIONS),
-        #[cfg(feature = "qdrant")]
-        "qdrant" => convert_actions(crate::mcp::services::qdrant::ACTIONS),
-        #[cfg(feature = "tei")]
-        "tei" => convert_actions(crate::mcp::services::tei::ACTIONS),
-        #[cfg(feature = "apprise")]
-        "apprise" => convert_actions(crate::mcp::services::apprise::ACTIONS),
-        _ => Vec::new(),
-    }
 }
