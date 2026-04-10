@@ -5,7 +5,6 @@ use std::time::Duration;
 use axum::{
     Router,
     extract::State,
-    http::HeaderMap,
     http::{HeaderName, StatusCode},
     routing::get,
 };
@@ -18,15 +17,59 @@ use tower_http::{
 };
 use tracing::Level;
 
-use super::{ActionRequest, health, state::AppState};
-use crate::dispatch::context::DispatchContext;
+use super::{health, services, state::AppState};
 use crate::dispatch::error::ToolError;
 
 #[allow(clippy::too_many_lines)]
 pub fn build_router(state: AppState) -> Router {
-    let v1 = Router::new()
+    let mut v1 = Router::new()
         .route("/{service}/actions", get(service_actions))
-        .route("/{service}", axum::routing::post(dispatch_service));
+        // always-on service
+        .nest("/extract", services::extract::routes(state.clone()));
+
+    // Feature-gated per-service route groups.
+    #[cfg(feature = "radarr")]
+    { v1 = v1.nest("/radarr", services::radarr::routes(state.clone())); }
+    #[cfg(feature = "sonarr")]
+    { v1 = v1.nest("/sonarr", services::sonarr::routes(state.clone())); }
+    #[cfg(feature = "prowlarr")]
+    { v1 = v1.nest("/prowlarr", services::prowlarr::routes(state.clone())); }
+    #[cfg(feature = "plex")]
+    { v1 = v1.nest("/plex", services::plex::routes(state.clone())); }
+    #[cfg(feature = "tautulli")]
+    { v1 = v1.nest("/tautulli", services::tautulli::routes(state.clone())); }
+    #[cfg(feature = "sabnzbd")]
+    { v1 = v1.nest("/sabnzbd", services::sabnzbd::routes(state.clone())); }
+    #[cfg(feature = "qbittorrent")]
+    { v1 = v1.nest("/qbittorrent", services::qbittorrent::routes(state.clone())); }
+    #[cfg(feature = "tailscale")]
+    { v1 = v1.nest("/tailscale", services::tailscale::routes(state.clone())); }
+    #[cfg(feature = "linkding")]
+    { v1 = v1.nest("/linkding", services::linkding::routes(state.clone())); }
+    #[cfg(feature = "memos")]
+    { v1 = v1.nest("/memos", services::memos::routes(state.clone())); }
+    #[cfg(feature = "bytestash")]
+    { v1 = v1.nest("/bytestash", services::bytestash::routes(state.clone())); }
+    #[cfg(feature = "paperless")]
+    { v1 = v1.nest("/paperless", services::paperless::routes(state.clone())); }
+    #[cfg(feature = "arcane")]
+    { v1 = v1.nest("/arcane", services::arcane::routes(state.clone())); }
+    #[cfg(feature = "unraid")]
+    { v1 = v1.nest("/unraid", services::unraid::routes(state.clone())); }
+    #[cfg(feature = "unifi")]
+    { v1 = v1.nest("/unifi", services::unifi::routes(state.clone())); }
+    #[cfg(feature = "overseerr")]
+    { v1 = v1.nest("/overseerr", services::overseerr::routes(state.clone())); }
+    #[cfg(feature = "gotify")]
+    { v1 = v1.nest("/gotify", services::gotify::routes(state.clone())); }
+    #[cfg(feature = "openai")]
+    { v1 = v1.nest("/openai", services::openai::routes(state.clone())); }
+    #[cfg(feature = "qdrant")]
+    { v1 = v1.nest("/qdrant", services::qdrant::routes(state.clone())); }
+    #[cfg(feature = "tei")]
+    { v1 = v1.nest("/tei", services::tei::routes(state.clone())); }
+    #[cfg(feature = "apprise")]
+    { v1 = v1.nest("/apprise", services::apprise::routes(state.clone())); }
 
     let router = Router::new()
         .route("/health", get(health::health))
@@ -70,43 +113,6 @@ pub fn build_router(state: AppState) -> Router {
         .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid))
 }
 
-/// Generic dispatch handler: looks up the service in the registry and
-/// calls its `DispatchFn` through the shared `handle_action` wrapper.
-async fn dispatch_service(
-    State(state): State<AppState>,
-    axum::extract::Path(service): axum::extract::Path<String>,
-    headers: HeaderMap,
-    axum::Json(req): axum::Json<ActionRequest>,
-) -> Result<axum::Json<serde_json::Value>, ToolError> {
-    let svc = state
-        .registry
-        .services()
-        .iter()
-        .find(|s| s.name == service)
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "not_found".into(),
-            message: format!("unknown service `{service}`"),
-        })?;
-
-    let dispatch = svc.dispatch;
-    let actions = svc.actions;
-    let ctx = DispatchContext {
-        surface: "api",
-        instance: None,
-    };
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-
-    super::services::helpers::handle_action(
-        svc.name,
-        ctx,
-        request_id,
-        req,
-        actions,
-        move |action, params| dispatch(action, params),
-        Some(&headers),
-    )
-    .await
-}
 
 async fn service_actions(
     State(state): State<AppState>,
