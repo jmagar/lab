@@ -119,27 +119,26 @@ impl CliPresence {
     /// Uses `tokio::task::spawn_blocking` so the blocking `which` subprocess
     /// does not stall the async executor.
     pub async fn detect() -> Self {
-        let claude = tokio::task::spawn_blocking(|| {
-            std::process::Command::new("which")
-                .arg("claude")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        })
-        .await
-        .unwrap_or(false);
-
-        let gemini = tokio::task::spawn_blocking(|| {
-            std::process::Command::new("which")
-                .arg("gemini")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        })
-        .await
-        .unwrap_or(false);
-
-        Self { claude, gemini }
+        let (claude, gemini) = tokio::join!(
+            tokio::task::spawn_blocking(|| {
+                std::process::Command::new("which")
+                    .arg("claude")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            }),
+            tokio::task::spawn_blocking(|| {
+                std::process::Command::new("which")
+                    .arg("gemini")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            }),
+        );
+        Self {
+            claude: claude.unwrap_or(false),
+            gemini: gemini.unwrap_or(false),
+        }
     }
 }
 

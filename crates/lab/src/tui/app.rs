@@ -91,7 +91,7 @@ pub fn run() -> Result<()> {
         }
     });
 
-    tui_main(tx, rx)
+    tokio::task::block_in_place(|| tui_main(tx, rx))
 }
 
 // ── Main render loop ──────────────────────────────────────────────────────────
@@ -102,7 +102,9 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
 
     // Spawn startup background tasks.
     spawn_seed_task(tx.clone());
-    spawn_health_check(tx.clone());
+    app.services.health_generation = app.services.health_generation.wrapping_add(1);
+    app.health_check_in_flight = true;
+    spawn_health_check(tx.clone(), app.services.health_generation);
     spawn_marketplace_load(tx.clone());
 
     // Initial render.
@@ -147,7 +149,8 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
         if app.refresh_health && !app.health_check_in_flight {
             app.refresh_health = false;
             app.health_check_in_flight = true;
-            spawn_health_check(tx.clone());
+            app.services.health_generation = app.services.health_generation.wrapping_add(1);
+            spawn_health_check(tx.clone(), app.services.health_generation);
         }
 
         if app.dirty {
@@ -178,11 +181,14 @@ fn spawn_seed_task(tx: mpsc::Sender<AppEvent>) {
 
 /// Spawn a background task that runs health checks for all enabled services
 /// and posts the results back on the event channel.
-fn spawn_health_check(tx: mpsc::Sender<AppEvent>) {
+///
+/// `generation` must match `app.services.health_generation` at the time of posting —
+/// the handler discards stale results from superseded runs.
+fn spawn_health_check(tx: mpsc::Sender<AppEvent>, generation: u64) {
     let env_path = crate::tui::services::lab_env_path();
     tokio::runtime::Handle::current().spawn(async move {
         let results = crate::tui::metadata::check_all_services(&env_path).await;
-        let _ = tx.send(AppEvent::HealthChecksDone(results));
+        let _ = tx.send(AppEvent::HealthChecksDone { generation, results });
     });
 }
 
@@ -232,8 +238,10 @@ fn handle_event(app: &mut App, ev: AppEvent) {
             });
             app.dirty = true;
         }
-        AppEvent::HealthChecksDone(results) => {
-            app.services.update_health(results);
+        AppEvent::HealthChecksDone { generation, results } => {
+            if generation == app.services.health_generation {
+                app.services.update_health(results);
+            }
             app.health_check_in_flight = false;
             app.dirty = true;
         }
