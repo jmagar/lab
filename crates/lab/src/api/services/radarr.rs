@@ -5,7 +5,6 @@ use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
-use crate::dispatch::context::DispatchContext;
 use crate::dispatch::error::ToolError;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
@@ -28,10 +27,7 @@ async fn handle(
         })?;
     handle_action(
         "radarr",
-        DispatchContext {
-            surface: "api",
-            instance: None,
-        },
+        "api",
         request_id,
         req,
         crate::dispatch::radarr::actions(),

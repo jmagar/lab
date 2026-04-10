@@ -19,7 +19,6 @@ use tracing::Instrument;
 use lab_apis::core::action::ActionSpec;
 
 use crate::api::ActionRequest;
-use crate::dispatch::context::DispatchContext;
 use crate::dispatch::error::ToolError;
 
 /// Dispatch a service action request with unknown-action gate, confirmation gate, and logging.
@@ -54,7 +53,7 @@ use crate::dispatch::error::ToolError;
 #[allow(clippy::too_many_lines)]
 pub async fn handle_action<F, Fut>(
     service: &'static str,
-    ctx: DispatchContext,
+    surface: &'static str,
     request_id: Option<&str>,
     req: ActionRequest,
     actions: &[ActionSpec],
@@ -76,7 +75,7 @@ where
         None
     } else if let Some(s) = actions.iter().find(|s| s.name == action) { Some(s) } else {
         tracing::warn!(
-            surface = ctx.surface,
+            surface = surface,
             service,
             action,
             request_id,
@@ -105,7 +104,7 @@ where
             .unwrap_or(false);
         if !confirmed_by_params {
             tracing::warn!(
-                surface = ctx.surface,
+                surface = surface,
                 service,
                 action,
                 request_id,
@@ -131,7 +130,7 @@ where
     // service errors mid-way. Only fires for destructive actions after confirmation succeeds.
     if is_destructive {
         tracing::info!(
-            surface = ctx.surface,
+            surface = surface,
             service,
             action = action_log,
             request_id,
@@ -142,7 +141,7 @@ where
 
     let dispatch_span = tracing::info_span!(
         "dispatch",
-        surface = ctx.surface,
+        surface = surface,
         service,
         action = action_log,
         request_id
@@ -153,7 +152,7 @@ where
 
     match &result {
         Ok(_) => tracing::info!(
-            surface = ctx.surface,
+            surface = surface,
             service,
             action = action_log,
             request_id,
@@ -162,7 +161,7 @@ where
             "dispatch ok"
         ),
         Err(e) if e.is_internal() => tracing::error!(
-            surface = ctx.surface,
+            surface = surface,
             service,
             action = action_log,
             request_id,
@@ -171,7 +170,7 @@ where
             "dispatch error"
         ),
         Err(e) => tracing::warn!(
-            surface = ctx.surface,
+            surface = surface,
             service,
             action = action_log,
             request_id,
@@ -225,11 +224,8 @@ mod tests {
         }
     }
 
-    fn test_ctx() -> DispatchContext {
-        DispatchContext {
-            surface: "api",
-            instance: None,
-        }
+    fn test_surface() -> &'static str {
+        "api"
     }
 
     /// Dispatch closure that always succeeds with a fixed value.
@@ -250,7 +246,7 @@ mod tests {
     #[tokio::test]
     async fn success_path_returns_json_value() {
         let req = make_req("safe.read", json!({}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -264,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn error_path_preserves_tool_error_kind() {
         let req = make_req("safe.read", json!({}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             err_dispatch(a, p)
         }, None)
         .await;
@@ -278,7 +274,7 @@ mod tests {
     #[tokio::test]
     async fn destructive_without_confirm_returns_confirmation_required() {
         let req = make_req("danger.delete", json!({"id": "abc"}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -295,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn destructive_with_confirm_false_returns_confirmation_required() {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": false}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -309,7 +305,7 @@ mod tests {
     #[tokio::test]
     async fn destructive_with_confirm_true_proceeds_to_dispatch() {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -325,7 +321,7 @@ mod tests {
     async fn non_destructive_action_proceeds_without_confirm() {
         // No "confirm" key at all — should NOT be blocked.
         let req = make_req("safe.read", json!({}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -343,7 +339,7 @@ mod tests {
         let dispatch_called_clone = Arc::clone(&dispatch_called);
 
         let req = make_req("nonexistent.action", json!({}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, move |_a, _p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, move |_a, _p| {
             let flag = Arc::clone(&dispatch_called_clone);
             async move {
                 flag.store(true, Ordering::SeqCst);
@@ -395,7 +391,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
         let result = handle_action(
             "testsvc",
-            test_ctx(),
+            test_surface(),
             None,
             req,
             ACTIONS,
@@ -420,7 +416,7 @@ mod tests {
     async fn destructive_with_confirm_dispatch_error_preserves_kind() {
         let req = make_req("danger.delete", json!({"confirm": true}));
         // dispatch returns missing_param (id not given)
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             err_dispatch(a, p)
         }, None)
         .await;
@@ -435,7 +431,7 @@ mod tests {
     async fn destructive_with_confirm_string_true_does_not_pass() {
         // confirm: "true" (string) — Value::as_bool returns None for strings.
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": "true"}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -453,7 +449,7 @@ mod tests {
     #[tokio::test]
     async fn empty_actions_rejects_everything() {
         let req = make_req("anything", json!({}));
-        let result = handle_action("testsvc", test_ctx(), None, req, &[], |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, &[], |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -469,7 +465,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc"}));
         let mut headers = HeaderMap::new();
         headers.insert("x-lab-confirm", HeaderValue::from_static("yes"));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, Some(&headers))
         .await;
@@ -504,7 +500,7 @@ mod tests {
             drop(
                 handle_action(
                     "testsvc",
-                    test_ctx(),
+                    test_surface(),
                     Some("req-123"),
                     req,
                     ACTIONS,
@@ -548,7 +544,7 @@ mod tests {
         rt.block_on(async {
             let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
             drop(
-                handle_action("testsvc", test_ctx(), Some("req-del-1"), req, ACTIONS, |a, p| {
+                handle_action("testsvc", test_surface(), Some("req-del-1"), req, ACTIONS, |a, p| {
                     ok_dispatch(a, p)
                 }, None)
                 .await
@@ -620,7 +616,7 @@ mod tests {
         rt.block_on(async {
             let req = make_req("safe.read", json!({}));
             drop(
-                handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+                handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
                     ok_dispatch(a, p)
                 }, None)
                 .await
@@ -643,7 +639,7 @@ mod tests {
     async fn help_action_bypasses_catalog_gate_and_reaches_dispatch() {
         // "help" is not in ACTIONS but must not return unknown_action.
         let req = make_req("help", json!({}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;
@@ -657,7 +653,7 @@ mod tests {
     #[tokio::test]
     async fn schema_action_bypasses_catalog_gate_and_reaches_dispatch() {
         let req = make_req("schema", json!({"action": "safe.read"}));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
         }, None)
         .await;

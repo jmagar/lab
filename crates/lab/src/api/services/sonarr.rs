@@ -5,7 +5,6 @@ use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
-use crate::dispatch::context::DispatchContext;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
@@ -19,7 +18,7 @@ async fn handle(
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
     handle_action(
         "sonarr",
-        DispatchContext { surface: "api", instance: None },
+        "api",
         request_id,
         req,
         crate::dispatch::sonarr::ACTIONS,
