@@ -1,6 +1,6 @@
 //! Linkding request/response types.
 //!
-//! TODO: add bookmark, tag, and paginated list types from the Linkding API spec.
+//! TODO: add tag and paginated list types from the Linkding API spec.
 
 use serde::{Deserialize, Serialize};
 

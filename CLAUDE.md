@@ -70,7 +70,7 @@ lab/
 │           │   └── services/         # one dispatch module per service
 │           ├── mcp.rs
 │           ├── api/                  # axum HTTP API (mirrors MCP action dispatch)
-│           │   ├── state.rs          # AppState — Arc<lab-apis clients>
+│           │   ├── state.rs          # AppState — Catalog + ToolRegistry (Arc-wrapped)
 │           │   ├── error.rs          # ApiError + IntoResponse mapping
 │           │   ├── router.rs         # build_router() + middleware stack
 │           │   ├── health.rs         # /health + /ready endpoints

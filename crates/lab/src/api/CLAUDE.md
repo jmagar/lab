@@ -4,7 +4,7 @@ This directory is the **HTTP transport layer** for `lab`. It's a third peer to t
 
 ## Transport parity
 
-The HTTP API mirrors the MCP action+subaction dispatch shape so clients can share logic across transports:
+The API mirrors the MCP action+subaction dispatch shape so clients can share logic across transports:
 
 ```
 POST /v1/radarr
@@ -42,7 +42,7 @@ Never add business-logic middleware here. Auth/rate-limit belong in their own la
 
 ## Status code mapping
 
-`ApiError::status()` is the **only** place HTTP status codes are assigned. Handlers return `ApiResult<Json<T>>` and let the error type do the mapping:
+`ApiError::status()` is the **only** place HTTP status codes are assigned. Handlers return `Result<Json<T>, ToolError>` and let the error type do the mapping:
 
 | `kind()` | Status |
 |----------|--------|

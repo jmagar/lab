@@ -47,7 +47,7 @@ The source spec is the contract. This document is the implementation planning ai
 | POST | /threads/{thread_id}/runs/{run_id}/cancel | cancelRun | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /threads/{thread_id}/runs/{run_id}/steps | listRunSteps | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /threads/{thread_id}/runs/{run_id}/steps/{step_id} | getRunStep | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /threads/{thread_id}/runs/{run_id}/submit_tool_outputs | submitToolOuputsToRun | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /threads/{thread_id}/runs/{run_id}/submit_tool_outputs | submitToolOutputsToRun | ⬜ | ⬜ | ⬜ | ⬜ |
 
 ## Audio
 

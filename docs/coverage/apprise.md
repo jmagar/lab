@@ -22,7 +22,7 @@
 | Kubernetes | See source file |
 | Development Environment | Note |
 | Apprise Integration | See source file |
-| Third Party Webhook Support | dot-notation, arrays, bracket-notation |
+| Third-Party Webhook Support | dot-notation, arrays, bracket-notation |
 | Metrics Collection & Analysis | See source file |
 | OpenAPI / Swagger Specification | See source file |
 
