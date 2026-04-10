@@ -13,6 +13,18 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[],
     },
     ActionSpec {
+        name: "schema",
+        description: "Return the parameter schema for a named action",
+        destructive: false,
+        returns: "Schema",
+        params: &[ParamSpec {
+            name: "action",
+            ty: "string",
+            required: true,
+            description: "Action name to describe",
+        }],
+    },
+    ActionSpec {
         name: "auth.config",
         description: "Get auth provider configuration",
         destructive: false,
