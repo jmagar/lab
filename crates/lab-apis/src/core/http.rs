@@ -7,6 +7,30 @@ use reqwest::{Client, RequestBuilder};
 use crate::core::auth::Auth;
 use crate::core::error::ApiError;
 
+// ---------------------------------------------------------------------------
+// Private GraphQL envelope types
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+struct GraphQlRequest<'a> {
+    query: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    variables: Option<&'a serde_json::Value>,
+}
+
+#[derive(serde::Deserialize)]
+struct GraphQlResponse<T> {
+    data: Option<T>,
+    errors: Option<Vec<GraphQlError>>,
+}
+
+#[derive(serde::Deserialize)]
+struct GraphQlError {
+    message: String,
+}
+
+// ---------------------------------------------------------------------------
+
 /// Shared HTTP client. Cheap to clone — wraps `reqwest::Client` which is `Arc`-based internally.
 #[derive(Debug, Clone)]
 pub struct HttpClient {
@@ -242,6 +266,46 @@ impl HttpClient {
             .await
             .map_err(|e| ApiError::Network(e.to_string()))?;
         Self::check_status(resp).await
+    }
+
+    /// POST a GraphQL query and decode the `data` field of the response.
+    ///
+    /// Unlike REST endpoints, GraphQL servers always return HTTP 200 — even when the
+    /// operation fails. Errors are conveyed in a top-level `errors[]` array alongside
+    /// (or instead of) `data`. This method handles that contract:
+    ///
+    /// - Sends `{"query": ..., "variables": {...}}` as a JSON body.
+    /// - If `errors[]` is present, all error messages are joined with `"; "` and
+    ///   returned as `ApiError::Server { status: 200, body: <joined> }`. Errors take
+    ///   priority — if both `data` and `errors` are present, the error is returned.
+    /// - If `errors` is absent but `data` is `null` or missing, returns
+    ///   `ApiError::Decode("GraphQL response missing data field")`.
+    /// - On success, deserialises `data` directly into `T` (the caller provides the
+    ///   wrapper type matching the query's selection set).
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status (from the underlying HTTP layer),
+    /// GraphQL application errors, or JSON decode failure.
+    pub async fn post_graphql<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &str,
+        variables: Option<&serde_json::Value>,
+    ) -> Result<T, ApiError> {
+        let body = GraphQlRequest { query, variables };
+        let raw: serde_json::Value = self.post_json(path, &body).await?;
+        let resp: GraphQlResponse<T> =
+            serde_json::from_value(raw).map_err(|e| ApiError::Decode(e.to_string()))?;
+        if let Some(errors) = resp.errors {
+            let msg = errors
+                .iter()
+                .map(|e| e.message.as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(ApiError::Server { status: 200, body: msg });
+        }
+        resp.data
+            .ok_or_else(|| ApiError::Decode("GraphQL response missing data field".into()))
     }
 
     /// Map a non-success HTTP status code and response body into an [`ApiError`].
