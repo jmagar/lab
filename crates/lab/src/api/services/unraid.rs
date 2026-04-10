@@ -5,7 +5,6 @@ use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
-use crate::dispatch::context::DispatchContext;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::unraid::ACTIONS;
 
@@ -29,10 +28,7 @@ async fn handle(
         })?;
     handle_action(
         "unraid",
-        DispatchContext {
-            surface: "api",
-            instance: None,
-        },
+        "api",
         request_id,
         req,
         ACTIONS,
