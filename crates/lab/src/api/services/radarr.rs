@@ -1,22 +1,45 @@
-//! HTTP route group for the `radarr` service.
+//! API route group for the `radarr` service.
+//!
+//! TODO(perf): radarr sub-dispatchers (movies, queue, etc.) each call `require_client()`
+//! independently. Thread `state.clients.radarr` through sub-dispatchers to enable
+//! full connection-pool reuse. See `dispatch/CLAUDE.md` for the migration pattern.
 
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
-use crate::api::{ActionRequest, state::AppState};
 use crate::api::services::helpers::handle_action;
-use crate::services::context::DispatchContext;
+use crate::api::{ActionRequest, state::AppState};
+use crate::dispatch::context::DispatchContext;
+use crate::dispatch::error::ToolError;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
 }
 
 async fn handle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<ActionRequest>,
-) -> Result<Json<Value>, crate::services::error::ToolError> {
-    handle_action("radarr", DispatchContext { surface: "api", instance: None }, req, crate::mcp::services::radarr::actions(), |action, params| async move {
-        crate::mcp::services::radarr::dispatch(&action, params).await
-    })
+) -> Result<Json<Value>, ToolError> {
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    // Fail fast if radarr is not configured — avoids dispatching into sub-modules that
+    // would each call require_client() and fail with a less informative error.
+    if state.clients.radarr.is_none() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: "RADARR_URL or RADARR_API_KEY not configured".into(),
+        });
+    }
+    handle_action(
+        "radarr",
+        DispatchContext {
+            surface: "api",
+            instance: None,
+        },
+        request_id,
+        req,
+        crate::dispatch::radarr::actions(),
+        |action, params| async move { crate::dispatch::radarr::dispatch(&action, params).await },
+    )
     .await
 }

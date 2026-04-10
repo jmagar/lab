@@ -6,7 +6,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::{Args, ValueEnum};
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, ListToolsResult, PaginatedRequestParams,
+    CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
+    ElicitationAction, ElicitationSchema, ListToolsResult, PaginatedRequestParams, PrimitiveSchema,
     ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
@@ -135,7 +136,7 @@ impl ServerHandler for LabMcpServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let service = request.name.as_ref().to_string();
         let args = request.arguments.unwrap_or_default();
@@ -146,19 +147,59 @@ impl ServerHandler for LabMcpServer {
             .to_string();
         let params = args.get("params").cloned().unwrap_or(Value::Null);
 
-        let start = std::time::Instant::now();
         let svc = self.registry.services().iter().find(|s| s.name == service);
+
+        // Elicitation gate: if the action is destructive and the client supports
+        // elicitation, ask for confirmation before dispatching.
+        if let Some(entry) = svc {
+            let is_destructive = entry.actions.iter().any(|a| a.name == action && a.destructive);
+            if is_destructive {
+                match elicit_confirm(&context, &service, &action).await {
+                    ElicitResult::Confirmed => {}
+                    ElicitResult::Declined | ElicitResult::Cancelled => {
+                        let envelope = build_error(
+                            &service,
+                            &action,
+                            "confirmation_required",
+                            &format!("action `{action}` is destructive — confirm to proceed"),
+                        );
+                        return Ok(CallToolResult::error(vec![Content::text(
+                            envelope.to_string(),
+                        )]));
+                    }
+                    ElicitResult::NotSupported => {
+                        // Client does not support elicitation — treat as unconfirmed.
+                        let envelope = build_error(
+                            &service,
+                            &action,
+                            "confirmation_required",
+                            &format!(
+                                "action `{action}` is destructive — client must support MCP \
+                                 elicitation to confirm destructive actions"
+                            ),
+                        );
+                        return Ok(CallToolResult::error(vec![Content::text(
+                            envelope.to_string(),
+                        )]));
+                    }
+                }
+            }
+        }
+
+        let start = std::time::Instant::now();
         let result = match svc {
             Some(entry) => (entry.dispatch)(action.clone(), params)
                 .await
                 .map_err(|te| anyhow::anyhow!("{te}")),
-            None => Err(anyhow::anyhow!("service `{service}` has no dispatcher wired")),
+            None => Err(anyhow::anyhow!(
+                "service `{service}` has no dispatcher wired"
+            )),
         };
         let elapsed_ms = start.elapsed().as_millis();
 
         match result {
             Ok(v) => {
-                tracing::info!(service, action, elapsed_ms, "dispatch ok");
+                tracing::info!(surface = "mcp", service, action, elapsed_ms, "dispatch ok");
                 let envelope = build_success(&service, &action, &v);
                 Ok(CallToolResult::success(vec![Content::text(
                     envelope.to_string(),
@@ -166,7 +207,7 @@ impl ServerHandler for LabMcpServer {
             }
             Err(e) => {
                 let (kind, message, extra) = extract_error_info(&e);
-                tracing::warn!(service, action, elapsed_ms, kind, "dispatch error");
+                tracing::warn!(surface = "mcp", service, action, elapsed_ms, kind, "dispatch error");
                 let envelope = extra.map_or_else(
                     || build_error(&service, &action, kind, &message),
                     |ref extra| build_error_extra(&service, &action, kind, &message, extra),
@@ -176,6 +217,71 @@ impl ServerHandler for LabMcpServer {
                 )]))
             }
         }
+    }
+}
+
+/// Outcome of an elicitation confirmation request.
+enum ElicitResult {
+    /// User confirmed the destructive action.
+    Confirmed,
+    /// User explicitly declined.
+    Declined,
+    /// User cancelled (closed the dialog without choosing).
+    Cancelled,
+    /// MCP client does not support the elicitation capability.
+    NotSupported,
+}
+
+/// Ask the MCP client to confirm a destructive action via elicitation.
+///
+/// Sends a form with a single required `confirm: boolean` field.
+/// Returns `NotSupported` if the client's capabilities do not include elicitation.
+async fn elicit_confirm(
+    context: &RequestContext<RoleServer>,
+    service: &str,
+    action: &str,
+) -> ElicitResult {
+    if context.peer.supported_elicitation_modes().is_empty() {
+        return ElicitResult::NotSupported;
+    }
+
+    let schema = match ElicitationSchema::builder()
+        .required_property("confirm", PrimitiveSchema::Boolean(Default::default()))
+        .build()
+    {
+        Ok(s) => s,
+        Err(_) => return ElicitResult::NotSupported,
+    };
+
+    let params = CreateElicitationRequestParams::FormElicitationParams {
+        meta: None,
+        message: format!(
+            "Action `{service}.{action}` is destructive and cannot be undone. \
+             Set `confirm` to true to proceed."
+        ),
+        requested_schema: schema,
+    };
+
+    match context.peer.create_elicitation(params).await {
+        Ok(result) => match result.action {
+            ElicitationAction::Accept => {
+                // Check that the user actually set confirm = true in the response.
+                let confirmed = result
+                    .content
+                    .as_ref()
+                    .and_then(|v| v.get("confirm"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if confirmed {
+                    ElicitResult::Confirmed
+                } else {
+                    ElicitResult::Declined
+                }
+            }
+            ElicitationAction::Decline => ElicitResult::Declined,
+            ElicitationAction::Cancel => ElicitResult::Cancelled,
+        },
+        Err(_) => ElicitResult::NotSupported,
     }
 }
 

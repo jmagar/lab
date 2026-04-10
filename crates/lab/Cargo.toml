@@ -60,7 +60,7 @@ tower.workspace              = true
 tower-http.workspace         = true
 
 [features]
-default = ["radarr", "sonarr", "prowlarr", "plex", "sabnzbd", "qbittorrent"]
+default = ["all"]
 
 # media stack
 radarr      = ["lab-apis/radarr"]
@@ -93,7 +93,30 @@ openai      = ["lab-apis/openai"]
 qdrant      = ["lab-apis/qdrant"]
 tei         = ["lab-apis/tei"]
 
-all         = ["lab-apis/all"]
+all         = [
+  "lab-apis/all",
+  "radarr",
+  "sonarr",
+  "prowlarr",
+  "overseerr",
+  "plex",
+  "tautulli",
+  "sabnzbd",
+  "qbittorrent",
+  "tailscale",
+  "unraid",
+  "unifi",
+  "arcane",
+  "linkding",
+  "memos",
+  "bytestash",
+  "paperless",
+  "gotify",
+  "apprise",
+  "openai",
+  "qdrant",
+  "tei",
+]
 
 [lints]
 workspace = true
