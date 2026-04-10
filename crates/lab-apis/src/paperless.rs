@@ -15,7 +15,7 @@ pub mod error;
 pub use client::PaperlessClient;
 pub use error::PaperlessError;
 
-use crate::core::plugin::{Category, PluginMeta};
+use crate::core::plugin::{Category, EnvVar, PluginMeta};
 
 /// Compile-time metadata for the paperless module.
 pub const META: PluginMeta = PluginMeta {
@@ -24,7 +24,20 @@ pub const META: PluginMeta = PluginMeta {
     description: "Document management system (placeholder — not yet implemented)",
     category: Category::Documents,
     docs_url: "https://docs.paperless-ngx.com/api/",
-    required_env: &[],
+    required_env: &[
+        EnvVar {
+            name: "PAPERLESS_URL",
+            description: "Base URL of the Paperless-ngx instance",
+            example: "http://localhost:8000",
+            secret: false,
+        },
+        EnvVar {
+            name: "PAPERLESS_TOKEN",
+            description: "API token from Account → API Token",
+            example: "abc123def456...",
+            secret: true,
+        },
+    ],
     optional_env: &[],
     default_port: Some(8000),
 };
