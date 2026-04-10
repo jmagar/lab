@@ -39,7 +39,7 @@ pub async fn run(args: UnraidArgs, format: OutputFormat) -> Result<ExitCode> {
         params,
         format,
         |action, params| async move {
-            crate::mcp::services::unraid::dispatch(&action, params).await
+            crate::dispatch::unraid::dispatch(&action, params).await
         },
     )
     .await
