@@ -137,26 +137,6 @@ impl UnraidClient {
         })
     }
 
-    /// Build a client from the default-instance environment variables.
-    ///
-    /// Reads `UNRAID_URL` and `UNRAID_API_KEY`. Returns `None` if either is
-    /// absent or empty.
-    #[must_use]
-    pub fn from_env() -> Option<Self> {
-        let url = std::env::var("UNRAID_URL").ok().filter(|v| !v.is_empty())?;
-        let key = std::env::var("UNRAID_API_KEY")
-            .ok()
-            .filter(|v| !v.is_empty())?;
-        Self::new(
-            &url,
-            Auth::ApiKey {
-                header: "X-API-Key".into(),
-                key,
-            },
-        )
-        .ok()
-    }
-
     // -----------------------------------------------------------------------
     // System queries
     // -----------------------------------------------------------------------

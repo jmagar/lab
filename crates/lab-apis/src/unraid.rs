@@ -50,7 +50,6 @@ pub const META: PluginMeta = PluginMeta {
 // ---------------------------------------------------------------------------
 
 use crate::core::{
-    Auth,
     error::ApiError,
     status::ServiceStatus,
     traits::ServiceClient,
@@ -91,20 +90,3 @@ impl ServiceClient for UnraidClient {
     }
 }
 
-/// Convenience constructor used by `lab/src/config.rs` and tests.
-///
-/// Returns `None` if `UNRAID_URL` or `UNRAID_API_KEY` is absent or empty.
-pub fn from_env() -> Option<UnraidClient> {
-    let url = std::env::var("UNRAID_URL").ok().filter(|v| !v.is_empty())?;
-    let key = std::env::var("UNRAID_API_KEY")
-        .ok()
-        .filter(|v| !v.is_empty())?;
-    UnraidClient::new(
-        &url,
-        Auth::ApiKey {
-            header: "X-API-Key".into(),
-            key,
-        },
-    )
-    .ok()
-}
