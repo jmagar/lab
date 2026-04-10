@@ -6,7 +6,6 @@ use lab_apis::radarr::types::movie::TmdbId;
 use lab_apis::radarr::types::{Movie, MovieId};
 use serde_json::Value;
 
-use super::client::require_client;
 use super::params::{require_i64, require_str, to_json};
 use crate::dispatch::error::ToolError;
 
@@ -171,8 +170,4 @@ pub async fn dispatch_with_client(
         }
         _ => unreachable!(),
     }
-}
-
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    dispatch_with_client(&require_client()?, action, params).await
 }
