@@ -27,9 +27,9 @@ use crate::dispatch::error::ToolError;
 /// Owns:
 /// - Unknown-action gate: if `action` is not present in `actions`, returns `ToolError` with
 ///   `kind = "unknown_action"` immediately — dispatch closure is never called.
-/// - Destructive confirmation gate: `ActionSpec.destructive == true` requires either
-///   `params["confirm"] == true` OR `X-Lab-Confirm: yes` (or `true`) header,
-///   else returns `ToolError` with `kind = "confirmation_required"`.
+/// - Destructive confirmation gate: `ActionSpec.destructive == true` requires
+///   `params["confirm"] == true` (boolean, not string), else returns `ToolError` with
+///   `kind = "confirmation_required"`.
 /// - `confirm` key stripping: removed from params before forwarding to dispatch.
 /// - Timer wrapping the full dispatch call.
 /// - Structured dispatch logging (service, action, `elapsed_ms`, kind on error).
@@ -38,12 +38,18 @@ use crate::dispatch::error::ToolError;
 ///
 /// Does NOT own: axum routing, request extraction, service-specific execution.
 ///
+/// # Security note — header-based confirmation removed
+///
+/// A previous version also accepted `X-Lab-Confirm: yes` as a confirmation signal.
+/// This was removed because the API sits behind a reverse proxy that may forward
+/// arbitrary headers by default, making header injection a realistic attack vector.
+/// Body params (`"confirm": true`) cannot be injected by a proxy.
+///
 /// # Errors
 ///
 /// Returns `ToolError` when:
 /// - The action is not found in `actions` (`unknown_action`)
-/// - The matched action is destructive and neither `params["confirm"] == true` nor
-///   `X-Lab-Confirm: yes`/`true` header is present (`confirmation_required`)
+/// - The matched action is destructive and `params["confirm"] != true` (`confirmation_required`)
 /// - The dispatch closure itself returns an error
 #[allow(clippy::too_many_lines)]
 pub async fn handle_action<F, Fut>(
@@ -53,7 +59,7 @@ pub async fn handle_action<F, Fut>(
     req: ActionRequest,
     actions: &[ActionSpec],
     dispatch: F,
-    headers: Option<&HeaderMap>,
+    _headers: Option<&HeaderMap>,
 ) -> Result<Json<Value>, ToolError>
 where
     F: FnOnce(String, Value) -> Fut,
@@ -90,17 +96,14 @@ where
     let is_destructive = spec.is_some_and(|s| s.destructive);
 
     // Gate: destructive confirmation.
-    // Confirmation can be granted via params["confirm"] == true OR X-Lab-Confirm: yes/true header.
+    // Confirmation requires params["confirm"] == true (body-only — header-based confirmation
+    // was removed to prevent proxy injection; see doc-comment above).
     if is_destructive {
         let confirmed_by_params = params
             .get("confirm")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        let confirmed_by_header = headers
-            .and_then(|h| h.get("x-lab-confirm"))
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.eq_ignore_ascii_case("yes") || v.eq_ignore_ascii_case("true"));
-        if !confirmed_by_params && !confirmed_by_header {
+        if !confirmed_by_params {
             tracing::warn!(
                 surface = ctx.surface,
                 service,
@@ -110,7 +113,7 @@ where
             );
             return Err(ToolError::ConfirmationRequired {
                 message: format!(
-                    "action `{action}` is destructive — set `confirm: true` in params or send `X-Lab-Confirm: yes` header to proceed"
+                    "action `{action}` is destructive — set `confirm: true` in params to proceed"
                 ),
             });
         }
@@ -458,10 +461,10 @@ mod tests {
         assert_eq!(result.unwrap_err().kind(), "unknown_action");
     }
 
-    // ── X-Lab-Confirm header: "yes" authorizes destructive action ───────────
+    // ── X-Lab-Confirm header is IGNORED (removed to prevent proxy injection) ──
 
     #[tokio::test]
-    async fn destructive_with_x_lab_confirm_yes_header_proceeds() {
+    async fn x_lab_confirm_header_alone_does_not_authorize_destructive_action() {
         use axum::http::HeaderValue;
         let req = make_req("danger.delete", json!({"id": "abc"}));
         let mut headers = HeaderMap::new();
@@ -471,27 +474,10 @@ mod tests {
         }, Some(&headers))
         .await;
         assert!(
-            result.is_ok(),
-            "X-Lab-Confirm: yes must authorize destructive action, got {result:?}"
+            result.is_err(),
+            "X-Lab-Confirm header must be ignored — only params[confirm]=true is accepted"
         );
-    }
-
-    // ── X-Lab-Confirm header: "true" also authorizes destructive action ──────
-
-    #[tokio::test]
-    async fn destructive_with_x_lab_confirm_true_header_proceeds() {
-        use axum::http::HeaderValue;
-        let req = make_req("danger.delete", json!({"id": "abc"}));
-        let mut headers = HeaderMap::new();
-        headers.insert("x-lab-confirm", HeaderValue::from_static("true"));
-        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
-            ok_dispatch(a, p)
-        }, Some(&headers))
-        .await;
-        assert!(
-            result.is_ok(),
-            "X-Lab-Confirm: true must authorize destructive action, got {result:?}"
-        );
+        assert_eq!(result.unwrap_err().kind(), "confirmation_required");
     }
 
     #[test]

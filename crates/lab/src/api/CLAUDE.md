@@ -58,14 +58,15 @@ Do not return raw `StatusCode` from handlers. Always go through `ApiError`.
 
 ## Destructive actions
 
-Actions marked `ActionSpec.destructive == true` require confirmation via **either** of these two mechanisms:
+Actions marked `ActionSpec.destructive == true` require confirmation via:
 
-1. `"confirm": true` in the JSON request `params` object (boolean, not string).
-2. `X-Lab-Confirm: yes` (or `X-Lab-Confirm: true`) request header — case-insensitive.
+- `"confirm": true` in the JSON request `params` object (boolean, not string).
 
-Without at least one of these, the gate returns `400` with `kind: "confirmation_required"`. This is the HTTP equivalent of the MCP elicitation flow and the CLI `-y` flag.
+Without this, the gate returns `400` with `kind: "confirmation_required"`. This is the HTTP equivalent of the MCP elicitation flow and the CLI `-y` flag.
 
-The gate is enforced in `services/helpers.rs::handle_action()` via the `headers: Option<&HeaderMap>` parameter. All service handlers extract their `HeaderMap` and pass `Some(&headers)`. The generic router fallback in `router.rs` also passes `Some(&headers)` from its already-extracted `HeaderMap`.
+The gate is enforced in `services/helpers.rs::handle_action()`.
+
+**Security decision — `X-Lab-Confirm` header removed:** A header-based bypass (`X-Lab-Confirm: yes`) was removed because the API sits behind a reverse proxy that may forward arbitrary request headers by default (common Caddy/Traefik behavior). A misconfigured or compromised upstream can inject headers but cannot inject the JSON request body, making body params (`"confirm": true`) the only injection-safe confirmation signal. Do not re-add header-based confirmation without also requiring the reverse proxy to explicitly strip it.
 
 ## Feature gating
 
