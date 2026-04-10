@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 /// A Prowlarr indexer configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Indexer {
-    pub id: u64,
+    /// Prowlarr indexer ID (signed, consistent with other Servarr services).
+    pub id: i64,
     pub name: String,
     pub protocol: String,
     pub enable: bool,
