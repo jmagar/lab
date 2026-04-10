@@ -18,8 +18,29 @@ pub fn client_from_env() -> Option<UnifiClient> {
 }
 
 pub fn require_client() -> Result<UnifiClient, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
+    let url = std::env::var("UNIFI_URL")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: "UNIFI_URL not configured".to_string(),
+        })?;
+    let key = std::env::var("UNIFI_API_KEY")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: "UNIFI_API_KEY not configured".to_string(),
+        })?;
+    UnifiClient::new(
+        &url,
+        Auth::ApiKey {
+            header: "X-API-KEY".into(),
+            key,
+        },
+    )
+    .map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
-        message: "UNIFI_URL or UNIFI_API_KEY not configured".to_string(),
+        message: format!("failed to initialize UniFi client: {e}"),
     })
 }
