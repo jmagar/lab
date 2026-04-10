@@ -8,7 +8,7 @@ use std::pin::Pin;
 use lab_apis::core::action::ActionSpec;
 use serde_json::Value;
 
-use crate::services::error::ToolError;
+use crate::dispatch::error::ToolError;
 
 /// A dispatch function pointer: takes an owned action name and params,
 /// returns a boxed future resolving to `Result<Value, ToolError>`.
@@ -21,13 +21,35 @@ pub type DispatchFn =
 /// function pointer stored in the registry.
 macro_rules! dispatch_fn {
     ($f:path) => {
-        |action: String, params: serde_json::Value| -> std::pin::Pin<
+        |action: String,
+         params: serde_json::Value|
+         -> std::pin::Pin<
             Box<
                 dyn std::future::Future<
-                        Output = Result<serde_json::Value, $crate::services::error::ToolError>,
+                        Output = Result<serde_json::Value, $crate::dispatch::error::ToolError>,
                     > + Send,
             >,
         > { Box::pin(async move { $f(&action, params).await }) }
+    };
+}
+
+/// Register a standard service (feature name == module name, uses `mcp::services::$svc`).
+///
+/// Expands to the `#[cfg(feature)] { reg.register(RegisteredService { ... }) }` block,
+/// eliminating the 7-line boilerplate that would otherwise be repeated per service.
+macro_rules! register_service {
+    ($reg:expr, $feature:literal, $svc:ident) => {
+        #[cfg(feature = $feature)]
+        {
+            let meta = lab_apis::$svc::META;
+            $reg.register(RegisteredService {
+                name: meta.name,
+                description: meta.description,
+                category: category_slug(meta.category),
+                actions: crate::mcp::services::$svc::ACTIONS,
+                dispatch: dispatch_fn!(crate::mcp::services::$svc::dispatch),
+            });
+        }
     };
 }
 
@@ -92,7 +114,6 @@ impl ToolRegistry {
 /// Service entries are added in alphabetical order as services come
 /// online.
 #[must_use]
-#[allow(clippy::too_many_lines)]
 pub fn build_default_registry() -> ToolRegistry {
     let mut reg = ToolRegistry::new();
 
@@ -120,53 +141,10 @@ pub fn build_default_registry() -> ToolRegistry {
         });
     }
 
-    #[cfg(feature = "sonarr")]
-    {
-        let meta = lab_apis::sonarr::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::sonarr::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::sonarr::dispatch),
-        });
-    }
-
-    #[cfg(feature = "prowlarr")]
-    {
-        let meta = lab_apis::prowlarr::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::prowlarr::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::prowlarr::dispatch),
-        });
-    }
-
-    #[cfg(feature = "plex")]
-    {
-        let meta = lab_apis::plex::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::plex::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::plex::dispatch),
-        });
-    }
-
-    #[cfg(feature = "tautulli")]
-    {
-        let meta = lab_apis::tautulli::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::tautulli::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::tautulli::dispatch),
-        });
-    }
+    register_service!(reg, "sonarr", sonarr);
+    register_service!(reg, "prowlarr", prowlarr);
+    register_service!(reg, "plex", plex);
+    register_service!(reg, "tautulli", tautulli);
 
     #[cfg(feature = "sabnzbd")]
     {
@@ -175,58 +153,15 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            actions: crate::mcp::services::sabnzbd::ACTIONS,
+            actions: crate::dispatch::sabnzbd::ACTIONS,
             dispatch: dispatch_fn!(crate::mcp::services::sabnzbd::dispatch),
         });
     }
 
-    #[cfg(feature = "qbittorrent")]
-    {
-        let meta = lab_apis::qbittorrent::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::qbittorrent::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::qbittorrent::dispatch),
-        });
-    }
-
-    #[cfg(feature = "tailscale")]
-    {
-        let meta = lab_apis::tailscale::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::tailscale::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::tailscale::dispatch),
-        });
-    }
-
-    #[cfg(feature = "linkding")]
-    {
-        let meta = lab_apis::linkding::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::linkding::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::linkding::dispatch),
-        });
-    }
-
-    #[cfg(feature = "memos")]
-    {
-        let meta = lab_apis::memos::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::memos::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::memos::dispatch),
-        });
-    }
+    register_service!(reg, "qbittorrent", qbittorrent);
+    register_service!(reg, "tailscale", tailscale);
+    register_service!(reg, "linkding", linkding);
+    register_service!(reg, "memos", memos);
 
     #[cfg(feature = "bytestash")]
     {
@@ -235,46 +170,14 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            actions: crate::services::bytestash::ACTIONS,
-            dispatch: dispatch_fn!(crate::services::bytestash::dispatch),
+            actions: crate::dispatch::bytestash::ACTIONS,
+            dispatch: dispatch_fn!(crate::dispatch::bytestash::dispatch),
         });
     }
 
-    #[cfg(feature = "paperless")]
-    {
-        let meta = lab_apis::paperless::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::paperless::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::paperless::dispatch),
-        });
-    }
-
-    #[cfg(feature = "arcane")]
-    {
-        let meta = lab_apis::arcane::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::arcane::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::arcane::dispatch),
-        });
-    }
-
-    #[cfg(feature = "unraid")]
-    {
-        let meta = lab_apis::unraid::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::unraid::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::unraid::dispatch),
-        });
-    }
+    register_service!(reg, "paperless", paperless);
+    register_service!(reg, "arcane", arcane);
+    register_service!(reg, "unraid", unraid);
 
     #[cfg(feature = "unifi")]
     {
@@ -283,82 +186,17 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            actions: crate::mcp::services::unifi::actions(),
-            dispatch: dispatch_fn!(crate::mcp::services::unifi::dispatch),
+            actions: crate::dispatch::unifi::actions(),
+            dispatch: dispatch_fn!(crate::dispatch::unifi::dispatch),
         });
     }
 
-    #[cfg(feature = "overseerr")]
-    {
-        let meta = lab_apis::overseerr::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::overseerr::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::overseerr::dispatch),
-        });
-    }
-
-    #[cfg(feature = "gotify")]
-    {
-        let meta = lab_apis::gotify::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::gotify::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::gotify::dispatch),
-        });
-    }
-
-    #[cfg(feature = "openai")]
-    {
-        let meta = lab_apis::openai::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::openai::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::openai::dispatch),
-        });
-    }
-
-    #[cfg(feature = "qdrant")]
-    {
-        let meta = lab_apis::qdrant::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::qdrant::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::qdrant::dispatch),
-        });
-    }
-
-    #[cfg(feature = "tei")]
-    {
-        let meta = lab_apis::tei::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::tei::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::tei::dispatch),
-        });
-    }
-
-    #[cfg(feature = "apprise")]
-    {
-        let meta = lab_apis::apprise::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::apprise::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::apprise::dispatch),
-        });
-    }
+    register_service!(reg, "overseerr", overseerr);
+    register_service!(reg, "gotify", gotify);
+    register_service!(reg, "openai", openai);
+    register_service!(reg, "qdrant", qdrant);
+    register_service!(reg, "tei", tei);
+    register_service!(reg, "apprise", apprise);
 
     reg
 }
