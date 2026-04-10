@@ -8,7 +8,8 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::output::{OutputFormat, print};
+use crate::cli::helpers::run_action_command;
+use crate::output::OutputFormat;
 
 /// `lab tautulli` arguments.
 #[derive(Debug, Args)]
@@ -25,21 +26,21 @@ pub struct TautulliArgs {
 /// # Errors
 /// Returns an error if dispatch fails.
 pub async fn run(args: TautulliArgs, format: OutputFormat) -> Result<ExitCode> {
-    let action = args.action.as_deref().unwrap_or("help");
+    let action = args.action.unwrap_or_else(|| "help".to_string());
     let params = args
         .params
         .as_deref()
         .map(serde_json::from_str)
         .transpose()?
-        .unwrap_or(serde_json::Value::Null);
-    let result = crate::mcp::services::tautulli::dispatch(action, params)
-        .await
-        .map_err(|te| {
-            anyhow::anyhow!(
-                "{}",
-                serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
-            )
-        })?;
-    print(&result, format)?;
-    Ok(ExitCode::SUCCESS)
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    run_action_command(
+        "tautulli",
+        action,
+        params,
+        format,
+        |action, params| async move {
+            crate::mcp::services::tautulli::dispatch(&action, params).await
+        },
+    )
+    .await
 }

@@ -65,7 +65,9 @@ pub fn load() -> Result<LabConfig> {
     // Does not override vars already set by the user-level file.
     let cwd_env = std::path::Path::new(".env");
     if cwd_env.exists() {
-        drop(dotenvy::from_path(cwd_env));
+        if let Err(e) = dotenvy::from_path(cwd_env) {
+            tracing::warn!(path = ".env", error = %e, "failed to load local .env (skipping)");
+        }
     }
 
     let cfg = if let Some(path) = toml_path() {

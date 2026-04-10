@@ -4,6 +4,7 @@
 //! All methods are stubs pending implementation from the OpenAPI spec.
 
 use super::RadarrClient;
+use crate::core::ApiError;
 use crate::radarr::error::RadarrError;
 use crate::radarr::types::movie::{Movie, MovieId, MovieLookup};
 
@@ -32,7 +33,10 @@ impl RadarrClient {
         self.http
             .get_json(&format!("/api/v3/movie/{}", id.0))
             .await
-            .map_err(RadarrError::from)
+            .map_err(|e| match e {
+                ApiError::NotFound => RadarrError::NotFound { kind: "movie", id: id.0 },
+                other => RadarrError::Api(other),
+            })
     }
 
     /// Search the Radarr metadata provider (TMDB-backed) for a title.
@@ -83,6 +87,9 @@ impl RadarrClient {
                 id.0
             ))
             .await
-            .map_err(RadarrError::from)
+            .map_err(|e| match e {
+                ApiError::NotFound => RadarrError::NotFound { kind: "movie", id: id.0 },
+                other => RadarrError::Api(other),
+            })
     }
 }

@@ -28,7 +28,9 @@ impl ArcaneClient {
     /// # Errors
     /// Returns `ArcaneError::Api` on HTTP failure.
     pub async fn health(&self) -> Result<(), ArcaneError> {
-        // TODO: GET /api/health or equivalent
-        Ok(())
+        // TODO: GET /api/health or equivalent — wire real probe before marking healthy
+        Err(ArcaneError::Api(crate::core::ApiError::Internal(
+            "health check not yet implemented".into(),
+        )))
     }
 }
