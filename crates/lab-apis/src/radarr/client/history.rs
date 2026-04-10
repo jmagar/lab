@@ -33,12 +33,16 @@ impl RadarrClient {
     /// # Errors
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn blocklist_list(&self) -> Result<Vec<BlocklistItem>, RadarrError> {
-        let val: serde_json::Value = self
+        let mut val: serde_json::Value = self
             .http
             .get_json("/api/v3/blocklist?pageSize=1000")
             .await
             .map_err(RadarrError::from)?;
-        serde_json::from_value(val["records"].clone())
+        let records = val
+            .get_mut("records")
+            .map(serde_json::Value::take)
+            .unwrap_or(serde_json::Value::Null);
+        serde_json::from_value(records)
             .map_err(|e| RadarrError::Api(crate::core::error::ApiError::Decode(e.to_string())))
     }
 }

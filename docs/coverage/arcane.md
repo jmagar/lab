@@ -19,8 +19,8 @@ The source spec is the contract. This document is the implementation planning ai
 
 ## Endpoint Inventory
 
-| Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
-|--------|----------|------------|------|-----|-----|-----|
+| Method | Endpoint | Operation | Impl | MCP | CLI | API |
+|--------|----------|-----------|------|-----|-----|-----|
 | GET | /api-keys | list-api-keys | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api-keys | create-api-key | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /api-keys/{id} | delete-api-key | ⬜ | ⬜ | ⬜ | ⬜ |
