@@ -27,6 +27,8 @@ pub struct ServiceClients {
     pub sabnzbd: Option<Arc<lab_apis::sabnzbd::SabnzbdClient>>,
     #[cfg(feature = "unifi")]
     pub unifi: Option<Arc<lab_apis::unifi::UnifiClient>>,
+    #[cfg(feature = "unraid")]
+    pub unraid: Option<Arc<lab_apis::unraid::UnraidClient>>,
 }
 
 impl ServiceClients {
@@ -44,6 +46,8 @@ impl ServiceClients {
             sabnzbd: crate::dispatch::sabnzbd::client_from_env().map(Arc::new),
             #[cfg(feature = "unifi")]
             unifi: crate::dispatch::unifi::client_from_env().map(Arc::new),
+            #[cfg(feature = "unraid")]
+            unraid: crate::dispatch::unraid::client_from_env().map(Arc::new),
         }
     }
 }

@@ -1,18 +1,110 @@
-//! Unraid client — not yet implemented.
+//! Unraid server GraphQL API client.
 //!
-//! This module exists so the `unraid` feature compiles. The real client,
-//! types, and MCP dispatch are deferred to a per-service plan.
+//! Provides async methods for querying system information, metrics, array
+//! status, Docker containers, and physical disks via the Unraid Connect
+//! GraphQL endpoint (`{base_url}/graphql`).
+//!
+//! # Auth
+//! `Auth::ApiKey { header: "X-API-Key", key }` — matches the Unraid API spec.
+//!
+//! # Rate limits
+//! Unraid enforces approximately 100 requests per 10 seconds. No in-process
+//! rate limiter is provided; callers must stay within this bound.
 
-use crate::core::plugin::{Category, PluginMeta};
+pub mod client;
+pub mod error;
+pub mod types;
 
-/// Compile-time metadata for the unraid module.
+pub use client::UnraidClient;
+pub use error::UnraidError;
+
+use crate::core::plugin::{Category, EnvVar, PluginMeta};
+
+/// Compile-time metadata for the `unraid` module.
 pub const META: PluginMeta = PluginMeta {
     name: "unraid",
     display_name: "Unraid",
-    description: "Unraid server GraphQL API (placeholder — not yet implemented)",
+    description: "Unraid server GraphQL API — system info, metrics, array status, Docker, and disk management",
     category: Category::Network,
     docs_url: "https://docs.unraid.net/",
-    required_env: &[],
+    required_env: &[
+        EnvVar {
+            name: "UNRAID_URL",
+            description: "Base URL of the Unraid Connect API (e.g. https://10.0.0.2:31337)",
+            example: "https://10.0.0.2:31337",
+            secret: false,
+        },
+        EnvVar {
+            name: "UNRAID_API_KEY",
+            description: "Unraid API key (X-API-Key header)",
+            example: "your-api-key",
+            secret: true,
+        },
+    ],
     optional_env: &[],
-    default_port: None,
+    default_port: Some(31337),
 };
+
+// ---------------------------------------------------------------------------
+// ServiceClient impl
+// ---------------------------------------------------------------------------
+
+use crate::core::{
+    Auth,
+    error::ApiError,
+    status::ServiceStatus,
+    traits::ServiceClient,
+};
+
+impl ServiceClient for UnraidClient {
+    fn name(&self) -> &'static str {
+        "unraid"
+    }
+
+    fn service_type(&self) -> &'static str {
+        "network"
+    }
+
+    async fn health(&self) -> Result<ServiceStatus, ApiError> {
+        let start = std::time::Instant::now();
+        match self.system_online().await {
+            Ok(online) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: start.elapsed().as_millis() as u64,
+                message: if online {
+                    Some("online".into())
+                } else {
+                    Some("server reports offline".into())
+                },
+            }),
+            Err(UnraidError::Http(ApiError::Auth)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: false,
+                version: None,
+                latency_ms: start.elapsed().as_millis() as u64,
+                message: Some("authentication failed".into()),
+            }),
+            Err(e) => Ok(ServiceStatus::unreachable(e.to_string())),
+        }
+    }
+}
+
+/// Convenience constructor used by `lab/src/config.rs` and tests.
+///
+/// Returns `None` if `UNRAID_URL` or `UNRAID_API_KEY` is absent or empty.
+pub fn from_env() -> Option<UnraidClient> {
+    let url = std::env::var("UNRAID_URL").ok().filter(|v| !v.is_empty())?;
+    let key = std::env::var("UNRAID_API_KEY")
+        .ok()
+        .filter(|v| !v.is_empty())?;
+    UnraidClient::new(
+        &url,
+        Auth::ApiKey {
+            header: "X-API-Key".into(),
+            key,
+        },
+    )
+    .ok()
+}

@@ -1,0 +1,302 @@
+//! Request / response types for the Unraid GraphQL API.
+//!
+//! All types use `#[serde(rename_all = "camelCase")]` to match GraphQL field names.
+//! `BigInt` fields in the schema are represented as `i64` (JSON numbers).
+
+use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// System info
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `info` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct InfoData {
+    pub info: SystemInfo,
+}
+
+/// Subset of the GraphQL `Info` object.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemInfo {
+    pub id: String,
+    pub os: InfoOs,
+    pub cpu: InfoCpu,
+    pub system: InfoSystem,
+    pub versions: InfoVersions,
+}
+
+/// OS information (`InfoOs` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InfoOs {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distro: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kernel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
+    /// Boot time ISO string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uptime: Option<String>,
+}
+
+/// CPU information (`InfoCpu` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InfoCpu {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brand: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manufacturer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cores: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threads: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f64>,
+}
+
+/// System information (`InfoSystem` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InfoSystem {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manufacturer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serial: Option<String>,
+}
+
+/// Software versions (`InfoVersions` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InfoVersions {
+    pub id: String,
+    pub core: CoreVersions,
+}
+
+/// Core system versions (`CoreVersions` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoreVersions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unraid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kernel: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// System metrics
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `metrics` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MetricsData {
+    pub metrics: SystemMetrics,
+}
+
+/// Subset of the GraphQL `Metrics` object.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemMetrics {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu: Option<CpuUtilization>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<MemoryUtilization>,
+}
+
+/// CPU utilization (`CpuUtilization` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpuUtilization {
+    pub id: String,
+    /// Total CPU load in percent.
+    pub percent_total: f64,
+}
+
+/// Memory utilization (`MemoryUtilization` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryUtilization {
+    pub id: String,
+    /// Total system memory in bytes.
+    pub total: i64,
+    /// Used memory in bytes.
+    pub used: i64,
+    /// Free memory in bytes.
+    pub free: i64,
+    /// Memory usage percentage.
+    pub percent_total: f64,
+}
+
+// ---------------------------------------------------------------------------
+// Array status
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `array` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ArrayData {
+    pub array: ArrayStatus,
+}
+
+/// Subset of the GraphQL `UnraidArray` object.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArrayStatus {
+    pub id: String,
+    /// Current array state (e.g. `STARTED`, `STOPPED`).
+    pub state: String,
+    /// Data disks in the array.
+    pub disks: Vec<ArrayDisk>,
+    /// Parity disks.
+    pub parities: Vec<ArrayDisk>,
+    /// Cache disks.
+    pub caches: Vec<ArrayDisk>,
+}
+
+/// A single disk entry in the array (`ArrayDisk` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArrayDisk {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// Total size in KB (BigInt in schema).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// Temperature in Celsius.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temp: Option<i32>,
+    #[serde(rename = "type")]
+    pub disk_type: String,
+}
+
+// ---------------------------------------------------------------------------
+// Online probe
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `online` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OnlineData {
+    pub online: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Docker
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `docker` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DockerData {
+    pub docker: DockerRoot,
+}
+
+/// The `Docker` root object containing the containers list.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerRoot {
+    pub id: String,
+    pub containers: Vec<DockerContainer>,
+}
+
+/// A Docker container entry (`DockerContainer` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DockerContainer {
+    pub id: String,
+    pub names: Vec<String>,
+    pub image: String,
+    pub image_id: String,
+    pub state: String,
+    pub status: String,
+    pub auto_start: bool,
+}
+
+/// Wrapper for `docker { start/stop/restart }` mutation responses.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DockerMutationData {
+    pub docker: DockerMutationResult,
+}
+
+/// Holds the container returned from a docker mutation.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DockerMutationResult {
+    pub start: Option<DockerContainer>,
+    pub stop: Option<DockerContainer>,
+}
+
+// Separate wrappers per mutation since the selection set differs
+/// Wrapper for `docker { start(...) { ... } }`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DockerStartData {
+    pub docker: DockerStartResult,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DockerStartResult {
+    pub start: DockerContainer,
+}
+
+/// Wrapper for `docker { stop(...) { ... } }`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DockerStopData {
+    pub docker: DockerStopResult,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DockerStopResult {
+    pub stop: DockerContainer,
+}
+
+// For restart we use stop+start but the API doesn't have a native restart —
+// we call stop then start. Use a void wrapper instead.
+// Actually the DockerMutations type has no restart field; we implement it as
+// stop followed by start in the client.
+
+// ---------------------------------------------------------------------------
+// Disk list
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `disks` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DisksData {
+    pub disks: Vec<DiskInfo>,
+}
+
+/// A physical disk entry (`Disk` in the schema).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskInfo {
+    pub id: String,
+    pub name: String,
+    pub device: String,
+    pub vendor: String,
+    /// Total size in bytes (Float in schema).
+    pub size: f64,
+    #[serde(rename = "type")]
+    pub disk_type: String,
+    /// SMART status string.
+    pub smart_status: String,
+    /// Temperature in Celsius (nullable Float).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    pub serial_num: String,
+}
