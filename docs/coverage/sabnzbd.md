@@ -1,7 +1,7 @@
 # SABnzbd API Coverage
 
-**Last updated:** 2026-04-08
-**Source spec:** docs/api-specs/sabnzbd.md
+**Last updated:** 2026-04-10
+**Source spec:** docs/upstream-api/sabnzbd.md
 **Format:** hand-scraped reference
 
 ## Summary
@@ -22,5 +22,22 @@
 
 ## Notes
 
-- This service starts with an implementation status of not started across CLI, API, and MCP.
-- Expand this document into a full matrix when service work begins.
+- Dispatch-layer migration is in place for implemented actions:
+  - catalog + execution in `crates/lab/src/dispatch/sabnzbd/`
+  - CLI shim in `crates/lab/src/cli/sabnzbd.rs`
+  - MCP shim in `crates/lab/src/mcp/services/sabnzbd.rs`
+  - API shim in `crates/lab/src/api/services/sabnzbd.rs`
+- Current dispatch actions implemented end-to-end:
+  - `help`
+  - `version`
+  - `queue.list`
+  - `queue.delete` (destructive)
+  - `history.list`
+  - `history.delete` (destructive)
+  - `history.purge` (destructive)
+  - `server-stats`
+  - `warnings`
+  - `pause`
+  - `resume`
+  - `speed-limit`
+- Remaining SABnzbd upstream modes are still pending implementation.

@@ -47,7 +47,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 4. [MCP.md](./MCP.md) and [CLI.md](./CLI.md) for the public surfaces
 5. [OBSERVABILITY.md](./OBSERVABILITY.md) for instrumentation and verification requirements
 6. [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md) for transport and envelope consistency
-7. [DISPATCH.md](./DISPATCH.md) for shared operation ownership across CLI, MCP, and HTTP API
+7. [DISPATCH.md](./DISPATCH.md) for shared operation ownership across CLI, MCP, and API
 8. [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md) for the refactor sequence if you are migrating existing services
 
 ### If You Are Operating the Project

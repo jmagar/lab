@@ -15,7 +15,7 @@ Serialization rules should keep the project consistent across:
 
 - upstream API request and response bodies
 - MCP tool input and output
-- HTTP API input and output
+- API input and output
 - CLI human and machine output
 
 The main boundary is simple:

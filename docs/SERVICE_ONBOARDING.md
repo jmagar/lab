@@ -12,8 +12,8 @@ Bringing a service online means all of the following are true:
 - the service is feature-gated in both crates
 - the CLI shim exists
 - the MCP dispatcher exists
-- the HTTP API dispatcher exists
-- the service is registered in the MCP registry, CLI router, HTTP router, and TUI metadata
+- the API dispatcher exists
+- the service is registered in the MCP registry, CLI router, API router, and TUI metadata
 - the service has a coverage doc under `docs/coverage/`
 - the request path is observable end to end under the shared observability contract
 - the implementation is tested at the unit level and verified against a live instance when possible
@@ -43,7 +43,7 @@ For non-HTTP capability modules, the "source spec" may instead be:
 ## Working Rules
 
 - business logic belongs in `crates/lab-apis/src/<service>/client.rs`
-- CLI, MCP, and HTTP are thin adapters over the shared dispatch layer
+- CLI, MCP, and API are thin adapters over the shared dispatch layer
 - `lab-apis` must not read config files or ambient env directly
 - every service is feature-gated
 - destructive operations must be marked at the action level and honored consistently across surfaces
@@ -51,7 +51,7 @@ For non-HTTP capability modules, the "source spec" may instead be:
 
 The canonical adapter and dependency-direction rules live in [DISPATCH.md](./DISPATCH.md).
 
-If you are writing logic in `crates/lab/src/cli/<service>.rs`, `crates/lab/src/mcp/services/<service>.rs`, or `crates/lab/src/api/services/<service>.rs`, the logic probably belongs in `lab-apis` instead.
+If you are writing logic in `crates/lab/src/cli/<service>.rs`, `crates/lab/src/mcp/services/<service>.rs`, or `crates/lab/src/api/services/<service>.rs`, the logic probably belongs in `crates/lab/src/dispatch/<service>/` or `lab-apis` instead.
 
 ## File Layout
 
@@ -70,7 +70,11 @@ If the service needs shared primitives, add them in the service module tree rath
 
 Surface code lives in:
 
-- `crates/lab/src/services/<service>.rs`
+- `crates/lab/src/dispatch/<service>.rs`
+- `crates/lab/src/dispatch/<service>/catalog.rs`
+- `crates/lab/src/dispatch/<service>/client.rs`
+- `crates/lab/src/dispatch/<service>/params.rs`
+- `crates/lab/src/dispatch/<service>/dispatch.rs`
 - `crates/lab/src/cli/<service>.rs`
 - `crates/lab/src/mcp/services/<service>.rs`
 - `crates/lab/src/api/services/<service>.rs`
@@ -100,7 +104,7 @@ Bring a service online in this order:
 7. add feature flags and module re-exports
 8. wire the CLI shim
 9. wire the MCP dispatcher
-10. wire the HTTP dispatcher
+10. wire the API dispatcher
 11. register metadata and runtime discovery
 12. add and update docs
 13. run tests and live verification
@@ -122,7 +126,7 @@ Coverage docs must answer:
 - what `lab-apis` methods exist
 - what CLI commands exist
 - what MCP actions exist
-- what the HTTP handler exposes
+- what the API handler exposes
 - what is still missing
 
 For openapi-backed services, the coverage doc must be a matrix. For vendor docs or flatter RPC APIs, a section inventory is acceptable until the service is implemented.
@@ -150,7 +154,7 @@ Do not add transport-specific concerns here. No `clap`, no MCP envelopes, no out
 
 ## Non-HTTP Capability Modules
 
-Not every `lab` service is an HTTP API client.
+Not every `lab` service is an API client.
 
 Some modules are implemented primarily through our own code and may rely on:
 
@@ -163,8 +167,8 @@ Some modules are implemented primarily through our own code and may rely on:
 For these modules:
 
 - `lab-apis` still owns the core capability logic
-- the shared `services` layer still owns operation schema, validation, client or target resolution, and surface-neutral execution
-- CLI, MCP, and HTTP API remain thin adapters
+- the shared `dispatch` layer still owns operation schema, validation, client or target resolution, and surface-neutral execution
+- CLI, MCP, and API remain thin adapters
 - the module is not required to use `HttpClient`
 
 What still applies:
@@ -272,24 +276,24 @@ Important rules:
 
 MCP verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
 
-## Step 8: Wire The HTTP API
+## Step 8: Wire The API
 
 Create `crates/lab/src/api/services/<service>.rs`.
 
-The HTTP route must mirror the MCP dispatch shape:
+The API route must mirror the MCP dispatch shape:
 
 - one `POST /` handler
 - `action` plus `params`
 - same dispatch behavior as MCP
 - same error envelope shape
 
-HTTP error semantics must stay aligned with [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
+API error semantics must stay aligned with [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
 
 Then register the module in `crates/lab/src/api/services.rs`.
 
-If the service has an HTTP router entry point elsewhere, keep it thin and route through the same service dispatch code.
+If the service has an API router entry point elsewhere, keep it thin and route through the same dispatch code.
 
-HTTP verification is not complete unless request IDs and dispatch context are observable under the shared contract.
+API verification is not complete unless request IDs and dispatch context are observable under the shared contract.
 
 ## Step 9: Register Metadata
 
@@ -327,7 +331,7 @@ If the service supports multiple instances, follow the established pattern:
 - `SERVICE_URL` for the default instance
 - `SERVICE_<LABEL>_URL` for additional instances
 
-Do not hardcode instance names in the service layer.
+Do not hardcode instance names in the dispatch layer.
 
 ## Step 11: Update Docs
 
@@ -366,7 +370,7 @@ A service is ready when:
 - the SDK compiles and tests pass
 - the CLI command exists and runs
 - the MCP tool exists and dispatches correctly
-- the HTTP route exists and matches MCP behavior
+- the API route exists and matches MCP behavior
 - feature flags are wired in both crates
 - metadata and discovery are wired
 - the coverage doc is up to date

@@ -24,7 +24,7 @@ registry.register("radarr", services::radarr::dispatch);
 
 ## Structured error envelopes
 
-`ToolError` in `envelope.rs` is the **single canonical error type** across all three surfaces — MCP, HTTP API, and CLI. Every failure returns the same JSON shape:
+`ToolError` in `envelope.rs` is the **single canonical error type** across all three surfaces — MCP, API, and CLI. Every failure returns the same JSON shape:
 
 ```jsonc
 { "kind": "missing_param", "message": "missing required parameter `query`", "param": "query" }

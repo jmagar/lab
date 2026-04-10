@@ -65,7 +65,7 @@ Rules:
 
 ### 2. Shared Dispatch-Layer Tests
 
-Owned by `crates/lab/src/services`.
+Owned by `crates/lab/src/dispatch`.
 
 Purpose:
 
@@ -134,7 +134,7 @@ A new service is not fully online until all of the following exist:
 1. SDK tests for core client behavior
 2. shared dispatch-layer tests for operation matching and validation
 3. MCP adapter tests for envelope and schema behavior
-4. HTTP API adapter tests for status and JSON shape
+4. API adapter tests for status and JSON shape
 5. CLI tests for parsing and machine-readable output where the service exposes CLI behavior
 6. non-destructive live verification for CLI and MCP when a real instance is available
 7. observability verification according to [OBSERVABILITY.md](./OBSERVABILITY.md)
@@ -149,7 +149,7 @@ If a change affects shared contracts such as:
 - dispatch
 - CLI behavior
 - MCP behavior
-- HTTP API behavior
+- API behavior
 
 then the change must add or update tests at the layer where the contract actually lives.
 
@@ -218,7 +218,7 @@ Rules:
 ## Ownership Summary
 
 - `lab-apis` owns SDK tests
-- `crates/lab/src/services` owns shared dispatch tests
+- `crates/lab/src/dispatch` owns shared dispatch tests
 - `cli`, `mcp`, and `api` own adapter tests
 - implementation tasks own live verification
 

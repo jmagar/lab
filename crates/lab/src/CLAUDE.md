@@ -6,7 +6,7 @@ It owns:
 
 - CLI
 - MCP
-- HTTP API
+- API
 - output formatting
 - config loading
 - shared product-surface orchestration
@@ -28,9 +28,9 @@ Before editing here, align with:
 
 The intended dependency direction is:
 
-- `cli -> services -> lab-apis`
-- `mcp -> services -> lab-apis`
-- `api -> services -> lab-apis`
+- `cli -> dispatch -> lab-apis`
+- `mcp -> dispatch -> lab-apis`
+- `api -> dispatch -> lab-apis`
 
 Forbidden:
 
@@ -43,7 +43,7 @@ If multiple surfaces need the same operation semantics, that logic belongs in th
 
 ## Ownership
 
-### `services/`
+### `dispatch/`
 
 The shared dispatch layer should own:
 
@@ -80,19 +80,19 @@ MCP does not own shared operation semantics.
 
 ### `api/`
 
-HTTP API owns:
+API owns:
 
 - axum routing
 - request extraction
 - status mapping
 - HTTP response shaping
 
-HTTP API does not own shared operation semantics.
+API does not own shared operation semantics.
 
 ## Practical Rules
 
 - Do not call MCP dispatch modules from CLI.
-- Do not call MCP dispatch modules from HTTP API.
+- Do not call MCP dispatch modules from API.
 - Do not read env directly in multiple surface modules when shared client resolution can own it.
 - Do not duplicate dispatch timing, logging, or error-shaping helpers per service when they can be shared.
 - Do not move upstream request construction or response parsing out of `lab-apis`.

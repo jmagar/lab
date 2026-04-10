@@ -1,12 +1,12 @@
 //! Structured JSON envelopes returned by every MCP tool dispatch.
-//! Shape is identical to what the HTTP API emits (see `api/error.rs`)
+//! Shape is identical to what the API emits (see `api/error.rs`)
 //! so clients can share error-handling logic across transports.
 
 use serde::{Deserialize, Serialize};
 
-// ToolError is surface-neutral and lives in services/error.rs.
+// ToolError is surface-neutral and lives in dispatch/error.rs.
 // Re-exported here so existing `use crate::mcp::envelope::ToolError` paths keep working.
-pub use crate::services::error::ToolError;
+pub use crate::dispatch::error::ToolError;
 
 /// Successful tool result wrapper.
 #[derive(Debug, Clone, Serialize, Deserialize)]
