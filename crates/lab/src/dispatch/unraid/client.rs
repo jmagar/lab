@@ -12,6 +12,14 @@ use crate::dispatch::error::ToolError;
 /// startup — must be pure (no side effects, no logging).
 pub fn client_from_env() -> Option<UnraidClient> {
     let url = std::env::var("UNRAID_URL").ok().filter(|v| !v.is_empty())?;
+    // Normalise: strip trailing /graphql if present so the URL stored in env
+    // can be either the bare host (https://host:31337) or the full endpoint
+    // (https://host:31337/graphql) — the client always appends /graphql itself.
+    let url = url
+        .trim_end_matches('/')
+        .trim_end_matches("graphql")
+        .trim_end_matches('/')
+        .to_string();
     let key = std::env::var("UNRAID_API_KEY")
         .ok()
         .filter(|v| !v.is_empty())?;
