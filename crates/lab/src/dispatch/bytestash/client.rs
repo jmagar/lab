@@ -4,9 +4,30 @@ use lab_apis::core::Auth;
 use crate::dispatch::error::ToolError;
 
 pub fn require_client() -> Result<ByteStashClient, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
+    let url = std::env::var("BYTESTASH_URL")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: "BYTESTASH_URL not configured".to_string(),
+        })?;
+    let token = std::env::var("BYTESTASH_TOKEN")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: "BYTESTASH_TOKEN not configured".to_string(),
+        })?;
+    ByteStashClient::new(
+        &url,
+        Auth::ApiKey {
+            header: "bytestashauth".into(),
+            key: format!("Bearer {token}"),
+        },
+    )
+    .map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
-        message: "BYTESTASH_URL or BYTESTASH_TOKEN not configured".to_string(),
+        message: format!("failed to initialize ByteStash client: {e}"),
     })
 }
 

@@ -26,13 +26,34 @@ pub fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ToolErro
 
 /// Extract a required integer parameter from a JSON object.
 pub fn require_i64(params: &Value, key: &str) -> Result<i64, ToolError> {
-    params
-        .get(key)
-        .and_then(Value::as_i64)
-        .ok_or_else(|| ToolError::MissingParam {
+    match params.get(key) {
+        None => Err(ToolError::MissingParam {
             message: format!("missing required parameter `{key}`"),
             param: key.to_string(),
-        })
+        }),
+        Some(v) => v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+            message: format!("parameter `{key}` must be an integer"),
+            param: key.to_string(),
+        }),
+    }
+}
+
+/// Extract a required non-negative integer parameter from a JSON object.
+#[allow(dead_code)]
+pub fn require_u32(params: &Value, key: &str) -> Result<u32, ToolError> {
+    match params.get(key) {
+        None => Err(ToolError::MissingParam {
+            message: format!("missing required parameter `{key}`"),
+            param: key.to_string(),
+        }),
+        Some(v) => v
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or_else(|| ToolError::InvalidParam {
+                message: format!("parameter `{key}` must be a non-negative integer"),
+                param: key.to_string(),
+            }),
+    }
 }
 
 /// Clone a JSON object, stripping the given keys.

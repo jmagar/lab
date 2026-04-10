@@ -20,8 +20,29 @@ pub fn client_from_env() -> Option<RadarrClient> {
 }
 
 pub fn require_client() -> Result<RadarrClient, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
+    let url = std::env::var("RADARR_URL")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: "RADARR_URL not configured".to_string(),
+        })?;
+    let key = std::env::var("RADARR_API_KEY")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: "RADARR_API_KEY not configured".to_string(),
+        })?;
+    RadarrClient::new(
+        &url,
+        Auth::ApiKey {
+            header: "X-Api-Key".into(),
+            key,
+        },
+    )
+    .map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
-        message: "RADARR_URL or RADARR_API_KEY not configured".to_string(),
+        message: format!("failed to initialize Radarr client: {e}"),
     })
 }

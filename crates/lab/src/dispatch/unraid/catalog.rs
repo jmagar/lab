@@ -38,7 +38,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "system.online",
         description: "Return whether the Unraid server reports itself as online",
         destructive: false,
-        returns: "bool",
+        returns: "object: { online: bool }",
         params: &[],
     },
     ActionSpec {
