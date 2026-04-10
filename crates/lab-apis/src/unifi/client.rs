@@ -30,7 +30,10 @@ impl UnifiClient {
     }
 
     fn path(path: &str) -> String {
-        format!("/proxy/network/integration/v1{path}")
+        format!(
+            "/proxy/network/integration/v1/{}",
+            path.trim_start_matches('/')
+        )
     }
 
     async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, UnifiError> {
