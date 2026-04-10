@@ -27,7 +27,7 @@
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `message.send` | `POST /message` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `message.send` | `POST /message` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
 | `message.list` | `GET /message` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `message.delete` | `DELETE /message/{id}` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `message.purge` | `DELETE /message` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -52,7 +52,7 @@
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `server.health` | `GET /health` | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `server.health` | `GET /health` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
 
 ## Spec Endpoints Not Implemented
 
