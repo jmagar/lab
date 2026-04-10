@@ -6,9 +6,6 @@
 
 use lab_apis::core::action::ActionSpec;
 use lab_apis::unifi::UnifiClient;
-use serde_json::Value;
-
-use crate::dispatch::error::ToolError;
 
 pub fn client_from_env() -> Option<UnifiClient> {
     crate::dispatch::unifi::client_from_env()
@@ -18,9 +15,6 @@ pub fn actions() -> &'static [ActionSpec] {
     crate::dispatch::unifi::actions()
 }
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    crate::dispatch::unifi::dispatch(action, params).await
-}
 
 #[cfg(test)]
 mod tests {

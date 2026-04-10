@@ -4,7 +4,6 @@ use lab_apis::core::action::{ActionSpec, ParamSpec};
 use lab_apis::radarr::RadarrClient;
 use serde_json::Value;
 
-use super::client::require_client;
 use super::params::to_json;
 use crate::dispatch::error::ToolError;
 
@@ -45,6 +44,3 @@ pub async fn dispatch_with_client(
     }
 }
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    dispatch_with_client(&require_client()?, action, params).await
-}
