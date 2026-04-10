@@ -86,12 +86,14 @@ impl Default for LabServicesState {
     fn default() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
+        let mcp_json_path = default_mcp_json_path();
+        let enabled_services = seed_enabled_services(mcp_json_path.as_deref());
         Self {
             selected: 0,
             health: HashMap::new(),
             reveal_secret: false,
-            mcp_json_path: default_mcp_json_path(),
-            enabled_services: HashSet::new(),
+            mcp_json_path,
+            enabled_services,
             env_cache: load_env_vars(),
             list_state,
         }
@@ -100,6 +102,57 @@ impl Default for LabServicesState {
 
 fn default_mcp_json_path() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".claude").join(".mcp.json"))
+}
+
+/// Seed `enabled_services` from the current `.mcp.json` content.
+///
+/// Called at startup so the initial state matches what's actually configured.
+/// Non-fatal: if the file is missing or malformed, returns an empty set.
+///
+/// The format written by `mcp_patch.rs` stores each service as a separate
+/// element in the `args` array immediately after `--services`:
+/// ```json
+/// { "mcpServers": { "lab": { "args": ["mcp", "--services", "radarr", "sonarr"] } } }
+/// ```
+pub(crate) fn seed_enabled_services(mcp_json_path: Option<&std::path::Path>) -> HashSet<String> {
+    let Some(path) = mcp_json_path else {
+        return HashSet::new();
+    };
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return HashSet::new();
+    };
+    let Ok(json): Result<serde_json::Value, _> = serde_json::from_str(&content) else {
+        return HashSet::new();
+    };
+    let args = json
+        .pointer("/mcpServers/lab/args")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut services = HashSet::new();
+    let mut collecting = false;
+    for arg in &args {
+        let s = arg.as_str().unwrap_or("");
+        if s == "--services" {
+            collecting = true;
+        } else if collecting {
+            if s.starts_with('-') {
+                // Hit another flag — stop collecting services.
+                collecting = false;
+            } else {
+                // The write format uses individual args, but handle comma-separated
+                // values defensively in case of hand-edited files.
+                for svc in s.split(',') {
+                    let svc = svc.trim();
+                    if !svc.is_empty() {
+                        services.insert(svc.to_string());
+                    }
+                }
+            }
+        }
+    }
+    services
 }
 
 /// Read the current service env vars from `~/.lab/.env`, masking secrets.
