@@ -13,5 +13,7 @@ pub struct Series {
     pub overview: Option<String>,
     pub path: String,
     pub monitored: bool,
+    /// Number of seasons. Sonarr API v3 serializes this as `"seasonCount"`.
+    #[serde(rename = "seasonCount")]
     pub season_count: u32,
 }
