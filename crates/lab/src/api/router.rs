@@ -5,6 +5,7 @@ use std::time::Duration;
 use axum::{
     Router,
     extract::State,
+    http::HeaderMap,
     http::{HeaderName, StatusCode},
     routing::get,
 };
@@ -18,8 +19,8 @@ use tower_http::{
 use tracing::Level;
 
 use super::{ActionRequest, health, state::AppState};
-use crate::services::context::DispatchContext;
-use crate::services::error::ToolError;
+use crate::dispatch::context::DispatchContext;
+use crate::dispatch::error::ToolError;
 
 #[allow(clippy::too_many_lines)]
 pub fn build_router(state: AppState) -> Router {
@@ -74,6 +75,7 @@ pub fn build_router(state: AppState) -> Router {
 async fn dispatch_service(
     State(state): State<AppState>,
     axum::extract::Path(service): axum::extract::Path<String>,
+    headers: HeaderMap,
     axum::Json(req): axum::Json<ActionRequest>,
 ) -> Result<axum::Json<serde_json::Value>, ToolError> {
     let svc = state
@@ -92,13 +94,16 @@ async fn dispatch_service(
         surface: "api",
         instance: None,
     };
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
 
     super::services::helpers::handle_action(
         svc.name,
         ctx,
+        request_id,
         req,
         actions,
         move |action, params| dispatch(action, params),
+        Some(&headers),
     )
     .await
 }

@@ -39,6 +39,7 @@ async fn handle(
         move |action, params| async move {
             crate::dispatch::sabnzbd::dispatch_with_client(&client, &action, params).await
         },
+        Some(&headers),
     )
     .await
 }
