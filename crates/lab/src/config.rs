@@ -143,8 +143,12 @@ impl serde::Serialize for Secret {
 }
 
 /// Value from an instance env var — either plain text or a secret.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+///
+/// Always constructed programmatically via [`scan_instances_from`]; never
+/// deserialized from JSON. `Deserialize` is intentionally omitted — `Secret`
+/// serializes as `"***REDACTED***"` (a plain string), so an `#[serde(untagged)]`
+/// impl would silently pick `Plain` for every value, bypassing redaction.
+#[derive(Debug, Clone, Serialize)]
 pub enum InstanceValue {
     Plain(String),
     Redacted(Secret),

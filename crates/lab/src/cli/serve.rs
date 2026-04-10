@@ -168,19 +168,25 @@ impl ServerHandler for LabMcpServer {
                         )]));
                     }
                     ElicitResult::NotSupported => {
-                        // Client does not support elicitation — treat as unconfirmed.
-                        let envelope = build_error(
-                            &service,
-                            &action,
-                            "confirmation_required",
-                            &format!(
-                                "action `{action}` is destructive — client must support MCP \
-                                 elicitation to confirm destructive actions"
-                            ),
-                        );
-                        return Ok(CallToolResult::error(vec![Content::text(
-                            envelope.to_string(),
-                        )]));
+                        // Client does not support elicitation — allow params["confirm"] == true
+                        // as a machine-to-machine bypass (mirrors HTTP's handle_action()).
+                        // Automated agents (CI, Claude Desktop non-interactive, headless MCP)
+                        // can opt in by passing confirm:true in the action params.
+                        if params.get("confirm").and_then(|v| v.as_bool()) != Some(true) {
+                            let envelope = build_error(
+                                &service,
+                                &action,
+                                "confirmation_required",
+                                &format!(
+                                    "action `{action}` is destructive — pass \
+                                     {{\"confirm\":true}} in params or use a client \
+                                     that supports MCP elicitation"
+                                ),
+                            );
+                            return Ok(CallToolResult::error(vec![Content::text(
+                                envelope.to_string(),
+                            )]));
+                        }
                     }
                 }
             }

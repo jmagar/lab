@@ -83,21 +83,35 @@ pub struct LabServicesState {
 }
 
 impl Default for LabServicesState {
+    /// Returns an empty state immediately — no blocking I/O.
+    ///
+    /// Actual seeding (`.mcp.json` + `.env` cache) is deferred to a
+    /// `spawn_blocking` task that posts [`AppEvent::ServicesSeeded`].
     fn default() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
-        let mcp_json_path = default_mcp_json_path();
-        let enabled_services = seed_enabled_services(mcp_json_path.as_deref());
         Self {
             selected: 0,
             health: HashMap::new(),
             reveal_secret: false,
-            mcp_json_path,
-            enabled_services,
-            env_cache: load_env_vars(),
+            mcp_json_path: None,
+            enabled_services: HashSet::new(),
+            env_cache: HashMap::new(),
             list_state,
         }
     }
+}
+
+/// Perform the blocking startup I/O for the Services tab.
+///
+/// Reads `.mcp.json` to determine which services are enabled, and loads the
+/// `.env` cache. Intended to be called via `tokio::task::spawn_blocking` so
+/// that file I/O never blocks the tokio executor.
+pub(crate) fn load_initial_state() -> (Option<PathBuf>, HashSet<String>, HashMap<String, String>) {
+    let path = default_mcp_json_path();
+    let enabled = seed_enabled_services(path.as_deref());
+    let env = load_env_vars();
+    (path, enabled, env)
 }
 
 fn default_mcp_json_path() -> Option<PathBuf> {
