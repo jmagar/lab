@@ -1,6 +1,7 @@
 //! The `lab.help` global MCP meta-tool. Returns the full catalog in
 //! envelope form so agents can discover every enabled service and
 //! action in one call.
+#![allow(dead_code)]
 
 use crate::{
     catalog::{Catalog, build_catalog},

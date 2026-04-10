@@ -1,4 +1,4 @@
-//! UniFi Wi-Fi broadcast actions.
+//! `UniFi` Wi-Fi broadcast actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

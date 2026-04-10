@@ -13,10 +13,10 @@ use crate::mcp::registry::{ToolRegistry, build_default_registry};
 ///
 /// # TODO(perf): sub-dispatcher threading
 ///
-/// Radarr and UniFi use multi-level dispatch — their sub-dispatchers
+/// Radarr and `UniFi` use multi-level dispatch — their sub-dispatchers
 /// (`movies`, `queue`, `devices`, etc.) each call `require_client()` independently.
 /// Threading the pre-built client through those sub-dispatchers is a follow-on task.
-/// ByteStash and SABnzbd are fully wired to use the client here.
+/// `ByteStash` and `SABnzbd` are fully wired to use the client here.
 #[derive(Clone, Default)]
 pub struct ServiceClients {
     #[cfg(feature = "bytestash")]
@@ -58,6 +58,7 @@ pub struct AppState {
     /// Pre-built service+action catalog for discovery endpoints.
     pub catalog: Arc<Catalog>,
     /// Tool registry with dispatch functions for each service.
+    #[allow(dead_code)]
     pub registry: Arc<ToolRegistry>,
     /// Pre-built service clients for connection pool reuse.
     pub clients: Arc<ServiceClients>,

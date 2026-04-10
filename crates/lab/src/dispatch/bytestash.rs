@@ -2,7 +2,7 @@
 //!
 //! Feature-gated: only compiled when the `bytestash` feature is enabled.
 //!
-//! This module is the single authoritative owner of the ByteStash action
+//! This module is the single authoritative owner of the `ByteStash` action
 //! catalog, client resolution, and shared dispatch semantics.
 
 mod catalog;

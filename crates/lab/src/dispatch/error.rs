@@ -40,6 +40,7 @@ pub enum ToolError {
         param: String,
     },
     /// Multi-instance label not found.
+    #[allow(dead_code)]
     UnknownInstance {
         /// Human-readable message.
         message: String,

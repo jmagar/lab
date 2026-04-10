@@ -7,10 +7,12 @@
 use lab_apis::core::action::ActionSpec;
 use lab_apis::unifi::UnifiClient;
 
+#[allow(dead_code)]
 pub fn client_from_env() -> Option<UnifiClient> {
     crate::dispatch::unifi::client_from_env()
 }
 
+#[allow(dead_code)]
 pub fn actions() -> &'static [ActionSpec] {
     crate::dispatch::unifi::actions()
 }

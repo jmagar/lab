@@ -4,6 +4,7 @@ use crate::dispatch::error::ToolError;
 
 pub use crate::dispatch::helpers::{require_i64, require_str, to_json};
 
+#[allow(dead_code)]
 pub fn require_u32(params: &Value, key: &str) -> Result<u32, ToolError> {
     let v = require_i64(params, key)?;
     u32::try_from(v).map_err(|_| ToolError::InvalidParam {

@@ -1,4 +1,4 @@
-//! UniFi hotspot voucher actions.
+//! `UniFi` hotspot voucher actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

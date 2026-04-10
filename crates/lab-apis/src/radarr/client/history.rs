@@ -40,8 +40,7 @@ impl RadarrClient {
             .map_err(RadarrError::from)?;
         let records = val
             .get_mut("records")
-            .map(serde_json::Value::take)
-            .unwrap_or(serde_json::Value::Null);
+            .map_or(serde_json::Value::Null, serde_json::Value::take);
         serde_json::from_value(records)
             .map_err(|e| RadarrError::Api(crate::core::error::ApiError::Decode(e.to_string())))
     }

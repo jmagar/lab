@@ -7,6 +7,7 @@
 /// `None` means the default instance.
 pub struct DispatchContext {
     pub surface: &'static str,    // "cli" | "mcp" | "api"
+    #[allow(dead_code)]
     pub instance: Option<String>, // for multi-instance routing; None = default instance
 }
 

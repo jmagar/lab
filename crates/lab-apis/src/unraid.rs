@@ -64,6 +64,7 @@ impl ServiceClient for UnraidClient {
         "network"
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
         let start = std::time::Instant::now();
         match self.system_online().await {

@@ -37,6 +37,7 @@ impl RadarrClient {
             let total = val["totalRecords"].as_i64().unwrap_or(0);
             all_records.extend(records);
 
+            #[allow(clippy::cast_possible_wrap)]
             if (all_records.len() as i64) >= total {
                 break;
             }

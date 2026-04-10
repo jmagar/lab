@@ -32,7 +32,7 @@ use crate::dispatch::error::ToolError;
 ///   else returns `ToolError` with `kind = "confirmation_required"`.
 /// - `confirm` key stripping: removed from params before forwarding to dispatch.
 /// - Timer wrapping the full dispatch call.
-/// - Structured dispatch logging (service, action, elapsed_ms, kind on error).
+/// - Structured dispatch logging (service, action, `elapsed_ms`, kind on error).
 ///   **Never logs params** — params may contain credentials.
 /// - JSON response wrapping.
 ///
@@ -41,10 +41,11 @@ use crate::dispatch::error::ToolError;
 /// # Errors
 ///
 /// Returns `ToolError` when:
-/// - The action is not found in `actions` (unknown_action)
+/// - The action is not found in `actions` (`unknown_action`)
 /// - The matched action is destructive and neither `params["confirm"] == true` nor
-///   `X-Lab-Confirm: yes`/`true` header is present (confirmation_required)
+///   `X-Lab-Confirm: yes`/`true` header is present (`confirmation_required`)
 /// - The dispatch closure itself returns an error
+#[allow(clippy::too_many_lines)]
 pub async fn handle_action<F, Fut>(
     service: &'static str,
     ctx: DispatchContext,
@@ -67,31 +68,26 @@ where
     let is_builtin = matches!(action.as_str(), "help" | "schema");
     let spec: Option<&ActionSpec> = if is_builtin {
         None
-    } else {
-        match actions.iter().find(|s| s.name == action) {
-            Some(s) => Some(s),
-            None => {
-                tracing::warn!(
-                    surface = ctx.surface,
-                    service,
-                    action,
-                    request_id,
-                    "unknown_action rejected at gate"
-                );
-                // Include built-ins in valid[] so agents can discover them.
-                let mut valid: Vec<String> =
-                    actions.iter().map(|s| s.name.to_string()).collect();
-                valid.push("help".to_string());
-                valid.push("schema".to_string());
-                return Err(ToolError::UnknownAction {
-                    message: format!("unknown action: `{action}`"),
-                    valid,
-                    hint: None,
-                });
-            }
-        }
+    } else if let Some(s) = actions.iter().find(|s| s.name == action) { Some(s) } else {
+        tracing::warn!(
+            surface = ctx.surface,
+            service,
+            action,
+            request_id,
+            "unknown_action rejected at gate"
+        );
+        // Include built-ins in valid[] so agents can discover them.
+        let mut valid: Vec<String> =
+            actions.iter().map(|s| s.name.to_string()).collect();
+        valid.push("help".to_string());
+        valid.push("schema".to_string());
+        return Err(ToolError::UnknownAction {
+            message: format!("unknown action: `{action}`"),
+            valid,
+            hint: None,
+        });
     };
-    let is_destructive = spec.map_or(false, |s| s.destructive);
+    let is_destructive = spec.is_some_and(|s| s.destructive);
 
     // Gate: destructive confirmation.
     // Confirmation can be granted via params["confirm"] == true OR X-Lab-Confirm: yes/true header.
@@ -103,8 +99,7 @@ where
         let confirmed_by_header = headers
             .and_then(|h| h.get("x-lab-confirm"))
             .and_then(|v| v.to_str().ok())
-            .map(|v| v.eq_ignore_ascii_case("yes") || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes") || v.eq_ignore_ascii_case("true"));
         if !confirmed_by_params && !confirmed_by_header {
             tracing::warn!(
                 surface = ctx.surface,

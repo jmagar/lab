@@ -49,13 +49,14 @@ pub fn patch_mcp_json(path: &Path, service_name: &str, enabled: bool) -> anyhow:
         bail!("unknown service '{service_name}' — refusing to write to .mcp.json");
     }
 
-    let parent = path.parent().unwrap_or(Path::new("."));
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let lock_path = parent.join(".mcp.json.lock");
 
     // 2. Acquire sidecar lock (never renamed, so flock stays valid across persist).
     let lock_file = OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&lock_path)
         .context("open sidecar lock")?;
     let mut rw = RwLock::new(lock_file);
@@ -176,7 +177,7 @@ fn create_mcp_json(
             }
         }
     });
-    let parent = path.parent().unwrap_or(Path::new("."));
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let mut tmp = NamedTempFile::new_in(parent)?;
     serde_json::to_writer_pretty(&mut tmp, &root)?;
     tmp.as_file().sync_all()?;
@@ -190,12 +191,11 @@ fn prune_backups(dir: &Path) -> anyhow::Result<()> {
         .filter(|e| {
             e.file_name()
                 .to_str()
-                .map(|n| n.starts_with(".mcp.json.bak."))
-                .unwrap_or(false)
+                .is_some_and(|n| n.starts_with(".mcp.json.bak."))
         })
         .collect();
     if backups.len() > 10 {
-        backups.sort_by_key(|e| e.file_name());
+        backups.sort_by_key(fs::DirEntry::file_name);
         for entry in &backups[..backups.len() - 10] {
             drop(fs::remove_file(entry.path()));
         }

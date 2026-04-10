@@ -22,10 +22,8 @@ use crate::tui::metadata::all_services;
 ///
 /// `PathBuf::from("~/.lab/.env")` does **not** expand the tilde — shells do.
 /// The `/root` fallback is the conventional home directory in rootful containers.
-pub(crate) fn lab_env_path() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(|h| PathBuf::from(h).join(".lab").join(".env"))
-        .unwrap_or_else(|| PathBuf::from("/root/.lab/.env"))
+pub fn lab_env_path() -> PathBuf {
+    std::env::var_os("HOME").map_or_else(|| PathBuf::from("/root/.lab/.env"), |h| PathBuf::from(h).join(".lab").join(".env"))
 }
 
 /// Visual health indicator for a single service row.
@@ -44,23 +42,20 @@ pub enum HealthDot {
 }
 
 impl HealthDot {
-    fn symbol(self) -> &'static str {
+    const fn symbol(self) -> &'static str {
         match self {
-            Self::GreenOk => "●",
-            Self::YellowAuth => "●",
-            Self::RedUnreach => "●",
+            Self::GreenOk | Self::YellowAuth | Self::RedUnreach => "●",
             Self::GreyNoEnv => "○",
             Self::DimNotEnabled => "·",
         }
     }
 
-    fn color(self) -> Color {
+    const fn color(self) -> Color {
         match self {
             Self::GreenOk => Color::Green,
             Self::YellowAuth => Color::Yellow,
             Self::RedUnreach => Color::Red,
-            Self::GreyNoEnv => Color::DarkGray,
-            Self::DimNotEnabled => Color::DarkGray,
+            Self::GreyNoEnv | Self::DimNotEnabled => Color::DarkGray,
         }
     }
 }
@@ -113,7 +108,7 @@ impl Default for LabServicesState {
 /// Reads `.mcp.json` to determine which services are enabled, and loads the
 /// `.env` cache. Intended to be called via `tokio::task::spawn_blocking` so
 /// that file I/O never blocks the tokio executor.
-pub(crate) fn load_initial_state() -> (Option<PathBuf>, IndexSet<String>, HashMap<String, String>) {
+pub fn load_initial_state() -> (Option<PathBuf>, IndexSet<String>, HashMap<String, String>) {
     let path = default_mcp_json_path();
     let enabled = seed_enabled_services(path.as_deref());
     let env = load_env_vars();
@@ -134,7 +129,7 @@ fn default_mcp_json_path() -> Option<PathBuf> {
 /// ```json
 /// { "mcpServers": { "lab": { "args": ["mcp", "--services", "radarr", "sonarr"] } } }
 /// ```
-pub(crate) fn seed_enabled_services(mcp_json_path: Option<&std::path::Path>) -> IndexSet<String> {
+pub fn seed_enabled_services(mcp_json_path: Option<&std::path::Path>) -> IndexSet<String> {
     let Some(path) = mcp_json_path else {
         return IndexSet::new();
     };
@@ -197,13 +192,13 @@ impl LabServicesState {
     }
 
     /// Move selection up by one row.
-    pub fn select_prev(&mut self) {
+    pub const fn select_prev(&mut self) {
         self.selected = self.selected.saturating_sub(1);
         self.list_state.select(Some(self.selected));
     }
 
     /// Toggle secret reveal mode.
-    pub fn toggle_reveal(&mut self) {
+    pub const fn toggle_reveal(&mut self) {
         self.reveal_secret = !self.reveal_secret;
     }
 
@@ -234,7 +229,7 @@ impl LabServicesState {
         let currently_enabled = self.enabled_services.contains(name);
         crate::tui::mcp_patch::patch_mcp_json(&path, name, !currently_enabled)?;
         if currently_enabled {
-            self.enabled_services.remove(name);
+            self.enabled_services.swap_remove(name);
         } else {
             self.enabled_services.insert(name.to_owned());
         }
@@ -265,7 +260,7 @@ impl LabServicesState {
             .args(args)
             .arg(&env_path)
             .status()
-            .map_err(|e| anyhow::anyhow!("failed to launch editor '{}': {}", editor, e))?;
+            .map_err(|e| anyhow::anyhow!("failed to launch editor '{editor}': {e}"))?;
         Ok(())
     }
 
@@ -355,6 +350,7 @@ impl LabServicesState {
         frame.render_stateful_widget(list, area, &mut self.list_state);
     }
 
+    #[allow(clippy::too_many_lines)]
     fn render_detail_panel(&self, frame: &mut Frame<'_>, area: Rect) {
         let plugins = all_services();
         let Some(plugin) = plugins.get(self.selected) else {
@@ -441,7 +437,7 @@ impl LabServicesState {
                 Style::default().add_modifier(Modifier::UNDERLINED),
             )));
             for ev in &required {
-                lines.extend(render_env_var(ev, &env_vars, self.reveal_secret));
+                lines.extend(render_env_var(ev, env_vars, self.reveal_secret));
             }
             lines.push(Line::from(""));
         }
@@ -452,7 +448,7 @@ impl LabServicesState {
                 Style::default().add_modifier(Modifier::UNDERLINED),
             )));
             for ev in &optional {
-                lines.extend(render_env_var(ev, &env_vars, self.reveal_secret));
+                lines.extend(render_env_var(ev, env_vars, self.reveal_secret));
             }
         }
 
@@ -497,12 +493,9 @@ fn render_env_var(
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let value = env_vars.get(ev.name);
-    let (val_text, val_color) = match value {
-        None => (
-            format!("(not set — example: {})", ev.example),
-            Color::DarkGray,
-        ),
-        Some(v) => {
+    let (val_text, val_color) = value.map_or_else(
+        || (format!("(not set — example: {})", ev.example), Color::DarkGray),
+        |v| {
             let display = if ev.secret && !reveal {
                 // Keep the raw value in a SecretString; only expose at the
                 // single render callsite — here we show a mask instead.
@@ -512,8 +505,8 @@ fn render_env_var(
                 sanitize_display(v, 60)
             };
             (display, Color::Green)
-        }
-    };
+        },
+    );
 
     lines.push(Line::from(vec![
         Span::styled(

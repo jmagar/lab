@@ -1,4 +1,4 @@
-//! UniFi DNS policy actions.
+//! `UniFi` DNS policy actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

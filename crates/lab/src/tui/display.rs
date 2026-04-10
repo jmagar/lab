@@ -20,6 +20,7 @@ const SPINNER_FRAMES: [&str; 8] = [
 
 /// Return the spinner frame for the given tick count.
 /// Uses 8-frame braille spinner cycling at tick rate.
-pub fn spinner_frame(tick: u64) -> &'static str {
+#[allow(clippy::cast_possible_truncation)]
+pub const fn spinner_frame(tick: u64) -> &'static str {
     SPINNER_FRAMES[(tick as usize) % SPINNER_FRAMES.len()]
 }

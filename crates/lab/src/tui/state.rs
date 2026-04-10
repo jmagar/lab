@@ -42,7 +42,7 @@ impl Ecosystem {
     }
 
     /// All ecosystem variants — used to drive match exhaustiveness checks and UI lists.
-    pub const ALL: [Ecosystem; 3] = [Self::ClaudeCode, Self::Codex, Self::Gemini];
+    pub const ALL: [Self; 3] = [Self::ClaudeCode, Self::Codex, Self::Gemini];
 }
 
 /// A transient notification message shown at the bottom of the screen.
@@ -52,6 +52,7 @@ pub struct Toast {
 }
 
 /// Root application state. Passed mutably through the event loop.
+#[allow(clippy::struct_excessive_bools)]
 pub struct App {
     pub current_tab: Tab,
     pub services: LabServicesState,

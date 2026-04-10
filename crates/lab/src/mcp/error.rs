@@ -1,8 +1,9 @@
 //! Helper constructors for [`ToolError`] envelopes. Dispatchers should
 //! prefer these over building variants inline — keeps envelope shape
 //! consistent across services.
+#![allow(dead_code)]
 
-use crate::mcp::envelope::ToolError;
+use crate::dispatch::error::ToolError;
 
 /// Build an `unknown_action` envelope with a list of valid actions.
 #[must_use]
@@ -141,9 +142,8 @@ impl DispatchError {
 // through `Display`. This keeps `extract_error_info` on path 1 (downcast)
 // instead of path 2 (JSON re-parse), preserving all structured fields.
 
-impl From<crate::dispatch::error::ToolError> for DispatchError {
-    fn from(te: crate::dispatch::error::ToolError) -> Self {
-        use crate::dispatch::error::ToolError;
+impl From<ToolError> for DispatchError {
+    fn from(te: ToolError) -> Self {
         match te {
             ToolError::UnknownAction {
                 message,

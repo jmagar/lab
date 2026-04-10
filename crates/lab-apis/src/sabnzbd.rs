@@ -74,7 +74,6 @@ impl ServiceClient for SabnzbdClient {
             }),
             Err(SabnzbdError::Api(ApiError::Network(e))) => Ok(ServiceStatus::unreachable(e)),
             Err(SabnzbdError::Api(e)) => Ok(ServiceStatus::degraded(e.to_string())),
-            Err(e) => Ok(ServiceStatus::degraded(e.to_string())),
         }
     }
 }

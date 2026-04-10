@@ -170,7 +170,7 @@ impl ServerHandler for LabMcpServer {
                         // as a machine-to-machine bypass (mirrors HTTP's handle_action()).
                         // Automated agents (CI, Claude Desktop non-interactive, headless MCP)
                         // can opt in by passing confirm:true in the action params.
-                        if params.get("confirm").and_then(|v| v.as_bool()) != Some(true) {
+                        if params.get("confirm").and_then(Value::as_bool) != Some(true) {
                             let envelope = build_error(
                                 &service,
                                 &action,
@@ -194,7 +194,7 @@ impl ServerHandler for LabMcpServer {
         let result = match svc {
             Some(entry) => (entry.dispatch)(action.clone(), params)
                 .await
-                .map_err(|te| anyhow::Error::from(crate::mcp::error::DispatchError::from(te))),
+                .map_err(|te| anyhow::Error::from(DispatchError::from(te))),
             None => Err(anyhow::anyhow!(
                 "service `{service}` has no dispatcher wired"
             )),
@@ -249,12 +249,11 @@ async fn elicit_confirm(
         return ElicitResult::NotSupported;
     }
 
-    let schema = match ElicitationSchema::builder()
-        .required_property("confirm", PrimitiveSchema::Boolean(Default::default()))
+    let Ok(schema) = ElicitationSchema::builder()
+        .required_property("confirm", PrimitiveSchema::Boolean(rmcp::model::BooleanSchema::default()))
         .build()
-    {
-        Ok(s) => s,
-        Err(_) => return ElicitResult::NotSupported,
+    else {
+        return ElicitResult::NotSupported;
     };
 
     let params = CreateElicitationRequestParams::FormElicitationParams {
@@ -274,7 +273,7 @@ async fn elicit_confirm(
                     .content
                     .as_ref()
                     .and_then(|v| v.get("confirm"))
-                    .and_then(|v| v.as_bool())
+                    .and_then(Value::as_bool)
                     .unwrap_or(false);
                 if confirmed {
                     ElicitResult::Confirmed

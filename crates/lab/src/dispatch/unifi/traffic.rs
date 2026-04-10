@@ -1,4 +1,4 @@
-//! UniFi traffic matching list actions.
+//! `UniFi` traffic matching list actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

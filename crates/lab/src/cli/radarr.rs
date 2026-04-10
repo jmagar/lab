@@ -373,6 +373,7 @@ struct CommandOutcome {
     success_note: Option<String>,
 }
 
+#[allow(clippy::missing_const_for_fn)]
 fn command_outcome(action: &'static str, params: Value) -> CommandOutcome {
     CommandOutcome {
         action,
@@ -382,6 +383,7 @@ fn command_outcome(action: &'static str, params: Value) -> CommandOutcome {
     }
 }
 
+#[allow(clippy::missing_const_for_fn)]
 fn quiet_outcome(action: &'static str, params: Value, success_note: String) -> CommandOutcome {
     CommandOutcome {
         action,
@@ -451,6 +453,7 @@ mod tests {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn tool_error_to_anyhow(e: ToolError) -> anyhow::Error {
     anyhow::anyhow!(
         "{}",

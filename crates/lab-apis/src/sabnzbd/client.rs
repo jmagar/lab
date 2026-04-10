@@ -12,7 +12,7 @@ use super::types::{
     WarningsResponse,
 };
 
-/// Client for a SABnzbd instance.
+/// Client for a `SABnzbd` instance.
 pub struct SabnzbdClient {
     http: HttpClient,
     api_key: String,
@@ -21,7 +21,7 @@ pub struct SabnzbdClient {
 impl SabnzbdClient {
     /// Build a client against `base_url` with an API key.
     ///
-    /// SABnzbd authenticates via query parameter, not header. Pass the raw
+    /// `SABnzbd` authenticates via query parameter, not header. Pass the raw
     /// API key; the client appends `&apikey=<key>` to every request.
     ///
     /// # Errors
@@ -33,7 +33,7 @@ impl SabnzbdClient {
         })
     }
 
-    /// Build the common query params for every SABnzbd API call.
+    /// Build the common query params for every `SABnzbd` API call.
     fn base_query(&self, mode: &str) -> Vec<(String, String)> {
         vec![
             ("mode".to_string(), mode.to_string()),
@@ -42,7 +42,7 @@ impl SabnzbdClient {
         ]
     }
 
-    /// Get the SABnzbd version string.
+    /// Get the `SABnzbd` version string.
     ///
     /// # Errors
     /// Returns `SabnzbdError::Api` on HTTP failure.

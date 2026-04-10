@@ -63,6 +63,7 @@ pub fn render<T: Serialize>(value: &T, format: OutputFormat) -> Result<String> {
 }
 
 /// Print a pre-built `tabled::Table` to stdout.
+#[allow(dead_code)]
 pub fn print_table(table: &tabled::Table) {
     println!("{table}");
 }
@@ -191,7 +192,7 @@ fn render_table(headers: &[String], rows: &[Vec<String>], ctx: RenderContext) ->
 
     for row in rows {
         out.push('\n');
-        out.push_str(&render_table_row(row, &widths, |cell| cell.clone()));
+        out.push_str(&render_table_row(row, &widths, Clone::clone));
     }
 
     out
@@ -264,7 +265,7 @@ fn render_health_rows(items: &[Value], ctx: RenderContext) -> String {
             bool_icon(auth_ok, ctx),
             item.get("version")
                 .and_then(Value::as_str)
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| dim("-", ctx)),
             render_latency(item.get("latency_ms"), ctx),
@@ -507,9 +508,7 @@ fn render_table_cell(header: &str, value: &Value, ctx: RenderContext) -> String 
             .as_str()
             .filter(|s| !s.is_empty())
             .map_or_else(|| dim("-", ctx), |s| accent(s, ctx)),
-        "message" | "warning" | "check" => render_cell_text(value, ctx),
         "secret" => render_secret_state(Some(value), ctx),
-        "service" | "name" | "host" => render_cell_text(value, ctx),
         "url" => match value {
             Value::String(s) if !s.is_empty() => accent(s, ctx),
             _ => dim("-", ctx),
@@ -518,6 +517,7 @@ fn render_table_cell(header: &str, value: &Value, ctx: RenderContext) -> String 
     }
 }
 
+#[allow(clippy::option_if_let_else)]
 fn render_status_cell(value: &Value, ctx: RenderContext) -> String {
     if let Some(status) = value.as_str() {
         match status.to_ascii_lowercase().as_str() {
@@ -568,8 +568,6 @@ fn render_latency(value: Option<&Value>, ctx: RenderContext) -> String {
 
 fn render_secret_state(value: Option<&Value>, ctx: RenderContext) -> String {
     match value {
-        Some(Value::String(s)) if !s.is_empty() => status_ok("", ctx),
-        Some(Value::Bool(true)) => status_ok("", ctx),
         Some(Value::Bool(false)) => status_fail("", ctx),
         Some(Value::Null) | None => dim("-", ctx),
         Some(_) => status_ok("", ctx),
@@ -602,7 +600,7 @@ fn preview_scalar_list(items: &[Value], limit: usize, ctx: RenderContext) -> Str
     parts.join(", ")
 }
 
-fn is_scalar(value: &Value) -> bool {
+const fn is_scalar(value: &Value) -> bool {
     matches!(
         value,
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)
@@ -644,8 +642,7 @@ fn is_doctor_report(map: &serde_json::Map<String, Value>) -> bool {
         && map
             .get("findings")
             .and_then(Value::as_array)
-            .map(|items| items.iter().all(is_doctor_finding))
-            .unwrap_or(false)
+            .is_some_and(|items| items.iter().all(is_doctor_finding))
 }
 
 fn is_extract_report(map: &serde_json::Map<String, Value>) -> bool {
@@ -653,8 +650,7 @@ fn is_extract_report(map: &serde_json::Map<String, Value>) -> bool {
         && map
             .get("creds")
             .and_then(Value::as_array)
-            .map(|items| items.iter().all(is_extract_cred))
-            .unwrap_or(false)
+            .is_some_and(|items| items.iter().all(is_extract_cred))
 }
 
 fn collect_headers(items: &[Value]) -> Vec<String> {

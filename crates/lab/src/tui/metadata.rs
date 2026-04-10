@@ -26,6 +26,7 @@ pub fn all_services() -> &'static [RegisteredService] {
 ///
 /// Called from a background tokio task — never from the render thread.
 /// Services without a usable client (stub-only) are silently skipped.
+#[allow(clippy::too_many_lines)]
 pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -48,6 +49,7 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
                 let _permit = sem.acquire_owned().await.ok()?;
                 let start = std::time::Instant::now();
                 let result = $client.health().await;
+                #[allow(clippy::cast_possible_truncation)]
                 let latency_ms = Some(start.elapsed().as_millis() as u64);
                 let (reachable, auth_ok, message) = match result {
                     Ok(_) => (true, true, None),
@@ -142,11 +144,10 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "sabnzbd")]
     {
-        if let (Some(url), Some(key)) = (vars.get("SABNZBD_URL"), vars.get("SABNZBD_API_KEY")) {
-            if let Ok(client) = lab_apis::sabnzbd::SabnzbdClient::new(url, key.clone()) {
+        if let (Some(url), Some(key)) = (vars.get("SABNZBD_URL"), vars.get("SABNZBD_API_KEY"))
+            && let Ok(client) = lab_apis::sabnzbd::SabnzbdClient::new(url, key.clone()) {
                 spawn_health_trait!("sabnzbd", client);
             }
-        }
     }
 
     #[cfg(feature = "unifi")]
