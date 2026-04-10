@@ -18,7 +18,7 @@ Every user-visible service action must be traceable end to end across:
 
 - CLI dispatch
 - MCP dispatch
-- HTTP API dispatch
+- API dispatch
 - shared SDK transport
 - service health probes
 
@@ -39,7 +39,7 @@ Observability is split across two layers:
 
 That means:
 
-- CLI, MCP, and HTTP must log the user-visible action boundary
+- CLI, MCP, and API must log the user-visible action boundary
 - `HttpClient` must log every outbound request
 - service modules must not invent custom logging formats
 
@@ -81,7 +81,7 @@ Optional when applicable:
 - `operation = "health"`
 - `kind` on failure
 
-### HTTP API Dispatch
+### API Dispatch
 
 Every HTTP service action must emit one dispatch event.
 

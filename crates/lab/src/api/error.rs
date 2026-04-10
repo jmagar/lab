@@ -1,6 +1,6 @@
 //! HTTP error handling.
 //!
-//! The canonical error type is `ToolError` from `crate::services::error`.
+//! The canonical error type is `ToolError` from `crate::dispatch::error`.
 //! It implements `IntoResponse` with correct status codes and structured
 //! JSON envelopes (including `valid`, `hint`, `param` fields).
 //!
@@ -8,4 +8,4 @@
 //! envelope, dropping structured fields. It has been removed — use
 //! `ToolError` directly in all HTTP handlers.
 
-pub use crate::services::error::ToolError;
+pub use crate::dispatch::error::ToolError;

@@ -33,7 +33,7 @@ Categories currently include:
 Default feature posture:
 
 - `lab-apis` defaults to no optional services
-- `lab` defaults to the minimum useful media stack
+- `lab` defaults to all service integrations
 - `all` enables every service integration
 - `extract` remains always available
 

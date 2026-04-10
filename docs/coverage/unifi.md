@@ -1,11 +1,12 @@
 # UniFi API Coverage
 
-**Last updated:** 2026-04-08  
+**Last updated:** 2026-04-09  
 **Source spec:** `docs/upstream-api/unifi.md`  
 **SDK surface:** `crates/lab-apis/src/unifi/client.rs` (20 public methods: 13 typed wrappers + 7 generic helpers)  
-**MCP actions:** `crates/lab/src/mcp/services/unifi.rs` (71 service actions + built-in `help`)  
+**Shared dispatch layer:** `crates/lab/src/dispatch/unifi.rs` + `crates/lab/src/dispatch/unifi/` (catalog, client, params, dispatch, domain modules)  
+**MCP actions:** `crates/lab/src/mcp/services/unifi.rs` (thin adapter over `dispatch::unifi`)  
 **CLI surface:** `crates/lab/src/cli/unifi.rs` (generic `action` + `key=value` params)  
-**HTTP API handler:** `crates/lab/src/api/services/unifi.rs` (same dispatch contract as MCP)
+**API handler:** `crates/lab/src/api/services/unifi.rs` (thin adapter over the shared dispatch layer)
 
 ## Legend
 
@@ -16,17 +17,18 @@
 | ⬜ | Not live-tested in this workspace |
 | — | Not applicable |
 
-> UniFi is exposed as a single action dispatcher across MCP, CLI, and HTTP. The
-> implementation is action-centric, not subcommand-centric. The safe smoke-tests
-> run in this workspace were limited to discovery (`help`) because no UniFi
-> controller credentials are configured here. Destructive actions are
-> intentionally not exercised.
+> UniFi is exposed as a single action dispatcher across MCP, CLI, and API, but
+> the shared execution path now lives in `crates/lab/src/dispatch/unifi.rs`.
+> The implementation remains action-centric, not subcommand-centric. The safe
+> smoke-tests run in this workspace were limited to discovery and dispatch
+> routing because no UniFi controller credentials are configured here.
+> Destructive actions were intentionally not exercised.
 
 ## Implementation Model
 
 - The SDK keeps the typed read-only wrappers for the common inventory calls.
 - The rest of the surface is handled by generic JSON helpers in `UnifiClient`
-  so MCP, CLI, and HTTP can share one dispatch table.
+  so the shared `dispatch::unifi` dispatcher can serve MCP, CLI, and API.
 - Action names are the contract: `system.info`, `devices.list`, `networks.update`,
   and so on.
 - `help` is built in to the dispatcher and is not a service endpoint.

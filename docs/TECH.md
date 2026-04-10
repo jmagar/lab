@@ -74,7 +74,7 @@ This document captures the locked stack and tooling choices for `lab`.
 
 The practical rules are:
 
-- `default` is the minimum useful media stack
+- `default` enables all service integrations
 - `all` enables every service integration
 - internal shared features like `servarr` stay implementation details
 - `extract` is always compiled

@@ -1,4 +1,4 @@
-//! HTTP API surface for `lab`.
+//! API surface for `lab`.
 //!
 //! Thin axum layer over `lab-apis` clients. Mirrors the MCP dispatch shape:
 //! one route group per service, action + params dispatch, structured JSON
@@ -10,7 +10,7 @@
 /// Shared application state (service clients, config).
 pub mod state;
 
-/// HTTP error re-exports — canonical type is `ToolError` from `services::error`.
+/// HTTP error re-exports — canonical type is `ToolError` from `dispatch::error`.
 pub mod error;
 
 /// Router builder — composes all feature-gated route groups.
