@@ -49,11 +49,13 @@ macro_rules! register_service {
         #[cfg(feature = $feature)]
         {
             let meta = lab_apis::$svc::META;
+            let actions: &'static [ActionSpec] = $actions;
             $reg.register(RegisteredService {
                 name: meta.name,
                 description: meta.description,
                 category: category_slug(meta.category),
-                actions: $actions,
+                status: if actions.is_empty() { "stub" } else { "available" },
+                actions,
                 dispatch: $dispatch,
             });
         }
@@ -63,11 +65,13 @@ macro_rules! register_service {
         #[cfg(feature = $feature)]
         {
             let meta = lab_apis::$svc::META;
+            let actions: &'static [ActionSpec] = crate::mcp::services::$svc::ACTIONS;
             $reg.register(RegisteredService {
                 name: meta.name,
                 description: meta.description,
                 category: category_slug(meta.category),
-                actions: crate::mcp::services::$svc::ACTIONS,
+                status: if actions.is_empty() { "stub" } else { "available" },
+                actions,
                 dispatch: dispatch_fn!(crate::mcp::services::$svc::dispatch),
             });
         }
@@ -83,6 +87,12 @@ pub struct RegisteredService {
     pub description: &'static str,
     /// Category slug.
     pub category: &'static str,
+    /// Implementation status: `"available"` (actions populated) or `"stub"` (empty actions).
+    ///
+    /// Agents reading `lab://catalog` should filter on `status == "available"` to find
+    /// callable services. A `"stub"` entry means the service is compiled in but not yet
+    /// dispatching — calls will return `unknown_action`.
+    pub status: &'static str,
     /// Actions exposed by this service.
     pub actions: &'static [ActionSpec],
     /// Dispatch function for routing action calls.
@@ -141,11 +151,13 @@ pub fn build_default_registry() -> ToolRegistry {
     // extract is always-on (no feature flag).
     {
         let meta = lab_apis::extract::META;
+        let actions: &'static [ActionSpec] = crate::mcp::services::extract::ACTIONS;
         reg.register(RegisteredService {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            actions: crate::mcp::services::extract::ACTIONS,
+            status: if actions.is_empty() { "stub" } else { "available" },
+            actions,
             dispatch: dispatch_fn!(crate::mcp::services::extract::dispatch),
         });
     }
