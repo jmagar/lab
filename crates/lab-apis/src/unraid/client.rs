@@ -67,10 +67,12 @@ query {
       id
       names
       image
-      imageId
+      created
       state
       status
       autoStart
+      ports { ip privatePort publicPort type }
+      lanIpPorts
     }
   }
 }
@@ -96,7 +98,7 @@ const MUTATION_DOCKER_START: &str = r#"
 mutation DockerStart($id: PrefixedID!) {
   docker {
     start(id: $id) {
-      id names image imageId state status autoStart
+      id names image state status autoStart
     }
   }
 }
@@ -106,7 +108,7 @@ const MUTATION_DOCKER_STOP: &str = r#"
 mutation DockerStop($id: PrefixedID!) {
   docker {
     stop(id: $id) {
-      id names image imageId state status autoStart
+      id names image state status autoStart
     }
   }
 }
