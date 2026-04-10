@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn action_command_logs_cli_success_shape() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap();
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=info"))
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn action_command_logs_cli_failure_kind() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap();
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=warn"))
