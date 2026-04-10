@@ -19,6 +19,9 @@ pub struct UnraidArgs {
     /// Action-specific parameters as JSON.
     #[arg(long)]
     pub params: Option<String>,
+    /// Skip confirmation prompt for destructive actions (docker.start/stop/restart).
+    #[arg(short = 'y', long)]
+    pub yes: bool,
 }
 
 /// Run the `lab unraid` subcommand.
@@ -27,12 +30,18 @@ pub struct UnraidArgs {
 /// Returns an error if dispatch fails.
 pub async fn run(args: UnraidArgs, format: OutputFormat) -> Result<ExitCode> {
     let action = args.action.unwrap_or_else(|| "help".to_string());
-    let params = args
+    let mut params = args
         .params
         .as_deref()
         .map(serde_json::from_str)
         .transpose()?
         .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    // Inject confirm:true for destructive actions when -y/--yes is provided.
+    if args.yes {
+        if let serde_json::Value::Object(ref mut map) = params {
+            map.insert("confirm".to_string(), serde_json::Value::Bool(true));
+        }
+    }
     run_action_command(
         "unraid",
         action,

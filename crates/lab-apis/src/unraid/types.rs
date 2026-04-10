@@ -83,7 +83,9 @@ pub struct InfoSystem {
 #[serde(rename_all = "camelCase")]
 pub struct InfoVersions {
     pub id: String,
-    pub core: CoreVersions,
+    /// Nullable: server may omit the nested `core` object in degraded states.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub core: Option<CoreVersions>,
 }
 
 /// Core system versions (`CoreVersions` in the schema).
@@ -177,14 +179,14 @@ pub struct ArrayDisk {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
-    /// Total size in KB (BigInt in schema).
+    /// Total size in bytes (Float in schema — matches DiskInfo.size units).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub size: Option<i64>,
+    pub size: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// Temperature in Celsius.
+    /// Temperature in Celsius (Float — matches DiskInfo.temperature type).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub temp: Option<i32>,
+    pub temp: Option<f64>,
     /// Disk role (`DATA`, `PARITY`, `CACHE`, etc.). Nullable for empty array slots.
     #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -239,8 +241,12 @@ pub struct DockerContainer {
     pub image: String,
     /// Unix timestamp (seconds) when the container was created.
     pub created: Option<i64>,
-    pub state: String,
-    pub status: String,
+    /// Container state (e.g. `RUNNING`, `STOPPED`). Nullable in transitional states.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// Human-readable status string. Nullable in transitional states.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     pub auto_start: bool,
     /// Port mappings (private → public).
     #[serde(default)]
