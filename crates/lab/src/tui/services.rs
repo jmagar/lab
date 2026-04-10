@@ -80,6 +80,9 @@ pub struct LabServicesState {
     /// Cached env vars from `~/.lab/.env`. Loaded once at startup and after
     /// the user returns from the `$EDITOR` session. Never read in the render path.
     pub env_cache: HashMap<String, String>,
+    /// Monotonically increasing counter bumped each time a health check is spawned.
+    /// `HealthChecksDone` events carrying a stale generation are discarded.
+    pub health_generation: u64,
     /// Ratatui list state for scroll tracking.
     list_state: ListState,
 }
@@ -99,6 +102,7 @@ impl Default for LabServicesState {
             mcp_json_path: None,
             enabled_services: IndexSet::new(),
             env_cache: HashMap::new(),
+            health_generation: 0,
             list_state,
         }
     }
@@ -210,10 +214,10 @@ impl LabServicesState {
     }
 
     /// Update health results from a completed health check pass.
+    ///
+    /// Replaces the map wholesale so stale entries for removed services are cleared.
     pub fn update_health(&mut self, results: Vec<ServiceHealth>) {
-        for h in results {
-            self.health.insert(h.service.clone(), h);
-        }
+        self.health = results.into_iter().map(|h| (h.service.clone(), h)).collect();
     }
 
     /// Toggle whether a service is enabled in `.mcp.json`.
