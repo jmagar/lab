@@ -1,14 +1,15 @@
-//! `lab sabnzbd` — CLI stub (not yet implemented).
+//! `lab sabnzbd` — CLI shim for the `SABnzbd` service.
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
-//! See `radarr.rs` for the reference pattern.
+//! Thin shim: parse action + JSON params, call the shared dispatcher,
+//! and format the result.
 
 use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::Args;
 
-use crate::output::{OutputFormat, print};
+use crate::cli::helpers::run_action_command;
+use crate::output::OutputFormat;
 
 /// `lab sabnzbd` arguments.
 #[derive(Debug, Args)]
@@ -25,21 +26,20 @@ pub struct SabnzbdArgs {
 /// # Errors
 /// Returns an error if dispatch fails.
 pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
-    let action = args.action.as_deref().unwrap_or("help");
+    let action = args.action.unwrap_or_else(|| "help".to_string());
     let params = args
         .params
         .as_deref()
         .map(serde_json::from_str)
         .transpose()?
         .unwrap_or(serde_json::Value::Null);
-    let result = crate::mcp::services::sabnzbd::dispatch(action, params)
-        .await
-        .map_err(|te| {
-            anyhow::anyhow!(
-                "{}",
-                serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
-            )
-        })?;
-    print(&result, format)?;
-    Ok(ExitCode::SUCCESS)
+
+    run_action_command(
+        "sabnzbd",
+        action,
+        params,
+        format,
+        |action, params| async move { crate::dispatch::sabnzbd::dispatch(&action, params).await },
+    )
+    .await
 }

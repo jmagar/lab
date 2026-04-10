@@ -8,8 +8,9 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::output::{OutputFormat, print};
+use crate::cli::helpers::run_action_command;
 use crate::cli::params::parse_kv_params;
+use crate::output::OutputFormat;
 
 /// `lab unifi` arguments.
 #[derive(Debug, Args)]
@@ -28,16 +29,12 @@ pub struct UnifiArgs {
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = parse_kv_params(args.params)?;
-    let result = crate::mcp::services::unifi::dispatch(&args.action, params)
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "{}",
-                serde_json::to_string(&e).unwrap_or_else(|_| e.to_string())
-            )
-        })?;
-    print(&result, format)?;
-    Ok(ExitCode::SUCCESS)
+    run_action_command(
+        "unifi",
+        args.action,
+        params,
+        format,
+        |action, params| async move { crate::dispatch::unifi::dispatch(&action, params).await },
+    )
+    .await
 }
-
-

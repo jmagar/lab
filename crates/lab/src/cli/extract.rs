@@ -11,7 +11,9 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Args;
+use owo_colors::{OwoColorize, XtermColors};
 
+use crate::output::{OutputFormat, print};
 use lab_apis::extract::{ExtractClient, ExtractReport, Uri};
 
 /// `lab extract <uri> [--apply | --diff] [-y] [--json]`
@@ -58,10 +60,7 @@ impl ExtractCmd {
             .with_context(|| format!("invalid uri: {}", self.uri))?;
 
         let client = ExtractClient::new();
-        let report = client
-            .scan(uri)
-            .await
-            .with_context(|| "scan failed")?;
+        let report = client.scan(uri).await.with_context(|| "scan failed")?;
 
         if self.apply {
             self.apply_report(&report)?;
@@ -80,21 +79,30 @@ impl ExtractCmd {
 
         // 2. Show what's about to change
         self.print_report(report)?;
-        eprintln!("\n→ would write {} fields to {}", report.creds.len(), target.display());
+        eprintln!(
+            "\n{} {} {} fields to {}",
+            "→".color(XtermColors::LightAzureRadiance),
+            "would write".color(XtermColors::LightAzureRadiance).bold(),
+            report.creds.len().color(XtermColors::FlushOrange),
+            target.display()
+        );
 
         // 3. Destructive confirmation (unless -y or --dry-run)
         if !self.yes && !self.dry_run && !confirm_destructive("extract.apply")? {
             anyhow::bail!("aborted by user");
         }
         if self.dry_run {
-            eprintln!("(dry-run — no changes written)");
+            eprintln!("{}", "(dry-run — no changes written)".dimmed());
             return Ok(());
         }
 
         // 4. Backup + atomic write — implementation lives in lab/src/config.rs
         //    backup_env(&target)?;
         //    write_env(&target, &report.creds)?;
-        anyhow::bail!("apply not yet implemented (would patch {})", target.display())
+        anyhow::bail!(
+            "apply not yet implemented (would patch {})",
+            target.display()
+        )
     }
 
     fn diff_report(&self, _report: &ExtractReport) -> Result<()> {
@@ -102,24 +110,8 @@ impl ExtractCmd {
     }
 
     fn print_report(&self, report: &ExtractReport) -> Result<()> {
-        if self.json {
-            // serde_json::to_string_pretty(report)? — printed via output module
-            return Ok(());
-        }
-        // TODO: render via crates/lab/src/output.rs as a tabled::Table
-        println!("found {} services under {}", report.found.len(), report.uri.path().display());
-        for cred in &report.creds {
-            println!(
-                "  {:<12} url={:<32} secret={}",
-                cred.service,
-                cred.url.as_deref().unwrap_or("?"),
-                cred.secret.as_deref().map_or("?", |_| "set"),
-            );
-        }
-        for w in &report.warnings {
-            println!("  ! {}: {}", w.service, w.message);
-        }
-        Ok(())
+        let format = OutputFormat::from_json_flag(self.json);
+        print(report, format)
     }
 
     fn resolve_env_path(&self) -> Result<PathBuf> {
@@ -135,6 +127,10 @@ impl ExtractCmd {
 /// the user confirmed. Lives here as a stub — real impl uses `dialoguer` and
 /// respects `LAB_CLI_CONFIRM` and `is_terminal::is_terminal(stdin)`.
 fn confirm_destructive(action: &str) -> Result<bool> {
-    eprintln!("⚠  {action} is destructive. Continue? [y/N]");
+    eprintln!(
+        "{} {} is destructive. Continue? [y/N]",
+        "⚠".color(XtermColors::FlushOrange),
+        action.color(XtermColors::LightAzureRadiance).bold(),
+    );
     Ok(false)
 }
