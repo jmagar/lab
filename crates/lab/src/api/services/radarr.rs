@@ -40,6 +40,7 @@ async fn handle(
         req,
         crate::dispatch::radarr::actions(),
         |action, params| async move { crate::dispatch::radarr::dispatch(&action, params).await },
+        Some(&headers),
     )
     .await
 }

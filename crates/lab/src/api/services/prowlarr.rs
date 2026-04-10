@@ -1,6 +1,6 @@
 //! HTTP route group for the `prowlarr` service.
 
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
@@ -13,17 +13,20 @@ pub fn routes(_state: AppState) -> Router<AppState> {
 
 async fn handle(
     State(_state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, crate::dispatch::error::ToolError> {
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
     handle_action(
         "prowlarr",
         DispatchContext { surface: "api", instance: None },
-        None,
+        request_id,
         req,
         crate::dispatch::prowlarr::ACTIONS,
         |action, params| async move {
             crate::dispatch::prowlarr::dispatch(&action, params).await
         },
+        Some(&headers),
     )
     .await
 }

@@ -13,7 +13,7 @@ POST /v1/radarr
 
 - **One route group per service**, mounted at `/v1/<service>`.
 - Handlers dispatch on `action` exactly like `mcp/services/<service>.rs`.
-- **Error envelopes are byte-identical to MCP envelopes.** Handlers return `Result<Json<T>, ToolError>` from `crate::mcp::envelope`. `ToolError` implements `IntoResponse` — HTTP status is derived from `kind()`, never hand-assigned per-handler. Do **not** wrap `ToolError` in `ApiError::Internal`.
+- **Error envelopes are byte-identical to MCP envelopes.** Handlers return `Result<Json<T>, ToolError>` from `crate::dispatch::error` (or `crate::api::error` which re-exports it). `ToolError` implements `IntoResponse` — HTTP status is derived from `kind()`, never hand-assigned per-handler. Do **not** wrap `ToolError` in `ApiError::Internal`.
 - Built-in per-service `GET /v1/<service>/actions` mirrors the `lab://<service>/actions` MCP resource. Use the shared `build_catalog()` — do not duplicate catalog logic.
 
 ## Files
@@ -58,7 +58,14 @@ Do not return raw `StatusCode` from handlers. Always go through `ApiError`.
 
 ## Destructive actions
 
-Actions marked `ActionSpec.destructive == true` require an explicit `"confirm": true` in `params`, or a `X-Lab-Confirm: yes` header. Without confirmation, return `400` with `kind: "confirmation_required"`. This is the HTTP equivalent of the MCP elicitation flow and the CLI `-y` flag.
+Actions marked `ActionSpec.destructive == true` require confirmation via **either** of these two mechanisms:
+
+1. `"confirm": true` in the JSON request `params` object (boolean, not string).
+2. `X-Lab-Confirm: yes` (or `X-Lab-Confirm: true`) request header — case-insensitive.
+
+Without at least one of these, the gate returns `400` with `kind: "confirmation_required"`. This is the HTTP equivalent of the MCP elicitation flow and the CLI `-y` flag.
+
+The gate is enforced in `services/helpers.rs::handle_action()` via the `headers: Option<&HeaderMap>` parameter. All service handlers extract their `HeaderMap` and pass `Some(&headers)`. The generic router fallback in `router.rs` also passes `Some(&headers)` from its already-extracted `HeaderMap`.
 
 ## Feature gating
 

@@ -40,6 +40,7 @@ async fn handle(
         req,
         crate::dispatch::unifi::actions(),
         |action, params| async move { crate::dispatch::unifi::dispatch(&action, params).await },
+        Some(&headers),
     )
     .await
 }

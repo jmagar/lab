@@ -12,6 +12,7 @@
 use std::future::Future;
 
 use axum::Json;
+use axum::http::HeaderMap;
 use serde_json::Value;
 use tracing::Instrument;
 
@@ -26,8 +27,9 @@ use crate::dispatch::error::ToolError;
 /// Owns:
 /// - Unknown-action gate: if `action` is not present in `actions`, returns `ToolError` with
 ///   `kind = "unknown_action"` immediately — dispatch closure is never called.
-/// - Destructive confirmation gate: `ActionSpec.destructive == true` requires
-///   `params["confirm"] == true`, else returns `ToolError` with `kind = "confirmation_required"`.
+/// - Destructive confirmation gate: `ActionSpec.destructive == true` requires either
+///   `params["confirm"] == true` OR `X-Lab-Confirm: yes` (or `true`) header,
+///   else returns `ToolError` with `kind = "confirmation_required"`.
 /// - `confirm` key stripping: removed from params before forwarding to dispatch.
 /// - Timer wrapping the full dispatch call.
 /// - Structured dispatch logging (service, action, elapsed_ms, kind on error).
@@ -40,7 +42,8 @@ use crate::dispatch::error::ToolError;
 ///
 /// Returns `ToolError` when:
 /// - The action is not found in `actions` (unknown_action)
-/// - The matched action is destructive and `params["confirm"] != true` (confirmation_required)
+/// - The matched action is destructive and neither `params["confirm"] == true` nor
+///   `X-Lab-Confirm: yes`/`true` header is present (confirmation_required)
 /// - The dispatch closure itself returns an error
 pub async fn handle_action<F, Fut>(
     service: &'static str,
@@ -49,6 +52,7 @@ pub async fn handle_action<F, Fut>(
     req: ActionRequest,
     actions: &[ActionSpec],
     dispatch: F,
+    headers: Option<&HeaderMap>,
 ) -> Result<Json<Value>, ToolError>
 where
     F: FnOnce(String, Value) -> Fut,
@@ -74,12 +78,18 @@ where
     };
 
     // Gate: destructive confirmation.
+    // Confirmation can be granted via params["confirm"] == true OR X-Lab-Confirm: yes/true header.
     if spec.destructive {
-        let confirmed = params
+        let confirmed_by_params = params
             .get("confirm")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        if !confirmed {
+        let confirmed_by_header = headers
+            .and_then(|h| h.get("x-lab-confirm"))
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("yes") || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        if !confirmed_by_params && !confirmed_by_header {
             tracing::warn!(
                 surface = ctx.surface,
                 service,
@@ -90,7 +100,7 @@ where
             return Err(ToolError::Sdk {
                 sdk_kind: "confirmation_required".into(),
                 message: format!(
-                    "action `{action}` is destructive — set `confirm: true` in params to proceed"
+                    "action `{action}` is destructive — set `confirm: true` in params or send `X-Lab-Confirm: yes` header to proceed"
                 ),
             });
         }
@@ -229,7 +239,7 @@ mod tests {
         let req = make_req("safe.read", json!({}));
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
         let Json(val) = result.unwrap();
@@ -243,7 +253,7 @@ mod tests {
         let req = make_req("safe.read", json!({}));
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             err_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -257,7 +267,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc"}));
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -274,7 +284,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": false}));
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -288,7 +298,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(
             result.is_ok(),
@@ -304,7 +314,7 @@ mod tests {
         let req = make_req("safe.read", json!({}));
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(
             result.is_ok(),
@@ -326,7 +336,7 @@ mod tests {
                 flag.store(true, Ordering::SeqCst);
                 Ok(json!({"result": "should not reach here"}))
             }
-        })
+        }, None)
         .await;
 
         assert!(result.is_err(), "unknown action must be rejected");
@@ -376,6 +386,7 @@ mod tests {
                 );
                 Ok(json!({"result": "ok"}))
             },
+            None,
         )
         .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
@@ -389,7 +400,7 @@ mod tests {
         // dispatch returns missing_param (id not given)
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             err_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -404,7 +415,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": "true"}));
         let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -422,10 +433,46 @@ mod tests {
         let req = make_req("anything", json!({}));
         let result = handle_action("testsvc", test_ctx(), None, req, &[], |a, p| {
             ok_dispatch(a, p)
-        })
+        }, None)
         .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), "unknown_action");
+    }
+
+    // ── X-Lab-Confirm header: "yes" authorizes destructive action ───────────
+
+    #[tokio::test]
+    async fn destructive_with_x_lab_confirm_yes_header_proceeds() {
+        use axum::http::HeaderValue;
+        let req = make_req("danger.delete", json!({"id": "abc"}));
+        let mut headers = HeaderMap::new();
+        headers.insert("x-lab-confirm", HeaderValue::from_static("yes"));
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        }, Some(&headers))
+        .await;
+        assert!(
+            result.is_ok(),
+            "X-Lab-Confirm: yes must authorize destructive action, got {result:?}"
+        );
+    }
+
+    // ── X-Lab-Confirm header: "true" also authorizes destructive action ──────
+
+    #[tokio::test]
+    async fn destructive_with_x_lab_confirm_true_header_proceeds() {
+        use axum::http::HeaderValue;
+        let req = make_req("danger.delete", json!({"id": "abc"}));
+        let mut headers = HeaderMap::new();
+        headers.insert("x-lab-confirm", HeaderValue::from_static("true"));
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        }, Some(&headers))
+        .await;
+        assert!(
+            result.is_ok(),
+            "X-Lab-Confirm: true must authorize destructive action, got {result:?}"
+        );
     }
 
     #[test]
@@ -457,6 +504,7 @@ mod tests {
                     req,
                     ACTIONS,
                     |a, p| ok_dispatch(a, p),
+                    None,
                 )
                 .await
                 .unwrap(),
@@ -497,7 +545,7 @@ mod tests {
             drop(
                 handle_action("testsvc", test_ctx(), Some("req-del-1"), req, ACTIONS, |a, p| {
                     ok_dispatch(a, p)
-                })
+                }, None)
                 .await
                 .unwrap(),
             );
@@ -569,7 +617,7 @@ mod tests {
             drop(
                 handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
                     ok_dispatch(a, p)
-                })
+                }, None)
                 .await
                 .unwrap(),
             );
