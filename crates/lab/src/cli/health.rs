@@ -91,15 +91,20 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     #[cfg(feature = "apprise")]
     rows.push(HealthRow::not_configured("apprise"));
 
+    let any_unhealthy = rows.iter().any(|r| !r.reachable || !r.auth_ok);
     print(&rows, format)?;
-    Ok(ExitCode::SUCCESS)
+    if any_unhealthy {
+        Ok(ExitCode::FAILURE)
+    } else {
+        Ok(ExitCode::SUCCESS)
+    }
 }
 
 #[cfg(feature = "radarr")]
 async fn radarr_row() -> HealthRow {
     use lab_apis::core::ServiceClient;
 
-    let Some(client) = crate::mcp::services::radarr::client_from_env() else {
+    let Some(client) = crate::dispatch::radarr::client_from_env() else {
         return HealthRow {
             service: "radarr".into(),
             reachable: false,
@@ -134,7 +139,7 @@ async fn radarr_row() -> HealthRow {
 async fn unifi_row() -> HealthRow {
     use lab_apis::core::ServiceClient;
 
-    let Some(client) = crate::mcp::services::unifi::client_from_env() else {
+    let Some(client) = crate::dispatch::unifi::client_from_env() else {
         return HealthRow {
             service: "unifi".into(),
             reachable: false,
@@ -169,7 +174,7 @@ async fn unifi_row() -> HealthRow {
 async fn bytestash_row() -> HealthRow {
     use lab_apis::core::ServiceClient;
 
-    let Some(client) = crate::services::bytestash::client_from_env() else {
+    let Some(client) = crate::dispatch::bytestash::client_from_env() else {
         return HealthRow {
             service: "bytestash".into(),
             reachable: false,

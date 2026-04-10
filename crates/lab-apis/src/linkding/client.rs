@@ -30,7 +30,9 @@ impl LinkdingClient {
     /// # Errors
     /// Returns `LinkdingError::Api` on HTTP failure.
     pub async fn health(&self) -> Result<(), LinkdingError> {
-        // TODO: GET /api/bookmarks/ with page_size=1
-        Ok(())
+        // TODO: GET /api/bookmarks/ with page_size=1 — wire real probe before marking healthy
+        Err(LinkdingError::Api(crate::core::ApiError::Internal(
+            "health check not yet implemented".into(),
+        )))
     }
 }

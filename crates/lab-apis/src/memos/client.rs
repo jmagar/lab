@@ -30,7 +30,9 @@ impl MemosClient {
     /// # Errors
     /// Returns `MemosError::Api` on HTTP failure.
     pub async fn health(&self) -> Result<(), MemosError> {
-        // TODO: GET /api/v1/workspace/profile
-        Ok(())
+        // TODO: GET /api/v1/workspace/profile — wire real probe before marking healthy
+        Err(MemosError::Api(crate::core::ApiError::Internal(
+            "health check not yet implemented".into(),
+        )))
     }
 }

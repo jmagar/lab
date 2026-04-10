@@ -30,7 +30,9 @@ impl PaperlessClient {
     /// # Errors
     /// Returns `PaperlessError::Api` on HTTP failure.
     pub async fn health(&self) -> Result<(), PaperlessError> {
-        // TODO: GET /api/
-        Ok(())
+        // TODO: GET /api/ — wire real probe before marking healthy
+        Err(PaperlessError::Api(crate::core::ApiError::Internal(
+            "health check not yet implemented".into(),
+        )))
     }
 }

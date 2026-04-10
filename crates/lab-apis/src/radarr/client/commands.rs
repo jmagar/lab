@@ -5,6 +5,7 @@
 //! Every POST here returns a `Command` object whose `id` can be polled.
 
 use super::RadarrClient;
+use crate::core::ApiError;
 use crate::radarr::error::RadarrError;
 use crate::radarr::types::command::{Command, CommandId};
 use crate::radarr::types::movie::MovieId;
@@ -60,6 +61,9 @@ impl RadarrClient {
         self.http
             .get_json(&format!("/api/v3/command/{}", id.0))
             .await
-            .map_err(RadarrError::from)
+            .map_err(|e| match e {
+                ApiError::NotFound => RadarrError::NotFound { kind: "command", id: id.0 },
+                other => RadarrError::Api(other),
+            })
     }
 }
