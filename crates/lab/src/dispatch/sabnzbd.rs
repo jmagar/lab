@@ -1,6 +1,6 @@
 //! Shared dispatch layer for the `SABnzbd` service.
 //!
-//! This module owns the SABnzbd action catalog, client resolution, and
+//! This module owns the `SABnzbd` action catalog, client resolution, and
 //! dispatch routing. CLI, MCP, and API are adapters over this layer.
 
 mod catalog;

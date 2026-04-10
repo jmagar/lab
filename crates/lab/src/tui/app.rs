@@ -67,11 +67,10 @@ pub fn run() -> Result<()> {
         loop {
             match event::poll(Duration::ZERO) {
                 Ok(true) => {
-                    if let Ok(ev) = event::read() {
-                        if tx_input.send(AppEvent::Input(ev)).is_err() {
+                    if let Ok(ev) = event::read()
+                        && tx_input.send(AppEvent::Input(ev)).is_err() {
                             break;
                         }
-                    }
                 }
                 Ok(false) => {}
                 Err(_) => break,
@@ -91,12 +90,13 @@ pub fn run() -> Result<()> {
         }
     });
 
-    tokio::task::block_in_place(|| tui_main(tx, rx))
+    tokio::task::block_in_place(|| tui_main(&tx, &rx))
 }
 
 // ── Main render loop ──────────────────────────────────────────────────────────
 
-fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<()> {
+#[allow(clippy::print_stderr)]
+fn tui_main(tx: &mpsc::Sender<AppEvent>, rx: &mpsc::Receiver<AppEvent>) -> Result<()> {
     let mut terminal = setup_terminal()?;
     let mut app = App::new();
 
@@ -122,7 +122,7 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
         if app.open_editor {
             app.open_editor = false;
             restore_terminal(&mut terminal);
-            let _ = crate::tui::services::LabServicesState::open_env_editor();
+            crate::tui::services::LabServicesState::open_env_editor().ok();
             match setup_terminal() {
                 Ok(t) => {
                     terminal = t;
@@ -171,11 +171,11 @@ fn spawn_seed_task(tx: mpsc::Sender<AppEvent>) {
             tokio::task::spawn_blocking(crate::tui::services::load_initial_state)
                 .await
                 .unwrap_or_default();
-        let _ = tx.send(AppEvent::ServicesSeeded {
+        tx.send(AppEvent::ServicesSeeded {
             mcp_json_path,
             enabled_services,
             env_cache,
-        });
+        }).ok();
     });
 }
 
@@ -188,7 +188,7 @@ fn spawn_health_check(tx: mpsc::Sender<AppEvent>, generation: u64) {
     let env_path = crate::tui::services::lab_env_path();
     tokio::runtime::Handle::current().spawn(async move {
         let results = crate::tui::metadata::check_all_services(&env_path).await;
-        let _ = tx.send(AppEvent::HealthChecksDone { generation, results });
+        tx.send(AppEvent::HealthChecksDone { generation, results }).ok();
     });
 }
 
@@ -198,7 +198,7 @@ fn spawn_marketplace_load(tx: mpsc::Sender<AppEvent>) {
     tokio::runtime::Handle::current().spawn(async move {
         let cli = crate::tui::marketplace::CliPresence::detect().await;
         let plugins = crate::tui::marketplace::MarketplaceLoader::load_all(&cli).await;
-        let _ = tx.send(AppEvent::MarketplaceLoaded(plugins));
+        tx.send(AppEvent::MarketplaceLoaded(plugins)).ok();
     });
 }
 
@@ -264,9 +264,8 @@ fn handle_event(app: &mut App, ev: AppEvent) {
 fn handle_key(app: &mut App, key: KeyEvent) {
     match (key.modifiers, key.code) {
         // Quit
-        (_, KeyCode::Char('q'))
-        | (_, KeyCode::Esc)
-        | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+        (_, KeyCode::Char('q') | KeyCode::Esc) |
+(KeyModifiers::CONTROL, KeyCode::Char('c')) => {
             app.should_quit = true;
         }
 
@@ -303,7 +302,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         }
 
         // Navigation — down
-        (_, KeyCode::Char('j')) | (_, KeyCode::Down) => {
+        (_, KeyCode::Char('j') | KeyCode::Down) => {
             match app.current_tab {
                 Tab::Services => {
                     app.services.select_next();
@@ -320,7 +319,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
         }
 
         // Navigation — up
-        (_, KeyCode::Char('k')) | (_, KeyCode::Up) => {
+        (_, KeyCode::Char('k') | KeyCode::Up) => {
             match app.current_tab {
                 Tab::Services => {
                     app.services.select_prev();
@@ -433,11 +432,11 @@ fn render_services(f: &mut Frame<'_>, app: &mut App, area: Rect) {
     app.services.render(f, area, app.tick_count);
 }
 
-fn render_plugins(f: &mut Frame<'_>, app: &mut App, area: Rect) {
+fn render_plugins(f: &mut Frame<'_>, app: &App, area: Rect) {
     app.marketplace.render(f, area, app.tick_count);
 }
 
-fn render_update(f: &mut Frame<'_>, app: &mut App, area: Rect) {
+fn render_update(f: &mut Frame<'_>, app: &App, area: Rect) {
     app.update.render(f, area, app.tick_count);
 }
 

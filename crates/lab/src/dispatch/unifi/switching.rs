@@ -1,4 +1,4 @@
-//! UniFi switching actions (switch stacks, MC-LAG domains, LAGs).
+//! `UniFi` switching actions (switch stacks, MC-LAG domains, LAGs).
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

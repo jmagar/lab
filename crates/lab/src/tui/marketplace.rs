@@ -73,7 +73,7 @@ pub enum InstallState {
 }
 
 impl InstallState {
-    fn badge(self) -> &'static str {
+    const fn badge(self) -> &'static str {
         match self {
             Self::Available => "available",
             Self::Installed => "installed",
@@ -184,10 +184,10 @@ impl MarketplaceState {
             return;
         }
 
-        let visible: Vec<&MarketplacePlugin> = match self.filter_ecosystem {
-            None => self.plugins.iter().collect(),
-            Some(eco) => self.plugins.iter().filter(|p| p.ecosystem == eco).collect(),
-        };
+        let visible: Vec<&MarketplacePlugin> = self.filter_ecosystem.map_or_else(
+            || self.plugins.iter().collect(),
+            |eco| self.plugins.iter().filter(|p| p.ecosystem == eco).collect(),
+        );
 
         if visible.is_empty() {
             let block = Block::default()
@@ -284,7 +284,7 @@ pub struct MarketplaceLoader;
 impl MarketplaceLoader {
     /// Load all marketplace sources across all three ecosystems concurrently.
     /// Uses `FuturesUnordered` + `Arc<Semaphore>` (limit 15).
-    /// Returns a unified `Vec<MarketplacePlugin>` with install_state cross-referenced.
+    /// Returns a unified `Vec<MarketplacePlugin>` with `install_state` cross-referenced.
     pub async fn load_all(cli: &CliPresence) -> Vec<MarketplacePlugin> {
         use futures::stream::{FuturesUnordered, StreamExt};
 
@@ -401,7 +401,7 @@ impl MarketplaceLoader {
         let Ok(rd) = std::fs::read_dir(&dir) else {
             return IndexSet::new();
         };
-        rd.filter_map(|e| e.ok())
+        rd.filter_map(Result::ok)
             .filter(|e| e.path().is_dir())
             .filter_map(|e| e.file_name().into_string().ok())
             .map(|name| PluginId::new(&name))
@@ -532,9 +532,7 @@ async fn load_gemini_plugins() -> Vec<(MarketplacePlugin, bool)> {
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/root"))
+    std::env::var_os("HOME").map_or_else(|| PathBuf::from("/root"), PathBuf::from)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

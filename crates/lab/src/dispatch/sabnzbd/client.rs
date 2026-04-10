@@ -2,7 +2,7 @@ use lab_apis::sabnzbd::SabnzbdClient;
 
 use crate::dispatch::error::ToolError;
 
-/// Build a SABnzbd client from default env vars.
+/// Build a `SABnzbd` client from default env vars.
 pub fn client_from_env() -> Option<SabnzbdClient> {
     let url = std::env::var("SABNZBD_URL")
         .ok()

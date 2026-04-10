@@ -1,6 +1,6 @@
 //! Shared dispatch layer for the `UniFi` service.
 //!
-//! This module is the single owner of the UniFi action catalog, client
+//! This module is the single owner of the `UniFi` action catalog, client
 //! resolution, and dispatch routing. MCP, CLI, and API are adapters over
 //! this surface-neutral layer.
 

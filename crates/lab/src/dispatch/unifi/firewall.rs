@@ -1,4 +1,4 @@
-//! UniFi firewall zone and policy actions.
+//! `UniFi` firewall zone and policy actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;
@@ -203,6 +203,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
         "firewall.zones.list" => {

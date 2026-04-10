@@ -1,4 +1,4 @@
-//! UniFi device and pending-device actions.
+//! `UniFi` device and pending-device actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

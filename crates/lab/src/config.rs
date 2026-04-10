@@ -12,7 +12,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 /// Fully-resolved `lab` configuration, assembled from env + TOML.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -64,11 +64,10 @@ pub fn load() -> Result<LabConfig> {
     // Also load .env from the current working directory (dev convenience).
     // Does not override vars already set by the user-level file.
     let cwd_env = std::path::Path::new(".env");
-    if cwd_env.exists() {
-        if let Err(e) = dotenvy::from_path(cwd_env) {
+    if cwd_env.exists()
+        && let Err(e) = dotenvy::from_path(cwd_env) {
             tracing::warn!(path = ".env", error = %e, "failed to load local .env (skipping)");
         }
-    }
 
     let cfg = if let Some(path) = toml_path() {
         if path.exists() {
@@ -109,16 +108,18 @@ fn toml_path() -> Option<PathBuf> {
 ///
 /// Use for secret env values (`API_KEY`, `TOKEN`, `PASSWORD`) so they
 /// never leak through `Debug`-printing config structs or tracing fields.
+#[allow(dead_code)]
 #[derive(Clone, Deserialize, PartialEq, Eq)]
 pub struct Secret(String);
 
 impl Secret {
     #[must_use]
-    pub fn new(value: String) -> Self {
+    pub const fn new(value: String) -> Self {
         Self(value)
     }
 
     #[must_use]
+    #[allow(dead_code)]
     pub fn expose(&self) -> &str {
         &self.0
     }
@@ -136,8 +137,8 @@ impl std::fmt::Display for Secret {
     }
 }
 
-impl serde::Serialize for Secret {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl Serialize for Secret {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str("***REDACTED***")
     }
 }
@@ -148,6 +149,7 @@ impl serde::Serialize for Secret {
 /// deserialized from JSON. `Deserialize` is intentionally omitted — `Secret`
 /// serializes as `"***REDACTED***"` (a plain string), so an `#[serde(untagged)]`
 /// impl would silently pick `Plain` for every value, bypassing redaction.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub enum InstanceValue {
     Plain(String),
@@ -156,6 +158,7 @@ pub enum InstanceValue {
 
 impl InstanceValue {
     #[must_use]
+    #[allow(dead_code)]
     pub fn expose(&self) -> &str {
         match self {
             Self::Plain(s) => s,
@@ -165,6 +168,7 @@ impl InstanceValue {
 }
 
 /// Suffixes that carry secret values and must be wrapped in [`Secret`].
+#[allow(dead_code)]
 const SECRET_SUFFIXES: &[&str] = &["API_KEY", "TOKEN", "PASSWORD"];
 
 /// Parse multi-instance env vars for a given service prefix.
@@ -177,6 +181,7 @@ const SECRET_SUFFIXES: &[&str] = &["API_KEY", "TOKEN", "PASSWORD"];
 /// Suffixes are matched longest-first to avoid collisions when a label
 /// contains a shorter suffix as a substring.
 #[must_use]
+#[allow(dead_code)]
 pub fn scan_instances(prefix: &str) -> HashMap<String, HashMap<String, InstanceValue>> {
     scan_instances_from(prefix, std::env::vars())
 }
@@ -189,7 +194,7 @@ fn scan_instances_from(
     let mut out: HashMap<String, HashMap<String, InstanceValue>> = HashMap::new();
 
     let mut known_suffixes = ["URL", "API_KEY", "TOKEN", "USERNAME", "PASSWORD"];
-    known_suffixes.sort_by(|a, b| b.len().cmp(&a.len()));
+    known_suffixes.sort_by_key(|s| std::cmp::Reverse(s.len()));
 
     let prefix_under = format!("{prefix}_");
 

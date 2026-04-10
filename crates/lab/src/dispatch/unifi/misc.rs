@@ -1,4 +1,4 @@
-//! UniFi miscellaneous actions: system, sites, WANs, VPN, RADIUS,
+//! `UniFi` miscellaneous actions: system, sites, WANs, VPN, RADIUS,
 //! device tags, DPI, and countries.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};

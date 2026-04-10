@@ -3,6 +3,7 @@
 //! Exposes `lab://catalog` (the full discovery document) and
 //! `lab://<service>/actions` (per-service action list). Resources are
 //! read-only and derived from the shared catalog.
+#![allow(dead_code)]
 
 use anyhow::Result;
 use serde_json::Value;

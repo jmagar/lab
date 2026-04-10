@@ -9,7 +9,9 @@ use sha2::{Digest as _, Sha256};
 
 /// State machine for the self-update tab.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum UpdateState {
+    #[default]
     Idle,
     Checking,
     Available { current: String, latest: String },
@@ -19,11 +21,6 @@ pub enum UpdateState {
     Error { message: String },
 }
 
-impl Default for UpdateState {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 // ── GitHub API types ──────────────────────────────────────────────────────────
 
@@ -45,7 +42,7 @@ struct GhAsset {
 
 /// Return the suffix expected in an asset file name for the running platform.
 /// e.g. `"lab-x86_64-unknown-linux-musl"` or `"lab-x86_64-pc-windows-msvc.exe"`.
-fn platform_asset_prefix() -> &'static str {
+const fn platform_asset_prefix() -> &'static str {
     // Match the release asset naming used by cargo-release cross-builds.
     if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         "lab-x86_64-unknown-linux"
@@ -78,6 +75,7 @@ pub async fn check_for_update() -> anyhow::Result<(String, String)> {
 /// # Preconditions
 /// This function should only be called **after** the user has confirmed the
 /// update prompt. It does not ask for confirmation internally.
+#[allow(clippy::too_many_lines, clippy::cast_possible_truncation, clippy::items_after_statements)]
 pub async fn perform_update(
     tx: tokio::sync::mpsc::Sender<crate::tui::events::AppEvent>,
 ) -> anyhow::Result<()> {
@@ -302,6 +300,7 @@ async fn fetch_latest_release() -> anyhow::Result<GhRelease> {
 
 impl UpdateState {
     /// Render the update tab into `area` on `f`.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap)]
     pub fn render(&self, f: &mut ratatui::Frame<'_>, area: Rect, tick_count: u64) {
         use crate::tui::display::spinner_frame;
         use ratatui::layout::{Constraint, Direction, Layout};

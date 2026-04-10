@@ -1,4 +1,4 @@
-//! UniFi network actions.
+//! `UniFi` network actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

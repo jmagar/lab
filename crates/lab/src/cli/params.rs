@@ -1,6 +1,6 @@
 //! CLI key=value param parsing for action-style subcommands.
 //!
-//! Both ByteStash and UniFi (and future services) expose an `action + params`
+//! Both `ByteStash` and `UniFi` (and future services) expose an `action + params`
 //! CLI surface. This module owns the canonical parse/coerce logic so it
 //! is not duplicated per service.
 //!

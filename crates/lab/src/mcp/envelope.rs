@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub use crate::dispatch::error::ToolError;
 
 /// Successful tool result wrapper.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ToolEnvelope<T> {

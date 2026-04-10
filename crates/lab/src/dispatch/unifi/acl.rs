@@ -1,4 +1,4 @@
-//! UniFi ACL rule actions.
+//! `UniFi` ACL rule actions.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::Value;

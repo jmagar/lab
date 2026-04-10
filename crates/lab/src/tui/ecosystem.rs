@@ -265,9 +265,7 @@ async fn remove_claude(id: &PluginIdentifier, tx: &Sender<AppEvent>) -> anyhow::
 // ── Codex (file-based) ────────────────────────────────────────────────────────
 
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/root"))
+    std::env::var_os("HOME").map_or_else(|| PathBuf::from("/root"), PathBuf::from)
 }
 
 /// Join `base` with an untrusted relative path, rejecting any `..` components.
@@ -425,7 +423,7 @@ async fn install_gemini(
     plugin_id: &str,
     tx: &Sender<AppEvent>,
 ) -> anyhow::Result<()> {
-    let github_ref = format!("github.com/{}", plugin_id);
+    let github_ref = format!("github.com/{plugin_id}");
     let mut args = vec!["extensions", "install", github_ref.as_str()];
     let ref_val;
     if let Some(sha) = plugin.commit_sha {
@@ -480,7 +478,9 @@ async fn run_subprocess(
         .spawn()
         .map_err(|e| anyhow::anyhow!("failed to spawn `{program}`: {e}"))?;
 
+    #[allow(clippy::expect_used)]
     let stdout = child.stdout.take().expect("stdout piped");
+    #[allow(clippy::expect_used)]
     let stderr = child.stderr.take().expect("stderr piped");
 
     let pid = plugin_id.to_string();

@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// SABnzbd version response (`mode=version`).
+/// `SABnzbd` version response (`mode=version`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionResponse {
     pub version: String,

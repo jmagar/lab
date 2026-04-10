@@ -25,7 +25,7 @@ use super::{
 
 const QUERY_ONLINE: &str = "query { online }";
 
-const QUERY_INFO: &str = r#"
+const QUERY_INFO: &str = r"
 query {
   info {
     id
@@ -35,9 +35,9 @@ query {
     versions { id core { unraid api kernel } }
   }
 }
-"#;
+";
 
-const QUERY_METRICS: &str = r#"
+const QUERY_METRICS: &str = r"
 query {
   metrics {
     id
@@ -45,9 +45,9 @@ query {
     memory { id total used free percentTotal }
   }
 }
-"#;
+";
 
-const QUERY_ARRAY: &str = r#"
+const QUERY_ARRAY: &str = r"
 query {
   array {
     id
@@ -57,9 +57,9 @@ query {
     caches { id name device size status temp type }
   }
 }
-"#;
+";
 
-const QUERY_DOCKER: &str = r#"
+const QUERY_DOCKER: &str = r"
 query {
   docker {
     id
@@ -76,9 +76,9 @@ query {
     }
   }
 }
-"#;
+";
 
-const QUERY_DISKS: &str = r#"
+const QUERY_DISKS: &str = r"
 query {
   disks {
     id
@@ -92,9 +92,9 @@ query {
     serialNum
   }
 }
-"#;
+";
 
-const MUTATION_DOCKER_START: &str = r#"
+const MUTATION_DOCKER_START: &str = r"
 mutation DockerStart($id: PrefixedID!) {
   docker {
     start(id: $id) {
@@ -102,9 +102,9 @@ mutation DockerStart($id: PrefixedID!) {
     }
   }
 }
-"#;
+";
 
-const MUTATION_DOCKER_STOP: &str = r#"
+const MUTATION_DOCKER_STOP: &str = r"
 mutation DockerStop($id: PrefixedID!) {
   docker {
     stop(id: $id) {
@@ -112,7 +112,7 @@ mutation DockerStop($id: PrefixedID!) {
     }
   }
 }
-"#;
+";
 
 // ---------------------------------------------------------------------------
 // Client

@@ -1,10 +1,11 @@
 //! Preview flow state machine for the TUI plugin manager.
+#![allow(dead_code)]
 //!
 //! This module drives the full lifecycle of fetching and displaying a plugin
 //! from a remote URL before the user commits to installing it.
 //!
 //! State transitions:
-//!   Idle → Detecting → (PromptEcosystem | Fetching) → Ready | Error
+//!   Idle → Detecting → (`PromptEcosystem` | Fetching) → Ready | Error
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -211,9 +212,7 @@ fn cache_path(url: &str) -> PathBuf {
 }
 
 fn dirs_cache_root() -> PathBuf {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
     home.join(".lab").join("cache")
 }
 
@@ -236,11 +235,11 @@ async fn read_cache_stale(path: &PathBuf) -> Option<Vec<u8>> {
 async fn write_cache(path: &PathBuf, data: &[u8]) {
     // Ensure the directory exists.
     if let Some(parent) = path.parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
+        tokio::fs::create_dir_all(parent).await.ok();
     }
     let tmp = path.with_extension("tmp");
     if tokio::fs::write(&tmp, data).await.is_ok() {
-        let _ = tokio::fs::rename(&tmp, path).await;
+        tokio::fs::rename(&tmp, path).await.ok();
     }
 }
 
@@ -289,9 +288,9 @@ pub async fn fetch_preview(
         Ok(ready) => {
             let plugin = ready.plugin.clone();
             // Receiver may have exited — ignore send failure.
-            let _ = tx
-                .send(crate::tui::events::AppEvent::PreviewReady(ready))
-                .await;
+            tx.send(crate::tui::events::AppEvent::PreviewReady(ready))
+                .await
+                .ok();
             Ok(PreviewState::Ready { plugin })
         }
         Err(e) => Ok(PreviewState::Error {
@@ -368,12 +367,12 @@ async fn fetch_github_preview(
                     // Rate limited — serve stale cache if available.
                     if let Some(stale) = read_cache_stale(&cache_file).await {
                         // Receiver may have exited — ignore send failure.
-                        let _ = tx
-                            .send(crate::tui::events::AppEvent::TaskError {
+                        tx.send(crate::tui::events::AppEvent::TaskError {
                                 kind: "preview".to_string(),
                                 message: "showing cached preview (rate limited)".to_string(),
                             })
-                            .await;
+                            .await
+                            .ok();
                         fetched = Some(stale);
                         break;
                     }
@@ -436,16 +435,12 @@ fn manifest_paths_for(ecosystem: Ecosystem) -> Vec<&'static str> {
 fn should_synthesize(ecosystem: Ecosystem, paths: &[&str]) -> bool {
     match ecosystem {
         Ecosystem::ClaudeCode => {
-            paths.iter().any(|p| *p == ".claude-plugin/plugin.json")
-                && !paths
-                    .iter()
-                    .any(|p| *p == ".claude-plugin/marketplace.json")
+            paths.contains(&".claude-plugin/plugin.json")
+                && !paths.contains(&".claude-plugin/marketplace.json")
         }
         Ecosystem::Codex => {
-            paths.iter().any(|p| *p == ".codex-plugin/plugin.json")
-                && !paths
-                    .iter()
-                    .any(|p| *p == ".agents/plugins/marketplace.json")
+            paths.contains(&".codex-plugin/plugin.json")
+                && !paths.contains(&".agents/plugins/marketplace.json")
         }
         Ecosystem::Gemini => false,
     }
@@ -712,9 +707,10 @@ async fn run_git_cmd(
 
 impl PreviewState {
     /// Render the current preview state into the given terminal area.
+    #[allow(clippy::too_many_lines)]
     pub fn render(&self, f: &mut Frame<'_>, area: Rect) {
         match self {
-            PreviewState::Idle => {
+            Self::Idle => {
                 let p = Paragraph::new("Enter GitHub URL or git URL:")
                     .block(
                         Block::default()
@@ -725,7 +721,7 @@ impl PreviewState {
                 f.render_widget(p, area);
             }
 
-            PreviewState::Detecting { url } => {
+            Self::Detecting { url } => {
                 let safe_url = sanitize_display(url, 80);
                 let p = Paragraph::new(format!("Detecting plugin type… {safe_url}"))
                     .block(
@@ -737,7 +733,7 @@ impl PreviewState {
                 f.render_widget(p, area);
             }
 
-            PreviewState::PromptEcosystem { detected, .. } => {
+            Self::PromptEcosystem { detected, .. } => {
                 let items: Vec<ListItem<'_>> = detected
                     .iter()
                     .map(|eco| ListItem::new(eco.display_name()))
@@ -758,7 +754,7 @@ impl PreviewState {
                 f.render_widget(list, area);
             }
 
-            PreviewState::Fetching { url, ecosystem } => {
+            Self::Fetching { url, ecosystem } => {
                 let safe_url = sanitize_display(url, 60);
                 let p = Paragraph::new(format!(
                     "Fetching {} plugin from {safe_url}…",
@@ -773,20 +769,18 @@ impl PreviewState {
                 f.render_widget(p, area);
             }
 
-            PreviewState::Ready { plugin } => {
+            Self::Ready { plugin } => {
                 let eco_badge = sanitize_display(plugin.ecosystem.display_name(), 12);
                 let name = sanitize_display(&plugin.name, 60);
                 let desc = sanitize_display(&plugin.description, 200);
                 let version = plugin
                     .version
-                    .as_deref()
-                    .map(|v| sanitize_display(v, 20))
-                    .unwrap_or_else(|| "-".to_string());
+                    .as_deref().map_or_else(|| "-".to_string(), |v| sanitize_display(v, 20));
 
                 let lines = vec![
                     Line::from(vec![
                         Span::styled(
-                            format!("{name}"),
+                            name,
                             Style::default()
                                 .fg(Color::White)
                                 .add_modifier(Modifier::BOLD),
@@ -814,7 +808,7 @@ impl PreviewState {
                 f.render_widget(p, area);
             }
 
-            PreviewState::Error { message } => {
+            Self::Error { message } => {
                 let safe_msg = sanitize_display(message, 200);
                 let p = Paragraph::new(safe_msg)
                     .block(
