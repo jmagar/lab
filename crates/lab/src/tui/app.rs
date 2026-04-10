@@ -120,9 +120,17 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
             app.open_editor = false;
             restore_terminal(&mut terminal);
             let _ = crate::tui::services::LabServicesState::open_env_editor();
-            terminal = setup_terminal()?;
-            app.services.reload_env_cache();
-            app.dirty = true;
+            match setup_terminal() {
+                Ok(t) => {
+                    terminal = t;
+                    app.services.reload_env_cache();
+                    app.dirty = true;
+                }
+                Err(e) => {
+                    app.push_toast(format!("Terminal re-init failed: {e}"));
+                    app.should_quit = true;
+                }
+            }
         }
 
         // Handle health refresh: spawn a fresh health check background task.
