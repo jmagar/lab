@@ -229,7 +229,6 @@ impl From<lab_apis::unraid::UnraidError> for ToolError {
     fn from(e: lab_apis::unraid::UnraidError) -> Self {
         let kind = match &e {
             lab_apis::unraid::UnraidError::Http(api) => api.kind(),
-            lab_apis::unraid::UnraidError::NotConfigured => "internal_error",
         };
         Self::Sdk {
             sdk_kind: kind.to_string(),

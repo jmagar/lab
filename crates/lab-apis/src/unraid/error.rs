@@ -8,8 +8,4 @@ pub enum UnraidError {
     /// Underlying HTTP / GraphQL transport error.
     #[error("HTTP error: {0}")]
     Http(#[from] ApiError),
-
-    /// Required environment variables are absent.
-    #[error("not configured: UNRAID_URL and UNRAID_API_KEY required")]
-    NotConfigured,
 }
