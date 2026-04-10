@@ -1,6 +1,6 @@
 //! `lab apprise` — CLI stub (not yet implemented).
 //!
-//! Replace this stub once `apprise` SDK client is complete.
+//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -8,6 +8,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
+use crate::cli::helpers::run_action_command;
 use crate::output::OutputFormat;
 
 /// `lab apprise` arguments.
@@ -15,12 +16,31 @@ use crate::output::OutputFormat;
 pub struct AppriseArgs {
     /// Action to run (e.g. help).
     pub action: Option<String>,
+    /// Action-specific parameters as JSON.
+    #[arg(long)]
+    pub params: Option<String>,
 }
 
-/// Run the `lab apprise` subcommand stub.
+/// Run the `lab apprise` subcommand.
 ///
 /// # Errors
-/// Always returns a not-yet-implemented message.
-pub async fn run(_args: AppriseArgs, _format: OutputFormat) -> Result<ExitCode> {
-    anyhow::bail!("apprise is not yet implemented — run `lab help` for available services")
+/// Returns an error if dispatch fails.
+pub async fn run(args: AppriseArgs, format: OutputFormat) -> Result<ExitCode> {
+    let action = args.action.unwrap_or_else(|| "help".to_string());
+    let params = args
+        .params
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()?
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    run_action_command(
+        "apprise",
+        action,
+        params,
+        format,
+        |action, params| async move {
+            crate::mcp::services::apprise::dispatch(&action, params).await
+        },
+    )
+    .await
 }
