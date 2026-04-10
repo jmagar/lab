@@ -5,7 +5,7 @@
 //! is not duplicated per service.
 //!
 //! MCP and HTTP surfaces receive JSON directly from the protocol and never
-//! call this function — it belongs in cli/, not services/.
+//! call this function — it belongs in cli/, not dispatch/.
 
 use anyhow::Result;
 use serde_json::{Map, Value};

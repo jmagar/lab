@@ -11,10 +11,12 @@ mod api;
 mod catalog;
 mod cli;
 mod config;
+mod dispatch;
 mod mcp;
 mod output;
-mod services;
 mod tui;
+#[cfg(test)]
+mod test_support;
 
 use std::process::ExitCode;
 

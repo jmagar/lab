@@ -8,8 +8,9 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::output::{OutputFormat, print};
+use crate::cli::helpers::run_action_command;
 use crate::cli::params::parse_kv_params;
+use crate::output::OutputFormat;
 
 /// `lab bytestash` arguments.
 #[derive(Debug, Args)]
@@ -28,34 +29,12 @@ pub struct BytestashArgs {
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: BytestashArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = parse_kv_params(args.params)?;
-    let start = std::time::Instant::now();
-    let result = crate::services::bytestash::dispatch(&args.action, params).await;
-    let elapsed_ms = start.elapsed().as_millis();
-    match &result {
-        Ok(_) => tracing::info!(
-            surface = "cli",
-            service = "bytestash",
-            action = args.action,
-            elapsed_ms,
-            "dispatch ok"
-        ),
-        Err(e) => tracing::warn!(
-            surface = "cli",
-            service = "bytestash",
-            action = args.action,
-            elapsed_ms,
-            kind = e.kind(),
-            "dispatch error"
-        ),
-    }
-    let value = result.map_err(|te| {
-        anyhow::anyhow!(
-            "{}",
-            serde_json::to_string(&te).unwrap_or_else(|_| format!("{te:?}"))
-        )
-    })?;
-    print(&value, format)?;
-    Ok(ExitCode::SUCCESS)
+    run_action_command(
+        "bytestash",
+        args.action,
+        params,
+        format,
+        |action, params| async move { crate::dispatch::bytestash::dispatch(&action, params).await },
+    )
+    .await
 }
-
-

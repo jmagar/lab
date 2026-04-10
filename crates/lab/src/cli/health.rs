@@ -75,7 +75,7 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     #[cfg(feature = "arcane")]
     rows.push(HealthRow::not_configured("arcane"));
     #[cfg(feature = "unraid")]
-    rows.push(HealthRow::not_configured("unraid"));
+    rows.push(unraid_row().await);
     #[cfg(feature = "unifi")]
     rows.push(unifi_row().await);
     #[cfg(feature = "overseerr")]
@@ -158,6 +158,16 @@ async fn unifi_row() -> HealthRow {
         "unifi",
         crate::dispatch::unifi::client_from_env(),
         "UNIFI_URL / UNIFI_API_KEY not set",
+    )
+    .await
+}
+
+#[cfg(feature = "unraid")]
+async fn unraid_row() -> HealthRow {
+    service_health_row(
+        "unraid",
+        crate::dispatch::unraid::client_from_env(),
+        "UNRAID_URL / UNRAID_API_KEY not set",
     )
     .await
 }
