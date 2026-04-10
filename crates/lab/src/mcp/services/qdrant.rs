@@ -16,13 +16,17 @@ pub const ACTIONS: &[ActionSpec] = &[];
 ///
 /// # Errors
 /// Returns `not_implemented` for all actions until the service is wired.
-pub async fn dispatch(action: &str, _params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
         "help" => Ok(serde_json::json!({
             "service": "qdrant",
             "message": "qdrant is not yet implemented",
             "actions": []
         })),
+        "schema" => {
+            let a = crate::dispatch::helpers::require_str(&params, "action")?;
+            crate::dispatch::helpers::action_schema(ACTIONS, a)
+        }
         _ => Err(ToolError::UnknownAction {
             message: format!("unknown action '{action}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
