@@ -47,7 +47,8 @@ async fn system_status_ok() {
             header: "X-Api-Key".into(),
             key: "abc123".into(),
         },
-    );
+    )
+    .expect("RadarrClient::new");
 
     let status = client.system_status().await.expect("system_status");
     assert_eq!(status.version, "5.0.0.1234");
