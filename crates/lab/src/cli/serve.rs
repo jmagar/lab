@@ -358,6 +358,84 @@ fn static_kind(s: &str) -> &'static str {
         "network_error" => "network_error",
         "server_error" => "server_error",
         "decode_error" => "decode_error",
+        "confirmation_required" => "confirmation_required",
         _ => "internal_error",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::static_kind;
+    use crate::dispatch::error::ToolError;
+
+    /// Every kind that `ToolError::kind()` can return must have an explicit arm
+    /// in `static_kind()`.  If a new variant or SDK kind is added to `ToolError`
+    /// without a matching arm here, this test will catch the silent downgrade to
+    /// `"internal_error"`.
+    #[test]
+    fn static_kind_round_trips_all_tool_error_kinds() {
+        // Fixed-variant kinds — produced by the named ToolError variants.
+        let fixed_variants: &[ToolError] = &[
+            ToolError::UnknownAction {
+                message: String::new(),
+                valid: vec![],
+                hint: None,
+            },
+            ToolError::MissingParam {
+                message: String::new(),
+                param: "p".into(),
+            },
+            ToolError::InvalidParam {
+                message: String::new(),
+                param: "p".into(),
+            },
+            ToolError::UnknownInstance {
+                message: String::new(),
+                valid: vec![],
+            },
+        ];
+
+        for err in fixed_variants {
+            let kind = err.kind();
+            assert_eq!(
+                static_kind(kind),
+                kind,
+                "static_kind({kind:?}) should round-trip but returns \"{}\"",
+                static_kind(kind),
+            );
+        }
+
+        // SDK-promoted kinds — every stable kind tag that `ApiError::kind()` can
+        // return and that `ToolError::Sdk` promotes to the top-level `kind` field.
+        // This list must stay in sync with the arms in `static_kind()`.
+        let sdk_kinds: &[&str] = &[
+            "unknown_action",
+            "unknown_subaction",
+            "missing_param",
+            "invalid_param",
+            "unknown_instance",
+            "auth_failed",
+            "not_found",
+            "rate_limited",
+            "validation_failed",
+            "network_error",
+            "server_error",
+            "decode_error",
+            "confirmation_required",
+        ];
+
+        for &sdk_kind in sdk_kinds {
+            let err = ToolError::Sdk {
+                sdk_kind: sdk_kind.to_string(),
+                message: String::new(),
+            };
+            let kind = err.kind();
+            assert_eq!(
+                static_kind(kind),
+                kind,
+                "static_kind({kind:?}) should round-trip but returns \"{}\"",
+                static_kind(kind),
+            );
+        }
     }
 }
