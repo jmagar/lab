@@ -6,7 +6,6 @@
 //! State transitions:
 //!   Idle → Detecting → (PromptEcosystem | Fetching) → Ready | Error
 use std::collections::HashSet;
-use std::io::Write as _;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -29,11 +28,23 @@ use crate::tui::state::Ecosystem;
 #[derive(Debug, Clone)]
 pub enum PreviewState {
     Idle,
-    Detecting { url: String },
-    PromptEcosystem { url: String, detected: Vec<Ecosystem> },
-    Fetching { url: String, ecosystem: Ecosystem },
-    Ready { plugin: MarketplacePlugin },
-    Error { message: String },
+    Detecting {
+        url: String,
+    },
+    PromptEcosystem {
+        url: String,
+        detected: Vec<Ecosystem>,
+    },
+    Fetching {
+        url: String,
+        ecosystem: Ecosystem,
+    },
+    Ready {
+        plugin: MarketplacePlugin,
+    },
+    Error {
+        message: String,
+    },
 }
 
 // ── PreviewReady payload ──────────────────────────────────────────────────────
@@ -75,7 +86,9 @@ pub fn validate_url(raw: &str) -> Result<String, String> {
 
     // Reject ext:: remote helpers (arbitrary code execution vector).
     if trimmed.starts_with("ext::") {
-        return Err(format!("Rejected: ext:: remote helpers are not allowed: {trimmed}"));
+        return Err(format!(
+            "Rejected: ext:: remote helpers are not allowed: {trimmed}"
+        ));
     }
 
     // Reject file:// local path access.
@@ -205,31 +218,29 @@ fn dirs_cache_root() -> PathBuf {
 }
 
 /// Read cached bytes if they exist and are within TTL.  Returns `None` on miss/expiry.
-fn read_cache(path: &PathBuf) -> Option<Vec<u8>> {
-    let meta = std::fs::metadata(path).ok()?;
+async fn read_cache(path: &PathBuf) -> Option<Vec<u8>> {
+    let meta = tokio::fs::metadata(path).await.ok()?;
     let modified = meta.modified().ok()?;
     if SystemTime::now().duration_since(modified).ok()? > CACHE_TTL {
         return None;
     }
-    std::fs::read(path).ok()
+    tokio::fs::read(path).await.ok()
 }
 
 /// Read cached bytes ignoring TTL (for rate-limit fallback).
-fn read_cache_stale(path: &PathBuf) -> Option<Vec<u8>> {
-    std::fs::read(path).ok()
+async fn read_cache_stale(path: &PathBuf) -> Option<Vec<u8>> {
+    tokio::fs::read(path).await.ok()
 }
 
 /// Write bytes to cache atomically (write to temp, rename).
-fn write_cache(path: &PathBuf, data: &[u8]) {
+async fn write_cache(path: &PathBuf, data: &[u8]) {
     // Ensure the directory exists.
     if let Some(parent) = path.parent() {
-        drop(std::fs::create_dir_all(parent));
+        let _ = tokio::fs::create_dir_all(parent).await;
     }
     let tmp = path.with_extension("tmp");
-    if let Ok(mut f) = std::fs::File::create(&tmp) {
-        if f.write_all(data).is_ok() {
-            drop(std::fs::rename(&tmp, path));
-        }
+    if tokio::fs::write(&tmp, data).await.is_ok() {
+        let _ = tokio::fs::rename(&tmp, path).await;
     }
 }
 
@@ -245,7 +256,11 @@ fn build_github_client() -> reqwest::Client {
 
 /// GET a URL, returning `(status, body_bytes)`.
 async fn gh_get(client: &reqwest::Client, url: &str) -> anyhow::Result<(u16, Vec<u8>)> {
-    let resp = client.get(url).send().await.context("HTTP request failed")?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .context("HTTP request failed")?;
     let status = resp.status().as_u16();
     let bytes = resp.bytes().await.context("reading response body")?;
     Ok((status, bytes.to_vec()))
@@ -324,8 +339,7 @@ async fn fetch_github_preview(
     let branch = repo_info.default_branch;
 
     // 2. Resolve branch tip SHA (TOCTOU safety).
-    let commits_api =
-        format!("https://api.github.com/repos/{owner}/{repo}/commits/{branch}");
+    let commits_api = format!("https://api.github.com/repos/{owner}/{repo}/commits/{branch}");
     let (status, body) = gh_get(&client, &commits_api).await?;
     anyhow::ensure!(status == 200, "GitHub commits API returned HTTP {status}");
     let commit_info: GitHubCommit =
@@ -339,11 +353,10 @@ async fn fetch_github_preview(
     let cache_key = format!("{url}#{sha}#{}", ecosystem.as_str());
     let cache_file = cache_path(&cache_key);
 
-    let manifest_bytes: Vec<u8> = if let Some(cached) = read_cache(&cache_file) {
+    let manifest_bytes: Vec<u8> = if let Some(cached) = read_cache(&cache_file).await {
         cached
     } else {
-        let raw_url_base =
-            format!("https://raw.githubusercontent.com/{owner}/{repo}/{sha}");
+        let raw_url_base = format!("https://raw.githubusercontent.com/{owner}/{repo}/{sha}");
         let mut fetched: Option<Vec<u8>> = None;
 
         for path in &manifest_paths {
@@ -351,7 +364,7 @@ async fn fetch_github_preview(
             match gh_get(&client, &raw_url).await {
                 Ok((429, _)) => {
                     // Rate limited — serve stale cache if available.
-                    if let Some(stale) = read_cache_stale(&cache_file) {
+                    if let Some(stale) = read_cache_stale(&cache_file).await {
                         drop(
                             tx.send(crate::tui::events::AppEvent::TaskError {
                                 kind: "preview".to_string(),
@@ -365,7 +378,7 @@ async fn fetch_github_preview(
                     anyhow::bail!("GitHub rate limited and no cached preview available");
                 }
                 Ok((200, body)) => {
-                    write_cache(&cache_file, &body);
+                    write_cache(&cache_file, &body).await;
                     fetched = Some(body);
                     break;
                 }
@@ -402,10 +415,16 @@ async fn fetch_github_preview(
 fn manifest_paths_for(ecosystem: Ecosystem) -> Vec<&'static str> {
     match ecosystem {
         Ecosystem::ClaudeCode => {
-            vec![".claude-plugin/marketplace.json", ".claude-plugin/plugin.json"]
+            vec![
+                ".claude-plugin/marketplace.json",
+                ".claude-plugin/plugin.json",
+            ]
         }
         Ecosystem::Codex => {
-            vec![".agents/plugins/marketplace.json", ".codex-plugin/plugin.json"]
+            vec![
+                ".agents/plugins/marketplace.json",
+                ".codex-plugin/plugin.json",
+            ]
         }
         Ecosystem::Gemini => vec!["gemini-extension.json"],
     }
@@ -416,11 +435,15 @@ fn should_synthesize(ecosystem: Ecosystem, paths: &[&str]) -> bool {
     match ecosystem {
         Ecosystem::ClaudeCode => {
             paths.iter().any(|p| *p == ".claude-plugin/plugin.json")
-                && !paths.iter().any(|p| *p == ".claude-plugin/marketplace.json")
+                && !paths
+                    .iter()
+                    .any(|p| *p == ".claude-plugin/marketplace.json")
         }
         Ecosystem::Codex => {
             paths.iter().any(|p| *p == ".codex-plugin/plugin.json")
-                && !paths.iter().any(|p| *p == ".agents/plugins/marketplace.json")
+                && !paths
+                    .iter()
+                    .any(|p| *p == ".agents/plugins/marketplace.json")
         }
         Ecosystem::Gemini => false,
     }
@@ -444,10 +467,7 @@ fn parse_manifest(
             Ok(MarketplacePlugin {
                 id: name.to_lowercase().replace(' ', "-"),
                 name: sanitize_display(&name, 80),
-                description: sanitize_display(
-                    &m.description.unwrap_or_default(),
-                    200,
-                ),
+                description: sanitize_display(&m.description.unwrap_or_default(), 200),
                 version: m.version.map(|v| sanitize_display(&v, 20)),
                 ecosystem,
                 install_state: InstallState::Available,
@@ -463,10 +483,7 @@ fn parse_manifest(
             Ok(MarketplacePlugin {
                 id: name.to_lowercase().replace(' ', "-"),
                 name: sanitize_display(&name, 80),
-                description: sanitize_display(
-                    &m.description.unwrap_or_default(),
-                    200,
-                ),
+                description: sanitize_display(&m.description.unwrap_or_default(), 200),
                 version: m.version.map(|v| sanitize_display(&v, 20)),
                 ecosystem,
                 install_state: InstallState::Available,
@@ -482,10 +499,7 @@ fn parse_manifest(
             Ok(MarketplacePlugin {
                 id: name.to_lowercase().replace(' ', "-"),
                 name: sanitize_display(&name, 80),
-                description: sanitize_display(
-                    &m.description.unwrap_or_default(),
-                    200,
-                ),
+                description: sanitize_display(&m.description.unwrap_or_default(), 200),
                 version: m.version.map(|v| sanitize_display(&v, 20)),
                 ecosystem,
                 install_state: InstallState::Available,
@@ -509,7 +523,7 @@ async fn fetch_sparse_clone_preview(
     let mut manifest_bytes: Option<Vec<u8>> = None;
     for path in &paths {
         let full = root.join(path);
-        if let Ok(data) = std::fs::read(&full) {
+        if let Ok(data) = tokio::fs::read(&full).await {
             manifest_bytes = Some(data);
             break;
         }
@@ -521,7 +535,7 @@ async fn fetch_sparse_clone_preview(
 
     // For non-GitHub, we don't have a commit SHA from the API.
     // Use HEAD ref from .git/HEAD as a best-effort identifier.
-    let sha = read_head_sha(root);
+    let sha = read_head_sha(root).await;
     let use_synthesis = should_synthesize_from_files(ecosystem, root);
     let plugin = parse_manifest(&bytes, ecosystem, url, use_synthesis)?;
 
@@ -533,9 +547,10 @@ async fn fetch_sparse_clone_preview(
     })
 }
 
-fn read_head_sha(root: &std::path::Path) -> String {
+async fn read_head_sha(root: &std::path::Path) -> String {
     let head = root.join(".git").join("HEAD");
-    std::fs::read_to_string(head)
+    tokio::fs::read_to_string(head)
+        .await
         .unwrap_or_default()
         .trim()
         .to_string()
@@ -590,7 +605,13 @@ async fn sparse_clone(
 
     // Step 2: sparse-checkout init --cone.
     run_git_cmd(
-        &["-C", tmppath.to_str().unwrap_or("."), "sparse-checkout", "init", "--cone"],
+        &[
+            "-C",
+            tmppath.to_str().unwrap_or("."),
+            "sparse-checkout",
+            "init",
+            "--cone",
+        ],
         None,
         &path_env,
         &home_env,
@@ -664,7 +685,10 @@ async fn run_git_cmd(
             Ok(())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(anyhow::anyhow!("git exited with status {:?}: {stderr}", output.status))
+            Err(anyhow::anyhow!(
+                "git exited with status {:?}: {stderr}",
+                output.status
+            ))
         }
     };
 
@@ -681,7 +705,11 @@ impl PreviewState {
         match self {
             PreviewState::Idle => {
                 let p = Paragraph::new("Enter GitHub URL or git URL:")
-                    .block(Block::default().borders(Borders::ALL).title(" Plugin Preview "))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(" Plugin Preview "),
+                    )
                     .style(Style::default().fg(Color::Gray));
                 f.render_widget(p, area);
             }
@@ -689,7 +717,11 @@ impl PreviewState {
             PreviewState::Detecting { url } => {
                 let safe_url = sanitize_display(url, 80);
                 let p = Paragraph::new(format!("Detecting plugin type… {safe_url}"))
-                    .block(Block::default().borders(Borders::ALL).title(" Plugin Preview "))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title(" Plugin Preview "),
+                    )
                     .style(Style::default().fg(Color::Yellow));
                 f.render_widget(p, area);
             }
@@ -721,7 +753,11 @@ impl PreviewState {
                     "Fetching {} plugin from {safe_url}…",
                     ecosystem.display_name()
                 ))
-                .block(Block::default().borders(Borders::ALL).title(" Plugin Preview "))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Plugin Preview "),
+                )
                 .style(Style::default().fg(Color::Cyan));
                 f.render_widget(p, area);
             }
@@ -745,20 +781,11 @@ impl PreviewState {
                                 .add_modifier(Modifier::BOLD),
                         ),
                         Span::raw("  "),
-                        Span::styled(
-                            format!("v{version}"),
-                            Style::default().fg(Color::DarkGray),
-                        ),
+                        Span::styled(format!("v{version}"), Style::default().fg(Color::DarkGray)),
                         Span::raw("  "),
-                        Span::styled(
-                            format!("[{eco_badge}]"),
-                            Style::default().fg(Color::Cyan),
-                        ),
+                        Span::styled(format!("[{eco_badge}]"), Style::default().fg(Color::Cyan)),
                     ]),
-                    Line::from(Span::styled(
-                        desc,
-                        Style::default().fg(Color::Gray),
-                    )),
+                    Line::from(Span::styled(desc, Style::default().fg(Color::Gray))),
                     Line::from(""),
                     Line::from(Span::styled(
                         "[ Install ]",
@@ -768,8 +795,11 @@ impl PreviewState {
                     )),
                 ];
 
-                let p = Paragraph::new(lines)
-                    .block(Block::default().borders(Borders::ALL).title(" Plugin Preview "));
+                let p = Paragraph::new(lines).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Plugin Preview "),
+                );
                 f.render_widget(p, area);
             }
 
@@ -888,9 +918,13 @@ mod tests {
     #[test]
     fn single_entry_synthesis_claude() {
         let json = r#"{"name":"My Plugin","description":"A cool plugin","version":"1.2.3"}"#;
-        let plugin =
-            parse_manifest(json.as_bytes(), Ecosystem::ClaudeCode, "https://example.com", true)
-                .unwrap();
+        let plugin = parse_manifest(
+            json.as_bytes(),
+            Ecosystem::ClaudeCode,
+            "https://example.com",
+            true,
+        )
+        .unwrap();
         assert_eq!(plugin.name, "My Plugin");
         assert_eq!(plugin.description, "A cool plugin");
         assert_eq!(plugin.version.as_deref(), Some("1.2.3"));
@@ -903,35 +937,42 @@ mod tests {
     #[test]
     fn ansi_injection_stripped_in_manifest() {
         let json = r#"{"name":"\u001b[31mevil\u001b[0m","description":"ok"}"#;
-        let plugin =
-            parse_manifest(json.as_bytes(), Ecosystem::ClaudeCode, "https://x.com", false)
-                .unwrap();
+        let plugin = parse_manifest(
+            json.as_bytes(),
+            Ecosystem::ClaudeCode,
+            "https://x.com",
+            false,
+        )
+        .unwrap();
         assert!(
             !plugin.name.contains('\x1b'),
             "ANSI escapes must not appear in rendered plugin name"
         );
-        assert!(plugin.name.contains("evil"), "text content must survive sanitization");
+        assert!(
+            plugin.name.contains("evil"),
+            "text content must survive sanitization"
+        );
     }
 
     // ── Rate-limit fallback ───────────────────────────────────────────────────
 
-    #[test]
-    fn rate_limit_fallback_reads_stale_cache() {
+    #[tokio::test]
+    async fn rate_limit_fallback_reads_stale_cache() {
         let dir = tempfile::tempdir().unwrap();
         let cache_file = dir.path().join("test_cache.json");
         let stale_data = b"stale payload";
-        std::fs::write(&cache_file, stale_data).unwrap();
+        tokio::fs::write(&cache_file, stale_data).await.unwrap();
 
         // read_cache_stale ignores TTL.
-        let result = read_cache_stale(&cache_file);
+        let result = read_cache_stale(&cache_file).await;
         assert_eq!(result.as_deref(), Some(stale_data.as_slice()));
     }
 
-    #[test]
-    fn cache_miss_when_file_missing() {
+    #[tokio::test]
+    async fn cache_miss_when_file_missing() {
         let dir = tempfile::tempdir().unwrap();
         let cache_file = dir.path().join("nonexistent.json");
-        assert!(read_cache_stale(&cache_file).is_none());
+        assert!(read_cache_stale(&cache_file).await.is_none());
     }
 
     // ── Git env scrub ─────────────────────────────────────────────────────────
@@ -961,24 +1002,21 @@ mod tests {
 
     #[test]
     fn parse_github_url_basic() {
-        let (owner, repo) =
-            parse_github_owner_repo("https://github.com/owner/repo").unwrap();
+        let (owner, repo) = parse_github_owner_repo("https://github.com/owner/repo").unwrap();
         assert_eq!(owner, "owner");
         assert_eq!(repo, "repo");
     }
 
     #[test]
     fn parse_github_url_strips_git_suffix() {
-        let (owner, repo) =
-            parse_github_owner_repo("https://github.com/owner/repo.git").unwrap();
+        let (owner, repo) = parse_github_owner_repo("https://github.com/owner/repo.git").unwrap();
         assert_eq!(owner, "owner");
         assert_eq!(repo, "repo");
     }
 
     #[test]
     fn parse_github_url_trailing_slash() {
-        let (owner, repo) =
-            parse_github_owner_repo("https://github.com/owner/repo/").unwrap();
+        let (owner, repo) = parse_github_owner_repo("https://github.com/owner/repo/").unwrap();
         assert_eq!(owner, "owner");
         assert_eq!(repo, "repo");
     }
