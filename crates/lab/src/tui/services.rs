@@ -15,6 +15,17 @@ use crate::tui::display::sanitize_display;
 use crate::tui::events::ServiceHealth;
 use crate::tui::metadata::all_services;
 
+/// Return the path to `~/.lab/.env`, falling back to `/root/.lab/.env` when
+/// `HOME` is unset (containers, some CI, sandboxed contexts).
+///
+/// `PathBuf::from("~/.lab/.env")` does **not** expand the tilde — shells do.
+/// The `/root` fallback is the conventional home directory in rootful containers.
+pub(crate) fn lab_env_path() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join(".lab").join(".env"))
+        .unwrap_or_else(|| PathBuf::from("/root/.lab/.env"))
+}
+
 /// Visual health indicator for a single service row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthDot {
@@ -93,9 +104,7 @@ fn default_mcp_json_path() -> Option<PathBuf> {
 
 /// Read the current service env vars from `~/.lab/.env`, masking secrets.
 fn load_env_vars() -> HashMap<String, String> {
-    let env_path = std::env::var_os("HOME")
-        .map(|h| PathBuf::from(h).join(".lab").join(".env"))
-        .unwrap_or_else(|| PathBuf::from("~/.lab/.env"));
+    let env_path = lab_env_path();
 
     dotenvy::from_path_iter(&env_path)
         .ok()
@@ -164,9 +173,7 @@ impl LabServicesState {
     /// **Important:** the caller is responsible for restoring and re-initializing
     /// the terminal around this call, as the editor takes over the terminal.
     pub fn open_env_editor() -> anyhow::Result<()> {
-        let env_path = std::env::var_os("HOME")
-            .map(|h| PathBuf::from(h).join(".lab").join(".env"))
-            .unwrap_or_else(|| PathBuf::from("~/.lab/.env"));
+        let env_path = lab_env_path();
 
         // Ensure parent directory and file exist.
         if let Some(parent) = env_path.parent() {
