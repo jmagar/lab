@@ -4,8 +4,6 @@
 //! (MCP, API, CLI). It lives here in `dispatch/` because it is
 //! surface-neutral — no surface module should own it.
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
 /// Error variants that dispatchers can produce on top of SDK errors.
@@ -100,29 +98,6 @@ impl Serialize for ToolError {
             }),
         };
         v.serialize(serializer)
-    }
-}
-
-impl IntoResponse for ToolError {
-    fn into_response(self) -> Response {
-        let status = match self.kind() {
-            "auth_failed" => StatusCode::UNAUTHORIZED,
-            "not_found" => StatusCode::NOT_FOUND,
-            "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
-            "missing_param" | "invalid_param" | "validation_failed" => {
-                StatusCode::UNPROCESSABLE_ENTITY
-            }
-            "unknown_action" | "unknown_subaction" | "unknown_instance" | "confirmation_required" => {
-                StatusCode::BAD_REQUEST
-            }
-            "network_error" | "server_error" => StatusCode::BAD_GATEWAY,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        // Serialize self directly — byte-identical to the MCP error envelope.
-        let body = serde_json::to_value(&self).unwrap_or_else(|_| {
-            serde_json::json!({"kind": "internal_error", "message": "error serialization failed"})
-        });
-        (status, axum::Json(body)).into_response()
     }
 }
 
