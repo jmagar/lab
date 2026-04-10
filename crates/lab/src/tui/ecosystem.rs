@@ -57,6 +57,36 @@ impl std::fmt::Display for PluginIdentifier {
     }
 }
 
+// ── commit SHA validation ─────────────────────────────────────────────────────
+
+/// Validate a commit SHA before using it as a `--ref` argument.
+///
+/// Accepts: lowercase hex digits only, length 7–40.
+/// Rejects: anything else (path separators, shell metacharacters, `ref:` lines,
+/// uppercase, unicode, empty strings, strings longer than 40 chars).
+///
+/// Returns `Err` with an `invalid_param` message suitable for surfacing to the user.
+pub fn validate_commit_sha(sha: &str) -> Result<(), String> {
+    if sha.len() < 7 {
+        return Err(format!(
+            "invalid_param: commit SHA too short ({} chars, min 7): {sha:?}",
+            sha.len()
+        ));
+    }
+    if sha.len() > 40 {
+        return Err(format!(
+            "invalid_param: commit SHA too long ({} chars, max 40): {sha:?}",
+            sha.len()
+        ));
+    }
+    if !sha.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+        return Err(format!(
+            "invalid_param: commit SHA contains non-hex characters: {sha:?}"
+        ));
+    }
+    Ok(())
+}
+
 // ── PluginRef ─────────────────────────────────────────────────────────────────
 
 /// Reference to a plugin being installed or removed.
@@ -212,6 +242,8 @@ async fn install_claude(
     let mut args = vec!["plugin", "install", plugin_id];
     let ref_val;
     if let Some(sha) = plugin.commit_sha {
+        validate_commit_sha(sha)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         ref_val = sha.to_string();
         args.push("--ref");
         args.push(&ref_val);
@@ -274,9 +306,9 @@ async fn install_codex(
         })
         .await;
 
-    tokio::fs::create_dir_all(&dest).await.map_err(|e| {
-        anyhow::anyhow!("failed to create cache dir {}: {e}", dest.display())
-    })?;
+    tokio::fs::create_dir_all(&dest)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to create cache dir {}: {e}", dest.display()))?;
 
     // Update ~/.codex/config.toml — add a [plugin_id] section if absent.
     let config_path = home_dir().join(".codex/config.toml");
@@ -324,13 +356,11 @@ async fn remove_codex(id: &PluginIdentifier, tx: &Sender<AppEvent>) -> anyhow::R
 
 /// Add a `[<section>]` entry to `~/.codex/config.toml`.
 /// Creates the file if absent. Does not overwrite an existing section.
-async fn codex_config_add(
-    section: &str,
-    dest: &Path,
-    config_path: &Path,
-) -> anyhow::Result<()> {
+async fn codex_config_add(section: &str, dest: &Path, config_path: &Path) -> anyhow::Result<()> {
     let existing = if config_path.exists() {
-        tokio::fs::read_to_string(config_path).await.unwrap_or_default()
+        tokio::fs::read_to_string(config_path)
+            .await
+            .unwrap_or_default()
     } else {
         String::new()
     };
@@ -341,10 +371,7 @@ async fn codex_config_add(
         return Ok(());
     }
 
-    let addition = format!(
-        "\n[{section}]\npath = \"{}\"\n",
-        dest.display()
-    );
+    let addition = format!("\n[{section}]\npath = \"{}\"\n", dest.display());
     let updated = format!("{existing}{addition}");
 
     if let Some(parent) = config_path.parent() {
@@ -402,6 +429,8 @@ async fn install_gemini(
     let mut args = vec!["extensions", "install", github_ref.as_str()];
     let ref_val;
     if let Some(sha) = plugin.commit_sha {
+        validate_commit_sha(sha)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         ref_val = sha.to_string();
         args.push("--ref");
         args.push(&ref_val);
@@ -613,5 +642,75 @@ mod tests {
         let id = PluginIdentifier::new("some-plugin").unwrap();
         let result = remove(Ecosystem::ClaudeCode, id, false, tx).await;
         assert!(result.is_err(), "remove without confirm must return Err");
+    }
+
+    // ── validate_commit_sha ───────────────────────────────────────────────────
+
+    #[test]
+    fn valid_full_sha_passes() {
+        // Standard 40-char lowercase hex SHA
+        assert!(validate_commit_sha("a3f1c2e4b5d6a7e8f9012345678901234567890a").is_ok());
+    }
+
+    #[test]
+    fn valid_short_sha_passes() {
+        // 7-char abbreviated SHA (minimum accepted length)
+        assert!(validate_commit_sha("abc1234").is_ok());
+    }
+
+    #[test]
+    fn valid_mid_length_sha_passes() {
+        assert!(validate_commit_sha("deadbeefcafe123").is_ok());
+    }
+
+    #[test]
+    fn non_hex_chars_return_invalid_param() {
+        // Shell metacharacter injection attempt
+        let err = validate_commit_sha("abc1234; rm -rf /").unwrap_err();
+        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+        assert!(err.contains("non-hex"), "expected non-hex message, got: {err}");
+    }
+
+    #[test]
+    fn path_traversal_in_sha_rejected() {
+        let err = validate_commit_sha("../../etc/passwd").unwrap_err();
+        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+    }
+
+    #[test]
+    fn symbolic_ref_line_rejected() {
+        // .git/HEAD often contains "ref: refs/heads/main"
+        let err = validate_commit_sha("ref: refs/heads/main").unwrap_err();
+        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+    }
+
+    #[test]
+    fn uppercase_hex_rejected() {
+        // Git SHAs are lowercase; uppercase should be rejected
+        let err = validate_commit_sha("ABCDEF1234567").unwrap_err();
+        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+    }
+
+    #[test]
+    fn empty_string_rejected() {
+        let err = validate_commit_sha("").unwrap_err();
+        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+        assert!(err.contains("too short"), "expected too short message, got: {err}");
+    }
+
+    #[test]
+    fn too_short_sha_rejected() {
+        // 6 chars — one below minimum
+        let err = validate_commit_sha("abc123").unwrap_err();
+        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+        assert!(err.contains("too short"), "expected too short message, got: {err}");
+    }
+
+    #[test]
+    fn too_long_sha_rejected() {
+        // 41 chars — one above maximum
+        let err = validate_commit_sha("a3f1c2e4b5d6a7e8f9012345678901234567890ab").unwrap_err();
+        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+        assert!(err.contains("too long"), "expected too long message, got: {err}");
     }
 }
