@@ -290,10 +290,16 @@ impl MarketplaceLoader {
 
         let sem = Arc::new(Semaphore::new(15));
 
-        // Build installed sets eagerly (sync, cheap).
-        let claude_installed = Self::installed_claude();
-        let codex_installed = Self::installed_codex();
-        let gemini_installed = Self::installed_gemini();
+        // Build installed sets concurrently using spawn_blocking — fs reads must not
+        // seize tokio worker threads.
+        let (claude_res, codex_res, gemini_res) = tokio::join!(
+            tokio::task::spawn_blocking(Self::installed_claude),
+            tokio::task::spawn_blocking(Self::installed_codex),
+            tokio::task::spawn_blocking(Self::installed_gemini),
+        );
+        let claude_installed = claude_res.unwrap_or_else(|_| IndexSet::new());
+        let codex_installed = codex_res.unwrap_or_else(|_| IndexSet::new());
+        let gemini_installed = gemini_res.unwrap_or_else(|_| IndexSet::new());
 
         let mut futures: FuturesUnordered<tokio::task::JoinHandle<Vec<(MarketplacePlugin, bool)>>> =
             FuturesUnordered::new();
