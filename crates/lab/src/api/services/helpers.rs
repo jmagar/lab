@@ -62,24 +62,40 @@ where
     let mut params = req.params;
 
     // Gate: unknown actions are rejected here, not silently forwarded.
-    let Some(spec) = actions.iter().find(|s| s.name == action) else {
-        tracing::warn!(
-            surface = ctx.surface,
-            service,
-            action,
-            request_id,
-            "unknown_action rejected at gate"
-        );
-        return Err(ToolError::UnknownAction {
-            message: format!("unknown action: `{action}`"),
-            valid: actions.iter().map(|s| s.name.to_string()).collect(),
-            hint: None,
-        });
+    // "help" and "schema" are built-in actions intercepted inside dispatch(); they bypass
+    // the catalog gate since they don't appear in ACTIONS.
+    let is_builtin = matches!(action.as_str(), "help" | "schema");
+    let spec: Option<&ActionSpec> = if is_builtin {
+        None
+    } else {
+        match actions.iter().find(|s| s.name == action) {
+            Some(s) => Some(s),
+            None => {
+                tracing::warn!(
+                    surface = ctx.surface,
+                    service,
+                    action,
+                    request_id,
+                    "unknown_action rejected at gate"
+                );
+                // Include built-ins in valid[] so agents can discover them.
+                let mut valid: Vec<String> =
+                    actions.iter().map(|s| s.name.to_string()).collect();
+                valid.push("help".to_string());
+                valid.push("schema".to_string());
+                return Err(ToolError::UnknownAction {
+                    message: format!("unknown action: `{action}`"),
+                    valid,
+                    hint: None,
+                });
+            }
+        }
     };
+    let is_destructive = spec.map_or(false, |s| s.destructive);
 
     // Gate: destructive confirmation.
     // Confirmation can be granted via params["confirm"] == true OR X-Lab-Confirm: yes/true header.
-    if spec.destructive {
+    if is_destructive {
         let confirmed_by_params = params
             .get("confirm")
             .and_then(Value::as_bool)
@@ -97,8 +113,7 @@ where
                 request_id,
                 "confirmation_required for destructive action"
             );
-            return Err(ToolError::Sdk {
-                sdk_kind: "confirmation_required".into(),
+            return Err(ToolError::ConfirmationRequired {
                 message: format!(
                     "action `{action}` is destructive — set `confirm: true` in params or send `X-Lab-Confirm: yes` header to proceed"
                 ),
@@ -116,7 +131,7 @@ where
 
     // Intent log: emit before dispatch so there is audit evidence even if the downstream
     // service errors mid-way. Only fires for destructive actions after confirmation succeeds.
-    if spec.destructive {
+    if is_destructive {
         tracing::info!(
             surface = ctx.surface,
             service,
@@ -145,7 +160,7 @@ where
             action = action_log,
             request_id,
             elapsed_ms,
-            destructive = spec.destructive,
+            destructive = is_destructive,
             "dispatch ok"
         ),
         Err(e) if e.is_internal() => tracing::error!(
@@ -359,6 +374,15 @@ mod tests {
         assert!(
             valid.iter().any(|v| v == "danger.delete"),
             "valid must include known actions"
+        );
+        // Built-ins must always appear in valid[] so agents can discover them.
+        assert!(
+            valid.iter().any(|v| v == "help"),
+            "valid must include built-in help action"
+        );
+        assert!(
+            valid.iter().any(|v| v == "schema"),
+            "valid must include built-in schema action"
         );
         assert!(
             !dispatch_called.load(Ordering::SeqCst),
@@ -630,5 +654,35 @@ mod tests {
         );
         // Dispatch ok is still emitted for non-destructive actions.
         assert!(logs.contains("dispatch ok"), "expected dispatch ok for non-destructive action");
+    }
+
+    // ── Built-in actions bypass catalog gate ─────────────────────────────────
+
+    #[tokio::test]
+    async fn help_action_bypasses_catalog_gate_and_reaches_dispatch() {
+        // "help" is not in ACTIONS but must not return unknown_action.
+        let req = make_req("help", json!({}));
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        }, None)
+        .await;
+        // Dispatch returns ok (our ok_dispatch returns the forwarded action name).
+        assert!(
+            result.is_ok(),
+            "help must bypass catalog gate and reach dispatch, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn schema_action_bypasses_catalog_gate_and_reaches_dispatch() {
+        let req = make_req("schema", json!({"action": "safe.read"}));
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        }, None)
+        .await;
+        assert!(
+            result.is_ok(),
+            "schema must bypass catalog gate and reach dispatch, got {result:?}"
+        );
     }
 }
