@@ -124,6 +124,16 @@ fn default_mcp_json_path() -> Option<PathBuf> {
 /// Called at startup so the initial state matches what's actually configured.
 /// Non-fatal: if the file is missing or malformed, returns an empty set.
 ///
+/// # Atomic rename contract
+///
+/// This function reads `.mcp.json` with [`std::fs::read_to_string`] without
+/// taking any lock. It is safe only because **all write paths in `mcp_patch.rs`
+/// use a write-to-temp-then-rename strategy** (`NamedTempFile::persist`), so
+/// the kernel never exposes a partially-written file. If any write path in
+/// `mcp_patch.rs` were to truncate-and-write instead of rename, a race window
+/// would exist where this function sees an empty or partial file and silently
+/// returns an empty set. **Do not add direct `fs::write` calls to `.mcp.json`.**
+///
 /// The format written by `mcp_patch.rs` stores each service as a separate
 /// element in the `args` array immediately after `--services`:
 /// ```json
@@ -602,5 +612,46 @@ fn meta_env_vars(name: &str, required: bool) -> Vec<EnvVarDesc> {
         #[cfg(feature = "tei")]
         "tei" => collect_env!(lab_apis::tei::META),
         _ => vec![],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use tempfile::NamedTempFile;
+
+    use super::seed_enabled_services;
+
+    #[test]
+    fn empty_mcp_json_returns_empty_set_without_panic() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(b"").unwrap();
+        let result = seed_enabled_services(Some(tmp.path()));
+        assert!(result.is_empty(), "expected empty set for zero-byte .mcp.json");
+    }
+
+    #[test]
+    fn missing_mcp_json_returns_empty_set() {
+        let result = seed_enabled_services(None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parses_services_from_valid_mcp_json() {
+        let content = r#"{
+  "mcpServers": {
+    "lab": {
+      "command": "/usr/local/bin/lab",
+      "args": ["mcp", "--services", "radarr", "sonarr"]
+    }
+  }
+}"#;
+        let mut tmp = NamedTempFile::new().unwrap();
+        tmp.write_all(content.as_bytes()).unwrap();
+        let result = seed_enabled_services(Some(tmp.path()));
+        assert!(result.contains("radarr"));
+        assert!(result.contains("sonarr"));
+        assert_eq!(result.len(), 2);
     }
 }
