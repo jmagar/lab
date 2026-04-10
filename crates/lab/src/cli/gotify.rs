@@ -1,7 +1,7 @@
-//! `lab gotify` — CLI stub (not yet implemented).
+//! `lab gotify` — CLI shim for the `Gotify` service.
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
-//! See `radarr.rs` for the reference pattern.
+//! Thin shim: parse action + key/value params, call the shared dispatcher,
+//! and format the result. This mirrors the MCP action surface directly.
 
 use std::process::ExitCode;
 
@@ -9,38 +9,32 @@ use anyhow::Result;
 use clap::Args;
 
 use crate::cli::helpers::run_action_command;
+use crate::cli::params::parse_kv_params;
 use crate::output::OutputFormat;
 
 /// `lab gotify` arguments.
 #[derive(Debug, Args)]
 pub struct GotifyArgs {
-    /// Action to run (e.g. help).
-    pub action: Option<String>,
-    /// Action-specific parameters as JSON.
-    #[arg(long)]
-    pub params: Option<String>,
+    /// Action to run, e.g. `help`, `message.send`, `app.list`.
+    pub action: String,
+
+    /// Optional `key=value` params for the action.
+    #[arg(value_name = "KEY=VALUE", trailing_var_arg = true)]
+    pub params: Vec<String>,
 }
 
 /// Run the `lab gotify` subcommand.
 ///
 /// # Errors
-/// Returns an error if dispatch fails.
+/// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: GotifyArgs, format: OutputFormat) -> Result<ExitCode> {
-    let action = args.action.unwrap_or_else(|| "help".to_string());
-    let params = args
-        .params
-        .as_deref()
-        .map(serde_json::from_str)
-        .transpose()?
-        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    let params = parse_kv_params(args.params)?;
     run_action_command(
         "gotify",
-        action,
+        args.action,
         params,
         format,
-        |action, params| async move {
-            crate::mcp::services::gotify::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::gotify::dispatch(&action, params).await },
     )
     .await
 }

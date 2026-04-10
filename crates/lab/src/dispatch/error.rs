@@ -212,3 +212,16 @@ impl From<lab_apis::unraid::UnraidError> for ToolError {
         }
     }
 }
+
+#[cfg(feature = "gotify")]
+impl From<lab_apis::gotify::error::GotifyError> for ToolError {
+    fn from(e: lab_apis::gotify::error::GotifyError) -> Self {
+        let kind = match &e {
+            lab_apis::gotify::error::GotifyError::Api(api) => api.kind(),
+        };
+        Self::Sdk {
+            sdk_kind: kind.to_string(),
+            message: e.to_string(),
+        }
+    }
+}

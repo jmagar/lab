@@ -2,10 +2,9 @@
 //!
 //! Gotify exposes a small REST API (Swagger 2.0) for sending messages,
 //! managing applications, and managing clients. Auth is a header token —
-//! `X-Gotify-Key` — scoped per-app (send) or per-client (read).
+//! `X-Gotify-Key` — scoped per-app (send) or per-client (read/manage).
 //!
-//! Spec: `docs/api-specs/gotify.openapi.json` (mirrored from
-//! `github.com/gotify/server/blob/master/docs/spec.json`).
+//! Spec: `docs/upstream-api/gotify.openapi.json`.
 
 /// Public request/response types (serde).
 pub mod types;
@@ -19,7 +18,10 @@ pub mod client;
 pub use client::GotifyClient;
 pub use error::GotifyError;
 
+use crate::core::error::ApiError;
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::status::ServiceStatus;
+use crate::core::traits::ServiceClient;
 
 /// Compile-time metadata for the gotify module.
 pub const META: PluginMeta = PluginMeta {
@@ -37,7 +39,7 @@ pub const META: PluginMeta = PluginMeta {
         },
         EnvVar {
             name: "GOTIFY_TOKEN",
-            description: "App token from Gotify (X-Gotify-Key)",
+            description: "App or client token (X-Gotify-Key)",
             example: "A1b2C3d4E5...",
             secret: true,
         },
@@ -45,3 +47,47 @@ pub const META: PluginMeta = PluginMeta {
     optional_env: &[],
     default_port: Some(80),
 };
+
+impl ServiceClient for GotifyClient {
+    fn name(&self) -> &'static str {
+        "gotify"
+    }
+
+    fn service_type(&self) -> &'static str {
+        "notifications"
+    }
+
+    async fn health(&self) -> Result<ServiceStatus, ApiError> {
+        let start = std::time::Instant::now();
+        match self.server_health().await {
+            Ok(h) => {
+                let healthy = h.health == "green" && h.database == "green";
+                Ok(ServiceStatus {
+                    reachable: true,
+                    auth_ok: true,
+                    version: None,
+                    latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    message: if healthy {
+                        None
+                    } else {
+                        Some(format!(
+                            "health={}, database={}",
+                            h.health, h.database
+                        ))
+                    },
+                })
+            }
+            Err(GotifyError::Api(api)) => match api.kind() {
+                "auth_failed" => Ok(ServiceStatus {
+                    reachable: true,
+                    auth_ok: false,
+                    version: None,
+                    latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    message: Some("authentication failed".to_string()),
+                }),
+                "network_error" => Ok(ServiceStatus::unreachable(api.to_string())),
+                _ => Err(api),
+            },
+        }
+    }
+}

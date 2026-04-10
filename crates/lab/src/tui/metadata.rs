@@ -186,6 +186,22 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "gotify")]
+    {
+        if let (Some(url), Some(token)) = (vars.get("GOTIFY_URL"), vars.get("GOTIFY_TOKEN")) {
+            use lab_apis::core::Auth;
+            if let Ok(client) = lab_apis::gotify::GotifyClient::new(
+                url,
+                Auth::ApiKey {
+                    header: "X-Gotify-Key".into(),
+                    key: token.clone(),
+                },
+            ) {
+                spawn_health_trait!("gotify", client);
+            }
+        }
+    }
+
     // Collect results.
     let mut results = Vec::new();
     for handle in handles {
