@@ -14,6 +14,7 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
 use serde_json::Value;
 
+use crate::api::{AppState, build_router};
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
@@ -53,10 +54,7 @@ pub async fn run(args: ServeArgs) -> Result<ExitCode> {
 
     match args.transport {
         Transport::Stdio => run_stdio(registry).await,
-        Transport::Http => {
-            tracing::warn!(host = %args.host, port = args.port, "http transport not yet wired");
-            Ok(ExitCode::from(64))
-        }
+        Transport::Http => run_http(&args.host, args.port).await,
     }
 }
 
@@ -196,7 +194,7 @@ impl ServerHandler for LabMcpServer {
         let result = match svc {
             Some(entry) => (entry.dispatch)(action.clone(), params)
                 .await
-                .map_err(|te| anyhow::anyhow!("{te}")),
+                .map_err(|te| anyhow::Error::from(crate::mcp::error::DispatchError::from(te))),
             None => Err(anyhow::anyhow!(
                 "service `{service}` has no dispatcher wired"
             )),
@@ -289,6 +287,16 @@ async fn elicit_confirm(
         },
         Err(_) => ElicitResult::NotSupported,
     }
+}
+
+async fn run_http(host: &str, port: u16) -> Result<ExitCode> {
+    let state = AppState::new();
+    let router = build_router(state);
+    let addr = format!("{host}:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!(addr, "lab serve (http) ready");
+    axum::serve(listener, router).await?;
+    Ok(ExitCode::SUCCESS)
 }
 
 async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {

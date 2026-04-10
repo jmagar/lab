@@ -134,3 +134,85 @@ impl DispatchError {
 // `From<DispatchError> for anyhow::Error` is covered by anyhow's blanket
 // `impl<E: StdError + Send + Sync + 'static> From<E> for anyhow::Error`.
 // An explicit impl here would conflict — no explicit impl needed.
+
+// ── From<ToolError> for DispatchError ────────────────────────────────────────
+//
+// Converts a `ToolError` to `DispatchError` without string round-tripping
+// through `Display`. This keeps `extract_error_info` on path 1 (downcast)
+// instead of path 2 (JSON re-parse), preserving all structured fields.
+
+impl From<crate::dispatch::error::ToolError> for DispatchError {
+    fn from(te: crate::dispatch::error::ToolError) -> Self {
+        use crate::dispatch::error::ToolError;
+        match te {
+            ToolError::UnknownAction {
+                message,
+                valid,
+                hint,
+            } => Self {
+                kind: "unknown_action",
+                message,
+                valid: Some(valid),
+                param: None,
+                hint,
+            },
+            ToolError::MissingParam { message, param } => Self {
+                kind: "missing_param",
+                message,
+                valid: None,
+                param: Some(param),
+                hint: None,
+            },
+            ToolError::InvalidParam { message, param } => Self {
+                kind: "invalid_param",
+                message,
+                valid: None,
+                param: Some(param),
+                hint: None,
+            },
+            ToolError::UnknownInstance { message, valid } => Self {
+                kind: "unknown_instance",
+                message,
+                valid: Some(valid),
+                param: None,
+                hint: None,
+            },
+            ToolError::ConfirmationRequired { message } => Self {
+                kind: "confirmation_required",
+                message,
+                valid: None,
+                param: None,
+                hint: None,
+            },
+            ToolError::Sdk { sdk_kind, message } => Self {
+                kind: sdk_kind_to_static(&sdk_kind),
+                message,
+                valid: None,
+                param: None,
+                hint: None,
+            },
+        }
+    }
+}
+
+/// Map a dynamic SDK kind string to a `&'static str` from the canonical vocabulary.
+///
+/// Must stay in sync with `serve::static_kind` and `ToolError::kind()`.
+fn sdk_kind_to_static(s: &str) -> &'static str {
+    match s {
+        "unknown_action" => "unknown_action",
+        "unknown_subaction" => "unknown_subaction",
+        "missing_param" => "missing_param",
+        "invalid_param" => "invalid_param",
+        "unknown_instance" => "unknown_instance",
+        "confirmation_required" => "confirmation_required",
+        "auth_failed" => "auth_failed",
+        "not_found" => "not_found",
+        "rate_limited" => "rate_limited",
+        "validation_failed" => "validation_failed",
+        "network_error" => "network_error",
+        "server_error" => "server_error",
+        "decode_error" => "decode_error",
+        _ => "internal_error",
+    }
+}
