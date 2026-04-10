@@ -71,6 +71,9 @@ pub struct App {
     /// Set to `true` when the user presses `F5` to re-run health checks.
     /// `tui_main` spawns a fresh background health task and clears this flag.
     pub refresh_health: bool,
+    /// Set to `true` while a background health check is in flight.
+    /// Guards against spawning duplicate health check tasks.
+    pub health_check_in_flight: bool,
 }
 
 impl App {
@@ -87,6 +90,7 @@ impl App {
             should_quit: false,
             open_editor: false,
             refresh_health: false,
+            health_check_in_flight: false,
         }
     }
 

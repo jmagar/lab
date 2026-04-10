@@ -143,8 +143,10 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
         }
 
         // Handle health refresh: spawn a fresh health check background task.
-        if app.refresh_health {
+        // Guard against duplicate spawns while one is already in flight.
+        if app.refresh_health && !app.health_check_in_flight {
             app.refresh_health = false;
+            app.health_check_in_flight = true;
             spawn_health_check(tx.clone());
         }
 
@@ -232,6 +234,7 @@ fn handle_event(app: &mut App, ev: AppEvent) {
         }
         AppEvent::HealthChecksDone(results) => {
             app.services.update_health(results);
+            app.health_check_in_flight = false;
             app.dirty = true;
         }
         AppEvent::ServicesSeeded {

@@ -1,7 +1,9 @@
 //! Service manager tab — displays compiled-in services, their env var status,
 //! health dots, and allows toggling MCP wiring via `.mcp.json`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+
+use indexmap::IndexSet;
 use std::path::PathBuf;
 
 use ratatui::Frame;
@@ -74,7 +76,7 @@ pub struct LabServicesState {
     /// Path to the `.mcp.json` file being managed.
     pub mcp_json_path: Option<PathBuf>,
     /// Set of service names currently listed in `.mcp.json` `--services`.
-    pub enabled_services: HashSet<String>,
+    pub enabled_services: IndexSet<String>,
     /// Cached env vars from `~/.lab/.env`. Loaded once at startup and after
     /// the user returns from the `$EDITOR` session. Never read in the render path.
     pub env_cache: HashMap<String, String>,
@@ -95,7 +97,7 @@ impl Default for LabServicesState {
             health: HashMap::new(),
             reveal_secret: false,
             mcp_json_path: None,
-            enabled_services: HashSet::new(),
+            enabled_services: IndexSet::new(),
             env_cache: HashMap::new(),
             list_state,
         }
@@ -107,7 +109,7 @@ impl Default for LabServicesState {
 /// Reads `.mcp.json` to determine which services are enabled, and loads the
 /// `.env` cache. Intended to be called via `tokio::task::spawn_blocking` so
 /// that file I/O never blocks the tokio executor.
-pub(crate) fn load_initial_state() -> (Option<PathBuf>, HashSet<String>, HashMap<String, String>) {
+pub(crate) fn load_initial_state() -> (Option<PathBuf>, IndexSet<String>, HashMap<String, String>) {
     let path = default_mcp_json_path();
     let enabled = seed_enabled_services(path.as_deref());
     let env = load_env_vars();
@@ -128,15 +130,15 @@ fn default_mcp_json_path() -> Option<PathBuf> {
 /// ```json
 /// { "mcpServers": { "lab": { "args": ["mcp", "--services", "radarr", "sonarr"] } } }
 /// ```
-pub(crate) fn seed_enabled_services(mcp_json_path: Option<&std::path::Path>) -> HashSet<String> {
+pub(crate) fn seed_enabled_services(mcp_json_path: Option<&std::path::Path>) -> IndexSet<String> {
     let Some(path) = mcp_json_path else {
-        return HashSet::new();
+        return IndexSet::new();
     };
     let Ok(content) = std::fs::read_to_string(path) else {
-        return HashSet::new();
+        return IndexSet::new();
     };
     let Ok(json): Result<serde_json::Value, _> = serde_json::from_str(&content) else {
-        return HashSet::new();
+        return IndexSet::new();
     };
     let args = json
         .pointer("/mcpServers/lab/args")
@@ -144,7 +146,7 @@ pub(crate) fn seed_enabled_services(mcp_json_path: Option<&std::path::Path>) -> 
         .cloned()
         .unwrap_or_default();
 
-    let mut services = HashSet::new();
+    let mut services = IndexSet::new();
     let mut collecting = false;
     for arg in &args {
         let s = arg.as_str().unwrap_or("");
@@ -251,7 +253,12 @@ impl LabServicesState {
         }
 
         let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-        std::process::Command::new(&editor)
+        // Shell-split so `EDITOR="code --wait"` works correctly.
+        let parts: Vec<&str> = editor.split_ascii_whitespace().collect();
+        let program = parts.first().copied().unwrap_or("vi");
+        let args = &parts[1..];
+        std::process::Command::new(program)
+            .args(args)
             .arg(&env_path)
             .status()
             .map_err(|e| anyhow::anyhow!("failed to launch editor '{}': {}", editor, e))?;

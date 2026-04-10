@@ -27,7 +27,7 @@ pub enum AppEvent {
     /// Initial blocking I/O (`.mcp.json` + `.env` cache) completed asynchronously.
     ServicesSeeded {
         mcp_json_path: Option<std::path::PathBuf>,
-        enabled_services: std::collections::HashSet<String>,
+        enabled_services: indexmap::IndexSet<String>,
         env_cache: std::collections::HashMap<String, String>,
     },
 }
