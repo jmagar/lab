@@ -44,3 +44,57 @@ async fn get_json_injects_api_key_header_and_decodes_body() {
         }
     );
 }
+
+#[tokio::test]
+async fn get_json_returns_not_found_on_404() {
+    use lab_apis::core::ApiError;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/missing"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+
+    let client = HttpClient::new(
+        server.uri(),
+        Auth::ApiKey {
+            header: "X-Api-Key".into(),
+            key: "secret".into(),
+        },
+    )
+    .expect("HttpClient::new");
+
+    let err: ApiError = client
+        .get_json::<Pong>("/missing")
+        .await
+        .expect_err("should fail on 404");
+    assert!(matches!(err, ApiError::NotFound), "expected NotFound, got {err:?}");
+}
+
+#[tokio::test]
+async fn get_json_returns_auth_failed_on_401() {
+    use lab_apis::core::ApiError;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/secure"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
+    let client = HttpClient::new(
+        server.uri(),
+        Auth::ApiKey {
+            header: "X-Api-Key".into(),
+            key: "wrong".into(),
+        },
+    )
+    .expect("HttpClient::new");
+
+    let err: ApiError = client
+        .get_json::<Pong>("/secure")
+        .await
+        .expect_err("should fail on 401");
+    assert!(matches!(err, ApiError::Auth), "expected Auth, got {err:?}");
+}

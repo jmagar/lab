@@ -1,30 +1,31 @@
 //! `lab radarr` — CLI shim for the Radarr service.
 //!
-//! Thin shim: parse → call client → format. No business logic here.
+//! Thin shim: parse → map to canonical action + params → call shared dispatch.
+//! No business logic lives here.
 //! See `crates/lab/src/cli/CLAUDE.md` for the shim rules.
 
 use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use serde_json::{Value, json};
 
-use lab_apis::radarr::types::download_client::DownloadClientId;
-use lab_apis::radarr::types::movie::TmdbId;
-use lab_apis::radarr::types::notification::NotificationId;
-use lab_apis::radarr::types::{CommandId, IndexerId, Movie, MovieId, QueueItemId};
-
+use crate::dispatch::error::ToolError;
 use crate::output::{OutputFormat, print};
 
 /// `lab radarr` arguments.
 #[derive(Debug, Args)]
 pub struct RadarrArgs {
     #[command(subcommand)]
-    pub command: RadarrCommand,
+    pub command: Option<RadarrCommand>,
 }
 
 /// Radarr subcommands.
 #[derive(Debug, Subcommand)]
 pub enum RadarrCommand {
+    /// Return the Radarr action catalog.
+    Help,
+
     // ── system ───────────────────────────────────────────────────────────
     /// Return Radarr system status and version.
     SystemStatus,
@@ -67,6 +68,9 @@ pub enum RadarrCommand {
         /// Monitor movie for download (default true).
         #[arg(long, default_value = "true")]
         monitored: bool,
+        /// Release year (default 0; use movie-lookup to retrieve from TMDB).
+        #[arg(long, default_value = "0")]
+        year: i32,
     },
     /// Delete a movie from Radarr.
     MovieDelete {
@@ -228,36 +232,17 @@ pub enum RadarrCommand {
 /// Returns an error if the client is not configured or the API call fails.
 #[allow(clippy::too_many_lines)]
 pub async fn run(args: RadarrArgs, format: OutputFormat) -> Result<ExitCode> {
-    let client = crate::mcp::services::radarr::client_from_env()
-        .ok_or_else(|| anyhow::anyhow!("RADARR_URL and RADARR_API_KEY must be set"))?;
-
-    match args.command {
-        // ── system ───────────────────────────────────────────────────────
-        RadarrCommand::SystemStatus => {
-            print(&client.system_status().await?, format)?;
-        }
-        RadarrCommand::SystemHealth => {
-            print(&client.health_checks().await?, format)?;
-        }
-        RadarrCommand::SystemDiskSpace => {
-            print(&client.disk_space().await?, format)?;
-        }
-        RadarrCommand::SystemLogs => {
-            print(&client.log_files().await?, format)?;
-        }
-        RadarrCommand::SystemUpdates => {
-            print(&client.updates().await?, format)?;
-        }
-
-        // ── movies ───────────────────────────────────────────────────────
-        RadarrCommand::MovieList => {
-            print(&client.movie_list().await?, format)?;
-        }
-        RadarrCommand::MovieGet { id } => {
-            print(&client.movie_get(MovieId(id)).await?, format)?;
-        }
+    let outcome = match args.command.unwrap_or(RadarrCommand::Help) {
+        RadarrCommand::Help => command_outcome("help", json!({})),
+        RadarrCommand::SystemStatus => command_outcome("system.status", json!({})),
+        RadarrCommand::SystemHealth => command_outcome("system.health", json!({})),
+        RadarrCommand::SystemDiskSpace => command_outcome("system.disk-space", json!({})),
+        RadarrCommand::SystemLogs => command_outcome("system.logs", json!({})),
+        RadarrCommand::SystemUpdates => command_outcome("system.updates", json!({})),
+        RadarrCommand::MovieList => command_outcome("movie.list", json!({})),
+        RadarrCommand::MovieGet { id } => command_outcome("movie.get", json!({ "id": id })),
         RadarrCommand::MovieLookup { query } => {
-            print(&client.movie_lookup(&query).await?, format)?;
+            command_outcome("movie.lookup", json!({ "query": query }))
         }
         RadarrCommand::MovieAdd {
             tmdb_id,
@@ -265,36 +250,31 @@ pub async fn run(args: RadarrArgs, format: OutputFormat) -> Result<ExitCode> {
             quality_profile_id,
             root_folder_path,
             monitored,
-        } => {
-            let movie = Movie {
-                id: MovieId(0),
-                title,
-                year: 0,
-                tmdb_id: TmdbId(tmdb_id),
-                imdb_id: None,
-                has_file: false,
-                monitored,
-                quality_profile_id: Some(quality_profile_id),
-                root_folder_path: Some(root_folder_path),
-                path: None,
-                size_on_disk: 0,
-            };
-            print(&client.movie_add(&movie).await?, format)?;
-        }
+            year,
+        } => command_outcome(
+            "movie.add",
+            json!({
+                "tmdb_id": tmdb_id,
+                "title": title,
+                "quality_profile_id": quality_profile_id,
+                "root_folder_path": root_folder_path,
+                "monitored": monitored,
+                "year": year,
+            }),
+        ),
         RadarrCommand::MovieDelete {
             id,
             delete_files,
             yes,
         } => {
             confirm_destructive(yes, &format!("delete movie {id}"))?;
-            client.movie_delete(MovieId(id), delete_files).await?;
-            tracing::info!("Deleted movie {id}");
+            quiet_outcome(
+                "movie.delete",
+                json!({ "id": id, "delete_files": delete_files }),
+                format!("Deleted movie {id}"),
+            )
         }
-
-        // ── queue ────────────────────────────────────────────────────────
-        RadarrCommand::QueueList => {
-            print(&client.queue_list().await?, format)?;
-        }
+        RadarrCommand::QueueList => command_outcome("queue.list", json!({})),
         RadarrCommand::QueueRemove {
             id,
             remove_from_client,
@@ -302,137 +282,77 @@ pub async fn run(args: RadarrArgs, format: OutputFormat) -> Result<ExitCode> {
             yes,
         } => {
             confirm_destructive(yes, &format!("remove queue item {id}"))?;
-            client
-                .queue_remove(QueueItemId(id), remove_from_client, blocklist)
-                .await?;
-            tracing::info!("Removed queue item {id}");
+            quiet_outcome(
+                "queue.remove",
+                json!({
+                    "id": id,
+                    "remove_from_client": remove_from_client,
+                    "blocklist": blocklist,
+                }),
+                format!("Removed queue item {id}"),
+            )
         }
-
-        // ── calendar ─────────────────────────────────────────────────────
         RadarrCommand::CalendarList { start, end } => {
-            print(
-                &client
-                    .calendar_list(start.as_deref(), end.as_deref())
-                    .await?,
-                format,
-            )?;
+            command_outcome("calendar.list", json!({ "start": start, "end": end }))
         }
-
-        // ── commands ──────────────────────────────────────────────────────
         RadarrCommand::CommandRefresh { movie_id } => {
-            print(
-                &client.command_refresh_movie(movie_id.map(MovieId)).await?,
-                format,
-            )?;
+            command_outcome("command.refresh", json!({ "movie_id": movie_id }))
         }
         RadarrCommand::CommandSearch { movie_ids } => {
-            let ids: Vec<MovieId> = movie_ids.into_iter().map(MovieId).collect();
-            print(&client.command_movies_search(&ids).await?, format)?;
+            command_outcome("command.search", json!({ "movie_ids": movie_ids }))
         }
-        RadarrCommand::CommandGet { id } => {
-            print(&client.command_get(CommandId(id)).await?, format)?;
-        }
-
-        // ── history ──────────────────────────────────────────────────────
-        RadarrCommand::HistoryList { page, page_size } => {
-            print(&client.history_list(page, page_size).await?, format)?;
-        }
-        RadarrCommand::BlocklistList => {
-            print(&client.blocklist_list().await?, format)?;
-        }
-
-        // ── releases ─────────────────────────────────────────────────────
+        RadarrCommand::CommandGet { id } => command_outcome("command.get", json!({ "id": id })),
+        RadarrCommand::HistoryList { page, page_size } => command_outcome(
+            "history.list",
+            json!({ "page": page, "page_size": page_size }),
+        ),
+        RadarrCommand::BlocklistList => command_outcome("blocklist.list", json!({})),
         RadarrCommand::ReleaseSearch { movie_id } => {
-            print(&client.release_search(MovieId(movie_id)).await?, format)?;
+            command_outcome("release.search", json!({ "movie_id": movie_id }))
         }
-
-        // ── indexers ─────────────────────────────────────────────────────
-        RadarrCommand::IndexerList => {
-            print(&client.indexer_list().await?, format)?;
-        }
-        RadarrCommand::IndexerTest { id } => {
-            client.indexer_test(IndexerId(id)).await?;
-            tracing::info!("Indexer {id} OK");
-        }
-
-        // ── quality ──────────────────────────────────────────────────────
-        RadarrCommand::QualityProfileList => {
-            print(&client.quality_profile_list().await?, format)?;
-        }
+        RadarrCommand::IndexerList => command_outcome("indexer.list", json!({})),
+        RadarrCommand::IndexerTest { id } => quiet_outcome(
+            "indexer.test",
+            json!({ "id": id }),
+            format!("Indexer {id} OK"),
+        ),
+        RadarrCommand::QualityProfileList => command_outcome("quality-profile.list", json!({})),
         RadarrCommand::QualityDefinitionList => {
-            print(&client.quality_definition_list().await?, format)?;
+            command_outcome("quality-definition.list", json!({}))
         }
-
-        // ── root folders ──────────────────────────────────────────────────
-        RadarrCommand::RootFolderList => {
-            print(&client.root_folder_list().await?, format)?;
-        }
-
-        // ── tags ─────────────────────────────────────────────────────────
-        RadarrCommand::TagList => {
-            print(&client.tag_list().await?, format)?;
-        }
-        RadarrCommand::TagDetailList => {
-            print(&client.tag_detail_list().await?, format)?;
-        }
-
-        // ── download clients ──────────────────────────────────────────────
-        RadarrCommand::DownloadClientList => {
-            print(&client.download_client_list().await?, format)?;
-        }
-        RadarrCommand::DownloadClientTest { id } => {
-            client.download_client_test(DownloadClientId(id)).await?;
-            tracing::info!("Download client {id} OK");
-        }
+        RadarrCommand::RootFolderList => command_outcome("root-folder.list", json!({})),
+        RadarrCommand::TagList => command_outcome("tag.list", json!({})),
+        RadarrCommand::TagDetailList => command_outcome("tag.detail-list", json!({})),
+        RadarrCommand::DownloadClientList => command_outcome("download-client.list", json!({})),
+        RadarrCommand::DownloadClientTest { id } => quiet_outcome(
+            "download-client.test",
+            json!({ "id": id }),
+            format!("Download client {id} OK"),
+        ),
         RadarrCommand::RemotePathMappingList => {
-            print(&client.remote_path_mapping_list().await?, format)?;
+            command_outcome("remote-path-mapping.list", json!({}))
         }
-
-        // ── config ────────────────────────────────────────────────────────
-        RadarrCommand::ConfigHost => {
-            print(&client.host_config_get().await?, format)?;
-        }
-        RadarrCommand::ConfigNaming => {
-            print(&client.naming_config_get().await?, format)?;
-        }
-        RadarrCommand::ConfigUi => {
-            print(&client.ui_config_get().await?, format)?;
-        }
-
-        // ── notifications ─────────────────────────────────────────────────
-        RadarrCommand::NotificationList => {
-            print(&client.notification_list().await?, format)?;
-        }
-        RadarrCommand::NotificationTest { id } => {
-            client.notification_test(NotificationId(id)).await?;
-            tracing::info!("Notification {id} OK");
-        }
-
-        // ── import lists ──────────────────────────────────────────────────
-        RadarrCommand::ImportListList => {
-            print(&client.import_list_list().await?, format)?;
-        }
+        RadarrCommand::ConfigHost => command_outcome("config.host", json!({})),
+        RadarrCommand::ConfigNaming => command_outcome("config.naming", json!({})),
+        RadarrCommand::ConfigUi => command_outcome("config.ui", json!({})),
+        RadarrCommand::NotificationList => command_outcome("notification.list", json!({})),
+        RadarrCommand::NotificationTest { id } => quiet_outcome(
+            "notification.test",
+            json!({ "id": id }),
+            format!("Notification {id} OK"),
+        ),
+        RadarrCommand::ImportListList => command_outcome("import-list.list", json!({})),
         RadarrCommand::ImportListExclusionList => {
-            print(&client.import_list_exclusion_list().await?, format)?;
+            command_outcome("import-list.exclusion-list", json!({}))
         }
-
-        // ── language ──────────────────────────────────────────────────────
-        RadarrCommand::LanguageList => {
-            print(&client.language_list().await?, format)?;
-        }
-
-        // ── metadata ──────────────────────────────────────────────────────
-        RadarrCommand::MetadataList => {
-            print(&client.metadata_list().await?, format)?;
-        }
-
-        // ── filesystem ────────────────────────────────────────────────────
+        RadarrCommand::LanguageList => command_outcome("language.list", json!({})),
+        RadarrCommand::MetadataList => command_outcome("metadata.list", json!({})),
         RadarrCommand::FilesystemList { path } => {
-            print(&client.filesystem_list(&path).await?, format)?;
+            command_outcome("filesystem.list", json!({ "path": path }))
         }
-    }
+    };
 
-    Ok(ExitCode::SUCCESS)
+    execute_dispatch(outcome, format).await
 }
 
 /// Refuse to proceed on a destructive action unless the user passed `-y`.
@@ -444,4 +364,96 @@ fn confirm_destructive(yes: bool, description: &str) -> Result<()> {
     }
     // For now: refuse if not confirmed. A future pass can add readline prompt.
     anyhow::bail!("pass -y / --yes to confirm: {description}")
+}
+
+struct CommandOutcome {
+    action: &'static str,
+    params: Value,
+    print_result: bool,
+    success_note: Option<String>,
+}
+
+fn command_outcome(action: &'static str, params: Value) -> CommandOutcome {
+    CommandOutcome {
+        action,
+        params,
+        print_result: true,
+        success_note: None,
+    }
+}
+
+fn quiet_outcome(action: &'static str, params: Value, success_note: String) -> CommandOutcome {
+    CommandOutcome {
+        action,
+        params,
+        print_result: false,
+        success_note: Some(success_note),
+    }
+}
+
+async fn execute_dispatch(outcome: CommandOutcome, format: OutputFormat) -> Result<ExitCode> {
+    let action = outcome.action.to_string();
+    let start = std::time::Instant::now();
+    let result = crate::dispatch::radarr::dispatch(&action, outcome.params).await;
+    let elapsed_ms = start.elapsed().as_millis();
+
+    match &result {
+        Ok(_) => tracing::info!(
+            surface = "cli",
+            service = "radarr",
+            action,
+            elapsed_ms,
+            "dispatch ok"
+        ),
+        Err(e) if e.is_internal() => tracing::error!(
+            surface = "cli",
+            service = "radarr",
+            action,
+            elapsed_ms,
+            kind = e.kind(),
+            "dispatch error"
+        ),
+        Err(e) => tracing::warn!(
+            surface = "cli",
+            service = "radarr",
+            action,
+            elapsed_ms,
+            kind = e.kind(),
+            "dispatch error"
+        ),
+    }
+
+    let value = result.map_err(tool_error_to_anyhow)?;
+    if outcome.print_result {
+        print(&value, format)?;
+    } else if let Some(note) = outcome.success_note {
+        tracing::info!("{note}");
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_is_a_real_subcommand() {
+        let args = RadarrArgs {
+            command: Some(RadarrCommand::Help),
+        };
+        assert!(matches!(args.command, Some(RadarrCommand::Help)));
+    }
+
+    #[test]
+    fn radarr_defaults_to_help_without_a_subcommand() {
+        let args = RadarrArgs { command: None };
+        assert!(args.command.is_none());
+    }
+}
+
+fn tool_error_to_anyhow(e: ToolError) -> anyhow::Error {
+    anyhow::anyhow!(
+        "{}",
+        serde_json::to_string(&e).unwrap_or_else(|_| e.to_string())
+    )
 }
