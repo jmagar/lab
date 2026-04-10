@@ -14,6 +14,25 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str};
 /// the `lab://extract/actions` MCP resource. **One source of truth**.
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
+        name: "help",
+        description: "Show this action catalog",
+        destructive: false,
+        params: &[],
+        returns: "Catalog",
+    },
+    ActionSpec {
+        name: "schema",
+        description: "Return the parameter schema for a named action",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "action",
+            ty: "string",
+            required: true,
+            description: "Action name to describe",
+        }],
+        returns: "Schema",
+    },
+    ActionSpec {
         name: "scan",
         description: "Scan an appdata path and return discovered service credentials",
         destructive: false,
@@ -64,7 +83,6 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "WritePlan",
     },
 ];
-// `help` and `schema` are implicit built-ins in every dispatch module — not listed in ACTIONS.
 
 /// Dispatch one call against the extract service.
 ///
