@@ -217,6 +217,17 @@ pub struct DockerRoot {
     pub containers: Vec<DockerContainer>,
 }
 
+/// A port mapping exposed by a Docker container.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContainerPort {
+    pub ip: Option<String>,
+    pub private_port: Option<u16>,
+    pub public_port: Option<u16>,
+    #[serde(rename = "type")]
+    pub port_type: String,
+}
+
 /// A Docker container entry (`DockerContainer` in the schema).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -224,23 +235,16 @@ pub struct DockerContainer {
     pub id: String,
     pub names: Vec<String>,
     pub image: String,
-    pub image_id: String,
+    /// Unix timestamp (seconds) when the container was created.
+    pub created: Option<i64>,
     pub state: String,
     pub status: String,
     pub auto_start: bool,
-}
-
-/// Wrapper for `docker { start/stop/restart }` mutation responses.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DockerMutationData {
-    pub docker: DockerMutationResult,
-}
-
-/// Holds the container returned from a docker mutation.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DockerMutationResult {
-    pub start: Option<DockerContainer>,
-    pub stop: Option<DockerContainer>,
+    /// Port mappings (private → public).
+    #[serde(default)]
+    pub ports: Vec<ContainerPort>,
+    /// LAN-accessible host:port strings (e.g. `"192.168.1.10:8080"`).
+    pub lan_ip_ports: Option<Vec<String>>,
 }
 
 // Separate wrappers per mutation since the selection set differs
@@ -265,11 +269,6 @@ pub struct DockerStopData {
 pub struct DockerStopResult {
     pub stop: DockerContainer,
 }
-
-// For restart we use stop+start but the API doesn't have a native restart —
-// we call stop then start. Use a void wrapper instead.
-// Actually the DockerMutations type has no restart field; we implement it as
-// stop followed by start in the client.
 
 // ---------------------------------------------------------------------------
 // Disk list
