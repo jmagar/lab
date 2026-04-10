@@ -144,9 +144,7 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
 /// Spawn a background task that runs health checks for all enabled services
 /// and posts the results back on the event channel.
 fn spawn_health_check(tx: mpsc::Sender<AppEvent>) {
-    let env_path = std::env::var_os("HOME")
-        .map(|h| std::path::PathBuf::from(h).join(".lab").join(".env"))
-        .unwrap_or_else(|| std::path::PathBuf::from("~/.lab/.env"));
+    let env_path = crate::tui::services::lab_env_path();
     tokio::runtime::Handle::current().spawn(async move {
         let results = crate::tui::metadata::check_all_services(&env_path).await;
         let _ = tx.send(AppEvent::HealthChecksDone(results));
