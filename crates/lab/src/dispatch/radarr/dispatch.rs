@@ -1,23 +1,24 @@
+use lab_apis::radarr::RadarrClient;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, require_str};
 
 use super::{calendar, catalog::actions, commands, config, history, movies, queue, system};
+use super::client::require_client;
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch_with_client(
+    client: &RadarrClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
-        "help" => Ok(help_payload("radarr", actions())),
-        "schema" => {
-            let action_name = require_str(&params, "action")?;
-            action_schema(actions(), action_name)
-        }
-        a if a.starts_with("system.") => system::dispatch(action, params).await,
-        a if a.starts_with("movie.") => movies::dispatch(action, params).await,
-        a if a.starts_with("queue.") => queue::dispatch(action, params).await,
-        "calendar.list" => calendar::dispatch(action, params).await,
-        a if a.starts_with("command.") => commands::dispatch(action, params).await,
-        "history.list" | "blocklist.list" => history::dispatch(action, params).await,
+        a if a.starts_with("system.") => system::dispatch_with_client(client, action, params).await,
+        a if a.starts_with("movie.") => movies::dispatch_with_client(client, action, params).await,
+        a if a.starts_with("queue.") => queue::dispatch_with_client(client, action, params).await,
+        "calendar.list" => calendar::dispatch_with_client(client, action, params).await,
+        a if a.starts_with("command.") => commands::dispatch_with_client(client, action, params).await,
+        "history.list" | "blocklist.list" => history::dispatch_with_client(client, action, params).await,
         "release.search"
         | "indexer.list"
         | "indexer.test"
@@ -38,11 +39,22 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         | "import-list.exclusion-list"
         | "language.list"
         | "metadata.list"
-        | "filesystem.list" => config::dispatch(action, params).await,
+        | "filesystem.list" => config::dispatch_with_client(client, action, params).await,
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `{unknown}` for service `radarr`"),
             valid: actions().iter().map(|a| a.name.to_string()).collect(),
             hint: None,
         }),
+    }
+}
+
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    match action {
+        "help" => Ok(help_payload("radarr", actions())),
+        "schema" => {
+            let action_name = require_str(&params, "action")?;
+            action_schema(actions(), action_name)
+        }
+        _ => dispatch_with_client(&require_client()?, action, params).await,
     }
 }

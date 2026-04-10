@@ -1,6 +1,7 @@
 //! System resource dispatch: status, health, disk-space, logs, updates.
 
 use lab_apis::core::action::ActionSpec;
+use lab_apis::radarr::RadarrClient;
 use serde_json::Value;
 
 use super::client::require_client;
@@ -45,28 +46,36 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, _params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch_with_client(
+    client: &RadarrClient,
+    action: &str,
+    _params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "system.status" => {
-            let status = require_client()?.system_status().await?;
+            let status = client.system_status().await?;
             to_json(status)
         }
         "system.health" => {
-            let checks = require_client()?.health_checks().await?;
+            let checks = client.health_checks().await?;
             to_json(checks)
         }
         "system.disk-space" => {
-            let disks = require_client()?.disk_space().await?;
+            let disks = client.disk_space().await?;
             to_json(disks)
         }
         "system.logs" => {
-            let logs = require_client()?.log_files().await?;
+            let logs = client.log_files().await?;
             to_json(logs)
         }
         "system.updates" => {
-            let updates = require_client()?.updates().await?;
+            let updates = client.updates().await?;
             to_json(updates)
         }
         _ => unreachable!(),
     }
+}
+
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    dispatch_with_client(&require_client()?, action, params).await
 }

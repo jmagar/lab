@@ -1,6 +1,7 @@
 //! Queue resource dispatch: list, remove.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
+use lab_apis::radarr::RadarrClient;
 use lab_apis::radarr::types::QueueItemId;
 use serde_json::Value;
 
@@ -44,10 +45,14 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch_with_client(
+    client: &RadarrClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "queue.list" => {
-            let items = require_client()?.queue_list().await?;
+            let items = client.queue_list().await?;
             to_json(items)
         }
         "queue.remove" => {
@@ -60,11 +65,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 .get("blocklist")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            require_client()?
+            client
                 .queue_remove(id, remove_from_client, blocklist)
                 .await?;
             Ok(serde_json::json!({ "removed": true }))
         }
         _ => unreachable!(),
     }
+}
+
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    dispatch_with_client(&require_client()?, action, params).await
 }
