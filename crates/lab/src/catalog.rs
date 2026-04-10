@@ -22,6 +22,11 @@ pub struct ServiceCatalog {
     pub description: String,
     /// Category slug (Media, Servarr, Notifications, etc.).
     pub category: String,
+    /// Implementation status: `"available"` or `"stub"`.
+    ///
+    /// Filter on `status == "available"` to find services that are callable.
+    /// `"stub"` means compiled-in but not yet dispatching real actions.
+    pub status: String,
     /// List of actions exposed by the service.
     pub actions: Vec<ActionEntry>,
 }
@@ -47,6 +52,7 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
             name: svc.name.to_string(),
             description: svc.description.to_string(),
             category: svc.category.to_string(),
+            status: svc.status.to_string(),
             actions: svc
                 .actions
                 .iter()
