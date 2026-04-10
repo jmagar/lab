@@ -345,6 +345,8 @@ async fn fetch_github_preview(
     let commit_info: GitHubCommit =
         serde_json::from_slice(&body).context("parsing GitHub commits API response")?;
     let sha = commit_info.sha;
+    crate::tui::ecosystem::validate_commit_sha(&sha)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // 3. Determine which manifest paths to fetch for this ecosystem.
     let manifest_paths = manifest_paths_for(ecosystem);
@@ -535,7 +537,16 @@ async fn fetch_sparse_clone_preview(
 
     // For non-GitHub, we don't have a commit SHA from the API.
     // Use HEAD ref from .git/HEAD as a best-effort identifier.
-    let sha = read_head_sha(root).await;
+    // Validate against hex-only pattern; .git/HEAD often contains symbolic refs
+    // like "ref: refs/heads/main" which must not be forwarded as --ref arguments.
+    let sha = {
+        let raw = read_head_sha(root).await;
+        if crate::tui::ecosystem::validate_commit_sha(&raw).is_ok() {
+            raw
+        } else {
+            String::new()
+        }
+    };
     let use_synthesis = should_synthesize_from_files(ecosystem, root);
     let plugin = parse_manifest(&bytes, ecosystem, url, use_synthesis)?;
 
