@@ -10,7 +10,7 @@ use axum::{
 };
 use tower_http::{
     compression::CompressionLayer,
-    cors::CorsLayer,
+    cors::{AllowOrigin, CorsLayer},
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     timeout::TimeoutLayer,
     trace::TraceLayer,
@@ -83,7 +83,7 @@ pub fn build_router(state: AppState) -> Router {
     //   SetRequestId → TraceLayer → PropagateRequestId → Timeout → Compression → CORS → handler
     router
         .with_state(state)
-        .layer(CorsLayer::permissive())
+        .layer(build_cors_layer())
         .layer(CompressionLayer::new())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
@@ -113,6 +113,36 @@ pub fn build_router(state: AppState) -> Router {
         .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid))
 }
 
+
+/// Build a `CorsLayer` that allows only explicit trusted origins.
+///
+/// Reads `LAB_CORS_ORIGINS` (comma-separated list of `scheme://host[:port]`
+/// values) from the environment; always includes `http://localhost`,
+/// `http://127.0.0.1`, and `http://[::1]` as safe loopback defaults.
+///
+/// This replaces `CorsLayer::permissive()` which would allow any browser page
+/// on the local network to issue cross-origin requests to destructive endpoints.
+fn build_cors_layer() -> CorsLayer {
+    use axum::http::{HeaderValue, Method};
+
+    let env_origins: Vec<HeaderValue> = std::env::var("LAB_CORS_ORIGINS")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|s| s.trim().parse::<HeaderValue>().ok())
+        .collect();
+
+    let mut origins: Vec<HeaderValue> = vec![
+        HeaderValue::from_static("http://localhost"),
+        HeaderValue::from_static("http://127.0.0.1"),
+        HeaderValue::from_static("http://[::1]"),
+    ];
+    origins.extend(env_origins);
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(tower_http::cors::Any)
+}
 
 async fn service_actions(
     State(state): State<AppState>,
