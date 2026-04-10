@@ -128,8 +128,16 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
                     app.dirty = true;
                 }
                 Err(e) => {
-                    app.push_toast(format!("Terminal re-init failed: {e}"));
+                    let msg = format!("Terminal re-init failed: {e}");
+                    // Best-effort cleanup: setup_terminal() may have partially
+                    // activated raw mode before failing. Restore terminal to
+                    // cooked mode so the user's shell is usable after exit.
+                    drop(disable_raw_mode());
+                    drop(execute!(std::io::stderr(), LeaveAlternateScreen));
+                    // Print directly to stderr — it's in normal mode now.
+                    eprintln!("lab tui: {msg}");
                     app.should_quit = true;
+                    break;
                 }
             }
         }
