@@ -14,11 +14,7 @@ pub const ACTIONS: &[ActionSpec] = &[];
 /// Returns errors for unknown actions until the service is wired.
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
-        "help" => Ok(serde_json::json!({
-            "service": "qdrant",
-            "message": "qdrant is not yet implemented",
-            "actions": []
-        })),
+        "help" => Ok(crate::dispatch::helpers::help_payload("qdrant", ACTIONS)),
         "schema" => {
             let a = crate::dispatch::helpers::require_str(&params, "action")?;
             crate::dispatch::helpers::action_schema(ACTIONS, a)
