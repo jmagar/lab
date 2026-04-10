@@ -1,6 +1,6 @@
 //! `lab paperless` — CLI stub (not yet implemented).
 //!
-//! Replace this stub once `paperless` SDK client is complete.
+//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -8,6 +8,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
+use crate::cli::helpers::run_action_command;
 use crate::output::OutputFormat;
 
 /// `lab paperless` arguments.
@@ -15,12 +16,31 @@ use crate::output::OutputFormat;
 pub struct PaperlessArgs {
     /// Action to run (e.g. help).
     pub action: Option<String>,
+    /// Action-specific parameters as JSON.
+    #[arg(long)]
+    pub params: Option<String>,
 }
 
-/// Run the `lab paperless` subcommand stub.
+/// Run the `lab paperless` subcommand.
 ///
 /// # Errors
-/// Always returns a not-yet-implemented message.
-pub async fn run(_args: PaperlessArgs, _format: OutputFormat) -> Result<ExitCode> {
-    anyhow::bail!("paperless is not yet implemented — run `lab help` for available services")
+/// Returns an error if dispatch fails.
+pub async fn run(args: PaperlessArgs, format: OutputFormat) -> Result<ExitCode> {
+    let action = args.action.unwrap_or_else(|| "help".to_string());
+    let params = args
+        .params
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()?
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    run_action_command(
+        "paperless",
+        action,
+        params,
+        format,
+        |action, params| async move {
+            crate::mcp::services::paperless::dispatch(&action, params).await
+        },
+    )
+    .await
 }
