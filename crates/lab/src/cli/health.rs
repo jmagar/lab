@@ -59,7 +59,7 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     #[cfg(feature = "tautulli")]
     rows.push(HealthRow::not_configured("tautulli"));
     #[cfg(feature = "sabnzbd")]
-    rows.push(HealthRow::not_configured("sabnzbd"));
+    rows.push(sabnzbd_row().await);
     #[cfg(feature = "qbittorrent")]
     rows.push(HealthRow::not_configured("qbittorrent"));
     #[cfg(feature = "tailscale")]
@@ -100,24 +100,31 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     }
 }
 
-#[cfg(feature = "radarr")]
-async fn radarr_row() -> HealthRow {
-    use lab_apis::core::ServiceClient;
-
-    let Some(client) = crate::dispatch::radarr::client_from_env() else {
+/// Build a [`HealthRow`] for any service that implements [`lab_apis::core::ServiceClient`].
+///
+/// Centralises the not-configured / ok / error branching that was repeated
+/// verbatim for every service.
+async fn service_health_row<C>(
+    service: &str,
+    client: Option<C>,
+    not_configured_msg: &str,
+) -> HealthRow
+where
+    C: lab_apis::core::ServiceClient,
+{
+    let Some(client) = client else {
         return HealthRow {
-            service: "radarr".into(),
+            service: service.into(),
             reachable: false,
             auth_ok: false,
             version: None,
             latency_ms: 0,
-            message: Some("RADARR_URL / RADARR_API_KEY not set".into()),
+            message: Some(not_configured_msg.into()),
         };
     };
-
-    match <_ as ServiceClient>::health(&client).await {
+    match client.health().await {
         Ok(s) => HealthRow {
-            service: "radarr".into(),
+            service: service.into(),
             reachable: s.reachable,
             auth_ok: s.auth_ok,
             version: s.version,
@@ -125,7 +132,7 @@ async fn radarr_row() -> HealthRow {
             message: s.message,
         },
         Err(e) => HealthRow {
-            service: "radarr".into(),
+            service: service.into(),
             reachable: false,
             auth_ok: false,
             version: None,
@@ -133,74 +140,44 @@ async fn radarr_row() -> HealthRow {
             message: Some(e.to_string()),
         },
     }
+}
+
+#[cfg(feature = "radarr")]
+async fn radarr_row() -> HealthRow {
+    service_health_row(
+        "radarr",
+        crate::dispatch::radarr::client_from_env(),
+        "RADARR_URL / RADARR_API_KEY not set",
+    )
+    .await
 }
 
 #[cfg(feature = "unifi")]
 async fn unifi_row() -> HealthRow {
-    use lab_apis::core::ServiceClient;
+    service_health_row(
+        "unifi",
+        crate::dispatch::unifi::client_from_env(),
+        "UNIFI_URL / UNIFI_API_KEY not set",
+    )
+    .await
+}
 
-    let Some(client) = crate::dispatch::unifi::client_from_env() else {
-        return HealthRow {
-            service: "unifi".into(),
-            reachable: false,
-            auth_ok: false,
-            version: None,
-            latency_ms: 0,
-            message: Some("UNIFI_URL / UNIFI_API_KEY not set".into()),
-        };
-    };
-
-    match ServiceClient::health(&client).await {
-        Ok(s) => HealthRow {
-            service: "unifi".into(),
-            reachable: s.reachable,
-            auth_ok: s.auth_ok,
-            version: s.version,
-            latency_ms: s.latency_ms,
-            message: s.message,
-        },
-        Err(e) => HealthRow {
-            service: "unifi".into(),
-            reachable: false,
-            auth_ok: false,
-            version: None,
-            latency_ms: 0,
-            message: Some(e.to_string()),
-        },
-    }
+#[cfg(feature = "sabnzbd")]
+async fn sabnzbd_row() -> HealthRow {
+    service_health_row(
+        "sabnzbd",
+        crate::dispatch::sabnzbd::client_from_env(),
+        "SABNZBD_URL / SABNZBD_API_KEY not set",
+    )
+    .await
 }
 
 #[cfg(feature = "bytestash")]
 async fn bytestash_row() -> HealthRow {
-    use lab_apis::core::ServiceClient;
-
-    let Some(client) = crate::dispatch::bytestash::client_from_env() else {
-        return HealthRow {
-            service: "bytestash".into(),
-            reachable: false,
-            auth_ok: false,
-            version: None,
-            latency_ms: 0,
-            message: Some("BYTESTASH_URL / BYTESTASH_TOKEN not set".into()),
-        };
-    };
-
-    match <_ as ServiceClient>::health(&client).await {
-        Ok(s) => HealthRow {
-            service: "bytestash".into(),
-            reachable: s.reachable,
-            auth_ok: s.auth_ok,
-            version: s.version,
-            latency_ms: s.latency_ms,
-            message: s.message,
-        },
-        Err(e) => HealthRow {
-            service: "bytestash".into(),
-            reachable: false,
-            auth_ok: false,
-            version: None,
-            latency_ms: 0,
-            message: Some(e.to_string()),
-        },
-    }
+    service_health_row(
+        "bytestash",
+        crate::dispatch::bytestash::client_from_env(),
+        "BYTESTASH_URL / BYTESTASH_TOKEN not set",
+    )
+    .await
 }
