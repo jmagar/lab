@@ -1,6 +1,7 @@
 //! Movie resource dispatch: list, get, lookup, add, delete.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
+use lab_apis::radarr::RadarrClient;
 use lab_apis::radarr::types::movie::TmdbId;
 use lab_apis::radarr::types::{Movie, MovieId};
 use serde_json::Value;
@@ -107,20 +108,24 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch_with_client(
+    client: &RadarrClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "movie.list" => {
-            let movies = require_client()?.movie_list().await?;
+            let movies = client.movie_list().await?;
             to_json(movies)
         }
         "movie.get" => {
             let id = MovieId(require_i64(&params, "id")?);
-            let movie = require_client()?.movie_get(id).await?;
+            let movie = client.movie_get(id).await?;
             to_json(movie)
         }
         "movie.lookup" => {
             let query = require_str(&params, "query")?;
-            let results = require_client()?.movie_lookup(query).await?;
+            let results = client.movie_lookup(query).await?;
             to_json(results)
         }
         "movie.add" => {
@@ -152,7 +157,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 path: None,
                 size_on_disk: 0,
             };
-            let added = require_client()?.movie_add(&movie).await?;
+            let added = client.movie_add(&movie).await?;
             to_json(added)
         }
         "movie.delete" => {
@@ -161,9 +166,13 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 .get("delete_files")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            require_client()?.movie_delete(id, delete_files).await?;
+            client.movie_delete(id, delete_files).await?;
             Ok(serde_json::json!({ "deleted": true }))
         }
         _ => unreachable!(),
     }
+}
+
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    dispatch_with_client(&require_client()?, action, params).await
 }

@@ -1,6 +1,7 @@
 //! Calendar resource dispatch.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
+use lab_apis::radarr::RadarrClient;
 use serde_json::Value;
 
 use super::client::require_client;
@@ -28,14 +29,22 @@ pub const ACTIONS: &[ActionSpec] = &[ActionSpec {
     ],
 }];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch_with_client(
+    client: &RadarrClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "calendar.list" => {
             let start = params.get("start").and_then(Value::as_str);
             let end = params.get("end").and_then(Value::as_str);
-            let entries = require_client()?.calendar_list(start, end).await?;
+            let entries = client.calendar_list(start, end).await?;
             to_json(entries)
         }
         _ => unreachable!(),
     }
+}
+
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    dispatch_with_client(&require_client()?, action, params).await
 }

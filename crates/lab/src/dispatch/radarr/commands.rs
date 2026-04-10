@@ -1,6 +1,7 @@
 //! Command resource dispatch: refresh, search, get.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
+use lab_apis::radarr::RadarrClient;
 use lab_apis::radarr::types::{CommandId, MovieId};
 use serde_json::Value;
 
@@ -47,11 +48,15 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch_with_client(
+    client: &RadarrClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "command.refresh" => {
             let movie_id = params.get("movie_id").and_then(Value::as_i64).map(MovieId);
-            let cmd = require_client()?.command_refresh_movie(movie_id).await?;
+            let cmd = client.command_refresh_movie(movie_id).await?;
             to_json(cmd)
         }
         "command.search" => {
@@ -66,14 +71,18 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 .filter_map(Value::as_i64)
                 .map(MovieId)
                 .collect();
-            let cmd = require_client()?.command_movies_search(&ids).await?;
+            let cmd = client.command_movies_search(&ids).await?;
             to_json(cmd)
         }
         "command.get" => {
             let id = CommandId(require_i64(&params, "id")?);
-            let cmd = require_client()?.command_get(id).await?;
+            let cmd = client.command_get(id).await?;
             to_json(cmd)
         }
         _ => unreachable!(),
     }
+}
+
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    dispatch_with_client(&require_client()?, action, params).await
 }

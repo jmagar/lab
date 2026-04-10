@@ -19,6 +19,7 @@ mod system;
 pub use catalog::actions;
 pub use client::client_from_env;
 pub use dispatch::dispatch;
+pub use dispatch::dispatch_with_client;
 
 #[cfg(test)]
 mod tests {

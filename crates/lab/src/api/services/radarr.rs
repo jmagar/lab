@@ -1,8 +1,4 @@
 //! API route group for the `radarr` service.
-//!
-//! TODO(perf): radarr sub-dispatchers (movies, queue, etc.) each call `require_client()`
-//! independently. Thread `state.clients.radarr` through sub-dispatchers to enable
-//! full connection-pool reuse. See `dispatch/CLAUDE.md` for the migration pattern.
 
 use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
@@ -22,14 +18,14 @@ async fn handle(
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    // Fail fast if radarr is not configured — avoids dispatching into sub-modules that
-    // would each call require_client() and fail with a less informative error.
-    if state.clients.radarr.is_none() {
-        return Err(ToolError::Sdk {
+    let client = state
+        .clients
+        .radarr
+        .clone()
+        .ok_or_else(|| ToolError::Sdk {
             sdk_kind: "internal_error".into(),
             message: "RADARR_URL or RADARR_API_KEY not configured".into(),
-        });
-    }
+        })?;
     handle_action(
         "radarr",
         DispatchContext {
@@ -39,7 +35,9 @@ async fn handle(
         request_id,
         req,
         crate::dispatch::radarr::actions(),
-        |action, params| async move { crate::dispatch::radarr::dispatch(&action, params).await },
+        move |action, params| async move {
+            crate::dispatch::radarr::dispatch_with_client(&client, &action, params).await
+        },
         Some(&headers),
     )
     .await
