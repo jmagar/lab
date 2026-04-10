@@ -26,6 +26,10 @@ pub fn client_from_env() -> Option<UnraidClient> {
     UnraidClient::new(
         &url,
         Auth::ApiKey {
+            // Unraid's GraphQL API requires "X-API-Key" (all-caps KEY) per its
+            // API spec — intentional deviation from the dispatch template which
+            // uses "X-Api-Key". HTTP headers are case-insensitive on the wire,
+            // but Unraid's server validates the exact name.
             header: "X-API-Key".into(),
             key,
         },

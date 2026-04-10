@@ -229,10 +229,26 @@ impl UnraidClient {
     /// The Unraid GraphQL API does not expose a native `restart` mutation; this
     /// method calls `stop` followed by `start`.
     ///
+    /// # Cancellation safety
+    ///
+    /// **This method is NOT cancellation-safe.** If the future is dropped after
+    /// `stop` commits but before `start` is issued (e.g., due to a `select!`
+    /// branch winning, a task timeout, or the driving task being dropped), the
+    /// container is left permanently stopped with no automatic recovery.
+    ///
+    /// Callers must drive this future to completion. Do not use it in a
+    /// `select!` arm or attach a cancellation token that fires mid-call.
+    /// If partial failure occurs (stop ok, start fails), the container remains
+    /// stopped — check logs for the `docker_restart.stop_ok` event.
+    ///
     /// # Errors
     /// Returns [`UnraidError::Http`] on transport or GraphQL error.
     pub async fn docker_restart(&self, id: &str) -> Result<(), UnraidError> {
         self.docker_stop(id).await?;
+        tracing::warn!(
+            container_id = %id,
+            "docker_restart: stop succeeded, attempting start — if dropped here container remains stopped"
+        );
         self.docker_start(id).await?;
         Ok(())
     }

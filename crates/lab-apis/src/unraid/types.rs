@@ -185,8 +185,10 @@ pub struct ArrayDisk {
     /// Temperature in Celsius.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temp: Option<i32>,
+    /// Disk role (`DATA`, `PARITY`, `CACHE`, etc.). Nullable for empty array slots.
     #[serde(rename = "type")]
-    pub disk_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disk_type: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -290,8 +292,10 @@ pub struct DiskInfo {
     pub vendor: String,
     /// Total size in bytes (Float in schema).
     pub size: f64,
+    /// Disk type (e.g. `HDD`, `SSD`). Nullable for disks in transitional states.
     #[serde(rename = "type")]
-    pub disk_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disk_type: Option<String>,
     /// SMART status string.
     pub smart_status: String,
     /// Temperature in Celsius (nullable Float).
