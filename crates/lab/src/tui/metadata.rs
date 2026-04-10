@@ -169,6 +169,22 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "unraid")]
+    {
+        if let (Some(url), Some(key)) = (vars.get("UNRAID_URL"), vars.get("UNRAID_API_KEY")) {
+            use lab_apis::core::Auth;
+            if let Ok(client) = lab_apis::unraid::UnraidClient::new(
+                url,
+                Auth::ApiKey {
+                    header: "X-API-Key".into(),
+                    key: key.clone(),
+                },
+            ) {
+                spawn_health_trait!("unraid", client);
+            }
+        }
+    }
+
     // Collect results.
     let mut results = Vec::new();
     for handle in handles {

@@ -112,7 +112,9 @@ pub async fn perform_update(
         .assets
         .into_iter()
         .find(|a| a.name.starts_with(prefix))
-        .with_context(|| format!("No release asset matching prefix `{prefix}` for this platform"))?;
+        .with_context(|| {
+            format!("No release asset matching prefix `{prefix}` for this platform")
+        })?;
 
     // Signal: update available
     tx.send(AppEvent::UpdateCheckDone {
@@ -203,15 +205,13 @@ pub async fn perform_update(
             hasher.update(&downloaded_bytes);
             let actual = format!("{:x}", hasher.finalize());
             if actual != expected {
-                bail!(
-                    "SHA-256 mismatch: expected {expected}, got {actual}"
-                );
+                bail!("SHA-256 mismatch: expected {expected}, got {actual}");
             }
         }
 
         // Write to a temp file in the same directory as the binary
-        let mut tmp =
-            tempfile::NamedTempFile::new_in(&exe_dir_clone).context("failed to create temp file")?;
+        let mut tmp = tempfile::NamedTempFile::new_in(&exe_dir_clone)
+            .context("failed to create temp file")?;
 
         // Use std::io::Write
         use std::io::Write as _;
@@ -325,12 +325,16 @@ impl UpdateState {
                     Span::raw("Update available: "),
                     Span::styled(
                         current.as_str(),
-                        Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(ratatui::style::Modifier::BOLD),
                     ),
                     Span::raw(" \u{2192} "),
                     Span::styled(
                         latest.as_str(),
-                        Style::default().fg(Color::Green).add_modifier(ratatui::style::Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(ratatui::style::Modifier::BOLD),
                     ),
                 ]),
                 Line::from(""),
@@ -427,7 +431,10 @@ mod tests {
 
         assert!(result.is_err(), "should error on mismatch");
         // The temp file must still exist — persist() was never called
-        assert!(tmp.path().exists(), "temp file should not have been removed");
+        assert!(
+            tmp.path().exists(),
+            "temp file should not have been removed"
+        );
     }
 
     /// UpdateState transitions from Idle through Done must not panic.
