@@ -76,6 +76,18 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[],
         returns: "Catalog",
     },
+    ActionSpec {
+        name: "schema",
+        description: "Return the parameter schema for one action",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "action",
+            ty: "string",
+            required: true,
+            description: "Action name to return schema for",
+        }],
+        returns: "ActionSpec",
+    },
 ];
 
 /// Dispatch one MCP call against the extract service.
@@ -86,6 +98,10 @@ pub const ACTIONS: &[ActionSpec] = &[
 /// envelope by the registry.
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
+        "schema" => {
+            let a = crate::dispatch::helpers::require_str(&params, "action")?;
+            crate::dispatch::helpers::action_schema(ACTIONS, a)
+        }
         "scan" => {
             let uri = parse_uri(&params).map_err(|e| ToolError::MissingParam {
                 message: e.to_string(),
