@@ -37,7 +37,28 @@ macro_rules! dispatch_fn {
 ///
 /// Expands to the `#[cfg(feature)] { reg.register(RegisteredService { ... }) }` block,
 /// eliminating the 7-line boilerplate that would otherwise be repeated per service.
+///
+/// Two forms:
+/// - Default: `register_service!(reg, "foo", foo)` — uses `mcp::services::foo::ACTIONS` and
+///   `mcp::services::foo::dispatch`.
+/// - Override: `register_service!(reg, "foo", foo, actions = $expr, dispatch = $expr)` —
+///   for migrated services whose catalog and/or dispatch live outside `mcp::services`.
 macro_rules! register_service {
+    // Full override: custom actions expr and dispatch expr (for migrated services).
+    ($reg:expr, $feature:literal, $svc:ident, actions = $actions:expr, dispatch = $dispatch:expr) => {
+        #[cfg(feature = $feature)]
+        {
+            let meta = lab_apis::$svc::META;
+            $reg.register(RegisteredService {
+                name: meta.name,
+                description: meta.description,
+                category: category_slug(meta.category),
+                actions: $actions,
+                dispatch: $dispatch,
+            });
+        }
+    };
+    // Default: use mcp::services::$svc ACTIONS const and dispatch fn.
     ($reg:expr, $feature:literal, $svc:ident) => {
         #[cfg(feature = $feature)]
         {
@@ -129,67 +150,35 @@ pub fn build_default_registry() -> ToolRegistry {
         });
     }
 
-    #[cfg(feature = "radarr")]
-    {
-        let meta = lab_apis::radarr::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::mcp::services::radarr::actions(),
-            dispatch: dispatch_fn!(crate::mcp::services::radarr::dispatch),
-        });
-    }
+    register_service!(reg, "radarr", radarr,
+        actions = crate::mcp::services::radarr::actions(),
+        dispatch = dispatch_fn!(crate::mcp::services::radarr::dispatch));
 
     register_service!(reg, "sonarr", sonarr);
     register_service!(reg, "prowlarr", prowlarr);
     register_service!(reg, "plex", plex);
     register_service!(reg, "tautulli", tautulli);
 
-    #[cfg(feature = "sabnzbd")]
-    {
-        let meta = lab_apis::sabnzbd::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::dispatch::sabnzbd::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::sabnzbd::dispatch),
-        });
-    }
+    register_service!(reg, "sabnzbd", sabnzbd,
+        actions = crate::dispatch::sabnzbd::ACTIONS,
+        dispatch = dispatch_fn!(crate::mcp::services::sabnzbd::dispatch));
 
     register_service!(reg, "qbittorrent", qbittorrent);
     register_service!(reg, "tailscale", tailscale);
     register_service!(reg, "linkding", linkding);
     register_service!(reg, "memos", memos);
 
-    #[cfg(feature = "bytestash")]
-    {
-        let meta = lab_apis::bytestash::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::dispatch::bytestash::ACTIONS,
-            dispatch: dispatch_fn!(crate::dispatch::bytestash::dispatch),
-        });
-    }
+    register_service!(reg, "bytestash", bytestash,
+        actions = crate::dispatch::bytestash::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::bytestash::dispatch));
 
     register_service!(reg, "paperless", paperless);
     register_service!(reg, "arcane", arcane);
     register_service!(reg, "unraid", unraid);
 
-    #[cfg(feature = "unifi")]
-    {
-        let meta = lab_apis::unifi::META;
-        reg.register(RegisteredService {
-            name: meta.name,
-            description: meta.description,
-            category: category_slug(meta.category),
-            actions: crate::dispatch::unifi::actions(),
-            dispatch: dispatch_fn!(crate::dispatch::unifi::dispatch),
-        });
-    }
+    register_service!(reg, "unifi", unifi,
+        actions = crate::dispatch::unifi::actions(),
+        dispatch = dispatch_fn!(crate::dispatch::unifi::dispatch));
 
     register_service!(reg, "overseerr", overseerr);
     register_service!(reg, "gotify", gotify);
