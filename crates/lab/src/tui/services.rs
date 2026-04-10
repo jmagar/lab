@@ -64,6 +64,9 @@ pub struct LabServicesState {
     pub mcp_json_path: Option<PathBuf>,
     /// Set of service names currently listed in `.mcp.json` `--services`.
     pub enabled_services: HashSet<String>,
+    /// Cached env vars from `~/.lab/.env`. Loaded once at startup and after
+    /// the user returns from the `$EDITOR` session. Never read in the render path.
+    pub env_cache: HashMap<String, String>,
     /// Ratatui list state for scroll tracking.
     list_state: ListState,
 }
@@ -78,6 +81,7 @@ impl Default for LabServicesState {
             reveal_secret: false,
             mcp_json_path: default_mcp_json_path(),
             enabled_services: HashSet::new(),
+            env_cache: load_env_vars(),
             list_state,
         }
     }
@@ -119,6 +123,12 @@ impl LabServicesState {
     /// Toggle secret reveal mode.
     pub fn toggle_reveal(&mut self) {
         self.reveal_secret = !self.reveal_secret;
+    }
+
+    /// Reload env vars from `~/.lab/.env` into the cache.
+    /// Call after the user returns from an editor session.
+    pub fn reload_env_cache(&mut self) {
+        self.env_cache = load_env_vars();
     }
 
     /// Update health results from a completed health check pass.
@@ -204,8 +214,11 @@ impl LabServicesState {
                 height: 1,
                 ..chunks[1]
             };
-            let banner = Paragraph::new("  ⚠  Secrets revealed — press 'r' to hide")
-                .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+            let banner = Paragraph::new("  ⚠  Secrets revealed — press 'r' to hide").style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            );
             frame.render_widget(banner, banner_area);
         }
     }
@@ -263,7 +276,7 @@ impl LabServicesState {
             return;
         };
 
-        let env_vars = load_env_vars();
+        let env_vars = &self.env_cache;
         let mut lines: Vec<Line<'_>> = Vec::new();
 
         // Header
@@ -280,12 +293,10 @@ impl LabServicesState {
                 Style::default().fg(Color::DarkGray),
             ),
         ]));
-        lines.push(Line::from(
-            Span::styled(
-                sanitize_display(plugin.description, 80),
-                Style::default().fg(Color::Gray),
-            ),
-        ));
+        lines.push(Line::from(Span::styled(
+            sanitize_display(plugin.description, 80),
+            Style::default().fg(Color::Gray),
+        )));
         lines.push(Line::from(""));
 
         // Health status
@@ -299,9 +310,17 @@ impl LabServicesState {
                 }
                 Some(h) => {
                     let (symbol, color, msg) = if !h.reachable {
-                        ("● Unreachable", Color::Red, h.message.as_deref().unwrap_or(""))
+                        (
+                            "● Unreachable",
+                            Color::Red,
+                            h.message.as_deref().unwrap_or(""),
+                        )
                     } else if !h.auth_ok {
-                        ("● Auth failed", Color::Yellow, h.message.as_deref().unwrap_or(""))
+                        (
+                            "● Auth failed",
+                            Color::Yellow,
+                            h.message.as_deref().unwrap_or(""),
+                        )
                     } else {
                         ("● Healthy", Color::Green, "")
                     };
@@ -310,8 +329,10 @@ impl LabServicesState {
                         health_line.push(Span::raw(format!(": {}", sanitize_display(msg, 60))));
                     }
                     if let Some(ms) = h.latency_ms {
-                        health_line
-                            .push(Span::styled(format!(" ({ms}ms)"), Style::default().fg(Color::DarkGray)));
+                        health_line.push(Span::styled(
+                            format!(" ({ms}ms)"),
+                            Style::default().fg(Color::DarkGray),
+                        ));
                     }
                     lines.push(Line::from(health_line));
                 }
@@ -392,7 +413,10 @@ fn render_env_var(
     let mut lines = Vec::new();
     let value = env_vars.get(ev.name);
     let (val_text, val_color) = match value {
-        None => (format!("(not set — example: {})", ev.example), Color::DarkGray),
+        None => (
+            format!("(not set — example: {})", ev.example),
+            Color::DarkGray,
+        ),
         Some(v) => {
             let display = if ev.secret && !reveal {
                 // Keep the raw value in a SecretString; only expose at the
@@ -407,7 +431,12 @@ fn render_env_var(
     };
 
     lines.push(Line::from(vec![
-        Span::styled(format!("  {}", ev.name), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("  {}", ev.name),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" = "),
         Span::styled(val_text, Style::default().fg(val_color)),
     ]));

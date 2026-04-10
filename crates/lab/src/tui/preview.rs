@@ -288,10 +288,10 @@ pub async fn fetch_preview(
     match result {
         Ok(ready) => {
             let plugin = ready.plugin.clone();
-            drop(
-                tx.send(crate::tui::events::AppEvent::PreviewReady(ready))
-                    .await,
-            );
+            // Receiver may have exited — ignore send failure.
+            let _ = tx
+                .send(crate::tui::events::AppEvent::PreviewReady(ready))
+                .await;
             Ok(PreviewState::Ready { plugin })
         }
         Err(e) => Ok(PreviewState::Error {
@@ -365,13 +365,13 @@ async fn fetch_github_preview(
                 Ok((429, _)) => {
                     // Rate limited — serve stale cache if available.
                     if let Some(stale) = read_cache_stale(&cache_file).await {
-                        drop(
-                            tx.send(crate::tui::events::AppEvent::TaskError {
+                        // Receiver may have exited — ignore send failure.
+                        let _ = tx
+                            .send(crate::tui::events::AppEvent::TaskError {
                                 kind: "preview".to_string(),
                                 message: "showing cached preview (rate limited)".to_string(),
                             })
-                            .await,
-                        );
+                            .await;
                         fetched = Some(stale);
                         break;
                     }

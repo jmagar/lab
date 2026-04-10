@@ -85,7 +85,9 @@ impl InstallState {
         match self {
             Self::Available => Style::default().fg(Color::DarkGray),
             Self::Installed => Style::default().fg(Color::Green),
-            Self::UpdateAvailable => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Self::UpdateAvailable => Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         }
     }
 }
@@ -112,18 +114,31 @@ pub struct CliPresence {
 }
 
 impl CliPresence {
-    /// Probe PATH for `claude` and `gemini` binaries using `which` via std::process::Command.
-    pub fn detect() -> Self {
-        let claude = std::process::Command::new("which")
-            .arg("claude")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        let gemini = std::process::Command::new("which")
-            .arg("gemini")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+    /// Probe PATH for `claude` and `gemini` binaries.
+    ///
+    /// Uses `tokio::task::spawn_blocking` so the blocking `which` subprocess
+    /// does not stall the async executor.
+    pub async fn detect() -> Self {
+        let claude = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("which")
+                .arg("claude")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false);
+
+        let gemini = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("which")
+                .arg("gemini")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false);
+
         Self { claude, gemini }
     }
 }
@@ -191,25 +206,13 @@ impl MarketplaceState {
                 };
 
                 let line = Line::from(vec![
-                    Span::styled(
-                        format!("{name:<30}"),
-                        Style::default().fg(Color::White),
-                    ),
+                    Span::styled(format!("{name:<30}"), Style::default().fg(Color::White)),
                     Span::raw(" "),
-                    Span::styled(
-                        format!("{desc:<40}"),
-                        Style::default().fg(Color::Gray),
-                    ),
+                    Span::styled(format!("{desc:<40}"), Style::default().fg(Color::Gray)),
                     Span::raw(" "),
-                    Span::styled(
-                        format!("{eco:<11}"),
-                        Style::default().fg(eco_color),
-                    ),
+                    Span::styled(format!("{eco:<11}"), Style::default().fg(eco_color)),
                     Span::raw(" "),
-                    Span::styled(
-                        format!("{state_badge:<9}"),
-                        p.install_state.style(),
-                    ),
+                    Span::styled(format!("{state_badge:<9}"), p.install_state.style()),
                 ]);
                 ListItem::new(line)
             })
@@ -281,9 +284,8 @@ impl MarketplaceLoader {
         let codex_installed = Self::installed_codex();
         let gemini_installed = Self::installed_gemini();
 
-        let mut futures: FuturesUnordered<
-            tokio::task::JoinHandle<Vec<(MarketplacePlugin, bool)>>,
-        > = FuturesUnordered::new();
+        let mut futures: FuturesUnordered<tokio::task::JoinHandle<Vec<(MarketplacePlugin, bool)>>> =
+            FuturesUnordered::new();
 
         // ── Claude Code sources ───────────────────────────────────────────────
         if cli.claude {
@@ -498,10 +500,7 @@ async fn load_gemini_plugins() -> Vec<(MarketplacePlugin, bool)> {
         let Ok(manifest) = serde_json::from_str::<GeminiExtensionManifest>(&data) else {
             continue;
         };
-        let dir_name = entry
-            .file_name()
-            .into_string()
-            .unwrap_or_default();
+        let dir_name = entry.file_name().into_string().unwrap_or_default();
         let name = manifest.name.unwrap_or_else(|| dir_name.clone());
         let id = PluginId::new(&name).to_string();
         plugins.push((
@@ -590,9 +589,21 @@ mod tests {
             };
         }
 
-        assert_eq!(plugins[0].install_state, InstallState::Installed, "plugin-a should be installed");
-        assert_eq!(plugins[1].install_state, InstallState::Installed, "plugin-b should be installed");
-        assert_eq!(plugins[2].install_state, InstallState::Available, "plugin-c should be available");
+        assert_eq!(
+            plugins[0].install_state,
+            InstallState::Installed,
+            "plugin-a should be installed"
+        );
+        assert_eq!(
+            plugins[1].install_state,
+            InstallState::Installed,
+            "plugin-b should be installed"
+        );
+        assert_eq!(
+            plugins[2].install_state,
+            InstallState::Available,
+            "plugin-c should be available"
+        );
     }
 
     #[test]
@@ -600,7 +611,10 @@ mod tests {
         // "My-Plugin" in catalog, "my_plugin" in installed set — should match.
         let catalog_id = PluginId::new("My-Plugin");
         let installed_id = PluginId::new("my_plugin");
-        assert_eq!(catalog_id, installed_id, "normalized IDs must match across dash/underscore/case variants");
+        assert_eq!(
+            catalog_id, installed_id,
+            "normalized IDs must match across dash/underscore/case variants"
+        );
     }
 
     #[test]
@@ -623,8 +637,14 @@ mod tests {
         let plugin = make_plugin(ansi_name, Ecosystem::ClaudeCode, InstallState::Available);
         // The plugin name goes through sanitize_display before rendering.
         let safe = sanitize_display(&plugin.name, 200);
-        assert!(!safe.contains('\x1b'), "ANSI escapes must be stripped from plugin names");
-        assert!(safe.contains("Evil Plugin"), "text content must survive sanitization");
+        assert!(
+            !safe.contains('\x1b'),
+            "ANSI escapes must be stripped from plugin names"
+        );
+        assert!(
+            safe.contains("Evil Plugin"),
+            "text content must survive sanitization"
+        );
     }
 
     #[test]
