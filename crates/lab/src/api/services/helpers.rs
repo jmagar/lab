@@ -1,4 +1,4 @@
-//! Shared HTTP API dispatch wrapper.
+//! Shared API dispatch wrapper.
 //!
 //! `handle_action` is the single enforcement point for:
 //! - Unknown-action rejection gate (fail-closed — dispatch is never reached for unknown actions)
@@ -18,8 +18,8 @@ use tracing::Instrument;
 use lab_apis::core::action::ActionSpec;
 
 use crate::api::ActionRequest;
-use crate::services::error::ToolError;
-use crate::services::context::DispatchContext;
+use crate::dispatch::context::DispatchContext;
+use crate::dispatch::error::ToolError;
 
 /// Dispatch a service action request with unknown-action gate, confirmation gate, and logging.
 ///
@@ -45,6 +45,7 @@ use crate::services::context::DispatchContext;
 pub async fn handle_action<F, Fut>(
     service: &'static str,
     ctx: DispatchContext,
+    request_id: Option<&str>,
     req: ActionRequest,
     actions: &[ActionSpec],
     dispatch: F,
@@ -62,6 +63,7 @@ where
             surface = ctx.surface,
             service,
             action,
+            request_id,
             "unknown_action rejected at gate"
         );
         return Err(ToolError::UnknownAction {
@@ -82,6 +84,7 @@ where
                 surface = ctx.surface,
                 service,
                 action,
+                request_id,
                 "confirmation_required for destructive action"
             );
             return Err(ToolError::Sdk {
@@ -100,7 +103,13 @@ where
 
     // Clone action before the move into dispatch — needed for post-dispatch logging.
     let action_log = action.clone();
-    let dispatch_span = tracing::info_span!("dispatch", surface = ctx.surface, service, action = action_log);
+    let dispatch_span = tracing::info_span!(
+        "dispatch",
+        surface = ctx.surface,
+        service,
+        action = action_log,
+        request_id
+    );
     let start = std::time::Instant::now();
     let result = dispatch(action, params).instrument(dispatch_span).await;
     let elapsed_ms = start.elapsed().as_millis();
@@ -110,6 +119,7 @@ where
             surface = ctx.surface,
             service,
             action = action_log,
+            request_id,
             elapsed_ms,
             destructive = spec.destructive,
             "dispatch ok"
@@ -118,6 +128,7 @@ where
             surface = ctx.surface,
             service,
             action = action_log,
+            request_id,
             elapsed_ms,
             kind = e.kind(),
             "dispatch error"
@@ -126,6 +137,7 @@ where
             surface = ctx.surface,
             service,
             action = action_log,
+            request_id,
             elapsed_ms,
             kind = e.kind(),
             "dispatch error"
@@ -138,10 +150,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{SharedBuf, captured_logs};
     use lab_apis::core::action::{ActionSpec, ParamSpec};
     use serde_json::json;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -199,7 +213,10 @@ mod tests {
     #[tokio::test]
     async fn success_path_returns_json_value() {
         let req = make_req("safe.read", json!({}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| ok_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
+        .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
         let Json(val) = result.unwrap();
         assert_eq!(val["result"], "success");
@@ -210,7 +227,10 @@ mod tests {
     #[tokio::test]
     async fn error_path_preserves_tool_error_kind() {
         let req = make_req("safe.read", json!({}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| err_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            err_dispatch(a, p)
+        })
+        .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind(), "missing_param");
@@ -221,7 +241,10 @@ mod tests {
     #[tokio::test]
     async fn destructive_without_confirm_returns_confirmation_required() {
         let req = make_req("danger.delete", json!({"id": "abc"}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| ok_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
+        .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(
@@ -235,7 +258,10 @@ mod tests {
     #[tokio::test]
     async fn destructive_with_confirm_false_returns_confirmation_required() {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": false}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| ok_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
+        .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind(), "confirmation_required");
@@ -246,7 +272,10 @@ mod tests {
     #[tokio::test]
     async fn destructive_with_confirm_true_proceeds_to_dispatch() {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| ok_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
+        .await;
         assert!(
             result.is_ok(),
             "expected dispatch to proceed with confirm=true, got {result:?}"
@@ -259,7 +288,10 @@ mod tests {
     async fn non_destructive_action_proceeds_without_confirm() {
         // No "confirm" key at all — should NOT be blocked.
         let req = make_req("safe.read", json!({}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| ok_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
+        .await;
         assert!(
             result.is_ok(),
             "non-destructive action must not require confirmation"
@@ -274,7 +306,7 @@ mod tests {
         let dispatch_called_clone = Arc::clone(&dispatch_called);
 
         let req = make_req("nonexistent.action", json!({}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, move |_a, _p| {
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, move |_a, _p| {
             let flag = Arc::clone(&dispatch_called_clone);
             async move {
                 flag.store(true, Ordering::SeqCst);
@@ -293,9 +325,17 @@ mod tests {
         );
         // Envelope must include valid actions for agent discoverability.
         let envelope = serde_json::to_value(&err).unwrap();
-        let valid = envelope["valid"].as_array().expect("unknown_action envelope must include `valid` array");
-        assert!(valid.iter().any(|v| v == "safe.read"), "valid must include known actions");
-        assert!(valid.iter().any(|v| v == "danger.delete"), "valid must include known actions");
+        let valid = envelope["valid"]
+            .as_array()
+            .expect("unknown_action envelope must include `valid` array");
+        assert!(
+            valid.iter().any(|v| v == "safe.read"),
+            "valid must include known actions"
+        );
+        assert!(
+            valid.iter().any(|v| v == "danger.delete"),
+            "valid must include known actions"
+        );
         assert!(
             !dispatch_called.load(Ordering::SeqCst),
             "dispatch closure must NOT be called for unknown actions"
@@ -307,15 +347,22 @@ mod tests {
     #[tokio::test]
     async fn confirm_key_stripped_from_params_before_dispatch() {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |_action, params| async move {
-            // `confirm` must not be present in forwarded params
-            assert!(
-                params.get("confirm").is_none(),
-                "`confirm` key must be stripped before dispatch, but found: {:?}",
-                params.get("confirm")
-            );
-            Ok(json!({"result": "ok"}))
-        })
+        let result = handle_action(
+            "testsvc",
+            test_ctx(),
+            None,
+            req,
+            ACTIONS,
+            |_action, params| async move {
+                // `confirm` must not be present in forwarded params
+                assert!(
+                    params.get("confirm").is_none(),
+                    "`confirm` key must be stripped before dispatch, but found: {:?}",
+                    params.get("confirm")
+                );
+                Ok(json!({"result": "ok"}))
+            },
+        )
         .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
     }
@@ -326,7 +373,10 @@ mod tests {
     async fn destructive_with_confirm_dispatch_error_preserves_kind() {
         let req = make_req("danger.delete", json!({"confirm": true}));
         // dispatch returns missing_param (id not given)
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| err_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            err_dispatch(a, p)
+        })
+        .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind(), "missing_param");
@@ -338,7 +388,10 @@ mod tests {
     async fn destructive_with_confirm_string_true_does_not_pass() {
         // confirm: "true" (string) — Value::as_bool returns None for strings.
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": "true"}));
-        let result = handle_action("testsvc", test_ctx(), req, ACTIONS, |a, p| ok_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
+        .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(
@@ -353,8 +406,54 @@ mod tests {
     #[tokio::test]
     async fn empty_actions_rejects_everything() {
         let req = make_req("anything", json!({}));
-        let result = handle_action("testsvc", test_ctx(), req, &[], |a, p| ok_dispatch(a, p)).await;
+        let result = handle_action("testsvc", test_ctx(), None, req, &[], |a, p| {
+            ok_dispatch(a, p)
+        })
+        .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), "unknown_action");
+    }
+
+    #[test]
+    fn dispatch_logs_api_surface_and_request_id() {
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap();
+        let buf = SharedBuf::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(EnvFilter::new("lab=info"))
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_writer(buf.clone())
+                    .with_ansi(false)
+                    .without_time(),
+            );
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let req = make_req("safe.read", json!({}));
+            drop(
+                handle_action(
+                    "testsvc",
+                    test_ctx(),
+                    Some("req-123"),
+                    req,
+                    ACTIONS,
+                    |a, p| ok_dispatch(a, p),
+                )
+                .await
+                .unwrap(),
+            );
+        });
+
+        let logs = captured_logs(&buf);
+        assert!(logs.contains("\"surface\":\"api\""));
+        assert!(logs.contains("\"service\":\"testsvc\""));
+        assert!(logs.contains("\"action\":\"safe.read\""));
+        assert!(logs.contains("\"request_id\":\"req-123\""));
+        assert!(logs.contains("\"elapsed_ms\""));
     }
 }

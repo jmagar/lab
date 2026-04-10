@@ -48,7 +48,7 @@ ratatui      = "0.30.0"
 crossterm    = "0.29"
 
 # mcp
-rmcp         = { version = "1.3", features = ["transport-io"] }
+rmcp         = { version = "1.3", features = ["transport-io", "elicitation"] }
 
 # http server (lab binary only)
 axum         = { version = "0.8", features = ["macros", "json", "tokio", "http2"] }

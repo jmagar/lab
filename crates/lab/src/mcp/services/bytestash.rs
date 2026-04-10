@@ -1,13 +1,11 @@
 //! MCP adapter for the `ByteStash` tool.
 //!
-//! All shared operation logic lives in `crates/lab/src/services/bytestash.rs`.
-//! This module re-exports the catalog and dispatch function for MCP wiring.
-
-pub use crate::services::bytestash::{ACTIONS, dispatch};
+//! All shared operation logic lives in `crates/lab/src/dispatch/bytestash.rs`.
+//! MCP wiring (catalog + dispatch) is done directly in `mcp/registry.rs`.
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::dispatch::bytestash::ACTIONS;
 
     #[test]
     fn help_includes_core_read_only_actions() {
