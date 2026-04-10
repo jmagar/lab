@@ -1,7 +1,6 @@
 //! Gotify request/response types.
 //!
-//! Mirrors the Gotify Swagger 2.0 spec. Field names and priorities follow
-//! the upstream schema exactly.
+//! Mirrors the Gotify Swagger 2.0 spec. Field names follow the upstream schema.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +18,11 @@ pub struct ApplicationId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ClientId(pub u64);
+
+/// Newtype wrapper around a Gotify user id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UserId(pub u64);
 
 /// A message posted to Gotify.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +50,32 @@ pub struct SendMessage {
     pub extras: Option<serde_json::Value>,
 }
 
+/// Paging metadata from Gotify list endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Paging {
+    pub size: i64,
+    pub page: i64,
+    pub total_page: i64,
+    pub since: Option<i64>,
+    pub limit: i64,
+}
+
+/// Paginated message list response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PagedMessages {
+    pub paging: Paging,
+    pub messages: Vec<Message>,
+}
+
+/// Server health status from `GET /health`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Health {
+    /// Overall health — `"green"` when healthy.
+    pub health: String,
+    /// Database health — `"green"` when healthy.
+    pub database: String,
+}
+
 /// A Gotify application (channel for sending messages).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Application {
@@ -58,10 +88,24 @@ pub struct Application {
     pub image: Option<String>,
 }
 
+/// Request body for creating or updating an application.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApplicationParams {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// A Gotify client (subscriber that receives messages).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Client {
     pub id: ClientId,
     pub name: String,
     pub token: String,
+}
+
+/// Request body for creating or updating a client.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClientParams {
+    pub name: String,
 }
