@@ -146,7 +146,7 @@ impl CliPresence {
 // ── MarketplaceState ──────────────────────────────────────────────────────────
 
 /// State for the Plugins/Marketplace tab.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct MarketplaceState {
     pub plugins: Vec<MarketplacePlugin>,
     pub selected: usize,
@@ -154,6 +154,18 @@ pub struct MarketplaceState {
     pub preview: Option<crate::tui::preview::PreviewState>,
     /// Filter view to a single ecosystem, or show all when `None`.
     pub filter_ecosystem: Option<Ecosystem>,
+}
+
+impl Default for MarketplaceState {
+    fn default() -> Self {
+        Self {
+            plugins: Vec::new(),
+            selected: 0,
+            loading: true,
+            preview: None,
+            filter_ecosystem: None,
+        }
+    }
 }
 
 impl MarketplaceState {
