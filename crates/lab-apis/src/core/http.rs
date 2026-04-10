@@ -293,9 +293,7 @@ impl HttpClient {
         variables: Option<&serde_json::Value>,
     ) -> Result<T, ApiError> {
         let body = GraphQlRequest { query, variables };
-        let raw: serde_json::Value = self.post_json(path, &body).await?;
-        let resp: GraphQlResponse<T> =
-            serde_json::from_value(raw).map_err(|e| ApiError::Decode(e.to_string()))?;
+        let resp: GraphQlResponse<T> = self.post_json(path, &body).await?;
         if let Some(errors) = resp.errors {
             let msg = errors
                 .iter()
