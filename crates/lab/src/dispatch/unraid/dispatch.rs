@@ -59,13 +59,6 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let action_name = crate::dispatch::helpers::require_str(&params, "action")?;
             return action_schema(ACTIONS, action_name);
         }
-        _ if !ACTIONS.iter().any(|a| a.name == action) => {
-            return Err(ToolError::UnknownAction {
-                message: format!("unknown action '{action}'"),
-                valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
-                hint: None,
-            });
-        }
         _ => {}
     }
     dispatch_with_client(&require_client()?, action, params).await
