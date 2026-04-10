@@ -101,6 +101,7 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
     let mut app = App::new();
 
     // Spawn startup background tasks.
+    spawn_seed_task(tx.clone());
     spawn_health_check(tx.clone());
     spawn_marketplace_load(tx.clone());
 
@@ -147,6 +148,22 @@ fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<
 
     restore_terminal(&mut terminal);
     Ok(())
+}
+
+/// Spawn a background task that performs the initial blocking file I/O for the
+/// Services tab (`.mcp.json` + `.env` cache) without blocking the tokio executor.
+fn spawn_seed_task(tx: mpsc::Sender<AppEvent>) {
+    tokio::runtime::Handle::current().spawn(async move {
+        let (mcp_json_path, enabled_services, env_cache) =
+            tokio::task::spawn_blocking(crate::tui::services::load_initial_state)
+                .await
+                .unwrap_or_default();
+        let _ = tx.send(AppEvent::ServicesSeeded {
+            mcp_json_path,
+            enabled_services,
+            env_cache,
+        });
+    });
 }
 
 /// Spawn a background task that runs health checks for all enabled services
@@ -207,6 +224,16 @@ fn handle_event(app: &mut App, ev: AppEvent) {
         }
         AppEvent::HealthChecksDone(results) => {
             app.services.update_health(results);
+            app.dirty = true;
+        }
+        AppEvent::ServicesSeeded {
+            mcp_json_path,
+            enabled_services,
+            env_cache,
+        } => {
+            app.services.mcp_json_path = mcp_json_path;
+            app.services.enabled_services = enabled_services;
+            app.services.env_cache = env_cache;
             app.dirty = true;
         }
         AppEvent::ProgressLine { .. } | AppEvent::TaskDone { .. } => {

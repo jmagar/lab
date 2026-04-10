@@ -24,6 +24,12 @@ pub enum AppEvent {
     PreviewReady(crate::tui::preview::PreviewReady),
     /// Health check results for all enabled services.
     HealthChecksDone(Vec<ServiceHealth>),
+    /// Initial blocking I/O (`.mcp.json` + `.env` cache) completed asynchronously.
+    ServicesSeeded {
+        mcp_json_path: Option<std::path::PathBuf>,
+        enabled_services: std::collections::HashSet<String>,
+        env_cache: std::collections::HashMap<String, String>,
+    },
 }
 
 /// Lightweight health snapshot for one service.
