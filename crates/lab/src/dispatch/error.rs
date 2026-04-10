@@ -146,82 +146,81 @@ impl ToolError {
 // All SDK error → ToolError conversions live here (not in MCP or HTTP
 // surface modules) so both surfaces share one conversion path.
 // Each impl is feature-gated to match its service.
+//
+// Adding a new service requires one macro invocation:
+//
+//   impl_tool_error_from!(
+//       "myservice",
+//       lab_apis::myservice::error::MyServiceError,
+//       Api(api) => api.kind()         // standard arm — covers ApiError wrapper
+//   );
+//
+// For services with additional error variants:
+//
+//   impl_tool_error_from!(
+//       "radarr",
+//       lab_apis::radarr::error::RadarrError,
+//       Api(api) => api.kind(),
+//       NotFound { .. } => "not_found"
+//   );
 
-#[cfg(feature = "bytestash")]
-impl From<lab_apis::bytestash::error::ByteStashError> for ToolError {
-    fn from(e: lab_apis::bytestash::error::ByteStashError) -> Self {
-        let kind = match &e {
-            lab_apis::bytestash::error::ByteStashError::Api(api) => api.kind(),
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
+/// Generate a feature-gated `From<$err> for ToolError` impl.
+///
+/// The macro imports all variants of `$err` via `use $err::*` so arms need
+/// not be fully qualified.  All arms must evaluate to `&str`.
+macro_rules! impl_tool_error_from {
+    ($feature:literal, $err:path, $($arm:pat => $kind:expr),+ $(,)?) => {
+        #[cfg(feature = $feature)]
+        impl From<$err> for ToolError {
+            fn from(e: $err) -> Self {
+                #[allow(unused_imports)]
+                use $err::*;
+                let kind: &str = match &e {
+                    $($arm => $kind,)+
+                };
+                Self::Sdk {
+                    sdk_kind: kind.to_string(),
+                    message: e.to_string(),
+                }
+            }
         }
-    }
+    };
 }
 
-#[cfg(feature = "radarr")]
-impl From<lab_apis::radarr::error::RadarrError> for ToolError {
-    fn from(e: lab_apis::radarr::error::RadarrError) -> Self {
-        let kind = match &e {
-            lab_apis::radarr::error::RadarrError::Api(api) => api.kind(),
-            lab_apis::radarr::error::RadarrError::NotFound { .. } => "not_found",
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
+impl_tool_error_from!(
+    "bytestash",
+    lab_apis::bytestash::error::ByteStashError,
+    Api(api) => api.kind()
+);
 
-#[cfg(feature = "sabnzbd")]
-impl From<lab_apis::sabnzbd::error::SabnzbdError> for ToolError {
-    fn from(e: lab_apis::sabnzbd::error::SabnzbdError) -> Self {
-        let kind = match &e {
-            lab_apis::sabnzbd::error::SabnzbdError::Api(api) => api.kind(),
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
+impl_tool_error_from!(
+    "radarr",
+    lab_apis::radarr::error::RadarrError,
+    Api(api) => api.kind(),
+    NotFound { .. } => "not_found"
+);
 
-#[cfg(feature = "unifi")]
-impl From<lab_apis::unifi::error::UnifiError> for ToolError {
-    fn from(e: lab_apis::unifi::error::UnifiError) -> Self {
-        let kind = match &e {
-            lab_apis::unifi::error::UnifiError::Api(api) => api.kind(),
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
+impl_tool_error_from!(
+    "sabnzbd",
+    lab_apis::sabnzbd::error::SabnzbdError,
+    Api(api) => api.kind()
+);
 
-#[cfg(feature = "unraid")]
-impl From<lab_apis::unraid::UnraidError> for ToolError {
-    fn from(e: lab_apis::unraid::UnraidError) -> Self {
-        let kind = match &e {
-            lab_apis::unraid::UnraidError::Http(api) => api.kind(),
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
+impl_tool_error_from!(
+    "unifi",
+    lab_apis::unifi::error::UnifiError,
+    Api(api) => api.kind()
+);
 
-#[cfg(feature = "gotify")]
-impl From<lab_apis::gotify::error::GotifyError> for ToolError {
-    fn from(e: lab_apis::gotify::error::GotifyError) -> Self {
-        let kind = match &e {
-            lab_apis::gotify::error::GotifyError::Api(api) => api.kind(),
-        };
-        Self::Sdk {
-            sdk_kind: kind.to_string(),
-            message: e.to_string(),
-        }
-    }
-}
+// unraid uses Http variant (not Api) as the ApiError wrapper.
+impl_tool_error_from!(
+    "unraid",
+    lab_apis::unraid::UnraidError,
+    Http(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "gotify",
+    lab_apis::gotify::error::GotifyError,
+    Api(api) => api.kind()
+);
