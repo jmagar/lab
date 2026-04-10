@@ -47,17 +47,18 @@ impl HttpClient {
         &self.auth
     }
 
-    fn url(&self, path: &str) -> String {
+    fn url(&self, path: &str) -> Result<String, ApiError> {
         // Only relative paths are accepted. Absolute URLs would forward auth
-        // headers to a foreign origin — explicitly rejected here.
-        debug_assert!(
-            !path.starts_with("http://") && !path.starts_with("https://"),
-            "absolute URLs are not permitted; callers must pass relative paths"
-        );
+        // headers to a foreign origin — rejected at runtime in all build profiles.
+        if path.starts_with("http://") || path.starts_with("https://") {
+            return Err(ApiError::Internal(format!(
+                "absolute URL not permitted: {path}"
+            )));
+        }
         if path.starts_with('/') {
-            format!("{}{path}", self.base_url.trim_end_matches('/'))
+            Ok(format!("{}{path}", self.base_url.trim_end_matches('/')))
         } else {
-            format!("{}/{path}", self.base_url.trim_end_matches('/'))
+            Ok(format!("{}/{path}", self.base_url.trim_end_matches('/')))
         }
     }
 
@@ -80,7 +81,7 @@ impl HttpClient {
         &self,
         path: &str,
     ) -> Result<T, ApiError> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let resp = self
             .apply_auth(self.inner.get(&url))
             .send()
@@ -98,7 +99,7 @@ impl HttpClient {
         path: &str,
         query: &[(String, String)],
     ) -> Result<T, ApiError> {
-        let mut url = reqwest::Url::parse(&self.url(path))
+        let mut url = reqwest::Url::parse(&self.url(path)?)
             .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
         if !query.is_empty() {
             {
@@ -125,7 +126,7 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<T, ApiError> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let resp = self
             .apply_auth(self.inner.post(&url).json(body))
             .send()
@@ -143,7 +144,7 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<T, ApiError> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let resp = self
             .apply_auth(self.inner.put(&url).json(body))
             .send()
@@ -161,7 +162,7 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<T, ApiError> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let resp = self
             .apply_auth(self.inner.patch(&url).json(body))
             .send()
@@ -175,7 +176,7 @@ impl HttpClient {
     /// # Errors
     /// Returns [`ApiError`] on transport or status failure.
     pub async fn get_void(&self, path: &str) -> Result<(), ApiError> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let resp = self
             .apply_auth(self.inner.get(&url))
             .send()
@@ -189,7 +190,7 @@ impl HttpClient {
     /// # Errors
     /// Returns [`ApiError`] on transport, status, or decode failure.
     pub async fn delete(&self, path: &str) -> Result<(), ApiError> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let resp = self
             .apply_auth(self.inner.delete(&url))
             .send()
@@ -207,7 +208,7 @@ impl HttpClient {
         path: &str,
         query: &[(String, String)],
     ) -> Result<(), ApiError> {
-        let mut url = reqwest::Url::parse(&self.url(path))
+        let mut url = reqwest::Url::parse(&self.url(path)?)
             .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
         if !query.is_empty() {
             {
@@ -234,7 +235,7 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<(), ApiError> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let resp = self
             .apply_auth(self.inner.post(&url).json(body))
             .send()
@@ -282,5 +283,51 @@ impl HttpClient {
         }
         let (code, body) = Self::read_error_body(resp).await;
         Err(Self::error_for_status(code, body))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::auth::Auth;
+
+    fn make_client(base_url: &str) -> HttpClient {
+        HttpClient::new(base_url, Auth::None).expect("client construction should succeed")
+    }
+
+    #[test]
+    fn absolute_url_rejected_at_runtime() {
+        let client = make_client("http://localhost:8080");
+
+        let err_http = client.url("http://evil.example.com/steal");
+        assert!(
+            matches!(err_http, Err(ApiError::Internal(ref msg)) if msg.contains("absolute URL not permitted")),
+            "expected Internal error for http:// path, got: {err_http:?}"
+        );
+
+        let err_https = client.url("https://evil.example.com/steal");
+        assert!(
+            matches!(err_https, Err(ApiError::Internal(ref msg)) if msg.contains("absolute URL not permitted")),
+            "expected Internal error for https:// path, got: {err_https:?}"
+        );
+    }
+
+    #[test]
+    fn relative_paths_accepted() {
+        let client = make_client("http://localhost:8080");
+
+        let url = client.url("/api/v1/status").expect("relative path should be accepted");
+        assert_eq!(url, "http://localhost:8080/api/v1/status");
+
+        let url2 = client.url("api/v1/status").expect("bare relative path should be accepted");
+        assert_eq!(url2, "http://localhost:8080/api/v1/status");
+    }
+
+    #[test]
+    fn base_url_trailing_slash_normalised() {
+        let client = make_client("http://localhost:8080/");
+
+        let url = client.url("/api/v1/status").expect("should normalise trailing slash");
+        assert_eq!(url, "http://localhost:8080/api/v1/status");
     }
 }

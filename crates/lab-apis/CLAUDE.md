@@ -36,7 +36,7 @@ sub-modules (`client/chat.rs`, etc.) — same pattern applied recursively. `open
 - **No retry logic, no backoff, no tracing spans inside `HttpClient`.** Callers own spans.
 - `RateLimited.retry_after` is always `None` from `HttpClient`. Parse `Retry-After` manually
   if the value is needed.
-- Absolute URL guard (`debug_assert!`) is **debug-only** — does not enforce in release builds.
+- Absolute URL guard is a **runtime check** — `url()` returns `Err(ApiError::Internal)` for absolute paths in both debug and release builds.
 
 ## Auth Enum
 
