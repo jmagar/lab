@@ -17,12 +17,12 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use ratatui::Frame;
+use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
-use ratatui::Terminal;
 
 use crate::tui::events::AppEvent;
 use crate::tui::state::{App, Tab};
@@ -82,21 +82,27 @@ pub fn run() -> Result<()> {
 
     // Thread 2 — tick generator (100 ms, drives spinner animation).
     let tx_tick = tx.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(100));
-        if tx_tick.send(AppEvent::Tick).is_err() {
-            break;
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_millis(100));
+            if tx_tick.send(AppEvent::Tick).is_err() {
+                break;
+            }
         }
     });
 
-    tui_main(rx)
+    tui_main(tx, rx)
 }
 
 // ── Main render loop ──────────────────────────────────────────────────────────
 
-fn tui_main(rx: mpsc::Receiver<AppEvent>) -> Result<()> {
+fn tui_main(tx: mpsc::Sender<AppEvent>, rx: mpsc::Receiver<AppEvent>) -> Result<()> {
     let mut terminal = setup_terminal()?;
     let mut app = App::new();
+
+    // Spawn startup background tasks.
+    spawn_health_check(tx.clone());
+    spawn_marketplace_load(tx.clone());
 
     // Initial render.
     terminal.draw(|f| ui(f, &mut app))?;
@@ -109,6 +115,22 @@ fn tui_main(rx: mpsc::Receiver<AppEvent>) -> Result<()> {
             break;
         }
 
+        // Handle editor launch: tear down terminal, run editor, re-init, reload cache.
+        if app.open_editor {
+            app.open_editor = false;
+            restore_terminal(&mut terminal);
+            let _ = crate::tui::services::LabServicesState::open_env_editor();
+            terminal = setup_terminal()?;
+            app.services.reload_env_cache();
+            app.dirty = true;
+        }
+
+        // Handle health refresh: spawn a fresh health check background task.
+        if app.refresh_health {
+            app.refresh_health = false;
+            spawn_health_check(tx.clone());
+        }
+
         if app.dirty {
             terminal.draw(|f| ui(f, &mut app))?;
             app.dirty = false;
@@ -117,6 +139,28 @@ fn tui_main(rx: mpsc::Receiver<AppEvent>) -> Result<()> {
 
     restore_terminal(&mut terminal);
     Ok(())
+}
+
+/// Spawn a background task that runs health checks for all enabled services
+/// and posts the results back on the event channel.
+fn spawn_health_check(tx: mpsc::Sender<AppEvent>) {
+    let env_path = std::env::var_os("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".lab").join(".env"))
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.lab/.env"));
+    tokio::runtime::Handle::current().spawn(async move {
+        let results = crate::tui::metadata::check_all_services(&env_path).await;
+        let _ = tx.send(AppEvent::HealthChecksDone(results));
+    });
+}
+
+/// Spawn a background task that detects installed CLIs then loads all marketplace
+/// catalogs, posting the result back on the event channel.
+fn spawn_marketplace_load(tx: mpsc::Sender<AppEvent>) {
+    tokio::runtime::Handle::current().spawn(async move {
+        let cli = crate::tui::marketplace::CliPresence::detect().await;
+        let plugins = crate::tui::marketplace::MarketplaceLoader::load_all(&cli).await;
+        let _ = tx.send(AppEvent::MarketplaceLoaded(plugins));
+    });
 }
 
 // ── Event handling ────────────────────────────────────────────────────────────
@@ -150,12 +194,13 @@ fn handle_event(app: &mut App, ev: AppEvent) {
             app.dirty = true;
         }
         AppEvent::PreviewReady(ready) => {
-            app.marketplace.preview =
-                Some(crate::tui::preview::PreviewState::Ready { plugin: ready.plugin });
+            app.marketplace.preview = Some(crate::tui::preview::PreviewState::Ready {
+                plugin: ready.plugin,
+            });
             app.dirty = true;
         }
-        AppEvent::HealthChecksDone(_results) => {
-            // Will be wired up in lab-iuk.3.
+        AppEvent::HealthChecksDone(results) => {
+            app.services.update_health(results);
             app.dirty = true;
         }
         AppEvent::ProgressLine { .. } | AppEvent::TaskDone { .. } => {
@@ -167,7 +212,9 @@ fn handle_event(app: &mut App, ev: AppEvent) {
 fn handle_key(app: &mut App, key: KeyEvent) {
     match (key.modifiers, key.code) {
         // Quit
-        (_, KeyCode::Char('q')) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+        (_, KeyCode::Char('q'))
+        | (_, KeyCode::Esc)
+        | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
             app.should_quit = true;
         }
 
@@ -212,8 +259,7 @@ fn handle_key(app: &mut App, key: KeyEvent) {
                 Tab::Plugins => {
                     let len = app.marketplace.plugins.len();
                     if len > 0 {
-                        app.marketplace.selected =
-                            (app.marketplace.selected + 1).min(len - 1);
+                        app.marketplace.selected = (app.marketplace.selected + 1).min(len - 1);
                     }
                 }
                 Tab::Update => {}
@@ -228,17 +274,49 @@ fn handle_key(app: &mut App, key: KeyEvent) {
                     app.services.select_prev();
                 }
                 Tab::Plugins => {
-                    app.marketplace.selected =
-                        app.marketplace.selected.saturating_sub(1);
+                    app.marketplace.selected = app.marketplace.selected.saturating_sub(1);
                 }
                 Tab::Update => {}
             }
             app.dirty = true;
         }
 
-        // Enter / Esc — stubs for future waves
-        (_, KeyCode::Enter) | (_, KeyCode::Esc) => {
+        // Enter — stub for future waves
+        (_, KeyCode::Enter) => {
             app.dirty = true;
+        }
+
+        // Space — toggle service in .mcp.json (Services tab only)
+        (KeyModifiers::NONE, KeyCode::Char(' ')) => {
+            if app.current_tab == Tab::Services {
+                if let Err(e) = app.services.toggle_enabled() {
+                    app.push_toast(format!("Toggle failed: {e}"));
+                }
+                app.dirty = true;
+            }
+        }
+
+        // e — open ~/.lab/.env in $EDITOR (Services tab only)
+        (KeyModifiers::NONE, KeyCode::Char('e')) => {
+            if app.current_tab == Tab::Services {
+                app.open_editor = true;
+            }
+        }
+
+        // r — toggle secret reveal (Services tab only)
+        (KeyModifiers::NONE, KeyCode::Char('r')) => {
+            if app.current_tab == Tab::Services {
+                app.services.toggle_reveal();
+                app.dirty = true;
+            }
+        }
+
+        // F5 — refresh health dots (Services tab only)
+        (_, KeyCode::F(5)) => {
+            if app.current_tab == Tab::Services {
+                app.refresh_health = true;
+                app.push_toast("Refreshing health\u{2026}".to_string());
+            }
         }
 
         _ => {}
@@ -331,9 +409,7 @@ fn render_hints(f: &mut Frame<'_>, area: Rect) {
         Span::raw(" navigate  "),
         Span::styled("Enter", Style::default().fg(Color::Cyan)),
         Span::raw(" confirm  "),
-        Span::styled("Esc", Style::default().fg(Color::Cyan)),
-        Span::raw(" back  "),
-        Span::styled("q", Style::default().fg(Color::Cyan)),
+        Span::styled("q/Esc", Style::default().fg(Color::Cyan)),
         Span::raw(" quit"),
     ]);
     f.render_widget(Paragraph::new(hints), area);

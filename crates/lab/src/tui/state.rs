@@ -64,6 +64,13 @@ pub struct App {
     pub tick_count: u64,
     /// Set to `true` when the user requests exit.
     pub should_quit: bool,
+    /// Set to `true` when the user presses `e` to open `~/.lab/.env` in `$EDITOR`.
+    /// `tui_main` handles this by tearing down the terminal, launching the editor,
+    /// re-initializing the terminal, and reloading the env cache.
+    pub open_editor: bool,
+    /// Set to `true` when the user presses `F5` to re-run health checks.
+    /// `tui_main` spawns a fresh background health task and clears this flag.
+    pub refresh_health: bool,
 }
 
 impl App {
@@ -78,6 +85,8 @@ impl App {
             dirty: true,
             tick_count: 0,
             should_quit: false,
+            open_editor: false,
+            refresh_health: false,
         }
     }
 
