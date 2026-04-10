@@ -98,3 +98,63 @@ async fn get_json_returns_auth_failed_on_401() {
         .expect_err("should fail on 401");
     assert!(matches!(err, ApiError::Auth), "expected Auth, got {err:?}");
 }
+
+#[tokio::test]
+async fn get_json_returns_rate_limited_on_429() {
+    use lab_apis::core::ApiError;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/throttled"))
+        .respond_with(ResponseTemplate::new(429))
+        .mount(&server)
+        .await;
+
+    let client = HttpClient::new(
+        server.uri(),
+        Auth::ApiKey {
+            header: "X-Api-Key".into(),
+            key: "secret".into(),
+        },
+    )
+    .expect("HttpClient::new");
+
+    let err: ApiError = client
+        .get_json::<Pong>("/throttled")
+        .await
+        .expect_err("should fail on 429");
+    assert!(
+        matches!(err, ApiError::RateLimited { .. }),
+        "expected RateLimited, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn get_json_returns_server_error_on_500() {
+    use lab_apis::core::ApiError;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/boom"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("internal server error"))
+        .mount(&server)
+        .await;
+
+    let client = HttpClient::new(
+        server.uri(),
+        Auth::ApiKey {
+            header: "X-Api-Key".into(),
+            key: "secret".into(),
+        },
+    )
+    .expect("HttpClient::new");
+
+    let err: ApiError = client
+        .get_json::<Pong>("/boom")
+        .await
+        .expect_err("should fail on 500");
+    assert!(
+        matches!(err, ApiError::Server { status: 500, .. }),
+        "expected Server(500), got {err:?}"
+    );
+}
