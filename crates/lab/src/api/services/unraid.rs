@@ -1,29 +1,45 @@
 //! HTTP route group for the `unraid` service.
 
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::context::DispatchContext;
+use crate::dispatch::error::ToolError;
+use crate::dispatch::unraid::ACTIONS;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
 }
 
 async fn handle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<ActionRequest>,
-) -> Result<Json<Value>, crate::dispatch::error::ToolError> {
+) -> Result<Json<Value>, ToolError> {
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    let client = state
+        .clients
+        .unraid
+        .clone()
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: "UNRAID_URL or UNRAID_API_KEY not configured".into(),
+        })?;
     handle_action(
         "unraid",
-        DispatchContext { surface: "api", instance: None },
-        None,
-        req,
-        crate::dispatch::unraid::ACTIONS,
-        |action, params| async move {
-            crate::dispatch::unraid::dispatch(&action, params).await
+        DispatchContext {
+            surface: "api",
+            instance: None,
         },
+        request_id,
+        req,
+        ACTIONS,
+        move |action, params| async move {
+            crate::dispatch::unraid::dispatch_with_client(&client, &action, params).await
+        },
+        Some(&headers),
     )
     .await
 }
