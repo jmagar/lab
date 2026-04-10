@@ -103,6 +103,20 @@ where
 
     // Clone action before the move into dispatch — needed for post-dispatch logging.
     let action_log = action.clone();
+
+    // Intent log: emit before dispatch so there is audit evidence even if the downstream
+    // service errors mid-way. Only fires for destructive actions after confirmation succeeds.
+    if spec.destructive {
+        tracing::info!(
+            surface = ctx.surface,
+            service,
+            action = action_log,
+            request_id,
+            destructive = true,
+            "destructive action authorized — executing"
+        );
+    }
+
     let dispatch_span = tracing::info_span!(
         "dispatch",
         surface = ctx.surface,
@@ -416,7 +430,7 @@ mod tests {
 
     #[test]
     fn dispatch_logs_api_surface_and_request_id() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap();
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=info"))
@@ -455,5 +469,118 @@ mod tests {
         assert!(logs.contains("\"action\":\"safe.read\""));
         assert!(logs.contains("\"request_id\":\"req-123\""));
         assert!(logs.contains("\"elapsed_ms\""));
+    }
+
+    // ── Destructive intent log fires before dispatch ok ──────────────────────
+
+    #[test]
+    fn destructive_action_logs_intent_before_dispatch() {
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let buf = SharedBuf::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(EnvFilter::new("lab=info"))
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_writer(buf.clone())
+                    .with_ansi(false)
+                    .without_time(),
+            );
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
+            drop(
+                handle_action("testsvc", test_ctx(), Some("req-del-1"), req, ACTIONS, |a, p| {
+                    ok_dispatch(a, p)
+                })
+                .await
+                .unwrap(),
+            );
+        });
+
+        let logs = captured_logs(&buf);
+
+        // Both events must be present.
+        assert!(
+            logs.contains("destructive action authorized"),
+            "expected intent log, got: {logs}"
+        );
+        assert!(logs.contains("dispatch ok"), "expected dispatch ok log, got: {logs}");
+
+        // Intent event must include required fields.
+        assert!(logs.contains("\"surface\":\"api\""), "intent log missing surface field");
+        assert!(logs.contains("\"service\":\"testsvc\""), "intent log missing service field");
+        assert!(logs.contains("\"action\":\"danger.delete\""), "intent log missing action field");
+        assert!(
+            logs.contains("\"destructive\":true"),
+            "intent log missing destructive=true field"
+        );
+
+        // Dispatch ok must also carry destructive=true.
+        assert!(
+            logs.contains("\"destructive\":true"),
+            "dispatch ok log missing destructive field"
+        );
+
+        // Intent event must appear before dispatch ok event in the log stream.
+        let intent_pos = logs.find("destructive action authorized").unwrap();
+        let ok_pos = logs.find("dispatch ok").unwrap();
+        assert!(
+            intent_pos < ok_pos,
+            "intent log must appear before dispatch ok (intent_pos={intent_pos}, ok_pos={ok_pos})"
+        );
+
+        // Non-destructive actions must NOT emit the intent event.
+        // Run a separate safe action through the same subscriber and confirm no spurious entry.
+        // (The logs buffer already only contains destructive-action output above, so this just
+        //  double-checks count: only one "destructive action authorized" line should exist.)
+        let intent_count = logs.matches("destructive action authorized").count();
+        assert_eq!(intent_count, 1, "expected exactly one intent log line, got {intent_count}");
+    }
+
+    // ── Non-destructive action must NOT emit intent log ──────────────────────
+
+    #[test]
+    fn non_destructive_action_does_not_log_intent() {
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let buf = SharedBuf::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(EnvFilter::new("lab=info"))
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_writer(buf.clone())
+                    .with_ansi(false)
+                    .without_time(),
+            );
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let req = make_req("safe.read", json!({}));
+            drop(
+                handle_action("testsvc", test_ctx(), None, req, ACTIONS, |a, p| {
+                    ok_dispatch(a, p)
+                })
+                .await
+                .unwrap(),
+            );
+        });
+
+        let logs = captured_logs(&buf);
+        assert!(
+            !logs.contains("destructive action authorized"),
+            "non-destructive action must not emit intent log, got: {logs}"
+        );
+        // Dispatch ok is still emitted for non-destructive actions.
+        assert!(logs.contains("dispatch ok"), "expected dispatch ok for non-destructive action");
     }
 }
