@@ -67,9 +67,9 @@ pub fn patch_mcp_json(path: &Path, service_name: &str, enabled: bool) -> anyhow:
             match rw.try_write() {
                 Ok(g) => break 'lock g,
                 Err(_) if attempt < 2 => std::thread::sleep(Duration::from_millis(100)),
-                Err(_) => bail!(
-                    ".mcp.json is locked — Claude Code may be writing; retry in a moment"
-                ),
+                Err(_) => {
+                    bail!(".mcp.json is locked — Claude Code may be writing; retry in a moment")
+                }
             }
         }
         bail!(".mcp.json is locked — retry in a moment");
@@ -117,11 +117,7 @@ pub fn patch_mcp_json(path: &Path, service_name: &str, enabled: bool) -> anyhow:
     Ok(())
 }
 
-fn patch_services_array(
-    root: &mut Value,
-    service_name: &str,
-    enabled: bool,
-) -> anyhow::Result<()> {
+fn patch_services_array(root: &mut Value, service_name: &str, enabled: bool) -> anyhow::Result<()> {
     let servers = root
         .get_mut("mcpServers")
         .and_then(|s| s.get_mut("lab"))

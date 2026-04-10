@@ -58,9 +58,17 @@ impl PluginInstallState {
     /// - The last N lines that fit in the available height, newest at the bottom.
     pub fn render(&self, f: &mut Frame<'_>, area: Rect) {
         let status_badge = if self.error.is_some() {
-            Span::styled(" [ERROR] ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+            Span::styled(
+                " [ERROR] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            )
         } else if self.done {
-            Span::styled(" [DONE] ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+            Span::styled(
+                " [DONE] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )
         } else {
             Span::styled(" [running…] ", Style::default().fg(Color::Yellow))
         };
@@ -89,7 +97,10 @@ impl PluginInstallState {
             .iter()
             .map(|l| {
                 let safe = crate::tui::display::sanitize_display(l, 4096);
-                ListItem::new(Line::from(Span::styled(safe, Style::default().fg(Color::White))))
+                ListItem::new(Line::from(Span::styled(
+                    safe,
+                    Style::default().fg(Color::White),
+                )))
             })
             .collect();
 
@@ -120,10 +131,7 @@ mod tests {
         }
         assert_eq!(state.lines.len(), 1_000, "must cap at 1 000 lines");
         assert_eq!(state.lines[0], "line 2", "oldest lines must be evicted");
-        assert_eq!(
-            state.lines[999], "line 1001",
-            "newest line must be at tail"
-        );
+        assert_eq!(state.lines[999], "line 1001", "newest line must be at tail");
     }
 
     #[test]
