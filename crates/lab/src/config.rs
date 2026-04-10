@@ -109,7 +109,7 @@ fn toml_path() -> Option<PathBuf> {
 ///
 /// Use for secret env values (`API_KEY`, `TOKEN`, `PASSWORD`) so they
 /// never leak through `Debug`-printing config structs or tracing fields.
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, PartialEq, Eq)]
 pub struct Secret(String);
 
 impl Secret {
@@ -133,6 +133,12 @@ impl std::fmt::Debug for Secret {
 impl std::fmt::Display for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("[REDACTED]")
+    }
+}
+
+impl serde::Serialize for Secret {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("***REDACTED***")
     }
 }
 
@@ -233,6 +239,17 @@ mod tests {
         assert_eq!(format!("{s:?}"), "[REDACTED]");
         assert_eq!(format!("{s}"), "[REDACTED]");
         assert_eq!(s.expose(), "hunter2");
+    }
+
+    #[test]
+    fn secret_serialize_emits_placeholder_not_plaintext() {
+        let s = Secret::new("super-secret-api-key".into());
+        let json = serde_json::to_string(&s).expect("serialize must not fail");
+        assert_eq!(json, "\"***REDACTED***\"", "Secret must serialize to placeholder");
+        assert!(
+            !json.contains("super-secret-api-key"),
+            "Secret must never emit plaintext through serde"
+        );
     }
 
     #[test]

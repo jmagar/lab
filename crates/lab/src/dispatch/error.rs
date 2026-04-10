@@ -48,6 +48,11 @@ pub enum ToolError {
         /// Known instance labels.
         valid: Vec<String>,
     },
+    /// Destructive action invoked without the required confirmation signal.
+    ConfirmationRequired {
+        /// Human-readable message.
+        message: String,
+    },
     /// Pass-through of an `ApiError::kind()` tag from the SDK.
     Sdk {
         /// Stable kind tag (`auth_failed`, `rate_limited`, …).
@@ -85,6 +90,10 @@ impl Serialize for ToolError {
                 "message": message,
                 "valid": valid,
             }),
+            Self::ConfirmationRequired { message } => serde_json::json!({
+                "kind": "confirmation_required",
+                "message": message,
+            }),
             Self::Sdk { sdk_kind, message } => serde_json::json!({
                 "kind": sdk_kind,
                 "message": message,
@@ -100,10 +109,12 @@ impl IntoResponse for ToolError {
             "auth_failed" => StatusCode::UNAUTHORIZED,
             "not_found" => StatusCode::NOT_FOUND,
             "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
-            "missing_param" | "invalid_param" | "validation_failed" | "confirmation_required" => {
+            "missing_param" | "invalid_param" | "validation_failed" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            "unknown_action" | "unknown_subaction" | "unknown_instance" => StatusCode::BAD_REQUEST,
+            "unknown_action" | "unknown_subaction" | "unknown_instance" | "confirmation_required" => {
+                StatusCode::BAD_REQUEST
+            }
             "network_error" | "server_error" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -134,6 +145,7 @@ impl ToolError {
             Self::MissingParam { .. } => "missing_param",
             Self::InvalidParam { .. } => "invalid_param",
             Self::UnknownInstance { .. } => "unknown_instance",
+            Self::ConfirmationRequired { .. } => "confirmation_required",
             Self::Sdk { sdk_kind, .. } => sdk_kind.as_str(),
         }
     }
