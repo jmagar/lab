@@ -350,14 +350,69 @@ Update these docs as part of the same change:
 
 Verification must cover behavior, observability, error shape, and serialization shape.
 
-Required minimums:
+**A service is not done until all three surfaces have been smoke-tested live.**
+
+### Required: Unit Tests
 
 - unit tests for the SDK and shared helpers
-- non-destructive CLI verification against a live instance when possible
-- matching non-destructive MCP verification when possible
 - evidence that one successful path and one failing path are traceable end to end
 - evidence that error kinds and envelopes match the shared contract where touched
 - evidence that machine-readable output matches the intended shape where touched
+
+### Required: Live CLI Smoke Tests
+
+Run non-destructive CLI commands directly against the running service instance. Example:
+
+```bash
+lab linkding bookmarks.list
+lab linkding tags.list
+lab linkding user.profile
+```
+
+Verify that:
+- the command executes without error
+- real data is returned from the live service
+- output is human-readable by default and machine-readable with `--json`
+
+### Required: Live MCP Smoke Tests (via mcporter)
+
+Run the same actions through the MCP surface using `mcporter call`:
+
+```bash
+mcporter call lab.linkding action=bookmarks.list
+mcporter call lab.paperless action=statistics
+mcporter call lab.prowlarr action=system.status
+```
+
+Verify that:
+- `"ok": true` is returned
+- `"data"` contains real service data
+- the envelope shape matches the shared serialization contract
+
+### Required: Live API Smoke Tests (via curl)
+
+Start the lab API server (`lab serve --transport http`) and hit each service endpoint:
+
+```bash
+TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>
+curl -s -X POST http://127.0.0.1:8400/v1/<service> \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"<action>","params":{}}'
+```
+
+Verify that:
+- HTTP 200 is returned for valid actions
+- the response body contains real data from the live service
+- HTTP 400 is returned for unknown actions (structured error envelope)
+
+### Required: Coverage Doc Update
+
+After live testing, update `docs/coverage/<service>.md`:
+
+- add a **Live Test Evidence** section with a table of surface / command / result
+- change `⬜` symbols to `✅` for actions that have been successfully live-tested
+- record the date and service version tested against
 
 If a service works but its request path is still a black box, it is not fully online.
 

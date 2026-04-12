@@ -1,7 +1,6 @@
-//! `lab prowlarr` — CLI stub (not yet implemented).
+//! `lab prowlarr` — CLI stub.
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
-//! See `radarr.rs` for the reference pattern.
+//! Thin shim: parse → dispatch layer → format. See `radarr.rs` for the typed reference pattern.
 
 use std::process::ExitCode;
 
@@ -39,7 +38,7 @@ pub async fn run(args: ProwlarrArgs, format: OutputFormat) -> Result<ExitCode> {
         params,
         format,
         |action, params| async move {
-            crate::mcp::services::prowlarr::dispatch(&action, params).await
+            crate::dispatch::prowlarr::dispatch(&action, params).await
         },
     )
     .await

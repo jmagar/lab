@@ -224,3 +224,39 @@ impl_tool_error_from!(
     lab_apis::gotify::error::GotifyError,
     Api(api) => api.kind()
 );
+
+impl_tool_error_from!(
+    "qdrant",
+    lab_apis::qdrant::error::QdrantError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "tei",
+    lab_apis::tei::error::TeiError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "apprise",
+    lab_apis::apprise::error::AppriseError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "linkding",
+    lab_apis::linkding::error::LinkdingError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "paperless",
+    lab_apis::paperless::error::PaperlessError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "prowlarr",
+    lab_apis::prowlarr::error::ProwlarrError,
+    Api(api) => api.kind()
+);

@@ -39,7 +39,7 @@ pub async fn run(args: PaperlessArgs, format: OutputFormat) -> Result<ExitCode> 
         params,
         format,
         |action, params| async move {
-            crate::mcp::services::paperless::dispatch(&action, params).await
+            crate::dispatch::paperless::dispatch(&action, params).await
         },
     )
     .await
