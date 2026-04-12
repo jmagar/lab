@@ -73,6 +73,16 @@ impl AppState {
     #[must_use]
     pub fn new() -> Self {
         let registry = build_default_registry();
+        Self::from_registry(registry)
+    }
+
+    /// Build state from a pre-filtered or pre-built registry.
+    ///
+    /// Use this when the caller has already applied service filtering (e.g.
+    /// `--services` on `lab serve --transport http`) so that the HTTP surface
+    /// respects the same service set as the stdio surface.
+    #[must_use]
+    pub fn from_registry(registry: ToolRegistry) -> Self {
         let catalog = Arc::new(build_catalog(&registry));
         let clients = Arc::new(ServiceClients::from_env());
         Self {

@@ -22,7 +22,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "network.get",
+        name: "networks.get",
         description: "Inspect one network",
         destructive: false,
         returns: "Network",
@@ -42,7 +42,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "network.references",
+        name: "networks.references",
         description: "List references to a network (VLANs, Wi-Fi, etc.)",
         destructive: false,
         returns: "References",
@@ -133,13 +133,13 @@ pub async fn dispatch(
             };
             to_json(networks)
         }
-        "network.get" => {
+        "networks.get" => {
             let site_id = require_str(&params, "site_id")?;
             let network_id = require_str(&params, "network_id")?;
             let network = client.network_get(site_id, network_id).await?;
             to_json(network)
         }
-        "network.references" => {
+        "networks.references" => {
             let site_id = require_str(&params, "site_id")?;
             let network_id = require_str(&params, "network_id")?;
             let refs = client.network_references(site_id, network_id).await?;
@@ -170,6 +170,10 @@ pub async fn dispatch(
                 .await?;
             to_json(serde_json::json!({"deleted": true}))
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: vec![],
+            hint: None,
+        }),
     }
 }

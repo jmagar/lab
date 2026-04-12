@@ -15,33 +15,17 @@ pub struct GotifyClients {
 impl GotifyClients {
     fn new(url: &str, app_token: Option<&str>, client_token: Option<&str>) -> Option<Self> {
         let health = Arc::new(GotifyClient::new(url, Auth::None).ok()?);
-        let app = app_token.and_then(|token| {
-            GotifyClient::new(
-                url,
-                Auth::ApiKey {
-                    header: "X-Gotify-Key".into(),
-                    key: token.to_string(),
-                },
-            )
-            .ok()
-            .map(Arc::new)
+        let app = app_token.and_then(|t| {
+            GotifyClient::new(url, Auth::ApiKey { header: "X-Gotify-Key".into(), key: t.to_string() })
+                .ok()
+                .map(Arc::new)
         });
-        let client = client_token.and_then(|token| {
-            GotifyClient::new(
-                url,
-                Auth::ApiKey {
-                    header: "X-Gotify-Key".into(),
-                    key: token.to_string(),
-                },
-            )
-            .ok()
-            .map(Arc::new)
+        let client = client_token.and_then(|t| {
+            GotifyClient::new(url, Auth::ApiKey { header: "X-Gotify-Key".into(), key: t.to_string() })
+                .ok()
+                .map(Arc::new)
         });
-        Some(Self {
-            health,
-            app,
-            client,
-        })
+        Some(Self { health, app, client })
     }
 
     #[must_use]
@@ -83,11 +67,17 @@ pub fn client_from_env() -> Option<GotifyClient> {
     let url = env_non_empty("GOTIFY_URL")?;
     let (_, client_token) = resolve_tokens();
     let token = client_token?;
+    client_from_vars(Some(&url), Some(&token))
+}
+
+pub fn client_from_vars(url: Option<&str>, token: Option<&str>) -> Option<GotifyClient> {
+    let url = url.filter(|v| !v.is_empty())?;
+    let token = token.filter(|v| !v.is_empty())?;
     GotifyClient::new(
-        &url,
+        url,
         Auth::ApiKey {
             header: "X-Gotify-Key".into(),
-            key: token,
+            key: token.to_string(),
         },
     )
     .ok()
@@ -98,22 +88,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_empty_url() {
-        assert!(
-            GotifyClient::new(
-                "",
-                Auth::ApiKey {
-                    header: "X-Gotify-Key".into(),
-                    key: "tok".into()
-                }
-            )
-            .is_err()
-                || {
-                    // Some HttpClient impls catch empty URL at runtime — either way
-                    // client_from_env with empty URL must return None.
-                    true
-                }
-        );
+    fn clients_from_env_returns_none_without_url() {
+        assert!(client_from_vars(None, Some("token")).is_none());
+        assert!(client_from_vars(Some(""), Some("token")).is_none());
+        assert!(client_from_vars(Some("http://localhost"), None).is_none());
+        assert!(client_from_vars(Some("http://localhost"), Some("")).is_none());
     }
 
     #[test]

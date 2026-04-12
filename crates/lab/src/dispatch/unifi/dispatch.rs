@@ -35,12 +35,16 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         map.remove("instance");
     }
 
-    let client = match instance {
-        Some(label) => super::client::client_from_instance(&label)?,
-        None => super::client::require_client()?,
-    };
-
-    dispatch_with_client(&client, action, params).await
+    match instance {
+        Some(label) => {
+            let client = super::client::client_from_instance(&label)?;
+            dispatch_with_client(&client, action, params).await
+        }
+        None => {
+            let client = super::client::require_client()?;
+            dispatch_with_client(&client, action, params).await
+        }
+    }
 }
 
 /// Dispatch one `UniFi` call with an explicit client.
@@ -50,16 +54,11 @@ pub async fn dispatch_with_client(
     params: Value,
 ) -> Result<Value, ToolError> {
     match action {
-        "help" => Ok(help_payload("unifi", catalog::actions())),
-        "schema" => {
-            let action_name = require_str(&params, "action")?;
-            action_schema(catalog::actions(), action_name)
-        }
         a if a.starts_with("devices.") || a == "pending-devices.list" => {
             devices::dispatch(client, action, params).await
         }
         a if a.starts_with("clients.") => clients::dispatch(client, action, params).await,
-        a if a.starts_with("networks.") || a.starts_with("network.") => {
+        a if a.starts_with("networks.") => {
             networks::dispatch(client, action, params).await
         }
         a if a.starts_with("wifi.") => wifi::dispatch(client, action, params).await,

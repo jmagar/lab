@@ -81,13 +81,13 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Site UUID",
             },
             ParamSpec {
-                name: "macAddress",
+                name: "mac_address",
                 ty: "string",
                 required: true,
                 description: "MAC address of the device",
             },
             ParamSpec {
-                name: "ignoreDeviceLimit",
+                name: "ignore_device_limit",
                 ty: "boolean",
                 required: false,
                 description: "Override device limit",
@@ -203,7 +203,16 @@ pub async fn dispatch(
         }
         "devices.create" => {
             let site_id = require_str(&params, "site_id")?;
-            let body = object_without(&params, &["site_id"])?;
+            // Strip routing params; remap snake_case catalog names → camelCase UniFi API fields.
+            let mut body = object_without(&params, &["site_id", "mac_address", "ignore_device_limit"])?;
+            if let Value::Object(ref mut map) = body {
+                if let Some(v) = params.get("mac_address") {
+                    map.insert("macAddress".to_string(), v.clone());
+                }
+                if let Some(v) = params.get("ignore_device_limit") {
+                    map.insert("ignoreDeviceLimit".to_string(), v.clone());
+                }
+            }
             let result = client
                 .post_value(&format!("/sites/{site_id}/devices"), &body)
                 .await?;
@@ -244,6 +253,10 @@ pub async fn dispatch(
                 .await?;
             to_json(serde_json::json!({"deleted": true}))
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: vec![],
+            hint: None,
+        }),
     }
 }

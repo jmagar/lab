@@ -181,6 +181,10 @@ pub async fn dispatch(
             };
             to_json(countries)
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: vec![],
+            hint: None,
+        }),
     }
 }

@@ -119,6 +119,10 @@ pub async fn dispatch(
                 .await?;
             to_json(voucher)
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: vec![],
+            hint: None,
+        }),
     }
 }

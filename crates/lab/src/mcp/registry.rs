@@ -210,7 +210,14 @@ pub fn build_default_registry() -> ToolRegistry {
 
     register_service!(reg, "paperless", paperless);
     register_service!(reg, "arcane", arcane);
-    register_service!(reg, "unraid", unraid);
+
+    register_service!(
+        reg,
+        "unraid",
+        unraid,
+        actions = crate::dispatch::unraid::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::unraid::dispatch)
+    );
 
     register_service!(
         reg,
@@ -308,6 +315,92 @@ mod tests {
         assert!(names.contains(&"tei"), "tei missing");
         #[cfg(feature = "apprise")]
         assert!(names.contains(&"apprise"), "apprise missing");
+    }
+
+    /// Guard that the MCP registry and the HTTP router mount identical service sets.
+    ///
+    /// `HTTP_ROUTER_SERVICES` must be kept in sync with the feature-gated `.nest()`
+    /// calls in `crates/lab/src/api/router.rs::build_router_with_bearer()`.
+    /// If you add a service to the router, add it here too — and vice versa.
+    ///
+    /// This is a compile-time-checked invariant: each entry is guarded by the same
+    /// `#[cfg(feature)]` as the corresponding registry entry and router mount, so a
+    /// mismatch only surfaces when both lists have been updated.
+    #[test]
+    fn registry_and_router_service_sets_are_identical() {
+        // Hard-coded mirror of the services mounted in build_router_with_bearer().
+        // Keep in sync with crates/lab/src/api/router.rs.
+        let http_router_services: std::collections::HashSet<&str> = {
+            let mut s = std::collections::HashSet::new();
+            s.insert("extract"); // always-on
+            #[cfg(feature = "radarr")]
+            s.insert("radarr");
+            #[cfg(feature = "sonarr")]
+            s.insert("sonarr");
+            #[cfg(feature = "prowlarr")]
+            s.insert("prowlarr");
+            #[cfg(feature = "plex")]
+            s.insert("plex");
+            #[cfg(feature = "tautulli")]
+            s.insert("tautulli");
+            #[cfg(feature = "sabnzbd")]
+            s.insert("sabnzbd");
+            #[cfg(feature = "qbittorrent")]
+            s.insert("qbittorrent");
+            #[cfg(feature = "tailscale")]
+            s.insert("tailscale");
+            #[cfg(feature = "linkding")]
+            s.insert("linkding");
+            #[cfg(feature = "memos")]
+            s.insert("memos");
+            #[cfg(feature = "bytestash")]
+            s.insert("bytestash");
+            #[cfg(feature = "paperless")]
+            s.insert("paperless");
+            #[cfg(feature = "arcane")]
+            s.insert("arcane");
+            #[cfg(feature = "unraid")]
+            s.insert("unraid");
+            #[cfg(feature = "unifi")]
+            s.insert("unifi");
+            #[cfg(feature = "overseerr")]
+            s.insert("overseerr");
+            #[cfg(feature = "gotify")]
+            s.insert("gotify");
+            #[cfg(feature = "openai")]
+            s.insert("openai");
+            #[cfg(feature = "qdrant")]
+            s.insert("qdrant");
+            #[cfg(feature = "tei")]
+            s.insert("tei");
+            #[cfg(feature = "apprise")]
+            s.insert("apprise");
+            s
+        };
+
+        let reg = build_default_registry();
+        let registry_services: std::collections::HashSet<&str> =
+            reg.services().iter().map(|s| s.name).collect();
+
+        let only_in_registry: Vec<&&str> = registry_services
+            .iter()
+            .filter(|n| !http_router_services.contains(**n))
+            .collect();
+        let only_in_router: Vec<&&str> = http_router_services
+            .iter()
+            .filter(|n| !registry_services.contains(**n))
+            .collect();
+
+        assert!(
+            only_in_registry.is_empty(),
+            "services in MCP registry but NOT in HTTP router: {only_in_registry:?}\n\
+             Add them to build_router_with_bearer() in api/router.rs",
+        );
+        assert!(
+            only_in_router.is_empty(),
+            "services in HTTP router but NOT in MCP registry: {only_in_router:?}\n\
+             Add them to build_default_registry() in mcp/registry.rs",
+        );
     }
 
     #[tokio::test]

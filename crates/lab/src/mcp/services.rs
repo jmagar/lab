@@ -45,9 +45,6 @@ pub mod paperless;
 #[cfg(feature = "arcane")]
 pub mod arcane;
 
-#[cfg(feature = "unraid")]
-pub mod unraid;
-
 #[cfg(feature = "unifi")]
 pub mod unifi;
 
