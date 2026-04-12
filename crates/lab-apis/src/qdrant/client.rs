@@ -1,6 +1,6 @@
 //! `QdrantClient` — async methods against a Qdrant REST API.
 //!
-//! Stub. Endpoints land incrementally from `docs/api-specs/qdrant.openapi.json`.
+//! Endpoints land incrementally from `docs/upstream-api/qdrant.openapi.json`.
 
 use crate::core::{Auth, HttpClient};
 
@@ -32,7 +32,36 @@ impl QdrantClient {
     /// # Errors
     /// Returns `QdrantError::Api` on HTTP failure.
     pub async fn health(&self) -> Result<(), QdrantError> {
-        // TODO: GET /healthz
+        self.http.get_void("/healthz").await?;
         Ok(())
+    }
+
+    /// List collection names.
+    ///
+    /// # Errors
+    /// Returns `QdrantError::Api` on HTTP failure or decode failure.
+    pub async fn collections_list(
+        &self,
+    ) -> Result<Vec<super::types::CollectionDescription>, QdrantError> {
+        #[derive(serde::Deserialize)]
+        struct CollectionList {
+            collections: Vec<super::types::CollectionDescription>,
+        }
+
+        let envelope: super::types::QdrantEnvelope<CollectionList> =
+            self.http.get_json("/collections").await?;
+        Ok(envelope.result.collections)
+    }
+
+    /// Fetch raw collection metadata.
+    ///
+    /// # Errors
+    /// Returns `QdrantError::Api` on HTTP failure or decode failure.
+    // TODO: type the return value once callers' field needs are known.
+    pub async fn collection_get(&self, name: &str) -> Result<serde_json::Value, QdrantError> {
+        let path = format!("/collections/{name}");
+        let envelope: super::types::QdrantEnvelope<serde_json::Value> =
+            self.http.get_json(&path).await?;
+        Ok(envelope.result)
     }
 }

@@ -85,11 +85,11 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     #[cfg(feature = "openai")]
     rows.push(HealthRow::not_configured("openai"));
     #[cfg(feature = "qdrant")]
-    rows.push(HealthRow::not_configured("qdrant"));
+    rows.push(qdrant_row().await);
     #[cfg(feature = "tei")]
-    rows.push(HealthRow::not_configured("tei"));
+    rows.push(tei_row().await);
     #[cfg(feature = "apprise")]
-    rows.push(HealthRow::not_configured("apprise"));
+    rows.push(apprise_row().await);
 
     let any_unhealthy = rows.iter().any(|r| !r.reachable || !r.auth_ok);
     print(&rows, format)?;
@@ -218,6 +218,36 @@ async fn bytestash_row() -> HealthRow {
         "bytestash",
         crate::dispatch::bytestash::client_from_env(),
         "BYTESTASH_URL / BYTESTASH_TOKEN not set",
+    )
+    .await
+}
+
+#[cfg(feature = "qdrant")]
+async fn qdrant_row() -> HealthRow {
+    service_health_row(
+        "qdrant",
+        crate::dispatch::qdrant::client_from_env(),
+        "QDRANT_URL not set",
+    )
+    .await
+}
+
+#[cfg(feature = "tei")]
+async fn tei_row() -> HealthRow {
+    service_health_row(
+        "tei",
+        crate::dispatch::tei::client_from_env(),
+        "TEI_URL not set",
+    )
+    .await
+}
+
+#[cfg(feature = "apprise")]
+async fn apprise_row() -> HealthRow {
+    service_health_row(
+        "apprise",
+        crate::dispatch::apprise::client_from_env(),
+        "APPRISE_URL not set",
     )
     .await
 }

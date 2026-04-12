@@ -12,7 +12,6 @@
 use std::future::Future;
 
 use axum::Json;
-use axum::http::HeaderMap;
 use serde_json::Value;
 use tracing::Instrument;
 
@@ -37,13 +36,6 @@ use crate::dispatch::error::ToolError;
 ///
 /// Does NOT own: axum routing, request extraction, service-specific execution.
 ///
-/// # Security note — header-based confirmation removed
-///
-/// A previous version also accepted `X-Lab-Confirm: yes` as a confirmation signal.
-/// This was removed because the API sits behind a reverse proxy that may forward
-/// arbitrary headers by default, making header injection a realistic attack vector.
-/// Body params (`"confirm": true`) cannot be injected by a proxy.
-///
 /// # Errors
 ///
 /// Returns `ToolError` when:
@@ -58,7 +50,6 @@ pub async fn handle_action<F, Fut>(
     req: ActionRequest,
     actions: &[ActionSpec],
     dispatch: F,
-    _headers: Option<&HeaderMap>,
 ) -> Result<Json<Value>, ToolError>
 where
     F: FnOnce(String, Value) -> Fut,
@@ -247,15 +238,9 @@ mod tests {
     #[tokio::test]
     async fn success_path_returns_json_value() {
         let req = make_req("safe.read", json!({}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
         let Json(val) = result.unwrap();
@@ -267,15 +252,9 @@ mod tests {
     #[tokio::test]
     async fn error_path_preserves_tool_error_kind() {
         let req = make_req("safe.read", json!({}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| err_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            err_dispatch(a, p)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -287,15 +266,9 @@ mod tests {
     #[tokio::test]
     async fn destructive_without_confirm_returns_confirmation_required() {
         let req = make_req("danger.delete", json!({"id": "abc"}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -310,15 +283,9 @@ mod tests {
     #[tokio::test]
     async fn destructive_with_confirm_false_returns_confirmation_required() {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": false}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -330,15 +297,9 @@ mod tests {
     #[tokio::test]
     async fn destructive_with_confirm_true_proceeds_to_dispatch() {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(
             result.is_ok(),
@@ -352,15 +313,9 @@ mod tests {
     async fn non_destructive_action_proceeds_without_confirm() {
         // No "confirm" key at all — should NOT be blocked.
         let req = make_req("safe.read", json!({}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(
             result.is_ok(),
@@ -389,7 +344,6 @@ mod tests {
                     Ok(json!({"result": "should not reach here"}))
                 }
             },
-            None,
         )
         .await;
 
@@ -449,7 +403,6 @@ mod tests {
                 );
                 Ok(json!({"result": "ok"}))
             },
-            None,
         )
         .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
@@ -461,15 +414,9 @@ mod tests {
     async fn destructive_with_confirm_dispatch_error_preserves_kind() {
         let req = make_req("danger.delete", json!({"confirm": true}));
         // dispatch returns missing_param (id not given)
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| err_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            err_dispatch(a, p)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -482,15 +429,9 @@ mod tests {
     async fn destructive_with_confirm_string_true_does_not_pass() {
         // confirm: "true" (string) — Value::as_bool returns None for strings.
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": "true"}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -506,42 +447,25 @@ mod tests {
     #[tokio::test]
     async fn empty_actions_rejects_everything() {
         let req = make_req("anything", json!({}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            &[],
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, &[], |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), "unknown_action");
     }
 
-    // ── X-Lab-Confirm header is IGNORED (removed to prevent proxy injection) ──
+    // ── Destructive action requires confirm:true in params (headers are never checked) ──
 
     #[tokio::test]
-    async fn x_lab_confirm_header_alone_does_not_authorize_destructive_action() {
-        use axum::http::HeaderValue;
+    async fn destructive_without_body_confirm_is_rejected() {
+        // Confirmation is body-only. Headers play no role.
         let req = make_req("danger.delete", json!({"id": "abc"}));
-        let mut headers = HeaderMap::new();
-        headers.insert("x-lab-confirm", HeaderValue::from_static("yes"));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            Some(&headers),
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
-        assert!(
-            result.is_err(),
-            "X-Lab-Confirm header must be ignored — only params[confirm]=true is accepted"
-        );
+        assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), "confirmation_required");
     }
 
@@ -576,7 +500,6 @@ mod tests {
                     req,
                     ACTIONS,
                     |a, p| ok_dispatch(a, p),
-                    None,
                 )
                 .await
                 .unwrap(),
@@ -624,7 +547,6 @@ mod tests {
                         req,
                         ACTIONS,
                         |a, p| ok_dispatch(a, p),
-                        None,
                     )
                     .await
                     .unwrap(),
@@ -685,15 +607,9 @@ mod tests {
         rt.block_on(async {
             let req = make_req("safe.read", json!({}));
             drop(
-                handle_action(
-                    "testsvc",
-                    test_surface(),
-                    None,
-                    req,
-                    ACTIONS,
-                    |a, p| ok_dispatch(a, p),
-                    None,
-                )
+                handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+                    ok_dispatch(a, p)
+                })
                 .await
                 .unwrap(),
             );
@@ -717,15 +633,9 @@ mod tests {
     async fn help_action_bypasses_catalog_gate_and_reaches_dispatch() {
         // "help" is not in ACTIONS but must not return unknown_action.
         let req = make_req("help", json!({}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         // Dispatch returns ok (our ok_dispatch returns the forwarded action name).
         assert!(
@@ -737,15 +647,9 @@ mod tests {
     #[tokio::test]
     async fn schema_action_bypasses_catalog_gate_and_reaches_dispatch() {
         let req = make_req("schema", json!({"action": "safe.read"}));
-        let result = handle_action(
-            "testsvc",
-            test_surface(),
-            None,
-            req,
-            ACTIONS,
-            |a, p| ok_dispatch(a, p),
-            None,
-        )
+        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
+            ok_dispatch(a, p)
+        })
         .await;
         assert!(
             result.is_ok(),

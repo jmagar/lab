@@ -1,6 +1,6 @@
 //! `AppriseClient` — async methods against an apprise-api server.
 //!
-//! Stub. Endpoints land incrementally from `docs/api-specs/apprise.md`.
+//! Endpoints land incrementally from `docs/upstream-api/apprise.md`.
 
 use crate::core::{Auth, HttpClient};
 
@@ -32,7 +32,30 @@ impl AppriseClient {
     /// # Errors
     /// Returns `AppriseError::Api` on HTTP failure.
     pub async fn health(&self) -> Result<(), AppriseError> {
-        // TODO: GET /status
+        self.http.get_void("/status").await?;
+        Ok(())
+    }
+
+    /// Send a stateless notification to URLs supplied in the request body.
+    ///
+    /// # Errors
+    /// Returns `AppriseError::Api` on HTTP failure.
+    pub async fn notify(&self, request: &super::types::NotifyRequest) -> Result<(), AppriseError> {
+        self.http.post_void("/notify", request).await?;
+        Ok(())
+    }
+
+    /// Send a notification to the stored config identified by `key`.
+    ///
+    /// # Errors
+    /// Returns `AppriseError::Api` on HTTP failure.
+    pub async fn notify_key(
+        &self,
+        key: &str,
+        request: &super::types::NotifyRequest,
+    ) -> Result<(), AppriseError> {
+        let path = format!("/notify/{key}");
+        self.http.post_void(&path, request).await?;
         Ok(())
     }
 }

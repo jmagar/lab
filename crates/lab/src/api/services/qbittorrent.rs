@@ -25,7 +25,6 @@ async fn handle(
         |action, params| async move {
             crate::dispatch::qbittorrent::dispatch(&action, params).await
         },
-        Some(&headers),
     )
     .await
 }

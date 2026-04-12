@@ -23,7 +23,6 @@ async fn handle(
         req,
         crate::dispatch::tailscale::ACTIONS,
         |action, params| async move { crate::dispatch::tailscale::dispatch(&action, params).await },
-        Some(&headers),
     )
     .await
 }

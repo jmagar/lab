@@ -73,7 +73,11 @@ where
     F: FnOnce(String, Value) -> Fut,
     Fut: Future<Output = Result<Value, ToolError>>,
 {
-    if !yes && actions.iter().any(|spec| spec.name == action && spec.destructive) {
+    if !yes
+        && actions
+            .iter()
+            .any(|spec| spec.name == action && spec.destructive)
+    {
         if !std::io::stdin().is_terminal() {
             anyhow::bail!("pass -y / --yes to confirm destructive action `{action}`");
         }

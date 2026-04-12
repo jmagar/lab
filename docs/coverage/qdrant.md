@@ -1,7 +1,7 @@
 # Qdrant API Coverage
 
-**Last updated:** 2026-04-08
-**OpenAPI spec:** docs/api-specs/qdrant.openapi.json
+**Last updated:** 2026-04-12
+**OpenAPI spec:** docs/upstream-api/qdrant.openapi.json
 **OpenAPI version:** 3.0.1
 **API version:** master
 **Paths:** 73
@@ -12,6 +12,7 @@
 
 | Symbol | Meaning |
 |--------|---------|
+| ✅ | Implemented and wired through SDK, dispatch, CLI, MCP, and API |
 | ⬜ | Not implemented yet; rows are spec inventory only |
 | - | Not applicable / not represented in the spec |
 
@@ -21,9 +22,9 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /collections | get_collections | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /collections | get_collections | ✅ | ✅ | ✅ | ✅ |
 | DELETE | /collections/{collection_name} | delete_collection | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /collections/{collection_name} | get_collection | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /collections/{collection_name} | get_collection | ✅ | ✅ | ✅ | ✅ |
 | PATCH | /collections/{collection_name} | update_collection | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /collections/{collection_name} | create_collection | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /collections/{collection_name}/exists | collection_exists | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -122,7 +123,7 @@ The source spec is the contract. This document is the implementation planning ai
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | GET | / | root | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /healthz | healthz | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /healthz | healthz | ✅ | ✅ | ✅ | ✅ |
 | GET | /livez | livez | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /metrics | metrics | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /readyz | readyz | ⬜ | ⬜ | ⬜ | ⬜ |

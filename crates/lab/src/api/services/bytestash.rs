@@ -34,7 +34,6 @@ async fn handle(
             };
             crate::dispatch::bytestash::dispatch_with_client(client, &action, params).await
         },
-        Some(&headers),
     )
     .await
 }

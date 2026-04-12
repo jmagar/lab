@@ -70,28 +70,39 @@ use lab_apis::<service>::<Service>Client;
 use lab_apis::core::Auth;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::env_non_empty;
 
 /// Build a `<Service>` client from the default-instance env vars.
 ///
 /// Returns `None` if any required env var is absent or empty.
+/// Called by `AppState` at startup — keep pure (no side effects, no logging).
 pub fn client_from_env() -> Option<<Service>Client> {
-    let url = std::env::var("<SERVICE>_URL").ok().filter(|v| !v.is_empty())?;
-    let key = std::env::var("<SERVICE>_API_KEY").ok().filter(|v| !v.is_empty())?;
+    let url = env_non_empty("<SERVICE>_URL")?;
+    let key = env_non_empty("<SERVICE>_API_KEY")?;
     <Service>Client::new(&url, Auth::ApiKey { header: "X-Api-Key".into(), key }).ok()
 }
 
 /// Return a client or a structured `internal_error` if not configured.
+/// Used by MCP and CLI when `AppState` is not available.
 pub fn require_client() -> Result<<Service>Client, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
+    client_from_env().ok_or_else(not_configured_error)
+}
+
+/// Structured error for callers that hold a pre-built `Option<ServiceClient>`.
+/// The API handler calls this directly instead of re-reading env vars.
+pub fn not_configured_error() -> ToolError {
+    ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: "<SERVICE>_URL or <SERVICE>_API_KEY not configured".to_string(),
-    })
+    }
 }
 ```
 
 Rules:
 - `client_from_env()` is called by `AppState::ServiceClients::from_env()` at startup — keep it pure (no side effects, no logging).
 - `require_client()` is the MCP/CLI fallback when `AppState` is not available.
+- `not_configured_error()` is exposed separately so API handlers can produce the same structured error without re-reading env vars.
+- Always use `env_non_empty` — never inline `std::env::var(...).ok().filter(|v| !v.is_empty())`.
 - Never read env vars inside `dispatch.rs` or `params.rs` — always go through `client.rs`.
 - When the service supports multiple instances, add `client_from_instance(label: Option<&str>)` here.
 

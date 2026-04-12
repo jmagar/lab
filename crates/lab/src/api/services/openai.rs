@@ -23,7 +23,6 @@ async fn handle(
         req,
         crate::dispatch::openai::ACTIONS,
         |action, params| async move { crate::dispatch::openai::dispatch(&action, params).await },
-        Some(&headers),
     )
     .await
 }

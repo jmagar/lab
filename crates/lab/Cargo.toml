@@ -59,6 +59,9 @@ axum.workspace               = true
 tower.workspace              = true
 tower-http.workspace         = true
 
+[dev-dependencies]
+wiremock.workspace           = true
+
 [features]
 default = ["all"]
 

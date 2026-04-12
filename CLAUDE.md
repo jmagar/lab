@@ -10,6 +10,8 @@ Observability is governed by `docs/OBSERVABILITY.md`. When adding or changing re
 Errors are governed by `docs/ERRORS.md`. Serialization and output-boundary rules are governed by `docs/SERIALIZATION.md`.
 Shared dispatch ownership and adapter direction are governed by `docs/DISPATCH.md`.
 
+**Build assumption.** This repo is developed and verified as an **all-features** binary. Treat `cargo build --all-features`, `cargo test --all-features` / `cargo test --tests --no-fail-fast`, and the equivalent `just` commands as the default truth. Do not delete or rewrite shared helpers just because they appear unused in a narrow feature slice; first verify whether they are used by other feature-gated services in the normal all-features build.
+
 **Nested guides.** Subdirectories carry their own `CLAUDE.md` with rules that don't belong at the root. Read the nearest one when working in:
 - `crates/lab-apis/src/core/` — trait contracts, error taxonomy, HttpClient invariants
 - `crates/lab-apis/src/servarr/` — shared *arr primitives
@@ -253,6 +255,8 @@ HTTP dispatch additionally carries `request_id` when available. Outbound request
 
 ANSI colors are enabled only when `stderr` is a TTY (`std::io::stderr().is_terminal()`).
 
+The product API surface uses `surface = "api"` in dispatch logs. Keep docs, tests, and new instrumentation aligned with that label.
+
 ### Async trait style
 
 Use **native `async fn in trait`** (stable in Rust 1.75+). Do **not** add the `async-trait` crate. Do **not** use `Box<dyn ServiceClient>` — prefer generics or concrete types. This is a hard rule; PRs that reintroduce `#[async_trait]` will be rejected.
@@ -301,6 +305,8 @@ just release    # cargo release
 just mcp-token  # rotate the MCP bearer token in ~/.lab/.env
 ```
 
+Default verification targets the all-features build. If you run a reduced feature set for a narrow task, treat any warning cleanup decisions from that mode as provisional until they are checked again with `--all-features`.
+
 ### Operator tooling
 
 - **`lab doctor`** — comprehensive health audit: checks env vars, reachability, auth, version for every enabled service. Emits human-readable table by default, `--json` for CI. Exit code reflects worst severity.
@@ -318,6 +324,8 @@ cargo test -p lab             # CLI/MCP/TUI tests only
 - Unit tests: mock HTTP with `wiremock` in `lab-apis`, run in CI
 - Integration tests: hit real services, run locally only (marked `#[ignore]`)
 - Test runner: `cargo-nextest` (parallel execution)
+- The authoritative test/build signal is the all-features workspace run, not a partial-feature slice
+- If a helper or module looks unused in a reduced build, confirm with an all-features search/build before removing it
 
 ```bash
 # Unit tests (CI-safe)
@@ -339,6 +347,7 @@ just test-integration
 - Rust 2024 edition, latest stable toolchain
 - `cargo fmt` with default settings
 - `cargo clippy` with no allowed warnings
+- Treat all-features warnings as real; treat narrow feature-slice warnings as diagnostic only until confirmed in the normal all-features build
 - Prefer `impl Trait` over `Box<dyn Trait>` where possible
 - Prefer concrete types over generics unless sharing demands it
 - Never add `clap`, `rmcp`, `ratatui`, `anyhow`, or `tabled` to `lab-apis` — they belong in `lab` only

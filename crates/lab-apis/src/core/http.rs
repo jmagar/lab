@@ -1,8 +1,9 @@
 //! Shared HTTP client — thin reqwest wrapper with auth injection and JSON helpers.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use reqwest::{Client, RequestBuilder};
+use reqwest::{Client, RequestBuilder, Response, Url};
+use tracing::{Level, event};
 
 use crate::core::auth::Auth;
 use crate::core::error::ApiError;
@@ -37,6 +38,28 @@ pub struct HttpClient {
     base_url: String,
     auth: Auth,
     inner: Client,
+}
+
+struct RequestLogContext {
+    method: &'static str,
+    path: String,
+    host: String,
+    start: Instant,
+}
+
+impl RequestLogContext {
+    fn new(method: &'static str, url: &Url) -> Self {
+        Self {
+            method,
+            path: url.path().to_string(),
+            host: url.host_str().unwrap_or_default().to_string(),
+            start: Instant::now(),
+        }
+    }
+
+    fn elapsed_ms(&self) -> u128 {
+        self.start.elapsed().as_millis()
+    }
 }
 
 impl HttpClient {
@@ -105,13 +128,13 @@ impl HttpClient {
         &self,
         path: &str,
     ) -> Result<T, ApiError> {
-        let url = self.url(path)?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("GET", &url);
         let resp = self
-            .apply_auth(self.inner.get(&url))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::decode(resp).await
+            .send(self.apply_auth(self.inner.get(url.clone())), &ctx)
+            .await?;
+        Self::decode(resp, &ctx).await
     }
 
     /// GET a path with query parameters and decode JSON.
@@ -123,7 +146,7 @@ impl HttpClient {
         path: &str,
         query: &[(String, String)],
     ) -> Result<T, ApiError> {
-        let mut url = reqwest::Url::parse(&self.url(path)?)
+        let mut url = Url::parse(&self.url(path)?)
             .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
         if !query.is_empty() {
             {
@@ -133,12 +156,11 @@ impl HttpClient {
                 }
             }
         }
+        let ctx = RequestLogContext::new("GET", &url);
         let resp = self
-            .apply_auth(self.inner.get(url))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::decode(resp).await
+            .send(self.apply_auth(self.inner.get(url.clone())), &ctx)
+            .await?;
+        Self::decode(resp, &ctx).await
     }
 
     /// POST a JSON body and decode the JSON response.
@@ -150,13 +172,16 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<T, ApiError> {
-        let url = self.url(path)?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
         let resp = self
-            .apply_auth(self.inner.post(&url).json(body))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::decode(resp).await
+            .send(
+                self.apply_auth(self.inner.post(url.clone()).json(body)),
+                &ctx,
+            )
+            .await?;
+        Self::decode(resp, &ctx).await
     }
 
     /// PUT a JSON body and decode the JSON response.
@@ -168,13 +193,16 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<T, ApiError> {
-        let url = self.url(path)?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("PUT", &url);
         let resp = self
-            .apply_auth(self.inner.put(&url).json(body))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::decode(resp).await
+            .send(
+                self.apply_auth(self.inner.put(url.clone()).json(body)),
+                &ctx,
+            )
+            .await?;
+        Self::decode(resp, &ctx).await
     }
 
     /// PATCH a JSON body and decode the JSON response.
@@ -186,13 +214,16 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<T, ApiError> {
-        let url = self.url(path)?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("PATCH", &url);
         let resp = self
-            .apply_auth(self.inner.patch(&url).json(body))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::decode(resp).await
+            .send(
+                self.apply_auth(self.inner.patch(url.clone()).json(body)),
+                &ctx,
+            )
+            .await?;
+        Self::decode(resp, &ctx).await
     }
 
     /// GET a path, discarding the response body on success.
@@ -200,13 +231,13 @@ impl HttpClient {
     /// # Errors
     /// Returns [`ApiError`] on transport or status failure.
     pub async fn get_void(&self, path: &str) -> Result<(), ApiError> {
-        let url = self.url(path)?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("GET", &url);
         let resp = self
-            .apply_auth(self.inner.get(&url))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::check_status(resp).await
+            .send(self.apply_auth(self.inner.get(url.clone())), &ctx)
+            .await?;
+        Self::check_status(resp, &ctx).await
     }
 
     /// DELETE a path, discarding the response body on success.
@@ -214,13 +245,13 @@ impl HttpClient {
     /// # Errors
     /// Returns [`ApiError`] on transport, status, or decode failure.
     pub async fn delete(&self, path: &str) -> Result<(), ApiError> {
-        let url = self.url(path)?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("DELETE", &url);
         let resp = self
-            .apply_auth(self.inner.delete(&url))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::check_status(resp).await
+            .send(self.apply_auth(self.inner.delete(url.clone())), &ctx)
+            .await?;
+        Self::check_status(resp, &ctx).await
     }
 
     /// DELETE a path with query parameters.
@@ -232,7 +263,7 @@ impl HttpClient {
         path: &str,
         query: &[(String, String)],
     ) -> Result<(), ApiError> {
-        let mut url = reqwest::Url::parse(&self.url(path)?)
+        let mut url = Url::parse(&self.url(path)?)
             .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
         if !query.is_empty() {
             {
@@ -242,12 +273,11 @@ impl HttpClient {
                 }
             }
         }
+        let ctx = RequestLogContext::new("DELETE", &url);
         let resp = self
-            .apply_auth(self.inner.delete(url))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::check_status(resp).await
+            .send(self.apply_auth(self.inner.delete(url.clone())), &ctx)
+            .await?;
+        Self::check_status(resp, &ctx).await
     }
 
     /// POST a JSON body, discarding the response body on success.
@@ -259,13 +289,16 @@ impl HttpClient {
         path: &str,
         body: &B,
     ) -> Result<(), ApiError> {
-        let url = self.url(path)?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
         let resp = self
-            .apply_auth(self.inner.post(&url).json(body))
-            .send()
-            .await
-            .map_err(|e| ApiError::Network(e.to_string()))?;
-        Self::check_status(resp).await
+            .send(
+                self.apply_auth(self.inner.post(url.clone()).json(body)),
+                &ctx,
+            )
+            .await?;
+        Self::check_status(resp, &ctx).await
     }
 
     /// POST a GraphQL query and decode the `data` field of the response.
@@ -320,7 +353,7 @@ impl HttpClient {
     }
 
     /// Read the response body as text, preserving read errors.
-    async fn read_error_body(resp: reqwest::Response) -> (u16, String) {
+    async fn read_error_body(resp: Response) -> (u16, String) {
         let code = resp.status().as_u16();
         let body = resp
             .text()
@@ -329,25 +362,99 @@ impl HttpClient {
         (code, body)
     }
 
-    async fn check_status(resp: reqwest::Response) -> Result<(), ApiError> {
+    async fn check_status(resp: Response, ctx: &RequestLogContext) -> Result<(), ApiError> {
         if resp.status().is_success() {
+            Self::log_finish(ctx, resp.status().as_u16());
             return Ok(());
         }
         let (code, body) = Self::read_error_body(resp).await;
-        Err(Self::error_for_status(code, body))
+        let err = Self::error_for_status(code, body);
+        Self::log_error(ctx, &err);
+        Err(err)
     }
 
     async fn decode<T: serde::de::DeserializeOwned>(
-        resp: reqwest::Response,
+        resp: Response,
+        ctx: &RequestLogContext,
     ) -> Result<T, ApiError> {
         if resp.status().is_success() {
-            return resp
+            let status = resp.status().as_u16();
+            let decoded = resp
                 .json::<T>()
                 .await
                 .map_err(|e| ApiError::Decode(e.to_string()));
+            match &decoded {
+                Ok(_) => Self::log_finish(ctx, status),
+                Err(err) => Self::log_error(ctx, err),
+            }
+            return decoded;
         }
         let (code, body) = Self::read_error_body(resp).await;
-        Err(Self::error_for_status(code, body))
+        let err = Self::error_for_status(code, body);
+        Self::log_error(ctx, &err);
+        Err(err)
+    }
+
+    async fn send(
+        &self,
+        request: RequestBuilder,
+        ctx: &RequestLogContext,
+    ) -> Result<Response, ApiError> {
+        event!(
+            Level::INFO,
+            method = ctx.method,
+            path = ctx.path.as_str(),
+            host = ctx.host.as_str(),
+            "request.start"
+        );
+        request.send().await.map_err(|e| {
+            let err = ApiError::Network(e.to_string());
+            Self::log_error(ctx, &err);
+            err
+        })
+    }
+
+    fn log_finish(ctx: &RequestLogContext, status: u16) {
+        event!(
+            Level::INFO,
+            method = ctx.method,
+            path = ctx.path.as_str(),
+            host = ctx.host.as_str(),
+            status,
+            elapsed_ms = ctx.elapsed_ms(),
+            "request.finish"
+        );
+    }
+
+    fn log_error(ctx: &RequestLogContext, err: &ApiError) {
+        match err {
+            ApiError::Internal(_) => event!(
+                Level::ERROR,
+                method = ctx.method,
+                path = ctx.path.as_str(),
+                host = ctx.host.as_str(),
+                elapsed_ms = ctx.elapsed_ms(),
+                kind = err.kind(),
+                message = %err,
+                "request.error"
+            ),
+            ApiError::Auth
+            | ApiError::NotFound
+            | ApiError::RateLimited { .. }
+            | ApiError::Validation { .. }
+            | ApiError::Network(_)
+            | ApiError::Server { .. }
+            | ApiError::Decode(_) => event!(
+                Level::WARN,
+                method = ctx.method,
+                path = ctx.path.as_str(),
+                host = ctx.host.as_str(),
+                elapsed_ms = ctx.elapsed_ms(),
+                kind = err.kind(),
+                message = %err,
+                "request.error"
+            ),
+        }
     }
 }
 

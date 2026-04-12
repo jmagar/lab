@@ -9,6 +9,20 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct CollectionName(pub String);
 
+/// A collection entry returned by `GET /collections`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionDescription {
+    pub name: CollectionName,
+}
+
+/// Generic wrapper for Qdrant's `{ result: T, status: ..., time: ... }` envelope.
+///
+/// Used internally by the client to unwrap the outer result layer before returning.
+#[derive(serde::Deserialize)]
+pub(super) struct QdrantEnvelope<T> {
+    pub result: T,
+}
+
 /// Distance metric for a collection's vector space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]

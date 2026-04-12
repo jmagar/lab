@@ -4,7 +4,7 @@
 //! sequence-classification models. It exposes a small REST surface that is
 //! partially OpenAI-compatible (`/embed` + `/v1/embeddings`).
 //!
-//! Spec: `docs/api-specs/tei.openapi.json` (mirrored from
+//! Spec: `docs/upstream-api/tei.openapi.json` (mirrored from
 //! `github.com/huggingface/text-embeddings-inference/blob/main/docs/openapi.json`).
 //!
 //! Auth is either `Authorization: Bearer <token>` (when the server is
@@ -22,7 +22,10 @@ pub mod client;
 pub use client::TeiClient;
 pub use error::TeiError;
 
+use std::time::Instant;
+
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the tei module.
 pub const META: PluginMeta = PluginMeta {
@@ -45,3 +48,35 @@ pub const META: PluginMeta = PluginMeta {
     }],
     default_port: Some(80),
 };
+
+impl ServiceClient for TeiClient {
+    fn name(&self) -> &'static str {
+        "tei"
+    }
+
+    fn service_type(&self) -> &'static str {
+        "ai"
+    }
+
+    async fn health(&self) -> Result<ServiceStatus, ApiError> {
+        let start = Instant::now();
+        match self.model_info().await {
+            Ok(info) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: info.version,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some(format!("model={}", info.model_id)),
+            }),
+            Err(TeiError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: false,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some("authentication failed".into()),
+            }),
+            Err(TeiError::Api(ApiError::Network(err))) => Ok(ServiceStatus::unreachable(err)),
+            Err(TeiError::Api(err)) => Ok(ServiceStatus::degraded(err.to_string())),
+        }
+    }
+}

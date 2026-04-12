@@ -23,7 +23,6 @@ async fn handle(
         req,
         crate::dispatch::tautulli::ACTIONS,
         |action, params| async move { crate::dispatch::tautulli::dispatch(&action, params).await },
-        Some(&headers),
     )
     .await
 }

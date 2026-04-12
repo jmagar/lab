@@ -33,7 +33,6 @@ async fn handle(
             };
             crate::dispatch::radarr::dispatch_with_client(client, &action, params).await
         },
-        Some(&headers),
     )
     .await
 }

@@ -34,7 +34,6 @@ async fn handle(
             };
             crate::dispatch::sabnzbd::dispatch_with_client(client, &action, params).await
         },
-        Some(&headers),
     )
     .await
 }
