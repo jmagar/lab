@@ -22,9 +22,7 @@ async fn handle(
         request_id,
         req,
         crate::dispatch::qdrant::ACTIONS,
-        |action, params| async move {
-            crate::dispatch::qdrant::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::qdrant::dispatch(&action, params).await },
         Some(&headers),
     )
     .await

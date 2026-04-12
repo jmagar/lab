@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -95,11 +95,15 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "wifi.broadcasts.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let broadcasts = require_client()?
+            let broadcasts = client
                 .get_value(&format!("/sites/{site_id}/wifi/broadcasts"))
                 .await?;
             to_json(broadcasts)
@@ -107,7 +111,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "wifi.broadcasts.get" => {
             let site_id = require_str(&params, "site_id")?;
             let wifi_broadcast_id = require_str(&params, "wifi_broadcast_id")?;
-            let broadcast = require_client()?
+            let broadcast = client
                 .get_value(&format!(
                     "/sites/{site_id}/wifi/broadcasts/{wifi_broadcast_id}"
                 ))
@@ -117,7 +121,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "wifi.broadcasts.create" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let result = require_client()?
+            let result = client
                 .post_value(&format!("/sites/{site_id}/wifi/broadcasts"), &body)
                 .await?;
             to_json(result)
@@ -126,7 +130,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let wifi_broadcast_id = require_str(&params, "wifi_broadcast_id")?;
             let body = object_without(&params, &["site_id", "wifi_broadcast_id"])?;
-            let result = require_client()?
+            let result = client
                 .put_value(
                     &format!("/sites/{site_id}/wifi/broadcasts/{wifi_broadcast_id}"),
                     &body,
@@ -137,7 +141,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "wifi.broadcasts.delete" => {
             let site_id = require_str(&params, "site_id")?;
             let wifi_broadcast_id = require_str(&params, "wifi_broadcast_id")?;
-            require_client()?
+            client
                 .delete_value(&format!(
                     "/sites/{site_id}/wifi/broadcasts/{wifi_broadcast_id}"
                 ))

@@ -22,9 +22,10 @@ impl IntoResponse for ToolError {
             "missing_param" | "invalid_param" | "validation_failed" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            "unknown_action" | "unknown_subaction" | "unknown_instance" | "confirmation_required" => {
-                StatusCode::BAD_REQUEST
-            }
+            "unknown_action"
+            | "unknown_subaction"
+            | "unknown_instance"
+            | "confirmation_required" => StatusCode::BAD_REQUEST,
             "network_error" | "server_error" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };

@@ -81,7 +81,9 @@ Never hard-link service handlers from the top-level router — always conditiona
 
 ## Auth
 
-The API itself is unauthenticated by default (homelab use case). Production deploys put it behind a reverse proxy (Caddy/Traefik/Tailscale serve) or add an auth layer via `tower::ServiceBuilder` in `router.rs`. Do not bake auth into handlers.
+`lab serve --transport http` enforces a bearer token from `LAB_MCP_HTTP_TOKEN` via router middleware. Handlers stay auth-agnostic — do not bake auth checks into per-service handlers.
+
+When constructing the router outside the standard serve path, auth remains opt-in via the router middleware entry point in `router.rs`.
 
 ## What does NOT belong here
 

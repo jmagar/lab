@@ -48,4 +48,4 @@ pub fn captured_logs(buf: &SharedBuf) -> String {
 /// ```ignore
 /// let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap();
 /// ```
-pub static TRACING_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub static TRACING_TEST_LOCK: Mutex<()> = Mutex::new(());

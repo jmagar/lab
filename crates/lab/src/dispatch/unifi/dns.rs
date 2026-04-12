@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, query_from, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -95,17 +95,21 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "dns.policies.list" => {
             let site_id = require_str(&params, "site_id")?;
             let q = query_from(&params, &["offset", "limit", "filter"])?;
             let policies = if q.is_empty() {
-                require_client()?
+                client
                     .get_value(&format!("/sites/{site_id}/dns/policies"))
                     .await?
             } else {
-                require_client()?
+                client
                     .get_value_query(&format!("/sites/{site_id}/dns/policies"), &q)
                     .await?
             };
@@ -114,7 +118,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "dns.policies.get" => {
             let site_id = require_str(&params, "site_id")?;
             let dns_policy_id = require_str(&params, "dns_policy_id")?;
-            let policy = require_client()?
+            let policy = client
                 .get_value(&format!("/sites/{site_id}/dns/policies/{dns_policy_id}"))
                 .await?;
             to_json(policy)
@@ -122,7 +126,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "dns.policies.create" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let policy = require_client()?
+            let policy = client
                 .post_value(&format!("/sites/{site_id}/dns/policies"), &body)
                 .await?;
             to_json(policy)
@@ -131,7 +135,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let dns_policy_id = require_str(&params, "dns_policy_id")?;
             let body = object_without(&params, &["site_id", "dns_policy_id"])?;
-            let policy = require_client()?
+            let policy = client
                 .put_value(
                     &format!("/sites/{site_id}/dns/policies/{dns_policy_id}"),
                     &body,
@@ -142,7 +146,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "dns.policies.delete" => {
             let site_id = require_str(&params, "site_id")?;
             let dns_policy_id = require_str(&params, "dns_policy_id")?;
-            require_client()?
+            client
                 .delete_value(&format!("/sites/{site_id}/dns/policies/{dns_policy_id}"))
                 .await?;
             to_json(serde_json::json!({"deleted": true}))

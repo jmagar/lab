@@ -1,10 +1,14 @@
 //! Shared helpers for thin CLI dispatch shims.
 
 use std::future::Future;
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use anyhow::Result;
+use dialoguer::Confirm;
 use serde_json::Value;
+
+use lab_apis::core::action::ActionSpec;
 
 use crate::dispatch::error::ToolError;
 use crate::output::{OutputFormat, print};
@@ -55,6 +59,39 @@ where
     Ok(ExitCode::SUCCESS)
 }
 
+/// Run an action-style CLI command with destructive confirmation support.
+pub async fn run_confirmable_action_command<F, Fut>(
+    service: &'static str,
+    actions: &[ActionSpec],
+    action: String,
+    params: Value,
+    yes: bool,
+    format: OutputFormat,
+    dispatch: F,
+) -> Result<ExitCode>
+where
+    F: FnOnce(String, Value) -> Fut,
+    Fut: Future<Output = Result<Value, ToolError>>,
+{
+    if !yes && actions.iter().any(|spec| spec.name == action && spec.destructive) {
+        if !std::io::stdin().is_terminal() {
+            anyhow::bail!("pass -y / --yes to confirm destructive action `{action}`");
+        }
+        let confirmed = Confirm::new()
+            .with_prompt(format!(
+                "{service} action `{action}` is destructive. Continue?"
+            ))
+            .default(false)
+            .interact()
+            .map_err(|e| anyhow::anyhow!("failed to read confirmation: {e}"))?;
+        if !confirmed {
+            anyhow::bail!("aborted by user");
+        }
+    }
+
+    run_action_command(service, action, params, format, dispatch).await
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -65,7 +102,9 @@ mod tests {
 
     #[test]
     fn action_command_logs_cli_success_shape() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=info"))
@@ -104,7 +143,9 @@ mod tests {
 
     #[test]
     fn action_command_logs_cli_failure_kind() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=warn"))

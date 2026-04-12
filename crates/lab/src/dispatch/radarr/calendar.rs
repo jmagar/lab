@@ -43,4 +43,3 @@ pub async fn dispatch_with_client(
         _ => unreachable!(),
     }
 }
-

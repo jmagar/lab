@@ -2,6 +2,8 @@
 
 `lab` exposes homelab operations through a compact MCP surface designed for agents, not a giant tool registry.
 
+The RMCP SDK integration contract that underpins this surface lives in [RMCP.md](./RMCP.md). This document owns product-facing MCP behavior; `RMCP.md` owns how `lab` uses the RMCP library to implement it.
+
 ## Transport Modes
 
 `lab serve` supports two transports:

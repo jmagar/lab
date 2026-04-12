@@ -174,10 +174,10 @@ pub enum Command {
 }
 
 /// Dispatch a parsed [`Cli`] to the correct handler.
-pub async fn dispatch(cli: Cli, _config: LabConfig) -> Result<ExitCode> {
+pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let format = cli.format();
     match cli.command {
-        Command::Serve(args) => serve::run(args).await,
+        Command::Serve(args) => serve::run(args, &config).await,
         Command::Doctor => doctor::run(format),
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),

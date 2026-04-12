@@ -38,13 +38,24 @@ pub const META: PluginMeta = PluginMeta {
             secret: false,
         },
         EnvVar {
-            name: "GOTIFY_TOKEN",
-            description: "App or client token (X-Gotify-Key)",
+            name: "GOTIFY_APP_TOKEN",
+            description: "App token used by message.send",
+            example: "A1b2C3d4E5...",
+            secret: true,
+        },
+        EnvVar {
+            name: "GOTIFY_CLIENT_TOKEN",
+            description: "Client token used by message/app/client management actions",
             example: "A1b2C3d4E5...",
             secret: true,
         },
     ],
-    optional_env: &[],
+    optional_env: &[EnvVar {
+        name: "GOTIFY_TOKEN",
+        description: "Legacy fallback token used when scoped tokens are not set",
+        example: "A1b2C3d4E5...",
+        secret: true,
+    }],
     default_port: Some(80),
 };
 
@@ -70,10 +81,7 @@ impl ServiceClient for GotifyClient {
                     message: if healthy {
                         None
                     } else {
-                        Some(format!(
-                            "health={}, database={}",
-                            h.health, h.database
-                        ))
+                        Some(format!("health={}, database={}", h.health, h.database))
                     },
                 })
             }

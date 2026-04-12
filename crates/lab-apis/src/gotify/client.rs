@@ -146,10 +146,7 @@ impl GotifyClient {
     /// # Errors
     /// Returns `GotifyError::Api` on HTTP failure.
     pub async fn app_delete(&self, id: ApplicationId) -> Result<(), GotifyError> {
-        Ok(self
-            .http
-            .delete(&format!("/application/{}", id.0))
-            .await?)
+        Ok(self.http.delete(&format!("/application/{}", id.0)).await?)
     }
 
     // ── Clients ─────────────────────────────────────────────────────────────

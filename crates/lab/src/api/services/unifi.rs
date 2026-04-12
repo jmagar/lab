@@ -1,15 +1,12 @@
 //! HTTP route group for the `unifi` service.
 //!
-//! TODO(perf): unifi sub-dispatchers each call `require_client()` independently.
-//! Thread `state.clients.unifi` through sub-dispatchers to enable full
-//! connection-pool reuse. See `dispatch/CLAUDE.md` for the migration pattern.
-
 use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::optional_str;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
@@ -20,23 +17,36 @@ async fn handle(
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    // Fail fast if unifi is not configured — avoids dispatching into sub-modules that
-    // would each call require_client() and fail with a less informative error.
-    if state.clients.unifi.is_none() {
-        return Err(ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "UNIFI_URL or UNIFI_API_KEY not configured".into(),
-        });
+    let request_id_owned = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let request_id = request_id_owned.as_deref();
+    let instance = optional_str(&req.params, "instance")?;
+    if let (None, Some(client)) = (instance, state.clients.unifi.as_ref()) {
+        let client = client.clone();
+        handle_action(
+            "unifi",
+            "api",
+            request_id,
+            req,
+            crate::dispatch::unifi::actions(),
+            move |action, params| async move {
+                crate::dispatch::unifi::dispatch_with_client(&client, &action, params).await
+            },
+            Some(&headers),
+        )
+        .await
+    } else {
+        handle_action(
+            "unifi",
+            "api",
+            request_id,
+            req,
+            crate::dispatch::unifi::actions(),
+            |action, params| async move { crate::dispatch::unifi::dispatch(&action, params).await },
+            Some(&headers),
+        )
+        .await
     }
-    handle_action(
-        "unifi",
-        "api",
-        request_id,
-        req,
-        crate::dispatch::unifi::actions(),
-        |action, params| async move { crate::dispatch::unifi::dispatch(&action, params).await },
-        Some(&headers),
-    )
-    .await
 }

@@ -65,6 +65,8 @@ The docs are split by topic so contributors do not have to recover architecture,
   Stack choices, toolchain, feature posture, verification surfaces, and release tooling.
 - [MCP.md](./MCP.md)
   Transport model, one-tool-per-service design, discovery, envelopes, and destructive-op elicitation.
+- [RMCP.md](./RMCP.md)
+  RMCP SDK integration contract: transports, feature posture, handler patterns, auth ownership, and capability rules.
 - [SERVICES.md](./SERVICES.md)
   Service inventory, feature gates, plugin metadata, multi-instance support, coverage docs, and add-a-service workflow.
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
@@ -111,6 +113,7 @@ Use the smallest correct doc:
 - service model or inventory: [SERVICES.md](./SERVICES.md)
 - CLI UX or command behavior: [CLI.md](./CLI.md)
 - MCP tool, discovery, or envelope behavior: [MCP.md](./MCP.md)
+- RMCP SDK integration, feature posture, and server-shape rules: [RMCP.md](./RMCP.md)
 - TUI behavior: [TUI.md](./TUI.md)
 - config, env, secrets, instance naming: [CONFIG.md](./CONFIG.md)
 - observability, request tracing, redaction: [OBSERVABILITY.md](./OBSERVABILITY.md)
@@ -128,6 +131,8 @@ Use the smallest correct doc:
   See [ARCH.md](./ARCH.md).
 - “What is the canonical MCP response/error shape?”
   See [MCP.md](./MCP.md).
+- “How should `lab` use the RMCP SDK itself?”
+  See [RMCP.md](./RMCP.md).
 - “How do multi-instance services work?”
   See [CONFIG.md](./CONFIG.md) and [SERVICES.md](./SERVICES.md).
 - “How should a new service be added?”

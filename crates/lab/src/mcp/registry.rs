@@ -54,7 +54,11 @@ macro_rules! register_service {
                 name: meta.name,
                 description: meta.description,
                 category: category_slug(meta.category),
-                status: if actions.is_empty() { "stub" } else { "available" },
+                status: if actions.is_empty() {
+                    "stub"
+                } else {
+                    "available"
+                },
                 actions,
                 dispatch: $dispatch,
             });
@@ -70,7 +74,11 @@ macro_rules! register_service {
                 name: meta.name,
                 description: meta.description,
                 category: category_slug(meta.category),
-                status: if actions.is_empty() { "stub" } else { "available" },
+                status: if actions.is_empty() {
+                    "stub"
+                } else {
+                    "available"
+                },
                 actions,
                 dispatch: dispatch_fn!(crate::mcp::services::$svc::dispatch),
             });
@@ -156,41 +164,61 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            status: if actions.is_empty() { "stub" } else { "available" },
+            status: if actions.is_empty() {
+                "stub"
+            } else {
+                "available"
+            },
             actions,
             dispatch: dispatch_fn!(crate::mcp::services::extract::dispatch),
         });
     }
 
-    register_service!(reg, "radarr", radarr,
+    register_service!(
+        reg,
+        "radarr",
+        radarr,
         actions = crate::mcp::services::radarr::actions(),
-        dispatch = dispatch_fn!(crate::mcp::services::radarr::dispatch));
+        dispatch = dispatch_fn!(crate::mcp::services::radarr::dispatch)
+    );
 
     register_service!(reg, "sonarr", sonarr);
     register_service!(reg, "prowlarr", prowlarr);
     register_service!(reg, "plex", plex);
     register_service!(reg, "tautulli", tautulli);
 
-    register_service!(reg, "sabnzbd", sabnzbd,
+    register_service!(
+        reg,
+        "sabnzbd",
+        sabnzbd,
         actions = crate::dispatch::sabnzbd::ACTIONS,
-        dispatch = dispatch_fn!(crate::mcp::services::sabnzbd::dispatch));
+        dispatch = dispatch_fn!(crate::mcp::services::sabnzbd::dispatch)
+    );
 
     register_service!(reg, "qbittorrent", qbittorrent);
     register_service!(reg, "tailscale", tailscale);
     register_service!(reg, "linkding", linkding);
     register_service!(reg, "memos", memos);
 
-    register_service!(reg, "bytestash", bytestash,
+    register_service!(
+        reg,
+        "bytestash",
+        bytestash,
         actions = crate::dispatch::bytestash::ACTIONS,
-        dispatch = dispatch_fn!(crate::dispatch::bytestash::dispatch));
+        dispatch = dispatch_fn!(crate::dispatch::bytestash::dispatch)
+    );
 
     register_service!(reg, "paperless", paperless);
     register_service!(reg, "arcane", arcane);
     register_service!(reg, "unraid", unraid);
 
-    register_service!(reg, "unifi", unifi,
+    register_service!(
+        reg,
+        "unifi",
+        unifi,
         actions = crate::dispatch::unifi::actions(),
-        dispatch = dispatch_fn!(crate::dispatch::unifi::dispatch));
+        dispatch = dispatch_fn!(crate::dispatch::unifi::dispatch)
+    );
 
     register_service!(reg, "overseerr", overseerr);
     register_service!(reg, "gotify", gotify);

@@ -344,8 +344,7 @@ async fn fetch_github_preview(
     let commit_info: GitHubCommit =
         serde_json::from_slice(&body).context("parsing GitHub commits API response")?;
     let sha = commit_info.sha;
-    crate::tui::ecosystem::validate_commit_sha(&sha)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    crate::tui::ecosystem::validate_commit_sha(&sha).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // 3. Determine which manifest paths to fetch for this ecosystem.
     let manifest_paths = manifest_paths_for(ecosystem);
@@ -368,11 +367,11 @@ async fn fetch_github_preview(
                     if let Some(stale) = read_cache_stale(&cache_file).await {
                         // Receiver may have exited — ignore send failure.
                         tx.send(crate::tui::events::AppEvent::TaskError {
-                                kind: "preview".to_string(),
-                                message: "showing cached preview (rate limited)".to_string(),
-                            })
-                            .await
-                            .ok();
+                            kind: "preview".to_string(),
+                            message: "showing cached preview (rate limited)".to_string(),
+                        })
+                        .await
+                        .ok();
                         fetched = Some(stale);
                         break;
                     }
@@ -775,7 +774,8 @@ impl PreviewState {
                 let desc = sanitize_display(&plugin.description, 200);
                 let version = plugin
                     .version
-                    .as_deref().map_or_else(|| "-".to_string(), |v| sanitize_display(v, 20));
+                    .as_deref()
+                    .map_or_else(|| "-".to_string(), |v| sanitize_display(v, 20));
 
                 let lines = vec![
                     Line::from(vec![

@@ -4,8 +4,12 @@ use lab_apis::unraid::UnraidClient;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, to_json};
-use crate::dispatch::unraid::{catalog::ACTIONS, client::require_client, params::require_id};
+use crate::dispatch::helpers::{action_schema, help_payload, optional_str, to_json};
+use crate::dispatch::unraid::{
+    catalog::ACTIONS,
+    client::{client_from_instance, require_client},
+    params::require_id,
+};
 
 /// Dispatch using a pre-built client (avoids per-request env reads).
 ///
@@ -61,5 +65,26 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         _ => {}
     }
-    dispatch_with_client(&require_client()?, action, params).await
+
+    if !ACTIONS.iter().any(|spec| spec.name == action) {
+        return Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unraid`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        });
+    }
+
+    let instance = optional_str(&params, "instance")?.map(str::to_owned);
+    let mut params = params;
+    if let Value::Object(ref mut map) = params {
+        map.remove("instance");
+    }
+
+    match instance {
+        Some(label) => {
+            let client = client_from_instance(&label)?;
+            dispatch_with_client(&client, action, params).await
+        }
+        None => dispatch_with_client(&require_client()?, action, params).await,
+    }
 }

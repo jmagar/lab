@@ -22,9 +22,7 @@ async fn handle(
         request_id,
         req,
         crate::dispatch::paperless::ACTIONS,
-        |action, params| async move {
-            crate::dispatch::paperless::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::paperless::dispatch(&action, params).await },
         Some(&headers),
     )
     .await

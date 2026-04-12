@@ -22,9 +22,7 @@ async fn handle(
         request_id,
         req,
         crate::dispatch::linkding::ACTIONS,
-        |action, params| async move {
-            crate::dispatch::linkding::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::linkding::dispatch(&action, params).await },
         Some(&headers),
     )
     .await

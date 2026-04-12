@@ -5,6 +5,11 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
+/// Read an environment variable, returning `None` if absent or empty.
+pub fn env_non_empty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty())
+}
+
 /// Serialize any `Serialize` value to `serde_json::Value`.
 pub fn to_json<T: serde::Serialize>(v: T) -> Result<Value, ToolError> {
     serde_json::to_value(v).map_err(|e| ToolError::Sdk {
@@ -24,35 +29,69 @@ pub fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ToolErro
         })
 }
 
-/// Extract a required integer parameter from a JSON object.
-pub fn require_i64(params: &Value, key: &str) -> Result<i64, ToolError> {
+/// Extract an optional string parameter from a JSON object.
+///
+/// Empty strings are rejected as `invalid_param` so callers do not silently
+/// treat `instance=` as if the field were absent.
+pub fn optional_str<'a>(params: &'a Value, key: &str) -> Result<Option<&'a str>, ToolError> {
     match params.get(key) {
-        None => Err(ToolError::MissingParam {
-            message: format!("missing required parameter `{key}`"),
-            param: key.to_string(),
-        }),
-        Some(v) => v.as_i64().ok_or_else(|| ToolError::InvalidParam {
-            message: format!("parameter `{key}` must be an integer"),
-            param: key.to_string(),
-        }),
+        None => Ok(None),
+        Some(v) => {
+            let value = v.as_str().ok_or_else(|| ToolError::InvalidParam {
+                message: format!("parameter `{key}` must be a string"),
+                param: key.to_string(),
+            })?;
+            if value.is_empty() {
+                Err(ToolError::InvalidParam {
+                    message: format!("parameter `{key}` must not be empty"),
+                    param: key.to_string(),
+                })
+            } else {
+                Ok(Some(value))
+            }
+        }
     }
 }
 
-/// Extract a required non-negative integer parameter from a JSON object.
-#[allow(dead_code)]
-pub fn require_u32(params: &Value, key: &str) -> Result<u32, ToolError> {
-    match params.get(key) {
-        None => Err(ToolError::MissingParam {
-            message: format!("missing required parameter `{key}`"),
-            param: key.to_string(),
-        }),
-        Some(v) => v
-            .as_u64()
+/// Extract a required integer parameter from a JSON object.
+pub fn require_i64(params: &Value, key: &str) -> Result<i64, ToolError> {
+    params.get(key).map_or_else(
+        || {
+            Err(ToolError::MissingParam {
+                message: format!("missing required parameter `{key}`"),
+                param: key.to_string(),
+            })
+        },
+        |v| {
+            v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+                message: format!("parameter `{key}` must be an integer"),
+                param: key.to_string(),
+            })
+        },
+    )
+}
+
+/// Extract an optional non-negative integer parameter from a JSON object.
+pub fn optional_u32(params: &Value, key: &str) -> Result<Option<u32>, ToolError> {
+    params.get(key).map_or(Ok(None), |v| {
+        v.as_u64()
             .and_then(|n| u32::try_from(n).ok())
+            .map(Some)
             .ok_or_else(|| ToolError::InvalidParam {
                 message: format!("parameter `{key}` must be a non-negative integer"),
                 param: key.to_string(),
-            }),
+            })
+    })
+}
+
+/// Extract an optional non-negative integer parameter and enforce an upper bound.
+pub fn optional_u32_max(params: &Value, key: &str, max: u32) -> Result<Option<u32>, ToolError> {
+    match optional_u32(params, key)? {
+        Some(n) if n > max => Err(ToolError::InvalidParam {
+            message: format!("parameter `{key}` must be between 0 and {max}"),
+            param: key.to_string(),
+        }),
+        other => Ok(other),
     }
 }
 

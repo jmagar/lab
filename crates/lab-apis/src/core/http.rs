@@ -300,7 +300,10 @@ impl HttpClient {
                 .map(|e| e.message.as_str())
                 .collect::<Vec<_>>()
                 .join("; ");
-            return Err(ApiError::Server { status: 200, body: msg });
+            return Err(ApiError::Server {
+                status: 200,
+                body: msg,
+            });
         }
         resp.data
             .ok_or_else(|| ApiError::Decode("GraphQL response missing data field".into()))
@@ -378,10 +381,14 @@ mod tests {
     fn relative_paths_accepted() {
         let client = make_client("http://localhost:8080");
 
-        let url = client.url("/api/v1/status").expect("relative path should be accepted");
+        let url = client
+            .url("/api/v1/status")
+            .expect("relative path should be accepted");
         assert_eq!(url, "http://localhost:8080/api/v1/status");
 
-        let url2 = client.url("api/v1/status").expect("bare relative path should be accepted");
+        let url2 = client
+            .url("api/v1/status")
+            .expect("bare relative path should be accepted");
         assert_eq!(url2, "http://localhost:8080/api/v1/status");
     }
 
@@ -389,7 +396,9 @@ mod tests {
     fn base_url_trailing_slash_normalised() {
         let client = make_client("http://localhost:8080/");
 
-        let url = client.url("/api/v1/status").expect("should normalise trailing slash");
+        let url = client
+            .url("/api/v1/status")
+            .expect("should normalise trailing slash");
         assert_eq!(url, "http://localhost:8080/api/v1/status");
     }
 }

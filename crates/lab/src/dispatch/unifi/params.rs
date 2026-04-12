@@ -4,15 +4,6 @@ use crate::dispatch::error::ToolError;
 
 pub use crate::dispatch::helpers::{require_i64, require_str, to_json};
 
-#[allow(dead_code)]
-pub fn require_u32(params: &Value, key: &str) -> Result<u32, ToolError> {
-    let v = require_i64(params, key)?;
-    u32::try_from(v).map_err(|_| ToolError::InvalidParam {
-        message: format!("parameter `{key}` must be a non-negative integer"),
-        param: key.to_string(),
-    })
-}
-
 pub fn object_without(params: &Value, excluded: &[&str]) -> Result<Value, ToolError> {
     let obj = params.as_object().ok_or_else(|| ToolError::InvalidParam {
         message: "expected JSON object".to_string(),

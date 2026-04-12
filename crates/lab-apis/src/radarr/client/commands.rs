@@ -62,7 +62,10 @@ impl RadarrClient {
             .get_json(&format!("/api/v3/command/{}", id.0))
             .await
             .map_err(|e| match e {
-                ApiError::NotFound => RadarrError::NotFound { kind: "command", id: id.0 },
+                ApiError::NotFound => RadarrError::NotFound {
+                    kind: "command",
+                    id: id.0,
+                },
                 other => RadarrError::Api(other),
             })
     }

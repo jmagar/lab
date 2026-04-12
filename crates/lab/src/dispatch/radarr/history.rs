@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use super::params::to_json;
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::optional_u32;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -44,15 +45,8 @@ pub async fn dispatch_with_client(
 ) -> Result<Value, ToolError> {
     match action {
         "history.list" => {
-            let page = u32::try_from(params.get("page").and_then(Value::as_u64).unwrap_or(1))
-                .unwrap_or(u32::MAX);
-            let page_size = u32::try_from(
-                params
-                    .get("page_size")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(10),
-            )
-            .unwrap_or(u32::MAX);
+            let page = optional_u32(&params, "page")?.unwrap_or(1);
+            let page_size = optional_u32(&params, "page_size")?.unwrap_or(10);
             let page_data = client.history_list(page, page_size).await?;
             to_json(page_data)
         }

@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -69,24 +69,28 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "clients.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let clients = require_client()?.clients_list(site_id).await?;
+            let clients = client.clients_list(site_id).await?;
             to_json(clients)
         }
         "clients.get" => {
             let site_id = require_str(&params, "site_id")?;
             let client_id = require_str(&params, "client_id")?;
-            let client = require_client()?.client_get(site_id, client_id).await?;
+            let client = client.client_get(site_id, client_id).await?;
             to_json(client)
         }
         "clients.action" => {
             let site_id = require_str(&params, "site_id")?;
             let client_id = require_str(&params, "client_id")?;
             let body = object_without(&params, &["site_id", "client_id"])?;
-            let result = require_client()?
+            let result = client
                 .post_value(
                     &format!("/sites/{site_id}/clients/{client_id}/actions"),
                     &body,

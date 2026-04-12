@@ -23,7 +23,10 @@ use crate::tui::metadata::all_services;
 /// `PathBuf::from("~/.lab/.env")` does **not** expand the tilde — shells do.
 /// The `/root` fallback is the conventional home directory in rootful containers.
 pub fn lab_env_path() -> PathBuf {
-    std::env::var_os("HOME").map_or_else(|| PathBuf::from("/root/.lab/.env"), |h| PathBuf::from(h).join(".lab").join(".env"))
+    std::env::var_os("HOME").map_or_else(
+        || PathBuf::from("/root/.lab/.env"),
+        |h| PathBuf::from(h).join(".lab").join(".env"),
+    )
 }
 
 /// Visual health indicator for a single service row.
@@ -222,7 +225,10 @@ impl LabServicesState {
     ///
     /// Replaces the map wholesale so stale entries for removed services are cleared.
     pub fn update_health(&mut self, results: Vec<ServiceHealth>) {
-        self.health = results.into_iter().map(|h| (h.service.clone(), h)).collect();
+        self.health = results
+            .into_iter()
+            .map(|h| (h.service.clone(), h))
+            .collect();
     }
 
     /// Toggle whether a service is enabled in `.mcp.json`.
@@ -504,7 +510,12 @@ fn render_env_var(
     let mut lines = Vec::new();
     let value = env_vars.get(ev.name);
     let (val_text, val_color) = value.map_or_else(
-        || (format!("(not set — example: {})", ev.example), Color::DarkGray),
+        || {
+            (
+                format!("(not set — example: {})", ev.example),
+                Color::DarkGray,
+            )
+        },
         |v| {
             let display = if ev.secret && !reveal {
                 // Keep the raw value in a SecretString; only expose at the
@@ -628,7 +639,10 @@ mod tests {
         let mut tmp = NamedTempFile::new().unwrap();
         tmp.write_all(b"").unwrap();
         let result = seed_enabled_services(Some(tmp.path()));
-        assert!(result.is_empty(), "expected empty set for zero-byte .mcp.json");
+        assert!(
+            result.is_empty(),
+            "expected empty set for zero-byte .mcp.json"
+        );
     }
 
     #[test]

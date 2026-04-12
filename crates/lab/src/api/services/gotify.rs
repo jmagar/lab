@@ -18,14 +18,7 @@ async fn handle(
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    let client = state
-        .clients
-        .gotify
-        .clone()
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "GOTIFY_URL or GOTIFY_TOKEN not configured".into(),
-        })?;
+    let client = state.clients.gotify.clone();
     handle_action(
         "gotify",
         "api",
@@ -33,7 +26,13 @@ async fn handle(
         req,
         ACTIONS,
         move |action, params| async move {
-            crate::dispatch::gotify::dispatch_with_client(&client, &action, params).await
+            let Some(client) = client.as_ref() else {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "internal_error".into(),
+                    message: "GOTIFY_URL not configured".into(),
+                });
+            };
+            crate::dispatch::gotify::dispatch_with_clients(client, &action, params).await
         },
         Some(&headers),
     )

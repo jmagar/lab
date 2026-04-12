@@ -23,16 +23,14 @@ impl RadarrClient {
         loop {
             let val: serde_json::Value = self
                 .http
-                .get_json(&format!(
-                    "/api/v3/queue?page={page}&pageSize={PAGE_SIZE}"
-                ))
+                .get_json(&format!("/api/v3/queue?page={page}&pageSize={PAGE_SIZE}"))
                 .await
                 .map_err(RadarrError::from)?;
 
-            let records: Vec<QueueItem> = serde_json::from_value(
-                val["records"].clone(),
-            )
-            .map_err(|e| RadarrError::Api(crate::core::error::ApiError::Decode(e.to_string())))?;
+            let records: Vec<QueueItem> =
+                serde_json::from_value(val["records"].clone()).map_err(|e| {
+                    RadarrError::Api(crate::core::error::ApiError::Decode(e.to_string()))
+                })?;
 
             let total = val["totalRecords"].as_i64().unwrap_or(0);
             all_records.extend(records);

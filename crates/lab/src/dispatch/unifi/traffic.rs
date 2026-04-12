@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, query_from, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -95,17 +95,21 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "traffic-matching-lists.list" => {
             let site_id = require_str(&params, "site_id")?;
             let q = query_from(&params, &["offset", "limit", "filter"])?;
             let lists = if q.is_empty() {
-                require_client()?
+                client
                     .get_value(&format!("/sites/{site_id}/traffic-matching-lists"))
                     .await?
             } else {
-                require_client()?
+                client
                     .get_value_query(&format!("/sites/{site_id}/traffic-matching-lists"), &q)
                     .await?
             };
@@ -114,7 +118,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "traffic-matching-lists.get" => {
             let site_id = require_str(&params, "site_id")?;
             let traffic_matching_list_id = require_str(&params, "traffic_matching_list_id")?;
-            let list = require_client()?
+            let list = client
                 .get_value(&format!(
                     "/sites/{site_id}/traffic-matching-lists/{traffic_matching_list_id}"
                 ))
@@ -124,7 +128,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "traffic-matching-lists.create" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let list = require_client()?
+            let list = client
                 .post_value(&format!("/sites/{site_id}/traffic-matching-lists"), &body)
                 .await?;
             to_json(list)
@@ -133,7 +137,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let traffic_matching_list_id = require_str(&params, "traffic_matching_list_id")?;
             let body = object_without(&params, &["site_id", "traffic_matching_list_id"])?;
-            let list = require_client()?
+            let list = client
                 .put_value(
                     &format!("/sites/{site_id}/traffic-matching-lists/{traffic_matching_list_id}"),
                     &body,
@@ -144,7 +148,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "traffic-matching-lists.delete" => {
             let site_id = require_str(&params, "site_id")?;
             let traffic_matching_list_id = require_str(&params, "traffic_matching_list_id")?;
-            require_client()?
+            client
                 .delete_value(&format!(
                     "/sites/{site_id}/traffic-matching-lists/{traffic_matching_list_id}"
                 ))

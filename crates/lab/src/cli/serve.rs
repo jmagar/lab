@@ -3,7 +3,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
@@ -14,7 +14,8 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
 use serde_json::Value;
 
-use crate::api::{AppState, build_router};
+use crate::api::AppState;
+use crate::config::LabConfig;
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
@@ -36,26 +37,93 @@ pub struct ServeArgs {
     #[arg(long, value_delimiter = ',')]
     pub services: Vec<String>,
     /// Transport to use.
-    #[arg(long, value_enum, default_value_t = Transport::Stdio)]
-    pub transport: Transport,
+    #[arg(long, value_enum)]
+    pub transport: Option<Transport>,
     /// Bind host for the HTTP transport.
-    #[arg(long, default_value = "127.0.0.1")]
-    pub host: String,
+    #[arg(long)]
+    pub host: Option<String>,
     /// Bind port for the HTTP transport.
-    #[arg(long, default_value_t = 8765)]
-    pub port: u16,
+    #[arg(long)]
+    pub port: Option<u16>,
 }
 
 /// Run the serve subcommand.
-pub async fn run(args: ServeArgs) -> Result<ExitCode> {
+pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
+    let args = resolve_args(args, config)?;
     let registry = build_default_registry();
     let registry = filter_registry(registry, &args.services)?;
     let registry = Arc::new(registry);
 
     match args.transport {
         Transport::Stdio => run_stdio(registry).await,
-        Transport::Http => run_http(&args.host, args.port).await,
+        Transport::Http => run_http(&args.host, args.port, &require_http_token()?).await,
     }
+}
+
+struct ResolvedServeArgs {
+    services: Vec<String>,
+    transport: Transport,
+    host: String,
+    port: u16,
+}
+
+fn resolve_args(args: ServeArgs, config: &LabConfig) -> Result<ResolvedServeArgs> {
+    Ok(ResolvedServeArgs {
+        services: args.services,
+        transport: resolve_transport(
+            args.transport,
+            std::env::var("LAB_MCP_TRANSPORT").ok(),
+            config.mcp.transport.as_deref(),
+        )?,
+        host: args
+            .host
+            .or_else(|| std::env::var("LAB_MCP_HTTP_HOST").ok())
+            .or_else(|| config.mcp.host.clone())
+            .unwrap_or_else(|| "127.0.0.1".to_string()),
+        port: resolve_port(
+            args.port,
+            std::env::var("LAB_MCP_HTTP_PORT").ok(),
+            config.mcp.port,
+        )?,
+    })
+}
+
+fn resolve_transport(
+    cli: Option<Transport>,
+    env: Option<String>,
+    config: Option<&str>,
+) -> Result<Transport> {
+    if let Some(transport) = cli {
+        return Ok(transport);
+    }
+    if let Some(value) = env {
+        return Transport::from_str(&value, true)
+            .map_err(|err| anyhow::anyhow!("invalid LAB_MCP_TRANSPORT value `{value}`: {err}"));
+    }
+    if let Some(value) = config {
+        return Transport::from_str(value, true)
+            .map_err(|err| anyhow::anyhow!("invalid mcp.transport value `{value}`: {err}"));
+    }
+    Ok(Transport::Stdio)
+}
+
+fn resolve_port(cli: Option<u16>, env: Option<String>, config: Option<u16>) -> Result<u16> {
+    if let Some(port) = cli {
+        return Ok(port);
+    }
+    if let Some(value) = env {
+        return value
+            .parse::<u16>()
+            .with_context(|| format!("invalid LAB_MCP_HTTP_PORT value `{value}`"));
+    }
+    Ok(config.unwrap_or(8765))
+}
+
+fn require_http_token() -> Result<String> {
+    std::env::var("LAB_MCP_HTTP_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .context("LAB_MCP_HTTP_TOKEN must be set when using --transport http")
 }
 
 fn filter_registry(registry: ToolRegistry, services: &[String]) -> Result<ToolRegistry> {
@@ -150,7 +218,10 @@ impl ServerHandler for LabMcpServer {
         // Elicitation gate: if the action is destructive and the client supports
         // elicitation, ask for confirmation before dispatching.
         if let Some(entry) = svc {
-            let is_destructive = entry.actions.iter().any(|a| a.name == action && a.destructive);
+            let is_destructive = entry
+                .actions
+                .iter()
+                .any(|a| a.name == action && a.destructive);
             if is_destructive {
                 match elicit_confirm(&context, &service, &action).await {
                     ElicitResult::Confirmed => {}
@@ -211,7 +282,14 @@ impl ServerHandler for LabMcpServer {
             }
             Err(e) => {
                 let (kind, message, extra) = extract_error_info(&e);
-                tracing::warn!(surface = "mcp", service, action, elapsed_ms, kind, "dispatch error");
+                tracing::warn!(
+                    surface = "mcp",
+                    service,
+                    action,
+                    elapsed_ms,
+                    kind,
+                    "dispatch error"
+                );
                 let envelope = extra.map_or_else(
                     || build_error(&service, &action, kind, &message),
                     |ref extra| build_error_extra(&service, &action, kind, &message, extra),
@@ -250,7 +328,10 @@ async fn elicit_confirm(
     }
 
     let Ok(schema) = ElicitationSchema::builder()
-        .required_property("confirm", PrimitiveSchema::Boolean(rmcp::model::BooleanSchema::default()))
+        .required_property(
+            "confirm",
+            PrimitiveSchema::Boolean(rmcp::model::BooleanSchema::default()),
+        )
         .build()
     else {
         return ElicitResult::NotSupported;
@@ -288,9 +369,9 @@ async fn elicit_confirm(
     }
 }
 
-async fn run_http(host: &str, port: u16) -> Result<ExitCode> {
+async fn run_http(host: &str, port: u16, bearer_token: &str) -> Result<ExitCode> {
     let state = AppState::new();
-    let router = build_router(state);
+    let router = crate::api::router::build_router_with_bearer(state, Some(bearer_token.to_string()));
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!(addr, "lab serve (http) ready");
@@ -379,6 +460,8 @@ fn static_kind(s: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::static_kind;
+    use super::{Transport, resolve_port, resolve_transport};
+    use crate::config::{LabConfig, McpPreferences};
     use crate::dispatch::error::ToolError;
 
     /// Every kind that `ToolError::kind()` can return must have an explicit arm
@@ -450,5 +533,41 @@ mod tests {
                 static_kind(kind),
             );
         }
+    }
+
+    #[test]
+    fn transport_resolution_prefers_cli_then_env_then_config() {
+        let resolved = resolve_transport(Some(Transport::Http), Some("stdio".into()), Some("stdio"))
+            .expect("cli value should win");
+        assert!(matches!(resolved, Transport::Http));
+
+        let resolved = resolve_transport(None, Some("http".into()), Some("stdio"))
+            .expect("env value should win");
+        assert!(matches!(resolved, Transport::Http));
+
+        let resolved = resolve_transport(None, None, Some("http"))
+            .expect("config value should win");
+        assert!(matches!(resolved, Transport::Http));
+    }
+
+    #[test]
+    fn port_resolution_prefers_cli_then_env_then_config() {
+        assert_eq!(resolve_port(Some(9999), Some("8888".into()), Some(7777)).unwrap(), 9999);
+        assert_eq!(resolve_port(None, Some("8888".into()), Some(7777)).unwrap(), 8888);
+        assert_eq!(resolve_port(None, None, Some(7777)).unwrap(), 7777);
+        assert_eq!(resolve_port(None, None, None).unwrap(), 8765);
+    }
+
+    #[test]
+    fn config_defaults_are_available_for_serve_resolution() {
+        let cfg = LabConfig {
+            mcp: McpPreferences {
+                transport: Some("http".into()),
+                host: Some("0.0.0.0".into()),
+                port: Some(9000),
+            },
+            ..LabConfig::default()
+        };
+        assert_eq!(cfg.mcp.host.as_deref(), Some("0.0.0.0"));
     }
 }

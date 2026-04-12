@@ -30,7 +30,7 @@ pub struct ServiceClients {
     #[cfg(feature = "unraid")]
     pub unraid: Option<Arc<lab_apis::unraid::UnraidClient>>,
     #[cfg(feature = "gotify")]
-    pub gotify: Option<Arc<lab_apis::gotify::GotifyClient>>,
+    pub gotify: Option<Arc<crate::dispatch::gotify::GotifyClients>>,
 }
 
 impl ServiceClients {
@@ -51,7 +51,7 @@ impl ServiceClients {
             #[cfg(feature = "unraid")]
             unraid: crate::dispatch::unraid::client_from_env().map(Arc::new),
             #[cfg(feature = "gotify")]
-            gotify: crate::dispatch::gotify::client_from_env().map(Arc::new),
+            gotify: crate::dispatch::gotify::clients_from_env().map(Arc::new),
         }
     }
 }

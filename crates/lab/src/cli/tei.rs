@@ -33,14 +33,8 @@ pub async fn run(args: TeiArgs, format: OutputFormat) -> Result<ExitCode> {
         .map(serde_json::from_str)
         .transpose()?
         .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
-    run_action_command(
-        "tei",
-        action,
-        params,
-        format,
-        |action, params| async move {
-            crate::mcp::services::tei::dispatch(&action, params).await
-        },
-    )
+    run_action_command("tei", action, params, format, |action, params| async move {
+        crate::mcp::services::tei::dispatch(&action, params).await
+    })
     .await
 }

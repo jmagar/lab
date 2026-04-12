@@ -8,19 +8,24 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use sha2::{Digest as _, Sha256};
 
 /// State machine for the self-update tab.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum UpdateState {
     #[default]
     Idle,
     Checking,
-    Available { current: String, latest: String },
-    Downloading { progress: f32 },
+    Available {
+        current: String,
+        latest: String,
+    },
+    Downloading {
+        progress: f32,
+    },
     Verifying,
     Done,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
-
 
 // ── GitHub API types ──────────────────────────────────────────────────────────
 
@@ -75,7 +80,11 @@ pub async fn check_for_update() -> anyhow::Result<(String, String)> {
 /// # Preconditions
 /// This function should only be called **after** the user has confirmed the
 /// update prompt. It does not ask for confirmation internally.
-#[allow(clippy::too_many_lines, clippy::cast_possible_truncation, clippy::items_after_statements)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::cast_possible_truncation,
+    clippy::items_after_statements
+)]
 pub async fn perform_update(
     tx: tokio::sync::mpsc::Sender<crate::tui::events::AppEvent>,
 ) -> anyhow::Result<()> {
@@ -300,7 +309,11 @@ async fn fetch_latest_release() -> anyhow::Result<GhRelease> {
 
 impl UpdateState {
     /// Render the update tab into `area` on `f`.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap
+    )]
     pub fn render(&self, f: &mut ratatui::Frame<'_>, area: Rect, tick_count: u64) {
         use crate::tui::display::spinner_frame;
         use ratatui::layout::{Constraint, Direction, Layout};
@@ -456,8 +469,8 @@ mod tests {
 
         // Ensure each state can be cloned and debug-printed without panicking
         for state in &states {
-            let _ = format!("{state:?}");
-            let _ = state.clone();
+            drop(format!("{state:?}"));
+            drop(state.clone());
         }
 
         // Basic render smoke-test using an in-memory backend

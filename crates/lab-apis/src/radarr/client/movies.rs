@@ -34,7 +34,10 @@ impl RadarrClient {
             .get_json(&format!("/api/v3/movie/{}", id.0))
             .await
             .map_err(|e| match e {
-                ApiError::NotFound => RadarrError::NotFound { kind: "movie", id: id.0 },
+                ApiError::NotFound => RadarrError::NotFound {
+                    kind: "movie",
+                    id: id.0,
+                },
                 other => RadarrError::Api(other),
             })
     }
@@ -88,7 +91,10 @@ impl RadarrClient {
             ))
             .await
             .map_err(|e| match e {
-                ApiError::NotFound => RadarrError::NotFound { kind: "movie", id: id.0 },
+                ApiError::NotFound => RadarrError::NotFound {
+                    kind: "movie",
+                    id: id.0,
+                },
                 other => RadarrError::Api(other),
             })
     }

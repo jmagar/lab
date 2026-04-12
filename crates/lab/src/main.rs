@@ -14,9 +14,9 @@ mod config;
 mod dispatch;
 mod mcp;
 mod output;
-mod tui;
 #[cfg(test)]
 mod test_support;
+mod tui;
 
 use std::process::ExitCode;
 

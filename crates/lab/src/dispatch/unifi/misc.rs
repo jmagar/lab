@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{query_from, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -107,47 +107,49 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "system.info" => {
-            let info = require_client()?.info().await?;
+            let info = client.info().await?;
             to_json(info)
         }
         "sites.list" => {
-            let sites = require_client()?.sites_list().await?;
+            let sites = client.sites_list().await?;
             to_json(sites)
         }
         "wans.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let wans = require_client()?
-                .get_value(&format!("/sites/{site_id}/wans"))
-                .await?;
+            let wans = client.get_value(&format!("/sites/{site_id}/wans")).await?;
             to_json(wans)
         }
         "vpn.site-to-site-tunnels.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let tunnels = require_client()?
+            let tunnels = client
                 .get_value(&format!("/sites/{site_id}/vpn/site-to-site-tunnels"))
                 .await?;
             to_json(tunnels)
         }
         "vpn.servers.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let servers = require_client()?
+            let servers = client
                 .get_value(&format!("/sites/{site_id}/vpn/servers"))
                 .await?;
             to_json(servers)
         }
         "radius.profiles.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let profiles = require_client()?
+            let profiles = client
                 .get_value(&format!("/sites/{site_id}/radius/profiles"))
                 .await?;
             to_json(profiles)
         }
         "device-tags.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let tags = require_client()?
+            let tags = client
                 .get_value(&format!("/sites/{site_id}/device-tags"))
                 .await?;
             to_json(tags)
@@ -155,31 +157,27 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "dpi.categories.list" => {
             let q = query_from(&params, &["offset", "limit"])?;
             let categories = if q.is_empty() {
-                require_client()?.get_value("/dpi/categories").await?
+                client.get_value("/dpi/categories").await?
             } else {
-                require_client()?
-                    .get_value_query("/dpi/categories", &q)
-                    .await?
+                client.get_value_query("/dpi/categories", &q).await?
             };
             to_json(categories)
         }
         "dpi.applications.list" => {
             let q = query_from(&params, &["offset", "limit"])?;
             let applications = if q.is_empty() {
-                require_client()?.get_value("/dpi/applications").await?
+                client.get_value("/dpi/applications").await?
             } else {
-                require_client()?
-                    .get_value_query("/dpi/applications", &q)
-                    .await?
+                client.get_value_query("/dpi/applications", &q).await?
             };
             to_json(applications)
         }
         "countries.list" => {
             let q = query_from(&params, &["offset", "limit"])?;
             let countries = if q.is_empty() {
-                require_client()?.get_value("/countries").await?
+                client.get_value("/countries").await?
             } else {
-                require_client()?.get_value_query("/countries", &q).await?
+                client.get_value_query("/countries", &q).await?
             };
             to_json(countries)
         }
