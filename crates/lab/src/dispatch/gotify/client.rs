@@ -38,11 +38,7 @@ impl GotifyClients {
             .ok()
             .map(Arc::new)
         });
-        Some(Self {
-            health,
-            app,
-            client,
-        })
+        Some(Self { health, app, client })
     }
 
     #[must_use]
