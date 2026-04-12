@@ -3,6 +3,7 @@ use std::sync::{Arc, OnceLock};
 use lab_apis::core::Auth;
 use lab_apis::unifi::UnifiClient;
 
+use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{InstancePool, env_non_empty};
 
@@ -59,4 +60,11 @@ pub fn client_from_env() -> Option<UnifiClient> {
 /// - `UnknownInstance` — the label was never found in the environment at all.
 pub fn client_from_instance(label: Option<&str>) -> Result<Arc<UnifiClient>, ToolError> {
     pool().resolve(label)
+}
+
+pub fn require_client() -> Result<UnifiClient, ToolError> {
+    client_from_env().ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: "UNIFI_URL or UNIFI_API_KEY not configured".to_string(),
+    })
 }
