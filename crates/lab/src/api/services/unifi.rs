@@ -6,7 +6,6 @@ use serde_json::Value;
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::optional_str;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))

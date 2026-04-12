@@ -6,6 +6,15 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 use crate::dispatch::linkding::params::require_id_u64;
 use crate::dispatch::linkding::{catalog::ACTIONS, client, params};
 
+/// Extract a required `id` param as `u64`, rejecting negative values.
+fn require_id_u64(params: &Value) -> Result<u64, ToolError> {
+    let n = require_i64(params, "id")?;
+    u64::try_from(n).map_err(|_| ToolError::InvalidParam {
+        message: "id must be non-negative".to_string(),
+        param: "id".to_string(),
+    })
+}
+
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 pub async fn dispatch_with_client(
     client: &LinkdingClient,

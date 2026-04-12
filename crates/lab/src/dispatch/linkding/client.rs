@@ -27,6 +27,7 @@ pub fn client_from_vars(url: Option<&str>, token: Option<&str>) -> Option<Linkdi
             key: format!("Token {token}"),
         },
     )
+    .map_err(|e| tracing::warn!(error = %e, url, "linkding client construction failed"))
     .ok()
 }
 
