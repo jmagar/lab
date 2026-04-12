@@ -2,8 +2,9 @@ use lab_apis::paperless::PaperlessClient;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, require_i64, require_str, to_json};
+use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
 use crate::dispatch::paperless::{catalog::ACTIONS, client, params};
+use crate::dispatch::paperless::params::require_id_u64;
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 ///
@@ -113,11 +114,3 @@ pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolEr
     dispatch_with_client(&client::require_client()?, action, params_value).await
 }
 
-/// Extract required `id` param as `u64`.
-fn require_id_u64(params: &Value) -> Result<u64, ToolError> {
-    let n = require_i64(params, "id")?;
-    u64::try_from(n).map_err(|_| ToolError::InvalidParam {
-        message: "parameter `id` must be a non-negative integer".to_string(),
-        param: "id".to_string(),
-    })
-}

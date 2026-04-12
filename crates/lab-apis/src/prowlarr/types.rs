@@ -47,10 +47,10 @@ impl HistoryQuery {
             pairs.push(("sortKey".to_string(), sk.clone()));
         }
         if let Some(ref sd) = self.sort_dir {
-            pairs.push(("sortDir".to_string(), sd.clone()));
+            pairs.push(("sortDirection".to_string(), sd.clone()));
         }
         if let Some(iid) = self.indexer_id {
-            pairs.push(("indexerId".to_string(), iid.to_string()));
+            pairs.push(("indexerIds".to_string(), iid.to_string()));
         }
         pairs
     }

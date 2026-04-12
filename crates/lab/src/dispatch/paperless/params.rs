@@ -5,7 +5,16 @@ use lab_apis::paperless::types::{
 };
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::body_from_params;
+use crate::dispatch::helpers::{body_from_params, require_i64};
+
+/// Extract a required `id` param as `u64`, rejecting negative values.
+pub fn require_id_u64(params: &Value) -> Result<u64, ToolError> {
+    let n = require_i64(params, "id")?;
+    u64::try_from(n).map_err(|_| ToolError::InvalidParam {
+        message: "parameter `id` must be a non-negative integer".to_string(),
+        param: "id".to_string(),
+    })
+}
 
 /// Build a `DocumentUpdateRequest` from params.
 ///
@@ -15,8 +24,8 @@ use crate::dispatch::helpers::body_from_params;
 pub fn document_update_from_params(params: &Value) -> Result<DocumentUpdateRequest, ToolError> {
     serde_json::from_value(body_from_params(params, &["id", "payload", "body"])).map_err(|e| {
         ToolError::InvalidParam {
-            message: e.to_string(),
-            param: "payload".to_string(),
+            message: format!("body parameters could not be parsed: {e}"),
+            param: "body".to_string(),
         }
     })
 }
@@ -25,8 +34,8 @@ pub fn document_update_from_params(params: &Value) -> Result<DocumentUpdateReque
 pub fn tag_create_from_params(params: &Value) -> Result<TagCreateRequest, ToolError> {
     serde_json::from_value(body_from_params(params, &["payload", "body"])).map_err(|e| {
         ToolError::InvalidParam {
-            message: e.to_string(),
-            param: "payload".to_string(),
+            message: format!("body parameters could not be parsed: {e}"),
+            param: "body".to_string(),
         }
     })
 }
@@ -37,8 +46,8 @@ pub fn correspondent_create_from_params(
 ) -> Result<CorrespondentCreateRequest, ToolError> {
     serde_json::from_value(body_from_params(params, &["payload", "body"])).map_err(|e| {
         ToolError::InvalidParam {
-            message: e.to_string(),
-            param: "payload".to_string(),
+            message: format!("body parameters could not be parsed: {e}"),
+            param: "body".to_string(),
         }
     })
 }
@@ -49,8 +58,8 @@ pub fn document_type_create_from_params(
 ) -> Result<DocumentTypeCreateRequest, ToolError> {
     serde_json::from_value(body_from_params(params, &["payload", "body"])).map_err(|e| {
         ToolError::InvalidParam {
-            message: e.to_string(),
-            param: "payload".to_string(),
+            message: format!("body parameters could not be parsed: {e}"),
+            param: "body".to_string(),
         }
     })
 }

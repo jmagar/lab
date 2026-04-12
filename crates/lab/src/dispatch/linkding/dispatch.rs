@@ -5,6 +5,15 @@ use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, require_i64, require_str, to_json};
 use crate::dispatch::linkding::{catalog::ACTIONS, client, params};
 
+/// Extract a required `id` param as `u64`, rejecting negative values.
+fn require_id_u64(params: &Value) -> Result<u64, ToolError> {
+    let n = require_i64(params, "id")?;
+    u64::try_from(n).map_err(|_| ToolError::InvalidParam {
+        message: "id must be non-negative".to_string(),
+        param: "id".to_string(),
+    })
+}
+
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 pub async fn dispatch_with_client(
     client: &LinkdingClient,
@@ -22,8 +31,8 @@ pub async fn dispatch_with_client(
             to_json(client.bookmarks_archived_list(&p).await?)
         }
         "bookmarks.get" => {
-            let id = require_i64(&params_value, "id")?;
-            to_json(client.bookmark_get(id as u64).await?)
+            let id = require_id_u64(&params_value)?;
+            to_json(client.bookmark_get(id).await?)
         }
         "bookmarks.check" => {
             let url = require_str(&params_value, "url")?;
@@ -34,28 +43,28 @@ pub async fn dispatch_with_client(
             to_json(client.bookmark_create(&body).await?)
         }
         "bookmarks.update" => {
-            let id = require_i64(&params_value, "id")?;
+            let id = require_id_u64(&params_value)?;
             let body = params::bookmark_update_from_params(&params_value)?;
-            to_json(client.bookmark_update(id as u64, &body).await?)
+            to_json(client.bookmark_update(id, &body).await?)
         }
         "bookmarks.archive" => {
-            let id = require_i64(&params_value, "id")?;
-            to_json(client.bookmark_archive(id as u64).await?)
+            let id = require_id_u64(&params_value)?;
+            to_json(client.bookmark_archive(id).await?)
         }
         "bookmarks.unarchive" => {
-            let id = require_i64(&params_value, "id")?;
-            to_json(client.bookmark_unarchive(id as u64).await?)
+            let id = require_id_u64(&params_value)?;
+            to_json(client.bookmark_unarchive(id).await?)
         }
         "bookmarks.delete" => {
-            let id = require_i64(&params_value, "id")?;
-            client.bookmark_delete(id as u64).await?;
+            let id = require_id_u64(&params_value)?;
+            client.bookmark_delete(id).await?;
             Ok(Value::Null)
         }
         // ── Tags ──────────────────────────────────────────────────────────
         "tags.list" => to_json(client.tags_list().await?),
         "tags.get" => {
-            let id = require_i64(&params_value, "id")?;
-            to_json(client.tag_get(id as u64).await?)
+            let id = require_id_u64(&params_value)?;
+            to_json(client.tag_get(id).await?)
         }
         "tags.create" => {
             let body = params::tag_create_from_params(&params_value)?;

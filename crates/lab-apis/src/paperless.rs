@@ -68,7 +68,16 @@ impl ServiceClient for PaperlessClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed".into()),
             }),
-            Err(PaperlessError::Api(e)) => Ok(ServiceStatus::unreachable(e.to_string())),
+            Err(PaperlessError::Api(ApiError::Network(msg))) => {
+                Ok(ServiceStatus::unreachable(msg))
+            }
+            Err(PaperlessError::Api(e)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some(e.to_string()),
+            }),
         }
     }
 }

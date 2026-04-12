@@ -20,6 +20,7 @@ pub fn client_from_env() -> Option<ProwlarrClient> {
             key,
         },
     )
+    .map_err(|e| tracing::warn!(error = %e, url, "prowlarr client construction failed"))
     .ok()
 }
 

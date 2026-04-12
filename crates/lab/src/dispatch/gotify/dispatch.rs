@@ -24,7 +24,7 @@ fn require_management_client(
 }
 
 /// Dispatch against pre-built Gotify clients (avoids per-request env reads).
-pub async fn dispatch_with_clients(
+pub async fn dispatch_with_client(
     clients: &GotifyClients,
     action: &str,
     params_value: Value,
@@ -88,7 +88,7 @@ pub async fn dispatch_with_clients(
     }
 }
 
-/// Top-level dispatch: handles built-ins then routes to `dispatch_with_clients`.
+/// Top-level dispatch: handles built-ins then routes to `dispatch_with_client`.
 pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolError> {
     match action {
         "help" => return Ok(help_payload("gotify", ACTIONS)),
@@ -105,7 +105,7 @@ pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolEr
         }
         _ => {}
     }
-    dispatch_with_clients(
+    dispatch_with_client(
         &super::client::clients_from_env().ok_or_else(|| ToolError::Sdk {
             sdk_kind: "internal_error".into(),
             message: "GOTIFY_URL not configured".into(),

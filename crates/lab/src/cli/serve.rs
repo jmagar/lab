@@ -59,6 +59,11 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         .or_else(|| std::env::var("LAB_MCP_HTTP_HOST").ok())
         .or_else(|| config.mcp.host.clone())
         .unwrap_or_else(|| "127.0.0.1".to_string());
+    if host.is_empty() {
+        anyhow::bail!(
+            "HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config"
+        );
+    }
     let port = resolve_port(
         args.port,
         std::env::var("LAB_MCP_HTTP_PORT").ok(),
@@ -359,7 +364,8 @@ async fn elicit_confirm(
 }
 
 async fn run_http(host: &str, port: u16, bearer_token: &str, state: AppState) -> Result<ExitCode> {
-    let router = crate::api::router::build_router_with_bearer(state, Some(bearer_token.to_string()));
+    let router =
+        crate::api::router::build_router_with_bearer(state, Some(bearer_token.to_string()));
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!(addr, "lab serve (http) ready");
@@ -525,23 +531,30 @@ mod tests {
 
     #[test]
     fn transport_resolution_prefers_cli_then_env_then_config() {
-        let resolved = resolve_transport(Some(Transport::Http), Some("stdio".into()), Some("stdio"))
-            .expect("cli value should win");
+        let resolved =
+            resolve_transport(Some(Transport::Http), Some("stdio".into()), Some("stdio"))
+                .expect("cli value should win");
         assert!(matches!(resolved, Transport::Http));
 
         let resolved = resolve_transport(None, Some("http".into()), Some("stdio"))
             .expect("env value should win");
         assert!(matches!(resolved, Transport::Http));
 
-        let resolved = resolve_transport(None, None, Some("http"))
-            .expect("config value should win");
+        let resolved =
+            resolve_transport(None, None, Some("http")).expect("config value should win");
         assert!(matches!(resolved, Transport::Http));
     }
 
     #[test]
     fn port_resolution_prefers_cli_then_env_then_config() {
-        assert_eq!(resolve_port(Some(9999), Some("8888".into()), Some(7777)).unwrap(), 9999);
-        assert_eq!(resolve_port(None, Some("8888".into()), Some(7777)).unwrap(), 8888);
+        assert_eq!(
+            resolve_port(Some(9999), Some("8888".into()), Some(7777)).unwrap(),
+            9999
+        );
+        assert_eq!(
+            resolve_port(None, Some("8888".into()), Some(7777)).unwrap(),
+            8888
+        );
         assert_eq!(resolve_port(None, None, Some(7777)).unwrap(), 7777);
         assert_eq!(resolve_port(None, None, None).unwrap(), 8765);
     }

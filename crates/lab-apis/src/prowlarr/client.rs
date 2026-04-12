@@ -188,9 +188,12 @@ impl ProwlarrClient {
 
     /// Health check — probe via system status (lightest authenticated endpoint).
     ///
+    /// Calls `GET /api/v1/system/status` and discards the body. This is the
+    /// fastest authenticated round-trip available in the Prowlarr API.
+    ///
     /// # Errors
     /// Returns `ProwlarrError::Api` on HTTP failure.
-    pub async fn health(&self) -> Result<(), ProwlarrError> {
+    pub async fn probe(&self) -> Result<(), ProwlarrError> {
         self.http.get_void("/api/v1/system/status").await?;
         Ok(())
     }

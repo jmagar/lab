@@ -212,7 +212,11 @@ fn build_query_string(params: &Value, allowed: &[&str]) -> String {
                 Value::Bool(b) => b.to_string(),
                 Value::Array(arr) => arr
                     .iter()
-                    .filter_map(|item| item.as_str().map(urlencoding))
+                    .filter_map(|item| match item {
+                        Value::String(s) => Some(urlencoding(s)),
+                        Value::Number(n) => Some(n.to_string()),
+                        _ => None,
+                    })
                     .collect::<Vec<_>>()
                     .join(","),
                 _ => continue,
@@ -233,6 +237,9 @@ fn urlencoding(s: &str) -> String {
     // For homelab use cases this is sufficient; a full percent-encoder
     // would require an additional dep (`percent-encoding`).
     s.replace('%', "%25")
+        .replace('#', "%23")
+        .replace('?', "%3F")
+        .replace('/', "%2F")
         .replace('&', "%26")
         .replace('=', "%3D")
         .replace('+', "%2B")

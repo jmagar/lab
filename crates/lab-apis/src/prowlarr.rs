@@ -53,7 +53,7 @@ impl ServiceClient for ProwlarrClient {
 
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
         let start = Instant::now();
-        match self.health().await {
+        match self.probe().await {
             Ok(()) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: true,

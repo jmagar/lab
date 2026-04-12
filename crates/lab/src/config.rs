@@ -67,7 +67,7 @@ pub fn load() -> Result<LabConfig> {
     if cwd_env.exists()
         && let Err(e) = dotenvy::from_path(cwd_env)
     {
-        tracing::warn!(path = ".env", error = %e, "failed to load local .env (skipping)");
+        tracing::debug!(path = ".env", error = %e, "failed to load local .env (skipping)");
     }
 
     let cfg = if let Some(path) = toml_path() {

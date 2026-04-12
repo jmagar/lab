@@ -35,16 +35,8 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         map.remove("instance");
     }
 
-    match instance {
-        Some(label) => {
-            let client = super::client::client_from_instance(&label)?;
-            dispatch_with_client(&client, action, params).await
-        }
-        None => {
-            let client = super::client::require_client()?;
-            dispatch_with_client(&client, action, params).await
-        }
-    }
+    let client = super::client::client_from_instance(instance.as_deref())?;
+    dispatch_with_client(&client, action, params).await
 }
 
 /// Dispatch one `UniFi` call with an explicit client.
@@ -58,9 +50,7 @@ pub async fn dispatch_with_client(
             devices::dispatch(client, action, params).await
         }
         a if a.starts_with("clients.") => clients::dispatch(client, action, params).await,
-        a if a.starts_with("networks.") => {
-            networks::dispatch(client, action, params).await
-        }
+        a if a.starts_with("networks.") => networks::dispatch(client, action, params).await,
         a if a.starts_with("wifi.") => wifi::dispatch(client, action, params).await,
         a if a.starts_with("hotspot.") => hotspot::dispatch(client, action, params).await,
         a if a.starts_with("firewall.") => firewall::dispatch(client, action, params).await,

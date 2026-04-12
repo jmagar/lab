@@ -25,6 +25,7 @@ pub fn client_from_env() -> Option<PaperlessClient> {
             key: format!("Token {token}"),
         },
     )
+    .map_err(|e| tracing::warn!(error = %e, url, "paperless client construction failed"))
     .ok()
 }
 

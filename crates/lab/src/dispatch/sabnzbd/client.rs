@@ -7,7 +7,9 @@ use crate::dispatch::helpers::env_non_empty;
 pub fn client_from_env() -> Option<SabnzbdClient> {
     let url = env_non_empty("SABNZBD_URL")?;
     let key = env_non_empty("SABNZBD_API_KEY")?;
-    SabnzbdClient::new(&url, key).ok()
+    SabnzbdClient::new(&url, key)
+        .map_err(|e| tracing::warn!(error = %e, url, "sabnzbd client construction failed"))
+        .ok()
 }
 
 pub fn require_client() -> Result<SabnzbdClient, ToolError> {

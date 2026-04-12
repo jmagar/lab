@@ -40,10 +40,12 @@ pub async fn run(args: UnraidArgs, format: OutputFormat) -> Result<ExitCode> {
         .map(serde_json::from_str)
         .transpose()?
         .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
-    if let Some(instance) = args.instance
-        && let serde_json::Value::Object(ref mut map) = params
-    {
-        map.insert("instance".to_string(), serde_json::Value::String(instance));
+    if let Some(instance) = args.instance {
+        if let serde_json::Value::Object(ref mut map) = params {
+            map.insert("instance".to_string(), serde_json::Value::String(instance));
+        } else {
+            anyhow::bail!("--instance requires --params to be a JSON object");
+        }
     }
     run_confirmable_action_command(
         "unraid",

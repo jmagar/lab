@@ -6,14 +6,13 @@ use serde_json::Value;
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::optional_str;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
 }
 
 async fn handle(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
@@ -22,31 +21,13 @@ async fn handle(
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
     let request_id = request_id_owned.as_deref();
-    let instance = optional_str(&req.params, "instance")?;
-    if let (None, Some(client)) = (instance, state.clients.unifi.as_ref()) {
-        let client = client.clone();
-        handle_action(
-            "unifi",
-            "api",
-            request_id,
-            req,
-            crate::dispatch::unifi::actions(),
-            move |action, params| async move {
-                crate::dispatch::unifi::dispatch_with_client(&client, &action, params).await
-            },
-            Some(&headers),
-        )
-        .await
-    } else {
-        handle_action(
-            "unifi",
-            "api",
-            request_id,
-            req,
-            crate::dispatch::unifi::actions(),
-            |action, params| async move { crate::dispatch::unifi::dispatch(&action, params).await },
-            Some(&headers),
-        )
-        .await
-    }
+    handle_action(
+        "unifi",
+        "api",
+        request_id,
+        req,
+        crate::dispatch::unifi::actions(),
+        |action, params| async move { crate::dispatch::unifi::dispatch(&action, params).await },
+    )
+    .await
 }
