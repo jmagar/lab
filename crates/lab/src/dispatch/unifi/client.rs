@@ -29,6 +29,14 @@ fn pool() -> &'static InstancePool<UnifiClient> {
     })
 }
 
+/// Return all instance labels discovered in the environment (including those
+/// with broken or incomplete configuration).
+fn all_labels() -> &'static Vec<String> {
+    // Trigger named_clients() init which also populates ALL_LABELS.
+    let _ = named_clients();
+    ALL_LABELS.get_or_init(Vec::new)
+}
+
 /// Build a `UniFi` client from the default-instance env vars.
 pub fn client_from_env() -> Option<UnifiClient> {
     let url = env_non_empty("UNIFI_URL")?;
@@ -62,6 +70,7 @@ pub fn client_from_instance(label: Option<&str>) -> Result<Arc<UnifiClient>, Too
     pool().resolve(label)
 }
 
+#[allow(dead_code)]
 pub fn require_client() -> Result<UnifiClient, ToolError> {
     client_from_env().ok_or_else(|| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),

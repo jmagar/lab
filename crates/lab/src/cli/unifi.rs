@@ -28,7 +28,7 @@ pub struct UnifiArgs {
     pub params: Vec<String>,
 
     /// Skip confirmation for destructive actions.
-    #[arg(short = 'y', long, alias = "no-confirm")]
+    #[arg(short = 'y', long)]
     pub yes: bool,
 
     /// Print what would be done without executing.
@@ -70,6 +70,14 @@ pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
                 );
             }
         }
+        return Ok(ExitCode::SUCCESS);
+    }
+    if args.dry_run {
+        println!(
+            "[dry-run] would dispatch unifi action `{}` with params: {}",
+            args.action,
+            serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
+        );
         return Ok(ExitCode::SUCCESS);
     }
     run_confirmable_action_command(

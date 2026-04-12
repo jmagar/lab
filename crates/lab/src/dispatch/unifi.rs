@@ -22,7 +22,7 @@ mod wifi;
 
 pub use catalog::actions;
 pub use client::client_from_env;
-pub use dispatch::{dispatch, dispatch_with_client};
+pub use dispatch::dispatch;
 
 #[cfg(test)]
 mod tests {

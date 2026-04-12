@@ -284,7 +284,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         name: "tags.create",
         description: "Create a new tag",
-        destructive: true,
+        destructive: false,
         returns: "Value",
         params: &[
             ParamSpec {

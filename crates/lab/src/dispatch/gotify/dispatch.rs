@@ -86,7 +86,7 @@ pub async fn dispatch_with_client(
     }
 }
 
-/// Top-level dispatch: handles built-ins then routes to `dispatch_with_clients`.
+/// Top-level dispatch: handles built-ins then routes to `dispatch_with_client`.
 pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolError> {
     match action {
         "help" => return Ok(help_payload("gotify", ACTIONS)),
