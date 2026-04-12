@@ -203,12 +203,12 @@ pub async fn dispatch(
         }
         "devices.create" => {
             let site_id = require_str(&params, "site_id")?;
+            let mac_address = require_str(&params, "mac_address")?;
             // Strip routing params; remap snake_case catalog names → camelCase UniFi API fields.
-            let mut body = object_without(&params, &["site_id", "mac_address", "ignore_device_limit"])?;
+            let mut body =
+                object_without(&params, &["site_id", "mac_address", "ignore_device_limit"])?;
             if let Value::Object(ref mut map) = body {
-                if let Some(v) = params.get("mac_address") {
-                    map.insert("macAddress".to_string(), v.clone());
-                }
+                map.insert("macAddress".to_string(), Value::String(mac_address.to_string()));
                 if let Some(v) = params.get("ignore_device_limit") {
                     map.insert("ignoreDeviceLimit".to_string(), v.clone());
                 }
@@ -255,7 +255,7 @@ pub async fn dispatch(
         }
         _ => Err(ToolError::UnknownAction {
             message: format!("unknown action `{action}` for service `unifi`"),
-            valid: vec![],
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
             hint: None,
         }),
     }

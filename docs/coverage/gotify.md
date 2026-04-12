@@ -83,4 +83,4 @@ These endpoints exist in the OpenAPI spec but are out of scope for the initial c
 - `GOTIFY_URL` — base URL, e.g. `http://gotify.home:8080`
 - `GOTIFY_TOKEN` — app token (send operations) or client token (management)
 - `server.health` requires no authentication
-- Destructive actions (`message.delete`, `message.purge`, `app.delete`, `client.delete`) require `"confirm": true` in the request params body
+- Destructive actions (`message.delete`, `message.purge`, `app.delete`, `client.delete`) require `params.confirm: true` in the JSON request body — i.e., `{"action": "message.delete", "params": {"id": 1, "confirm": true}}`

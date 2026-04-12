@@ -340,7 +340,7 @@ pub async fn dispatch(
         }
         _ => Err(ToolError::UnknownAction {
             message: format!("unknown action `{action}` for service `unifi`"),
-            valid: vec![],
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
             hint: None,
         }),
     }

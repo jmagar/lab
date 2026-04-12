@@ -183,7 +183,15 @@ pub fn build_default_registry() -> ToolRegistry {
     );
 
     register_service!(reg, "sonarr", sonarr);
-    register_service!(reg, "prowlarr", prowlarr);
+
+    register_service!(
+        reg,
+        "prowlarr",
+        prowlarr,
+        actions = crate::dispatch::prowlarr::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::prowlarr::dispatch)
+    );
+
     register_service!(reg, "plex", plex);
     register_service!(reg, "tautulli", tautulli);
 
@@ -197,7 +205,13 @@ pub fn build_default_registry() -> ToolRegistry {
 
     register_service!(reg, "qbittorrent", qbittorrent);
     register_service!(reg, "tailscale", tailscale);
-    register_service!(reg, "linkding", linkding);
+    register_service!(
+        reg,
+        "linkding",
+        linkding,
+        actions = crate::dispatch::linkding::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::linkding::dispatch)
+    );
     register_service!(reg, "memos", memos);
 
     register_service!(
@@ -208,7 +222,13 @@ pub fn build_default_registry() -> ToolRegistry {
         dispatch = dispatch_fn!(crate::dispatch::bytestash::dispatch)
     );
 
-    register_service!(reg, "paperless", paperless);
+    register_service!(
+        reg,
+        "paperless",
+        paperless,
+        actions = crate::dispatch::paperless::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::paperless::dispatch)
+    );
     register_service!(reg, "arcane", arcane);
 
     register_service!(
@@ -319,62 +339,63 @@ mod tests {
 
     /// Guard that the MCP registry and the HTTP router mount identical service sets.
     ///
-    /// `HTTP_ROUTER_SERVICES` must be kept in sync with the feature-gated `.nest()`
-    /// calls in `crates/lab/src/api/router.rs::build_router_with_bearer()`.
-    /// If you add a service to the router, add it here too — and vice versa.
+    /// Both sides are derived from the same authoritative source — `lab_apis::<service>::META.name`
+    /// — guarded by the same `#[cfg(feature)]` attributes used in `build_default_registry()` and
+    /// `build_router_with_bearer()`. Adding a new service only requires touching those two sites;
+    /// this test self-updates through the shared feature flag.
     ///
-    /// This is a compile-time-checked invariant: each entry is guarded by the same
-    /// `#[cfg(feature)]` as the corresponding registry entry and router mount, so a
-    /// mismatch only surfaces when both lists have been updated.
+    /// If this test fails, a service was registered in the MCP registry but not mounted in the
+    /// HTTP router (or vice versa). Both must be updated together.
     #[test]
     fn registry_and_router_service_sets_are_identical() {
-        // Hard-coded mirror of the services mounted in build_router_with_bearer().
-        // Keep in sync with crates/lab/src/api/router.rs.
-        let http_router_services: std::collections::HashSet<&str> = {
+        // Derive the expected HTTP router service set from lab_apis META constants.
+        // These are the same names used by build_router_with_bearer(), so any rename
+        // in lab_apis automatically propagates here without manual updates.
+        let http_router_services: std::collections::HashSet<&'static str> = {
             let mut s = std::collections::HashSet::new();
-            s.insert("extract"); // always-on
+            s.insert(lab_apis::extract::META.name); // always-on
             #[cfg(feature = "radarr")]
-            s.insert("radarr");
+            s.insert(lab_apis::radarr::META.name);
             #[cfg(feature = "sonarr")]
-            s.insert("sonarr");
+            s.insert(lab_apis::sonarr::META.name);
             #[cfg(feature = "prowlarr")]
-            s.insert("prowlarr");
+            s.insert(lab_apis::prowlarr::META.name);
             #[cfg(feature = "plex")]
-            s.insert("plex");
+            s.insert(lab_apis::plex::META.name);
             #[cfg(feature = "tautulli")]
-            s.insert("tautulli");
+            s.insert(lab_apis::tautulli::META.name);
             #[cfg(feature = "sabnzbd")]
-            s.insert("sabnzbd");
+            s.insert(lab_apis::sabnzbd::META.name);
             #[cfg(feature = "qbittorrent")]
-            s.insert("qbittorrent");
+            s.insert(lab_apis::qbittorrent::META.name);
             #[cfg(feature = "tailscale")]
-            s.insert("tailscale");
+            s.insert(lab_apis::tailscale::META.name);
             #[cfg(feature = "linkding")]
-            s.insert("linkding");
+            s.insert(lab_apis::linkding::META.name);
             #[cfg(feature = "memos")]
-            s.insert("memos");
+            s.insert(lab_apis::memos::META.name);
             #[cfg(feature = "bytestash")]
-            s.insert("bytestash");
+            s.insert(lab_apis::bytestash::META.name);
             #[cfg(feature = "paperless")]
-            s.insert("paperless");
+            s.insert(lab_apis::paperless::META.name);
             #[cfg(feature = "arcane")]
-            s.insert("arcane");
+            s.insert(lab_apis::arcane::META.name);
             #[cfg(feature = "unraid")]
-            s.insert("unraid");
+            s.insert(lab_apis::unraid::META.name);
             #[cfg(feature = "unifi")]
-            s.insert("unifi");
+            s.insert(lab_apis::unifi::META.name);
             #[cfg(feature = "overseerr")]
-            s.insert("overseerr");
+            s.insert(lab_apis::overseerr::META.name);
             #[cfg(feature = "gotify")]
-            s.insert("gotify");
+            s.insert(lab_apis::gotify::META.name);
             #[cfg(feature = "openai")]
-            s.insert("openai");
+            s.insert(lab_apis::openai::META.name);
             #[cfg(feature = "qdrant")]
-            s.insert("qdrant");
+            s.insert(lab_apis::qdrant::META.name);
             #[cfg(feature = "tei")]
-            s.insert("tei");
+            s.insert(lab_apis::tei::META.name);
             #[cfg(feature = "apprise")]
-            s.insert("apprise");
+            s.insert(lab_apis::apprise::META.name);
             s
         };
 

@@ -13,6 +13,11 @@ use crate::dispatch::helpers::env_non_empty;
 /// Module-level cache of named `Unraid` clients, built once on first access.
 static NAMED_CLIENTS: OnceLock<HashMap<String, Arc<UnraidClient>>> = OnceLock::new();
 
+/// All labels discovered by `scan_instances("UNRAID")`, built once alongside
+/// `NAMED_CLIENTS`. A label present here but absent from `NAMED_CLIENTS`
+/// means the instance was discovered but its env vars are broken/incomplete.
+static ALL_LABELS: OnceLock<Vec<String>> = OnceLock::new();
+
 /// Return (or lazily build) the map of named `Unraid` clients.
 ///
 /// The map is keyed by label (e.g. `"default"`, `"node2"`) and built once
@@ -20,7 +25,9 @@ static NAMED_CLIENTS: OnceLock<HashMap<String, Arc<UnraidClient>>> = OnceLock::n
 fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
     NAMED_CLIENTS.get_or_init(|| {
         let mut map = HashMap::new();
+        let mut all: Vec<String> = Vec::new();
         for (label, _vars) in scan_instances("UNRAID") {
+            all.push(label.clone());
             let (url_key, key_key) = if label == "default" {
                 ("UNRAID_URL".to_string(), "UNRAID_API_KEY".to_string())
             } else {
@@ -30,9 +37,7 @@ fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
                     format!("UNRAID_{upper}_API_KEY"),
                 )
             };
-            if let (Some(raw_url), Some(key)) =
-                (env_non_empty(&url_key), env_non_empty(&key_key))
-            {
+            if let (Some(raw_url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key)) {
                 let url = raw_url
                     .trim_end_matches('/')
                     .trim_end_matches("graphql")
@@ -53,8 +58,18 @@ fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
                 }
             }
         }
+        // Populate the labels cache as a side-effect of the first init.
+        drop(ALL_LABELS.set(all));
         map
     })
+}
+
+/// Return all instance labels discovered in the environment (including those
+/// with broken or incomplete configuration).
+fn all_labels() -> &'static Vec<String> {
+    // Trigger named_clients() init which also populates ALL_LABELS.
+    let _ = named_clients();
+    ALL_LABELS.get_or_init(Vec::new)
 }
 
 /// Build an `UnraidClient` from the default-instance environment variables.
@@ -87,11 +102,22 @@ pub fn client_from_env() -> Option<UnraidClient> {
     .ok()
 }
 
-/// Build a `UnraidClient` for a named instance.
+/// Resolve an `Unraid` client by optional instance label.
+///
+/// - `None` — use the default instance (equivalent to `Some("default")`).
+/// - `Some(label)` — look up the named instance in the module-level cache.
 ///
 /// Returns an `Arc`-wrapped client from the module-level cache — no new
 /// `reqwest::Client` is created after the first call.
-pub fn client_from_instance(label: &str) -> Result<Arc<UnraidClient>, ToolError> {
+///
+/// # Errors
+///
+/// - `InvalidParam` — `label` is empty.
+/// - `Sdk { sdk_kind: "internal_error" }` — the label was discovered in the
+///   environment but its URL or API key is missing or invalid.
+/// - `UnknownInstance` — the label was never found in the environment at all.
+pub fn client_from_instance(label: Option<&str>) -> Result<Arc<UnraidClient>, ToolError> {
+    let label = label.unwrap_or("default");
     let label = label.trim();
     if label.is_empty() {
         return Err(ToolError::InvalidParam {
@@ -101,13 +127,34 @@ pub fn client_from_instance(label: &str) -> Result<Arc<UnraidClient>, ToolError>
     }
     let label = label.to_ascii_lowercase();
     let clients = named_clients();
-    clients.get(&label).cloned().ok_or_else(|| {
-        let mut valid: Vec<String> = clients.keys().cloned().collect();
-        valid.sort();
-        ToolError::UnknownInstance {
-            message: format!("unknown instance `{label}`"),
-            valid,
-        }
+    if let Some(client) = clients.get(&label) {
+        return Ok(client.clone());
+    }
+
+    // Check whether the label was at least discovered in the environment.
+    // If so, the config is broken rather than the label being unknown.
+    let labels = all_labels();
+    if labels.iter().any(|l| l == &label) {
+        let upper = if label == "default" {
+            String::new()
+        } else {
+            format!("_{}", label.to_ascii_uppercase())
+        };
+        let url_var = format!("UNRAID{upper}_URL");
+        let key_var = format!("UNRAID{upper}_API_KEY");
+        return Err(ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!(
+                "instance `{label}` is configured but `{url_var}` or `{key_var}` is missing or invalid"
+            ),
+        });
+    }
+
+    let mut valid: Vec<String> = clients.keys().cloned().collect();
+    valid.sort();
+    Err(ToolError::UnknownInstance {
+        message: format!("unknown instance `{label}`"),
+        valid,
     })
 }
 

@@ -82,7 +82,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
 
     match instance {
         Some(label) => {
-            let client = client_from_instance(&label)?;
+            let client = client_from_instance(Some(&label))?;
             dispatch_with_client(&client, action, params).await
         }
         None => dispatch_with_client(&require_client()?, action, params).await,
