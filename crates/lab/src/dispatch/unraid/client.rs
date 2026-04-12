@@ -47,6 +47,14 @@ fn pool() -> &'static InstancePool<UnraidClient> {
     })
 }
 
+/// Return all instance labels discovered in the environment (including those
+/// with broken or incomplete configuration).
+fn all_labels() -> &'static Vec<String> {
+    // Trigger named_clients() init which also populates ALL_LABELS.
+    let _ = named_clients();
+    ALL_LABELS.get_or_init(Vec::new)
+}
+
 /// Build an `UnraidClient` from the default-instance environment variables.
 ///
 /// Reads `UNRAID_URL` and `UNRAID_API_KEY`. Returns `None` if either is
