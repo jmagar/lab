@@ -5,6 +5,7 @@ use std::sync::{Arc, OnceLock};
 use lab_apis::core::Auth;
 use lab_apis::unraid::UnraidClient;
 
+use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{InstancePool, env_non_empty};
 
