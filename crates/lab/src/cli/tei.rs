@@ -1,6 +1,6 @@
-//! `lab tei` — CLI stub (not yet implemented).
+//! `lab tei` — thin CLI shim for the TEI (Text Embeddings Inference) service.
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
+//! Thin shim: parse → shared dispatch layer → format.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;

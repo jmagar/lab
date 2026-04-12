@@ -36,14 +36,19 @@ fn named_clients() -> &'static HashMap<String, Arc<UnifiClient>> {
                 )
             };
             if let (Some(url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key)) {
-                if let Ok(client) = UnifiClient::new(
+                match UnifiClient::new(
                     &url,
                     Auth::ApiKey {
                         header: "X-API-KEY".into(),
                         key,
                     },
                 ) {
-                    map.insert(label, Arc::new(client));
+                    Ok(client) => {
+                        map.insert(label, Arc::new(client));
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, label, "unifi client construction failed");
+                    }
                 }
             }
         }
@@ -72,6 +77,7 @@ pub fn client_from_env() -> Option<UnifiClient> {
             key,
         },
     )
+    .map_err(|e| tracing::warn!(error = %e, url, "unifi client construction failed"))
     .ok()
 }
 

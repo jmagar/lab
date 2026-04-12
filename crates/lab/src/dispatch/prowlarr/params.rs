@@ -16,7 +16,7 @@ pub fn history_query_from_params(params: &Value) -> Result<HistoryQuery, ToolErr
             .and_then(|n| u32::try_from(n).ok())
             .map(Some)
             .ok_or_else(|| ToolError::InvalidParam {
-                message: "parameter `page` must be a non-negative integer".to_string(),
+                message: "parameter `page` must be a positive integer (1-based)".to_string(),
                 param: "page".to_string(),
             })
     })?;

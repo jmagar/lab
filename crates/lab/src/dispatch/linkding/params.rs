@@ -3,7 +3,16 @@ use serde_json::Value;
 use lab_apis::linkding::types::{BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, TagCreateRequest};
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{body_from_params, optional_u32, optional_str};
+use crate::dispatch::helpers::{body_from_params, optional_u32, optional_str, require_i64};
+
+/// Extract a required `id` param as `u64`, rejecting negative values.
+pub fn require_id_u64(params: &Value) -> Result<u64, ToolError> {
+    let n = require_i64(params, "id")?;
+    u64::try_from(n).map_err(|_| ToolError::InvalidParam {
+        message: "id must be non-negative".to_string(),
+        param: "id".to_string(),
+    })
+}
 
 /// Extract optional bookmark list query params from a dispatch params value.
 pub fn bookmark_list_params_from(params: &Value) -> Result<BookmarkListParams, ToolError> {

@@ -42,10 +42,12 @@ pub struct UnifiArgs {
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
     let mut params = parse_kv_params(args.params)?;
-    if let Some(instance) = args.instance
-        && let serde_json::Value::Object(ref mut map) = params
-    {
-        map.insert("instance".to_string(), serde_json::Value::String(instance));
+    if let Some(instance) = args.instance {
+        if let serde_json::Value::Object(ref mut map) = params {
+            map.insert("instance".to_string(), serde_json::Value::String(instance));
+        } else {
+            anyhow::bail!("--instance requires --params to be a JSON object");
+        }
     }
     if args.dry_run {
         println!(
