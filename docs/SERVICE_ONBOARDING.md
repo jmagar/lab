@@ -825,7 +825,8 @@ Verify that:
 
 ### Required: Live MCP Smoke Tests (via mcporter)
 
-Run the same actions through the MCP surface using `mcporter call`:
+`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab MCP server first (`lab serve --transport stdio` or `--transport sse`), then use `mcporter call` to invoke tools:
+
 
 ```bash
 mcporter call lab.linkding action=bookmarks.list
