@@ -21,6 +21,11 @@ pub async fn dispatch_with_client(
     params_value: Value,
 ) -> Result<Value, ToolError> {
     match action {
+        "help" => Ok(help_payload("linkding", ACTIONS)),
+        "schema" => {
+            let action_name = require_str(&params_value, "action")?;
+            action_schema(ACTIONS, action_name)
+        }
         // ── Bookmarks ──────────────────────────────────────────────────────
         "bookmarks.list" => {
             let p = params::bookmark_list_params_from(&params_value)?;

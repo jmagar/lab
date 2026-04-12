@@ -3,6 +3,7 @@ use std::sync::Arc;
 use lab_apis::core::Auth;
 use lab_apis::gotify::GotifyClient;
 
+use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
 #[derive(Clone)]
@@ -16,16 +17,32 @@ impl GotifyClients {
     fn new(url: &str, app_token: Option<&str>, client_token: Option<&str>) -> Option<Self> {
         let health = Arc::new(GotifyClient::new(url, Auth::None).ok()?);
         let app = app_token.and_then(|t| {
-            GotifyClient::new(url, Auth::ApiKey { header: "X-Gotify-Key".into(), key: t.to_string() })
-                .ok()
-                .map(Arc::new)
+            GotifyClient::new(
+                url,
+                Auth::ApiKey {
+                    header: "X-Gotify-Key".into(),
+                    key: t.to_string(),
+                },
+            )
+            .ok()
+            .map(Arc::new)
         });
         let client = client_token.and_then(|t| {
-            GotifyClient::new(url, Auth::ApiKey { header: "X-Gotify-Key".into(), key: t.to_string() })
-                .ok()
-                .map(Arc::new)
+            GotifyClient::new(
+                url,
+                Auth::ApiKey {
+                    header: "X-Gotify-Key".into(),
+                    key: t.to_string(),
+                },
+            )
+            .ok()
+            .map(Arc::new)
         });
-        Some(Self { health, app, client })
+        Some(Self {
+            health,
+            app,
+            client,
+        })
     }
 
     #[must_use]
@@ -68,6 +85,27 @@ pub fn client_from_env() -> Option<GotifyClient> {
     let (_, client_token) = resolve_tokens();
     let token = client_token?;
     client_from_vars(Some(&url), Some(&token))
+}
+
+/// Return a management-scoped client or a structured `internal_error` if not configured.
+///
+/// Intended for callers that need only the management client (e.g. `lab doctor`).
+/// The dispatch layer uses `clients_from_env()` + `not_configured_error()` because it
+/// requires all three client roles (`health`, `app`, `client`).
+#[allow(dead_code)]
+pub fn require_client() -> Result<GotifyClient, ToolError> {
+    client_from_env().ok_or_else(not_configured_error)
+}
+
+/// Structured error returned when Gotify env vars are absent.
+///
+/// Exposed so that callers holding a pre-built `Option<GotifyClients>` (e.g. the API
+/// handler) can produce the same error without calling `require_client()` redundantly.
+pub fn not_configured_error() -> ToolError {
+    ToolError::Sdk {
+        sdk_kind: "internal_error".into(),
+        message: "GOTIFY_URL or GOTIFY_TOKEN not configured".into(),
+    }
 }
 
 pub fn client_from_vars(url: Option<&str>, token: Option<&str>) -> Option<GotifyClient> {

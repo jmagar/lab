@@ -22,17 +22,17 @@
 
 ## Live Test Evidence
 
-Live smoke tests run 2026-04-12 against `https://ding.tootie.tv`.
+Live smoke tests run 2026-04-12 against `<LINKDING_URL>`.
 
 | Surface | Command | Result |
 |---------|---------|--------|
-| CLI | `lab linkding bookmarks.list` | 381 bookmarks returned |
-| CLI | `lab linkding tags.list` | 299 tags returned |
+| CLI | `lab linkding bookmarks.list` | bookmarks returned (live count) |
+| CLI | `lab linkding tags.list` | tags returned (live count) |
 | CLI | `lab linkding user.profile` | profile loaded |
-| MCP | `mcporter call lab.linkding action=bookmarks.list` | `ok=true, count=381` |
-| MCP | `mcporter call lab.linkding action=tags.list` | `ok=true, count=299` |
-| API | `POST /v1/linkding {"action":"bookmarks.list"}` | 381 bookmarks |
-| API | `POST /v1/linkding {"action":"tags.list"}` | 299 tags |
+| MCP | `mcporter call lab.linkding action=bookmarks.list` | `ok=true`, bookmarks returned |
+| MCP | `mcporter call lab.linkding action=tags.list` | `ok=true`, tags returned |
+| API | `POST /v1/linkding {"action":"bookmarks.list"}` | bookmarks returned |
+| API | `POST /v1/linkding {"action":"tags.list"}` | tags returned |
 
 ## SDK Surface
 

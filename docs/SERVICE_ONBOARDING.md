@@ -350,7 +350,7 @@ Update these docs as part of the same change:
 
 Verification must cover behavior, observability, error shape, and serialization shape.
 
-**A service is not done until all three surfaces have been smoke-tested live.**
+**A service is not done until all three surfaces have been smoke-tested live.** For HTTP-backed services, all three surfaces (CLI, MCP, API) must be smoke-tested live. For non-HTTP modules (such as `extract`), adapt the verification to the actual execution boundary — not all surfaces will apply.
 
 ### Required: Unit Tests
 

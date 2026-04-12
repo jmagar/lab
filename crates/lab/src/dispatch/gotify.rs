@@ -6,7 +6,7 @@ mod dispatch;
 mod params;
 
 pub use catalog::ACTIONS;
-pub use client::{GotifyClients, client_from_env, clients_from_env};
+pub use client::{GotifyClients, client_from_env, clients_from_env, not_configured_error};
 pub use dispatch::{dispatch, dispatch_with_client};
 
 #[cfg(test)]

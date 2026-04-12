@@ -89,11 +89,11 @@ Live smoke tests run 2026-04-12 against `https://prowlarr.tootie.tv` (v2.3.5.532
 | PUT | /api/v1/downloadclient/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/filesystem | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/filesystem/type | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/health | `system_health` | ✅ | ✅ | ⬜ | ✅ |
-| GET | /api/v1/history | `history_list` | ✅ | ✅ | ⬜ | ✅ |
+| GET | /api/v1/health | `system_health` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/history | `history_list` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/history/indexer | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/history/since | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexer | `indexers_list` | ✅ | ✅ | ⬜ | ✅ |
+| GET | /api/v1/indexer | `indexers_list` | ✅ | ✅ | ✅ | ✅ |
 | POST | /api/v1/indexer | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/indexer/action/{name} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /api/v1/indexer/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -145,7 +145,7 @@ Live smoke tests run 2026-04-12 against `https://prowlarr.tootie.tv` (v2.3.5.532
 | GET | /api/v1/system/routes | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/system/routes/duplicate | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/system/shutdown | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/system/status | `system_status` / `health` | ✅ | ✅ | ⬜ | ✅ |
+| GET | /api/v1/system/status | `system_status` / `health` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/system/task | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/system/task/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/tag | - | ⬜ | ⬜ | ⬜ | ⬜ |

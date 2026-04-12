@@ -105,13 +105,7 @@ pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolEr
         }
         _ => {}
     }
-    dispatch_with_client(
-        &super::client::clients_from_env().ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "GOTIFY_URL not configured".into(),
-        })?,
-        action,
-        params_value,
-    )
-    .await
+    let clients = super::client::clients_from_env()
+        .ok_or_else(super::client::not_configured_error)?;
+    dispatch_with_client(&clients, action, params_value).await
 }

@@ -8,7 +8,7 @@ The project is intentionally broad, but the shape is consistent: one service mod
 
 The repository is active and the wiring is ahead of full per-service implementation depth.
 
-In the current `--all-features` build, the catalog registers **22 services** total: **21 feature-gated services** plus the always-on synthetic `extract` service. Of those, **7 currently expose callable actions**:
+In the current `--all-features` build, the catalog registers **22 services** total: **21 feature-gated services** plus the always-on synthetic `extract` service. Of those, **10 currently expose callable actions**:
 
 | Service | Status | Actions |
 | --- | --- | ---: |
@@ -19,8 +19,11 @@ In the current `--all-features` build, the catalog registers **22 services** tot
 | `unraid` | available | 10 |
 | `unifi` | available | 72 |
 | `gotify` | available | 13 |
+| `linkding` | available | 13 |
+| `paperless` | available | — |
+| `prowlarr` | available | — |
 
-The remaining compiled services are present in the catalog as **stubs** today: `sonarr`, `prowlarr`, `plex`, `tautulli`, `qbittorrent`, `tailscale`, `linkding`, `memos`, `paperless`, `arcane`, `overseerr`, `openai`, `qdrant`, `tei`, and `apprise`.
+The remaining compiled services are present in the catalog as **stubs** today: `sonarr`, `plex`, `tautulli`, `qbittorrent`, `tailscale`, `memos`, `arcane`, `overseerr`, `openai`, `qdrant`, `tei`, and `apprise`.
 
 There are also a few repo-level gaps worth calling out up front:
 
@@ -202,6 +205,15 @@ lab help --json
 lab serve
 LAB_MCP_HTTP_TOKEN=... lab serve --transport http
 lab serve --transport http --host 127.0.0.1 --port 8765
+```
+
+When the HTTP transport is running, all `/v1/*` API requests require a Bearer token matching `LAB_MCP_HTTP_TOKEN`:
+
+```bash
+curl -s -X POST http://127.0.0.1:8765/v1/radarr \
+  -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"system.status"}'
 ```
 
 ### 5. Use the operator commands

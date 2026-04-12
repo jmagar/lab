@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use axum::{
-    body::Body,
-    middleware::Next,
     Router,
+    body::Body,
     extract::State,
     http::{HeaderName, Request, StatusCode, header},
+    middleware::Next,
     routing::get,
 };
 use tower_http::{
@@ -230,6 +230,9 @@ fn build_cors_layer() -> CorsLayer {
         HeaderValue::from_static("http://localhost:5173"),
         HeaderValue::from_static("http://localhost:8080"),
         HeaderValue::from_static("http://127.0.0.1"),
+        HeaderValue::from_static("http://127.0.0.1:3000"),
+        HeaderValue::from_static("http://127.0.0.1:5173"),
+        HeaderValue::from_static("http://127.0.0.1:8080"),
         HeaderValue::from_static("http://[::1]"),
     ];
     origins.extend(env_origins);
@@ -239,7 +242,11 @@ fn build_cors_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE, HeaderName::from_static("x-request-id")])
+        .allow_headers([
+            AUTHORIZATION,
+            CONTENT_TYPE,
+            HeaderName::from_static("x-request-id"),
+        ])
 }
 
 async fn service_actions(

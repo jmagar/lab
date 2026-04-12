@@ -28,13 +28,33 @@ pub fn bookmark_write_from_params(params: &Value) -> Result<BookmarkWriteRequest
 /// Build a `BookmarkUpdateRequest` from dispatch params.
 ///
 /// Supports a `payload` or `body` key as a full JSON override, or individual keys.
+///
+/// Returns `ToolError::InvalidParam` when no updatable fields are provided, since
+/// sending an empty PATCH body would be a no-op.
 pub fn bookmark_update_from_params(params: &Value) -> Result<BookmarkUpdateRequest, ToolError> {
-    serde_json::from_value(body_from_params(params, &["payload", "body", "id"])).map_err(|e| {
-        ToolError::InvalidParam {
-            message: e.to_string(),
-            param: "payload".to_string(),
-        }
-    })
+    let req: BookmarkUpdateRequest =
+        serde_json::from_value(body_from_params(params, &["payload", "body", "id"])).map_err(
+            |e| ToolError::InvalidParam {
+                message: e.to_string(),
+                param: "payload".to_string(),
+            },
+        )?;
+
+    if req.url.is_none()
+        && req.title.is_none()
+        && req.description.is_none()
+        && req.notes.is_none()
+        && req.unread.is_none()
+        && req.shared.is_none()
+        && req.tag_names.is_none()
+    {
+        return Err(ToolError::InvalidParam {
+            message: "at least one field must be provided for bookmark update".into(),
+            param: "params".into(),
+        });
+    }
+
+    Ok(req)
 }
 
 /// Build a `TagCreateRequest` from dispatch params.

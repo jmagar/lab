@@ -27,10 +27,7 @@ async fn handle(
         ACTIONS,
         move |action, params| async move {
             let Some(client) = client.as_ref() else {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "internal_error".into(),
-                    message: "GOTIFY_URL or GOTIFY_TOKEN not configured".into(),
-                });
+                return Err(crate::dispatch::gotify::not_configured_error());
             };
             crate::dispatch::gotify::dispatch_with_client(client, &action, params).await
         },
