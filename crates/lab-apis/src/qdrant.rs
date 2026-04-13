@@ -22,7 +22,7 @@ pub mod client;
 pub use client::QdrantClient;
 pub use error::QdrantError;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
@@ -68,15 +68,17 @@ impl ServiceClient for QdrantClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: None,
             }),
-            Err(QdrantError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+            Ok(Err(QdrantError::Api(ApiError::Auth))) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: false,
                 version: None,
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("authentication failed".into()),
             }),
-            Err(QdrantError::Api(ApiError::Network(err))) => Ok(ServiceStatus::unreachable(err)),
-            Err(QdrantError::Api(err)) => Ok(ServiceStatus::degraded(err.to_string())),
+            Ok(Err(QdrantError::Api(ApiError::Network(err)))) => {
+                Ok(ServiceStatus::unreachable(err))
+            }
+            Ok(Err(QdrantError::Api(err))) => Ok(ServiceStatus::degraded(err.to_string())),
         }
     }
 }

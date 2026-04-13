@@ -11,7 +11,7 @@
         "Creates crates/lab-apis/src/mealie/client.rs with MealieClient::new(base_url, auth) and ServiceClient health impl",
         "Creates crates/lab-apis/src/mealie/error.rs wrapping ApiError with thiserror",
         "Adds mealie feature to crates/lab-apis/Cargo.toml and passthrough in crates/lab/Cargo.toml",
-        "Creates dispatch/mealie/ with catalog.rs containing ACTIONS for recipe.list, recipe.get, and help",
+        "Creates dispatch/mealie/ with catalog.rs containing ACTIONS for recipe.list, recipe.get, help, and schema",
         "From<MealieError> for ToolError added to dispatch/error.rs, feature-gated",
         "dispatch_with_client function returns Result<Value, ToolError>",
         "API handler uses handle_action helper and reads client from AppState",
@@ -28,11 +28,11 @@
         "Creates crates/lab-apis/src/jellyfin.rs with META const",
         "Client auth uses appropriate Auth variant for x-emby-token header",
         "Creates crates/lab-apis/src/jellyfin/client.rs with library listing and search methods",
-        "Dispatch catalog has library.list, library.search, and help actions",
+        "Dispatch catalog has library.list, library.search, help, and schema actions",
         "dispatch_with_client handles all declared actions and returns UnknownAction for unknown ones",
         "From<JellyfinError> for ToolError in dispatch/error.rs",
         "CLI shim delegates entirely to dispatch layer with no business logic",
-        "MCP module file contains only tests, no dispatch logic",
+        "MCP module forwards all calls to the shared dispatch layer, contains no business logic",
         "No mod.rs files created"
       ]
     },
@@ -42,7 +42,7 @@
       "expected_output": "Creates only the dispatch layer and surface adapters (not lab-apis). Correctly marks monitor.pause and monitor.resume as destructive: true. All three surfaces wired. From<UptimeKumaError> for ToolError added. No duplication of existing lab-apis code.",
       "files": [],
       "expectations": [
-        "Creates dispatch/uptime_kuma/ with catalog.rs containing monitor.list, monitor.get, monitor.pause, monitor.resume",
+        "Creates dispatch/uptime_kuma/ with catalog.rs containing help, schema, monitor.list, monitor.get, monitor.pause, and monitor.resume",
         "monitor.pause and monitor.resume have destructive: true in ActionSpec",
         "dispatch_with_client calls the existing client methods correctly",
         "From<UptimeKumaError> for ToolError added to dispatch/error.rs, feature-gated",

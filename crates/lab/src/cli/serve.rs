@@ -54,6 +54,10 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         std::env::var("LAB_MCP_TRANSPORT").ok(),
         config.mcp.transport.as_deref(),
     )?;
+    // Resolve host and port here for source-of-truth ordering, but defer
+    // address parsing and validation until the actual bind call in run_http.
+    // This way an invalid host string only errors when HTTP transport is chosen,
+    // not when --transport stdio is used (thread #2).
     let host = args
         .host
         .or_else(|| std::env::var("LAB_MCP_HTTP_HOST").ok())
@@ -376,8 +380,13 @@ async fn elicit_confirm(
 async fn run_http(host: &str, port: u16, bearer_token: &str, state: AppState) -> Result<ExitCode> {
     let router =
         crate::api::router::build_router_with_bearer(state, Some(bearer_token.to_string()));
+    // Parse and validate the address at bind time, not at CLI parse time.
+    // This defers host/port errors to when the HTTP transport is actually used
+    // and gives tokio a chance to surface OS-level bind errors directly.
     let addr = format!("{host}:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("failed to bind HTTP listener on `{addr}`"))?;
     tracing::info!(addr, "lab serve (http) ready");
     axum::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)

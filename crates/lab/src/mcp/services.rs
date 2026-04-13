@@ -5,6 +5,7 @@
 //! See `radarr.rs` for the reference implementation.
 
 pub mod extract;
+pub mod lab_admin;
 
 #[cfg(feature = "lab-admin")]
 pub mod lab_admin;

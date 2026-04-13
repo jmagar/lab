@@ -30,28 +30,30 @@ pub const META: PluginMeta = PluginMeta {
     description: "Self-hosted push notification server",
     category: Category::Notifications,
     docs_url: "https://gotify.net/api-docs",
-    required_env: &[EnvVar {
-        name: "GOTIFY_URL",
-        description: "Base URL of the Gotify server",
-        example: "http://localhost:8080",
-        secret: false,
-    }],
-    optional_env: &[
+    required_env: &[
+        EnvVar {
+            name: "GOTIFY_URL",
+            description: "Base URL of the Gotify server",
+            example: "http://localhost:8080",
+            secret: false,
+        },
         EnvVar {
             name: "GOTIFY_TOKEN",
-            description: "Legacy fallback token used when scoped tokens are not set",
+            description: "Token for Gotify API access; used as fallback when scoped tokens are absent",
             example: "A1b2C3d4E5...",
             secret: true,
         },
+    ],
+    optional_env: &[
         EnvVar {
             name: "GOTIFY_APP_TOKEN",
-            description: "App token used by message.send (preferred over GOTIFY_TOKEN for sending)",
+            description: "App token used by message.send (overrides GOTIFY_TOKEN for sending)",
             example: "A1b2C3d4E5...",
             secret: true,
         },
         EnvVar {
             name: "GOTIFY_CLIENT_TOKEN",
-            description: "Client token used by message/app/client management actions",
+            description: "Client token used by message/app/client management actions (overrides GOTIFY_TOKEN)",
             example: "A1b2C3d4E5...",
             secret: true,
         },

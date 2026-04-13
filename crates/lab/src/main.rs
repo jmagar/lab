@@ -12,6 +12,7 @@ mod audit;
 mod catalog;
 mod cli;
 mod config;
+mod scaffold;
 mod dispatch;
 mod mcp;
 mod output;

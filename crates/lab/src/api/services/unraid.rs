@@ -13,7 +13,7 @@ pub fn routes(_state: AppState) -> Router<AppState> {
 }
 
 async fn handle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {

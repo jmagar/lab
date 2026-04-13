@@ -26,6 +26,11 @@ async fn handle(
         req,
         ACTIONS,
         move |action, params| async move {
+            // help/schema are handled by the top-level dispatch function;
+            // dispatch_with_client does not have arms for them.
+            if matches!(action.as_str(), "help" | "schema") {
+                return crate::dispatch::qdrant::dispatch(&action, params).await;
+            }
             let Some(client) = client.as_ref() else {
                 return Err(ToolError::Sdk {
                     sdk_kind: "internal_error".into(),

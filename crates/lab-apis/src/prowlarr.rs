@@ -12,7 +12,7 @@ pub mod error;
 pub use client::ProwlarrClient;
 pub use error::ProwlarrError;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
@@ -53,15 +53,17 @@ impl ServiceClient for ProwlarrClient {
 
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
         let start = Instant::now();
-        match self.probe().await {
-            Ok(()) => Ok(ServiceStatus {
+        let probe = tokio::time::timeout(Duration::from_secs(5), self.probe()).await;
+        match probe {
+            Err(_elapsed) => Ok(ServiceStatus::unreachable("health check timed out")),
+            Ok(Ok(())) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: true,
                 version: None,
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: None,
             }),
-            Err(ProwlarrError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+            Ok(Err(ProwlarrError::Api(ApiError::Auth))) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: false,
                 version: None,

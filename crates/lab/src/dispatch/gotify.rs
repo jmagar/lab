@@ -6,7 +6,10 @@ mod dispatch;
 mod params;
 
 pub use catalog::ACTIONS;
-pub use client::{GotifyClients, client_from_env, clients_from_env, not_configured_error};
+pub use client::{GotifyClients, clients_from_env, not_configured_error};
+// Re-exported for the audit check and for callers that need the token-scoped management client.
+#[allow(unused_imports)]
+pub use client::client_from_env;
 pub use dispatch::{dispatch, dispatch_with_client};
 
 #[cfg(test)]

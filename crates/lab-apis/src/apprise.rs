@@ -31,7 +31,7 @@ pub mod client;
 pub use client::AppriseClient;
 pub use error::AppriseError;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
@@ -77,7 +77,7 @@ impl ServiceClient for AppriseClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: None,
             }),
-            Err(AppriseError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+            Ok(Err(AppriseError::Api(ApiError::Auth))) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: false,
                 version: None,

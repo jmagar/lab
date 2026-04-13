@@ -25,6 +25,11 @@ async fn handle(
         req,
         crate::dispatch::radarr::actions(),
         move |action, params| async move {
+            // help/schema are handled by the top-level dispatch function;
+            // dispatch_with_client does not have arms for them.
+            if matches!(action.as_str(), "help" | "schema") {
+                return crate::dispatch::radarr::dispatch(&action, params).await;
+            }
             let Some(client) = client.as_ref() else {
                 return Err(ToolError::Sdk {
                     sdk_kind: "internal_error".into(),
