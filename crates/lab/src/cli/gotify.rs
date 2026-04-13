@@ -36,6 +36,7 @@ pub struct GotifyArgs {
 ///
 /// # Errors
 /// Returns an error if the client is not configured or the API call fails.
+#[allow(clippy::print_stdout)]
 pub async fn run(args: GotifyArgs, format: OutputFormat) -> Result<ExitCode> {
     let action = args.action;
     let params = parse_kv_params(args.params)?;
@@ -44,7 +45,11 @@ pub async fn run(args: GotifyArgs, format: OutputFormat) -> Result<ExitCode> {
         if !ACTIONS.iter().any(|a| a.name == action) {
             anyhow::bail!(
                 "unknown gotify action `{action}`; valid: {}",
-                ACTIONS.iter().map(|a| a.name).collect::<Vec<_>>().join(", ")
+                ACTIONS
+                    .iter()
+                    .map(|a| a.name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
         }
         println!(
