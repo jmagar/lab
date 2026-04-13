@@ -73,8 +73,6 @@ The docs are split by topic so contributors do not have to recover architecture,
   Service inventory, feature gates, plugin metadata, multi-instance support, coverage docs, and add-a-service workflow.
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
   End-to-end checklist for adding a new service, from upstream spec to verification.
-- [Service onboarding scaffold and audit design](./superpowers/specs/2026-04-12-service-onboarding-scaffold-audit-design.md)
-  Internal product design note for the onboarding scaffold and audit workflow.
 - [CLI.md](./CLI.md)
   Command structure, output rules, confirmation rules, install/uninstall, and operator commands.
 - [TUI.md](./TUI.md)

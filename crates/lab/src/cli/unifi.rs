@@ -72,6 +72,14 @@ pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
         }
         return Ok(ExitCode::SUCCESS);
     }
+    if args.dry_run {
+        println!(
+            "[dry-run] would dispatch unifi action `{}` with params: {}",
+            args.action,
+            serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
     run_confirmable_action_command(
         "unifi",
         unifi_actions(),

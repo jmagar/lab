@@ -8,6 +8,7 @@ use axum::{
     extract::State,
     http::{HeaderName, Request, StatusCode, header},
     middleware::Next,
+    response::Response,
     routing::get,
 };
 use subtle::ConstantTimeEq;
@@ -214,6 +215,28 @@ fn build_cors_layer() -> CorsLayer {
             CONTENT_TYPE,
             HeaderName::from_static("x-request-id"),
         ])
+}
+
+#[allow(dead_code)]
+pub async fn require_bearer_auth(
+    State(expected_token): State<std::sync::Arc<str>>,
+    request: Request<Body>,
+    next: Next,
+) -> Result<Response, ToolError> {
+    let provided_token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+
+    if provided_token == Some(expected_token.as_ref()) {
+        Ok(next.run(request).await)
+    } else {
+        Err(ToolError::Sdk {
+            sdk_kind: "auth_failed".into(),
+            message: "missing or invalid bearer token".into(),
+        })
+    }
 }
 
 async fn service_actions(

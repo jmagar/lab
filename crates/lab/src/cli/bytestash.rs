@@ -24,7 +24,7 @@ pub struct BytestashArgs {
     pub params: Vec<String>,
 
     /// Skip confirmation for destructive actions.
-    #[arg(short = 'y', long)]
+    #[arg(short = 'y', long, alias = "no-confirm")]
     pub yes: bool,
 
     /// Print what would be done without executing.

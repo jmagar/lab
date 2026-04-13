@@ -22,7 +22,7 @@ pub mod client;
 pub use client::TeiClient;
 pub use error::TeiError;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
@@ -60,23 +60,25 @@ impl ServiceClient for TeiClient {
 
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
         let start = Instant::now();
-        match self.model_info().await {
-            Ok(info) => Ok(ServiceStatus {
+        let probe = tokio::time::timeout(Duration::from_secs(5), self.model_info()).await;
+        match probe {
+            Err(_elapsed) => Ok(ServiceStatus::unreachable("health check timed out")),
+            Ok(Ok(info)) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: true,
                 version: info.version,
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some(format!("model={}", info.model_id)),
             }),
-            Err(TeiError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+            Ok(Err(TeiError::Api(ApiError::Auth))) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: false,
                 version: None,
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("authentication failed".into()),
             }),
-            Err(TeiError::Api(ApiError::Network(err))) => Ok(ServiceStatus::unreachable(err)),
-            Err(TeiError::Api(err)) => Ok(ServiceStatus::degraded(err.to_string())),
+            Ok(Err(TeiError::Api(ApiError::Network(err)))) => Ok(ServiceStatus::unreachable(err)),
+            Ok(Err(TeiError::Api(err))) => Ok(ServiceStatus::degraded(err.to_string())),
         }
     }
 }

@@ -71,7 +71,8 @@ impl ServiceClient for LinkdingClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed".into()),
             }),
-            Err(LinkdingError::Api(e)) => Ok(ServiceStatus::unreachable(e.to_string())),
+            Err(LinkdingError::Api(ApiError::Network(msg))) => Ok(ServiceStatus::unreachable(msg)),
+            Err(LinkdingError::Api(e)) => Err(e),
         }
     }
 }

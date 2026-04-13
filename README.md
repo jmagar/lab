@@ -8,7 +8,7 @@ The project is intentionally broad, but the shape is consistent: one service mod
 
 The repository is active and the wiring is ahead of full per-service implementation depth.
 
-In the current `--all-features` build, the catalog registers **22 services** total: **21 feature-gated services** plus the always-on synthetic `extract` service. Of those, **8 currently expose callable actions**:
+In the current `--all-features` build, the catalog registers **22 services** total: **21 feature-gated services** plus the always-on synthetic `extract` service. Of those, **10 currently expose callable actions**:
 
 | Service | Status | Actions |
 | --- | --- | ---: |

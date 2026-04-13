@@ -24,12 +24,17 @@ pub struct SabnzbdArgs {
     /// Skip confirmation for destructive actions.
     #[arg(short = 'y', long, alias = "no-confirm")]
     pub yes: bool,
+
+    /// Print what would be done without executing.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Run the `lab sabnzbd` subcommand.
 ///
 /// # Errors
 /// Returns an error if dispatch fails.
+#[allow(clippy::print_stdout)]
 pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
     let action = args.action.unwrap_or_else(|| "help".to_string());
     let params = args
@@ -38,6 +43,23 @@ pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
         .map(serde_json::from_str)
         .transpose()?
         .unwrap_or(serde_json::Value::Null);
+
+    if args.dry_run {
+        match format {
+            OutputFormat::Json => {
+                let v = serde_json::json!({"dry_run": true, "action": action, "params": params});
+                crate::output::print(&v, format)?;
+            }
+            OutputFormat::Human => {
+                println!(
+                    "[dry-run] would dispatch sabnzbd action `{}` with params: {}",
+                    action,
+                    serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
+                );
+            }
+        }
+        return Ok(ExitCode::SUCCESS);
+    }
 
     run_confirmable_action_command(
         "sabnzbd",

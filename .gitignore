@@ -35,6 +35,7 @@ backups/
 .codex
 .gemini
 settings.local.json
+.worktrees/
 
 # ── IDE / editor ─────────────────────────────────────────────────────────────
 .vscode/

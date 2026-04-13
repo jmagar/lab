@@ -3,6 +3,7 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
+#[allow(clippy::collapsible_if)]
 pub fn embed_request_from_params(params: &Value) -> Result<EmbedRequest, ToolError> {
     let source = match params.get("payload") {
         Some(Value::Object(map)) => Value::Object(map.clone()),
