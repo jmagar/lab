@@ -45,88 +45,97 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
         .nest("/extract", services::extract::routes(state.clone()));
 
     // Feature-gated per-service route groups.
+    //
+    // Each block has two guards:
+    //   1. Compile-time `#[cfg(feature)]` — the handler code must exist.
+    //   2. Runtime registry check — only mount if the service was not filtered
+    //      out by `--services` (or equivalent) at startup.
+    //
+    // Both guards are required: the feature flag ensures the handler module
+    // compiles; the registry check ensures that `lab serve --services radarr`
+    // cannot be bypassed by POSTing to `/v1/sonarr`.
     #[cfg(feature = "radarr")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "radarr") {
         v1 = v1.nest("/radarr", services::radarr::routes(state.clone()));
     }
     #[cfg(feature = "sonarr")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "sonarr") {
         v1 = v1.nest("/sonarr", services::sonarr::routes(state.clone()));
     }
     #[cfg(feature = "prowlarr")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "prowlarr") {
         v1 = v1.nest("/prowlarr", services::prowlarr::routes(state.clone()));
     }
     #[cfg(feature = "plex")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "plex") {
         v1 = v1.nest("/plex", services::plex::routes(state.clone()));
     }
     #[cfg(feature = "tautulli")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "tautulli") {
         v1 = v1.nest("/tautulli", services::tautulli::routes(state.clone()));
     }
     #[cfg(feature = "sabnzbd")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "sabnzbd") {
         v1 = v1.nest("/sabnzbd", services::sabnzbd::routes(state.clone()));
     }
     #[cfg(feature = "qbittorrent")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "qbittorrent") {
         v1 = v1.nest("/qbittorrent", services::qbittorrent::routes(state.clone()));
     }
     #[cfg(feature = "tailscale")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "tailscale") {
         v1 = v1.nest("/tailscale", services::tailscale::routes(state.clone()));
     }
     #[cfg(feature = "linkding")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "linkding") {
         v1 = v1.nest("/linkding", services::linkding::routes(state.clone()));
     }
     #[cfg(feature = "memos")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "memos") {
         v1 = v1.nest("/memos", services::memos::routes(state.clone()));
     }
     #[cfg(feature = "bytestash")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "bytestash") {
         v1 = v1.nest("/bytestash", services::bytestash::routes(state.clone()));
     }
     #[cfg(feature = "paperless")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "paperless") {
         v1 = v1.nest("/paperless", services::paperless::routes(state.clone()));
     }
     #[cfg(feature = "arcane")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "arcane") {
         v1 = v1.nest("/arcane", services::arcane::routes(state.clone()));
     }
     #[cfg(feature = "unraid")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "unraid") {
         v1 = v1.nest("/unraid", services::unraid::routes(state.clone()));
     }
     #[cfg(feature = "unifi")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "unifi") {
         v1 = v1.nest("/unifi", services::unifi::routes(state.clone()));
     }
     #[cfg(feature = "overseerr")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "overseerr") {
         v1 = v1.nest("/overseerr", services::overseerr::routes(state.clone()));
     }
     #[cfg(feature = "gotify")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "gotify") {
         v1 = v1.nest("/gotify", services::gotify::routes(state.clone()));
     }
     #[cfg(feature = "openai")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "openai") {
         v1 = v1.nest("/openai", services::openai::routes(state.clone()));
     }
     #[cfg(feature = "qdrant")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "qdrant") {
         v1 = v1.nest("/qdrant", services::qdrant::routes(state.clone()));
     }
     #[cfg(feature = "tei")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "tei") {
         v1 = v1.nest("/tei", services::tei::routes(state.clone()));
     }
     #[cfg(feature = "apprise")]
-    {
+    if state.registry.services().iter().any(|s| s.name == "apprise") {
         v1 = v1.nest("/apprise", services::apprise::routes(state.clone()));
     }
 
@@ -397,5 +406,39 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// When a service is absent from the runtime registry (e.g. filtered out by
+    /// `--services`), its `/v1/<service>` routes must NOT be mounted — even if
+    /// the feature flag for that service is compiled in.
+    ///
+    /// This test uses an empty registry to simulate `lab serve --services <other>`
+    /// excluding `radarr`, then verifies that `POST /v1/radarr` returns 404 rather
+    /// than reaching the handler.
+    #[cfg(feature = "radarr")]
+    #[tokio::test]
+    async fn service_filtered_from_registry_has_no_http_route() {
+        use crate::mcp::registry::ToolRegistry;
+
+        // An empty registry = no services enabled at runtime.
+        let registry = ToolRegistry::new();
+        let state = AppState::from_registry(registry);
+        let app = build_router_with_bearer(state, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/radarr")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"action":"help"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "radarr routes must not be mounted when radarr is absent from the runtime registry"
+        );
     }
 }

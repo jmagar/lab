@@ -90,7 +90,10 @@ pub struct AppState {
     /// Pre-built service+action catalog for discovery endpoints.
     pub catalog: Arc<Catalog>,
     /// Tool registry with dispatch functions for each service.
-    #[allow(dead_code)]
+    ///
+    /// Used by `build_router_with_bearer` to enforce runtime service filtering:
+    /// only services present in the registry get their HTTP routes mounted,
+    /// even when their compile-time feature flag is enabled.
     pub registry: Arc<ToolRegistry>,
     /// Pre-built service clients for connection pool reuse.
     pub clients: Arc<ServiceClients>,
