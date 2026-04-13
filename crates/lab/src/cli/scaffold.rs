@@ -1,5 +1,6 @@
 //! `lab scaffold` — generate a new service onboarding skeleton.
 
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use anyhow::Result;
@@ -50,7 +51,19 @@ pub fn run(args: ScaffoldArgs, format: OutputFormat) -> Result<ExitCode> {
 
 fn run_service(args: ServiceArgs, format: OutputFormat) -> Result<ExitCode> {
     if !args.dry_run && !args.yes {
-        anyhow::bail!("pass -y / --yes to confirm scaffold writes");
+        if std::io::stdin().is_terminal() {
+            eprint!(
+                "scaffold will write files for service `{}`. Continue? [y/N] ",
+                args.service
+            );
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            if !matches!(line.trim(), "y" | "Y") {
+                anyhow::bail!("scaffold cancelled");
+            }
+        } else {
+            anyhow::bail!("pass -y / --yes to confirm scaffold writes");
+        }
     }
 
     let config = ScaffoldConfig {
@@ -130,7 +143,7 @@ mod tests {
                 .any(|op| op.path == PathBuf::from("crates/lab-apis/src/sampleaudit.rs"))
         );
         assert!(
-            !dir.path().join("crates/lab/src/scaffold.rs").exists(),
+            !dir.path().join("crates/lab-apis/src/sampleaudit.rs").exists(),
             "dry-run should not write files"
         );
     }

@@ -66,7 +66,7 @@ impl AppriseClient {
 fn encode_path_segment(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
-        if c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') {
+        if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') {
             out.push(c);
         } else {
             let mut buf = [0u8; 4];

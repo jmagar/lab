@@ -7,14 +7,20 @@ use crate::dispatch::error::ToolError;
 /// Returns a `Vec<String>` of service names, or a structured error if the
 /// param is absent or contains non-string elements.
 pub fn parse_services(params: &Value) -> Result<Vec<String>, ToolError> {
-    params
-        .get("services")
-        .and_then(Value::as_array)
-        .ok_or_else(|| ToolError::MissingParam {
-            message: "missing required parameter `services`".into(),
+    let raw = params.get("services");
+    let arr = match raw {
+        None => {
+            return Err(ToolError::MissingParam {
+                message: "missing required parameter `services`".into(),
+                param: "services".into(),
+            });
+        }
+        Some(v) => v.as_array().ok_or_else(|| ToolError::InvalidParam {
+            message: "parameter `services` must be an array of strings".into(),
             param: "services".into(),
-        })?
-        .iter()
+        })?,
+    };
+    arr.iter()
         .map(|value| {
             value
                 .as_str()

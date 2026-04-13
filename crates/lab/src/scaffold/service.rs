@@ -1,7 +1,7 @@
 //! Types and validation for service scaffolding.
 
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -121,25 +121,3 @@ mod tests {
     }
 }
 
-/// Validate that a scaffold target stays under the provided base directory.
-pub fn validate_scaffold_target(name: &str, base: &Path) -> Result<PathBuf> {
-    let base_canon = base
-        .canonicalize()
-        .map_err(|_| ScaffoldError::InvalidTarget {
-            path: base.to_path_buf(),
-            base: base.to_path_buf(),
-        })?;
-    let target = base.join(name);
-    let parent = target.parent().unwrap_or(base);
-    let parent_canon = parent.canonicalize().map_err(|_| ScaffoldError::InvalidTarget {
-        path: target.clone(),
-        base: base_canon.clone(),
-    })?;
-    if !parent_canon.starts_with(&base_canon) {
-        return Err(ScaffoldError::InvalidTarget {
-            path: target,
-            base: base_canon,
-        });
-    }
-    Ok(target)
-}

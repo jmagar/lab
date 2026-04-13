@@ -1,6 +1,7 @@
 //! Rust source patchers for scaffold generation.
 
-use super::super::service::Result;
+use crate::scaffold::templates::pascal_case;
+use super::super::service::{Result, ScaffoldError};
 
 pub fn patch_lib_rs(_name: &str, content: &str) -> Result<String> {
     insert_before_eof(
@@ -28,7 +29,7 @@ pub fn patch_cli_rs(_name: &str, content: &str) -> Result<String> {
         service = pascal_case(_name),
         snake = _name,
     );
-    insert_once(
+    let content = insert_once(
         &content,
         "    #[cfg(feature = \"apprise\")]\n    Apprise(apprise::AppriseArgs),\n",
         &format!(
@@ -74,7 +75,7 @@ pub fn patch_api_services_rs(_name: &str, content: &str) -> Result<String> {
 
 pub fn patch_api_router_rs(_name: &str, content: &str) -> Result<String> {
     let insert = format!(
-        "    #[cfg(feature = \"{_name}\")]\n    {{\n        v1 = v1.nest(\"/{_name}\", services::{_name}::routes(state.clone()));\n    }}\n"
+        "    #[cfg(feature = \"{_name}\")]\n    if state.registry.services().iter().any(|s| s.name == \"{_name}\") {{\n        v1 = v1.nest(\"/{_name}\", services::{_name}::routes(state.clone()));\n    }}\n"
     );
     insert_once(
         content,
@@ -127,7 +128,9 @@ fn insert_once(content: &str, needle: &str, replacement: &str) -> Result<String>
         return Ok(content.to_string());
     }
     let Some(idx) = content.find(needle) else {
-        return Ok(format!("{content}\n{replacement}"));
+        return Err(ScaffoldError::Toml {
+            message: format!("patch anchor not found in file: {needle:?}"),
+        });
     };
     let mut out = String::with_capacity(content.len() + replacement.len() - needle.len());
     out.push_str(&content[..idx]);
@@ -136,6 +139,3 @@ fn insert_once(content: &str, needle: &str, replacement: &str) -> Result<String>
     Ok(out)
 }
 
-fn pascal_case(name: &str) -> String {
-    crate::scaffold::templates::pascal_case(name)
-}

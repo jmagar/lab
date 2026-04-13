@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde_json::Value;
 
 use crate::audit::audit_services;
@@ -10,6 +12,14 @@ use crate::dispatch::lab_admin::params::parse_services;
 ///
 /// Handles the built-in `help` and `schema` actions, then delegates to
 /// `dispatch_inner` for service-specific actions.
+///
+/// # Note on `surface`
+///
+/// The tracing field `surface` is hardcoded to `"mcp"` here. This is a known
+/// limitation: the dispatch layer does not yet carry surface context. All three
+/// adapter surfaces (CLI, MCP, API) call into the same dispatch path. Fixing
+/// this would require threading a surface parameter through the entire dispatch
+/// call chain — tracked as a systemic gap in `crates/lab/CLAUDE.md`.
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     let start = std::time::Instant::now();
     let result = dispatch_inner(action, params).await;
@@ -57,12 +67,21 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
 ///
 /// `audit_services` is a synchronous, blocking filesystem scan. We wrap it in
 /// `tokio::task::spawn_blocking` to avoid blocking the async executor thread.
+///
+/// The `params` object may include an optional `repo_root` string field to
+/// specify the repository root explicitly. When absent, `current_dir()` is used,
+/// which works correctly for CLI but may produce unexpected results when called
+/// via MCP or API where the process CWD could be arbitrary.
 async fn onboarding_audit(params: Value) -> Result<Value, ToolError> {
     let services = parse_services(&params)?;
-    let repo_root = std::env::current_dir().map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: e.to_string(),
-    })?;
+    let repo_root = if let Some(path) = params.get("repo_root").and_then(Value::as_str) {
+        PathBuf::from(path)
+    } else {
+        std::env::current_dir().map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: e.to_string(),
+        })?
+    };
 
     let report = tokio::task::spawn_blocking(move || audit_services(&services, &repo_root))
         .await

@@ -8,9 +8,11 @@
 #![allow(unreachable_pub)] // binary crate — `pub` items are crate-internal by design
 
 mod api;
+mod audit;
 mod catalog;
 mod cli;
 mod config;
+mod scaffold;
 mod dispatch;
 mod mcp;
 mod output;

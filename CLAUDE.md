@@ -12,6 +12,8 @@ Shared dispatch ownership and adapter direction are governed by `docs/DISPATCH.m
 
 **Build assumption.** This repo is developed and verified as an **all-features** binary. Treat `cargo build --all-features`, `cargo test --all-features` / `cargo test --tests --no-fail-fast`, and the equivalent `just` commands as the default truth. Do not delete or rewrite shared helpers just because they appear unused in a narrow feature slice; first verify whether they are used by other feature-gated services in the normal all-features build.
 
+**Service onboarding rule.** When bringing a service online, prefer scaffold first, audit second, and all-features verification last. New onboarding work should be generated with `lab scaffold service`, checked with `lab audit onboarding`, and only then validated with the all-features test/build path.
+
 **Nested guides.** Subdirectories carry their own `CLAUDE.md` with rules that don't belong at the root. Read the nearest one when working in:
 - `crates/lab-apis/src/core/` — trait contracts, error taxonomy, HttpClient invariants
 - `crates/lab-apis/src/servarr/` — shared *arr primitives

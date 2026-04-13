@@ -259,7 +259,7 @@ pub fn build_default_registry() -> ToolRegistry {
         reg.register(RegisteredService {
             name: "lab_admin",
             description: "Internal onboarding audit tool",
-            category: "Bootstrap",
+            category: "bootstrap",
             status: "available",
             actions: crate::mcp::services::lab_admin::ACTIONS,
             dispatch: dispatch_fn!(crate::mcp::services::lab_admin::dispatch),

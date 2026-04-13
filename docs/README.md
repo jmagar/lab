@@ -16,6 +16,8 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Use [DISPATCH.md](./DISPATCH.md) for the shared surface-neutral dispatch-layer contract and dependency rules.
 - Use [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md) when executing the refactor from surface-coupled dispatch to the shared `services` layer.
 - Use [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md) when you are bringing a new service online end to end.
+- Use `lab scaffold service` and `lab audit onboarding` when you are creating
+  or validating a new service onboarding path.
 
 ## Reading Paths
 
@@ -71,6 +73,8 @@ The docs are split by topic so contributors do not have to recover architecture,
   Service inventory, feature gates, plugin metadata, multi-instance support, coverage docs, and add-a-service workflow.
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
   End-to-end checklist for adding a new service, from upstream spec to verification.
+- [Service onboarding scaffold and audit design](./superpowers/specs/2026-04-12-service-onboarding-scaffold-audit-design.md)
+  Internal product design note for the onboarding scaffold and audit workflow.
 - [CLI.md](./CLI.md)
   Command structure, output rules, confirmation rules, install/uninstall, and operator commands.
 - [TUI.md](./TUI.md)

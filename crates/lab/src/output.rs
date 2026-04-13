@@ -58,7 +58,6 @@ pub fn print<T: Serialize>(value: &T, format: OutputFormat) -> Result<()> {
 /// Render a scaffold result for human output.
 pub fn render_scaffold_result(result: &ScaffoldResult) -> String {
     let mut out = String::new();
-    use std::fmt::Write as _;
 
     let mode = if result.dry_run { "dry-run" } else { "applied" };
     writeln!(
@@ -99,7 +98,6 @@ pub fn render_scaffold_result(result: &ScaffoldResult) -> String {
 /// Render an audit report for human output.
 pub fn render_audit_report(report: &AuditReport) -> String {
     let mut out = String::new();
-    use std::fmt::Write as _;
 
     for service in &report.services {
         writeln!(out, "{}:", service.service).ok();

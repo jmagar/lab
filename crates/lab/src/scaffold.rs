@@ -9,7 +9,7 @@ pub(crate) mod templates;
 
 pub use service::{
     FileOp, Result, ScaffoldConfig, ScaffoldError, ScaffoldKind, ScaffoldResult,
-    validate_scaffold_target, validate_service_name,
+    validate_service_name,
 };
 
 use std::fs;
@@ -125,10 +125,13 @@ fn service_file_ops(service: &str) -> Vec<FileOp> {
 
 /// Reject any path that contains a `..` (ParentDir) component.
 ///
-/// Canonicalization cannot be used here because the target path may not exist yet
-/// (write_file creates directories before writing). Component-based rejection is the
-/// correct approach: all FileOp paths are constructed from hardcoded prefixes plus a
-/// validated service name, so a `..` component can only appear via adversarial input.
+/// Also checks that any existing parent directory in the path is not a symlink
+/// that escapes the repository root. Canonicalization of the full path is not
+/// used because the target file may not exist yet; instead we walk existing
+/// ancestor directories and verify each resolved path stays within root.
+///
+/// All FileOp paths are constructed from hardcoded prefixes plus a validated
+/// service name, so a `..` component can only appear via adversarial input.
 fn validate_path_within_root(root: &Path, path: &Path) -> Result<()> {
     use std::path::Component;
     for component in path.components() {
@@ -139,6 +142,30 @@ fn validate_path_within_root(root: &Path, path: &Path) -> Result<()> {
             });
         }
     }
+
+    // Walk existing ancestors to detect symlinks escaping the root.
+    let abs = root.join(path);
+    let mut check = abs.as_path();
+    loop {
+        if let Some(parent) = check.parent() {
+            if parent.exists() {
+                if let Ok(canonical) = parent.canonicalize() {
+                    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+                    if !canonical.starts_with(&canonical_root) {
+                        return Err(ScaffoldError::InvalidTarget {
+                            path: path.to_path_buf(),
+                            base: root.to_path_buf(),
+                        });
+                    }
+                }
+                break;
+            }
+            check = parent;
+        } else {
+            break;
+        }
+    }
+
     Ok(())
 }
 

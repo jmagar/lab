@@ -12,7 +12,12 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
     let api_nest = format!("nest(\"/{name}\"");
     let api_field = format!("pub {name}: Option<");
     let api_load = format!("{name}: crate::dispatch::{name}::client_from_env()");
-    let tui_token = name.to_string();
+    // Match the comment token that `patch_tui_metadata_rs` inserts — avoids false passes
+    // from any incidental occurrence of the service name in the file.
+    let tui_token = format!("// scaffolded service: {name}");
+    // Use the register_service! macro anchor rather than a bare name substring to avoid
+    // false passes from the name appearing in comments or unrelated strings.
+    let mcp_registry_token = format!("register_service!(reg, \"{name}\"");
 
     let lib = shared.get(repo_root, "crates/lab-apis/src/lib.rs").unwrap_or("");
     let lab_apis_cargo = shared.get(repo_root, "crates/lab-apis/Cargo.toml").unwrap_or("");
@@ -30,7 +35,7 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
     out.push(("lib.rs".into(), contains_check(lib, &service_mod)));
     out.push(("cli.rs".into(), contains_check(cli, &dispatch_mod)));
     out.push(("mcp.services.rs".into(), contains_check(mcp_services, &service_mod)));
-    out.push(("mcp.registry.rs".into(), contains_check(registry, name)));
+    out.push(("mcp.registry.rs".into(), contains_check(registry, &mcp_registry_token)));
     out.push(("api.services.rs".into(), contains_check(api_services, &service_mod)));
     out.push(("api.router.rs".into(), contains_check(router, &api_nest)));
     out.push(("api.state.rs".into(), contains_check(state, &api_field)));

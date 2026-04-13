@@ -5,6 +5,7 @@
 //! underlying `audit_services` call is a local filesystem scan.
 
 mod catalog;
+mod client;
 mod dispatch;
 mod params;
 

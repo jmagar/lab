@@ -98,6 +98,8 @@ qdrant      = ["lab-apis/qdrant"]
 tei         = ["lab-apis/tei"]
 
 # internal admin / onboarding tooling
+# Intentionally local-only — no lab-apis counterpart, lab_admin performs
+# filesystem audits only and has no external HTTP service to wrap.
 lab-admin   = []
 
 all         = [
