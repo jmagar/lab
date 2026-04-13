@@ -7,7 +7,7 @@ use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, optional_str, to_json};
 use crate::dispatch::unraid::{
     catalog::ACTIONS,
-    client::{client_from_instance, require_client},
+    client::client_from_instance,
     params::require_id,
 };
 
@@ -85,6 +85,6 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let client = client_from_instance(Some(&label))?;
             dispatch_with_client(&client, action, params).await
         }
-        None => dispatch_with_client(&require_client()?, action, params).await,
+        None => dispatch_with_client(&*client_from_instance(None)?, action, params).await,
     }
 }
