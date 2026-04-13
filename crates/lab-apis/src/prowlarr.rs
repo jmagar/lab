@@ -76,8 +76,8 @@ impl ServiceClient for ProwlarrClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed".into()),
             }),
-            Err(ProwlarrError::Api(ApiError::Network(e))) => Ok(ServiceStatus::unreachable(e)),
-            Err(ProwlarrError::Api(e)) => Ok(ServiceStatus::degraded(e.to_string())),
+            Ok(Err(ProwlarrError::Api(ApiError::Network(e)))) => Ok(ServiceStatus::unreachable(e)),
+            Ok(Err(ProwlarrError::Api(e))) => Ok(ServiceStatus::degraded(e.to_string())),
         }
     }
 }

@@ -34,7 +34,12 @@ pub struct OnboardingArgs {
 pub fn run(args: AuditArgs, format: OutputFormat) -> Result<ExitCode> {
     match args.command {
         AuditCommand::Onboarding(args) => {
-            let report = audit_services(&args.services, &workspace_root()?);
+            let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .ancestors()
+                .nth(2)
+                .ok_or_else(|| anyhow::anyhow!("cannot determine workspace root from CARGO_MANIFEST_DIR"))?
+                .to_path_buf();
+            let report = audit_services(&args.services, &repo_root);
             match format {
                 OutputFormat::Json => print(&report, format)?,
                 OutputFormat::Human => println!("{}", render_audit_report(&report)),

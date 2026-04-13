@@ -3,7 +3,6 @@ use std::sync::{Arc, OnceLock};
 use lab_apis::core::Auth;
 use lab_apis::unifi::UnifiClient;
 
-use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{InstancePool, env_non_empty};
 
@@ -27,14 +26,6 @@ fn pool() -> &'static InstancePool<UnifiClient> {
             .ok()
         })
     })
-}
-
-/// Return all instance labels discovered in the environment (including those
-/// with broken or incomplete configuration).
-fn all_labels() -> &'static Vec<String> {
-    // Trigger named_clients() init which also populates ALL_LABELS.
-    let _ = named_clients();
-    ALL_LABELS.get_or_init(Vec::new)
 }
 
 /// Build a `UniFi` client from the default-instance env vars.
