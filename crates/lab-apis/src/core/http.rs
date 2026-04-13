@@ -69,10 +69,23 @@ impl HttpClient {
     /// Returns [`ApiError::Internal`] if the TLS backend fails to initialise
     /// (e.g. missing system crypto provider with rustls).
     pub fn new(base_url: impl Into<String>, auth: Auth) -> Result<Self, ApiError> {
+        Self::with_default_headers(base_url, auth, reqwest::header::HeaderMap::new())
+    }
+
+    /// Construct a client with additional default headers sent on every request.
+    ///
+    /// # Errors
+    /// Returns [`ApiError::Internal`] if the TLS backend fails to initialise.
+    pub fn with_default_headers(
+        base_url: impl Into<String>,
+        auth: Auth,
+        headers: reqwest::header::HeaderMap,
+    ) -> Result<Self, ApiError> {
         let inner = Client::builder()
             .user_agent(concat!("lab-apis/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(30))
+            .default_headers(headers)
             .build()
             .map_err(|e| ApiError::Internal(format!("reqwest::Client::build: {e}")))?;
         Ok(Self {

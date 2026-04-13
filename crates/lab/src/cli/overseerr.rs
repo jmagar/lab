@@ -39,7 +39,7 @@ pub async fn run(args: OverseerrArgs, format: OutputFormat) -> Result<ExitCode> 
         params,
         format,
         |action, params| async move {
-            crate::mcp::services::overseerr::dispatch(&action, params).await
+            crate::dispatch::overseerr::dispatch(&action, params).await
         },
     )
     .await

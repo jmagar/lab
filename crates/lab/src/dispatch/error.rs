@@ -260,3 +260,21 @@ impl_tool_error_from!(
     lab_apis::prowlarr::error::ProwlarrError,
     Api(api) => api.kind()
 );
+
+impl_tool_error_from!(
+    "plex",
+    lab_apis::plex::PlexError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "sonarr",
+    lab_apis::sonarr::error::SonarrError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "overseerr",
+    lab_apis::overseerr::OverseerrError,
+    Api(api) => api.kind()
+);

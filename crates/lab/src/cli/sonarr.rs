@@ -1,6 +1,6 @@
-//! `lab sonarr` — CLI stub (not yet implemented).
+//! `lab sonarr` — CLI thin shim over the shared dispatch layer.
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
+//! Thin shim: parse → dispatch → format.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -14,7 +14,7 @@ use crate::output::OutputFormat;
 /// `lab sonarr` arguments.
 #[derive(Debug, Args)]
 pub struct SonarrArgs {
-    /// Action to run (e.g. help).
+    /// Action to run (e.g. help, series.list, episode.list).
     pub action: Option<String>,
     /// Action-specific parameters as JSON.
     #[arg(long)]
@@ -39,7 +39,7 @@ pub async fn run(args: SonarrArgs, format: OutputFormat) -> Result<ExitCode> {
         params,
         format,
         |action, params| async move {
-            crate::mcp::services::sonarr::dispatch(&action, params).await
+            crate::dispatch::sonarr::dispatch(&action, params).await
         },
     )
     .await

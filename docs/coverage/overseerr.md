@@ -1,6 +1,6 @@
 # Overseerr API Coverage
 
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-13
 **OpenAPI spec:** docs/api-specs/overseerr.openapi.yaml
 **OpenAPI version:** 3.0.2
 **API version:** 1.0.0
@@ -21,7 +21,7 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /status | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /status | `status()` | ✅ | ✅ | ✅ | ✅ |
 | GET | /status/appdata | - | ⬜ | ⬜ | ⬜ | ⬜ |
 
 ## settings
@@ -114,13 +114,13 @@ The source spec is the contract. This document is the implementation planning ai
 |--------|----------|------------|------|-----|-----|-----|
 | POST | /auth/reset-password | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /auth/reset-password/{guid} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /user | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /user | `user_list()` | ✅ | ✅ | ✅ | ✅ |
 | POST | /user | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /user | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /user/import-from-plex | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /user/registerPushSubscription | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /user/{userId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /user/{userId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /user/{userId} | `user_get()` | ✅ | ✅ | ✅ | ✅ |
 | PUT | /user/{userId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /user/{userId}/pushSubscription/{endpoint} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /user/{userId}/pushSubscription/{endpoint} | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -157,7 +157,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /discover/tv/network/{networkId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /discover/tv/upcoming | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /discover/watchlist | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /search | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /search | `search()` | ✅ | ✅ | ✅ | ✅ |
 | GET | /search/company | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /search/keyword | - | ⬜ | ⬜ | ⬜ | ⬜ |
 
@@ -165,20 +165,20 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /request | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /request | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /request | `request_list()` | ✅ | ✅ | ✅ | ✅ |
+| POST | /request | `request_create()` | ✅ | ✅ | ✅ | ✅ |
 | GET | /request/count | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| DELETE | /request/{requestId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /request/{requestId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| DELETE | /request/{requestId} | `request_delete()` | ✅ | ✅ | ✅ | ✅ |
+| GET | /request/{requestId} | `request_get()` | ✅ | ✅ | ✅ | ✅ |
 | PUT | /request/{requestId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /request/{requestId}/retry | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /request/{requestId}/{status} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /request/{requestId}/{status} | `request_approve()`/`request_decline()` | ✅ | ✅ | ✅ | ✅ |
 
 ## movies
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /movie/{movieId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /movie/{movieId} | `movie_get()` | ✅ | ✅ | ✅ | ✅ |
 | GET | /movie/{movieId}/ratings | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /movie/{movieId}/ratingscombined | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /movie/{movieId}/recommendations | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -188,7 +188,7 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /tv/{tvId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /tv/{tvId} | `tv_get()` | ✅ | ✅ | ✅ | ✅ |
 | GET | /tv/{tvId}/ratings | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /tv/{tvId}/recommendations | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /tv/{tvId}/season/{seasonId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -251,12 +251,12 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /issue | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /issue | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /issue | `issue_list()` | ✅ | ✅ | ✅ | ✅ |
+| POST | /issue | `issue_create()` | ✅ | ✅ | ✅ | ✅ |
 | GET | /issue/count | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /issue/{issueId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /issue/{issueId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /issue/{issueId}/comment | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /issue/{issueId} | `issue_get()` | ✅ | ✅ | ✅ | ✅ |
+| POST | /issue/{issueId}/comment | `issue_comment()` | ✅ | ✅ | ✅ | ✅ |
 | POST | /issue/{issueId}/{status} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /issueComment/{commentId} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /issueComment/{commentId} | - | ⬜ | ⬜ | ⬜ | ⬜ |

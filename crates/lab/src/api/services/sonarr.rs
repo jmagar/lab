@@ -5,13 +5,14 @@ use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
+use crate::dispatch::sonarr::ACTIONS;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
 }
 
 async fn handle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, crate::dispatch::error::ToolError> {
@@ -21,8 +22,15 @@ async fn handle(
         "api",
         request_id,
         req,
-        crate::dispatch::sonarr::ACTIONS,
-        |action, params| async move { crate::dispatch::sonarr::dispatch(&action, params).await },
+        ACTIONS,
+        |action, params| async move {
+            match state.clients.sonarr.as_deref() {
+                Some(client) => {
+                    crate::dispatch::sonarr::dispatch_with_client(client, &action, params).await
+                }
+                None => Err(crate::dispatch::sonarr::not_configured_error()),
+            }
+        },
     )
     .await
 }

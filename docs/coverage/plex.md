@@ -1,6 +1,6 @@
 # Plex API Coverage
 
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-13
 **OpenAPI spec:** docs/api-specs/plex.openapi.yaml
 **OpenAPI version:** 3.1.1
 **API version:** 1.1.1

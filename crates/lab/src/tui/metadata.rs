@@ -245,6 +245,40 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "plex")]
+    {
+        if let (Some(url), Some(token)) = (vars.get("PLEX_URL"), vars.get("PLEX_TOKEN")) {
+            use lab_apis::core::Auth;
+            if let Ok(client) = lab_apis::plex::PlexClient::new(
+                url,
+                Auth::ApiKey {
+                    header: "X-Plex-Token".to_owned(),
+                    key: token.clone(),
+                },
+            ) {
+                spawn_health_trait!("plex", client);
+            }
+        }
+    }
+
+    #[cfg(feature = "overseerr")]
+    {
+        if let (Some(url), Some(key)) =
+            (vars.get("OVERSEERR_URL"), vars.get("OVERSEERR_API_KEY"))
+        {
+            use lab_apis::core::Auth;
+            if let Ok(client) = lab_apis::overseerr::OverseerrClient::new(
+                url,
+                Auth::ApiKey {
+                    header: "X-Api-Key".to_owned(),
+                    key: key.clone(),
+                },
+            ) {
+                spawn_health_trait!("overseerr", client);
+            }
+        }
+    }
+
     // Collect results.
     let mut results = Vec::new();
     for handle in handles {

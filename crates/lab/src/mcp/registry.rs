@@ -153,6 +153,7 @@ impl ToolRegistry {
 /// Service entries are added in alphabetical order as services come
 /// online.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn build_default_registry() -> ToolRegistry {
     let mut reg = ToolRegistry::new();
 
@@ -192,7 +193,13 @@ pub fn build_default_registry() -> ToolRegistry {
         dispatch = dispatch_fn!(crate::dispatch::prowlarr::dispatch)
     );
 
-    register_service!(reg, "plex", plex);
+    register_service!(
+        reg,
+        "plex",
+        plex,
+        actions = crate::dispatch::plex::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::plex::dispatch)
+    );
     register_service!(reg, "tautulli", tautulli);
 
     register_service!(

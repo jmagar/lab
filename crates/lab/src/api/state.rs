@@ -46,6 +46,12 @@ pub struct ServiceClients {
     pub paperless: Option<Arc<lab_apis::paperless::PaperlessClient>>,
     #[cfg(feature = "prowlarr")]
     pub prowlarr: Option<Arc<lab_apis::prowlarr::ProwlarrClient>>,
+    #[cfg(feature = "plex")]
+    pub plex: Option<Arc<lab_apis::plex::PlexClient>>,
+    #[cfg(feature = "sonarr")]
+    pub sonarr: Option<Arc<lab_apis::sonarr::SonarrClient>>,
+    #[cfg(feature = "overseerr")]
+    pub overseerr: Option<Arc<lab_apis::overseerr::OverseerrClient>>,
 }
 
 impl ServiceClients {
@@ -79,6 +85,12 @@ impl ServiceClients {
             paperless: crate::dispatch::paperless::client_from_env().map(Arc::new),
             #[cfg(feature = "prowlarr")]
             prowlarr: crate::dispatch::prowlarr::client_from_env().map(Arc::new),
+            #[cfg(feature = "plex")]
+            plex: crate::dispatch::plex::client_from_env().map(Arc::new),
+            #[cfg(feature = "sonarr")]
+            sonarr: crate::dispatch::sonarr::client_from_env().map(Arc::new),
+            #[cfg(feature = "overseerr")]
+            overseerr: crate::dispatch::overseerr::client_from_env().map(Arc::new),
         }
     }
 }

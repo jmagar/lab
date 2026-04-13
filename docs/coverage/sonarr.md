@@ -1,17 +1,50 @@
 # Sonarr API Coverage
 
-**Last updated:** 2026-04-08
-**OpenAPI spec:** docs/api-specs/sonarr.openapi.json
+**Last updated:** 2026-04-13
+**OpenAPI spec:** docs/upstream-api/sonarr.openapi.json
 **OpenAPI version:** 3.0.1
 **API version:** 3.0.0
-**Paths:** 235
+**Paths:** 162
 **Servers:** {protocol}://{hostpath}
-**Security schemes:** X-Api-Key, apikey
+**Security schemes:** X-Api-Key
+
+## Implementation Status
+
+The Sonarr service is **fully onboarded** as of 2026-04-13. The shared dispatch layer
+(`crates/lab/src/dispatch/sonarr/`) is implemented with catalog, client, params, and
+dispatch modules. The SDK client (`crates/lab-apis/src/sonarr/`) covers the priority
+endpoints listed below.
+
+### Implemented Actions
+
+| Action | SDK Method | Endpoint |
+|--------|-----------|---------|
+| `series.list` | `series_list()` | GET /api/v3/series |
+| `series.get` | `series_get(id)` | GET /api/v3/series/{id} |
+| `series.lookup` | `series_lookup(query)` | GET /api/v3/series/lookup |
+| `series.add` | `series_add(req)` | POST /api/v3/series |
+| `series.delete` | `series_delete(id, delete_files)` | DELETE /api/v3/series/{id} |
+| `episode.list` | `episode_list(series_id)` | GET /api/v3/episode |
+| `episode.get` | `episode_get(id)` | GET /api/v3/episode/{id} |
+| `queue.list` | `queue_list(query)` | GET /api/v3/queue |
+| `queue.delete` | `queue_delete(id, blocklist)` | DELETE /api/v3/queue/{id} |
+| `history.list` | `history_list(query)` | GET /api/v3/history |
+| `wanted.list` | `wanted_missing(page, page_size)` | GET /api/v3/wanted/missing |
+| `calendar.list` | `calendar_list(query)` | GET /api/v3/calendar |
+| `health` | `health()` | GET /api/v3/health |
+| `system.status` | `system_status()` | GET /api/v3/system/status |
+| `tag.list` | `tag_list()` | GET /api/v3/tag |
+| `tag.create` | `tag_create(label)` | POST /api/v3/tag |
+| `tag.delete` | `tag_delete(id)` | DELETE /api/v3/tag/{id} |
+| `rootfolder.list` | `rootfolder_list()` | GET /api/v3/rootfolder |
+| `qualityprofile.list` | `qualityprofile_list()` | GET /api/v3/qualityprofile |
+| `languageprofile.list` | `languageprofile_list()` | GET /api/v3/languageprofile |
 
 ## Legend
 
 | Symbol | Meaning |
 |--------|---------|
+| ✅ | Implemented |
 | ⬜ | Not implemented yet; rows are spec inventory only |
 | - | Not applicable / not represented in the spec |
 

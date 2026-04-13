@@ -43,14 +43,14 @@ fn init_tracing() {
     if use_json {
         tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().json())
+            .with(fmt::layer().json().with_writer(std::io::stderr))
             .init();
     } else {
         // Enable ANSI colors only when stderr is an interactive terminal.
         let ansi = std::io::stderr().is_terminal();
         tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().with_target(false).with_ansi(ansi))
+            .with(fmt::layer().with_target(false).with_ansi(ansi).with_writer(std::io::stderr))
             .init();
     }
 }
