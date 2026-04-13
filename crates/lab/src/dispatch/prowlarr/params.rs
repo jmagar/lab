@@ -10,6 +10,7 @@ pub fn require_id(params: &Value) -> Result<i64, ToolError> {
 }
 
 /// Extract optional history query parameters from params.
+#[allow(clippy::collapsible_if)]
 pub fn history_query_from_params(params: &Value) -> Result<HistoryQuery, ToolError> {
     let page = params.get("page").map_or(Ok(None), |v| {
         v.as_u64()

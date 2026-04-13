@@ -34,6 +34,7 @@ pub struct SabnzbdArgs {
 ///
 /// # Errors
 /// Returns an error if dispatch fails.
+#[allow(clippy::print_stdout)]
 pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
     let action = args.action.unwrap_or_else(|| "help".to_string());
     let params = args
