@@ -37,11 +37,19 @@ pub struct GotifyArgs {
 /// # Errors
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: GotifyArgs, format: OutputFormat) -> Result<ExitCode> {
+    let action = args.action;
     let params = parse_kv_params(args.params)?;
     if args.dry_run {
+        // Validate the action exists before claiming success
+        if !ACTIONS.iter().any(|a| a.name == action) {
+            anyhow::bail!(
+                "unknown gotify action `{action}`; valid: {}",
+                ACTIONS.iter().map(|a| a.name).collect::<Vec<_>>().join(", ")
+            );
+        }
         println!(
             "[dry-run] would dispatch gotify action `{}` with params: {}",
-            args.action,
+            action,
             serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
         );
         return Ok(ExitCode::SUCCESS);
@@ -49,7 +57,7 @@ pub async fn run(args: GotifyArgs, format: OutputFormat) -> Result<ExitCode> {
     run_confirmable_action_command(
         "gotify",
         ACTIONS,
-        args.action,
+        action,
         params,
         args.yes,
         format,

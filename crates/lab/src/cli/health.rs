@@ -199,15 +199,23 @@ async fn gotify_row() -> HealthRow {
             message: Some("GOTIFY_URL not set".into()),
         };
     };
+    // A token is required for any operational action; mark auth_ok only when one is present.
+    let token_configured = std::env::var("GOTIFY_TOKEN").is_ok_and(|v| !v.is_empty())
+        || std::env::var("GOTIFY_APP_TOKEN").is_ok_and(|v| !v.is_empty())
+        || std::env::var("GOTIFY_CLIENT_TOKEN").is_ok_and(|v| !v.is_empty());
     let start = std::time::Instant::now();
     let row = match clients.health().health().await {
         Ok(s) => HealthRow {
             service: "gotify".into(),
             reachable: s.reachable,
-            auth_ok: s.auth_ok,
+            auth_ok: s.auth_ok && token_configured,
             version: s.version,
             latency_ms: s.latency_ms,
-            message: s.message,
+            message: if s.reachable && !token_configured {
+                Some("reachable but no token configured".into())
+            } else {
+                s.message
+            },
         },
         Err(e) => HealthRow {
             service: "gotify".into(),

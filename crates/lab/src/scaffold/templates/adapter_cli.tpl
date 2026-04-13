@@ -8,6 +8,9 @@ use crate::cli::params::parse_kv_params;
 use crate::dispatch::{{service}}::ACTIONS;
 use crate::output::OutputFormat;
 
+// TODO: Replace this generic action+params interface with typed subcommands that
+// mirror the dispatch catalog. See crates/lab/src/cli/radarr.rs for an example.
+
 /// `lab {{service}}` arguments.
 #[derive(Debug, Args)]
 pub struct {{Service}}Args {
