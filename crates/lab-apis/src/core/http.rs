@@ -363,7 +363,10 @@ impl HttpClient {
                 .map(|e| e.message.as_str())
                 .collect::<Vec<_>>()
                 .join("; ");
-            let err = ApiError::Server { status: 200, body: msg };
+            let err = ApiError::Server {
+                status: 200,
+                body: msg,
+            };
             Self::log_error(&ctx, &err);
             return Err(err);
         }

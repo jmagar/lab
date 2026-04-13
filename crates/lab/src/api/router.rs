@@ -153,7 +153,8 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
             }),
         )
         // SetRequestId generates a UUID for every request that lacks one.
-        .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid));
+        .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid))
+}
 
 /// Build a `CorsLayer` that allows only explicit trusted origins.
 ///
@@ -216,6 +217,7 @@ fn build_cors_layer() -> CorsLayer {
         ])
 }
 
+#[allow(dead_code)]
 pub async fn require_bearer_auth(
     State(expected_token): State<std::sync::Arc<str>>,
     request: Request<Body>,

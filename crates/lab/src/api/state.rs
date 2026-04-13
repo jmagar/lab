@@ -101,6 +101,7 @@ pub struct AppState {
     /// The HTTP router checks this set to decide which per-service route groups
     /// to mount.  When `--services` filtering is applied, only the listed names
     /// appear here, so filtered-out services have no reachable POST endpoint.
+    #[allow(dead_code)]
     pub enabled_services: Arc<HashSet<String>>,
 }
 
