@@ -10,13 +10,14 @@ use thiserror::Error;
 pub type Result<T> = std::result::Result<T, ScaffoldError>;
 
 /// Scaffold target kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScaffoldKind {
     /// HTTP service with CLI, MCP, and API adapters.
     #[default]
     Http,
     /// Non-HTTP service that still participates in the onboarding contract.
+    #[value(name = "non-http")]
     NonHttp,
 }
 
