@@ -8,32 +8,35 @@
       "files": [],
       "expectations": [
         "Creates crates/lab-apis/src/mealie.rs with META const declaring Category, env vars, and port 9000",
-        "Creates crates/lab-apis/src/mealie/client.rs with MealieClient::new(base_url, auth) and ServiceClient health impl",
+        "Creates crates/lab-apis/src/mealie/client.rs with MealieClient::new(base_url, auth) and implements the ServiceClient trait with an async health() method",
         "Creates crates/lab-apis/src/mealie/error.rs wrapping ApiError with thiserror",
         "Adds mealie feature to crates/lab-apis/Cargo.toml and passthrough in crates/lab/Cargo.toml",
-        "Creates dispatch/mealie/ with catalog.rs containing ACTIONS for recipe.list, recipe.get, and help",
+        "Creates dispatch/mealie/ with catalog.rs containing ACTIONS for recipe.list, recipe.get, help, and schema",
         "From<MealieError> for ToolError added to dispatch/error.rs, feature-gated",
         "dispatch_with_client function returns Result<Value, ToolError>",
+        "Dispatch module handles schema action",
         "API handler uses handle_action helper and reads client from AppState",
         "No mod.rs files created",
-        "No async-trait used"
+        "No #[async_trait] macro usage (uses native async fn in trait)"
       ]
     },
     {
       "id": 2,
       "prompt": "I need to add a Jellyfin integration to lab. Jellyfin uses an x-emby-token header for auth, runs on port 8096. I want library listing, item search, and a health check. Mark nothing as destructive for now.",
-      "expected_output": "Complete onboarding following the service onboarding contract. Correct auth type (ApiKey or custom header handling). All five dispatch files created. Both Cargo.toml feature gates. CLI/MCP/API all wired. No logic in adapter layers.",
+      "expected_output": "Complete onboarding following the service onboarding contract. Correct auth type (ApiKey or custom header handling). All five dispatch files created (catalog.rs, client.rs, params.rs, dispatch.rs, and the module file jellyfin.rs). Both Cargo.toml feature gates. CLI/MCP/API all wired. No logic in adapter layers.",
       "files": [],
       "expectations": [
         "Creates crates/lab-apis/src/jellyfin.rs with META const",
         "Client auth uses appropriate Auth variant for x-emby-token header",
-        "Creates crates/lab-apis/src/jellyfin/client.rs with library listing and search methods",
-        "Dispatch catalog has library.list, library.search, and help actions",
+        "Creates crates/lab-apis/src/jellyfin/client.rs with library listing and search methods and implements the ServiceClient trait with an async health() method",
+        "Dispatch catalog has library.list, library.search, help, and schema actions",
+        "Dispatch module handles schema action",
         "dispatch_with_client handles all declared actions and returns UnknownAction for unknown ones",
         "From<JellyfinError> for ToolError in dispatch/error.rs",
         "CLI shim delegates entirely to dispatch layer with no business logic",
-        "MCP module file contains only tests, no dispatch logic",
-        "No mod.rs files created"
+        "MCP module exposes exactly one MCP tool per service with action+subaction dispatch",
+        "No mod.rs files created",
+        "No #[async_trait] macro usage (uses native async fn in trait)"
       ]
     },
     {
@@ -42,14 +45,17 @@
       "expected_output": "Creates only the dispatch layer and surface adapters (not lab-apis). Correctly marks monitor.pause and monitor.resume as destructive: true. All three surfaces wired. From<UptimeKumaError> for ToolError added. No duplication of existing lab-apis code.",
       "files": [],
       "expectations": [
-        "Creates dispatch/uptime_kuma/ with catalog.rs containing monitor.list, monitor.get, monitor.pause, monitor.resume",
+        "Creates dispatch/uptime_kuma/ with catalog.rs containing monitor.list, monitor.get, monitor.pause, monitor.resume, help, and schema",
         "monitor.pause and monitor.resume have destructive: true in ActionSpec",
+        "Destructive actions require explicit confirmation (MCP elicitation or CLI -y/--yes flag)",
+        "Dispatch module handles schema action",
         "dispatch_with_client calls the existing client methods correctly",
         "From<UptimeKumaError> for ToolError added to dispatch/error.rs, feature-gated",
         "CLI shim in cli/uptime_kuma.rs delegates to dispatch with no own logic",
         "API handler reads client from AppState and uses handle_action",
         "Does not recreate or duplicate the existing lab-apis module",
-        "No mod.rs files created"
+        "No mod.rs files created",
+        "No #[async_trait] macro usage (uses native async fn in trait)"
       ]
     }
   ]

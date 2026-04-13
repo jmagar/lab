@@ -427,6 +427,13 @@ impl HttpClient {
     }
 
     fn log_error(ctx: &RequestLogContext, err: &ApiError) {
+        let status: Option<u16> = match err {
+            ApiError::Auth => Some(401),
+            ApiError::NotFound => Some(404),
+            ApiError::RateLimited { .. } => Some(429),
+            ApiError::Server { status, .. } => Some(*status),
+            _ => None,
+        };
         match err {
             ApiError::Internal(_) => event!(
                 Level::ERROR,
@@ -434,6 +441,7 @@ impl HttpClient {
                 path = ctx.path.as_str(),
                 host = ctx.host.as_str(),
                 elapsed_ms = ctx.elapsed_ms(),
+                status,
                 kind = err.kind(),
                 message = %err,
                 "request.error"
@@ -450,6 +458,7 @@ impl HttpClient {
                 path = ctx.path.as_str(),
                 host = ctx.host.as_str(),
                 elapsed_ms = ctx.elapsed_ms(),
+                status,
                 kind = err.kind(),
                 message = %err,
                 "request.error"

@@ -61,11 +61,15 @@ impl GotifyClients {
     }
 }
 
-fn resolve_tokens() -> (Option<String>, Option<String>) {
-    let legacy = env_non_empty("GOTIFY_TOKEN");
-    let app = env_non_empty("GOTIFY_APP_TOKEN").or_else(|| legacy.clone());
-    let client = env_non_empty("GOTIFY_CLIENT_TOKEN").or(legacy);
+fn resolve_tokens_with<F: Fn(&str) -> Option<String>>(get: F) -> (Option<String>, Option<String>) {
+    let legacy = get("GOTIFY_TOKEN");
+    let app = get("GOTIFY_APP_TOKEN").or_else(|| legacy.clone());
+    let client = get("GOTIFY_CLIENT_TOKEN").or(legacy);
     (app, client)
+}
+
+fn resolve_tokens() -> (Option<String>, Option<String>) {
+    resolve_tokens_with(env_non_empty)
 }
 
 /// Build Gotify clients from the default-instance env vars.
@@ -104,7 +108,7 @@ pub fn require_client() -> Result<GotifyClient, ToolError> {
 pub fn not_configured_error() -> ToolError {
     ToolError::Sdk {
         sdk_kind: "internal_error".into(),
-        message: "GOTIFY_URL or GOTIFY_TOKEN not configured".into(),
+        message: "GOTIFY_URL and GOTIFY_APP_TOKEN or GOTIFY_CLIENT_TOKEN (or GOTIFY_TOKEN) not configured".into(),
     }
 }
 
@@ -135,38 +139,22 @@ mod tests {
 
     #[test]
     fn token_resolution_uses_legacy_token_as_fallback() {
-        let vars = [
-            ("GOTIFY_TOKEN", "legacy"),
-            ("GOTIFY_APP_TOKEN", ""),
-            ("GOTIFY_CLIENT_TOKEN", ""),
-        ];
-        let get = |name: &str| {
-            vars.iter()
-                .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
-                .filter(|value| !value.is_empty())
-        };
-        let legacy = get("GOTIFY_TOKEN");
-        let app = get("GOTIFY_APP_TOKEN").or_else(|| legacy.clone());
-        let client = get("GOTIFY_CLIENT_TOKEN").or(legacy);
+        let (app, client) = resolve_tokens_with(|name| match name {
+            "GOTIFY_TOKEN" => Some("legacy".to_string()),
+            _ => None,
+        });
         assert_eq!(app.as_deref(), Some("legacy"));
         assert_eq!(client.as_deref(), Some("legacy"));
     }
 
     #[test]
     fn token_resolution_prefers_scoped_tokens() {
-        let vars = [
-            ("GOTIFY_TOKEN", "legacy"),
-            ("GOTIFY_APP_TOKEN", "app"),
-            ("GOTIFY_CLIENT_TOKEN", "client"),
-        ];
-        let get = |name: &str| {
-            vars.iter()
-                .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
-                .filter(|value| !value.is_empty())
-        };
-        let legacy = get("GOTIFY_TOKEN");
-        let app = get("GOTIFY_APP_TOKEN").or_else(|| legacy.clone());
-        let client = get("GOTIFY_CLIENT_TOKEN").or(legacy);
+        let (app, client) = resolve_tokens_with(|name| match name {
+            "GOTIFY_TOKEN" => Some("legacy".to_string()),
+            "GOTIFY_APP_TOKEN" => Some("app".to_string()),
+            "GOTIFY_CLIENT_TOKEN" => Some("client".to_string()),
+            _ => None,
+        });
         assert_eq!(app.as_deref(), Some("app"));
         assert_eq!(client.as_deref(), Some("client"));
     }

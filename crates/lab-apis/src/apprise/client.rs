@@ -2,6 +2,8 @@
 //!
 //! Endpoints land incrementally from `docs/upstream-api/apprise.md`.
 
+use std::fmt::Write as _;
+
 use crate::core::{Auth, HttpClient};
 
 use super::error::AppriseError;
@@ -54,8 +56,25 @@ impl AppriseClient {
         key: &str,
         request: &super::types::NotifyRequest,
     ) -> Result<(), AppriseError> {
-        let path = format!("/notify/{key}");
+        let path = format!("/notify/{}", encode_path_segment(key));
         self.http.post_void(&path, request).await?;
         Ok(())
     }
+}
+
+/// Percent-encode a URL path segment (RFC 3986 unreserved chars pass through unchanged).
+fn encode_path_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') {
+            out.push(c);
+        } else {
+            let mut buf = [0u8; 4];
+            let encoded = c.encode_utf8(&mut buf);
+            for byte in encoded.bytes() {
+                write!(out, "%{byte:02X}").expect("writing to String is infallible");
+            }
+        }
+    }
+    out
 }

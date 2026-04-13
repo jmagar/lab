@@ -312,7 +312,7 @@ The live suite does not replace focused observability contract tests, but it sho
 
 Each run should produce:
 
-- a run manifest with URLs, credentials, profile, and snapshot versions
+- a run manifest with service URLs, env var references (not credential values), profile, and snapshot versions
 - a structured case result file
 - a summarized human-readable report
 - pointers to any logs or observability captures gathered during the run

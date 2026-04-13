@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-12
 **Source spec:** `docs/upstream-api/linkding.md`
-**SDK surface:** `crates/lab-apis/src/linkding/client.rs` (13 public methods: 12 wrappers + `probe()`)
+**SDK surface:** `crates/lab-apis/src/linkding/client.rs` (14 public methods: 13 wrappers + `probe()`)
 **Shared dispatch:** `crates/lab/src/dispatch/linkding.rs` + `crates/lab/src/dispatch/linkding/` (catalog, client, params, dispatch)
 **MCP adapter:** `crates/lab/src/mcp/services/linkding.rs` (tests-only; catalog lives in dispatch layer)
 **CLI surface:** `crates/lab/src/cli/linkding.rs` (generic `action` + `params` stub → calls dispatch)

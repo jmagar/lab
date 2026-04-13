@@ -28,7 +28,7 @@ pub struct UnifiArgs {
     pub params: Vec<String>,
 
     /// Skip confirmation for destructive actions.
-    #[arg(short = 'y', long)]
+    #[arg(short = 'y', long, alias = "no-confirm")]
     pub yes: bool,
 
     /// Print what would be done without executing.
@@ -46,15 +46,27 @@ pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
         if let serde_json::Value::Object(ref mut map) = params {
             map.insert("instance".to_string(), serde_json::Value::String(instance));
         } else {
-            anyhow::bail!("--instance requires --params to be a JSON object");
+            anyhow::bail!("--instance requires params to be key=value pairs that form a JSON object");
         }
     }
     if args.dry_run {
-        println!(
-            "[dry-run] would dispatch unifi action `{}` with params: {}",
-            args.action,
-            serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
-        );
+        match format {
+            OutputFormat::Json => {
+                let obj = serde_json::json!({
+                    "dry_run": true,
+                    "action": args.action,
+                    "params": params,
+                });
+                println!("{}", serde_json::to_string_pretty(&obj).unwrap_or_default());
+            }
+            OutputFormat::Human => {
+                println!(
+                    "[dry-run] would dispatch unifi action `{}` with params: {}",
+                    args.action,
+                    serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
+                );
+            }
+        }
         return Ok(ExitCode::SUCCESS);
     }
     run_confirmable_action_command(

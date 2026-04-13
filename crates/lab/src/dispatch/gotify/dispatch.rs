@@ -8,19 +8,13 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 fn require_app_client(
     clients: &GotifyClients,
 ) -> Result<&lab_apis::gotify::GotifyClient, ToolError> {
-    clients.app().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: "GOTIFY_URL and GOTIFY_APP_TOKEN (or GOTIFY_TOKEN) not configured".into(),
-    })
+    clients.app().ok_or_else(super::client::not_configured_error)
 }
 
 fn require_management_client(
     clients: &GotifyClients,
 ) -> Result<&lab_apis::gotify::GotifyClient, ToolError> {
-    clients.client().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: "GOTIFY_URL and GOTIFY_CLIENT_TOKEN (or GOTIFY_TOKEN) not configured".into(),
-    })
+    clients.client().ok_or_else(super::client::not_configured_error)
 }
 
 /// Dispatch against pre-built Gotify clients (avoids per-request env reads).

@@ -20,6 +20,9 @@ If this skill disagrees with those docs, the docs win.
 
 Bringing a service online means:
 
+- scaffold the service first with `lab scaffold service`
+- audit the onboarding contract with `lab audit onboarding`
+- prefer `lab_admin` only for read-only onboarding audit access, and only when `LAB_ADMIN_ENABLED=1`
 - `lab-apis` owns the service logic
 - `dispatch/<service>/` is the shared semantic layer
 - CLI, MCP, and API are thin adapters over dispatch
@@ -30,6 +33,13 @@ Bringing a service online means:
 - live CLI, MCP, and API smoke tests pass when possible
 
 A service working on only one surface is not done.
+
+For new onboarding work, the expected order is:
+
+1. scaffold the service shape
+2. run the onboarding audit
+3. fix the remaining contract gaps
+4. finish with `cargo test --all-features` and the targeted smoke checks
 
 ## Build Assumption
 
@@ -60,7 +70,7 @@ The upstream spec is the contract. If it does not exist, create or refresh it fi
 
 ### `lab-apis`
 
-```
+```text
 crates/lab-apis/src/<service>.rs
 crates/lab-apis/src/<service>/client.rs
 crates/lab-apis/src/<service>/types.rs
@@ -78,7 +88,7 @@ Rules:
 
 ### `lab`
 
-```
+```text
 crates/lab/src/dispatch/<service>.rs
 crates/lab/src/dispatch/<service>/catalog.rs
 crates/lab/src/dispatch/<service>/client.rs

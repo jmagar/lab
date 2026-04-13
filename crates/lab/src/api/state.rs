@@ -35,9 +35,7 @@ pub struct ServiceClients {
     #[cfg(feature = "unifi")]
     #[allow(dead_code)]
     pub unifi: Option<Arc<lab_apis::unifi::UnifiClient>>,
-    // Kept for future health-check and sub-dispatcher threading (see TODO above).
     #[cfg(feature = "unraid")]
-    #[allow(dead_code)]
     pub unraid: Option<Arc<lab_apis::unraid::UnraidClient>>,
     #[cfg(feature = "gotify")]
     pub gotify: Option<Arc<crate::dispatch::gotify::GotifyClients>>,

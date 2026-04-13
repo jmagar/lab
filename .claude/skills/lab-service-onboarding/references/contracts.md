@@ -105,7 +105,7 @@ Must include `operation = "health"` in logs to be distinguishable from normal ac
 
 ### Allowed dependency direction
 
-```
+```text
 cli    → dispatch → lab-apis
 mcp    → dispatch → lab-apis
 api    → dispatch → lab-apis
@@ -138,6 +138,7 @@ api    → dispatch → lab-apis
 Result<serde_json::Value, ToolError>
 ```
 
+
 ### Catalog ownership
 
 `catalog.rs` is the single source. MCP, CLI, and API re-export or reference `ACTIONS`. Never copy the array — two lists drift and elicitation silently skips newly-added destructive actions.
@@ -159,7 +160,7 @@ Write the failing test **before** the implementation. This is mandatory, not opt
 
 ### Minimum test coverage per layer
 
-```
+```text
 lab-apis/         → wiremock-based unit tests (CI-safe)
 dispatch/         → no HTTP, test action matching + param validation
 mcp/services/     → catalog shape, destructive flags, envelope

@@ -23,6 +23,24 @@ pub(super) struct QdrantEnvelope<T> {
     pub result: T,
 }
 
+/// Metadata for a single Qdrant collection.
+///
+/// A partial view of the Qdrant collection info response. Fields are optional
+/// because Qdrant may omit them for empty or initialising collections.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct CollectionInfo {
+    /// Collection status (`green`, `yellow`, `red`, or `grey`).
+    pub status: String,
+    /// Approximate number of vectors in the collection.
+    pub vectors_count: Option<u64>,
+    /// Number of indexed vectors.
+    pub indexed_vectors_count: Option<u64>,
+    /// Approximate number of points in the collection.
+    pub points_count: Option<u64>,
+    /// Number of segments in the collection.
+    pub segments_count: Option<u64>,
+}
+
 /// Distance metric for a collection's vector space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]

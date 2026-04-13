@@ -27,10 +27,7 @@ async fn handle(
         ACTIONS,
         move |action, params| async move {
             let Some(client) = client.as_ref() else {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "internal_error".into(),
-                    message: "APPRISE_URL not configured".into(),
-                });
+                return Err(crate::dispatch::apprise::not_configured_error());
             };
             crate::dispatch::apprise::dispatch_with_client(client, &action, params).await
         },

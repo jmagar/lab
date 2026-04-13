@@ -12,13 +12,18 @@ pub async fn dispatch_with_client(
     params_value: Value,
 ) -> Result<Value, ToolError> {
     match action {
+        "help" => return Ok(help_payload("qdrant", ACTIONS)),
+        "schema" => {
+            let action_name = require_str(&params_value, "action")?;
+            return action_schema(ACTIONS, action_name);
+        }
         "server.health" => {
             client.health().await?;
             Ok(serde_json::json!({ "ok": true }))
         }
         "collections.list" => to_json(client.collections_list().await?),
         "collections.get" => {
-            let name = require_str(&params_value, "name")?;
+            let name = super::params::collection_name_from_params(&params_value)?;
             to_json(client.collection_get(name).await?)
         }
         unknown => Err(ToolError::UnknownAction {

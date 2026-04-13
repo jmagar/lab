@@ -13,18 +13,38 @@ pub fn routes(_state: AppState) -> Router<AppState> {
 }
 
 async fn handle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    let client = state.clients.unraid.clone();
     handle_action(
         "unraid",
         "api",
         request_id,
         req,
         ACTIONS,
-        |action, params| async move { crate::dispatch::unraid::dispatch(&action, params).await },
+        move |action, params| async move {
+            let instance = crate::dispatch::helpers::optional_str(&params, "instance")?
+                .map(str::to_owned);
+            let mut params_clean = params;
+            if let Value::Object(ref mut map) = params_clean {
+                map.remove("instance");
+            }
+            match instance {
+                Some(label) => {
+                    let c = crate::dispatch::unraid::client_from_instance(Some(&label))?;
+                    crate::dispatch::unraid::dispatch_with_client(&c, &action, params_clean).await
+                }
+                None => {
+                    let Some(ref c) = client else {
+                        return Err(crate::dispatch::unraid::not_configured_error());
+                    };
+                    crate::dispatch::unraid::dispatch_with_client(c, &action, params_clean).await
+                }
+            }
+        },
     )
     .await
 }

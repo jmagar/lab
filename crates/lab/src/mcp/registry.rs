@@ -269,6 +269,9 @@ pub fn build_default_registry() -> ToolRegistry {
     reg
 }
 
+/// Returns `true` only when `LAB_ADMIN_ENABLED=1` is set in the environment.
+///
+/// Requires the exact value `"1"` — mere presence of the variable is not enough.
 #[cfg(feature = "lab-admin")]
 fn lab_admin_enabled() -> bool {
     std::env::var("LAB_ADMIN_ENABLED")
@@ -370,6 +373,12 @@ mod tests {
         // Derive the expected HTTP router service set from lab_apis META constants.
         // These are the same names used by build_router_with_bearer(), so any rename
         // in lab_apis automatically propagates here without manual updates.
+        //
+        // Assumption: every HTTP route mount uses exactly `META.name` as its path prefix.
+        // If a service is added to build_router_with_bearer() under a different name than
+        // META.name, that divergence will NOT be caught here. The trade-off is accepted:
+        // the router consistently derives its path prefix from META.name, and if that
+        // ever changes the build itself would break on the feature-gated import.
         let http_router_services: std::collections::HashSet<&'static str> = {
             let mut s = std::collections::HashSet::new();
             s.insert(lab_apis::extract::META.name); // always-on
@@ -422,15 +431,10 @@ mod tests {
         let registry_services: std::collections::HashSet<&str> =
             reg.services().iter().map(|s| s.name).collect();
 
-        let registry_only_exemptions: std::collections::HashSet<&'static str> =
-            [ "lab_admin" ].into_iter().collect();
-
         let only_in_registry: Vec<&&str> = registry_services
             .iter()
-            .filter(|n| {
-                !http_router_services.contains(**n)
-                    && !registry_only_exemptions.contains(**n)
-            })
+            // lab_admin is MCP-only: no HTTP route by design (runtime opt-in via LAB_ADMIN_ENABLED=1)
+            .filter(|n| !http_router_services.contains(**n) && **n != "lab_admin")
             .collect();
         let only_in_router: Vec<&&str> = http_router_services
             .iter()

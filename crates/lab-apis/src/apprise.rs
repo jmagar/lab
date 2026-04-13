@@ -85,7 +85,13 @@ impl ServiceClient for AppriseClient {
                 message: Some("authentication failed".into()),
             }),
             Err(AppriseError::Api(ApiError::Network(err))) => Ok(ServiceStatus::unreachable(err)),
-            Err(AppriseError::Api(err)) => Ok(ServiceStatus::degraded(err.to_string())),
+            Err(AppriseError::Api(err)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some(err.to_string()),
+            }),
         }
     }
 }

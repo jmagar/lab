@@ -33,8 +33,15 @@ pub fn embed_request_from_params(params: &Value) -> Result<EmbedRequest, ToolErr
     };
 
     if input_strings.is_empty() {
-        if let Some(value) = source.get("input").and_then(Value::as_str) {
-            input_strings.push(value.to_owned());
+        match source.get("input") {
+            Some(Value::String(value)) => input_strings.push(value.to_owned()),
+            Some(_) => {
+                return Err(ToolError::InvalidParam {
+                    message: "parameter `input` must be a string".into(),
+                    param: "input".into(),
+                });
+            }
+            None => {}
         }
     }
 

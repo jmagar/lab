@@ -3,6 +3,7 @@
 mod catalog;
 mod client;
 mod dispatch;
+mod params;
 
 pub use catalog::ACTIONS;
 #[allow(unused_imports)]

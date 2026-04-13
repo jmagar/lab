@@ -20,6 +20,11 @@ Bringing a service online means all of the following are true:
 
 The service is not considered done if only one surface works.
 
+For new service work, prefer the onboarding scaffold first and then run the
+onboarding audit before claiming the service is aligned with repo conventions.
+`lab scaffold service` should generate the initial shape; `lab audit onboarding`
+should verify it; `cargo test --all-features` is the final gate.
+
 ## Source Of Truth
 
 Start from the source spec that already lives in `docs/upstream-api/`:
@@ -553,16 +558,18 @@ pub fn routes(state: AppState) -> Router {
 }
 
 async fn handler(State(state): State<AppState>, Json(req): Json<ActionRequest>) -> impl IntoResponse {
+    let client = state.clients.<service>.clone();
     handle_action(
         "<service>",
-        state.surface(),
-        state.clients.<service>.as_deref(),
+        "api",
+        None,
         req,
         dispatch::<service>::ACTIONS,
-        |action, params| async move {
-            let client = state.clients.<service>.as_ref()
-                .ok_or_else(dispatch::<service>::not_configured_error)?;
-            dispatch::<service>::dispatch_with_client(client, action, params).await
+        move |action, params| async move {
+            let Some(client) = client.as_ref() else {
+                return Err(crate::dispatch::<service>::not_configured_error());
+            };
+            crate::dispatch::<service>::dispatch_with_client(client, &action, params).await
         },
     ).await
 }

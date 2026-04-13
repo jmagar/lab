@@ -52,6 +52,6 @@ async fn collection_get_decodes_result_payload() {
         .collection_get("movies")
         .await
         .expect("collection_get");
-    assert_eq!(collection["status"], "green");
-    assert_eq!(collection["vectors_count"], 42);
+    assert_eq!(collection.status, "green");
+    assert_eq!(collection.vectors_count, Some(42));
 }

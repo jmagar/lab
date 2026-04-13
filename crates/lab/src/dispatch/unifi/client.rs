@@ -77,7 +77,6 @@ pub fn client_from_env() -> Option<UnifiClient> {
             key,
         },
     )
-    .map_err(|e| tracing::warn!(error = %e, url, "unifi client construction failed"))
     .ok()
 }
 

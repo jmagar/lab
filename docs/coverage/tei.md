@@ -14,6 +14,8 @@
 | ⬜ | Not implemented yet; rows are spec inventory only |
 | - | Not applicable / not represented in the spec |
 
+Per-surface coverage: each column (MCP, CLI, API) tracks whether that surface has a working implementation for this method. A method with ✅ in SDK but ⬜ in a surface column is implemented in the client but not yet wired through that surface.
+
 The source spec is the contract. This document is the implementation planning aid.
 
 ## Text Embeddings Inference

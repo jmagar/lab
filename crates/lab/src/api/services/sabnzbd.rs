@@ -27,10 +27,7 @@ async fn handle(
         ACTIONS,
         move |action, params| async move {
             let Some(client) = client.as_ref() else {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "internal_error".into(),
-                    message: "SABNZBD_URL or SABNZBD_API_KEY not configured".into(),
-                });
+                return Err(crate::dispatch::sabnzbd::not_configured_error());
             };
             crate::dispatch::sabnzbd::dispatch_with_client(client, &action, params).await
         },

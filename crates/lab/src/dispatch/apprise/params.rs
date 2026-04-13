@@ -2,12 +2,16 @@ use lab_apis::apprise::types::{BodyFormat, NotifyRequest, NotifyType};
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::object_without;
 
 pub fn notify_request_from_params(
     params: &Value,
     strip: &[&str],
 ) -> Result<NotifyRequest, ToolError> {
-    let source = payload_object(params)?.unwrap_or_else(|| object_without(params, strip));
+    let source = match payload_object(params)? {
+        Some(payload) => payload,
+        None => object_without(params, strip),
+    };
 
     let body = source
         .get("body")
@@ -33,26 +37,23 @@ fn payload_object(params: &Value) -> Result<Option<Value>, ToolError> {
         None => Ok(None),
         Some(Value::Object(map)) => Ok(Some(Value::Object(map.clone()))),
         Some(Value::String(raw)) => {
-            serde_json::from_str::<Value>(raw)
-                .map(Some)
-                .map_err(|_| ToolError::InvalidParam {
+            let parsed = serde_json::from_str::<Value>(raw).map_err(|_| ToolError::InvalidParam {
+                message: "parameter `payload` must be a JSON object".into(),
+                param: "payload".into(),
+            })?;
+            if !parsed.is_object() {
+                return Err(ToolError::InvalidParam {
                     message: "parameter `payload` must be a JSON object".into(),
                     param: "payload".into(),
-                })
+                });
+            }
+            Ok(Some(parsed))
         }
         Some(_) => Err(ToolError::InvalidParam {
             message: "parameter `payload` must be a JSON object".into(),
             param: "payload".into(),
         }),
     }
-}
-
-fn object_without(params: &Value, strip: &[&str]) -> Value {
-    let mut map = params.as_object().cloned().unwrap_or_default();
-    for key in strip {
-        map.remove(*key);
-    }
-    Value::Object(map)
 }
 
 fn optional_string(source: &Value, key: &str) -> Result<Option<String>, ToolError> {

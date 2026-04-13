@@ -10,6 +10,7 @@ mod params;
 
 pub use catalog::ACTIONS;
 pub use client::client_from_env;
+pub use client::not_configured_error;
 pub use dispatch::{dispatch, dispatch_with_client};
 
 #[cfg(test)]

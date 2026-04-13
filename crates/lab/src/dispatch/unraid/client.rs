@@ -158,12 +158,18 @@ pub fn client_from_instance(label: Option<&str>) -> Result<Arc<UnraidClient>, To
     })
 }
 
+/// Structured error for callers that hold a pre-built `Option<UnraidClient>`.
+/// The API handler calls this directly instead of re-reading env vars.
+pub fn not_configured_error() -> ToolError {
+    ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: "UNRAID_URL or UNRAID_API_KEY not configured".to_string(),
+    }
+}
+
 /// Return a client or a structured `internal_error` if not configured.
 ///
 /// Used by MCP and CLI dispatch where `AppState` is not available.
 pub fn require_client() -> Result<UnraidClient, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "internal_error".to_string(),
-        message: "UNRAID_URL or UNRAID_API_KEY not configured".to_string(),
-    })
+    client_from_env().ok_or_else(not_configured_error)
 }
