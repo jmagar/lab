@@ -37,14 +37,14 @@ pub const META: PluginMeta = PluginMeta {
             example: "http://localhost:8080",
             secret: false,
         },
+    ],
+    optional_env: &[
         EnvVar {
             name: "GOTIFY_TOKEN",
             description: "Token for Gotify API access; used as fallback when scoped tokens are absent",
             example: "A1b2C3d4E5...",
             secret: true,
         },
-    ],
-    optional_env: &[
         EnvVar {
             name: "GOTIFY_APP_TOKEN",
             description: "App token used by message.send (overrides GOTIFY_TOKEN for sending)",

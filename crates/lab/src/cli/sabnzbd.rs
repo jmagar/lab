@@ -44,11 +44,19 @@ pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
         .unwrap_or(serde_json::Value::Null);
 
     if args.dry_run {
-        println!(
-            "[dry-run] would dispatch sabnzbd action `{}` with params: {}",
-            action,
-            serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
-        );
+        match format {
+            OutputFormat::Json => {
+                let v = serde_json::json!({"dry_run": true, "action": action, "params": params});
+                crate::output::print(&v, format)?;
+            }
+            OutputFormat::Human => {
+                println!(
+                    "[dry-run] would dispatch sabnzbd action `{}` with params: {}",
+                    action,
+                    serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
+                );
+            }
+        }
         return Ok(ExitCode::SUCCESS);
     }
 

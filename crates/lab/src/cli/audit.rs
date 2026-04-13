@@ -34,7 +34,7 @@ pub struct OnboardingArgs {
 pub fn run(args: AuditArgs, format: OutputFormat) -> Result<ExitCode> {
     match args.command {
         AuditCommand::Onboarding(args) => {
-            let report = audit_services(&args.services, &std::env::current_dir()?);
+            let report = audit_services(&args.services, &workspace_root()?);
             match format {
                 OutputFormat::Json => print(&report, format)?,
                 OutputFormat::Human => println!("{}", render_audit_report(&report)),

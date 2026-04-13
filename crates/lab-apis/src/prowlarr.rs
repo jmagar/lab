@@ -55,7 +55,13 @@ impl ServiceClient for ProwlarrClient {
         let start = Instant::now();
         let probe = tokio::time::timeout(Duration::from_secs(5), self.probe()).await;
         match probe {
-            Err(_elapsed) => Ok(ServiceStatus::unreachable("health check timed out")),
+            Err(_elapsed) => Ok(ServiceStatus {
+                reachable: false,
+                auth_ok: false,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some("health check timed out".into()),
+            }),
             Ok(Ok(())) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: true,

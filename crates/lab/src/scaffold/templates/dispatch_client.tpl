@@ -1,4 +1,3 @@
-use lab_apis::core::Auth;
 use lab_apis::{{service}}::{{Service}}Client;
 
 use crate::dispatch::error::ToolError;
@@ -10,7 +9,14 @@ use crate::dispatch::helpers::env_non_empty;
 /// Called by `AppState` at startup — keep pure (no side effects, no logging).
 pub fn client_from_env() -> Option<{{Service}}Client> {
     let url = env_non_empty("{{SERVICE}}_URL")?;
-    {{Service}}Client::new(&url, Auth::None).ok()
+    let auth = if let Some(key) = env_non_empty("{{SERVICE}}_API_KEY") {
+        lab_apis::core::Auth::ApiKey { header: "X-Api-Key".into(), key }
+    } else if let Some(token) = env_non_empty("{{SERVICE}}_TOKEN") {
+        lab_apis::core::Auth::Bearer { token }
+    } else {
+        lab_apis::core::Auth::None
+    };
+    {{Service}}Client::new(&url, auth).ok()
 }
 
 /// Return a client or a structured error distinguishing missing config from init failure.

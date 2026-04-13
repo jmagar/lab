@@ -34,7 +34,7 @@ pub fn run(name: &str, repo_root: &Path) -> Vec<(String, CheckResult)> {
         let path = repo_root.join(&rel);
         out.push((
             rel.clone(),
-            if path.exists() {
+            if path.is_file() {
                 CheckResult::Pass
             } else {
                 CheckResult::Fail(format!("missing {rel}"))

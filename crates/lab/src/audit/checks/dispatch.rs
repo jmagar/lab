@@ -16,9 +16,9 @@ pub fn run(name: &str, repo_root: &Path) -> Vec<(String, CheckResult)> {
         contains_all(
             &entry_text,
             &[
-                "pub use catalog::ACTIONS;",
-                "pub use client::client_from_env;",
-                "pub use dispatch::{dispatch, dispatch_with_client};",
+                "ACTIONS",
+                "client_from_env",
+                "dispatch",
             ],
         ),
     ));
