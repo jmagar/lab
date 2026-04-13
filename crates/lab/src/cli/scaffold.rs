@@ -157,8 +157,8 @@ mod tests {
         seed_repo(dir.path());
         let root = dir.path().to_path_buf();
 
-        let first =
-            crate::scaffold::scaffold_service(&config(root.clone()), false).expect("first scaffold");
+        let first = crate::scaffold::scaffold_service(&config(root.clone()), false)
+            .expect("first scaffold");
         assert!(!first.created.is_empty());
 
         let second =

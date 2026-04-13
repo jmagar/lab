@@ -55,8 +55,10 @@ where
 {
     let relative = PathBuf::from(rel_path);
     let absolute = repo_root.join(&relative);
-    let content = fs::read_to_string(&absolute)
+    let raw = fs::read_to_string(&absolute)
         .map_err(|source| super::service::ScaffoldError::io(absolute.clone(), source))?;
+    // Normalize CRLF → LF so patch anchors match on Windows checkouts.
+    let content = raw.replace("\r\n", "\n");
     let patched = patch(name, &content)?;
     if patched != content {
         ops.push(FileOp {

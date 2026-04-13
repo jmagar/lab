@@ -274,8 +274,7 @@ impl ServerHandler for LabMcpServer {
             }
             Err(e) => {
                 let (kind, message, extra) = extract_error_info(&e);
-                let is_fatal =
-                    matches!(kind, "internal_error" | "server_error" | "decode_error");
+                let is_fatal = matches!(kind, "internal_error" | "server_error" | "decode_error");
                 if is_fatal {
                     tracing::error!(
                         surface = "mcp",

@@ -25,9 +25,9 @@ pub fn pascal_case(s: &str) -> String {
     s.split('_')
         .map(|part| {
             let mut chars = part.chars();
-            chars
-                .next()
-                .map_or_else(String::new, |first| format!("{}{}", first.to_ascii_uppercase(), chars.as_str()))
+            chars.next().map_or_else(String::new, |first| {
+                format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+            })
         })
         .collect()
 }
