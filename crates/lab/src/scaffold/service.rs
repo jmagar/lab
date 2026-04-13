@@ -65,6 +65,9 @@ pub enum ScaffoldError {
 
     #[error("invalid TOML while patching: {message}")]
     Toml { message: String },
+
+    #[error("patch anchor not found in source file: {anchor:?}")]
+    PatchAnchorNotFound { anchor: String },
 }
 
 impl ScaffoldError {

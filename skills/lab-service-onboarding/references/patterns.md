@@ -23,10 +23,8 @@ Example for an API-key service:
 pub fn client_from_env() -> Option<FooClient> {
     let url = env_non_empty("FOO_URL")?;
     let key = env_non_empty("FOO_API_KEY")?;
-    let client = FooClient::new(&url, Auth::ApiKey { header: "X-Api-Key".into(), key })
-        .map_err(|e| tracing::warn!(error = %e, "FooClient construction failed"))
-        .ok()?;
-    Some(client)
+    // Keep pure — no logging, no side effects. AppState calls this at startup.
+    FooClient::new(&url, Auth::ApiKey { header: "X-Api-Key".into(), key }).ok()
 }
 ```
 

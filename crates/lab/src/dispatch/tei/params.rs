@@ -4,10 +4,19 @@ use serde_json::Value;
 use crate::dispatch::error::ToolError;
 
 pub fn embed_request_from_params(params: &Value) -> Result<EmbedRequest, ToolError> {
-    let source = params
-        .get("payload")
-        .cloned()
-        .unwrap_or_else(|| params.clone());
+    let source = match params.get("payload") {
+        Some(Value::Object(_)) => params
+            .get("payload")
+            .cloned()
+            .expect("payload exists and is object"),
+        Some(_) => {
+            return Err(ToolError::InvalidParam {
+                message: "parameter `payload` must be an object".into(),
+                param: "payload".into(),
+            });
+        }
+        None => params.clone(),
+    };
 
     let mut input_strings = match source.get("inputs") {
         Some(Value::String(value)) => vec![value.clone()],

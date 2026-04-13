@@ -246,6 +246,14 @@ cargo test -p lab
 cargo doc --no-deps --all-features
 ```
 
+**Authoritative verification path** (exercises all feature-gated surfaces):
+
+```bash
+cargo build --workspace --all-features
+cargo test --workspace --all-features
+cargo test --workspace --tests --no-fail-fast --all-features
+```
+
 ## Design highlights
 
 - **Two-crate split:** SDK logic stays reusable and transport-agnostic.

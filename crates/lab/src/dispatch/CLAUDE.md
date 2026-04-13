@@ -82,10 +82,18 @@ pub fn client_from_env() -> Option<<Service>Client> {
     <Service>Client::new(&url, Auth::ApiKey { header: "X-Api-Key".into(), key }).ok()
 }
 
-/// Return a client or a structured `internal_error` if not configured.
-/// Used by MCP and CLI when `AppState` is not available.
+/// Return a client or a structured error distinguishing missing config from init failure.
+///
+/// Do NOT collapse both cases into `not_configured_error()` — a service whose
+/// URL is set but whose TLS init fails should surface as `internal_error`, not
+/// as a missing-config error. Keep `client_from_env()` for the `None`-means-absent
+/// startup path, and use this pattern for any code path that must report to a user.
 pub fn require_client() -> Result<<Service>Client, ToolError> {
-    client_from_env().ok_or_else(not_configured_error)
+    let url = env_non_empty("<SERVICE>_URL").ok_or_else(not_configured_error)?;
+    <Service>Client::new(&url, Auth::None).map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("<SERVICE> client init failed: {e}"),
+    })
 }
 
 /// Structured error for callers that hold a pre-built `Option<ServiceClient>`.

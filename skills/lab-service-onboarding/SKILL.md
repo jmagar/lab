@@ -262,8 +262,11 @@ Do not invent alternate wrappers or call `require_client()` in API handlers.
 
 ```rust
 // In crates/lab/src/dispatch/error.rs:
-#[cfg(feature = "foo")]
-impl_tool_error_from!(lab_apis::foo::FooError);
+impl_tool_error_from!(
+    "foo",
+    lab_apis::foo::error::FooError,
+    Api(api) => api.kind()
+);
 ```
 
 - do not place conversion impls in CLI, MCP, or API modules

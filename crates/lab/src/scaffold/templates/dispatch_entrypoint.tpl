@@ -6,5 +6,7 @@ mod dispatch;
 mod params;
 
 pub use catalog::ACTIONS;
-pub use client::{client_from_env, not_configured_error, require_client};
+#[allow(unused_imports)]
+pub use client::client_from_env;
+pub use client::not_configured_error;
 pub use dispatch::{dispatch, dispatch_with_client};

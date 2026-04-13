@@ -274,14 +274,27 @@ impl ServerHandler for LabMcpServer {
             }
             Err(e) => {
                 let (kind, message, extra) = extract_error_info(&e);
-                tracing::warn!(
-                    surface = "mcp",
-                    service,
-                    action,
-                    elapsed_ms,
-                    kind,
-                    "dispatch error"
-                );
+                let is_fatal =
+                    matches!(kind, "internal_error" | "server_error" | "decode_error");
+                if is_fatal {
+                    tracing::error!(
+                        surface = "mcp",
+                        service,
+                        action,
+                        elapsed_ms,
+                        kind,
+                        "dispatch error"
+                    );
+                } else {
+                    tracing::warn!(
+                        surface = "mcp",
+                        service,
+                        action,
+                        elapsed_ms,
+                        kind,
+                        "dispatch error"
+                    );
+                };
                 let envelope = extra.map_or_else(
                     || build_error(&service, &action, kind, &message),
                     |ref extra| build_error_extra(&service, &action, kind, &message, extra),

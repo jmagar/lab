@@ -81,6 +81,12 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let client = client_from_instance(Some(&label))?;
             dispatch_with_client(&client, action, params).await
         }
-        None => dispatch_with_client(&*client_from_instance(None)?, action, params).await,
+        None => match client_from_instance(None) {
+            Ok(client) => dispatch_with_client(&client, action, params).await,
+            Err(ToolError::UnknownInstance { valid, .. }) if valid.is_empty() => {
+                Err(crate::dispatch::unraid::not_configured_error())
+            }
+            Err(err) => Err(err),
+        },
     }
 }

@@ -13,14 +13,21 @@ pub fn notify_request_from_params(
         None => object_without(params, strip),
     };
 
-    let body = source
-        .get("body")
-        .and_then(Value::as_str)
-        .ok_or_else(|| ToolError::MissingParam {
-            message: "missing required parameter `body`".into(),
-            param: "body".into(),
-        })?
-        .to_owned();
+    let body = match source.get("body") {
+        Some(Value::String(s)) => s.clone(),
+        Some(_) => {
+            return Err(ToolError::InvalidParam {
+                message: "parameter `body` must be a string".into(),
+                param: "body".into(),
+            });
+        }
+        None => {
+            return Err(ToolError::MissingParam {
+                message: "missing required parameter `body`".into(),
+                param: "body".into(),
+            });
+        }
+    };
 
     Ok(NotifyRequest {
         body,

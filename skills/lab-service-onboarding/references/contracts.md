@@ -171,6 +171,12 @@ cli/              → arg parsing, --json output shape
 ### Commands
 
 ```bash
+# Authoritative verification path (exercises all feature-gated surfaces):
+cargo build --workspace --all-features
+cargo test --workspace --all-features
+cargo test --workspace --tests --no-fail-fast --all-features
+
+# Scoped shortcuts (faster, but do not exercise feature-gated surfaces):
 just test                  # full workspace (cargo-nextest)
 cargo test -p lab-apis     # SDK only
 cargo test -p lab          # dispatch + adapters

@@ -326,18 +326,49 @@ impl HttpClient {
         variables: Option<&serde_json::Value>,
     ) -> Result<T, ApiError> {
         let body = GraphQlRequest { query, variables };
-        let resp: GraphQlResponse<T> = self.post_json(path, &body).await?;
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
+        let http_resp = self
+            .send(
+                self.apply_auth(self.inner.post(url.clone()).json(&body)),
+                &ctx,
+            )
+            .await?;
+
+        // Non-2xx responses are handled the same as any other POST.
+        if !http_resp.status().is_success() {
+            let (code, body) = Self::read_error_body(http_resp).await;
+            let err = Self::error_for_status(code, body);
+            Self::log_error(&ctx, &err);
+            return Err(err);
+        }
+
+        let status = http_resp.status().as_u16();
+        let resp: GraphQlResponse<T> = match http_resp.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                let err = ApiError::Decode(e.to_string());
+                Self::log_error(&ctx, &err);
+                return Err(err);
+            }
+        };
+
+        // GraphQL application errors: the HTTP layer returned 200 but the
+        // operation failed. Emit request.error so these don't surface as
+        // successful request events in telemetry.
         if let Some(errors) = resp.errors {
             let msg = errors
                 .iter()
                 .map(|e| e.message.as_str())
                 .collect::<Vec<_>>()
                 .join("; ");
-            return Err(ApiError::Server {
-                status: 200,
-                body: msg,
-            });
+            let err = ApiError::Server { status: 200, body: msg };
+            Self::log_error(&ctx, &err);
+            return Err(err);
         }
+
+        Self::log_finish(&ctx, status);
         resp.data
             .ok_or_else(|| ApiError::Decode("GraphQL response missing data field".into()))
     }

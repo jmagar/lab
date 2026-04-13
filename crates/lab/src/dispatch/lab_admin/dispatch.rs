@@ -33,14 +33,27 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             elapsed_ms,
             "dispatch ok"
         ),
-        Err(err) => tracing::warn!(
-            surface = "mcp",
-            service = "lab_admin",
-            action,
-            elapsed_ms,
-            kind = err.kind(),
-            "dispatch error"
-        ),
+        Err(err) => {
+            if err.is_internal() {
+                tracing::error!(
+                    surface = "mcp",
+                    service = "lab_admin",
+                    action,
+                    elapsed_ms,
+                    kind = err.kind(),
+                    "dispatch error"
+                );
+            } else {
+                tracing::warn!(
+                    surface = "mcp",
+                    service = "lab_admin",
+                    action,
+                    elapsed_ms,
+                    kind = err.kind(),
+                    "dispatch error"
+                );
+            }
+        }
     }
 
     result

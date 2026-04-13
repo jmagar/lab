@@ -109,10 +109,6 @@ pub fn patch_api_state_rs(_name: &str, content: &str) -> Result<String> {
     )
 }
 
-pub fn patch_tui_metadata_rs(_name: &str, content: &str) -> Result<String> {
-    insert_before_eof(content, &format!("\n// scaffolded service: {_name}\n"))
-}
-
 fn insert_before_eof(content: &str, insert: &str) -> Result<String> {
     if content.contains(insert) {
         return Ok(content.to_string());
@@ -128,8 +124,8 @@ fn insert_once(content: &str, needle: &str, replacement: &str) -> Result<String>
         return Ok(content.to_string());
     }
     let Some(idx) = content.find(needle) else {
-        return Err(ScaffoldError::Toml {
-            message: format!("patch anchor not found in file: {needle:?}"),
+        return Err(ScaffoldError::PatchAnchorNotFound {
+            anchor: needle.to_string(),
         });
     };
     let mut out = String::with_capacity(content.len() + replacement.len() - needle.len());

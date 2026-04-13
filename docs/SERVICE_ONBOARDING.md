@@ -566,7 +566,7 @@ Important rules:
 - `help` and `schema` are routed by `dispatch()` — both must be declared in `catalog.rs`'s `ACTIONS` array so the `help` response lists them
 - destructive actions must be marked `destructive: true` in `ActionSpec`
 - the MCP file must not contain business logic, param coercion, or its own action catalog — it projects from `dispatch/<service>/catalog.rs` only
-- MCP elicitation for destructive ops is **not yet implemented** — the `ActionSpec.destructive` flag is honored by the HTTP surface only (via `handle_action` in `api/services/helpers.rs`); MCP currently dispatches destructive actions without a confirmation gate
+- MCP elicitation for destructive ops is **not yet implemented** — MCP currently dispatches destructive actions without a confirmation gate; the `ActionSpec.destructive` flag is the single source of truth for dangerous operations across all surfaces: the HTTP surface enforces it via `handle_action` in `api/services/helpers.rs`, and the CLI enforces it via `-y/--yes` gating; both must be honored consistently
 
 Additionally, add `pub mod <service>;` to `crates/lab/src/mcp/services.rs` — this module declaration is required alongside the `mcp/registry.rs` registration.
 
