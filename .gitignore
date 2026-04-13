@@ -17,6 +17,7 @@ backups/
 # ── Claude Code / AI tooling ────────────────────────────────────────────────
 .claude/settings.local.json
 .claude/worktrees/
+.claude/
 .omc/
 .lavra/
 .beads/
