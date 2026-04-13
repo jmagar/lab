@@ -18,6 +18,18 @@ static NAMED_CLIENTS: OnceLock<HashMap<String, Arc<UnraidClient>>> = OnceLock::n
 /// means the instance was discovered but its env vars are broken/incomplete.
 static ALL_LABELS: OnceLock<Vec<String>> = OnceLock::new();
 
+/// Strip trailing `/graphql` and surrounding slashes from an Unraid URL.
+///
+/// The URL stored in env can be either the bare host (`https://host:31337`)
+/// or the full endpoint (`https://host:31337/graphql`) — the client always
+/// appends `/graphql` itself, so we normalise to the bare host form.
+fn normalize_unraid_url(raw: &str) -> String {
+    raw.trim_end_matches('/')
+        .trim_end_matches("graphql")
+        .trim_end_matches('/')
+        .to_string()
+}
+
 /// Return (or lazily build) the map of named `Unraid` clients.
 ///
 /// The map is keyed by label (e.g. `"default"`, `"node2"`) and built once
@@ -38,11 +50,7 @@ fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
                 )
             };
             if let (Some(raw_url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key)) {
-                let url = raw_url
-                    .trim_end_matches('/')
-                    .trim_end_matches("graphql")
-                    .trim_end_matches('/')
-                    .to_string();
+                let url = normalize_unraid_url(&raw_url);
                 if let Ok(client) = UnraidClient::new(
                     &url,
                     Auth::ApiKey {
@@ -79,14 +87,7 @@ fn all_labels() -> &'static Vec<String> {
 /// startup — must be pure (no side effects, no logging).
 pub fn client_from_env() -> Option<UnraidClient> {
     let raw_url = env_non_empty("UNRAID_URL")?;
-    // Normalise: strip trailing /graphql if present so the URL stored in env
-    // can be either the bare host (https://host:31337) or the full endpoint
-    // (https://host:31337/graphql) — the client always appends /graphql itself.
-    let url = raw_url
-        .trim_end_matches('/')
-        .trim_end_matches("graphql")
-        .trim_end_matches('/')
-        .to_string();
+    let url = normalize_unraid_url(&raw_url);
     let key = env_non_empty("UNRAID_API_KEY")?;
     UnraidClient::new(
         &url,
