@@ -104,7 +104,28 @@ Rules:
 - `not_configured_error()` is exposed separately so API handlers can produce the same structured error without re-reading env vars.
 - Always use `env_non_empty` — never inline `std::env::var(...).ok().filter(|v| !v.is_empty())`.
 - Never read env vars inside `dispatch.rs` or `params.rs` — always go through `client.rs`.
-- When the service supports multiple instances, add `client_from_instance(label: Option<&str>)` here.
+- When the service supports multiple instances, use `InstancePool<C>` from `dispatch::helpers` instead of a bespoke `OnceLock`. Implement `client_from_instance(label: Option<&str>)` as the public entry point:
+
+```rust
+use std::sync::OnceLock;
+use crate::dispatch::helpers::{env_non_empty, InstancePool};
+
+static POOL: OnceLock<InstancePool<<Service>Client>> = OnceLock::new();
+
+fn pool() -> &'static InstancePool<<Service>Client> {
+    POOL.get_or_init(|| {
+        InstancePool::build("<SERVICE>", |url, key| {
+            <Service>Client::new(&url, Auth::ApiKey { header: "X-Api-Key".into(), key }).ok()
+        })
+    })
+}
+
+pub fn client_from_instance(label: Option<&str>) -> Result<&'static <Service>Client, ToolError> {
+    pool().resolve(label)
+}
+```
+
+`InstancePool::build(prefix, closure)` scans for `{PREFIX}_URL` (default instance) and `{PREFIX}_{LABEL}_URL` (named instances) at first call, caching all clients in a single `OnceLock`. `resolve(None)` returns the default instance; `resolve(Some("label"))` returns the named one. Both return `ToolError::UnknownInstance` if the label is absent.
 
 > **Header casing:** The default is `X-Api-Key` (Servarr convention). Some APIs enforce specific casing:
 > - Unraid: `X-API-Key` — matches the Unraid server's exact validation
@@ -137,7 +158,11 @@ pub async fn dispatch_with_client(
 ) -> Result<Value, ToolError> {
     match action {
         // ... service-specific arms ...
-        unknown => Err(ToolError::UnknownAction { ... }),
+        unknown => Err(ToolError::UnknownAction {
+            service: "<service>".into(),
+            action: unknown.to_string(),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+        }),
     }
 }
 ```

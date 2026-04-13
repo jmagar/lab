@@ -23,7 +23,7 @@ POST /v1/radarr
 | `api.rs` (parent) | Module declarations + re-exports. |
 | `state.rs` | `AppState` — holds `lab-apis` clients, cloned per request (cheap `Arc` inside). |
 | `error.rs` | `ApiError` + `ApiResult<T>` + `IntoResponse` mapping from `kind()` → HTTP status. |
-| `router.rs` | `build_router(state)` — composes feature-gated routes + middleware stack. |
+| `router.rs` | `build_router_with_bearer(state, bearer_token: Option<String>)` — composes feature-gated routes + optional bearer auth middleware. |
 | `health.rs` | `GET /health` liveness + `GET /ready` readiness. |
 | `services/<service>.rs` | Per-service route group (feature-gated). Thin dispatch shims. |
 
@@ -35,7 +35,7 @@ Applied in `router.rs`, top-to-bottom:
 2. `TraceLayer` — tracing spans per request with method, path, status, latency.
 3. `TimeoutLayer` (30s default) — upstream service calls must honor their own shorter budgets.
 4. `CompressionLayer` — gzip.
-5. `CorsLayer` — permissive by default; tighten via config in production deployments.
+5. `CorsLayer` — explicit allowlist: loopback origins always allowed; additional origins via `LAB_CORS_ORIGINS` (comma-separated). Unparseable entries are logged as warnings and skipped. Not permissive by default.
 6. `PropagateRequestId` — echoes `x-request-id` back in response.
 
 Never add business-logic middleware here. Auth/rate-limit belong in their own layers, not in router setup.
@@ -73,9 +73,10 @@ The gate is enforced in `services/helpers.rs::handle_action()`.
 Per-service route modules under `services/` are `#[cfg(feature = "<service>")]`. The router builder conditionally mounts them:
 
 ```rust
-#[cfg(feature = "radarr")]
-let router = router.nest("/v1/radarr", services::radarr::routes(state.clone()));
+mount_if_enabled!(v1, state, "radarr", "radarr", radarr);
 ```
+
+The macro expands to a `#[cfg(feature)]`-gated `router.nest()` call. All 21 services are registered this way — never write the expansion by hand.
 
 Never hard-link service handlers from the top-level router — always conditional.
 

@@ -302,6 +302,40 @@ Expose accessor methods (`health()`, `write()`, `read()`) that return references
 
 See `crates/lab/src/dispatch/gotify/client.rs` for the reference pattern.
 
+### Multi-Instance Client Pattern
+
+When a service supports multiple named instances (e.g. `UNIFI_URL` + `UNIFI_NODE2_URL`), use `InstancePool<C>` from `crate::dispatch::helpers` instead of writing a bespoke `OnceLock`. This avoids two-static coupling bugs (where labels and clients must be co-initialized) and gives a consistent resolution API across all multi-instance services.
+
+```rust
+use std::sync::OnceLock;
+use crate::dispatch::helpers::{env_non_empty, InstancePool};
+use crate::dispatch::error::ToolError;
+
+static POOL: OnceLock<InstancePool<<Service>Client>> = OnceLock::new();
+
+fn pool() -> &'static InstancePool<<Service>Client> {
+    POOL.get_or_init(|| {
+        InstancePool::build("<SERVICE>", |url, key| {
+            <Service>Client::new(&url, Auth::ApiKey { header: "X-Api-Key".into(), key }).ok()
+        })
+    })
+}
+
+/// Resolve a named instance (or the default when `label` is `None`).
+pub fn client_from_instance(label: Option<&str>) -> Result<&'static <Service>Client, ToolError> {
+    pool().resolve(label)
+}
+```
+
+- `InstancePool::build(prefix, closure)` scans for `{PREFIX}_URL` (default) and `{PREFIX}_{LABEL}_URL` (named) at first call, caching all clients in a single `OnceLock`.
+- `pool().resolve(None)` returns the default instance.
+- `pool().resolve(Some("node2"))` returns the named instance.
+- Both return `ToolError::UnknownInstance { valid: [...] }` when the label is absent, so callers get a structured error with the valid label list.
+- `pool().all_labels()` returns all resolved label names (useful for `help` payloads).
+- The `dispatch()` entry point passes `params["instance"]` as the label via `client_from_instance(instance_label)`. Do not pass instance selection through `dispatch_with_client` — the label is resolved to a client before entering that function.
+
+See `crates/lab/src/dispatch/unifi/client.rs` and `crates/lab/src/dispatch/unraid/client.rs` for the reference implementations.
+
 ### `catalog.rs` — `help` and `schema` Must Be Explicit
 
 The `ACTIONS` array is the single source of truth for what `help` and `schema` return. The shared dispatcher routes `help` and `schema` automatically, but they must still appear in `ACTIONS` so the `help` response lists them. Every catalog must start with:
@@ -611,7 +645,7 @@ Four locations must all be touched — missing any one causes silent disappearan
 1. **`crates/lab/src/mcp/registry.rs`** — runtime registration in `build_default_registry()`
 2. **`crates/lab/src/mcp/services.rs`** — `pub mod <service>;` module declaration
 3. **`crates/lab/src/api/services.rs`** — `pub mod <service>;` module declaration
-4. **`crates/lab/src/api/router.rs`** — feature-gated `.nest()` block (see Step 8)
+4. **`crates/lab/src/api/router.rs`** — `mount_if_enabled!(v1, state, "<feat>", "<name>", <mod>)` call (see Step 8)
 
 Additionally:
 
@@ -654,6 +688,8 @@ If the service supports multiple instances, follow the established pattern:
 - `SERVICE_<LABEL>_URL` for additional instances
 
 Do not hardcode instance names in the dispatch layer. All config ownership stays in `lab`, not `lab-apis`.
+
+For implementation, use `InstancePool<C>` from `crate::dispatch::helpers` — see the [Multi-Instance Client Pattern](#multi-instance-client-pattern) section above. `InstancePool::build(prefix, closure)` discovers all `{PREFIX}_*_URL` env vars automatically at first call; you never enumerate labels by hand.
 
 ## Step 11: Update Docs
 
@@ -810,7 +846,7 @@ A service is ready when:
 - creating a `DispatchError` type as a parallel to `ToolError` — this was considered and explicitly rejected; use `ToolError` directly
 - logging `params` at any dispatch boundary — some actions pass plaintext credentials through `params`
 - calling `handle_action` without checking that the client is `Some` — unwrapping `None` panics in the API handler
-- forgetting to add the `router.rs` `.nest()` block — routes compile but are never mounted
+- forgetting to add the `mount_if_enabled!(v1, state, "<feat>", "<name>", <mod>)` call in `router.rs` — routes compile but are never mounted (do not write the `#[cfg] router.nest(...)` expansion by hand)
 - adding `pub mod <service>` to `api/services.rs` but not to `mcp/services.rs`, or vice versa
 - forgetting to add the feature passthrough in `crates/lab/Cargo.toml`
 - leaving the coverage doc path or counts stale
