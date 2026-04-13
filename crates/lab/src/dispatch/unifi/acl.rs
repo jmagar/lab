@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, query_from, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -119,17 +119,21 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "acl.rules.list" => {
             let site_id = require_str(&params, "site_id")?;
             let q = query_from(&params, &["offset", "limit", "filter"])?;
             let rules = if q.is_empty() {
-                require_client()?
+                client
                     .get_value(&format!("/sites/{site_id}/acl-rules"))
                     .await?
             } else {
-                require_client()?
+                client
                     .get_value_query(&format!("/sites/{site_id}/acl-rules"), &q)
                     .await?
             };
@@ -138,7 +142,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "acl.rules.get" => {
             let site_id = require_str(&params, "site_id")?;
             let acl_rule_id = require_str(&params, "acl_rule_id")?;
-            let rule = require_client()?
+            let rule = client
                 .get_value(&format!("/sites/{site_id}/acl-rules/{acl_rule_id}"))
                 .await?;
             to_json(rule)
@@ -146,7 +150,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "acl.rules.create" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let rule = require_client()?
+            let rule = client
                 .post_value(&format!("/sites/{site_id}/acl-rules"), &body)
                 .await?;
             to_json(rule)
@@ -155,7 +159,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let acl_rule_id = require_str(&params, "acl_rule_id")?;
             let body = object_without(&params, &["site_id", "acl_rule_id"])?;
-            let rule = require_client()?
+            let rule = client
                 .put_value(&format!("/sites/{site_id}/acl-rules/{acl_rule_id}"), &body)
                 .await?;
             to_json(rule)
@@ -163,14 +167,14 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "acl.rules.delete" => {
             let site_id = require_str(&params, "site_id")?;
             let acl_rule_id = require_str(&params, "acl_rule_id")?;
-            require_client()?
+            client
                 .delete_value(&format!("/sites/{site_id}/acl-rules/{acl_rule_id}"))
                 .await?;
             to_json(serde_json::json!({"deleted": true}))
         }
         "acl.rules.ordering.get" => {
             let site_id = require_str(&params, "site_id")?;
-            let ordering = require_client()?
+            let ordering = client
                 .get_value(&format!("/sites/{site_id}/acl-rules/ordering"))
                 .await?;
             to_json(ordering)
@@ -178,11 +182,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "acl.rules.ordering.set" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let ordering = require_client()?
+            let ordering = client
                 .put_value(&format!("/sites/{site_id}/acl-rules/ordering"), &body)
                 .await?;
             to_json(ordering)
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
     }
 }

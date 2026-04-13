@@ -1,9 +1,18 @@
 //! Shared dispatch helpers used across all service modules.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use lab_apis::core::action::ActionSpec;
 use serde_json::Value;
 
+use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
+
+/// Read an environment variable, returning `None` if absent or empty.
+pub fn env_non_empty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty())
+}
 
 /// Serialize any `Serialize` value to `serde_json::Value`.
 pub fn to_json<T: serde::Serialize>(v: T) -> Result<Value, ToolError> {
@@ -24,35 +33,69 @@ pub fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ToolErro
         })
 }
 
-/// Extract a required integer parameter from a JSON object.
-pub fn require_i64(params: &Value, key: &str) -> Result<i64, ToolError> {
+/// Extract an optional string parameter from a JSON object.
+///
+/// Empty strings are rejected as `invalid_param` so callers do not silently
+/// treat `instance=` as if the field were absent.
+pub fn optional_str<'a>(params: &'a Value, key: &str) -> Result<Option<&'a str>, ToolError> {
     match params.get(key) {
-        None => Err(ToolError::MissingParam {
-            message: format!("missing required parameter `{key}`"),
-            param: key.to_string(),
-        }),
-        Some(v) => v.as_i64().ok_or_else(|| ToolError::InvalidParam {
-            message: format!("parameter `{key}` must be an integer"),
-            param: key.to_string(),
-        }),
+        None => Ok(None),
+        Some(v) => {
+            let value = v.as_str().ok_or_else(|| ToolError::InvalidParam {
+                message: format!("parameter `{key}` must be a string"),
+                param: key.to_string(),
+            })?;
+            if value.is_empty() {
+                Err(ToolError::InvalidParam {
+                    message: format!("parameter `{key}` must not be empty"),
+                    param: key.to_string(),
+                })
+            } else {
+                Ok(Some(value))
+            }
+        }
     }
 }
 
-/// Extract a required non-negative integer parameter from a JSON object.
-#[allow(dead_code)]
-pub fn require_u32(params: &Value, key: &str) -> Result<u32, ToolError> {
-    match params.get(key) {
-        None => Err(ToolError::MissingParam {
-            message: format!("missing required parameter `{key}`"),
-            param: key.to_string(),
-        }),
-        Some(v) => v
-            .as_u64()
+/// Extract a required integer parameter from a JSON object.
+pub fn require_i64(params: &Value, key: &str) -> Result<i64, ToolError> {
+    params.get(key).map_or_else(
+        || {
+            Err(ToolError::MissingParam {
+                message: format!("missing required parameter `{key}`"),
+                param: key.to_string(),
+            })
+        },
+        |v| {
+            v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+                message: format!("parameter `{key}` must be an integer"),
+                param: key.to_string(),
+            })
+        },
+    )
+}
+
+/// Extract an optional non-negative integer parameter from a JSON object.
+pub fn optional_u32(params: &Value, key: &str) -> Result<Option<u32>, ToolError> {
+    params.get(key).map_or(Ok(None), |v| {
+        v.as_u64()
             .and_then(|n| u32::try_from(n).ok())
+            .map(Some)
             .ok_or_else(|| ToolError::InvalidParam {
                 message: format!("parameter `{key}` must be a non-negative integer"),
                 param: key.to_string(),
-            }),
+            })
+    })
+}
+
+/// Extract an optional non-negative integer parameter and enforce an upper bound.
+pub fn optional_u32_max(params: &Value, key: &str, max: u32) -> Result<Option<u32>, ToolError> {
+    match optional_u32(params, key)? {
+        Some(n) if n > max => Err(ToolError::InvalidParam {
+            message: format!("parameter `{key}` must be between 0 and {max}"),
+            param: key.to_string(),
+        }),
+        other => Ok(other),
     }
 }
 
@@ -112,6 +155,127 @@ pub fn action_schema(actions: &[ActionSpec], action_name: &str) -> Result<Value,
             "description": p.description,
         })).collect::<Vec<_>>(),
     }))
+}
+
+/// Generic pool of named service clients built once at first access.
+///
+/// `InstancePool<C>` consolidates the three-static / two-static `OnceLock`
+/// patterns that were previously duplicated verbatim across every
+/// multi-instance service (`unifi`, `unraid`, …).
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// static POOL: OnceLock<InstancePool<MyClient>> = OnceLock::new();
+///
+/// fn pool() -> &'static InstancePool<MyClient> {
+///     POOL.get_or_init(|| {
+///         InstancePool::build("MY_SERVICE", |url, key| {
+///             MyClient::new(&url, Auth::ApiKey { header: "X-Api-Key".into(), key }).ok()
+///         })
+///     })
+/// }
+/// ```
+pub struct InstancePool<C> {
+    clients: HashMap<String, Arc<C>>,
+    all_labels: Vec<String>,
+}
+
+impl<C: Send + Sync + 'static> InstancePool<C> {
+    /// Scan `prefix` instances from the environment and construct clients.
+    ///
+    /// `build(url, key) -> Option<C>`: return `None` to skip a label (e.g.,
+    /// when client construction fails). A `tracing::warn!` inside the closure
+    /// is recommended but not required.
+    pub fn build<F>(prefix: &str, build: F) -> Self
+    where
+        F: Fn(String, String) -> Option<C>,
+    {
+        let mut clients = HashMap::new();
+        let mut all_labels = Vec::new();
+        for (label, _vars) in scan_instances(prefix) {
+            all_labels.push(label.clone());
+            let (url_key, key_key) = instance_env_keys(prefix, &label);
+            if let (Some(url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key))
+                && let Some(client) = build(url, key)
+            {
+                clients.insert(label, Arc::new(client));
+            }
+        }
+        Self {
+            clients,
+            all_labels,
+        }
+    }
+
+    /// Look up a client by exact (already-normalised) label.
+    #[allow(dead_code)]
+    pub fn get(&self, label: &str) -> Option<&Arc<C>> {
+        self.clients.get(label)
+    }
+
+    /// All instance labels discovered in the environment (including those with
+    /// broken or incomplete configuration).
+    #[allow(dead_code)]
+    pub fn all_labels(&self) -> &[String] {
+        &self.all_labels
+    }
+
+    /// Resolve a client by optional instance label.
+    ///
+    /// - `None` — use the default instance (equivalent to `Some("default")`).
+    /// - `Some(label)` — look up the named instance.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidParam` — `label` is empty.
+    /// - `Sdk { sdk_kind: "internal_error" }` — the label was discovered in the
+    ///   environment but its URL or API key is missing or invalid.
+    /// - `UnknownInstance` — the label was never found in the environment.
+    pub fn resolve(&self, label: Option<&str>) -> Result<Arc<C>, ToolError> {
+        let label = label.unwrap_or("default").trim();
+        if label.is_empty() {
+            return Err(ToolError::InvalidParam {
+                message: "parameter `instance` must not be empty".to_string(),
+                param: "instance".to_string(),
+            });
+        }
+        let label = label.to_ascii_lowercase();
+        if let Some(client) = self.clients.get(&label) {
+            return Ok(client.clone());
+        }
+        // Label was discovered in env but the config is incomplete.
+        if self.all_labels.iter().any(|l| l == &label) {
+            return Err(ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!(
+                    "instance `{label}` is configured but URL or API key is missing or invalid"
+                ),
+            });
+        }
+        let mut valid: Vec<String> = self.clients.keys().cloned().collect();
+        valid.sort();
+        Err(ToolError::UnknownInstance {
+            message: format!("unknown instance `{label}`"),
+            valid,
+        })
+    }
+}
+
+/// Build the env var key names for a service prefix and instance label.
+///
+/// - default instance: `PREFIX_URL` / `PREFIX_API_KEY`
+/// - named instance:   `PREFIX_LABEL_URL` / `PREFIX_LABEL_API_KEY`
+pub fn instance_env_keys(prefix: &str, label: &str) -> (String, String) {
+    if label == "default" {
+        (format!("{prefix}_URL"), format!("{prefix}_API_KEY"))
+    } else {
+        let upper = label.to_ascii_uppercase();
+        (
+            format!("{prefix}_{upper}_URL"),
+            format!("{prefix}_{upper}_API_KEY"),
+        )
+    }
 }
 
 /// Build a request body from params.

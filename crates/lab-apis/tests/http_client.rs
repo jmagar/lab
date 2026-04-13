@@ -69,7 +69,10 @@ async fn get_json_returns_not_found_on_404() {
         .get_json::<Pong>("/missing")
         .await
         .expect_err("should fail on 404");
-    assert!(matches!(err, ApiError::NotFound), "expected NotFound, got {err:?}");
+    assert!(
+        matches!(err, ApiError::NotFound),
+        "expected NotFound, got {err:?}"
+    );
 }
 
 #[tokio::test]
@@ -185,7 +188,12 @@ async fn post_graphql_decodes_data_on_success() {
         .post_graphql("/graphql", "{ value }", None)
         .await
         .expect("post_graphql should succeed");
-    assert_eq!(data, GqlData { value: "hello".into() });
+    assert_eq!(
+        data,
+        GqlData {
+            value: "hello".into()
+        }
+    );
 }
 
 #[tokio::test]
@@ -212,7 +220,10 @@ async fn post_graphql_returns_server_error_on_errors_array() {
         .expect_err("should fail when errors[] present");
 
     match err {
-        ApiError::Server { status: 200, ref body } => {
+        ApiError::Server {
+            status: 200,
+            ref body,
+        } => {
             assert!(
                 body.contains("field not found"),
                 "body should contain first error: {body}"
@@ -221,7 +232,10 @@ async fn post_graphql_returns_server_error_on_errors_array() {
                 body.contains("permission denied"),
                 "body should contain second error: {body}"
             );
-            assert!(body.contains("; "), "errors should be joined with '; ': {body}");
+            assert!(
+                body.contains("; "),
+                "errors should be joined with '; ': {body}"
+            );
         }
         other => panic!("expected Server(200), got {other:?}"),
     }

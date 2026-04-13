@@ -4,6 +4,7 @@
 //! `lab-apis` client (or a lab-local subsystem), and formats output.
 //! See `crates/lab/src/cli/CLAUDE.md` for the rulebook.
 
+pub mod audit;
 pub mod completions;
 pub mod doctor;
 pub mod health;
@@ -12,6 +13,7 @@ pub mod helpers;
 pub mod install;
 pub mod params;
 pub mod plugins;
+pub mod scaffold;
 pub mod serve;
 
 #[cfg(feature = "apprise")]
@@ -98,6 +100,8 @@ pub enum Command {
     Health,
     /// Open the plugin manager TUI.
     Plugins,
+    /// Audit service onboarding against the repo contract.
+    Audit(audit::AuditArgs),
     /// Install one or more services into `.mcp.json`.
     Install(install::InstallArgs),
     /// Uninstall services from `.mcp.json`.
@@ -106,6 +110,8 @@ pub enum Command {
     Init,
     /// Print the service + action catalog.
     Help,
+    /// Generate a new service onboarding scaffold.
+    Scaffold(scaffold::ScaffoldArgs),
     /// Generate shell completions.
     Completions(completions::CompletionsArgs),
     /// Radarr movie collection manager.
@@ -174,17 +180,19 @@ pub enum Command {
 }
 
 /// Dispatch a parsed [`Cli`] to the correct handler.
-pub async fn dispatch(cli: Cli, _config: LabConfig) -> Result<ExitCode> {
+pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let format = cli.format();
     match cli.command {
-        Command::Serve(args) => serve::run(args).await,
+        Command::Serve(args) => serve::run(args, &config).await,
         Command::Doctor => doctor::run(format),
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
+        Command::Audit(args) => audit::run(args, format),
         Command::Install(args) => install::run_install(&args).map(|()| ExitCode::SUCCESS),
         Command::Uninstall(args) => install::run_uninstall(&args).map(|()| ExitCode::SUCCESS),
         Command::Init => install::run_init().map(|()| ExitCode::SUCCESS),
         Command::Help => help::run(format),
+        Command::Scaffold(args) => scaffold::run(args, format),
         Command::Completions(args) => completions::run(&args),
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,

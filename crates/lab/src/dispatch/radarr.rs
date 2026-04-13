@@ -78,8 +78,8 @@ mod tests {
     fn action_count_preserved() {
         assert_eq!(
             actions().len(),
-            40,
-            "expected 40 actions (help + 39 resource actions), got {}",
+            41,
+            "expected 41 actions (help + schema + 39 resource actions), got {}",
             actions().len()
         );
     }

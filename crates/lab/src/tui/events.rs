@@ -23,7 +23,10 @@ pub enum AppEvent {
     /// Plugin preview data ready to display.
     PreviewReady(crate::tui::preview::PreviewReady),
     /// Health check results for all enabled services.
-    HealthChecksDone { generation: u64, results: Vec<ServiceHealth> },
+    HealthChecksDone {
+        generation: u64,
+        results: Vec<ServiceHealth>,
+    },
     /// Initial blocking I/O (`.mcp.json` + `.env` cache) completed asynchronously.
     ServicesSeeded {
         mcp_json_path: Option<std::path::PathBuf>,

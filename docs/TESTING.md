@@ -1,6 +1,6 @@
 # Testing
 
-Last updated: 2026-04-09
+Last updated: 2026-04-10
 
 This document is the canonical testing contract for `lab`.
 
@@ -189,6 +189,12 @@ Minimum expectation:
 - crate-level tests for the touched crate when the change is non-trivial
 - broader verification when the change affects shared infrastructure
 
+Preferred runner:
+
+- use `cargo nextest run` for crate-level verification
+- use `cargo test` only when nextest is unavailable or you need a narrow one-off command that nextest does not cover cleanly
+- for this repo, `cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features` is the standard full-crate verification command
+
 If tests were not run, say so explicitly.
 
 ## Command Guidance
@@ -199,6 +205,7 @@ Common commands:
 just check
 just test
 just lint
+cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features
 cargo test -p lab-apis
 cargo test -p lab
 ```

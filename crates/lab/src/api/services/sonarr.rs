@@ -22,10 +22,7 @@ async fn handle(
         request_id,
         req,
         crate::dispatch::sonarr::ACTIONS,
-        |action, params| async move {
-            crate::dispatch::sonarr::dispatch(&action, params).await
-        },
-        Some(&headers),
+        |action, params| async move { crate::dispatch::sonarr::dispatch(&action, params).await },
     )
     .await
 }

@@ -81,15 +81,15 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     #[cfg(feature = "overseerr")]
     rows.push(HealthRow::not_configured("overseerr"));
     #[cfg(feature = "gotify")]
-    rows.push(HealthRow::not_configured("gotify"));
+    rows.push(gotify_row().await);
     #[cfg(feature = "openai")]
     rows.push(HealthRow::not_configured("openai"));
     #[cfg(feature = "qdrant")]
-    rows.push(HealthRow::not_configured("qdrant"));
+    rows.push(qdrant_row().await);
     #[cfg(feature = "tei")]
-    rows.push(HealthRow::not_configured("tei"));
+    rows.push(tei_row().await);
     #[cfg(feature = "apprise")]
-    rows.push(HealthRow::not_configured("apprise"));
+    rows.push(apprise_row().await);
 
     let any_unhealthy = rows.iter().any(|r| !r.reachable || !r.auth_ok);
     print(&rows, format)?;
@@ -122,7 +122,8 @@ where
             message: Some(not_configured_msg.into()),
         };
     };
-    match client.health().await {
+    let start = std::time::Instant::now();
+    let row = match client.health().await {
         Ok(s) => HealthRow {
             service: service.into(),
             reachable: s.reachable,
@@ -139,7 +140,26 @@ where
             latency_ms: 0,
             message: Some(e.to_string()),
         },
+    };
+    let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if row.reachable && row.auth_ok {
+        tracing::info!(
+            surface = "cli",
+            service,
+            operation = "health",
+            elapsed_ms,
+            "health ok"
+        );
+    } else {
+        tracing::warn!(
+            surface = "cli",
+            service,
+            operation = "health",
+            elapsed_ms,
+            "health issue"
+        );
     }
+    row
 }
 
 #[cfg(feature = "radarr")]
@@ -158,6 +178,16 @@ async fn unifi_row() -> HealthRow {
         "unifi",
         crate::dispatch::unifi::client_from_env(),
         "UNIFI_URL / UNIFI_API_KEY not set",
+    )
+    .await
+}
+
+#[cfg(feature = "gotify")]
+async fn gotify_row() -> HealthRow {
+    service_health_row(
+        "gotify",
+        crate::dispatch::gotify::client_from_env(),
+        "GOTIFY_URL / GOTIFY_CLIENT_TOKEN (or GOTIFY_TOKEN) not set",
     )
     .await
 }
@@ -188,6 +218,36 @@ async fn bytestash_row() -> HealthRow {
         "bytestash",
         crate::dispatch::bytestash::client_from_env(),
         "BYTESTASH_URL / BYTESTASH_TOKEN not set",
+    )
+    .await
+}
+
+#[cfg(feature = "qdrant")]
+async fn qdrant_row() -> HealthRow {
+    service_health_row(
+        "qdrant",
+        crate::dispatch::qdrant::client_from_env(),
+        "QDRANT_URL not set",
+    )
+    .await
+}
+
+#[cfg(feature = "tei")]
+async fn tei_row() -> HealthRow {
+    service_health_row(
+        "tei",
+        crate::dispatch::tei::client_from_env(),
+        "TEI_URL not set",
+    )
+    .await
+}
+
+#[cfg(feature = "apprise")]
+async fn apprise_row() -> HealthRow {
+    service_health_row(
+        "apprise",
+        crate::dispatch::apprise::client_from_env(),
+        "APPRISE_URL not set",
     )
     .await
 }

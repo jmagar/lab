@@ -68,9 +68,10 @@ pub fn run() -> Result<()> {
             match event::poll(Duration::ZERO) {
                 Ok(true) => {
                     if let Ok(ev) = event::read()
-                        && tx_input.send(AppEvent::Input(ev)).is_err() {
-                            break;
-                        }
+                        && tx_input.send(AppEvent::Input(ev)).is_err()
+                    {
+                        break;
+                    }
                 }
                 Ok(false) => {}
                 Err(_) => break,
@@ -175,7 +176,8 @@ fn spawn_seed_task(tx: mpsc::Sender<AppEvent>) {
             mcp_json_path,
             enabled_services,
             env_cache,
-        }).ok();
+        })
+        .ok();
     });
 }
 
@@ -188,7 +190,11 @@ fn spawn_health_check(tx: mpsc::Sender<AppEvent>, generation: u64) {
     let env_path = crate::tui::services::lab_env_path();
     tokio::runtime::Handle::current().spawn(async move {
         let results = crate::tui::metadata::check_all_services(&env_path).await;
-        tx.send(AppEvent::HealthChecksDone { generation, results }).ok();
+        tx.send(AppEvent::HealthChecksDone {
+            generation,
+            results,
+        })
+        .ok();
     });
 }
 
@@ -238,7 +244,10 @@ fn handle_event(app: &mut App, ev: AppEvent) {
             });
             app.dirty = true;
         }
-        AppEvent::HealthChecksDone { generation, results } => {
+        AppEvent::HealthChecksDone {
+            generation,
+            results,
+        } => {
             if generation == app.services.health_generation {
                 app.services.update_health(results);
             }
@@ -264,8 +273,7 @@ fn handle_event(app: &mut App, ev: AppEvent) {
 fn handle_key(app: &mut App, key: KeyEvent) {
     match (key.modifiers, key.code) {
         // Quit
-        (_, KeyCode::Char('q') | KeyCode::Esc) |
-(KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+        (_, KeyCode::Char('q') | KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
             app.should_quit = true;
         }
 

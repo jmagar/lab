@@ -1,0 +1,153 @@
+{
+  "name": "jmagar-lab",
+  "owner": {
+    "name": "Jacob Magar"
+  },
+  "metadata": {
+    "description": "Homelab control plane — skills and tooling for the lab Rust workspace",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "lab",
+      "source": {
+        "source": "github",
+        "repo": "jmagar/lab"
+      },
+      "description": "Homelab control plane — CLI, MCP server, and HTTP API for 22 services (Radarr, Sonarr, Plex, UniFi, Unraid, and more). Includes skills for onboarding new services and using the lab CLI.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Jacob Magar"
+      },
+      "homepage": "https://github.com/jmagar/lab",
+      "repository": "https://github.com/jmagar/lab",
+      "license": "MIT",
+      "category": "homelab",
+      "tags": ["homelab", "mcp", "cli", "rust", "media-server", "unraid", "unifi"]
+    },
+    {
+      "name": "zsh-tool",
+      "source": {
+        "source": "github",
+        "repo": "ArkTechNWA/zsh-tool"
+      },
+      "description": "Zsh shell for Claude Code — full terminal control, live output, PTY mode for interactive commands.",
+      "author": {
+        "name": "ArkTechNWA"
+      },
+      "homepage": "https://github.com/ArkTechNWA/zsh-tool",
+      "repository": "https://github.com/ArkTechNWA/zsh-tool",
+      "category": "development",
+      "tags": ["shell", "terminal", "zsh", "pty"]
+    },
+    {
+      "name": "claude-in-mobile",
+      "source": {
+        "source": "github",
+        "repo": "AlexGladkov/claude-in-mobile"
+      },
+      "description": "Claude Code companion for mobile workflows.",
+      "author": {
+        "name": "Alex Gladkov"
+      },
+      "homepage": "https://github.com/AlexGladkov/claude-in-mobile",
+      "repository": "https://github.com/AlexGladkov/claude-in-mobile",
+      "tags": ["mobile"]
+    },
+    {
+      "name": "beads",
+      "source": {
+        "source": "github",
+        "repo": "steveyegge/beads"
+      },
+      "description": "Lightweight issue tracker built into Claude Code — create, track, and close tasks without leaving the editor.",
+      "author": {
+        "name": "Steve Yegge"
+      },
+      "homepage": "https://github.com/steveyegge/beads",
+      "repository": "https://github.com/steveyegge/beads",
+      "tags": ["issues", "tasks", "project-management"]
+    },
+    {
+      "name": "astral",
+      "source": {
+        "source": "github",
+        "repo": "astral-sh/claude-code-plugins",
+        "subdirectory": "plugins/astral"
+      },
+      "description": "Astral tools for Claude Code — ruff, uv, and ty integration for Python development.",
+      "author": {
+        "name": "Astral"
+      },
+      "homepage": "https://github.com/astral-sh/claude-code-plugins",
+      "repository": "https://github.com/astral-sh/claude-code-plugins",
+      "category": "development",
+      "tags": ["python", "ruff", "uv", "linting", "formatting"]
+    },
+    {
+      "name": "codex",
+      "source": {
+        "source": "github",
+        "repo": "openai/codex-plugin-cc",
+        "subdirectory": "plugins/codex"
+      },
+      "description": "Codex plugin for Claude Code — run OpenAI Codex agents from within Claude Code.",
+      "author": {
+        "name": "OpenAI"
+      },
+      "homepage": "https://github.com/openai/codex-plugin-cc",
+      "repository": "https://github.com/openai/codex-plugin-cc",
+      "category": "ai",
+      "tags": ["codex", "openai", "agents"]
+    },
+    {
+      "name": "lavra",
+      "source": {
+        "source": "github",
+        "repo": "roberto-mello/lavra",
+        "subdirectory": "plugins/lavra"
+      },
+      "description": "Lavra multi-agent orchestration framework for Claude Code — structured workflows, team pipelines, and agent coordination.",
+      "author": {
+        "name": "Roberto Mello"
+      },
+      "homepage": "https://github.com/roberto-mello/lavra",
+      "repository": "https://github.com/roberto-mello/lavra",
+      "category": "ai",
+      "tags": ["agents", "orchestration", "workflows", "multi-agent"]
+    },
+    {
+      "name": "superpowers",
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers"
+      },
+      "description": "Core skills library for Claude Code — TDD, debugging, collaboration patterns, and proven development techniques.",
+      "version": "5.0.7",
+      "author": {
+        "name": "Jesse Vincent"
+      },
+      "homepage": "https://github.com/obra/superpowers",
+      "repository": "https://github.com/obra/superpowers",
+      "license": "MIT",
+      "tags": ["skills", "tdd", "debugging", "workflows", "best-practices"]
+    },
+    {
+      "name": "mcp-use",
+      "source": {
+        "source": "github",
+        "repo": "mcp-use/mcp-use"
+      },
+      "description": "Official mcp-use skills — build production-ready MCP servers and ChatGPT apps. Includes mcp-builder and chatgpt-app-builder skills.",
+      "version": "1.0.0",
+      "author": {
+        "name": "mcp-use",
+        "email": "team@mcp-use.com"
+      },
+      "homepage": "https://github.com/mcp-use/mcp-use",
+      "repository": "https://github.com/mcp-use/mcp-use",
+      "category": "ai",
+      "tags": ["mcp", "mcp-server", "chatgpt", "skills"]
+    }
+  ]
+}

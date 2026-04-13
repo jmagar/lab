@@ -10,6 +10,7 @@ mod params;
 
 pub use catalog::ACTIONS;
 pub use client::client_from_env;
+pub use client::not_configured_error;
 pub use dispatch::{dispatch, dispatch_with_client};
 
 #[cfg(test)]
@@ -21,7 +22,7 @@ mod tests {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
         assert!(names.contains(&"queue.list"));
         assert!(names.contains(&"history.list"));
-        assert!(names.contains(&"version"));
+        assert!(names.contains(&"server.version"));
     }
 
     #[test]

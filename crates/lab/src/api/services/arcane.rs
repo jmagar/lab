@@ -22,10 +22,7 @@ async fn handle(
         request_id,
         req,
         crate::dispatch::arcane::ACTIONS,
-        |action, params| async move {
-            crate::dispatch::arcane::dispatch(&action, params).await
-        },
-        Some(&headers),
+        |action, params| async move { crate::dispatch::arcane::dispatch(&action, params).await },
     )
     .await
 }

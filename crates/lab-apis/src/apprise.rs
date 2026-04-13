@@ -13,7 +13,7 @@
 //! - `GET  /get/{key}` — retrieve the config for a key
 //! - `POST /del/{key}` — delete a key
 //!
-//! Spec: `docs/api-specs/apprise.md` (mirrored from the upstream README —
+//! Spec: `docs/upstream-api/apprise.md` (mirrored from the upstream README —
 //! apprise-api does not publish an OpenAPI document).
 //!
 //! Auth is optional: apprise-api can run unauthenticated, or behind a reverse
@@ -31,7 +31,10 @@ pub mod client;
 pub use client::AppriseClient;
 pub use error::AppriseError;
 
+use std::time::Instant;
+
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the apprise module.
 pub const META: PluginMeta = PluginMeta {
@@ -54,3 +57,41 @@ pub const META: PluginMeta = PluginMeta {
     }],
     default_port: Some(8000),
 };
+
+impl ServiceClient for AppriseClient {
+    fn name(&self) -> &'static str {
+        "apprise"
+    }
+
+    fn service_type(&self) -> &'static str {
+        "notifications"
+    }
+
+    async fn health(&self) -> Result<ServiceStatus, ApiError> {
+        let start = Instant::now();
+        match Self::health(self).await {
+            Ok(()) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: None,
+            }),
+            Err(AppriseError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: false,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some("authentication failed".into()),
+            }),
+            Err(AppriseError::Api(ApiError::Network(err))) => Ok(ServiceStatus::unreachable(err)),
+            Err(AppriseError::Api(err)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                message: Some(err.to_string()),
+            }),
+        }
+    }
+}

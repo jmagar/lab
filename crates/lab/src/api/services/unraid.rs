@@ -18,14 +18,7 @@ async fn handle(
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    let client = state
-        .clients
-        .unraid
-        .clone()
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "UNRAID_URL or UNRAID_API_KEY not configured".into(),
-        })?;
+    let client = state.clients.unraid.clone();
     handle_action(
         "unraid",
         "api",
@@ -33,9 +26,22 @@ async fn handle(
         req,
         ACTIONS,
         move |action, params| async move {
-            crate::dispatch::unraid::dispatch_with_client(&client, &action, params).await
+            let instance =
+                crate::dispatch::helpers::optional_str(&params, "instance")?.map(str::to_owned);
+            let mut params_clean = params;
+            if let Value::Object(ref mut map) = params_clean {
+                map.remove("instance");
+            }
+            if let Some(label) = instance {
+                let c = crate::dispatch::unraid::client_from_instance(Some(&label))?;
+                crate::dispatch::unraid::dispatch_with_client(&c, &action, params_clean).await
+            } else {
+                let Some(ref c) = client else {
+                    return Err(crate::dispatch::unraid::not_configured_error());
+                };
+                crate::dispatch::unraid::dispatch_with_client(c, &action, params_clean).await
+            }
         },
-        Some(&headers),
     )
     .await
 }

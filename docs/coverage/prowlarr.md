@@ -1,6 +1,6 @@
 # Prowlarr API Coverage
 
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-12
 **OpenAPI spec:** docs/api-specs/prowlarr.openapi.json
 **OpenAPI version:** 3.0.4
 **API version:** 1.0.0
@@ -12,10 +12,25 @@
 
 | Symbol | Meaning |
 |--------|---------|
+| ✅ | Implemented (SDK + MCP/dispatch) |
 | ⬜ | Not implemented yet; rows are spec inventory only |
 | - | Not applicable / not represented in the spec |
 
 The source spec is the contract. This document is the implementation planning aid.
+
+## Live Test Evidence
+
+Live smoke tests run 2026-04-12 against `https://prowlarr.tootie.tv` (v2.3.5.5327).
+
+| Surface | Command | Result |
+|---------|---------|--------|
+| CLI | `lab prowlarr system.status` | v2.3.5.5327, isDocker=true |
+| CLI | `lab prowlarr indexers.list` | 3 indexers: NZBgeek, NzbPlanet, TorrentLeech |
+| CLI | `lab prowlarr system.health` | health warnings returned |
+| MCP | `mcporter call lab.prowlarr action=system.status` | `ok=true`, version=2.3.5.5327 |
+| MCP | `mcporter call lab.prowlarr action=indexers.list` | `ok=true`, 3 indexers |
+| API | `POST /v1/prowlarr {"action":"system.status"}` | version=2.3.5.5327, appName=Prowlarr |
+| API | `POST /v1/prowlarr {"action":"indexers.list"}` | 3 indexers listed |
 
 ## Endpoint Inventory
 
@@ -23,7 +38,7 @@ The source spec is the contract. This document is the implementation planning ai
 |--------|----------|------------|------|-----|-----|-----|
 | GET | / | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/applications | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/applications | `applications_list` | ✅ | ✅ | ⬜ | ✅ |
 | POST | /api/v1/applications | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/applications/action/{name} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /api/v1/applications/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -31,8 +46,8 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /api/v1/applications/schema | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/applications/test | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/applications/testall | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| DELETE | /api/v1/applications/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/applications/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| DELETE | /api/v1/applications/{id} | `application_delete` | ✅ | ✅ | ⬜ | ✅ |
+| GET | /api/v1/applications/{id} | `application_get` | ✅ | ✅ | ⬜ | ✅ |
 | PUT | /api/v1/applications/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/appprofile | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/appprofile | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -74,21 +89,21 @@ The source spec is the contract. This document is the implementation planning ai
 | PUT | /api/v1/downloadclient/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/filesystem | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/filesystem/type | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/health | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/history | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/health | `system_health` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/history | `history_list` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/history/indexer | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/history/since | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexer | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/indexer | `indexers_list` | ✅ | ✅ | ✅ | ✅ |
 | POST | /api/v1/indexer | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/indexer/action/{name} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /api/v1/indexer/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /api/v1/indexer/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexer/categories | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/indexer/categories | `indexer_categories` | ✅ | ✅ | ⬜ | ✅ |
 | GET | /api/v1/indexer/schema | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /api/v1/indexer/test | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /api/v1/indexer/testall | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| DELETE | /api/v1/indexer/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexer/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /api/v1/indexer/test | `indexer_test` (via GET+POST) | ✅ | ✅ | ⬜ | ✅ |
+| POST | /api/v1/indexer/testall | `indexers_testall` | ✅ | ✅ | ⬜ | ✅ |
+| DELETE | /api/v1/indexer/{id} | `indexer_delete` | ✅ | ✅ | ⬜ | ✅ |
+| GET | /api/v1/indexer/{id} | `indexer_get` | ✅ | ✅ | ⬜ | ✅ |
 | PUT | /api/v1/indexer/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/indexer/{id}/download | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/indexer/{id}/newznab | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -130,7 +145,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /api/v1/system/routes | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/system/routes/duplicate | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/system/shutdown | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/system/status | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/system/status | `system_status` / `health` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/system/task | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/system/task/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/tag | - | ⬜ | ⬜ | ⬜ | ⬜ |

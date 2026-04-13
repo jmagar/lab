@@ -11,6 +11,7 @@ use crate::core::{Auth, HttpClient};
 use super::{UnifiError, types::ApplicationInfo};
 
 /// Client for a `UniFi` Network Application controller.
+#[derive(Clone)]
 pub struct UnifiClient {
     pub(crate) http: HttpClient,
 }

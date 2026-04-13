@@ -17,14 +17,7 @@ async fn handle(
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    let client = state
-        .clients
-        .radarr
-        .clone()
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "RADARR_URL or RADARR_API_KEY not configured".into(),
-        })?;
+    let client = state.clients.radarr.clone();
     handle_action(
         "radarr",
         "api",
@@ -32,9 +25,14 @@ async fn handle(
         req,
         crate::dispatch::radarr::actions(),
         move |action, params| async move {
-            crate::dispatch::radarr::dispatch_with_client(&client, &action, params).await
+            let Some(client) = client.as_ref() else {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "internal_error".into(),
+                    message: "RADARR_URL or RADARR_API_KEY not configured".into(),
+                });
+            };
+            crate::dispatch::radarr::dispatch_with_client(client, &action, params).await
         },
-        Some(&headers),
     )
     .await
 }

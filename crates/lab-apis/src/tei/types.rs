@@ -1,11 +1,11 @@
 //! TEI request/response types.
 //!
-//! Stub — grows as endpoints are wired.
+//! Grows as additional endpoints are wired.
 
 use serde::{Deserialize, Serialize};
 
 /// Request body for `POST /embed`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbedRequest {
     /// One or more input strings to embed.
     pub inputs: Vec<String>,
@@ -18,7 +18,7 @@ pub struct EmbedRequest {
 }
 
 /// Request body for `POST /rerank`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankRequest {
     pub query: String,
     pub texts: Vec<String>,
@@ -40,12 +40,12 @@ pub struct RerankHit {
 }
 
 /// Server metadata (from `GET /info`).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Info {
     pub model_id: String,
     pub model_sha: Option<String>,
     pub model_dtype: Option<String>,
-    pub model_type: Option<String>,
+    pub model_type: Option<serde_json::Value>,
     pub max_concurrent_requests: Option<u32>,
     pub max_input_length: Option<u32>,
     pub max_batch_tokens: Option<u32>,

@@ -49,8 +49,8 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
                 let _permit = sem.acquire_owned().await.ok()?;
                 let start = std::time::Instant::now();
                 let result = $client.health().await;
-                #[allow(clippy::cast_possible_truncation)]
-                let latency_ms = Some(start.elapsed().as_millis() as u64);
+                let latency_ms =
+                    Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
                 let (reachable, auth_ok, message) = match result {
                     Ok(_) => (true, true, None),
                     Err(e) => {
@@ -65,6 +65,21 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
                         (false, !auth_fail, Some(msg))
                     }
                 };
+                if reachable && auth_ok {
+                    tracing::info!(
+                        surface = "tui",
+                        service = $name,
+                        operation = "health",
+                        "health ok"
+                    );
+                } else {
+                    tracing::warn!(
+                        surface = "tui",
+                        service = $name,
+                        operation = "health",
+                        "health issue"
+                    );
+                }
                 Some(ServiceHealth {
                     service: $name.to_owned(),
                     reachable,
@@ -82,13 +97,41 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
             let sem = sem.clone();
             handles.push(tokio::spawn(async move {
                 let _permit = sem.acquire_owned().await.ok()?;
-                let status: lab_apis::core::ServiceStatus = $client.health().await.ok()?;
+                let start = std::time::Instant::now();
+                let result = $client.health().await;
+                let latency_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let (reachable, auth_ok, message, latency) = match result {
+                    Ok(status) => (
+                        status.reachable,
+                        status.auth_ok,
+                        status.message,
+                        Some(status.latency_ms),
+                    ),
+                    Err(e) => (false, false, Some(e.to_string()), Some(latency_ms)),
+                };
+                if reachable && auth_ok {
+                    tracing::info!(
+                        surface = "tui",
+                        service = $name,
+                        operation = "health",
+                        elapsed_ms = latency_ms,
+                        "health ok"
+                    );
+                } else {
+                    tracing::warn!(
+                        surface = "tui",
+                        service = $name,
+                        operation = "health",
+                        elapsed_ms = latency_ms,
+                        "health issue"
+                    );
+                }
                 Some(ServiceHealth {
                     service: $name.to_owned(),
-                    reachable: status.reachable,
-                    auth_ok: status.auth_ok,
-                    latency_ms: Some(status.latency_ms),
-                    message: status.message,
+                    reachable,
+                    auth_ok,
+                    latency_ms: latency,
+                    message,
                 })
             }));
         }};
@@ -145,24 +188,21 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
     #[cfg(feature = "sabnzbd")]
     {
         if let (Some(url), Some(key)) = (vars.get("SABNZBD_URL"), vars.get("SABNZBD_API_KEY"))
-            && let Ok(client) = lab_apis::sabnzbd::SabnzbdClient::new(url, key.clone()) {
-                spawn_health_trait!("sabnzbd", client);
-            }
+            && let Ok(client) = lab_apis::sabnzbd::SabnzbdClient::new(url, key.clone())
+        {
+            spawn_health_trait!("sabnzbd", client);
+        }
     }
 
     #[cfg(feature = "unifi")]
     {
-        if let (Some(url), Some(user), Some(pass)) = (
-            vars.get("UNIFI_URL"),
-            vars.get("UNIFI_USERNAME"),
-            vars.get("UNIFI_PASSWORD"),
-        ) {
+        if let (Some(url), Some(key)) = (vars.get("UNIFI_URL"), vars.get("UNIFI_API_KEY")) {
             use lab_apis::core::Auth;
             if let Ok(client) = lab_apis::unifi::UnifiClient::new(
                 url,
-                Auth::Basic {
-                    username: user.clone(),
-                    password: pass.clone(),
+                Auth::ApiKey {
+                    header: "X-API-KEY".to_owned(),
+                    key: key.clone(),
                 },
             ) {
                 spawn_health_trait!("unifi", client);
@@ -188,7 +228,10 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "gotify")]
     {
-        if let (Some(url), Some(token)) = (vars.get("GOTIFY_URL"), vars.get("GOTIFY_TOKEN")) {
+        let token = vars
+            .get("GOTIFY_CLIENT_TOKEN")
+            .or_else(|| vars.get("GOTIFY_TOKEN"));
+        if let (Some(url), Some(token)) = (vars.get("GOTIFY_URL"), token) {
             use lab_apis::core::Auth;
             if let Ok(client) = lab_apis::gotify::GotifyClient::new(
                 url,

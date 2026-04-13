@@ -49,11 +49,7 @@ pub const META: PluginMeta = PluginMeta {
 // ServiceClient impl
 // ---------------------------------------------------------------------------
 
-use crate::core::{
-    error::ApiError,
-    status::ServiceStatus,
-    traits::ServiceClient,
-};
+use crate::core::{error::ApiError, status::ServiceStatus, traits::ServiceClient};
 
 impl ServiceClient for UnraidClient {
     fn name(&self) -> &'static str {
@@ -90,4 +86,3 @@ impl ServiceClient for UnraidClient {
         }
     }
 }
-

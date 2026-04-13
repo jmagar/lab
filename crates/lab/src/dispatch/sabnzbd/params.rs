@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::optional_u32;
 
 pub use crate::dispatch::helpers::{require_str, to_json};
 
@@ -15,10 +16,7 @@ pub fn require_u64(params: &Value, key: &str) -> Result<u64, ToolError> {
         })
 }
 
-/// Extract an optional u32 parameter, clamping any overflow to `u32::MAX`.
-pub fn opt_u32(params: &Value, key: &str) -> Option<u32> {
-    params
-        .get(key)
-        .and_then(Value::as_u64)
-        .map(|n| u32::try_from(n).unwrap_or(u32::MAX))
+/// Extract an optional u32 parameter.
+pub fn opt_u32(params: &Value, key: &str) -> Result<Option<u32>, ToolError> {
+    optional_u32(params, key)
 }

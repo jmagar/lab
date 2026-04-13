@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -107,11 +107,15 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "switching.switch-stacks.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let stacks = require_client()?
+            let stacks = client
                 .get_value(&format!("/sites/{site_id}/switching/switch-stacks"))
                 .await?;
             to_json(stacks)
@@ -119,7 +123,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "switching.switch-stacks.get" => {
             let site_id = require_str(&params, "site_id")?;
             let switch_stack_id = require_str(&params, "switch_stack_id")?;
-            let stack = require_client()?
+            let stack = client
                 .get_value(&format!(
                     "/sites/{site_id}/switching/switch-stacks/{switch_stack_id}"
                 ))
@@ -128,7 +132,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         "switching.mc-lag-domains.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let domains = require_client()?
+            let domains = client
                 .get_value(&format!("/sites/{site_id}/switching/mc-lag-domains"))
                 .await?;
             to_json(domains)
@@ -136,7 +140,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "switching.mc-lag-domains.get" => {
             let site_id = require_str(&params, "site_id")?;
             let mc_lag_domain_id = require_str(&params, "mc_lag_domain_id")?;
-            let domain = require_client()?
+            let domain = client
                 .get_value(&format!(
                     "/sites/{site_id}/switching/mc-lag-domains/{mc_lag_domain_id}"
                 ))
@@ -145,7 +149,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         "switching.lags.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let lags = require_client()?
+            let lags = client
                 .get_value(&format!("/sites/{site_id}/switching/lags"))
                 .await?;
             to_json(lags)
@@ -153,11 +157,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "switching.lags.get" => {
             let site_id = require_str(&params, "site_id")?;
             let lag_id = require_str(&params, "lag_id")?;
-            let lag = require_client()?
+            let lag = client
                 .get_value(&format!("/sites/{site_id}/switching/lags/{lag_id}"))
                 .await?;
             to_json(lag)
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
     }
 }

@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, require_i64, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -81,13 +81,13 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Site UUID",
             },
             ParamSpec {
-                name: "macAddress",
+                name: "mac_address",
                 ty: "string",
                 required: true,
                 description: "MAC address of the device",
             },
             ParamSpec {
-                name: "ignoreDeviceLimit",
+                name: "ignore_device_limit",
                 ty: "boolean",
                 required: false,
                 description: "Override device limit",
@@ -174,35 +174,49 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "devices.list" => {
             let site_id = require_str(&params, "site_id")?;
-            let devices = require_client()?.devices_list(site_id).await?;
+            let devices = client.devices_list(site_id).await?;
             to_json(devices)
         }
         "devices.get" => {
             let site_id = require_str(&params, "site_id")?;
             let device_id = require_str(&params, "device_id")?;
-            let device = require_client()?.device_get(site_id, device_id).await?;
+            let device = client.device_get(site_id, device_id).await?;
             to_json(device)
         }
         "devices.stats" => {
             let site_id = require_str(&params, "site_id")?;
             let device_id = require_str(&params, "device_id")?;
-            let stats = require_client()?
-                .device_stats_latest(site_id, device_id)
-                .await?;
+            let stats = client.device_stats_latest(site_id, device_id).await?;
             to_json(stats)
         }
         "pending-devices.list" => {
-            let pending = require_client()?.pending_devices_list().await?;
+            let pending = client.pending_devices_list().await?;
             to_json(pending)
         }
         "devices.create" => {
             let site_id = require_str(&params, "site_id")?;
-            let body = object_without(&params, &["site_id"])?;
-            let result = require_client()?
+            let mac_address = require_str(&params, "mac_address")?;
+            // Strip routing params; remap snake_case catalog names → camelCase UniFi API fields.
+            let mut body =
+                object_without(&params, &["site_id", "mac_address", "ignore_device_limit"])?;
+            if let Value::Object(ref mut map) = body {
+                map.insert(
+                    "macAddress".to_string(),
+                    Value::String(mac_address.to_string()),
+                );
+                if let Some(v) = params.get("ignore_device_limit") {
+                    map.insert("ignoreDeviceLimit".to_string(), v.clone());
+                }
+            }
+            let result = client
                 .post_value(&format!("/sites/{site_id}/devices"), &body)
                 .await?;
             to_json(result)
@@ -212,7 +226,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let device_id = require_str(&params, "device_id")?;
             let port_idx = require_i64(&params, "port_idx")?;
             let body = object_without(&params, &["site_id", "device_id", "port_idx"])?;
-            let result = require_client()?
+            let result = client
                 .post_value(
                     &format!(
                         "/sites/{site_id}/devices/{device_id}/interfaces/ports/{port_idx}/actions"
@@ -226,7 +240,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let device_id = require_str(&params, "device_id")?;
             let body = object_without(&params, &["site_id", "device_id"])?;
-            let result = require_client()?
+            let result = client
                 .post_value(
                     &format!("/sites/{site_id}/devices/{device_id}/actions"),
                     &body,
@@ -237,11 +251,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "devices.delete" => {
             let site_id = require_str(&params, "site_id")?;
             let device_id = require_str(&params, "device_id")?;
-            require_client()?
+            client
                 .delete_value(&format!("/sites/{site_id}/devices/{device_id}"))
                 .await?;
             to_json(serde_json::json!({"deleted": true}))
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
     }
 }

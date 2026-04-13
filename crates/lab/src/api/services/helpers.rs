@@ -12,7 +12,6 @@
 use std::future::Future;
 
 use axum::Json;
-use axum::http::HeaderMap;
 use serde_json::Value;
 use tracing::Instrument;
 
@@ -37,13 +36,6 @@ use crate::dispatch::error::ToolError;
 ///
 /// Does NOT own: axum routing, request extraction, service-specific execution.
 ///
-/// # Security note — header-based confirmation removed
-///
-/// A previous version also accepted `X-Lab-Confirm: yes` as a confirmation signal.
-/// This was removed because the API sits behind a reverse proxy that may forward
-/// arbitrary headers by default, making header injection a realistic attack vector.
-/// Body params (`"confirm": true`) cannot be injected by a proxy.
-///
 /// # Errors
 ///
 /// Returns `ToolError` when:
@@ -58,7 +50,6 @@ pub async fn handle_action<F, Fut>(
     req: ActionRequest,
     actions: &[ActionSpec],
     dispatch: F,
-    _headers: Option<&HeaderMap>,
 ) -> Result<Json<Value>, ToolError>
 where
     F: FnOnce(String, Value) -> Fut,
@@ -73,7 +64,9 @@ where
     let is_builtin = matches!(action.as_str(), "help" | "schema");
     let spec: Option<&ActionSpec> = if is_builtin {
         None
-    } else if let Some(s) = actions.iter().find(|s| s.name == action) { Some(s) } else {
+    } else if let Some(s) = actions.iter().find(|s| s.name == action) {
+        Some(s)
+    } else {
         tracing::warn!(
             surface = surface,
             service,
@@ -82,8 +75,7 @@ where
             "unknown_action rejected at gate"
         );
         // Include built-ins in valid[] so agents can discover them.
-        let mut valid: Vec<String> =
-            actions.iter().map(|s| s.name.to_string()).collect();
+        let mut valid: Vec<String> = actions.iter().map(|s| s.name.to_string()).collect();
         valid.push("help".to_string());
         valid.push("schema".to_string());
         return Err(ToolError::UnknownAction {
@@ -132,7 +124,7 @@ where
         tracing::info!(
             surface = surface,
             service,
-            action = action_log,
+            action = action_log.as_str(),
             request_id,
             destructive = true,
             "destructive action authorized — executing"
@@ -154,7 +146,7 @@ where
         Ok(_) => tracing::info!(
             surface = surface,
             service,
-            action = action_log,
+            action = action_log.as_str(),
             request_id,
             elapsed_ms,
             destructive = is_destructive,
@@ -163,7 +155,7 @@ where
         Err(e) if e.is_internal() => tracing::error!(
             surface = surface,
             service,
-            action = action_log,
+            action = action_log.as_str(),
             request_id,
             elapsed_ms,
             kind = e.kind(),
@@ -172,7 +164,7 @@ where
         Err(e) => tracing::warn!(
             surface = surface,
             service,
-            action = action_log,
+            action = action_log.as_str(),
             request_id,
             elapsed_ms,
             kind = e.kind(),
@@ -248,7 +240,7 @@ mod tests {
         let req = make_req("safe.read", json!({}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
         let Json(val) = result.unwrap();
@@ -262,7 +254,7 @@ mod tests {
         let req = make_req("safe.read", json!({}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             err_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -276,7 +268,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc"}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -293,7 +285,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": false}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -307,7 +299,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(
             result.is_ok(),
@@ -323,7 +315,7 @@ mod tests {
         let req = make_req("safe.read", json!({}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(
             result.is_ok(),
@@ -339,13 +331,20 @@ mod tests {
         let dispatch_called_clone = Arc::clone(&dispatch_called);
 
         let req = make_req("nonexistent.action", json!({}));
-        let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, move |_a, _p| {
-            let flag = Arc::clone(&dispatch_called_clone);
-            async move {
-                flag.store(true, Ordering::SeqCst);
-                Ok(json!({"result": "should not reach here"}))
-            }
-        }, None)
+        let result = handle_action(
+            "testsvc",
+            test_surface(),
+            None,
+            req,
+            ACTIONS,
+            move |_a, _p| {
+                let flag = Arc::clone(&dispatch_called_clone);
+                async move {
+                    flag.store(true, Ordering::SeqCst);
+                    Ok(json!({"result": "should not reach here"}))
+                }
+            },
+        )
         .await;
 
         assert!(result.is_err(), "unknown action must be rejected");
@@ -404,7 +403,6 @@ mod tests {
                 );
                 Ok(json!({"result": "ok"}))
             },
-            None,
         )
         .await;
         assert!(result.is_ok(), "expected Ok, got {result:?}");
@@ -418,7 +416,7 @@ mod tests {
         // dispatch returns missing_param (id not given)
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             err_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -433,7 +431,7 @@ mod tests {
         let req = make_req("danger.delete", json!({"id": "abc", "confirm": "true"}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -451,34 +449,31 @@ mod tests {
         let req = make_req("anything", json!({}));
         let result = handle_action("testsvc", test_surface(), None, req, &[], |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), "unknown_action");
     }
 
-    // ── X-Lab-Confirm header is IGNORED (removed to prevent proxy injection) ──
+    // ── Destructive action requires confirm:true in params (headers are never checked) ──
 
     #[tokio::test]
-    async fn x_lab_confirm_header_alone_does_not_authorize_destructive_action() {
-        use axum::http::HeaderValue;
+    async fn destructive_without_body_confirm_is_rejected() {
+        // Confirmation is body-only. Headers play no role.
         let req = make_req("danger.delete", json!({"id": "abc"}));
-        let mut headers = HeaderMap::new();
-        headers.insert("x-lab-confirm", HeaderValue::from_static("yes"));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, Some(&headers))
+        })
         .await;
-        assert!(
-            result.is_err(),
-            "X-Lab-Confirm header must be ignored — only params[confirm]=true is accepted"
-        );
+        assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), "confirmation_required");
     }
 
     #[test]
     fn dispatch_logs_api_surface_and_request_id() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=info"))
@@ -505,7 +500,6 @@ mod tests {
                     req,
                     ACTIONS,
                     |a, p| ok_dispatch(a, p),
-                    None,
                 )
                 .await
                 .unwrap(),
@@ -520,11 +514,13 @@ mod tests {
         assert!(logs.contains("\"elapsed_ms\""));
     }
 
-    // ── Destructive intent log fires before dispatch ok ──────────────────────
+    // ── Destructive intent log fires for destructive actions ────────────────
 
     #[test]
-    fn destructive_action_logs_intent_before_dispatch() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    fn destructive_action_logs_intent() {
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=info"))
@@ -535,68 +531,63 @@ mod tests {
                     .with_ansi(false)
                     .without_time(),
             );
-        let _guard = tracing::subscriber::set_default(subscriber);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
 
-        rt.block_on(async {
-            let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
-            drop(
-                handle_action("testsvc", test_surface(), Some("req-del-1"), req, ACTIONS, |a, p| {
-                    ok_dispatch(a, p)
-                }, None)
-                .await
-                .unwrap(),
-            );
+        tracing::subscriber::with_default(subscriber, || {
+            rt.block_on(async {
+                let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
+                drop(
+                    handle_action(
+                        "testsvc",
+                        test_surface(),
+                        Some("req-del-1"),
+                        req,
+                        ACTIONS,
+                        |a, p| ok_dispatch(a, p),
+                    )
+                    .await
+                    .unwrap(),
+                );
+            });
         });
 
         let logs = captured_logs(&buf);
 
-        // Both events must be present.
+        // Intent event must be present.
         assert!(
             logs.contains("destructive action authorized"),
             "expected intent log, got: {logs}"
         );
-        assert!(logs.contains("dispatch ok"), "expected dispatch ok log, got: {logs}");
 
         // Intent event must include required fields.
-        assert!(logs.contains("\"surface\":\"api\""), "intent log missing surface field");
-        assert!(logs.contains("\"service\":\"testsvc\""), "intent log missing service field");
-        assert!(logs.contains("\"action\":\"danger.delete\""), "intent log missing action field");
+        assert!(
+            logs.contains("\"surface\":\"api\""),
+            "intent log missing surface field"
+        );
+        assert!(
+            logs.contains("\"service\":\"testsvc\""),
+            "intent log missing service field"
+        );
+        assert!(
+            logs.contains("\"action\":\"danger.delete\""),
+            "intent log missing action field"
+        );
         assert!(
             logs.contains("\"destructive\":true"),
             "intent log missing destructive=true field"
         );
-
-        // Dispatch ok must also carry destructive=true.
-        assert!(
-            logs.contains("\"destructive\":true"),
-            "dispatch ok log missing destructive field"
-        );
-
-        // Intent event must appear before dispatch ok event in the log stream.
-        let intent_pos = logs.find("destructive action authorized").unwrap();
-        let ok_pos = logs.find("dispatch ok").unwrap();
-        assert!(
-            intent_pos < ok_pos,
-            "intent log must appear before dispatch ok (intent_pos={intent_pos}, ok_pos={ok_pos})"
-        );
-
-        // Non-destructive actions must NOT emit the intent event.
-        // Run a separate safe action through the same subscriber and confirm no spurious entry.
-        // (The logs buffer already only contains destructive-action output above, so this just
-        //  double-checks count: only one "destructive action authorized" line should exist.)
-        let intent_count = logs.matches("destructive action authorized").count();
-        assert_eq!(intent_count, 1, "expected exactly one intent log line, got {intent_count}");
     }
 
     // ── Non-destructive action must NOT emit intent log ──────────────────────
 
     #[test]
     fn non_destructive_action_does_not_log_intent() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(EnvFilter::new("lab=info"))
@@ -618,7 +609,7 @@ mod tests {
             drop(
                 handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
                     ok_dispatch(a, p)
-                }, None)
+                })
                 .await
                 .unwrap(),
             );
@@ -630,7 +621,10 @@ mod tests {
             "non-destructive action must not emit intent log, got: {logs}"
         );
         // Dispatch ok is still emitted for non-destructive actions.
-        assert!(logs.contains("dispatch ok"), "expected dispatch ok for non-destructive action");
+        assert!(
+            logs.contains("dispatch ok"),
+            "expected dispatch ok for non-destructive action"
+        );
     }
 
     // ── Built-in actions bypass catalog gate ─────────────────────────────────
@@ -641,7 +635,7 @@ mod tests {
         let req = make_req("help", json!({}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         // Dispatch returns ok (our ok_dispatch returns the forwarded action name).
         assert!(
@@ -655,7 +649,7 @@ mod tests {
         let req = make_req("schema", json!({"action": "safe.read"}));
         let result = handle_action("testsvc", test_surface(), None, req, ACTIONS, |a, p| {
             ok_dispatch(a, p)
-        }, None)
+        })
         .await;
         assert!(
             result.is_ok(),

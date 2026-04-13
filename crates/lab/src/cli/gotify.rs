@@ -8,8 +8,9 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::cli::helpers::run_action_command;
+use crate::cli::helpers::run_confirmable_action_command;
 use crate::cli::params::parse_kv_params;
+use crate::dispatch::gotify::ACTIONS;
 use crate::output::OutputFormat;
 
 /// `lab gotify` arguments.
@@ -21,6 +22,10 @@ pub struct GotifyArgs {
     /// Optional `key=value` params for the action.
     #[arg(value_name = "KEY=VALUE", trailing_var_arg = true)]
     pub params: Vec<String>,
+
+    /// Skip confirmation for destructive actions.
+    #[arg(short = 'y', long, alias = "no-confirm")]
+    pub yes: bool,
 }
 
 /// Run the `lab gotify` subcommand.
@@ -29,10 +34,12 @@ pub struct GotifyArgs {
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: GotifyArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = parse_kv_params(args.params)?;
-    run_action_command(
+    run_confirmable_action_command(
         "gotify",
+        ACTIONS,
         args.action,
         params,
+        args.yes,
         format,
         |action, params| async move { crate::dispatch::gotify::dispatch(&action, params).await },
     )

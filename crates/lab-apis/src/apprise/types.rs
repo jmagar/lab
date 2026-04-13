@@ -34,7 +34,7 @@ pub enum BodyFormat {
 
 /// Request body for `POST /notify` (stateless) and `POST /notify/{key}`
 /// (stateful — `urls` is then ignored).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotifyRequest {
     /// The message body.
     pub body: String,
@@ -71,7 +71,7 @@ pub struct NotifyRequest {
 ///
 /// - `urls`: a newline- or comma-separated list of Apprise URLs.
 /// - `config`: a YAML or TEXT config blob (more expressive — supports tags).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub urls: Option<String>,

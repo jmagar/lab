@@ -242,8 +242,7 @@ async fn install_claude(
     let mut args = vec!["plugin", "install", plugin_id];
     let ref_val;
     if let Some(sha) = plugin.commit_sha {
-        validate_commit_sha(sha)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        validate_commit_sha(sha).map_err(|e| anyhow::anyhow!("{e}"))?;
         ref_val = sha.to_string();
         args.push("--ref");
         args.push(&ref_val);
@@ -427,8 +426,7 @@ async fn install_gemini(
     let mut args = vec!["extensions", "install", github_ref.as_str()];
     let ref_val;
     if let Some(sha) = plugin.commit_sha {
-        validate_commit_sha(sha)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        validate_commit_sha(sha).map_err(|e| anyhow::anyhow!("{e}"))?;
         ref_val = sha.to_string();
         args.push("--ref");
         args.push(&ref_val);
@@ -667,50 +665,83 @@ mod tests {
     fn non_hex_chars_return_invalid_param() {
         // Shell metacharacter injection attempt
         let err = validate_commit_sha("abc1234; rm -rf /").unwrap_err();
-        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
-        assert!(err.contains("non-hex"), "expected non-hex message, got: {err}");
+        assert!(
+            err.contains("invalid_param"),
+            "expected invalid_param, got: {err}"
+        );
+        assert!(
+            err.contains("non-hex"),
+            "expected non-hex message, got: {err}"
+        );
     }
 
     #[test]
     fn path_traversal_in_sha_rejected() {
         let err = validate_commit_sha("../../etc/passwd").unwrap_err();
-        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+        assert!(
+            err.contains("invalid_param"),
+            "expected invalid_param, got: {err}"
+        );
     }
 
     #[test]
     fn symbolic_ref_line_rejected() {
         // .git/HEAD often contains "ref: refs/heads/main"
         let err = validate_commit_sha("ref: refs/heads/main").unwrap_err();
-        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+        assert!(
+            err.contains("invalid_param"),
+            "expected invalid_param, got: {err}"
+        );
     }
 
     #[test]
     fn uppercase_hex_rejected() {
         // Git SHAs are lowercase; uppercase should be rejected
         let err = validate_commit_sha("ABCDEF1234567").unwrap_err();
-        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
+        assert!(
+            err.contains("invalid_param"),
+            "expected invalid_param, got: {err}"
+        );
     }
 
     #[test]
     fn empty_string_rejected() {
         let err = validate_commit_sha("").unwrap_err();
-        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
-        assert!(err.contains("too short"), "expected too short message, got: {err}");
+        assert!(
+            err.contains("invalid_param"),
+            "expected invalid_param, got: {err}"
+        );
+        assert!(
+            err.contains("too short"),
+            "expected too short message, got: {err}"
+        );
     }
 
     #[test]
     fn too_short_sha_rejected() {
         // 6 chars — one below minimum
         let err = validate_commit_sha("abc123").unwrap_err();
-        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
-        assert!(err.contains("too short"), "expected too short message, got: {err}");
+        assert!(
+            err.contains("invalid_param"),
+            "expected invalid_param, got: {err}"
+        );
+        assert!(
+            err.contains("too short"),
+            "expected too short message, got: {err}"
+        );
     }
 
     #[test]
     fn too_long_sha_rejected() {
         // 41 chars — one above maximum
         let err = validate_commit_sha("a3f1c2e4b5d6a7e8f9012345678901234567890ab").unwrap_err();
-        assert!(err.contains("invalid_param"), "expected invalid_param, got: {err}");
-        assert!(err.contains("too long"), "expected too long message, got: {err}");
+        assert!(
+            err.contains("invalid_param"),
+            "expected invalid_param, got: {err}"
+        );
+        assert!(
+            err.contains("too long"),
+            "expected too long message, got: {err}"
+        );
     }
 }

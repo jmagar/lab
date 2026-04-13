@@ -37,19 +37,21 @@ Adding a new service requires touching all four or it silently disappears from o
 
 `actions_for()` is a hardcoded string match. Services not listed return an empty action list with no error or warning.
 
-## Shared Dispatch Layer Migration (In Progress)
+## Shared Dispatch Layer
 
-`src/services/` is the intended home for surface-neutral dispatch. Currently only `bytestash` is migrated there. All other services still own their `ACTIONS` and `dispatch` in `mcp/services/<service>.rs`, which violates the intended layer contract.
+`src/dispatch/` is the home for surface-neutral dispatch. 13 services are fully migrated there: `apprise`, `bytestash`, `gotify`, `lab_admin`, `linkding`, `paperless`, `prowlarr`, `qdrant`, `radarr`, `sabnzbd`, `tei`, `unifi`, `unraid`. Each has the required directory layout (catalog.rs, client.rs, params.rs, dispatch.rs).
 
-When adding new services, follow `services/bytestash.rs` as the reference implementation. When migrating existing services, the `catalog.rs` arm must switch from `crate::mcp::services::<service>::ACTIONS` to `crate::services::<service>::ACTIONS`.
+Remaining services still own their dispatch in `mcp/services/<service>.rs` stubs — these are the migration backlog.
 
-`api/services/helpers.rs::handle_action()` is the most complete shared dispatch wrapper (unknown-action gate, destructive confirmation, param stripping, timed dispatch, structured logging). Use it as the reference for what a migrated service's HTTP handler looks like.
+When adding new services, use the full `dispatch/<service>/` directory layout from the start — see `crates/lab/src/dispatch/CLAUDE.md` for templates. Do not create new `mcp/services/` stubs.
+
+`api/services/helpers.rs::handle_action()` is the shared dispatch wrapper (unknown-action gate, destructive confirmation, param stripping, timed dispatch, structured logging). All migrated API handlers call this.
 
 ## CLI: Two Implementation Tiers
 
-**Tier 1 (typed):** `radarr`, `extract`, `bytestash`, `unifi` — typed `clap` `Subcommand` enum with named variants. `radarr.rs` is the reference.
+**Tier 1 (typed):** `radarr` — typed `clap` `Subcommand` enum with named variants per operation. `radarr.rs` is the reference. (`audit` and `scaffold` are infrastructure commands, not service clients.)
 
-**Tier 2 (MCP-passthrough stubs):** ~20 services — raw `action: Option<String>` + `params: Option<String>`, delegates straight to `mcp::services::<service>::dispatch`. These expose MCP UX to CLI users (known violation). When a service gets a proper client, replace the stub with typed subcommands.
+**Tier 2 (dispatch-backed thin shims):** All other services — call into `dispatch/<service>/dispatch.rs` directly with a flat action string extracted from CLI args. When a service warrants richer UX, replace with typed subcommands.
 
 ## ToolError Invariants (Critical)
 
@@ -64,10 +66,6 @@ When adding new services, follow `services/bytestash.rs` as the reference implem
 
 These are facts about the current state, not the spec:
 
-- **MCP elicitation** for destructive ops: not implemented. Only the HTTP surface (`handle_action()`) gates on `params["confirm"] == true`.
-- **`schema` built-in action**: not implemented in any dispatch function. Only `help` is.
-- **`--no-confirm` flag**: not implemented anywhere.
-- **TTY check** before refusing non-interactive destructive ops: not implemented.
 - **`surface` field** in HTTP handler log events: missing (gap vs `OBSERVABILITY.md`).
 - **`/ready` probe**: always returns 200; readiness is not actually checked.
 - **TUI**: `run()` is a stub. `metadata.rs` only has radarr wired.

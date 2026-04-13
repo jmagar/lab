@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, query_from, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -204,17 +204,21 @@ pub const ACTIONS: &[ActionSpec] = &[
 ];
 
 #[allow(clippy::too_many_lines)]
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "firewall.zones.list" => {
             let site_id = require_str(&params, "site_id")?;
             let q = query_from(&params, &["offset", "limit", "filter"])?;
             let zones = if q.is_empty() {
-                require_client()?
+                client
                     .get_value(&format!("/sites/{site_id}/firewall/zones"))
                     .await?
             } else {
-                require_client()?
+                client
                     .get_value_query(&format!("/sites/{site_id}/firewall/zones"), &q)
                     .await?
             };
@@ -223,7 +227,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "firewall.zones.get" => {
             let site_id = require_str(&params, "site_id")?;
             let firewall_zone_id = require_str(&params, "firewall_zone_id")?;
-            let zone = require_client()?
+            let zone = client
                 .get_value(&format!(
                     "/sites/{site_id}/firewall/zones/{firewall_zone_id}"
                 ))
@@ -233,7 +237,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "firewall.zones.create" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let zone = require_client()?
+            let zone = client
                 .post_value(&format!("/sites/{site_id}/firewall/zones"), &body)
                 .await?;
             to_json(zone)
@@ -242,7 +246,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let firewall_zone_id = require_str(&params, "firewall_zone_id")?;
             let body = object_without(&params, &["site_id", "firewall_zone_id"])?;
-            let zone = require_client()?
+            let zone = client
                 .put_value(
                     &format!("/sites/{site_id}/firewall/zones/{firewall_zone_id}"),
                     &body,
@@ -253,7 +257,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "firewall.zones.delete" => {
             let site_id = require_str(&params, "site_id")?;
             let firewall_zone_id = require_str(&params, "firewall_zone_id")?;
-            require_client()?
+            client
                 .delete_value(&format!(
                     "/sites/{site_id}/firewall/zones/{firewall_zone_id}"
                 ))
@@ -264,11 +268,11 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let q = query_from(&params, &["offset", "limit", "filter"])?;
             let policies = if q.is_empty() {
-                require_client()?
+                client
                     .get_value(&format!("/sites/{site_id}/firewall/policies"))
                     .await?
             } else {
-                require_client()?
+                client
                     .get_value_query(&format!("/sites/{site_id}/firewall/policies"), &q)
                     .await?
             };
@@ -277,7 +281,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "firewall.policies.get" => {
             let site_id = require_str(&params, "site_id")?;
             let firewall_policy_id = require_str(&params, "firewall_policy_id")?;
-            let policy = require_client()?
+            let policy = client
                 .get_value(&format!(
                     "/sites/{site_id}/firewall/policies/{firewall_policy_id}"
                 ))
@@ -287,7 +291,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "firewall.policies.create" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let policy = require_client()?
+            let policy = client
                 .post_value(&format!("/sites/{site_id}/firewall/policies"), &body)
                 .await?;
             to_json(policy)
@@ -296,7 +300,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let firewall_policy_id = require_str(&params, "firewall_policy_id")?;
             let body = object_without(&params, &["site_id", "firewall_policy_id"])?;
-            let policy = require_client()?
+            let policy = client
                 .put_value(
                     &format!("/sites/{site_id}/firewall/policies/{firewall_policy_id}"),
                     &body,
@@ -308,7 +312,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let site_id = require_str(&params, "site_id")?;
             let firewall_policy_id = require_str(&params, "firewall_policy_id")?;
             let body = object_without(&params, &["site_id", "firewall_policy_id"])?;
-            let policy = require_client()?
+            let policy = client
                 .patch_value(
                     &format!("/sites/{site_id}/firewall/policies/{firewall_policy_id}"),
                     &body,
@@ -318,7 +322,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         "firewall.policies.ordering.get" => {
             let site_id = require_str(&params, "site_id")?;
-            let ordering = require_client()?
+            let ordering = client
                 .get_value(&format!("/sites/{site_id}/firewall/policies/ordering"))
                 .await?;
             to_json(ordering)
@@ -326,7 +330,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "firewall.policies.ordering.set" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let ordering = require_client()?
+            let ordering = client
                 .put_value(
                     &format!("/sites/{site_id}/firewall/policies/ordering"),
                     &body,
@@ -334,6 +338,10 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 .await?;
             to_json(ordering)
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
     }
 }

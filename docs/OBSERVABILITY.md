@@ -83,11 +83,11 @@ Optional when applicable:
 
 ### API Dispatch
 
-Every HTTP service action must emit one dispatch event.
+Every product API service action must emit one dispatch event.
 
 Required fields:
 
-- `surface = "http"`
+- `surface = "api"`
 - `service`
 - `action`
 - `elapsed_ms`

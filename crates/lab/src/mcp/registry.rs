@@ -54,7 +54,11 @@ macro_rules! register_service {
                 name: meta.name,
                 description: meta.description,
                 category: category_slug(meta.category),
-                status: if actions.is_empty() { "stub" } else { "available" },
+                status: if actions.is_empty() {
+                    "stub"
+                } else {
+                    "available"
+                },
                 actions,
                 dispatch: $dispatch,
             });
@@ -70,7 +74,11 @@ macro_rules! register_service {
                 name: meta.name,
                 description: meta.description,
                 category: category_slug(meta.category),
-                status: if actions.is_empty() { "stub" } else { "available" },
+                status: if actions.is_empty() {
+                    "stub"
+                } else {
+                    "available"
+                },
                 actions,
                 dispatch: dispatch_fn!(crate::mcp::services::$svc::dispatch),
             });
@@ -156,41 +164,88 @@ pub fn build_default_registry() -> ToolRegistry {
             name: meta.name,
             description: meta.description,
             category: category_slug(meta.category),
-            status: if actions.is_empty() { "stub" } else { "available" },
+            status: if actions.is_empty() {
+                "stub"
+            } else {
+                "available"
+            },
             actions,
             dispatch: dispatch_fn!(crate::mcp::services::extract::dispatch),
         });
     }
 
-    register_service!(reg, "radarr", radarr,
+    register_service!(
+        reg,
+        "radarr",
+        radarr,
         actions = crate::mcp::services::radarr::actions(),
-        dispatch = dispatch_fn!(crate::mcp::services::radarr::dispatch));
+        dispatch = dispatch_fn!(crate::mcp::services::radarr::dispatch)
+    );
 
     register_service!(reg, "sonarr", sonarr);
-    register_service!(reg, "prowlarr", prowlarr);
+
+    register_service!(
+        reg,
+        "prowlarr",
+        prowlarr,
+        actions = crate::dispatch::prowlarr::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::prowlarr::dispatch)
+    );
+
     register_service!(reg, "plex", plex);
     register_service!(reg, "tautulli", tautulli);
 
-    register_service!(reg, "sabnzbd", sabnzbd,
+    register_service!(
+        reg,
+        "sabnzbd",
+        sabnzbd,
         actions = crate::dispatch::sabnzbd::ACTIONS,
-        dispatch = dispatch_fn!(crate::mcp::services::sabnzbd::dispatch));
+        dispatch = dispatch_fn!(crate::mcp::services::sabnzbd::dispatch)
+    );
 
     register_service!(reg, "qbittorrent", qbittorrent);
     register_service!(reg, "tailscale", tailscale);
-    register_service!(reg, "linkding", linkding);
+    register_service!(
+        reg,
+        "linkding",
+        linkding,
+        actions = crate::dispatch::linkding::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::linkding::dispatch)
+    );
     register_service!(reg, "memos", memos);
 
-    register_service!(reg, "bytestash", bytestash,
+    register_service!(
+        reg,
+        "bytestash",
+        bytestash,
         actions = crate::dispatch::bytestash::ACTIONS,
-        dispatch = dispatch_fn!(crate::dispatch::bytestash::dispatch));
+        dispatch = dispatch_fn!(crate::dispatch::bytestash::dispatch)
+    );
 
-    register_service!(reg, "paperless", paperless);
+    register_service!(
+        reg,
+        "paperless",
+        paperless,
+        actions = crate::dispatch::paperless::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::paperless::dispatch)
+    );
     register_service!(reg, "arcane", arcane);
-    register_service!(reg, "unraid", unraid);
 
-    register_service!(reg, "unifi", unifi,
+    register_service!(
+        reg,
+        "unraid",
+        unraid,
+        actions = crate::dispatch::unraid::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::unraid::dispatch)
+    );
+
+    register_service!(
+        reg,
+        "unifi",
+        unifi,
         actions = crate::dispatch::unifi::actions(),
-        dispatch = dispatch_fn!(crate::dispatch::unifi::dispatch));
+        dispatch = dispatch_fn!(crate::dispatch::unifi::dispatch)
+    );
 
     register_service!(reg, "overseerr", overseerr);
     register_service!(reg, "gotify", gotify);
@@ -199,7 +254,29 @@ pub fn build_default_registry() -> ToolRegistry {
     register_service!(reg, "tei", tei);
     register_service!(reg, "apprise", apprise);
 
+    #[cfg(feature = "lab-admin")]
+    if lab_admin_enabled() {
+        reg.register(RegisteredService {
+            name: "lab_admin",
+            description: "Internal onboarding audit tool",
+            category: "bootstrap",
+            status: "available",
+            actions: crate::mcp::services::lab_admin::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::lab_admin::dispatch),
+        });
+    }
+
     reg
+}
+
+/// Returns `true` only when `LAB_ADMIN_ENABLED=1` is set in the environment.
+///
+/// Requires the exact value `"1"` — mere presence of the variable is not enough.
+#[cfg(feature = "lab-admin")]
+fn lab_admin_enabled() -> bool {
+    std::env::var("LAB_ADMIN_ENABLED")
+        .map(|value| value == "1")
+        .unwrap_or(false)
 }
 
 const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
@@ -280,6 +357,100 @@ mod tests {
         assert!(names.contains(&"tei"), "tei missing");
         #[cfg(feature = "apprise")]
         assert!(names.contains(&"apprise"), "apprise missing");
+    }
+
+    /// Guard that the MCP registry and the HTTP router mount identical service sets.
+    ///
+    /// Both sides are derived from the same authoritative source — `lab_apis::<service>::META.name`
+    /// — guarded by the same `#[cfg(feature)]` attributes used in `build_default_registry()` and
+    /// `build_router_with_bearer()`. Adding a new service only requires touching those two sites;
+    /// this test self-updates through the shared feature flag.
+    ///
+    /// If this test fails, a service was registered in the MCP registry but not mounted in the
+    /// HTTP router (or vice versa). Both must be updated together.
+    #[test]
+    fn registry_and_router_service_sets_are_identical() {
+        // Derive the expected HTTP router service set from lab_apis META constants.
+        // These are the same names used by build_router_with_bearer(), so any rename
+        // in lab_apis automatically propagates here without manual updates.
+        //
+        // Assumption: every HTTP route mount uses exactly `META.name` as its path prefix.
+        // If a service is added to build_router_with_bearer() under a different name than
+        // META.name, that divergence will NOT be caught here. The trade-off is accepted:
+        // the router consistently derives its path prefix from META.name, and if that
+        // ever changes the build itself would break on the feature-gated import.
+        let http_router_services: std::collections::HashSet<&'static str> = {
+            let mut s = std::collections::HashSet::new();
+            s.insert(lab_apis::extract::META.name); // always-on
+            #[cfg(feature = "radarr")]
+            s.insert(lab_apis::radarr::META.name);
+            #[cfg(feature = "sonarr")]
+            s.insert(lab_apis::sonarr::META.name);
+            #[cfg(feature = "prowlarr")]
+            s.insert(lab_apis::prowlarr::META.name);
+            #[cfg(feature = "plex")]
+            s.insert(lab_apis::plex::META.name);
+            #[cfg(feature = "tautulli")]
+            s.insert(lab_apis::tautulli::META.name);
+            #[cfg(feature = "sabnzbd")]
+            s.insert(lab_apis::sabnzbd::META.name);
+            #[cfg(feature = "qbittorrent")]
+            s.insert(lab_apis::qbittorrent::META.name);
+            #[cfg(feature = "tailscale")]
+            s.insert(lab_apis::tailscale::META.name);
+            #[cfg(feature = "linkding")]
+            s.insert(lab_apis::linkding::META.name);
+            #[cfg(feature = "memos")]
+            s.insert(lab_apis::memos::META.name);
+            #[cfg(feature = "bytestash")]
+            s.insert(lab_apis::bytestash::META.name);
+            #[cfg(feature = "paperless")]
+            s.insert(lab_apis::paperless::META.name);
+            #[cfg(feature = "arcane")]
+            s.insert(lab_apis::arcane::META.name);
+            #[cfg(feature = "unraid")]
+            s.insert(lab_apis::unraid::META.name);
+            #[cfg(feature = "unifi")]
+            s.insert(lab_apis::unifi::META.name);
+            #[cfg(feature = "overseerr")]
+            s.insert(lab_apis::overseerr::META.name);
+            #[cfg(feature = "gotify")]
+            s.insert(lab_apis::gotify::META.name);
+            #[cfg(feature = "openai")]
+            s.insert(lab_apis::openai::META.name);
+            #[cfg(feature = "qdrant")]
+            s.insert(lab_apis::qdrant::META.name);
+            #[cfg(feature = "tei")]
+            s.insert(lab_apis::tei::META.name);
+            #[cfg(feature = "apprise")]
+            s.insert(lab_apis::apprise::META.name);
+            s
+        };
+
+        let reg = build_default_registry();
+        let registry_services: std::collections::HashSet<&str> =
+            reg.services().iter().map(|s| s.name).collect();
+
+        let only_in_registry: Vec<&&str> = registry_services
+            .iter()
+            // lab_admin is MCP-only: no HTTP route by design (runtime opt-in via LAB_ADMIN_ENABLED=1)
+            .filter(|n| !http_router_services.contains(**n) && **n != "lab_admin")
+            .collect();
+        let only_in_router: Vec<&&str> = http_router_services
+            .iter()
+            .filter(|n| !registry_services.contains(**n))
+            .collect();
+
+        assert!(
+            only_in_registry.is_empty(),
+            "services in MCP registry but NOT in HTTP router: {only_in_registry:?}\n\
+             Add them to build_router_with_bearer() in api/router.rs or add an explicit exemption in registry_and_router_service_sets_are_identical()",
+        );
+        assert!(
+            only_in_router.is_empty(),
+            "services in HTTP router but NOT in MCP registry: {only_in_router:?}\n\
+             Add them to build_default_registry() in mcp/registry.rs",
+        );
     }
 
     #[tokio::test]

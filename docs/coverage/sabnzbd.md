@@ -29,15 +29,15 @@
   - API shim in `crates/lab/src/api/services/sabnzbd.rs`
 - Current dispatch actions implemented end-to-end:
   - `help`
-  - `version`
+  - `server.version`
   - `queue.list`
   - `queue.delete` (destructive)
   - `history.list`
   - `history.delete` (destructive)
   - `history.purge` (destructive)
-  - `server-stats`
-  - `warnings`
-  - `pause`
-  - `resume`
-  - `speed-limit`
+  - `server.stats`
+  - `server.warnings`
+  - `queue.pause`
+  - `queue.resume`
+  - `queue.speed.limit`
 - Remaining SABnzbd upstream modes are still pending implementation.

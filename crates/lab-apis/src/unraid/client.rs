@@ -119,6 +119,7 @@ mutation DockerStop($id: PrefixedID!) {
 // ---------------------------------------------------------------------------
 
 /// Client for the Unraid GraphQL API.
+#[derive(Clone)]
 pub struct UnraidClient {
     pub(crate) http: HttpClient,
 }
@@ -148,7 +149,10 @@ impl UnraidClient {
     /// # Errors
     /// Returns [`UnraidError::Http`] on transport or GraphQL error.
     pub async fn system_online(&self) -> Result<bool, UnraidError> {
-        let data: OnlineData = self.http.post_graphql("/graphql", QUERY_ONLINE, None).await?;
+        let data: OnlineData = self
+            .http
+            .post_graphql("/graphql", QUERY_ONLINE, None)
+            .await?;
         Ok(data.online)
     }
 
@@ -178,7 +182,10 @@ impl UnraidClient {
     /// # Errors
     /// Returns [`UnraidError::Http`] on transport or GraphQL error.
     pub async fn system_array(&self) -> Result<ArrayStatus, UnraidError> {
-        let data: ArrayData = self.http.post_graphql("/graphql", QUERY_ARRAY, None).await?;
+        let data: ArrayData = self
+            .http
+            .post_graphql("/graphql", QUERY_ARRAY, None)
+            .await?;
         Ok(data.array)
     }
 

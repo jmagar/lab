@@ -65,9 +65,10 @@ pub fn load() -> Result<LabConfig> {
     // Does not override vars already set by the user-level file.
     let cwd_env = std::path::Path::new(".env");
     if cwd_env.exists()
-        && let Err(e) = dotenvy::from_path(cwd_env) {
-            tracing::warn!(path = ".env", error = %e, "failed to load local .env (skipping)");
-        }
+        && let Err(e) = dotenvy::from_path(cwd_env)
+    {
+        tracing::debug!(path = ".env", error = %e, "failed to load local .env (skipping)");
+    }
 
     let cfg = if let Some(path) = toml_path() {
         if path.exists() {
@@ -254,7 +255,10 @@ mod tests {
     fn secret_serialize_emits_placeholder_not_plaintext() {
         let s = Secret::new("super-secret-api-key".into());
         let json = serde_json::to_string(&s).expect("serialize must not fail");
-        assert_eq!(json, "\"***REDACTED***\"", "Secret must serialize to placeholder");
+        assert_eq!(
+            json, "\"***REDACTED***\"",
+            "Secret must serialize to placeholder"
+        );
         assert!(
             !json.contains("super-secret-api-key"),
             "Secret must never emit plaintext through serde"
