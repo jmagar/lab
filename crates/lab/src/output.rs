@@ -12,6 +12,9 @@ use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::audit::AuditReport;
+use crate::scaffold::ScaffoldResult;
+
 /// CLI output format, selected by the top-level `--json` flag.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -50,6 +53,67 @@ impl RenderContext {
 pub fn print<T: Serialize>(value: &T, format: OutputFormat) -> Result<()> {
     println!("{}", render(value, format)?);
     Ok(())
+}
+
+/// Render a scaffold result for human output.
+pub fn render_scaffold_result(result: &ScaffoldResult) -> String {
+    let mut out = String::new();
+    use std::fmt::Write as _;
+
+    let mode = if result.dry_run { "dry-run" } else { "applied" };
+    writeln!(
+        out,
+        "scaffold {} ({})",
+        result.service,
+        result.kind
+    )
+    .ok();
+    writeln!(out, "mode: {mode}").ok();
+
+    if result.dry_run {
+        writeln!(out, "planned:").ok();
+        for op in &result.planned {
+            writeln!(out, "  new  {}", op.path.display()).ok();
+        }
+    } else {
+        if !result.created.is_empty() {
+            writeln!(out, "created:").ok();
+            for path in &result.created {
+                writeln!(out, "  - {}", path.display()).ok();
+            }
+        }
+        if !result.modified.is_empty() {
+            writeln!(out, "modified:").ok();
+            for path in &result.modified {
+                writeln!(out, "  - {}", path.display()).ok();
+            }
+        }
+        if result.created.is_empty() && result.modified.is_empty() {
+            writeln!(out, "no changes").ok();
+        }
+    }
+
+    out
+}
+
+/// Render an audit report for human output.
+pub fn render_audit_report(report: &AuditReport) -> String {
+    let mut out = String::new();
+    use std::fmt::Write as _;
+
+    for service in &report.services {
+        writeln!(out, "{}:", service.service).ok();
+        for (name, result) in &service.checks {
+            let status = match result {
+                crate::audit::CheckResult::Pass => "pass".to_string(),
+                crate::audit::CheckResult::Fail(msg) => format!("fail: {msg}"),
+                crate::audit::CheckResult::Skip(msg) => format!("skip: {msg}"),
+            };
+            writeln!(out, "  - {name}: {status}").ok();
+        }
+    }
+
+    out
 }
 
 /// Render a serializable value to a string in the requested format.
