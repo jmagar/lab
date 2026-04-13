@@ -32,8 +32,16 @@ pub fn client_from_vars(url: Option<&str>, token: Option<&str>) -> Option<Linkdi
 
 /// Return a client or a structured `internal_error` if not configured.
 pub fn require_client() -> Result<LinkdingClient, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
+    client_from_env().ok_or_else(not_configured_error)
+}
+
+/// Structured error returned when Linkding env vars are absent.
+///
+/// Exposed so that callers holding a pre-built `Option<LinkdingClient>` (e.g. the API
+/// handler) can produce the same error without re-reading env vars.
+pub fn not_configured_error() -> ToolError {
+    ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: "LINKDING_URL or LINKDING_TOKEN not configured".to_string(),
-    })
+    }
 }

@@ -27,8 +27,16 @@ pub fn client_from_env() -> Option<PaperlessClient> {
 
 /// Return a client or a structured `internal_error` if not configured.
 pub fn require_client() -> Result<PaperlessClient, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
+    client_from_env().ok_or_else(not_configured_error)
+}
+
+/// Structured error returned when Paperless-ngx env vars are absent.
+///
+/// Exposed so that callers holding a pre-built `Option<PaperlessClient>` (e.g. the API
+/// handler) can produce the same error without re-reading env vars.
+pub fn not_configured_error() -> ToolError {
+    ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: "PAPERLESS_URL or PAPERLESS_TOKEN (or PAPERLESS_API_KEY) not configured".to_string(),
-    })
+    }
 }
