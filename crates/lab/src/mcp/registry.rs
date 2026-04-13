@@ -431,6 +431,9 @@ mod tests {
         let registry_services: std::collections::HashSet<&str> =
             reg.services().iter().map(|s| s.name).collect();
 
+        let registry_only_exemptions: std::collections::HashSet<&'static str> =
+            [ "lab_admin" ].into_iter().collect();
+
         let only_in_registry: Vec<&&str> = registry_services
             .iter()
             // lab_admin is MCP-only: no HTTP route by design (runtime opt-in via LAB_ADMIN_ENABLED=1)

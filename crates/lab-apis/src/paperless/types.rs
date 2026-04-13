@@ -27,8 +27,8 @@ pub struct DocumentUpdateRequest {
 pub struct TagCreateRequest {
     /// Tag name.
     pub name: String,
-    /// Hex colour string (e.g. `"#ff0000"`).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Hex color string (e.g. `"#ff0000"`).
+    #[serde(rename = "color", skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
     /// Whether this is the special inbox tag.
     #[serde(skip_serializing_if = "Option::is_none")]

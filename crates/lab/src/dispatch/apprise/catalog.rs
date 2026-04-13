@@ -24,7 +24,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "server.health",
         description: "Check whether the Apprise API is healthy",
         destructive: false,
-        returns: "void",
+        returns: "HealthStatus",
         params: &[],
     },
     ActionSpec {
@@ -36,8 +36,8 @@ pub const ACTIONS: &[ActionSpec] = &[
             ParamSpec {
                 name: "body",
                 ty: "string",
-                required: true,
-                description: "Notification body text",
+                required: false,
+                description: "Notification body text (optional when `payload` override is supplied)",
             },
             ParamSpec {
                 name: "urls",
@@ -92,8 +92,8 @@ pub const ACTIONS: &[ActionSpec] = &[
             ParamSpec {
                 name: "body",
                 ty: "string",
-                required: true,
-                description: "Notification body text",
+                required: false,
+                description: "Notification body text (optional when `payload` override is supplied)",
             },
             ParamSpec {
                 name: "title",

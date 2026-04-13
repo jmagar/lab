@@ -26,6 +26,10 @@ pub struct GotifyArgs {
     /// Skip confirmation for destructive actions.
     #[arg(short = 'y', long, alias = "no-confirm")]
     pub yes: bool,
+
+    /// Print what would be done without executing.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Run the `lab gotify` subcommand.
@@ -34,6 +38,14 @@ pub struct GotifyArgs {
 /// Returns an error if the client is not configured or the API call fails.
 pub async fn run(args: GotifyArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = parse_kv_params(args.params)?;
+    if args.dry_run {
+        println!(
+            "[dry-run] would dispatch gotify action `{}` with params: {}",
+            args.action,
+            serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
     run_confirmable_action_command(
         "gotify",
         ACTIONS,

@@ -1,5 +1,6 @@
 //! Shared application state for axum handlers.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
@@ -35,9 +36,7 @@ pub struct ServiceClients {
     #[cfg(feature = "unifi")]
     #[allow(dead_code)]
     pub unifi: Option<Arc<lab_apis::unifi::UnifiClient>>,
-    // Kept for future health-check and sub-dispatcher threading (see TODO above).
     #[cfg(feature = "unraid")]
-    #[allow(dead_code)]
     pub unraid: Option<Arc<lab_apis::unraid::UnraidClient>>,
     #[cfg(feature = "gotify")]
     pub gotify: Option<Arc<crate::dispatch::gotify::GotifyClients>>,
@@ -97,6 +96,12 @@ pub struct AppState {
     pub registry: Arc<ToolRegistry>,
     /// Pre-built service clients for connection pool reuse.
     pub clients: Arc<ServiceClients>,
+    /// Runtime-enabled service names derived from the registry.
+    ///
+    /// The HTTP router checks this set to decide which per-service route groups
+    /// to mount.  When `--services` filtering is applied, only the listed names
+    /// appear here, so filtered-out services have no reachable POST endpoint.
+    pub enabled_services: Arc<HashSet<String>>,
 }
 
 impl AppState {
@@ -112,14 +117,23 @@ impl AppState {
     /// Use this when the caller has already applied service filtering (e.g.
     /// `--services` on `lab serve --transport http`) so that the HTTP surface
     /// respects the same service set as the stdio surface.
+    ///
+    /// `enabled_services` is derived from the registry entries so the router
+    /// can skip mounting handlers for services that were filtered out.
     #[must_use]
     pub fn from_registry(registry: ToolRegistry) -> Self {
+        let enabled_services: HashSet<String> = registry
+            .services()
+            .iter()
+            .map(|e| e.name.to_string())
+            .collect();
         let catalog = Arc::new(build_catalog(&registry));
         let clients = Arc::new(ServiceClients::from_env());
         Self {
             catalog,
             registry: Arc::new(registry),
             clients,
+            enabled_services: Arc::new(enabled_services),
         }
     }
 }

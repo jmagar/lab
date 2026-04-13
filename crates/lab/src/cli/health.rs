@@ -184,12 +184,47 @@ async fn unifi_row() -> HealthRow {
 
 #[cfg(feature = "gotify")]
 async fn gotify_row() -> HealthRow {
-    service_health_row(
-        "gotify",
-        crate::dispatch::gotify::client_from_env(),
-        "GOTIFY_URL / GOTIFY_CLIENT_TOKEN (or GOTIFY_TOKEN) not set",
-    )
-    .await
+    // Use the URL-only health sub-client so that a Gotify server that is reachable but has
+    // no token configured is reported as reachable (not not-configured).
+    // `clients_from_env()` only requires GOTIFY_URL; the health sub-client uses Auth::None.
+    // Token presence only governs the app/client scoped operations, not reachability.
+    use lab_apis::core::ServiceClient as _;
+    let Some(clients) = crate::dispatch::gotify::clients_from_env() else {
+        return HealthRow {
+            service: "gotify".into(),
+            reachable: false,
+            auth_ok: false,
+            version: None,
+            latency_ms: 0,
+            message: Some("GOTIFY_URL not set".into()),
+        };
+    };
+    let start = std::time::Instant::now();
+    let row = match clients.health().health().await {
+        Ok(s) => HealthRow {
+            service: "gotify".into(),
+            reachable: s.reachable,
+            auth_ok: s.auth_ok,
+            version: s.version,
+            latency_ms: s.latency_ms,
+            message: s.message,
+        },
+        Err(e) => HealthRow {
+            service: "gotify".into(),
+            reachable: false,
+            auth_ok: false,
+            version: None,
+            latency_ms: 0,
+            message: Some(e.to_string()),
+        },
+    };
+    let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if row.reachable && row.auth_ok {
+        tracing::info!(surface = "cli", service = "gotify", operation = "health", elapsed_ms, "health ok");
+    } else {
+        tracing::warn!(surface = "cli", service = "gotify", operation = "health", elapsed_ms, "health issue");
+    }
+    row
 }
 
 #[cfg(feature = "unraid")]

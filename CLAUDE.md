@@ -297,7 +297,7 @@ All formatting lives in `crates/lab/src/output.rs`. `lab-apis` types are pure da
 
 ```bash
 just check      # cargo check --workspace
-just test       # cargo nextest run
+just test       # cargo nextest run --workspace --all-features
 just lint       # cargo clippy + cargo fmt --check
 just deny       # cargo deny check
 just build      # cargo build --workspace --all-features
