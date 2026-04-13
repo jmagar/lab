@@ -1,28 +1,54 @@
-//! Dispatch stub for `arcane`. Replace with real impl when SDK client is ready.
+//! Shared dispatch layer for the `arcane` service.
 
-use lab_apis::core::action::ActionSpec;
-use serde_json::Value;
+mod catalog;
+mod client;
+mod dispatch;
+mod params;
 
-use crate::dispatch::error::ToolError;
+pub use catalog::ACTIONS;
+#[allow(unused_imports)]
+pub use client::{client_from_env, not_configured_error, require_client};
+#[allow(unused_imports)]
+pub use dispatch::{dispatch, dispatch_with_client};
 
-/// Action catalog — empty until service is implemented.
-pub const ACTIONS: &[ActionSpec] = &[];
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Dispatch one call against the `arcane` tool.
-///
-/// # Errors
-/// Returns errors for unknown actions until the service is wired.
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    match action {
-        "help" => Ok(crate::dispatch::helpers::help_payload("arcane", ACTIONS)),
-        "schema" => {
-            let a = crate::dispatch::helpers::require_str(&params, "action")?;
-            crate::dispatch::helpers::action_schema(ACTIONS, a)
-        }
-        _ => Err(ToolError::UnknownAction {
-            message: format!("unknown action '{action}'"),
-            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
-            hint: None,
-        }),
+    #[test]
+    fn catalog_includes_core_actions() {
+        let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
+        assert!(names.contains(&"help"));
+        assert!(names.contains(&"schema"));
+        assert!(names.contains(&"health"));
+        assert!(names.contains(&"environment.list"));
+        assert!(names.contains(&"container.list"));
+    }
+
+    #[test]
+    fn destructive_actions_are_marked() {
+        let destructive: Vec<&str> = ACTIONS
+            .iter()
+            .filter(|a| a.destructive)
+            .map(|a| a.name)
+            .collect();
+        assert!(destructive.contains(&"container.redeploy"));
+    }
+
+    #[tokio::test]
+    async fn dispatch_unknown_action_returns_error() {
+        let result = dispatch("not.a.real.action", serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), "unknown_action");
+    }
+
+    #[tokio::test]
+    async fn help_returns_action_list() {
+        let result = dispatch("help", serde_json::json!({})).await;
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        assert_eq!(val["service"], "arcane");
+        let actions = val["actions"].as_array().unwrap();
+        assert!(!actions.is_empty());
     }
 }

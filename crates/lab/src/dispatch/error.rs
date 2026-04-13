@@ -278,3 +278,40 @@ impl_tool_error_from!(
     lab_apis::overseerr::OverseerrError,
     Api(api) => api.kind()
 );
+
+impl_tool_error_from!(
+    "openai",
+    lab_apis::openai::OpenAiError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "memos",
+    lab_apis::memos::MemosError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "tailscale",
+    lab_apis::tailscale::TailscaleError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "qbittorrent",
+    lab_apis::qbittorrent::QbittorrentError,
+    Api(api) => api.kind(),
+    CommandFailed(_) => "server_error"
+);
+
+impl_tool_error_from!(
+    "tautulli",
+    lab_apis::tautulli::TautulliError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "arcane",
+    lab_apis::arcane::ArcaneError,
+    Api(api) => api.kind()
+);

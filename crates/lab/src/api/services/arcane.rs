@@ -5,24 +5,32 @@ use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
+use crate::dispatch::arcane::ACTIONS;
+use crate::dispatch::error::ToolError;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
 }
 
 async fn handle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
-) -> Result<Json<Value>, crate::dispatch::error::ToolError> {
+) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    let client = state.clients.arcane.clone();
     handle_action(
         "arcane",
         "api",
         request_id,
         req,
-        crate::dispatch::arcane::ACTIONS,
-        |action, params| async move { crate::dispatch::arcane::dispatch(&action, params).await },
+        ACTIONS,
+        move |action, params| async move {
+            let Some(client) = client.as_ref() else {
+                return Err(crate::dispatch::arcane::not_configured_error());
+            };
+            crate::dispatch::arcane::dispatch_with_client(client, &action, params).await
+        },
     )
     .await
 }

@@ -52,6 +52,18 @@ pub struct ServiceClients {
     pub sonarr: Option<Arc<lab_apis::sonarr::SonarrClient>>,
     #[cfg(feature = "overseerr")]
     pub overseerr: Option<Arc<lab_apis::overseerr::OverseerrClient>>,
+    #[cfg(feature = "openai")]
+    pub openai: Option<Arc<lab_apis::openai::OpenAiClient>>,
+    #[cfg(feature = "memos")]
+    pub memos: Option<Arc<lab_apis::memos::MemosClient>>,
+    #[cfg(feature = "tailscale")]
+    pub tailscale: Option<Arc<lab_apis::tailscale::TailscaleClient>>,
+    #[cfg(feature = "tautulli")]
+    pub tautulli: Option<Arc<lab_apis::tautulli::TautulliClient>>,
+    #[cfg(feature = "arcane")]
+    pub arcane: Option<Arc<lab_apis::arcane::ArcaneClient>>,
+    #[cfg(feature = "qbittorrent")]
+    pub qbittorrent: Option<Arc<lab_apis::qbittorrent::QbittorrentClient>>,
 }
 
 impl ServiceClients {
@@ -91,6 +103,18 @@ impl ServiceClients {
             sonarr: crate::dispatch::sonarr::client_from_env().map(Arc::new),
             #[cfg(feature = "overseerr")]
             overseerr: crate::dispatch::overseerr::client_from_env().map(Arc::new),
+            #[cfg(feature = "openai")]
+            openai: crate::dispatch::openai::client_from_env().map(Arc::new),
+            #[cfg(feature = "memos")]
+            memos: crate::dispatch::memos::client_from_env().map(Arc::new),
+            #[cfg(feature = "tailscale")]
+            tailscale: crate::dispatch::tailscale::client_from_env().map(Arc::new),
+            #[cfg(feature = "tautulli")]
+            tautulli: crate::dispatch::tautulli::client_from_env().map(Arc::new),
+            #[cfg(feature = "arcane")]
+            arcane: crate::dispatch::arcane::client_from_env().map(Arc::new),
+            #[cfg(feature = "qbittorrent")]
+            qbittorrent: crate::dispatch::qbittorrent::client_from_env().map(Arc::new),
         }
     }
 }

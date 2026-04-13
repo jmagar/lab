@@ -200,7 +200,13 @@ pub fn build_default_registry() -> ToolRegistry {
         actions = crate::dispatch::plex::ACTIONS,
         dispatch = dispatch_fn!(crate::dispatch::plex::dispatch)
     );
-    register_service!(reg, "tautulli", tautulli);
+    register_service!(
+        reg,
+        "tautulli",
+        tautulli,
+        actions = crate::dispatch::tautulli::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::tautulli::dispatch)
+    );
 
     register_service!(
         reg,
@@ -211,7 +217,13 @@ pub fn build_default_registry() -> ToolRegistry {
     );
 
     register_service!(reg, "qbittorrent", qbittorrent);
-    register_service!(reg, "tailscale", tailscale);
+    register_service!(
+        reg,
+        "tailscale",
+        tailscale,
+        actions = crate::dispatch::tailscale::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::tailscale::dispatch)
+    );
     register_service!(
         reg,
         "linkding",

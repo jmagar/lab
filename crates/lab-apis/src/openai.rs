@@ -1,13 +1,9 @@
 //! OpenAI API client.
 //!
-//! Wraps the OpenAI REST API (chat completions, embeddings, models, images,
-//! audio, moderation). Auth is `Authorization: Bearer <api-key>`.
+//! Wraps the OpenAI REST API (chat completions, embeddings, models).
+//! Auth is `Authorization: Bearer <api-key>`.
 //!
-//! Spec: `docs/api-specs/openai.openapi.yaml` (mirrored from
-//! `github.com/openai/openai-openapi`, `manual_spec` branch).
-//!
-//! Note: this client targets the public `api.openai.com` endpoint by default,
-//! but any OpenAI-compatible server (Ollama, vLLM, LiteLLM, etc.) works by
+//! Any OpenAI-compatible server (Ollama, vLLM, LiteLLM, etc.) works by
 //! pointing `base_url` at it.
 
 /// Public request/response types (serde).
@@ -16,13 +12,18 @@ pub mod types;
 /// `OpenAiError` (thiserror).
 pub mod error;
 
-/// `OpenAiClient` — chat, embeddings, models, images, audio, moderations.
+/// `OpenAiClient` — chat, embeddings, models.
 pub mod client;
 
 pub use client::OpenAiClient;
 pub use error::OpenAiError;
 
+use std::time::Instant;
+
+use crate::core::error::ApiError;
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::status::ServiceStatus;
+use crate::core::traits::ServiceClient;
 
 /// Compile-time metadata for the openai module.
 pub const META: PluginMeta = PluginMeta {
@@ -53,3 +54,37 @@ pub const META: PluginMeta = PluginMeta {
     ],
     default_port: None,
 };
+
+impl ServiceClient for OpenAiClient {
+    fn name(&self) -> &'static str {
+        "openai"
+    }
+
+    fn service_type(&self) -> &'static str {
+        "ai"
+    }
+
+    async fn health(&self) -> Result<ServiceStatus, ApiError> {
+        let start = Instant::now();
+        match self.list_models().await {
+            Ok(_) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: start.elapsed().as_millis() as u64,
+                message: None,
+            }),
+            Err(OpenAiError::Api(ApiError::Auth)) => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: false,
+                version: None,
+                latency_ms: start.elapsed().as_millis() as u64,
+                message: Some("authentication failed".to_string()),
+            }),
+            Err(OpenAiError::Api(ApiError::Network(e))) => {
+                Ok(ServiceStatus::unreachable(e.to_string()))
+            }
+            Err(e) => Ok(ServiceStatus::degraded(e.to_string())),
+        }
+    }
+}

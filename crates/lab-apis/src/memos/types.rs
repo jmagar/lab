@@ -1,7 +1,6 @@
 //! Memos request/response types.
 //!
 //! Targets the **Memos v1 API** (resource-name style, RFC3339 timestamps).
-//! TODO: add tag and resource upload types from the Memos API spec.
 
 use serde::{Deserialize, Serialize};
 
@@ -23,4 +22,42 @@ pub struct Memo {
     #[serde(rename = "updateTime")]
     pub update_time: String,
     pub visibility: String,
+}
+
+/// Query parameters for listing memos.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListMemosParams {
+    /// Filter to memos by creator resource name (e.g. `"users/1"`).
+    pub creator: Option<String>,
+    /// Filter to memos by tag name.
+    pub tag: Option<String>,
+    /// Maximum number of memos to return per page.
+    pub page_size: Option<u32>,
+    /// Page token for continuing a previous list request.
+    pub page_token: Option<String>,
+}
+
+/// Request body for creating a memo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateMemoRequest {
+    /// Markdown content of the memo.
+    pub content: String,
+    /// Visibility: `"PRIVATE"`, `"PROTECTED"`, or `"PUBLIC"`.
+    #[serde(default = "default_visibility")]
+    pub visibility: String,
+}
+
+fn default_visibility() -> String {
+    "PRIVATE".to_string()
+}
+
+/// Request body for updating a memo (PATCH — only provided fields are changed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMemoRequest {
+    /// New markdown content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// New visibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
 }

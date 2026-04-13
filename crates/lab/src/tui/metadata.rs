@@ -279,6 +279,30 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "tailscale")]
+    {
+        if let Some(key) = vars.get("TAILSCALE_API_KEY") {
+            use lab_apis::core::Auth;
+            let base_url = vars
+                .get("TAILSCALE_BASE_URL")
+                .map(String::as_str)
+                .unwrap_or("https://api.tailscale.com/api/v2")
+                .to_string();
+            let tailnet = vars
+                .get("TAILSCALE_TAILNET")
+                .map(String::as_str)
+                .unwrap_or("-")
+                .to_string();
+            if let Ok(client) = lab_apis::tailscale::TailscaleClient::new(
+                &base_url,
+                Auth::Bearer { token: key.clone() },
+                tailnet,
+            ) {
+                spawn_health_trait!("tailscale", client);
+            }
+        }
+    }
+
     // Collect results.
     let mut results = Vec::new();
     for handle in handles {

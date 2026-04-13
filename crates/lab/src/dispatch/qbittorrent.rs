@@ -1,31 +1,48 @@
-//! Dispatch stub for `qbittorrent`. Replace with real impl when SDK client is ready.
+//! Shared dispatch layer for the `qbittorrent` service.
+//!
+//! This module owns the qBittorrent action catalog, client resolution, and
+//! dispatch routing. CLI, MCP, and API are adapters over this layer.
 
-use lab_apis::core::action::ActionSpec;
-use serde_json::Value;
+mod catalog;
+mod client;
+mod dispatch;
+mod params;
 
-use crate::dispatch::error::ToolError;
+pub use catalog::ACTIONS;
+#[allow(unused_imports)]
+pub use client::{client_from_env, not_configured_error};
+#[allow(unused_imports)]
+pub use dispatch::{dispatch, dispatch_with_client};
 
-/// Action catalog — empty until service is implemented.
-pub const ACTIONS: &[ActionSpec] = &[];
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Dispatch one call against the `qbittorrent` tool.
-///
-/// # Errors
-/// Returns errors for unknown actions until the service is wired.
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    match action {
-        "help" => Ok(crate::dispatch::helpers::help_payload(
-            "qbittorrent",
-            ACTIONS,
-        )),
-        "schema" => {
-            let a = crate::dispatch::helpers::require_str(&params, "action")?;
-            crate::dispatch::helpers::action_schema(ACTIONS, a)
-        }
-        _ => Err(ToolError::UnknownAction {
-            message: format!("unknown action '{action}'"),
-            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
-            hint: None,
-        }),
+    #[test]
+    fn catalog_includes_key_actions() {
+        let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
+        assert!(names.contains(&"torrent.list"));
+        assert!(names.contains(&"transfer.info"));
+        assert!(names.contains(&"app.version"));
+        assert!(names.contains(&"help"));
+        assert!(names.contains(&"schema"));
+    }
+
+    #[test]
+    fn destructive_actions_are_marked() {
+        let destructive: Vec<&str> = ACTIONS
+            .iter()
+            .filter(|a| a.destructive)
+            .map(|a| a.name)
+            .collect();
+        assert!(destructive.contains(&"torrent.delete"));
+    }
+
+    #[test]
+    fn non_destructive_pause_and_resume() {
+        let spec_pause = ACTIONS.iter().find(|a| a.name == "torrent.pause").unwrap();
+        let spec_resume = ACTIONS.iter().find(|a| a.name == "torrent.resume").unwrap();
+        assert!(!spec_pause.destructive);
+        assert!(!spec_resume.destructive);
     }
 }

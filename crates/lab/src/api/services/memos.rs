@@ -5,24 +5,28 @@ use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
+use crate::dispatch::memos::{ACTIONS, not_configured_error};
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
 }
 
 async fn handle(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, crate::dispatch::error::ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    let client = state.clients.memos.as_deref().ok_or_else(not_configured_error)?;
     handle_action(
         "memos",
         "api",
         request_id,
         req,
-        crate::dispatch::memos::ACTIONS,
-        |action, params| async move { crate::dispatch::memos::dispatch(&action, params).await },
+        ACTIONS,
+        |action, params| async move {
+            crate::dispatch::memos::dispatch_with_client(client, &action, params).await
+        },
     )
     .await
 }
