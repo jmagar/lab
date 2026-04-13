@@ -30,14 +30,12 @@ pub const META: PluginMeta = PluginMeta {
     description: "Self-hosted push notification server",
     category: Category::Notifications,
     docs_url: "https://gotify.net/api-docs",
-    required_env: &[
-        EnvVar {
-            name: "GOTIFY_URL",
-            description: "Base URL of the Gotify server",
-            example: "http://localhost:8080",
-            secret: false,
-        },
-    ],
+    required_env: &[EnvVar {
+        name: "GOTIFY_URL",
+        description: "Base URL of the Gotify server",
+        example: "http://localhost:8080",
+        secret: false,
+    }],
     optional_env: &[
         EnvVar {
             name: "GOTIFY_TOKEN",
