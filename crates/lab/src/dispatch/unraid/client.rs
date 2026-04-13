@@ -1,14 +1,12 @@
 //! Client construction helpers for the `unraid` dispatch layer.
 
-use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use lab_apis::core::Auth;
 use lab_apis::unraid::UnraidClient;
 
-use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::env_non_empty;
+use crate::dispatch::helpers::{env_non_empty, InstancePool};
 
 /// Strip trailing `/graphql` and surrounding slashes from an Unraid URL.
 ///
@@ -22,71 +20,30 @@ fn normalize_unraid_url(raw: &str) -> String {
         .to_string()
 }
 
-/// Combined pool of named `Unraid` clients and their discovered labels, built
-/// once on first access. Replaces the two-static coupled-via-side-effect
-/// pattern: both fields are initialised atomically inside a single
-/// `OnceLock::get_or_init` closure.
-struct UnraidPool {
-    clients: HashMap<String, Arc<UnraidClient>>,
-    all_labels: Vec<String>,
-}
-
-static POOL: OnceLock<UnraidPool> = OnceLock::new();
+static POOL: OnceLock<InstancePool<UnraidClient>> = OnceLock::new();
 
 /// Return (or lazily build) the `Unraid` instance pool.
 ///
-/// The pool is built once by scanning env vars at first call. Subsequent
-/// calls are lock-free reads.
-fn pool() -> &'static UnraidPool {
+/// Built once by scanning env vars at first call. Subsequent calls are
+/// lock-free reads.
+fn pool() -> &'static InstancePool<UnraidClient> {
     POOL.get_or_init(|| {
-        let mut clients = HashMap::new();
-        let mut all_labels: Vec<String> = Vec::new();
-        for (label, _vars) in scan_instances("UNRAID") {
-            all_labels.push(label.clone());
-            let (url_key, key_key) = if label == "default" {
-                ("UNRAID_URL".to_string(), "UNRAID_API_KEY".to_string())
-            } else {
-                let upper = label.to_ascii_uppercase();
-                (
-                    format!("UNRAID_{upper}_URL"),
-                    format!("UNRAID_{upper}_API_KEY"),
-                )
-            };
-            if let (Some(raw_url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key)) {
-                let url = normalize_unraid_url(&raw_url);
-                match UnraidClient::new(
-                    &url,
-                    Auth::ApiKey {
-                        // Unraid's GraphQL API requires "X-API-Key" (all-caps KEY) per its
-                        // API spec — intentional deviation from the dispatch template which
-                        // uses "X-Api-Key". HTTP headers are case-insensitive on the wire,
-                        // but Unraid's server validates the exact name.
-                        header: "X-API-Key".into(),
-                        key,
-                    },
-                ) {
-                    Ok(client) => {
-                        clients.insert(label, Arc::new(client));
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, label, "unraid client construction failed");
-                    }
-                }
-            }
-        }
-        UnraidPool { clients, all_labels }
+        InstancePool::build("UNRAID", |url, key| {
+            let url = normalize_unraid_url(&url);
+            UnraidClient::new(
+                &url,
+                Auth::ApiKey {
+                    // Unraid's GraphQL API requires "X-API-Key" (all-caps KEY) per its
+                    // API spec — intentional deviation from the dispatch template which
+                    // uses "X-Api-Key". HTTP headers are case-insensitive on the wire,
+                    // but Unraid's server validates the exact name.
+                    header: "X-API-Key".into(),
+                    key,
+                },
+            )
+            .ok()
+        })
     })
-}
-
-/// Return the map of named `Unraid` clients.
-fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
-    &pool().clients
-}
-
-/// Return all instance labels discovered in the environment (including those
-/// with broken or incomplete configuration).
-fn all_labels() -> &'static Vec<String> {
-    &pool().all_labels
 }
 
 /// Build an `UnraidClient` from the default-instance environment variables.
@@ -127,45 +84,7 @@ pub fn client_from_env() -> Option<UnraidClient> {
 ///   environment but its URL or API key is missing or invalid.
 /// - `UnknownInstance` — the label was never found in the environment at all.
 pub fn client_from_instance(label: Option<&str>) -> Result<Arc<UnraidClient>, ToolError> {
-    let label = label.unwrap_or("default");
-    let label = label.trim();
-    if label.is_empty() {
-        return Err(ToolError::InvalidParam {
-            message: "parameter `instance` must not be empty".to_string(),
-            param: "instance".to_string(),
-        });
-    }
-    let label = label.to_ascii_lowercase();
-    let clients = named_clients();
-    if let Some(client) = clients.get(&label) {
-        return Ok(client.clone());
-    }
-
-    // Check whether the label was at least discovered in the environment.
-    // If so, the config is broken rather than the label being unknown.
-    let labels = all_labels();
-    if labels.iter().any(|l| l == &label) {
-        let upper = if label == "default" {
-            String::new()
-        } else {
-            format!("_{}", label.to_ascii_uppercase())
-        };
-        let url_var = format!("UNRAID{upper}_URL");
-        let key_var = format!("UNRAID{upper}_API_KEY");
-        return Err(ToolError::Sdk {
-            sdk_kind: "internal_error".to_string(),
-            message: format!(
-                "instance `{label}` is configured but `{url_var}` or `{key_var}` is missing or invalid"
-            ),
-        });
-    }
-
-    let mut valid: Vec<String> = clients.keys().cloned().collect();
-    valid.sort();
-    Err(ToolError::UnknownInstance {
-        message: format!("unknown instance `{label}`"),
-        valid,
-    })
+    pool().resolve(label)
 }
 
 /// Structured error for callers that hold a pre-built `Option<UnraidClient>`.
