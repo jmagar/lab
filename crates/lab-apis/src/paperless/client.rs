@@ -72,15 +72,18 @@ impl PaperlessClient {
     /// Optional query parameters are passed as `params` — a flat JSON object
     /// whose keys map to query-string fields (`query`, `page`, `page_size`, etc.).
     pub async fn documents_list(&self, params: &Value) -> Result<Value, PaperlessError> {
-        let qs = build_query_string(params, &[
-            "query",
-            "page",
-            "page_size",
-            "ordering",
-            "correspondent",
-            "document_type",
-            "tags__id__all",
-        ]);
+        let qs = build_query_string(
+            params,
+            &[
+                "query",
+                "page",
+                "page_size",
+                "ordering",
+                "correspondent",
+                "document_type",
+                "tags__id__all",
+            ],
+        );
         self.get_value(&format!("/api/documents/{qs}")).await
     }
 

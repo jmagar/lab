@@ -60,13 +60,7 @@ pub fn render_scaffold_result(result: &ScaffoldResult) -> String {
     let mut out = String::new();
 
     let mode = if result.dry_run { "dry-run" } else { "applied" };
-    writeln!(
-        out,
-        "scaffold {} ({})",
-        result.service,
-        result.kind
-    )
-    .ok();
+    writeln!(out, "scaffold {} ({})", result.service, result.kind).ok();
     writeln!(out, "mode: {mode}").ok();
 
     if result.dry_run {

@@ -72,7 +72,7 @@ fn encode_path_segment(s: &str) -> String {
             let mut buf = [0u8; 4];
             let encoded = c.encode_utf8(&mut buf);
             for byte in encoded.bytes() {
-                write!(out, "%{byte:02X}").expect("writing to String is infallible");
+                let _ = write!(out, "%{byte:02X}");
             }
         }
     }

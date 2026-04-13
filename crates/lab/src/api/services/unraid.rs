@@ -26,8 +26,8 @@ async fn handle(
         req,
         ACTIONS,
         move |action, params| async move {
-            let instance = crate::dispatch::helpers::optional_str(&params, "instance")?
-                .map(str::to_owned);
+            let instance =
+                crate::dispatch::helpers::optional_str(&params, "instance")?.map(str::to_owned);
             let mut params_clean = params;
             if let Value::Object(ref mut map) = params_clean {
                 map.remove("instance");

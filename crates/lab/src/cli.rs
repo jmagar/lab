@@ -4,16 +4,16 @@
 //! `lab-apis` client (or a lab-local subsystem), and formats output.
 //! See `crates/lab/src/cli/CLAUDE.md` for the rulebook.
 
+pub mod audit;
 pub mod completions;
 pub mod doctor;
 pub mod health;
 pub mod help;
 pub mod helpers;
 pub mod install;
-pub mod audit;
 pub mod params;
-pub mod scaffold;
 pub mod plugins;
+pub mod scaffold;
 pub mod serve;
 
 #[cfg(feature = "apprise")]

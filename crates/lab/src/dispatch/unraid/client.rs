@@ -6,7 +6,7 @@ use lab_apis::core::Auth;
 use lab_apis::unraid::UnraidClient;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{env_non_empty, InstancePool};
+use crate::dispatch::helpers::{InstancePool, env_non_empty};
 
 /// Strip trailing `/graphql` and surrounding slashes from an Unraid URL.
 ///
@@ -99,6 +99,7 @@ pub fn not_configured_error() -> ToolError {
 /// Return a client or a structured `internal_error` if not configured.
 ///
 /// Used by MCP and CLI dispatch where `AppState` is not available.
+#[allow(dead_code)]
 pub fn require_client() -> Result<UnraidClient, ToolError> {
     client_from_env().ok_or_else(not_configured_error)
 }

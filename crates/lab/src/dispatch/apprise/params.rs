@@ -37,10 +37,11 @@ fn payload_object(params: &Value) -> Result<Option<Value>, ToolError> {
         None => Ok(None),
         Some(Value::Object(map)) => Ok(Some(Value::Object(map.clone()))),
         Some(Value::String(raw)) => {
-            let parsed = serde_json::from_str::<Value>(raw).map_err(|_| ToolError::InvalidParam {
-                message: "parameter `payload` must be a JSON object".into(),
-                param: "payload".into(),
-            })?;
+            let parsed =
+                serde_json::from_str::<Value>(raw).map_err(|_| ToolError::InvalidParam {
+                    message: "parameter `payload` must be a JSON object".into(),
+                    param: "payload".into(),
+                })?;
             if !parsed.is_object() {
                 return Err(ToolError::InvalidParam {
                     message: "parameter `payload` must be a JSON object".into(),

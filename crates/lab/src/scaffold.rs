@@ -177,8 +177,8 @@ fn write_file(repo_root: &Path, op: &FileOp) -> Result<bool> {
     }
 
     if path.exists() {
-        let existing = fs::read_to_string(&path)
-            .map_err(|source| ScaffoldError::io(path.clone(), source))?;
+        let existing =
+            fs::read_to_string(&path).map_err(|source| ScaffoldError::io(path.clone(), source))?;
         if existing == op.content {
             return Ok(false);
         }

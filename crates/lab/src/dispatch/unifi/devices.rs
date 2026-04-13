@@ -208,7 +208,10 @@ pub async fn dispatch(
             let mut body =
                 object_without(&params, &["site_id", "mac_address", "ignore_device_limit"])?;
             if let Value::Object(ref mut map) = body {
-                map.insert("macAddress".to_string(), Value::String(mac_address.to_string()));
+                map.insert(
+                    "macAddress".to_string(),
+                    Value::String(mac_address.to_string()),
+                );
                 if let Some(v) = params.get("ignore_device_limit") {
                     map.insert("ignoreDeviceLimit".to_string(), v.clone());
                 }

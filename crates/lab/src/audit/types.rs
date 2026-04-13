@@ -26,8 +26,11 @@ pub struct AuditReport {
 impl AuditReport {
     #[must_use]
     pub fn has_failures(&self) -> bool {
-        self.services
-            .iter()
-            .any(|service| service.checks.iter().any(|(_, result)| matches!(result, CheckResult::Fail(_))))
+        self.services.iter().any(|service| {
+            service
+                .checks
+                .iter()
+                .any(|(_, result)| matches!(result, CheckResult::Fail(_)))
+        })
     }
 }

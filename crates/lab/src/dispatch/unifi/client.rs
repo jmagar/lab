@@ -4,7 +4,7 @@ use lab_apis::core::Auth;
 use lab_apis::unifi::UnifiClient;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{env_non_empty, InstancePool};
+use crate::dispatch::helpers::{InstancePool, env_non_empty};
 
 static POOL: OnceLock<InstancePool<UnifiClient>> = OnceLock::new();
 

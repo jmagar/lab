@@ -33,6 +33,9 @@ mod tests {
     #[test]
     fn file_or_skip_missing_returns_skip() {
         let result = file_or_skip(Path::new("/nonexistent/path/that/cannot/exist"));
-        assert!(matches!(result, CheckResult::Skip(_)), "missing file should be Skip, not Fail");
+        assert!(
+            matches!(result, CheckResult::Skip(_)),
+            "missing file should be Skip, not Fail"
+        );
     }
 }

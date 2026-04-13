@@ -2,6 +2,8 @@
 //!
 //! Endpoints land incrementally from `docs/upstream-api/qdrant.openapi.json`.
 
+use std::fmt::Write as _;
+
 use crate::core::{Auth, HttpClient};
 
 use super::error::QdrantError;
@@ -57,7 +59,10 @@ impl QdrantClient {
     ///
     /// # Errors
     /// Returns `QdrantError::Api` on HTTP failure, decode failure, or if `name` is empty.
-    pub async fn collection_get(&self, name: &str) -> Result<super::types::CollectionInfo, QdrantError> {
+    pub async fn collection_get(
+        &self,
+        name: &str,
+    ) -> Result<super::types::CollectionInfo, QdrantError> {
         if name.is_empty() {
             return Err(QdrantError::Api(crate::core::ApiError::Validation {
                 field: "name".into(),
@@ -82,7 +87,7 @@ fn encode_path_segment(s: &str) -> String {
             let mut buf = [0u8; 4];
             let encoded = c.encode_utf8(&mut buf);
             for byte in encoded.bytes() {
-                out.push_str(&format!("%{byte:02X}"));
+                let _ = write!(out, "%{byte:02X}");
             }
         }
     }

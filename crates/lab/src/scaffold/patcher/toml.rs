@@ -22,11 +22,12 @@ where
         });
     };
 
-    let mut doc: toml::Table = toml::from_str(&format!("[features]\n{body}")).map_err(
-        |err: toml::de::Error| ScaffoldError::Toml {
-            message: err.to_string(),
-        },
-    )?;
+    let mut doc: toml::Table =
+        toml::from_str(&format!("[features]\n{body}")).map_err(|err: toml::de::Error| {
+            ScaffoldError::Toml {
+                message: err.to_string(),
+            }
+        })?;
     let Some(features): Option<&mut toml::map::Map<String, toml::Value>> =
         doc.get_mut("features").and_then(toml::Value::as_table_mut)
     else {
@@ -54,10 +55,9 @@ where
     }
     *features = reordered;
 
-    let rendered = toml::to_string_pretty(&doc)
-        .map_err(|err| ScaffoldError::Toml {
-            message: err.to_string(),
-        })?;
+    let rendered = toml::to_string_pretty(&doc).map_err(|err| ScaffoldError::Toml {
+        message: err.to_string(),
+    })?;
     let rendered_body = rendered
         .strip_prefix("[features]\n")
         .or_else(|| rendered.strip_prefix("[features]\r\n"))

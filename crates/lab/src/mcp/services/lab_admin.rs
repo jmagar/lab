@@ -4,8 +4,8 @@
 //! This file re-exports them so the MCP registry can reference this path
 //! without owning any logic.
 
-pub use crate::dispatch::lab_admin::dispatch;
 pub use crate::dispatch::lab_admin::ACTIONS;
+pub use crate::dispatch::lab_admin::dispatch;
 
 #[cfg(test)]
 mod tests {
@@ -27,6 +27,9 @@ mod tests {
     #[test]
     fn catalog_has_onboarding_audit() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
-        assert!(names.contains(&"onboarding.audit"), "onboarding.audit missing from catalog");
+        assert!(
+            names.contains(&"onboarding.audit"),
+            "onboarding.audit missing from catalog"
+        );
     }
 }

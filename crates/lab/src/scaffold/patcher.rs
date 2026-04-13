@@ -12,17 +12,29 @@ type PatchFn = fn(&str, &str) -> Result<String>;
 
 pub fn compute_patches(name: &str, repo_root: &Path) -> Result<Vec<FileOp>> {
     let patches: &[(&str, PatchFn)] = &[
-        ("crates/lab-apis/Cargo.toml",          toml::patch_lab_apis_cargo),
-        ("crates/lab/Cargo.toml",               toml::patch_lab_cargo),
-        ("crates/lab-apis/src/lib.rs",          source::patch_lib_rs),
-        ("crates/lab/src/dispatch.rs",          source::patch_dispatch_rs),
-        ("crates/lab/src/cli.rs",               source::patch_cli_rs),
-        ("crates/lab/src/mcp/services.rs",      source::patch_mcp_services_rs),
-        ("crates/lab/src/mcp/registry.rs",      source::patch_mcp_registry_rs),
-        ("crates/lab/src/api/services.rs",      source::patch_api_services_rs),
-        ("crates/lab/src/api/router.rs",        source::patch_api_router_rs),
-        ("crates/lab/src/api/state.rs",         source::patch_api_state_rs),
-        ("crates/lab/src/tui/metadata.rs",      source::patch_tui_metadata_rs),
+        ("crates/lab-apis/Cargo.toml", toml::patch_lab_apis_cargo),
+        ("crates/lab/Cargo.toml", toml::patch_lab_cargo),
+        ("crates/lab-apis/src/lib.rs", source::patch_lib_rs),
+        ("crates/lab/src/dispatch.rs", source::patch_dispatch_rs),
+        ("crates/lab/src/cli.rs", source::patch_cli_rs),
+        (
+            "crates/lab/src/mcp/services.rs",
+            source::patch_mcp_services_rs,
+        ),
+        (
+            "crates/lab/src/mcp/registry.rs",
+            source::patch_mcp_registry_rs,
+        ),
+        (
+            "crates/lab/src/api/services.rs",
+            source::patch_api_services_rs,
+        ),
+        ("crates/lab/src/api/router.rs", source::patch_api_router_rs),
+        ("crates/lab/src/api/state.rs", source::patch_api_state_rs),
+        (
+            "crates/lab/src/tui/metadata.rs",
+            source::patch_tui_metadata_rs,
+        ),
     ];
 
     let mut ops = Vec::new();

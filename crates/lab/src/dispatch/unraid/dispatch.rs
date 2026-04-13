@@ -5,11 +5,7 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, optional_str, to_json};
-use crate::dispatch::unraid::{
-    catalog::ACTIONS,
-    client::client_from_instance,
-    params::require_id,
-};
+use crate::dispatch::unraid::{catalog::ACTIONS, client::client_from_instance, params::require_id};
 
 /// Dispatch using a pre-built client (avoids per-request env reads).
 ///

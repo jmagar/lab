@@ -58,7 +58,10 @@ pub enum ScaffoldError {
     InvalidTarget { path: PathBuf, base: PathBuf },
 
     #[error("io error while writing `{path}`")]
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 
     #[error("invalid TOML while patching: {message}")]
     Toml { message: String },
@@ -120,4 +123,3 @@ mod tests {
         assert!(validate_service_name("a-b").is_err()); // hyphen
     }
 }
-

@@ -38,9 +38,7 @@ pub async fn run(args: LinkdingArgs, format: OutputFormat) -> Result<ExitCode> {
         action,
         params,
         format,
-        |action, params| async move {
-            crate::dispatch::linkding::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::linkding::dispatch(&action, params).await },
     )
     .await
 }

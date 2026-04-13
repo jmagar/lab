@@ -31,23 +31,47 @@ mod tests {
 
     #[test]
     fn destructive_actions_are_marked() {
-        let archive = ACTIONS.iter().find(|a| a.name == "bookmarks.archive").unwrap();
-        assert!(archive.destructive, "bookmarks.archive must be marked destructive");
+        let archive = ACTIONS
+            .iter()
+            .find(|a| a.name == "bookmarks.archive")
+            .unwrap();
+        assert!(
+            archive.destructive,
+            "bookmarks.archive must be marked destructive"
+        );
 
-        let delete = ACTIONS.iter().find(|a| a.name == "bookmarks.delete").unwrap();
-        assert!(delete.destructive, "bookmarks.delete must be marked destructive");
+        let delete = ACTIONS
+            .iter()
+            .find(|a| a.name == "bookmarks.delete")
+            .unwrap();
+        assert!(
+            delete.destructive,
+            "bookmarks.delete must be marked destructive"
+        );
 
         let tags_create = ACTIONS.iter().find(|a| a.name == "tags.create").unwrap();
-        assert!(tags_create.destructive, "tags.create must be marked destructive");
+        assert!(
+            tags_create.destructive,
+            "tags.create must be marked destructive"
+        );
     }
 
     #[test]
     fn non_destructive_actions_are_not_marked() {
         let list = ACTIONS.iter().find(|a| a.name == "bookmarks.list").unwrap();
-        assert!(!list.destructive, "bookmarks.list must not be marked destructive");
+        assert!(
+            !list.destructive,
+            "bookmarks.list must not be marked destructive"
+        );
 
-        let create = ACTIONS.iter().find(|a| a.name == "bookmarks.create").unwrap();
-        assert!(!create.destructive, "bookmarks.create must not be marked destructive");
+        let create = ACTIONS
+            .iter()
+            .find(|a| a.name == "bookmarks.create")
+            .unwrap();
+        assert!(
+            !create.destructive,
+            "bookmarks.create must not be marked destructive"
+        );
     }
 
     #[tokio::test]

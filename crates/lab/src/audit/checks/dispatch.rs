@@ -26,7 +26,11 @@ pub fn run(name: &str, repo_root: &Path) -> Vec<(String, CheckResult)> {
         "dispatch.client".into(),
         contains_all(
             &client_text,
-            &["client_from_env()", "require_client()", "not_configured_error()"],
+            &[
+                "client_from_env()",
+                "require_client()",
+                "not_configured_error()",
+            ],
         ),
     ));
     out

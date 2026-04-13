@@ -12,10 +12,10 @@ mod audit;
 mod catalog;
 mod cli;
 mod config;
-mod scaffold;
 mod dispatch;
 mod mcp;
 mod output;
+mod scaffold;
 #[cfg(test)]
 mod test_support;
 mod tui;

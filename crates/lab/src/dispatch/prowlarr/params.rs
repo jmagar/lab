@@ -43,12 +43,10 @@ pub fn history_query_from_params(params: &Value) -> Result<HistoryQuery, ToolErr
     let sort_dir = optional_str(params, "sort_dir")?.map(str::to_owned);
 
     let indexer_id = params.get("indexer_id").map_or(Ok(None), |v| {
-        v.as_i64()
-            .map(Some)
-            .ok_or_else(|| ToolError::InvalidParam {
-                message: "parameter `indexer_id` must be an integer".to_string(),
-                param: "indexer_id".to_string(),
-            })
+        v.as_i64().map(Some).ok_or_else(|| ToolError::InvalidParam {
+            message: "parameter `indexer_id` must be an integer".to_string(),
+            param: "indexer_id".to_string(),
+        })
     })?;
 
     Ok(HistoryQuery {

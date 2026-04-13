@@ -6,10 +6,10 @@ pub mod arcane;
 pub mod bytestash;
 pub mod error;
 pub mod extract;
-pub mod lab_admin;
 #[cfg(feature = "gotify")]
 pub mod gotify;
 pub mod helpers;
+pub mod lab_admin;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 #[cfg(feature = "memos")]

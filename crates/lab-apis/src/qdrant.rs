@@ -60,7 +60,7 @@ impl ServiceClient for QdrantClient {
 
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
         let start = Instant::now();
-        match QdrantClient::health(self).await {
+        match Self::health(self).await {
             Ok(()) => Ok(ServiceStatus {
                 reachable: true,
                 auth_ok: true,

@@ -59,27 +59,27 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
         };
     }
 
-    mount_if_enabled!(v1, state, "radarr",      "radarr",      radarr);
-    mount_if_enabled!(v1, state, "sonarr",      "sonarr",      sonarr);
-    mount_if_enabled!(v1, state, "prowlarr",    "prowlarr",    prowlarr);
-    mount_if_enabled!(v1, state, "plex",        "plex",        plex);
-    mount_if_enabled!(v1, state, "tautulli",    "tautulli",    tautulli);
-    mount_if_enabled!(v1, state, "sabnzbd",     "sabnzbd",     sabnzbd);
+    mount_if_enabled!(v1, state, "radarr", "radarr", radarr);
+    mount_if_enabled!(v1, state, "sonarr", "sonarr", sonarr);
+    mount_if_enabled!(v1, state, "prowlarr", "prowlarr", prowlarr);
+    mount_if_enabled!(v1, state, "plex", "plex", plex);
+    mount_if_enabled!(v1, state, "tautulli", "tautulli", tautulli);
+    mount_if_enabled!(v1, state, "sabnzbd", "sabnzbd", sabnzbd);
     mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
-    mount_if_enabled!(v1, state, "tailscale",   "tailscale",   tailscale);
-    mount_if_enabled!(v1, state, "linkding",    "linkding",    linkding);
-    mount_if_enabled!(v1, state, "memos",       "memos",       memos);
-    mount_if_enabled!(v1, state, "bytestash",   "bytestash",   bytestash);
-    mount_if_enabled!(v1, state, "paperless",   "paperless",   paperless);
-    mount_if_enabled!(v1, state, "arcane",      "arcane",      arcane);
-    mount_if_enabled!(v1, state, "unraid",      "unraid",      unraid);
-    mount_if_enabled!(v1, state, "unifi",       "unifi",       unifi);
-    mount_if_enabled!(v1, state, "overseerr",   "overseerr",   overseerr);
-    mount_if_enabled!(v1, state, "gotify",      "gotify",      gotify);
-    mount_if_enabled!(v1, state, "openai",      "openai",      openai);
-    mount_if_enabled!(v1, state, "qdrant",      "qdrant",      qdrant);
-    mount_if_enabled!(v1, state, "tei",         "tei",         tei);
-    mount_if_enabled!(v1, state, "apprise",     "apprise",     apprise);
+    mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
+    mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
+    mount_if_enabled!(v1, state, "memos", "memos", memos);
+    mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
+    mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
+    mount_if_enabled!(v1, state, "arcane", "arcane", arcane);
+    mount_if_enabled!(v1, state, "unraid", "unraid", unraid);
+    mount_if_enabled!(v1, state, "unifi", "unifi", unifi);
+    mount_if_enabled!(v1, state, "overseerr", "overseerr", overseerr);
+    mount_if_enabled!(v1, state, "gotify", "gotify", gotify);
+    mount_if_enabled!(v1, state, "openai", "openai", openai);
+    mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
+    mount_if_enabled!(v1, state, "tei", "tei", tei);
+    mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
 
     let x_request_id = HeaderName::from_static("x-request-id");
 

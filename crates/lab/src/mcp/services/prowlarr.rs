@@ -44,7 +44,10 @@ mod tests {
 
     #[test]
     fn destructive_actions_are_marked() {
-        let indexer_delete = ACTIONS.iter().find(|a| a.name == "indexers.delete").unwrap();
+        let indexer_delete = ACTIONS
+            .iter()
+            .find(|a| a.name == "indexers.delete")
+            .unwrap();
         assert!(
             indexer_delete.destructive,
             "indexers.delete must be marked destructive"

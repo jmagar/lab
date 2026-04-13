@@ -37,9 +37,7 @@ pub async fn run(args: ProwlarrArgs, format: OutputFormat) -> Result<ExitCode> {
         action,
         params,
         format,
-        |action, params| async move {
-            crate::dispatch::prowlarr::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::prowlarr::dispatch(&action, params).await },
     )
     .await
 }

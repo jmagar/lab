@@ -79,7 +79,12 @@ where
             .any(|spec| spec.name == action && spec.destructive)
     {
         if !std::io::stdin().is_terminal() {
-            tracing::warn!(surface = "cli", service, action, "destructive action blocked: non-interactive stdin, pass -y");
+            tracing::warn!(
+                surface = "cli",
+                service,
+                action,
+                "destructive action blocked: non-interactive stdin, pass -y"
+            );
             anyhow::bail!("pass -y / --yes to confirm destructive action `{action}`");
         }
         let confirmed = Confirm::new()
@@ -90,7 +95,12 @@ where
             .interact()
             .map_err(|e| anyhow::anyhow!("failed to read confirmation: {e}"))?;
         if !confirmed {
-            tracing::info!(surface = "cli", service, action, "destructive action aborted by user");
+            tracing::info!(
+                surface = "cli",
+                service,
+                action,
+                "destructive action aborted by user"
+            );
             anyhow::bail!("aborted by user");
         }
     }

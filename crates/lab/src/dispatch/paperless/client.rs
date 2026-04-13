@@ -13,8 +13,7 @@ use crate::dispatch::helpers::env_non_empty;
 #[allow(dead_code)]
 pub fn client_from_env() -> Option<PaperlessClient> {
     let url = env_non_empty("PAPERLESS_URL")?;
-    let token = env_non_empty("PAPERLESS_TOKEN")
-        .or_else(|| env_non_empty("PAPERLESS_API_KEY"))?;
+    let token = env_non_empty("PAPERLESS_TOKEN").or_else(|| env_non_empty("PAPERLESS_API_KEY"))?;
     PaperlessClient::new(
         &url,
         Auth::ApiKey {
@@ -37,6 +36,7 @@ pub fn require_client() -> Result<PaperlessClient, ToolError> {
 pub fn not_configured_error() -> ToolError {
     ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
-        message: "PAPERLESS_URL or PAPERLESS_TOKEN (or PAPERLESS_API_KEY) not configured".to_string(),
+        message: "PAPERLESS_URL or PAPERLESS_TOKEN (or PAPERLESS_API_KEY) not configured"
+            .to_string(),
     }
 }

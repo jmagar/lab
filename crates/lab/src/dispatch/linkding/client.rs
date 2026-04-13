@@ -1,5 +1,5 @@
-use lab_apis::linkding::LinkdingClient;
 use lab_apis::core::Auth;
+use lab_apis::linkding::LinkdingClient;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;

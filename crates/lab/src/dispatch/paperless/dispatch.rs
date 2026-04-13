@@ -3,8 +3,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
-use crate::dispatch::paperless::{catalog::ACTIONS, client, params};
 use crate::dispatch::paperless::params::require_id_u64;
+use crate::dispatch::paperless::{catalog::ACTIONS, client, params};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 ///
@@ -113,4 +113,3 @@ pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolEr
     }
     dispatch_with_client(&client::require_client()?, action, params_value).await
 }
-

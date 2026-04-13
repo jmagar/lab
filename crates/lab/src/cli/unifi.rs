@@ -46,7 +46,9 @@ pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
         if let serde_json::Value::Object(ref mut map) = params {
             map.insert("instance".to_string(), serde_json::Value::String(instance));
         } else {
-            anyhow::bail!("--instance requires params to be key=value pairs that form a JSON object");
+            anyhow::bail!(
+                "--instance requires params to be key=value pairs that form a JSON object"
+            );
         }
     }
     if args.dry_run {

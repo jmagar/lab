@@ -42,10 +42,14 @@ mod tests {
     #[test]
     fn destructive_actions_are_marked() {
         let check = |name: &str| {
-            let spec = ACTIONS.iter().find(|a| a.name == name).unwrap_or_else(|| {
-                panic!("action '{name}' not found in catalog")
-            });
-            assert!(spec.destructive, "action '{name}' must be marked destructive");
+            let spec = ACTIONS
+                .iter()
+                .find(|a| a.name == name)
+                .unwrap_or_else(|| panic!("action '{name}' not found in catalog"));
+            assert!(
+                spec.destructive,
+                "action '{name}' must be marked destructive"
+            );
         };
         check("documents.update");
         check("documents.delete");
@@ -60,9 +64,10 @@ mod tests {
     #[test]
     fn read_actions_are_not_destructive() {
         let check = |name: &str| {
-            let spec = ACTIONS.iter().find(|a| a.name == name).unwrap_or_else(|| {
-                panic!("action '{name}' not found in catalog")
-            });
+            let spec = ACTIONS
+                .iter()
+                .find(|a| a.name == name)
+                .unwrap_or_else(|| panic!("action '{name}' not found in catalog"));
             assert!(
                 !spec.destructive,
                 "action '{name}' must NOT be marked destructive"
@@ -97,10 +102,7 @@ mod tests {
         assert_eq!(val["service"], "paperless");
         let actions = val["actions"].as_array().unwrap();
         assert!(!actions.is_empty());
-        let names: Vec<&str> = actions
-            .iter()
-            .filter_map(|a| a["name"].as_str())
-            .collect();
+        let names: Vec<&str> = actions.iter().filter_map(|a| a["name"].as_str()).collect();
         assert!(names.contains(&"documents.list"));
         assert!(names.contains(&"statistics"));
     }

@@ -60,9 +60,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         .or_else(|| config.mcp.host.clone())
         .unwrap_or_else(|| "127.0.0.1".to_string());
     if matches!(transport, Transport::Http) && host.is_empty() {
-        anyhow::bail!(
-            "HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config"
-        );
+        anyhow::bail!("HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config");
     }
     let port = resolve_port(
         args.port,

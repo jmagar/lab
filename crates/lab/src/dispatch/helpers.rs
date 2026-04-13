@@ -1,7 +1,7 @@
 //! Shared dispatch helpers used across all service modules.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use lab_apis::core::action::ActionSpec;
 use serde_json::Value;
@@ -202,16 +202,21 @@ impl<C: Send + Sync + 'static> InstancePool<C> {
                 }
             }
         }
-        Self { clients, all_labels }
+        Self {
+            clients,
+            all_labels,
+        }
     }
 
     /// Look up a client by exact (already-normalised) label.
+    #[allow(dead_code)]
     pub fn get(&self, label: &str) -> Option<&Arc<C>> {
         self.clients.get(label)
     }
 
     /// All instance labels discovered in the environment (including those with
     /// broken or incomplete configuration).
+    #[allow(dead_code)]
     pub fn all_labels(&self) -> &[String] {
         &self.all_labels
     }
@@ -266,7 +271,10 @@ pub fn instance_env_keys(prefix: &str, label: &str) -> (String, String) {
         (format!("{prefix}_URL"), format!("{prefix}_API_KEY"))
     } else {
         let upper = label.to_ascii_uppercase();
-        (format!("{prefix}_{upper}_URL"), format!("{prefix}_{upper}_API_KEY"))
+        (
+            format!("{prefix}_{upper}_URL"),
+            format!("{prefix}_{upper}_API_KEY"),
+        )
     }
 }
 

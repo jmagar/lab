@@ -143,7 +143,9 @@ mod tests {
                 .any(|op| op.path == PathBuf::from("crates/lab-apis/src/sampleaudit.rs"))
         );
         assert!(
-            !dir.path().join("crates/lab-apis/src/sampleaudit.rs").exists(),
+            !dir.path()
+                .join("crates/lab-apis/src/sampleaudit.rs")
+                .exists(),
             "dry-run should not write files"
         );
     }
@@ -154,12 +156,12 @@ mod tests {
         seed_repo(dir.path());
         let root = dir.path().to_path_buf();
 
-        let first = crate::scaffold::scaffold_service(config(root.clone()), false)
-            .expect("first scaffold");
+        let first =
+            crate::scaffold::scaffold_service(config(root.clone()), false).expect("first scaffold");
         assert!(!first.created.is_empty());
 
-        let second = crate::scaffold::scaffold_service(config(root), false)
-            .expect("second scaffold");
+        let second =
+            crate::scaffold::scaffold_service(config(root), false).expect("second scaffold");
         assert!(second.created.is_empty());
         assert!(second.modified.is_empty());
     }

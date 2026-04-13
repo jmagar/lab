@@ -8,13 +8,17 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 fn require_app_client(
     clients: &GotifyClients,
 ) -> Result<&lab_apis::gotify::GotifyClient, ToolError> {
-    clients.app().ok_or_else(super::client::not_configured_error)
+    clients
+        .app()
+        .ok_or_else(super::client::not_configured_error)
 }
 
 fn require_management_client(
     clients: &GotifyClients,
 ) -> Result<&lab_apis::gotify::GotifyClient, ToolError> {
-    clients.client().ok_or_else(super::client::not_configured_error)
+    clients
+        .client()
+        .ok_or_else(super::client::not_configured_error)
 }
 
 /// Dispatch against pre-built Gotify clients (avoids per-request env reads).
@@ -99,7 +103,7 @@ pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolEr
         }
         _ => {}
     }
-    let clients = super::client::clients_from_env()
-        .ok_or_else(super::client::not_configured_error)?;
+    let clients =
+        super::client::clients_from_env().ok_or_else(super::client::not_configured_error)?;
     dispatch_with_client(&clients, action, params_value).await
 }

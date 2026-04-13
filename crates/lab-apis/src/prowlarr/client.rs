@@ -45,10 +45,7 @@ impl ProwlarrClient {
     /// # Errors
     /// Returns `ProwlarrError::Api` on HTTP failure.
     pub async fn indexer_get(&self, id: i64) -> Result<Value, ProwlarrError> {
-        Ok(self
-            .http
-            .get_json(&format!("/api/v1/indexer/{id}"))
-            .await?)
+        Ok(self.http.get_json(&format!("/api/v1/indexer/{id}")).await?)
     }
 
     /// Delete a single indexer by ID.
@@ -58,10 +55,7 @@ impl ProwlarrClient {
     /// # Errors
     /// Returns `ProwlarrError::Api` on HTTP failure.
     pub async fn indexer_delete(&self, id: i64) -> Result<(), ProwlarrError> {
-        Ok(self
-            .http
-            .delete(&format!("/api/v1/indexer/{id}"))
-            .await?)
+        Ok(self.http.delete(&format!("/api/v1/indexer/{id}")).await?)
     }
 
     /// Test a single indexer.
@@ -75,10 +69,7 @@ impl ProwlarrClient {
     /// # Errors
     /// Returns `ProwlarrError::Api` on HTTP failure.
     pub async fn indexer_test(&self, id: i64) -> Result<Value, ProwlarrError> {
-        let indexer: Value = self
-            .http
-            .get_json(&format!("/api/v1/indexer/{id}"))
-            .await?;
+        let indexer: Value = self.http.get_json(&format!("/api/v1/indexer/{id}")).await?;
         Ok(self
             .http
             .post_json("/api/v1/indexer/test", &indexer)
@@ -120,10 +111,7 @@ impl ProwlarrClient {
     /// Returns `ProwlarrError::Api` on HTTP failure.
     pub async fn history_list(&self, query: &HistoryQuery) -> Result<Value, ProwlarrError> {
         let pairs = query.to_query_pairs();
-        Ok(self
-            .http
-            .get_json_query("/api/v1/history", &pairs)
-            .await?)
+        Ok(self.http.get_json_query("/api/v1/history", &pairs).await?)
     }
 
     // ── Applications ──────────────────────────────────────────────────────────

@@ -1,9 +1,11 @@
 use serde_json::Value;
 
-use lab_apis::linkding::types::{BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, TagCreateRequest};
+use lab_apis::linkding::types::{
+    BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, TagCreateRequest,
+};
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{body_from_params, optional_u32, optional_str, require_i64};
+use crate::dispatch::helpers::{body_from_params, optional_str, optional_u32, require_i64};
 
 /// Extract a required `id` param as `u64`, rejecting negative values.
 pub fn require_id_u64(params: &Value) -> Result<u64, ToolError> {

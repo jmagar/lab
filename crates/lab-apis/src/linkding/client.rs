@@ -5,7 +5,9 @@ use serde_json::Value;
 use crate::core::{Auth, HttpClient};
 
 use super::error::LinkdingError;
-use super::types::{BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, TagCreateRequest};
+use super::types::{
+    BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, TagCreateRequest,
+};
 
 /// Client for a Linkding bookmark manager instance.
 pub struct LinkdingClient {
@@ -88,7 +90,10 @@ impl LinkdingClient {
     // ── Bookmarks ──────────────────────────────────────────────────────────
 
     /// List bookmarks with optional filters.
-    pub async fn bookmarks_list(&self, params: &BookmarkListParams) -> Result<Value, LinkdingError> {
+    pub async fn bookmarks_list(
+        &self,
+        params: &BookmarkListParams,
+    ) -> Result<Value, LinkdingError> {
         let query = Self::bookmark_list_query(params);
         self.get_value_query("/api/bookmarks/", &query).await
     }
@@ -99,7 +104,8 @@ impl LinkdingClient {
         params: &BookmarkListParams,
     ) -> Result<Value, LinkdingError> {
         let query = Self::bookmark_list_query(params);
-        self.get_value_query("/api/bookmarks/archived/", &query).await
+        self.get_value_query("/api/bookmarks/archived/", &query)
+            .await
     }
 
     /// Retrieve a single bookmark by ID.
@@ -116,7 +122,10 @@ impl LinkdingClient {
     }
 
     /// Create a new bookmark.
-    pub async fn bookmark_create(&self, body: &BookmarkWriteRequest) -> Result<Value, LinkdingError> {
+    pub async fn bookmark_create(
+        &self,
+        body: &BookmarkWriteRequest,
+    ) -> Result<Value, LinkdingError> {
         self.post_value("/api/bookmarks/", body).await
     }
 
@@ -126,7 +135,8 @@ impl LinkdingClient {
         id: u64,
         body: &BookmarkUpdateRequest,
     ) -> Result<Value, LinkdingError> {
-        self.patch_value(&format!("/api/bookmarks/{id}/"), body).await
+        self.patch_value(&format!("/api/bookmarks/{id}/"), body)
+            .await
     }
 
     /// Archive a bookmark.
@@ -176,4 +186,3 @@ impl LinkdingClient {
         self.get_value("/api/user/profile/").await
     }
 }
-

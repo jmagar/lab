@@ -1,7 +1,7 @@
 //! Rust source patchers for scaffold generation.
 
-use crate::scaffold::templates::pascal_case;
 use super::super::service::{Result, ScaffoldError};
+use crate::scaffold::templates::pascal_case;
 
 pub fn patch_lib_rs(_name: &str, content: &str) -> Result<String> {
     insert_before_eof(
@@ -138,4 +138,3 @@ fn insert_once(content: &str, needle: &str, replacement: &str) -> Result<String>
     out.push_str(&content[idx + needle.len()..]);
     Ok(out)
 }
-
