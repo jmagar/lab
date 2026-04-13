@@ -186,4 +186,3 @@ impl LinkdingClient {
         self.get_value("/api/user/profile/").await
     }
 }
-

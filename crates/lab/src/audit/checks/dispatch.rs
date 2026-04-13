@@ -13,14 +13,7 @@ pub fn run(name: &str, repo_root: &Path) -> Vec<(String, CheckResult)> {
 
     out.push((
         "dispatch.entrypoint".into(),
-        contains_all(
-            &entry_text,
-            &[
-                "ACTIONS",
-                "client_from_env",
-                "dispatch",
-            ],
-        ),
+        contains_all(&entry_text, &["ACTIONS", "client_from_env", "dispatch"]),
     ));
     out.push((
         "dispatch.client".into(),

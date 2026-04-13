@@ -77,9 +77,7 @@ impl ServiceClient for TeiClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("authentication failed".into()),
             }),
-            Ok(Err(TeiError::Api(ApiError::Network(err)))) => {
-                Ok(ServiceStatus::unreachable(err))
-            }
+            Ok(Err(TeiError::Api(ApiError::Network(err)))) => Ok(ServiceStatus::unreachable(err)),
             Ok(Err(TeiError::Api(err))) => Ok(ServiceStatus::degraded(err.to_string())),
         }
     }

@@ -228,9 +228,21 @@ async fn gotify_row() -> HealthRow {
     };
     let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     if row.reachable && row.auth_ok {
-        tracing::info!(surface = "cli", service = "gotify", operation = "health", elapsed_ms, "health ok");
+        tracing::info!(
+            surface = "cli",
+            service = "gotify",
+            operation = "health",
+            elapsed_ms,
+            "health ok"
+        );
     } else {
-        tracing::warn!(surface = "cli", service = "gotify", operation = "health", elapsed_ms, "health issue");
+        tracing::warn!(
+            surface = "cli",
+            service = "gotify",
+            operation = "health",
+            elapsed_ms,
+            "health issue"
+        );
     }
     row
 }
