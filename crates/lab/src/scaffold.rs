@@ -5,7 +5,7 @@
 
 mod patcher;
 mod service;
-pub(crate) mod templates;
+mod templates;
 
 pub use service::{
     FileOp, Result, ScaffoldConfig, ScaffoldError, ScaffoldKind, ScaffoldResult,
@@ -19,7 +19,7 @@ use std::path::Path;
 use tracing::info;
 
 /// Generate the onboarding scaffold for one service.
-pub fn scaffold_service(config: ScaffoldConfig, dry_run: bool) -> Result<ScaffoldResult> {
+pub fn scaffold_service(config: &ScaffoldConfig, dry_run: bool) -> Result<ScaffoldResult> {
     let service = validate_service_name(&config.service)?;
 
     let mut planned = service_file_ops(&service);
@@ -123,14 +123,14 @@ fn service_file_ops(service: &str) -> Vec<FileOp> {
     ]
 }
 
-/// Reject any path that contains a `..` (ParentDir) component.
+/// Reject any path that contains a `..` (`ParentDir`) component.
 ///
 /// Also checks that any existing parent directory in the path is not a symlink
 /// that escapes the repository root. Canonicalization of the full path is not
 /// used because the target file may not exist yet; instead we walk existing
 /// ancestor directories and verify each resolved path stays within root.
 ///
-/// All FileOp paths are constructed from hardcoded prefixes plus a validated
+/// All `FileOp` paths are constructed from hardcoded prefixes plus a validated
 /// service name, so a `..` component can only appear via adversarial input.
 fn validate_path_within_root(root: &Path, path: &Path) -> Result<()> {
     use std::path::Component;
@@ -146,24 +146,20 @@ fn validate_path_within_root(root: &Path, path: &Path) -> Result<()> {
     // Walk existing ancestors to detect symlinks escaping the root.
     let abs = root.join(path);
     let mut check = abs.as_path();
-    loop {
-        if let Some(parent) = check.parent() {
-            if parent.exists() {
-                if let Ok(canonical) = parent.canonicalize() {
-                    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-                    if !canonical.starts_with(&canonical_root) {
-                        return Err(ScaffoldError::InvalidTarget {
-                            path: path.to_path_buf(),
-                            base: root.to_path_buf(),
-                        });
-                    }
+    while let Some(parent) = check.parent() {
+        if parent.exists() {
+            if let Ok(canonical) = parent.canonicalize() {
+                let canonical_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+                if !canonical.starts_with(&canonical_root) {
+                    return Err(ScaffoldError::InvalidTarget {
+                        path: path.to_path_buf(),
+                        base: root.to_path_buf(),
+                    });
                 }
-                break;
             }
-            check = parent;
-        } else {
             break;
         }
+        check = parent;
     }
 
     Ok(())

@@ -12,10 +12,10 @@ pub async fn dispatch_with_client(
     params_value: Value,
 ) -> Result<Value, ToolError> {
     match action {
-        "help" => return Ok(help_payload("apprise", ACTIONS)),
+        "help" => Ok(help_payload("apprise", ACTIONS)),
         "schema" => {
             let action_name = require_str(&params_value, "action")?;
-            return action_schema(ACTIONS, action_name);
+            action_schema(ACTIONS, action_name)
         }
         "server.health" => {
             client.health().await?;

@@ -30,6 +30,7 @@ pub struct OnboardingArgs {
     pub services: Vec<String>,
 }
 
+#[allow(clippy::print_stdout)]
 pub fn run(args: AuditArgs, format: OutputFormat) -> Result<ExitCode> {
     match args.command {
         AuditCommand::Onboarding(args) => {

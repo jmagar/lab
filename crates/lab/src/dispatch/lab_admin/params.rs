@@ -24,7 +24,7 @@ pub fn parse_services(params: &Value) -> Result<Vec<String>, ToolError> {
         .map(|value| {
             value
                 .as_str()
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .ok_or_else(|| ToolError::InvalidParam {
                     message: "parameter `services` must be an array of strings".into(),
                     param: "services".into(),

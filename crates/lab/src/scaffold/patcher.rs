@@ -37,8 +37,8 @@ pub fn compute_patches(name: &str, repo_root: &Path) -> Result<Vec<FileOp>> {
     ];
 
     let mut ops = Vec::new();
-    for (rel_path, patch) in patches {
-        collect_patch(name, repo_root, rel_path, patch, &mut ops)?;
+    for (path_str, patch) in patches {
+        collect_patch(name, repo_root, path_str, patch, &mut ops)?;
     }
     Ok(ops)
 }
@@ -53,14 +53,14 @@ fn collect_patch<F>(
 where
     F: Fn(&str, &str) -> Result<String>,
 {
-    let rel_path = PathBuf::from(rel_path);
-    let path = repo_root.join(&rel_path);
-    let content = fs::read_to_string(&path)
-        .map_err(|source| super::service::ScaffoldError::io(path.clone(), source))?;
+    let relative = PathBuf::from(rel_path);
+    let absolute = repo_root.join(&relative);
+    let content = fs::read_to_string(&absolute)
+        .map_err(|source| super::service::ScaffoldError::io(absolute.clone(), source))?;
     let patched = patch(name, &content)?;
     if patched != content {
         ops.push(FileOp {
-            path: rel_path,
+            path: relative,
             content: patched,
         });
     }

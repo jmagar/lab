@@ -93,7 +93,7 @@ trait CheckExt {
 impl CheckExt for CheckResult {
     fn or_skip(self, msg: &str) -> Self {
         match self {
-            CheckResult::Fail(_) => CheckResult::Skip(msg.to_string()),
+            Self::Fail(_) => Self::Skip(msg.to_string()),
             other => other,
         }
     }

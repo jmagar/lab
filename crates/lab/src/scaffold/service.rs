@@ -71,7 +71,7 @@ pub enum ScaffoldError {
 }
 
 impl ScaffoldError {
-    pub fn io(path: PathBuf, source: std::io::Error) -> Self {
+    pub const fn io(path: PathBuf, source: std::io::Error) -> Self {
         Self::Io { path, source }
     }
 }

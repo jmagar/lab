@@ -294,7 +294,7 @@ impl ServerHandler for LabMcpServer {
                         kind,
                         "dispatch error"
                     );
-                };
+                }
                 let envelope = extra.map_or_else(
                     || build_error(&service, &action, kind, &message),
                     |ref extra| build_error_extra(&service, &action, kind, &message, extra),

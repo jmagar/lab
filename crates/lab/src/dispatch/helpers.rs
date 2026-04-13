@@ -159,7 +159,7 @@ pub fn action_schema(actions: &[ActionSpec], action_name: &str) -> Result<Value,
 
 /// Generic pool of named service clients built once at first access.
 ///
-/// `InstancePool<C>` consolidates the three-static / two-static OnceLock
+/// `InstancePool<C>` consolidates the three-static / two-static `OnceLock`
 /// patterns that were previously duplicated verbatim across every
 /// multi-instance service (`unifi`, `unraid`, …).
 ///
@@ -196,10 +196,10 @@ impl<C: Send + Sync + 'static> InstancePool<C> {
         for (label, _vars) in scan_instances(prefix) {
             all_labels.push(label.clone());
             let (url_key, key_key) = instance_env_keys(prefix, &label);
-            if let (Some(url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key)) {
-                if let Some(client) = build(url, key) {
-                    clients.insert(label, Arc::new(client));
-                }
+            if let (Some(url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key))
+                && let Some(client) = build(url, key)
+            {
+                clients.insert(label, Arc::new(client));
             }
         }
         Self {

@@ -9,10 +9,7 @@ pub fn require_client() -> Result<TeiClient, ToolError> {
         sdk_kind: "internal_error".into(),
         message: "TEI_URL not configured".into(),
     })?;
-    let auth = match env_non_empty("TEI_API_KEY") {
-        Some(token) => Auth::Bearer { token },
-        None => Auth::None,
-    };
+    let auth = env_non_empty("TEI_API_KEY").map_or(Auth::None, |token| Auth::Bearer { token });
     TeiClient::new(&url, auth).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: format!("tei client init failed: {e}"),
@@ -21,9 +18,6 @@ pub fn require_client() -> Result<TeiClient, ToolError> {
 
 pub fn client_from_env() -> Option<TeiClient> {
     let url = env_non_empty("TEI_URL")?;
-    let auth = match env_non_empty("TEI_API_KEY") {
-        Some(token) => Auth::Bearer { token },
-        None => Auth::None,
-    };
+    let auth = env_non_empty("TEI_API_KEY").map_or(Auth::None, |token| Auth::Bearer { token });
     TeiClient::new(&url, auth).ok()
 }

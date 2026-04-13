@@ -5,10 +5,7 @@ use crate::dispatch::error::ToolError;
 
 pub fn embed_request_from_params(params: &Value) -> Result<EmbedRequest, ToolError> {
     let source = match params.get("payload") {
-        Some(Value::Object(_)) => params
-            .get("payload")
-            .cloned()
-            .expect("payload exists and is object"),
+        Some(Value::Object(map)) => Value::Object(map.clone()),
         Some(_) => {
             return Err(ToolError::InvalidParam {
                 message: "parameter `payload` must be an object".into(),
@@ -69,14 +66,13 @@ pub fn embed_request_from_params(params: &Value) -> Result<EmbedRequest, ToolErr
 }
 
 fn optional_bool(source: &Value, key: &str) -> Result<Option<bool>, ToolError> {
-    match source.get(key) {
-        None => Ok(None),
-        Some(value) => value
+    source.get(key).map_or(Ok(None), |value| {
+        value
             .as_bool()
             .map(Some)
             .ok_or_else(|| ToolError::InvalidParam {
                 message: format!("parameter `{key}` must be a boolean"),
                 param: key.into(),
-            }),
-    }
+            })
+    })
 }

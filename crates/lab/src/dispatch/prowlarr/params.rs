@@ -20,13 +20,13 @@ pub fn history_query_from_params(params: &Value) -> Result<HistoryQuery, ToolErr
                 param: "page".to_string(),
             })
     })?;
-    if let Some(p) = page {
-        if p < 1 {
-            return Err(ToolError::InvalidParam {
-                message: "parameter `page` must be >= 1 (pages are 1-based)".to_string(),
-                param: "page".to_string(),
-            });
-        }
+    if let Some(p) = page
+        && p < 1
+    {
+        return Err(ToolError::InvalidParam {
+            message: "parameter `page` must be >= 1 (pages are 1-based)".to_string(),
+            param: "page".to_string(),
+        });
     }
 
     let page_size = params.get("page_size").map_or(Ok(None), |v| {

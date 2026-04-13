@@ -32,17 +32,14 @@ async fn handle(
             if let Value::Object(ref mut map) = params_clean {
                 map.remove("instance");
             }
-            match instance {
-                Some(label) => {
-                    let c = crate::dispatch::unraid::client_from_instance(Some(&label))?;
-                    crate::dispatch::unraid::dispatch_with_client(&c, &action, params_clean).await
-                }
-                None => {
-                    let Some(ref c) = client else {
-                        return Err(crate::dispatch::unraid::not_configured_error());
-                    };
-                    crate::dispatch::unraid::dispatch_with_client(c, &action, params_clean).await
-                }
+            if let Some(label) = instance {
+                let c = crate::dispatch::unraid::client_from_instance(Some(&label))?;
+                crate::dispatch::unraid::dispatch_with_client(&c, &action, params_clean).await
+            } else {
+                let Some(ref c) = client else {
+                    return Err(crate::dispatch::unraid::not_configured_error());
+                };
+                crate::dispatch::unraid::dispatch_with_client(c, &action, params_clean).await
             }
         },
     )

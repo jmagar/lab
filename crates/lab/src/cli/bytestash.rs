@@ -36,6 +36,7 @@ pub struct BytestashArgs {
 ///
 /// # Errors
 /// Returns an error if the client is not configured or the API call fails.
+#[allow(clippy::print_stdout)]
 pub async fn run(args: BytestashArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = parse_kv_params(args.params)?;
     if args.dry_run {

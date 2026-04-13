@@ -49,6 +49,7 @@ pub fn run(args: ScaffoldArgs, format: OutputFormat) -> Result<ExitCode> {
     }
 }
 
+#[allow(clippy::print_stdout, clippy::print_stderr)]
 fn run_service(args: ServiceArgs, format: OutputFormat) -> Result<ExitCode> {
     if !args.dry_run && !args.yes {
         if std::io::stdin().is_terminal() {
@@ -71,7 +72,7 @@ fn run_service(args: ServiceArgs, format: OutputFormat) -> Result<ExitCode> {
         kind: args.kind,
         repo_root: std::env::current_dir()?,
     };
-    let result = crate::scaffold::scaffold_service(config, args.dry_run)?;
+    let result = crate::scaffold::scaffold_service(&config, args.dry_run)?;
 
     match format {
         OutputFormat::Json => print(&result, format)?,
@@ -131,7 +132,7 @@ mod tests {
     fn scaffold_dry_run_plans_files_without_writing() {
         let dir = tempdir().expect("tempdir");
         seed_repo(dir.path());
-        let result = crate::scaffold::scaffold_service(config(dir.path().to_path_buf()), true)
+        let result = crate::scaffold::scaffold_service(&config(dir.path().to_path_buf()), true)
             .expect("scaffold");
 
         assert!(result.dry_run);
@@ -157,11 +158,11 @@ mod tests {
         let root = dir.path().to_path_buf();
 
         let first =
-            crate::scaffold::scaffold_service(config(root.clone()), false).expect("first scaffold");
+            crate::scaffold::scaffold_service(&config(root.clone()), false).expect("first scaffold");
         assert!(!first.created.is_empty());
 
         let second =
-            crate::scaffold::scaffold_service(config(root), false).expect("second scaffold");
+            crate::scaffold::scaffold_service(&config(root), false).expect("second scaffold");
         assert!(second.created.is_empty());
         assert!(second.modified.is_empty());
     }

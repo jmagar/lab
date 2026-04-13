@@ -40,6 +40,7 @@ pub struct UnifiArgs {
 ///
 /// # Errors
 /// Returns an error if the client is not configured or the API call fails.
+#[allow(clippy::print_stdout)]
 pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
     let mut params = parse_kv_params(args.params)?;
     if let Some(instance) = args.instance {

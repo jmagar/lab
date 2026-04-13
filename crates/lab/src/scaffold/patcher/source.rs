@@ -3,31 +3,32 @@
 use super::super::service::{Result, ScaffoldError};
 use crate::scaffold::templates::pascal_case;
 
-pub fn patch_lib_rs(_name: &str, content: &str) -> Result<String> {
-    insert_before_eof(
+#[allow(clippy::unnecessary_wraps)]
+pub fn patch_lib_rs(name: &str, content: &str) -> Result<String> {
+    Ok(insert_before_eof(
         content,
-        &format!("#[cfg(feature = \"{_name}\")]\npub mod {_name};\n"),
-    )
+        &format!("#[cfg(feature = \"{name}\")]\npub mod {name};\n"),
+    ))
 }
 
-pub fn patch_dispatch_rs(_name: &str, content: &str) -> Result<String> {
+pub fn patch_dispatch_rs(name: &str, content: &str) -> Result<String> {
     insert_once(
         content,
         "pub mod helpers;\n",
-        &format!("pub mod helpers;\n#[cfg(feature = \"{_name}\")]\npub mod {_name};\n"),
+        &format!("pub mod helpers;\n#[cfg(feature = \"{name}\")]\npub mod {name};\n"),
     )
 }
 
-pub fn patch_cli_rs(_name: &str, content: &str) -> Result<String> {
+pub fn patch_cli_rs(name: &str, content: &str) -> Result<String> {
     let content = insert_once(
         content,
         "pub mod serve;\n",
-        &format!("pub mod serve;\npub mod {_name};\n"),
+        &format!("pub mod serve;\npub mod {name};\n"),
     )?;
     let service_variant = format!(
-        "    #[cfg(feature = \"{_name}\")]\n    {service}({snake}::{service}Args),\n",
-        service = pascal_case(_name),
-        snake = _name,
+        "    #[cfg(feature = \"{name}\")]\n    {service}({snake}::{service}Args),\n",
+        service = pascal_case(name),
+        snake = name,
     );
     let content = insert_once(
         &content,
@@ -38,9 +39,9 @@ pub fn patch_cli_rs(_name: &str, content: &str) -> Result<String> {
     )?;
 
     let dispatch_arm = format!(
-        "        #[cfg(feature = \"{_name}\")]\n        Command::{service}(args) => {snake}::run(args, format).await,\n",
-        service = pascal_case(_name),
-        snake = _name,
+        "        #[cfg(feature = \"{name}\")]\n        Command::{service}(args) => {snake}::run(args, format).await,\n",
+        service = pascal_case(name),
+        snake = name,
     );
     insert_once(
         &content,
@@ -51,31 +52,33 @@ pub fn patch_cli_rs(_name: &str, content: &str) -> Result<String> {
     )
 }
 
-pub fn patch_mcp_services_rs(_name: &str, content: &str) -> Result<String> {
-    insert_before_eof(
+#[allow(clippy::unnecessary_wraps)]
+pub fn patch_mcp_services_rs(name: &str, content: &str) -> Result<String> {
+    Ok(insert_before_eof(
         content,
-        &format!("\n#[cfg(feature = \"{_name}\")]\npub mod {_name};\n"),
-    )
+        &format!("\n#[cfg(feature = \"{name}\")]\npub mod {name};\n"),
+    ))
 }
 
-pub fn patch_mcp_registry_rs(_name: &str, content: &str) -> Result<String> {
+pub fn patch_mcp_registry_rs(name: &str, content: &str) -> Result<String> {
     insert_once(
         content,
         "    reg\n}",
-        &format!("    register_service!(reg, \"{_name}\", {_name});\n\n    reg\n}}"),
+        &format!("    register_service!(reg, \"{name}\", {name});\n\n    reg\n}}"),
     )
 }
 
-pub fn patch_api_services_rs(_name: &str, content: &str) -> Result<String> {
-    insert_before_eof(
+#[allow(clippy::unnecessary_wraps)]
+pub fn patch_api_services_rs(name: &str, content: &str) -> Result<String> {
+    Ok(insert_before_eof(
         content,
-        &format!("\n#[cfg(feature = \"{_name}\")]\npub mod {_name};\n"),
-    )
+        &format!("\n#[cfg(feature = \"{name}\")]\npub mod {name};\n"),
+    ))
 }
 
-pub fn patch_api_router_rs(_name: &str, content: &str) -> Result<String> {
+pub fn patch_api_router_rs(name: &str, content: &str) -> Result<String> {
     let insert = format!(
-        "    #[cfg(feature = \"{_name}\")]\n    if state.registry.services().iter().any(|s| s.name == \"{_name}\") {{\n        v1 = v1.nest(\"/{_name}\", services::{_name}::routes(state.clone()));\n    }}\n"
+        "    #[cfg(feature = \"{name}\")]\n    if state.registry.services().iter().any(|s| s.name == \"{name}\") {{\n        v1 = v1.nest(\"/{name}\", services::{name}::routes(state.clone()));\n    }}\n"
     );
     insert_once(
         content,
@@ -84,10 +87,10 @@ pub fn patch_api_router_rs(_name: &str, content: &str) -> Result<String> {
     )
 }
 
-pub fn patch_api_state_rs(_name: &str, content: &str) -> Result<String> {
+pub fn patch_api_state_rs(name: &str, content: &str) -> Result<String> {
     let field = format!(
-        "    #[cfg(feature = \"{_name}\")]\n    pub {_name}: Option<Arc<lab_apis::{_name}::{service_type}Client>>,",
-        service_type = pascal_case(_name)
+        "    #[cfg(feature = \"{name}\")]\n    pub {name}: Option<Arc<lab_apis::{name}::{service_type}Client>>,",
+        service_type = pascal_case(name)
     );
     let content = insert_once(
         content,
@@ -98,7 +101,7 @@ pub fn patch_api_state_rs(_name: &str, content: &str) -> Result<String> {
     )?;
 
     let load = format!(
-        "            #[cfg(feature = \"{_name}\")]\n            {_name}: crate::dispatch::{_name}::client_from_env().map(Arc::new),"
+        "            #[cfg(feature = \"{name}\")]\n            {name}: crate::dispatch::{name}::client_from_env().map(Arc::new),"
     );
     insert_once(
         &content,
@@ -109,14 +112,14 @@ pub fn patch_api_state_rs(_name: &str, content: &str) -> Result<String> {
     )
 }
 
-fn insert_before_eof(content: &str, insert: &str) -> Result<String> {
+fn insert_before_eof(content: &str, insert: &str) -> String {
     if content.contains(insert) {
-        return Ok(content.to_string());
+        return content.to_string();
     }
     let mut out = String::with_capacity(content.len() + insert.len());
     out.push_str(content);
     out.push_str(insert);
-    Ok(out)
+    out
 }
 
 fn insert_once(content: &str, needle: &str, replacement: &str) -> Result<String> {

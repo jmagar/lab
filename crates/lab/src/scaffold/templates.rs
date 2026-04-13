@@ -21,21 +21,20 @@ pub use lab_apis::{
 /// Each `_`-separated segment has its first character uppercased; the rest is
 /// left unchanged.  An empty segment (e.g. a leading/trailing `_`) produces an
 /// empty string for that segment.
-pub(crate) fn pascal_case(s: &str) -> String {
+pub fn pascal_case(s: &str) -> String {
     s.split('_')
         .map(|part| {
             let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
-                None => String::new(),
-            }
+            chars
+                .next()
+                .map_or_else(String::new, |first| format!("{}{}", first.to_ascii_uppercase(), chars.as_str()))
         })
         .collect()
 }
 
 /// Replace `{{service}}`, `{{Service}}`, and `{{SERVICE}}` placeholders in a
-/// template string with the snake-case service name, its PascalCase form, and
-/// its SCREAMING_SNAKE form respectively.
+/// template string with the snake-case service name, its `PascalCase` form, and
+/// its `SCREAMING_SNAKE` form respectively.
 pub(super) fn replace_service(template: &str, service: &str) -> String {
     template
         .replace("{{service}}", service)

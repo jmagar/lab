@@ -8,10 +8,7 @@ pub fn notify_request_from_params(
     params: &Value,
     strip: &[&str],
 ) -> Result<NotifyRequest, ToolError> {
-    let source = match payload_object(params)? {
-        Some(payload) => payload,
-        None => object_without(params, strip),
-    };
+    let source = payload_object(params)?.unwrap_or_else(|| object_without(params, strip));
 
     let body = match source.get("body") {
         Some(Value::String(s)) => s.clone(),
