@@ -106,6 +106,12 @@ Rules:
 - Never read env vars inside `dispatch.rs` or `params.rs` — always go through `client.rs`.
 - When the service supports multiple instances, add `client_from_instance(label: Option<&str>)` here.
 
+> **Header casing:** The default is `X-Api-Key` (Servarr convention). Some APIs enforce specific casing:
+> - Unraid: `X-API-Key` — matches the Unraid server's exact validation
+> - UniFi: `X-API-KEY` — all caps, matches UniFi Network Application spec
+> HTTP headers are case-insensitive on the wire, but some servers validate exact casing.
+> Check the upstream API spec before setting.
+
 ## `dispatch.rs` Template
 
 Every `dispatch/<service>/dispatch.rs` must handle the two built-in actions before
