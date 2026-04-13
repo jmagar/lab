@@ -47,6 +47,7 @@ crossterm.workspace          = true
 
 fd-lock                      = "4"
 tempfile                     = "3.10"
+subtle                       = "2"
 indexmap                     = { version = "2", features = ["serde"] }
 secrecy                      = "0.8"
 sha2                         = "0.10"

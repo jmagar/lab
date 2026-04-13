@@ -10,6 +10,7 @@ use axum::{
     middleware::Next,
     routing::get,
 };
+use subtle::ConstantTimeEq;
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
@@ -19,34 +20,29 @@ use tower_http::{
 };
 use tracing::Level;
 
-/// Constant-time byte comparison to prevent timing-based token prefix leakage.
-///
-/// Length mismatch still reveals length information, but that is unavoidable
-/// without padding and is acceptable for a pre-shared homelab token.
+/// Constant-time byte comparison using `subtle::ConstantTimeEq` to prevent
+/// timing-based token prefix leakage (lab-63jc).
 fn tokens_equal(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.as_bytes()
-        .iter()
-        .zip(b.as_bytes().iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
+    a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
 use super::{health, services, state::AppState};
 use crate::dispatch::error::ToolError;
 
-#[allow(clippy::too_many_lines)]
 pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
+    // lab-4v9: warn early so operators can see that auth is disabled.
+    if bearer_token.is_none() {
+        tracing::warn!("HTTP API started without bearer token — all /v1 routes are unprotected");
+    }
+
     let mut v1 = Router::new()
         .route("/{service}/actions", get(service_actions))
         // always-on service
         .nest("/extract", services::extract::routes(state.clone()));
 
-    // Feature-gated per-service route groups.
+    // Feature-gated per-service route groups (lab-9ngs).
     //
-    // Each block has two guards:
+    // Each invocation has two guards:
     //   1. Compile-time `#[cfg(feature)]` — the handler code must exist.
     //   2. Runtime registry check — only mount if the service was not filtered
     //      out by `--services` (or equivalent) at startup.
@@ -54,90 +50,36 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
     // Both guards are required: the feature flag ensures the handler module
     // compiles; the registry check ensures that `lab serve --services radarr`
     // cannot be bypassed by POSTing to `/v1/sonarr`.
-    #[cfg(feature = "radarr")]
-    if state.registry.services().iter().any(|s| s.name == "radarr") {
-        v1 = v1.nest("/radarr", services::radarr::routes(state.clone()));
+    macro_rules! mount_if_enabled {
+        ($v1:ident, $state:ident, $feat:literal, $name:literal, $mod:ident) => {
+            #[cfg(feature = $feat)]
+            if $state.registry.services().iter().any(|s| s.name == $name) {
+                $v1 = $v1.nest(concat!("/", $name), services::$mod::routes($state.clone()));
+            }
+        };
     }
-    #[cfg(feature = "sonarr")]
-    if state.registry.services().iter().any(|s| s.name == "sonarr") {
-        v1 = v1.nest("/sonarr", services::sonarr::routes(state.clone()));
-    }
-    #[cfg(feature = "prowlarr")]
-    if state.registry.services().iter().any(|s| s.name == "prowlarr") {
-        v1 = v1.nest("/prowlarr", services::prowlarr::routes(state.clone()));
-    }
-    #[cfg(feature = "plex")]
-    if state.registry.services().iter().any(|s| s.name == "plex") {
-        v1 = v1.nest("/plex", services::plex::routes(state.clone()));
-    }
-    #[cfg(feature = "tautulli")]
-    if state.registry.services().iter().any(|s| s.name == "tautulli") {
-        v1 = v1.nest("/tautulli", services::tautulli::routes(state.clone()));
-    }
-    #[cfg(feature = "sabnzbd")]
-    if state.registry.services().iter().any(|s| s.name == "sabnzbd") {
-        v1 = v1.nest("/sabnzbd", services::sabnzbd::routes(state.clone()));
-    }
-    #[cfg(feature = "qbittorrent")]
-    if state.registry.services().iter().any(|s| s.name == "qbittorrent") {
-        v1 = v1.nest("/qbittorrent", services::qbittorrent::routes(state.clone()));
-    }
-    #[cfg(feature = "tailscale")]
-    if state.registry.services().iter().any(|s| s.name == "tailscale") {
-        v1 = v1.nest("/tailscale", services::tailscale::routes(state.clone()));
-    }
-    #[cfg(feature = "linkding")]
-    if state.registry.services().iter().any(|s| s.name == "linkding") {
-        v1 = v1.nest("/linkding", services::linkding::routes(state.clone()));
-    }
-    #[cfg(feature = "memos")]
-    if state.registry.services().iter().any(|s| s.name == "memos") {
-        v1 = v1.nest("/memos", services::memos::routes(state.clone()));
-    }
-    #[cfg(feature = "bytestash")]
-    if state.registry.services().iter().any(|s| s.name == "bytestash") {
-        v1 = v1.nest("/bytestash", services::bytestash::routes(state.clone()));
-    }
-    #[cfg(feature = "paperless")]
-    if state.registry.services().iter().any(|s| s.name == "paperless") {
-        v1 = v1.nest("/paperless", services::paperless::routes(state.clone()));
-    }
-    #[cfg(feature = "arcane")]
-    if state.registry.services().iter().any(|s| s.name == "arcane") {
-        v1 = v1.nest("/arcane", services::arcane::routes(state.clone()));
-    }
-    #[cfg(feature = "unraid")]
-    if state.registry.services().iter().any(|s| s.name == "unraid") {
-        v1 = v1.nest("/unraid", services::unraid::routes(state.clone()));
-    }
-    #[cfg(feature = "unifi")]
-    if state.registry.services().iter().any(|s| s.name == "unifi") {
-        v1 = v1.nest("/unifi", services::unifi::routes(state.clone()));
-    }
-    #[cfg(feature = "overseerr")]
-    if state.registry.services().iter().any(|s| s.name == "overseerr") {
-        v1 = v1.nest("/overseerr", services::overseerr::routes(state.clone()));
-    }
-    #[cfg(feature = "gotify")]
-    if state.registry.services().iter().any(|s| s.name == "gotify") {
-        v1 = v1.nest("/gotify", services::gotify::routes(state.clone()));
-    }
-    #[cfg(feature = "openai")]
-    if state.registry.services().iter().any(|s| s.name == "openai") {
-        v1 = v1.nest("/openai", services::openai::routes(state.clone()));
-    }
-    #[cfg(feature = "qdrant")]
-    if state.registry.services().iter().any(|s| s.name == "qdrant") {
-        v1 = v1.nest("/qdrant", services::qdrant::routes(state.clone()));
-    }
-    #[cfg(feature = "tei")]
-    if state.registry.services().iter().any(|s| s.name == "tei") {
-        v1 = v1.nest("/tei", services::tei::routes(state.clone()));
-    }
-    #[cfg(feature = "apprise")]
-    if state.registry.services().iter().any(|s| s.name == "apprise") {
-        v1 = v1.nest("/apprise", services::apprise::routes(state.clone()));
-    }
+
+    mount_if_enabled!(v1, state, "radarr",      "radarr",      radarr);
+    mount_if_enabled!(v1, state, "sonarr",      "sonarr",      sonarr);
+    mount_if_enabled!(v1, state, "prowlarr",    "prowlarr",    prowlarr);
+    mount_if_enabled!(v1, state, "plex",        "plex",        plex);
+    mount_if_enabled!(v1, state, "tautulli",    "tautulli",    tautulli);
+    mount_if_enabled!(v1, state, "sabnzbd",     "sabnzbd",     sabnzbd);
+    mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
+    mount_if_enabled!(v1, state, "tailscale",   "tailscale",   tailscale);
+    mount_if_enabled!(v1, state, "linkding",    "linkding",    linkding);
+    mount_if_enabled!(v1, state, "memos",       "memos",       memos);
+    mount_if_enabled!(v1, state, "bytestash",   "bytestash",   bytestash);
+    mount_if_enabled!(v1, state, "paperless",   "paperless",   paperless);
+    mount_if_enabled!(v1, state, "arcane",      "arcane",      arcane);
+    mount_if_enabled!(v1, state, "unraid",      "unraid",      unraid);
+    mount_if_enabled!(v1, state, "unifi",       "unifi",       unifi);
+    mount_if_enabled!(v1, state, "overseerr",   "overseerr",   overseerr);
+    mount_if_enabled!(v1, state, "gotify",      "gotify",      gotify);
+    mount_if_enabled!(v1, state, "openai",      "openai",      openai);
+    mount_if_enabled!(v1, state, "qdrant",      "qdrant",      qdrant);
+    mount_if_enabled!(v1, state, "tei",         "tei",         tei);
+    mount_if_enabled!(v1, state, "apprise",     "apprise",     apprise);
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
@@ -228,7 +170,23 @@ fn build_cors_layer() -> CorsLayer {
     let env_origins: Vec<HeaderValue> = std::env::var("LAB_CORS_ORIGINS")
         .unwrap_or_default()
         .split(',')
-        .filter_map(|s| s.trim().parse::<HeaderValue>().ok())
+        .filter_map(|s| {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            match trimmed.parse::<HeaderValue>() {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!(
+                        origin = trimmed,
+                        error = %e,
+                        "ignoring unparseable CORS origin from LAB_CORS_ORIGINS"
+                    );
+                    None
+                }
+            }
+        })
         .collect();
 
     // Include common dev ports so browser clients on localhost:PORT work
