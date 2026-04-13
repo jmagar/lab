@@ -10,14 +10,6 @@ use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
-/// Module-level cache of named `Unraid` clients, built once on first access.
-static NAMED_CLIENTS: OnceLock<HashMap<String, Arc<UnraidClient>>> = OnceLock::new();
-
-/// All labels discovered by `scan_instances("UNRAID")`, built once alongside
-/// `NAMED_CLIENTS`. A label present here but absent from `NAMED_CLIENTS`
-/// means the instance was discovered but its env vars are broken/incomplete.
-static ALL_LABELS: OnceLock<Vec<String>> = OnceLock::new();
-
 /// Strip trailing `/graphql` and surrounding slashes from an Unraid URL.
 ///
 /// The URL stored in env can be either the bare host (`https://host:31337`)
@@ -30,16 +22,27 @@ fn normalize_unraid_url(raw: &str) -> String {
         .to_string()
 }
 
-/// Return (or lazily build) the map of named `Unraid` clients.
+/// Combined pool of named `Unraid` clients and their discovered labels, built
+/// once on first access. Replaces the two-static coupled-via-side-effect
+/// pattern: both fields are initialised atomically inside a single
+/// `OnceLock::get_or_init` closure.
+struct UnraidPool {
+    clients: HashMap<String, Arc<UnraidClient>>,
+    all_labels: Vec<String>,
+}
+
+static POOL: OnceLock<UnraidPool> = OnceLock::new();
+
+/// Return (or lazily build) the `Unraid` instance pool.
 ///
-/// The map is keyed by label (e.g. `"default"`, `"node2"`) and built once
-/// by scanning env vars at first call. Subsequent calls are lock-free reads.
-fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
-    NAMED_CLIENTS.get_or_init(|| {
-        let mut map = HashMap::new();
-        let mut all: Vec<String> = Vec::new();
+/// The pool is built once by scanning env vars at first call. Subsequent
+/// calls are lock-free reads.
+fn pool() -> &'static UnraidPool {
+    POOL.get_or_init(|| {
+        let mut clients = HashMap::new();
+        let mut all_labels: Vec<String> = Vec::new();
         for (label, _vars) in scan_instances("UNRAID") {
-            all.push(label.clone());
+            all_labels.push(label.clone());
             let (url_key, key_key) = if label == "default" {
                 ("UNRAID_URL".to_string(), "UNRAID_API_KEY".to_string())
             } else {
@@ -51,7 +54,7 @@ fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
             };
             if let (Some(raw_url), Some(key)) = (env_non_empty(&url_key), env_non_empty(&key_key)) {
                 let url = normalize_unraid_url(&raw_url);
-                if let Ok(client) = UnraidClient::new(
+                match UnraidClient::new(
                     &url,
                     Auth::ApiKey {
                         // Unraid's GraphQL API requires "X-API-Key" (all-caps KEY) per its
@@ -62,22 +65,28 @@ fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
                         key,
                     },
                 ) {
-                    map.insert(label, Arc::new(client));
+                    Ok(client) => {
+                        clients.insert(label, Arc::new(client));
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, label, "unraid client construction failed");
+                    }
                 }
             }
         }
-        // Populate the labels cache as a side-effect of the first init.
-        drop(ALL_LABELS.set(all));
-        map
+        UnraidPool { clients, all_labels }
     })
+}
+
+/// Return the map of named `Unraid` clients.
+fn named_clients() -> &'static HashMap<String, Arc<UnraidClient>> {
+    &pool().clients
 }
 
 /// Return all instance labels discovered in the environment (including those
 /// with broken or incomplete configuration).
 fn all_labels() -> &'static Vec<String> {
-    // Trigger named_clients() init which also populates ALL_LABELS.
-    let _ = named_clients();
-    ALL_LABELS.get_or_init(Vec::new)
+    &pool().all_labels
 }
 
 /// Build an `UnraidClient` from the default-instance environment variables.

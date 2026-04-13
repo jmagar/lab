@@ -8,24 +8,27 @@ use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
-/// Module-level cache of named `UniFi` clients, built once on first access.
-static NAMED_CLIENTS: OnceLock<HashMap<String, Arc<UnifiClient>>> = OnceLock::new();
+/// Combined pool of named `UniFi` clients and their discovered labels, built
+/// once on first access. Replaces the two-static coupled-via-side-effect
+/// pattern: both fields are initialised atomically inside a single
+/// `OnceLock::get_or_init` closure.
+struct UnifiPool {
+    clients: HashMap<String, Arc<UnifiClient>>,
+    all_labels: Vec<String>,
+}
 
-/// All labels discovered by `scan_instances("UNIFI")`, built once alongside
-/// `NAMED_CLIENTS`. A label present here but absent from `NAMED_CLIENTS`
-/// means the instance was discovered but its env vars are broken/incomplete.
-static ALL_LABELS: OnceLock<Vec<String>> = OnceLock::new();
+static POOL: OnceLock<UnifiPool> = OnceLock::new();
 
-/// Return (or lazily build) the map of named `UniFi` clients.
+/// Return (or lazily build) the `UniFi` instance pool.
 ///
-/// The map is keyed by label (e.g. `"default"`, `"home"`) and built once
-/// by scanning env vars at first call. Subsequent calls are lock-free reads.
-fn named_clients() -> &'static HashMap<String, Arc<UnifiClient>> {
-    NAMED_CLIENTS.get_or_init(|| {
-        let mut map = HashMap::new();
-        let mut all: Vec<String> = Vec::new();
+/// The pool is built once by scanning env vars at first call. Subsequent
+/// calls are lock-free reads.
+fn pool() -> &'static UnifiPool {
+    POOL.get_or_init(|| {
+        let mut clients = HashMap::new();
+        let mut all_labels: Vec<String> = Vec::new();
         for (label, _vars) in scan_instances("UNIFI") {
-            all.push(label.clone());
+            all_labels.push(label.clone());
             let (url_key, key_key) = if label == "default" {
                 ("UNIFI_URL".to_string(), "UNIFI_API_KEY".to_string())
             } else {
@@ -44,7 +47,7 @@ fn named_clients() -> &'static HashMap<String, Arc<UnifiClient>> {
                     },
                 ) {
                     Ok(client) => {
-                        map.insert(label, Arc::new(client));
+                        clients.insert(label, Arc::new(client));
                     }
                     Err(e) => {
                         tracing::warn!(error = %e, label, "unifi client construction failed");
@@ -52,18 +55,19 @@ fn named_clients() -> &'static HashMap<String, Arc<UnifiClient>> {
                 }
             }
         }
-        // Populate the labels cache as a side-effect of the first init.
-        drop(ALL_LABELS.set(all));
-        map
+        UnifiPool { clients, all_labels }
     })
+}
+
+/// Return the map of named `UniFi` clients.
+fn named_clients() -> &'static HashMap<String, Arc<UnifiClient>> {
+    &pool().clients
 }
 
 /// Return all instance labels discovered in the environment (including those
 /// with broken or incomplete configuration).
 fn all_labels() -> &'static Vec<String> {
-    // Trigger named_clients() init which also populates ALL_LABELS.
-    let _ = named_clients();
-    ALL_LABELS.get_or_init(Vec::new)
+    &pool().all_labels
 }
 
 /// Build a `UniFi` client from the default-instance env vars.
