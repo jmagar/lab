@@ -13,14 +13,11 @@ registry.register("radarr", services::radarr::dispatch);
 
 ## Dispatch pattern
 
-`services/<service>.rs` is a thin dispatcher that:
+For **migrated services**, `services/<service>.rs` is a thin bridge that delegates to `dispatch/<service>/dispatch.rs`. The dispatch module owns action routing, catalog, param validation, and client resolution. See `crates/lab/src/dispatch/CLAUDE.md` for the required layout and templates.
 
-1. Reads `params.action` (required).
-2. Reads `params.instance` (optional, defaults to main; returns `unknown_instance` envelope if label missing).
-3. Matches on action string → calls the corresponding `FooClient` method with typed params extracted from `params`.
-4. Wraps the result in `ToolEnvelope<T>` or a `ToolError` envelope.
+For **legacy stubs** (not yet migrated), `services/<service>.rs` does the full dispatch inline. When migrating, the MCP service module becomes a one-line delegate to the shared dispatch layer.
 
-**No business logic here.** If you find yourself calling `reqwest`, parsing JSON beyond param extraction, or retrying, you're in the wrong crate — move it to `lab-apis/src/<service>/client.rs`.
+**No business logic anywhere in `mcp/`.** If you find yourself calling `reqwest`, parsing JSON beyond param extraction, or retrying, move it to `lab-apis/src/<service>/client.rs`.
 
 ## Structured error envelopes
 

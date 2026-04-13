@@ -18,6 +18,7 @@ Shared dispatch ownership and adapter direction are governed by `docs/DISPATCH.m
 - `crates/lab-apis/src/core/` — trait contracts, error taxonomy, HttpClient invariants
 - `crates/lab-apis/src/servarr/` — shared *arr primitives
 - `crates/lab-apis/src/extract/` — synthetic-service rules, `.env` merge algorithm
+- `crates/lab/src/dispatch/` — shared dispatch layer, required service layout, canonical templates
 - `crates/lab/src/mcp/` — dispatch, envelopes, elicitation, catalog
 - `crates/lab/src/cli/` — thin-shim pattern, destructive flags, batch commands
 - `crates/lab/src/tui/` — plugin manager UX, `.mcp.json` patching
@@ -164,11 +165,12 @@ See `docs/MCP.md` for the MCP surface and `docs/CONVENTIONS.md` for the canonica
 5. Implement `ServiceClient` trait for health checks
 6. Add `#[cfg(feature = "foo")] pub mod foo;` to `lab-apis/src/lib.rs`
 7. Add `foo = []` feature to `crates/lab-apis/Cargo.toml`
-8. Create MCP dispatch in `crates/lab/src/mcp/services/foo.rs`
-9. Create CLI subcommands in `crates/lab/src/cli/foo.rs`
-10. Register in `crates/lab/src/mcp/registry.rs` and `crates/lab/src/cli.rs`
-11. Add `foo = ["lab-apis/foo"]` passthrough to `crates/lab/Cargo.toml`
-12. Add to plugin metadata in `crates/lab/src/tui/metadata.rs`
+8. Create the shared dispatch layer in `crates/lab/src/dispatch/foo/` following the required layout in `crates/lab/src/dispatch/CLAUDE.md` (catalog.rs, client.rs, params.rs, dispatch.rs + entry `foo.rs`)
+9. Create CLI subcommands in `crates/lab/src/cli/foo.rs` calling the dispatch layer
+10. Create API route group in `crates/lab/src/api/services/foo.rs` calling the dispatch layer
+11. Register in `crates/lab/src/mcp/registry.rs`, `crates/lab/src/cli.rs`, and `crates/lab/src/api/router.rs`
+12. Add `foo = ["lab-apis/foo"]` passthrough to `crates/lab/Cargo.toml`
+13. Add to plugin metadata in `crates/lab/src/tui/metadata.rs`
 
 A service is not fully online until one successful path and one failing path are traceable end to end without leaking secrets.
 

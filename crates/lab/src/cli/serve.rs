@@ -8,7 +8,7 @@ use clap::{Args, ValueEnum};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
     ElicitationAction, ElicitationSchema, ListToolsResult, PaginatedRequestParams, PrimitiveSchema,
-    ServerInfo, Tool,
+    ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
@@ -173,7 +173,7 @@ struct LabMcpServer {
 
 impl ServerHandler for LabMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::default()
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
     }
 
     async fn list_tools(

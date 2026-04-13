@@ -6,7 +6,7 @@ This directory is the foundation every service module depends on. Changes here r
 
 | File | Purpose |
 |------|---------|
-| `auth.rs` | `Auth` enum: `ApiKey { header, value }`, `Bearer { token }`, `Token { header, value }`, `Basic { user, pass }`, `Session { cookie }`, `None`. Debug impl **must** redact secrets. |
+| `auth.rs` | `Auth` enum: `ApiKey { header, key }`, `Bearer { token }`, `Token { token }`, `Basic { username, password }`, `Session { cookie }`, `None`. Debug impl **must** redact secrets. |
 | `http.rs` | `HttpClient` wrapper around `reqwest::Client` — retries with exponential backoff, rate-limit handling, tracing spans, auth injection. All service clients build on this. |
 | `error.rs` | `ApiError` canonical taxonomy + `kind()` method. See below. |
 | `status.rs` | `ServiceStatus { reachable, auth_ok, version, latency_ms, message }` — returned by `ServiceClient::status()`. |
