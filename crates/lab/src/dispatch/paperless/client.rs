@@ -2,6 +2,7 @@ use lab_apis::core::Auth;
 use lab_apis::paperless::PaperlessClient;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::env_non_empty;
 
 /// Build a `Paperless-ngx` client from the default-instance env vars.
 ///
@@ -11,13 +12,9 @@ use crate::dispatch::error::ToolError;
 /// Called by `AppState::ServiceClients::from_env()` at startup.
 #[allow(dead_code)]
 pub fn client_from_env() -> Option<PaperlessClient> {
-    let url = std::env::var("PAPERLESS_URL")
-        .ok()
-        .filter(|v| !v.is_empty())?;
-    let token = std::env::var("PAPERLESS_TOKEN")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .or_else(|| std::env::var("PAPERLESS_API_KEY").ok().filter(|v| !v.is_empty()))?;
+    let url = env_non_empty("PAPERLESS_URL")?;
+    let token = env_non_empty("PAPERLESS_TOKEN")
+        .or_else(|| env_non_empty("PAPERLESS_API_KEY"))?;
     PaperlessClient::new(
         &url,
         Auth::ApiKey {

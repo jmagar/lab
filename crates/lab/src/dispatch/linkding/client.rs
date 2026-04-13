@@ -2,15 +2,16 @@ use lab_apis::linkding::LinkdingClient;
 use lab_apis::core::Auth;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::env_non_empty;
 
 /// Build a `Linkding` client from the default-instance env vars.
 ///
 /// Linkding uses `Authorization: Token <api_token>` auth.
 /// Returns `None` if either env var is absent or empty.
 pub fn client_from_env() -> Option<LinkdingClient> {
-    let url = std::env::var("LINKDING_URL").ok();
-    let token = std::env::var("LINKDING_TOKEN").ok();
-    client_from_vars(url.as_deref(), token.as_deref())
+    let url = env_non_empty("LINKDING_URL")?;
+    let token = env_non_empty("LINKDING_TOKEN")?;
+    client_from_vars(Some(&url), Some(&token))
 }
 
 /// Build a client from explicit URL and token values.

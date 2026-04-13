@@ -2,17 +2,14 @@ use lab_apis::core::Auth;
 use lab_apis::prowlarr::ProwlarrClient;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::env_non_empty;
 
 /// Build a `Prowlarr` client from the default-instance env vars.
 ///
 /// Returns `None` if any required env var is absent or empty.
 pub fn client_from_env() -> Option<ProwlarrClient> {
-    let url = std::env::var("PROWLARR_URL")
-        .ok()
-        .filter(|v| !v.is_empty())?;
-    let key = std::env::var("PROWLARR_API_KEY")
-        .ok()
-        .filter(|v| !v.is_empty())?;
+    let url = env_non_empty("PROWLARR_URL")?;
+    let key = env_non_empty("PROWLARR_API_KEY")?;
     ProwlarrClient::new(
         &url,
         Auth::ApiKey {
