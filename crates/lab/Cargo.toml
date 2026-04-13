@@ -96,6 +96,9 @@ openai      = ["lab-apis/openai"]
 qdrant      = ["lab-apis/qdrant"]
 tei         = ["lab-apis/tei"]
 
+# internal admin / onboarding tooling
+lab-admin   = []
+
 all         = [
   "lab-apis/all",
   "radarr",
@@ -119,6 +122,7 @@ all         = [
   "openai",
   "qdrant",
   "tei",
+  "lab-admin",
 ]
 
 [lints]

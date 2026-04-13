@@ -254,7 +254,26 @@ pub fn build_default_registry() -> ToolRegistry {
     register_service!(reg, "tei", tei);
     register_service!(reg, "apprise", apprise);
 
+    #[cfg(feature = "lab-admin")]
+    if lab_admin_enabled() {
+        reg.register(RegisteredService {
+            name: "lab_admin",
+            description: "Internal onboarding audit tool",
+            category: "Bootstrap",
+            status: "available",
+            actions: crate::mcp::services::lab_admin::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::lab_admin::dispatch),
+        });
+    }
+
     reg
+}
+
+#[cfg(feature = "lab-admin")]
+fn lab_admin_enabled() -> bool {
+    std::env::var("LAB_ADMIN_ENABLED")
+        .map(|value| value == "1")
+        .unwrap_or(false)
 }
 
 const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
@@ -403,9 +422,15 @@ mod tests {
         let registry_services: std::collections::HashSet<&str> =
             reg.services().iter().map(|s| s.name).collect();
 
+        let registry_only_exemptions: std::collections::HashSet<&'static str> =
+            [ "lab_admin" ].into_iter().collect();
+
         let only_in_registry: Vec<&&str> = registry_services
             .iter()
-            .filter(|n| !http_router_services.contains(**n))
+            .filter(|n| {
+                !http_router_services.contains(**n)
+                    && !registry_only_exemptions.contains(**n)
+            })
             .collect();
         let only_in_router: Vec<&&str> = http_router_services
             .iter()
@@ -415,7 +440,7 @@ mod tests {
         assert!(
             only_in_registry.is_empty(),
             "services in MCP registry but NOT in HTTP router: {only_in_registry:?}\n\
-             Add them to build_router_with_bearer() in api/router.rs",
+             Add them to build_router_with_bearer() in api/router.rs or add an explicit exemption in registry_and_router_service_sets_are_identical()",
         );
         assert!(
             only_in_router.is_empty(),

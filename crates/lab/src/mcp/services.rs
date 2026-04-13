@@ -6,6 +6,9 @@
 
 pub mod extract;
 
+#[cfg(feature = "lab-admin")]
+pub mod lab_admin;
+
 #[cfg(feature = "radarr")]
 pub mod radarr;
 
