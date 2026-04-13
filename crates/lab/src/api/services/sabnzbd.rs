@@ -18,14 +18,7 @@ async fn handle(
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    let client = state
-        .clients
-        .sabnzbd
-        .clone()
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "SABNZBD_URL or SABNZBD_API_KEY not configured".into(),
-        })?;
+    let client = state.clients.sabnzbd.clone();
     handle_action(
         "sabnzbd",
         "api",
@@ -33,9 +26,11 @@ async fn handle(
         req,
         ACTIONS,
         move |action, params| async move {
-            crate::dispatch::sabnzbd::dispatch_with_client(&client, &action, params).await
+            let Some(client) = client.as_ref() else {
+                return Err(crate::dispatch::sabnzbd::not_configured_error());
+            };
+            crate::dispatch::sabnzbd::dispatch_with_client(client, &action, params).await
         },
-        Some(&headers),
     )
     .await
 }

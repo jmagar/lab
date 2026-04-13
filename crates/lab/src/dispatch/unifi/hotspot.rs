@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-use super::client::require_client;
 use super::params::{object_without, query_from, require_str, to_json};
+use lab_apis::unifi::UnifiClient;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -75,17 +75,21 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+pub async fn dispatch(
+    client: &UnifiClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "hotspot.vouchers.list" => {
             let site_id = require_str(&params, "site_id")?;
             let q = query_from(&params, &["offset", "limit", "filter"])?;
             let vouchers = if q.is_empty() {
-                require_client()?
+                client
                     .get_value(&format!("/sites/{site_id}/hotspot/vouchers"))
                     .await?
             } else {
-                require_client()?
+                client
                     .get_value_query(&format!("/sites/{site_id}/hotspot/vouchers"), &q)
                     .await?
             };
@@ -94,7 +98,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "hotspot.vouchers.create" => {
             let site_id = require_str(&params, "site_id")?;
             let body = object_without(&params, &["site_id"])?;
-            let result = require_client()?
+            let result = client
                 .post_value(&format!("/sites/{site_id}/hotspot/vouchers"), &body)
                 .await?;
             to_json(result)
@@ -102,7 +106,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "hotspot.vouchers.delete" => {
             let site_id = require_str(&params, "site_id")?;
             let q = query_from(&params, &["filter"])?;
-            require_client()?
+            client
                 .delete_value_query(&format!("/sites/{site_id}/hotspot/vouchers"), &q)
                 .await?;
             to_json(serde_json::json!({"deleted": true}))
@@ -110,11 +114,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         "hotspot.vouchers.get" => {
             let site_id = require_str(&params, "site_id")?;
             let voucher_id = require_str(&params, "voucher_id")?;
-            let voucher = require_client()?
+            let voucher = client
                 .get_value(&format!("/sites/{site_id}/hotspot/vouchers/{voucher_id}"))
                 .await?;
             to_json(voucher)
         }
-        _ => unreachable!(),
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{action}` for service `unifi`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
     }
 }

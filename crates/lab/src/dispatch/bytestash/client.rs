@@ -2,22 +2,17 @@ use lab_apis::bytestash::ByteStashClient;
 use lab_apis::core::Auth;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::env_non_empty;
 
 pub fn require_client() -> Result<ByteStashClient, ToolError> {
-    let url = std::env::var("BYTESTASH_URL")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".to_string(),
-            message: "BYTESTASH_URL not configured".to_string(),
-        })?;
-    let token = std::env::var("BYTESTASH_TOKEN")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".to_string(),
-            message: "BYTESTASH_TOKEN not configured".to_string(),
-        })?;
+    let url = env_non_empty("BYTESTASH_URL").ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: "BYTESTASH_URL not configured".to_string(),
+    })?;
+    let token = env_non_empty("BYTESTASH_TOKEN").ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: "BYTESTASH_TOKEN not configured".to_string(),
+    })?;
     ByteStashClient::new(
         &url,
         Auth::ApiKey {
@@ -36,9 +31,9 @@ pub fn require_client() -> Result<ByteStashClient, ToolError> {
 /// `ByteStash` uses a non-standard auth header: `bytestashauth: Bearer <jwt>`.
 /// Returns `None` if either env var is absent or empty.
 pub fn client_from_env() -> Option<ByteStashClient> {
-    let url = std::env::var("BYTESTASH_URL").ok();
-    let token = std::env::var("BYTESTASH_TOKEN").ok();
-    client_from_vars(url.as_deref(), token.as_deref())
+    let url = env_non_empty("BYTESTASH_URL")?;
+    let token = env_non_empty("BYTESTASH_TOKEN")?;
+    client_from_vars(Some(&url), Some(&token))
 }
 
 /// Build a client from explicit URL and token values.

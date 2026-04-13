@@ -22,10 +22,7 @@ async fn handle(
         request_id,
         req,
         crate::dispatch::plex::ACTIONS,
-        |action, params| async move {
-            crate::dispatch::plex::dispatch(&action, params).await
-        },
-        Some(&headers),
+        |action, params| async move { crate::dispatch::plex::dispatch(&action, params).await },
     )
     .await
 }

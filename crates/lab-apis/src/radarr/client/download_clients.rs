@@ -51,10 +51,7 @@ impl RadarrClient {
     ///
     /// # Errors
     /// Returns `RadarrError::Api` if the test fails or HTTP errors.
-    pub async fn download_client_test(
-        &self,
-        client: &DownloadClient,
-    ) -> Result<(), RadarrError> {
+    pub async fn download_client_test(&self, client: &DownloadClient) -> Result<(), RadarrError> {
         self.http
             .post_void("/api/v3/downloadclient/test", client)
             .await

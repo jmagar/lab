@@ -135,8 +135,9 @@ fn parse_uri(params: &Value) -> Result<Uri, ToolError> {
             message: "missing required param 'uri'".into(),
             param: "uri".into(),
         })?;
-    s.parse().map_err(|e: <Uri as std::str::FromStr>::Err| ToolError::Sdk {
-        sdk_kind: "invalid_param".into(),
-        message: e.to_string(),
-    })
+    s.parse()
+        .map_err(|e: <Uri as std::str::FromStr>::Err| ToolError::Sdk {
+            sdk_kind: "invalid_param".into(),
+            message: e.to_string(),
+        })
 }

@@ -14,7 +14,10 @@ pub const ACTIONS: &[ActionSpec] = &[];
 /// Returns errors for unknown actions until the service is wired.
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
-        "help" => Ok(crate::dispatch::helpers::help_payload("qbittorrent", ACTIONS)),
+        "help" => Ok(crate::dispatch::helpers::help_payload(
+            "qbittorrent",
+            ACTIONS,
+        )),
         "schema" => {
             let a = crate::dispatch::helpers::require_str(&params, "action")?;
             crate::dispatch::helpers::action_schema(ACTIONS, a)

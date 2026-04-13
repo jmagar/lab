@@ -30,21 +30,32 @@ pub const META: PluginMeta = PluginMeta {
     description: "Self-hosted push notification server",
     category: Category::Notifications,
     docs_url: "https://gotify.net/api-docs",
-    required_env: &[
-        EnvVar {
-            name: "GOTIFY_URL",
-            description: "Base URL of the Gotify server",
-            example: "http://localhost:8080",
-            secret: false,
-        },
+    required_env: &[EnvVar {
+        name: "GOTIFY_URL",
+        description: "Base URL of the Gotify server",
+        example: "http://localhost:8080",
+        secret: false,
+    }],
+    optional_env: &[
         EnvVar {
             name: "GOTIFY_TOKEN",
-            description: "App or client token (X-Gotify-Key)",
+            description: "Legacy fallback token used when scoped tokens are not set",
+            example: "A1b2C3d4E5...",
+            secret: true,
+        },
+        EnvVar {
+            name: "GOTIFY_APP_TOKEN",
+            description: "App token used by message.send (preferred over GOTIFY_TOKEN for sending)",
+            example: "A1b2C3d4E5...",
+            secret: true,
+        },
+        EnvVar {
+            name: "GOTIFY_CLIENT_TOKEN",
+            description: "Client token used by message/app/client management actions",
             example: "A1b2C3d4E5...",
             secret: true,
         },
     ],
-    optional_env: &[],
     default_port: Some(80),
 };
 
@@ -70,10 +81,7 @@ impl ServiceClient for GotifyClient {
                     message: if healthy {
                         None
                     } else {
-                        Some(format!(
-                            "health={}, database={}",
-                            h.health, h.database
-                        ))
+                        Some(format!("health={}, database={}", h.health, h.database))
                     },
                 })
             }

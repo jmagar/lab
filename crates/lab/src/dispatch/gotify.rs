@@ -6,7 +6,7 @@ mod dispatch;
 mod params;
 
 pub use catalog::ACTIONS;
-pub use client::client_from_env;
+pub use client::{GotifyClients, client_from_env, clients_from_env, not_configured_error};
 pub use dispatch::{dispatch, dispatch_with_client};
 
 #[cfg(test)]
@@ -52,5 +52,4 @@ mod tests {
         let actions = val["actions"].as_array().unwrap();
         assert!(!actions.is_empty());
     }
-
 }

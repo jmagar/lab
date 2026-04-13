@@ -1,6 +1,6 @@
 //! `lab paperless` — CLI stub (not yet implemented).
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
+//! Thin shim: parse → shared dispatch layer → format. Replace once SDK client is complete.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -38,9 +38,7 @@ pub async fn run(args: PaperlessArgs, format: OutputFormat) -> Result<ExitCode> 
         action,
         params,
         format,
-        |action, params| async move {
-            crate::mcp::services::paperless::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::paperless::dispatch(&action, params).await },
     )
     .await
 }

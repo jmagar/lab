@@ -1,6 +1,6 @@
 //! `TeiClient` — async methods against a Hugging Face TEI server.
 //!
-//! Stub. Endpoints land incrementally from `docs/api-specs/tei.openapi.json`.
+//! Endpoints land incrementally from `docs/upstream-api/tei.openapi.json`.
 
 use crate::core::{Auth, HttpClient};
 
@@ -31,7 +31,26 @@ impl TeiClient {
     /// # Errors
     /// Returns `TeiError::Api` on HTTP failure.
     pub async fn health(&self) -> Result<(), TeiError> {
-        // TODO: GET /health
+        self.http.get_void("/health").await?;
         Ok(())
+    }
+
+    /// Fetch model and server metadata.
+    ///
+    /// # Errors
+    /// Returns `TeiError::Api` on HTTP failure or decode failure.
+    pub async fn model_info(&self) -> Result<super::types::Info, TeiError> {
+        Ok(self.http.get_json("/info").await?)
+    }
+
+    /// Request embeddings for one or more input strings.
+    ///
+    /// # Errors
+    /// Returns `TeiError::Api` on HTTP failure or decode failure.
+    pub async fn embed(
+        &self,
+        request: &super::types::EmbedRequest,
+    ) -> Result<Vec<Vec<f32>>, TeiError> {
+        Ok(self.http.post_json("/embed", request).await?)
     }
 }

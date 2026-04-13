@@ -6,6 +6,9 @@
 
 pub mod extract;
 
+#[cfg(feature = "lab-admin")]
+pub mod lab_admin;
+
 #[cfg(feature = "radarr")]
 pub mod radarr;
 
@@ -44,9 +47,6 @@ pub mod paperless;
 
 #[cfg(feature = "arcane")]
 pub mod arcane;
-
-#[cfg(feature = "unraid")]
-pub mod unraid;
 
 #[cfg(feature = "unifi")]
 pub mod unifi;

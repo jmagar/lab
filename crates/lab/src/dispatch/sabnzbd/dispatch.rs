@@ -15,7 +15,7 @@ pub async fn dispatch_with_client(
     params: Value,
 ) -> Result<Value, ToolError> {
     match action {
-        "version" => {
+        "server.version" => {
             let version = client.version().await?;
             Ok(serde_json::json!({ "version": version }))
         }
@@ -26,7 +26,7 @@ pub async fn dispatch_with_client(
             Ok(serde_json::json!({ "deleted": ok }))
         }
         "history.list" => {
-            let limit = opt_u32(&params, "limit");
+            let limit = opt_u32(&params, "limit")?;
             to_json(client.history(limit).await?)
         }
         "history.delete" => {
@@ -38,17 +38,17 @@ pub async fn dispatch_with_client(
             let ok = client.history_purge().await?;
             Ok(serde_json::json!({ "purged": ok }))
         }
-        "server-stats" => to_json(client.server_stats().await?),
-        "warnings" => to_json(client.warnings().await?),
-        "pause" => {
+        "server.stats" => to_json(client.server_stats().await?),
+        "server.warnings" => to_json(client.warnings().await?),
+        "queue.pause" => {
             let ok = client.pause().await?;
             Ok(serde_json::json!({ "paused": ok }))
         }
-        "resume" => {
+        "queue.resume" => {
             let ok = client.resume().await?;
             Ok(serde_json::json!({ "resumed": ok }))
         }
-        "speed-limit" => {
+        "queue.speed.limit" => {
             let kbps = require_u64(&params, "kbps")?;
             let ok = client.set_speed_limit(kbps).await?;
             Ok(serde_json::json!({ "speed_limit_set": ok }))

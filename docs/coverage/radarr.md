@@ -3,7 +3,7 @@
 **Last updated:** 2026-04-09  
 **OpenAPI spec:** `docs/upstream-api/radarr.openapi.json` (164 unique paths, 238 operations)  
 **SDK sub-modules:** `crates/lab-apis/src/radarr/client/` (19 modules, 42 methods)  
-**Dispatch module:** `crates/lab/src/dispatch/radarr.rs` + `crates/lab/src/dispatch/radarr/` (39 actions + built-in `help`)  
+**Dispatch module:** `crates/lab/src/dispatch/radarr.rs` + `crates/lab/src/dispatch/radarr/` (39 actions + built-in `help` + `schema`)
 **MCP actions:** `crates/lab/src/mcp/services/radarr.rs` (thin adapter over dispatch)  
 **CLI subcommands:** `crates/lab/src/cli/radarr.rs` (39 subcommands)  
 **API handler:** `crates/lab/src/api/services/radarr.rs` (single dispatch → same as shared dispatch)

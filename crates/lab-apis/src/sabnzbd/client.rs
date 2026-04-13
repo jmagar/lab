@@ -8,8 +8,7 @@ use crate::core::HttpClient;
 
 use super::error::SabnzbdError;
 use super::types::{
-    HistoryResponse, QueueResponse, ServerStats, StatusResponse, VersionResponse,
-    WarningsResponse,
+    HistoryResponse, QueueResponse, ServerStats, StatusResponse, VersionResponse, WarningsResponse,
 };
 
 /// Client for a `SABnzbd` instance.

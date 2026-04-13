@@ -37,6 +37,4 @@ pub struct ActionRequest {
 #[allow(unused_imports)]
 pub use error::ToolError;
 #[allow(unused_imports)]
-pub use router::build_router;
-#[allow(unused_imports)]
 pub use state::AppState;

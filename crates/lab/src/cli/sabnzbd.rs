@@ -8,7 +8,8 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::cli::helpers::run_action_command;
+use crate::cli::helpers::run_confirmable_action_command;
+use crate::dispatch::sabnzbd::ACTIONS;
 use crate::output::OutputFormat;
 
 /// `lab sabnzbd` arguments.
@@ -19,6 +20,10 @@ pub struct SabnzbdArgs {
     /// Action-specific parameters as JSON.
     #[arg(long)]
     pub params: Option<String>,
+
+    /// Skip confirmation for destructive actions.
+    #[arg(short = 'y', long, alias = "no-confirm")]
+    pub yes: bool,
 }
 
 /// Run the `lab sabnzbd` subcommand.
@@ -34,10 +39,12 @@ pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
         .transpose()?
         .unwrap_or(serde_json::Value::Null);
 
-    run_action_command(
+    run_confirmable_action_command(
         "sabnzbd",
+        ACTIONS,
         action,
         params,
+        args.yes,
         format,
         |action, params| async move { crate::dispatch::sabnzbd::dispatch(&action, params).await },
     )

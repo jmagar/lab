@@ -12,10 +12,36 @@ pub fn send_message_from_params(params: &Value) -> Result<SendMessage, ToolError
     let message = require_str(params, "message")?.to_string();
     Ok(SendMessage {
         message,
-        title: params.get("title").and_then(Value::as_str).map(str::to_string),
-        priority: params.get("priority").and_then(Value::as_i64).map(|n| i32::try_from(n).unwrap_or(i32::MAX)),
+        title: params
+            .get("title")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        priority: priority_from_params(params)?,
         extras: None,
     })
+}
+
+fn priority_from_params(params: &Value) -> Result<Option<i32>, ToolError> {
+    match params.get("priority") {
+        None => Ok(None),
+        Some(v) => {
+            let priority = v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+                message: "parameter `priority` must be an integer".to_string(),
+                param: "priority".to_string(),
+            })?;
+            let priority = i32::try_from(priority).map_err(|_| ToolError::InvalidParam {
+                message: "parameter `priority` must be between 0 and 10".to_string(),
+                param: "priority".to_string(),
+            })?;
+            if !(0..=10).contains(&priority) {
+                return Err(ToolError::InvalidParam {
+                    message: "parameter `priority` must be between 0 and 10".to_string(),
+                    param: "priority".to_string(),
+                });
+            }
+            Ok(Some(priority))
+        }
+    }
 }
 
 /// Extract a `MessageId` from the `id` param.

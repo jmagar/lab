@@ -8,15 +8,17 @@
 #![allow(unreachable_pub)] // binary crate — `pub` items are crate-internal by design
 
 mod api;
+mod audit;
 mod catalog;
 mod cli;
 mod config;
 mod dispatch;
 mod mcp;
 mod output;
-mod tui;
+mod scaffold;
 #[cfg(test)]
 mod test_support;
+mod tui;
 
 use std::process::ExitCode;
 

@@ -1,9 +1,5 @@
 //! HTTP route group for the `unifi` service.
 //!
-//! TODO(perf): unifi sub-dispatchers each call `require_client()` independently.
-//! Thread `state.clients.unifi` through sub-dispatchers to enable full
-//! connection-pool reuse. See `dispatch/CLAUDE.md` for the migration pattern.
-
 use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
@@ -16,19 +12,15 @@ pub fn routes(_state: AppState) -> Router<AppState> {
 }
 
 async fn handle(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    // Fail fast if unifi is not configured — avoids dispatching into sub-modules that
-    // would each call require_client() and fail with a less informative error.
-    if state.clients.unifi.is_none() {
-        return Err(ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "UNIFI_URL or UNIFI_API_KEY not configured".into(),
-        });
-    }
+    let request_id_owned = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let request_id = request_id_owned.as_deref();
     handle_action(
         "unifi",
         "api",
@@ -36,7 +28,6 @@ async fn handle(
         req,
         crate::dispatch::unifi::actions(),
         |action, params| async move { crate::dispatch::unifi::dispatch(&action, params).await },
-        Some(&headers),
     )
     .await
 }
