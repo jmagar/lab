@@ -50,6 +50,11 @@ pub struct LabMcpServer {
     /// functions that don't yet use it fall back to `require_client()`.
     #[allow(dead_code)]
     pub clients: Arc<crate::api::state::ServiceClients>,
+    /// Upstream MCP server pool for gateway proxy dispatch.
+    ///
+    /// `None` when no `[[upstream]]` entries are configured.
+    #[allow(dead_code)]
+    pub upstream_pool: Option<Arc<crate::mcp::upstream::pool::UpstreamPool>>,
 }
 
 impl ServerHandler for LabMcpServer {

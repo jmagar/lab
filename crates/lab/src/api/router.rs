@@ -307,7 +307,11 @@ fn build_mcp_service(
         move || {
             let reg = Arc::clone(&registry);
             let cl = Arc::clone(&clients);
-            Ok(crate::mcp::server::LabMcpServer { registry: reg, clients: cl })
+            Ok(crate::mcp::server::LabMcpServer {
+                registry: reg,
+                clients: cl,
+                upstream_pool: None,
+            })
         },
         session_manager,
         config,

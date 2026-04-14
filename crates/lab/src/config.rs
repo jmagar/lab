@@ -31,6 +31,32 @@ pub struct LabConfig {
     /// OAuth 2.1 resource server configuration (optional).
     #[serde(default)]
     pub oauth: Option<OAuthConfig>,
+    /// Upstream MCP servers to proxy through the gateway.
+    #[serde(default)]
+    pub upstream: Vec<UpstreamConfig>,
+}
+
+/// Configuration for a single upstream MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpstreamConfig {
+    /// Human-readable name for this upstream (used as tool-name prefix).
+    pub name: String,
+    /// URL of the upstream MCP server (must be `http://` or `https://`).
+    /// For stdio upstreams, use `stdio://` scheme with `command` field.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Name of an env var holding the bearer token (not the token itself).
+    #[serde(default)]
+    pub bearer_token_env: Option<String>,
+    /// Command to run for stdio transport upstreams.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Arguments to pass to the stdio command.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Whether to proxy resources from this upstream (opt-in).
+    #[serde(default)]
+    pub proxy_resources: bool,
 }
 
 /// Table/json formatting defaults.

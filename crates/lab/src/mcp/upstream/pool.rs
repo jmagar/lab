@@ -1,0 +1,469 @@
+//! `UpstreamPool` — manages connections to upstream MCP servers.
+//!
+//! Connects to configured upstreams via HTTP (`StreamableHttpClientTransport`)
+//! or stdio (child process), discovers their tools, and caches schemas.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
+use rmcp::model::{CallToolRequestParams, CallToolResult};
+use rmcp::transport::streamable_http_client::{
+    StreamableHttpClientTransportConfig, StreamableHttpClientWorker,
+};
+use rmcp::{RoleClient, ServiceExt};
+use serde_json::Value;
+use tokio::sync::RwLock;
+
+use crate::config::UpstreamConfig;
+
+use super::types::{UpstreamEntry, UpstreamHealth, UpstreamTool};
+
+/// Per-upstream timeout for initial discovery (`list_tools`).
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Upstream connection pool — holds live connections and discovered tool catalogs.
+#[derive(Clone)]
+pub struct UpstreamPool {
+    /// Discovered upstream state, keyed by upstream name.
+    catalog: Arc<RwLock<HashMap<String, UpstreamEntry>>>,
+    /// Live client connections, keyed by upstream name.
+    /// Each is an `Arc<Peer<RoleClient>>` that can `call_tool` / `list_tools`.
+    connections: Arc<RwLock<HashMap<String, UpstreamConnection>>>,
+}
+
+/// A live connection to an upstream MCP server.
+struct UpstreamConnection {
+    /// The running service handle — kept alive to maintain the connection.
+    _service: rmcp::service::RunningService<RoleClient, ()>,
+    /// The peer handle for making requests.
+    peer: rmcp::service::Peer<RoleClient>,
+}
+
+impl std::fmt::Debug for UpstreamConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpstreamConnection")
+            .finish_non_exhaustive()
+    }
+}
+
+impl UpstreamPool {
+    /// Create a new empty pool.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            catalog: Arc::new(RwLock::new(HashMap::new())),
+            connections: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Connect to all configured upstreams in parallel and discover their tools.
+    ///
+    /// Each upstream gets a 15-second timeout. Failures are logged and the
+    /// upstream is marked unhealthy, but do not prevent other upstreams from
+    /// connecting.
+    pub async fn discover_all(&self, configs: &[UpstreamConfig]) {
+        if configs.is_empty() {
+            return;
+        }
+
+        let mut futures = FuturesUnordered::new();
+
+        for config in configs {
+            // Validate config
+            if let Err(msg) = validate_upstream_config(config) {
+                tracing::warn!(
+                    upstream = %config.name,
+                    "skipping upstream: {msg}"
+                );
+                continue;
+            }
+
+            let config = config.clone();
+            futures.push(async move {
+                let name = config.name.clone();
+                match tokio::time::timeout(DISCOVERY_TIMEOUT, connect_upstream(&config)).await {
+                    Ok(Ok((conn, tools))) => {
+                        tracing::info!(
+                            upstream = %name,
+                            tool_count = tools.len(),
+                            "upstream discovery succeeded"
+                        );
+                        Ok((name, conn, tools))
+                    }
+                    Ok(Err(e)) => {
+                        tracing::warn!(
+                            upstream = %name,
+                            error = %e,
+                            "upstream discovery failed"
+                        );
+                        Err(name)
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            upstream = %name,
+                            timeout_secs = DISCOVERY_TIMEOUT.as_secs(),
+                            "upstream discovery timed out"
+                        );
+                        Err(name)
+                    }
+                }
+            });
+        }
+
+        while let Some(result) = futures.next().await {
+            match result {
+                Ok((name, conn, tools)) => {
+                    let upstream_name: Arc<str> = Arc::from(name.as_str());
+                    let tool_map: HashMap<String, UpstreamTool> = tools
+                        .into_iter()
+                        .map(|tool| {
+                            let schema = if tool.input_schema.is_empty() {
+                                None
+                            } else {
+                                Some(Value::Object((*tool.input_schema).clone()))
+                            };
+                            let name = tool.name.to_string();
+                            (
+                                name,
+                                UpstreamTool {
+                                    tool,
+                                    input_schema: schema,
+                                    upstream_name: Arc::clone(&upstream_name),
+                                },
+                            )
+                        })
+                        .collect();
+
+                    let entry = UpstreamEntry {
+                        name: Arc::clone(&upstream_name),
+                        tools: tool_map,
+                        health: UpstreamHealth::Healthy,
+                    };
+
+                    self.catalog.write().await.insert(name.clone(), entry);
+                    self.connections.write().await.insert(name, conn);
+                }
+                Err(name) => {
+                    let entry = UpstreamEntry {
+                        name: Arc::from(name.as_str()),
+                        tools: HashMap::new(),
+                        health: UpstreamHealth::Unhealthy {
+                            consecutive_failures: 1,
+                        },
+                    };
+                    self.catalog.write().await.insert(name, entry);
+                }
+            }
+        }
+    }
+
+    /// Get all healthy upstream tools.
+    pub async fn healthy_tools(&self) -> Vec<UpstreamTool> {
+        let catalog = self.catalog.read().await;
+        catalog
+            .values()
+            .filter(|entry| entry.health.is_healthy())
+            .flat_map(|entry| entry.tools.values().cloned())
+            .collect()
+    }
+
+    /// Look up which upstream owns a given tool name.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn find_tool(&self, tool_name: &str) -> Option<(String, UpstreamTool)> {
+        let catalog = self.catalog.read().await;
+        catalog
+            .values()
+            .filter(|entry| entry.health.is_healthy())
+            .find_map(|entry| {
+                entry
+                    .tools
+                    .get(tool_name)
+                    .map(|tool| (entry.name.to_string(), tool.clone()))
+            })
+    }
+
+    /// Get the cached schema for a specific upstream tool.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn tool_schema(&self, tool_name: &str) -> Option<Value> {
+        let catalog = self.catalog.read().await;
+        catalog.values().find_map(|entry| {
+            entry
+                .tools
+                .get(tool_name)
+                .and_then(|tool| tool.input_schema.clone())
+        })
+    }
+
+    /// Call a tool on an upstream server.
+    ///
+    /// Returns `None` if the upstream is not connected or the tool is not found.
+    pub async fn call_tool(
+        &self,
+        upstream_name: &str,
+        params: CallToolRequestParams,
+    ) -> Option<Result<CallToolResult, String>> {
+        let peer = {
+            let connections = self.connections.read().await;
+            connections.get(upstream_name)?.peer.clone()
+        };
+        Some(
+            peer.call_tool(params)
+                .await
+                .map_err(|e| format!("upstream call failed: {e}")),
+        )
+    }
+
+    /// Record a failure for an upstream, potentially marking it unhealthy.
+    pub async fn record_failure(&self, upstream_name: &str) {
+        let mut catalog = self.catalog.write().await;
+        if let Some(entry) = catalog.get_mut(upstream_name) {
+            match &mut entry.health {
+                UpstreamHealth::Healthy => {
+                    entry.health = UpstreamHealth::Unhealthy {
+                        consecutive_failures: 1,
+                    };
+                }
+                UpstreamHealth::Unhealthy {
+                    consecutive_failures,
+                } => {
+                    *consecutive_failures += 1;
+                }
+            }
+        }
+    }
+
+    /// Record a success for an upstream, resetting it to healthy.
+    pub async fn record_success(&self, upstream_name: &str) {
+        let mut catalog = self.catalog.write().await;
+        if let Some(entry) = catalog.get_mut(upstream_name) {
+            entry.health = UpstreamHealth::Healthy;
+        }
+    }
+
+    /// Get the number of connected upstreams.
+    pub async fn upstream_count(&self) -> usize {
+        self.catalog.read().await.len()
+    }
+
+    /// Get names of all registered upstreams with their health status.
+    pub async fn upstream_status(&self) -> Vec<(String, UpstreamHealth)> {
+        let catalog = self.catalog.read().await;
+        catalog
+            .values()
+            .map(|e| (e.name.to_string(), e.health))
+            .collect()
+    }
+}
+
+impl Default for UpstreamPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Validate an upstream config entry.
+fn validate_upstream_config(config: &UpstreamConfig) -> Result<(), String> {
+    if config.name.is_empty() {
+        return Err("upstream name cannot be empty".into());
+    }
+
+    // Must have either a URL or a command
+    if config.url.is_none() && config.command.is_none() {
+        return Err("upstream must have either 'url' or 'command'".into());
+    }
+
+    if let Some(ref url) = config.url {
+        // Reject non-HTTP schemes
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Err(format!("upstream URL must use http:// or https:// scheme, got: {url}"));
+        }
+        // Reject 0.0.0.0 and ::
+        if url.contains("://0.0.0.0") || url.contains("://[::]/") || url.ends_with("://[::]") {
+            return Err("upstream URL must not use 0.0.0.0 or :: (bind-all addresses)".into());
+        }
+    }
+
+    Ok(())
+}
+
+/// Connect to a single upstream MCP server and discover its tools.
+async fn connect_upstream(
+    config: &UpstreamConfig,
+) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    if let Some(ref url) = config.url {
+        connect_http_upstream(url, config).await
+    } else if let Some(ref command) = config.command {
+        connect_stdio_upstream(command, &config.args, config).await
+    } else {
+        anyhow::bail!("upstream {} has neither url nor command", config.name)
+    }
+}
+
+/// Connect to an HTTP upstream MCP server.
+async fn connect_http_upstream(
+    url: &str,
+    config: &UpstreamConfig,
+) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    let mut transport_config = StreamableHttpClientTransportConfig::with_uri(url);
+
+    // Set bearer token from env var if configured
+    if let Some(ref env_name) = config.bearer_token_env {
+        if let Ok(token) = std::env::var(env_name) {
+            if !token.is_empty() {
+                transport_config.auth_header = Some(token);
+            }
+        } else {
+            tracing::warn!(
+                upstream = %config.name,
+                env_var = %env_name,
+                "bearer_token_env configured but env var not set"
+            );
+        }
+    }
+
+    let worker = StreamableHttpClientWorker::new(reqwest::Client::new(), transport_config);
+    let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(worker).await?;
+    let peer = service.peer().clone();
+
+    // Discover tools
+    let tools = peer.list_all_tools().await?;
+
+    let conn = UpstreamConnection {
+        _service: service,
+        peer,
+    };
+
+    Ok((conn, tools))
+}
+
+/// Connect to a stdio upstream MCP server (child process).
+async fn connect_stdio_upstream(
+    command: &str,
+    args: &[String],
+    config: &UpstreamConfig,
+) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    use rmcp::transport::child_process::TokioChildProcess;
+    use tokio::process::Command;
+
+    let mut cmd = Command::new(command);
+    cmd.args(args);
+
+    // Set bearer token env var on the child if configured
+    if let Some(ref env_name) = config.bearer_token_env
+        && let Ok(token) = std::env::var(env_name)
+    {
+        cmd.env(env_name, &token);
+    }
+
+    let process = TokioChildProcess::new(cmd)?;
+    let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(process).await?;
+    let peer = service.peer().clone();
+
+    // Discover tools
+    let tools = peer.list_all_tools().await?;
+
+    let conn = UpstreamConnection {
+        _service: service,
+        peer,
+    };
+
+    Ok((conn, tools))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_rejects_empty_name() {
+        let config = UpstreamConfig {
+            name: String::new(),
+            url: Some("http://localhost:8080".into()),
+            bearer_token_env: None,
+            command: None,
+            args: vec![],
+            proxy_resources: false,
+        };
+        assert!(validate_upstream_config(&config).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_non_http_scheme() {
+        let config = UpstreamConfig {
+            name: "test".into(),
+            url: Some("ftp://example.com".into()),
+            bearer_token_env: None,
+            command: None,
+            args: vec![],
+            proxy_resources: false,
+        };
+        assert!(validate_upstream_config(&config).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_bind_all_addresses() {
+        for url in &["http://0.0.0.0:8080", "http://[::]/mcp"] {
+            let config = UpstreamConfig {
+                name: "test".into(),
+                url: Some((*url).into()),
+                bearer_token_env: None,
+                command: None,
+                args: vec![],
+                proxy_resources: false,
+            };
+            assert!(
+                validate_upstream_config(&config).is_err(),
+                "should reject {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_valid_http_url() {
+        let config = UpstreamConfig {
+            name: "test".into(),
+            url: Some("http://localhost:8080/mcp".into()),
+            bearer_token_env: None,
+            command: None,
+            args: vec![],
+            proxy_resources: false,
+        };
+        assert!(validate_upstream_config(&config).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_stdio_command() {
+        let config = UpstreamConfig {
+            name: "test".into(),
+            url: None,
+            bearer_token_env: None,
+            command: Some("my-mcp-server".into()),
+            args: vec!["--port".into(), "8080".into()],
+            proxy_resources: false,
+        };
+        assert!(validate_upstream_config(&config).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_no_url_or_command() {
+        let config = UpstreamConfig {
+            name: "test".into(),
+            url: None,
+            bearer_token_env: None,
+            command: None,
+            args: vec![],
+            proxy_resources: false,
+        };
+        assert!(validate_upstream_config(&config).is_err());
+    }
+
+    #[tokio::test]
+    async fn empty_pool_has_no_tools() {
+        let pool = UpstreamPool::new();
+        assert!(pool.healthy_tools().await.is_empty());
+        assert_eq!(pool.upstream_count().await, 0);
+    }
+}
