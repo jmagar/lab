@@ -25,6 +25,17 @@ use super::types::{UpstreamEntry, UpstreamHealth, UpstreamTool};
 /// Per-upstream timeout for initial discovery (`list_tools`).
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Default maximum response size from upstream servers (10 MB).
+const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
+
+/// Read the max response size from env or use the default.
+fn max_response_bytes() -> usize {
+    std::env::var("LAB_UPSTREAM_MAX_RESPONSE_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_RESPONSE_BYTES)
+}
+
 /// Upstream connection pool — holds live connections and discovered tool catalogs.
 #[derive(Clone)]
 pub struct UpstreamPool {
@@ -33,6 +44,8 @@ pub struct UpstreamPool {
     /// Live client connections, keyed by upstream name.
     /// Each is an `Arc<Peer<RoleClient>>` that can `call_tool` / `list_tools`.
     connections: Arc<RwLock<HashMap<String, UpstreamConnection>>>,
+    /// Names of upstreams that have `proxy_resources=true`.
+    resource_upstreams: Arc<RwLock<Vec<String>>>,
 }
 
 /// A live connection to an upstream MCP server.
@@ -57,6 +70,7 @@ impl UpstreamPool {
         Self {
             catalog: Arc::new(RwLock::new(HashMap::new())),
             connections: Arc::new(RwLock::new(HashMap::new())),
+            resource_upstreams: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -69,6 +83,14 @@ impl UpstreamPool {
         if configs.is_empty() {
             return;
         }
+
+        // Track which upstreams have resource proxying enabled.
+        let resource_names: Vec<String> = configs
+            .iter()
+            .filter(|c| c.proxy_resources)
+            .map(|c| c.name.clone())
+            .collect();
+        *self.resource_upstreams.write().await = resource_names;
 
         let mut futures = FuturesUnordered::new();
 
@@ -203,6 +225,7 @@ impl UpstreamPool {
     /// Call a tool on an upstream server.
     ///
     /// Returns `None` if the upstream is not connected or the tool is not found.
+    /// Enforces a response size cap (`LAB_UPSTREAM_MAX_RESPONSE_BYTES`, default 10 MB).
     pub async fn call_tool(
         &self,
         upstream_name: &str,
@@ -212,11 +235,23 @@ impl UpstreamPool {
             let connections = self.connections.read().await;
             connections.get(upstream_name)?.peer.clone()
         };
-        Some(
-            peer.call_tool(params)
-                .await
-                .map_err(|e| format!("upstream call failed: {e}")),
-        )
+        let result = peer
+            .call_tool(params)
+            .await
+            .map_err(|e| format!("upstream call failed: {e}"));
+
+        // Enforce response size cap.
+        if let Ok(ref r) = result {
+            let response_size = estimate_response_size(r);
+            let max_bytes = max_response_bytes();
+            if response_size > max_bytes {
+                return Some(Err(format!(
+                    "upstream response too large ({response_size} bytes, max {max_bytes})"
+                )));
+            }
+        }
+
+        Some(result)
     }
 
     /// Record a failure for an upstream, potentially marking it unhealthy.
@@ -313,12 +348,96 @@ impl UpstreamPool {
             .map(|e| (e.name.to_string(), e.health))
             .collect()
     }
+
+    /// List resources from all resource-proxy-enabled upstreams.
+    ///
+    /// Resources are prefixed with `lab://upstream/{name}/` to avoid collisions.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn list_upstream_resources(&self) -> Vec<rmcp::model::Resource> {
+        let resource_names = self.resource_upstreams.read().await;
+        if resource_names.is_empty() {
+            return Vec::new();
+        }
+
+        let connections = self.connections.read().await;
+        let mut resources = Vec::new();
+
+        for name in resource_names.iter() {
+            let Some(conn) = connections.get(name) else {
+                continue;
+            };
+            match conn.peer.list_resources(None).await {
+                Ok(result) => {
+                    for mut resource in result.resources {
+                        // Prefix the URI with lab://upstream/{name}/
+                        let original_uri = resource.uri.clone();
+                        resource.uri =
+                            format!("lab://upstream/{name}/{original_uri}");
+                        resources.push(resource);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        upstream = %name,
+                        error = %e,
+                        "failed to list resources from upstream"
+                    );
+                }
+            }
+        }
+
+        resources
+    }
+
+    /// Read a resource from an upstream, given a prefixed URI.
+    ///
+    /// Expects URIs in the form `lab://upstream/{name}/{original_uri}`.
+    /// Returns `None` if the upstream name is not found or not resource-enabled.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn read_upstream_resource(
+        &self,
+        uri: &str,
+    ) -> Option<Result<rmcp::model::ReadResourceResult, String>> {
+        let prefix = "lab://upstream/";
+        let rest = uri.strip_prefix(prefix)?;
+
+        // Extract upstream name and original URI
+        let slash_pos = rest.find('/')?;
+        let upstream_name = &rest[..slash_pos];
+        let original_uri = &rest[slash_pos + 1..];
+
+        // Check if this upstream has resource proxying enabled
+        let resource_names = self.resource_upstreams.read().await;
+        if !resource_names.iter().any(|n| n == upstream_name) {
+            return None;
+        }
+
+        let connections = self.connections.read().await;
+        let conn = connections.get(upstream_name)?;
+
+        let params = rmcp::model::ReadResourceRequestParams::new(original_uri);
+
+        Some(
+            conn.peer
+                .read_resource(params)
+                .await
+                .map_err(|e| format!("upstream resource read failed: {e}")),
+        )
+    }
 }
 
 impl Default for UpstreamPool {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Estimate the serialized size of a `CallToolResult`.
+///
+/// Uses `serde_json::to_string` as a reasonable approximation. Not exact
+/// (ignores transport framing) but sufficient for the size cap guard.
+fn estimate_response_size(result: &CallToolResult) -> usize {
+    serde_json::to_string(result).map_or(0, |s| s.len())
 }
 
 /// Validate an upstream config entry.

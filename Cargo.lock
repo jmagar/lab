@@ -3152,6 +3152,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-wrap"
+version = "9.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e842efad9119158434d193c6682e2ebee4b44d6ad801d7b349623b3f57cdf55"
+dependencies = [
+ "futures",
+ "indexmap",
+ "nix 0.31.2",
+ "tokio",
+ "tracing",
+ "windows",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.39.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3549,6 +3563,7 @@ dependencies = [
  "oauth2",
  "pastey",
  "pin-project-lite",
+ "process-wrap",
  "rand 0.10.1",
  "reqwest",
  "rmcp-macros",

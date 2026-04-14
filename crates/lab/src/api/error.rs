@@ -26,7 +26,7 @@ impl IntoResponse for ToolError {
             | "unknown_subaction"
             | "unknown_instance"
             | "confirmation_required" => StatusCode::BAD_REQUEST,
-            "network_error" | "server_error" => StatusCode::BAD_GATEWAY,
+            "network_error" | "server_error" | "upstream_error" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // Serialize self directly — byte-identical to the MCP error envelope.
