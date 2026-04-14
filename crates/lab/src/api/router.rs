@@ -29,6 +29,16 @@ fn tokens_equal(a: &str, b: &str) -> bool {
     a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
+fn parse_bearer_token(header_value: &str) -> Option<String> {
+    let mut parts = header_value.split_whitespace();
+    let scheme = parts.next()?;
+    let token = parts.next()?;
+    if parts.next().is_some() || !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    Some(token.to_string())
+}
+
 use super::{health, services, state::AppState};
 use crate::dispatch::error::ToolError;
 
@@ -134,8 +144,7 @@ pub fn build_router_with_bearer(
                         let mut response = err.into_response();
                         // Add WWW-Authenticate only when we have a resolved resource_url.
                         if let Some(url) = resource_url {
-                            let www_auth =
-                                crate::api::oauth::www_authenticate_value(url);
+                            let www_auth = crate::api::oauth::www_authenticate_value(url);
                             if let Ok(value) = HeaderValue::from_str(&www_auth) {
                                 response
                                     .headers_mut()
@@ -149,8 +158,7 @@ pub fn build_router_with_bearer(
                         .headers()
                         .get(header::AUTHORIZATION)
                         .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.strip_prefix("Bearer "))
-                        .map(String::from);
+                        .and_then(parse_bearer_token);
 
                     let Some(token) = auth_header else {
                         return Ok(auth_error_response(
@@ -302,7 +310,6 @@ fn build_cors_layer() -> CorsLayer {
         ])
 }
 
-
 async fn service_actions(
     State(state): State<AppState>,
     axum::extract::Path(service): axum::extract::Path<String>,
@@ -409,6 +416,24 @@ mod tests {
                     .method("GET")
                     .uri("/v1/extract/actions")
                     .header(header::AUTHORIZATION, "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_layer_accepts_case_insensitive_bearer_token() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .header(header::AUTHORIZATION, "bearer   secret-token")
                     .body(Body::empty())
                     .unwrap(),
             )

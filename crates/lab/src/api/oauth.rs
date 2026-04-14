@@ -42,18 +42,14 @@ pub struct ProtectedResourceMetadata {
 /// to use. This endpoint is unauthenticated — clients need it before they
 /// have a token.
 pub async fn oauth_protected_resource(State(state): State<AppState>) -> impl IntoResponse {
-    let (resource_url, authorization_servers) =
-        state.oauth_config.as_ref().map_or_else(
-            || (String::new(), Vec::new()),
-            |oauth_cfg| {
-                let resource_url = oauth_cfg
-                    .resource_url
-                    .clone()
-                    .unwrap_or_default();
-                let servers = vec![oauth_cfg.issuer.clone()];
-                (resource_url, servers)
-            },
-        );
+    let (resource_url, authorization_servers) = state.oauth_config.as_ref().map_or_else(
+        || (String::new(), Vec::new()),
+        |oauth_cfg| {
+            let resource_url = oauth_cfg.resource_url.clone().unwrap_or_default();
+            let servers = vec![oauth_cfg.issuer.clone()];
+            (resource_url, servers)
+        },
+    );
 
     Json(ProtectedResourceMetadata {
         resource: resource_url,
@@ -143,6 +139,8 @@ struct JwtClaims {
     scope: Option<String>,
     #[serde(default)]
     scp: Option<Vec<String>>,
+    #[serde(default)]
+    azp: Option<String>,
     iss: Option<String>,
 }
 
@@ -155,6 +153,7 @@ struct JwtClaims {
 pub struct JwksManager {
     issuer: String,
     audience: String,
+    client_id: Option<String>,
     jwks_uri: String,
     cache: Arc<RwLock<JwksCache>>,
     refresh_semaphore: Arc<Semaphore>,
@@ -166,7 +165,11 @@ impl JwksManager {
     ///
     /// Fetches `{issuer}/.well-known/openid-configuration` to find the
     /// `jwks_uri`, then fetches the initial JWKS.
-    pub async fn discover(issuer: &str, audience: &str) -> Result<Self, AuthError> {
+    pub async fn discover(
+        issuer: &str,
+        audience: &str,
+        client_id: Option<&str>,
+    ) -> Result<Self, AuthError> {
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(10))
@@ -200,6 +203,7 @@ impl JwksManager {
         Ok(Self {
             issuer: issuer.to_string(),
             audience: audience.to_string(),
+            client_id: client_id.map(str::to_string),
             jwks_uri: discovery.jwks_uri,
             cache,
             refresh_semaphore: Arc::new(Semaphore::new(1)),
@@ -319,6 +323,14 @@ impl JwksManager {
             .map_err(|e| AuthError::ValidationFailed(e.to_string()))?;
 
         let claims = token_data.claims;
+
+        if let Some(expected_client_id) = &self.client_id
+            && claims.azp.as_deref() != Some(expected_client_id.as_str())
+        {
+            return Err(AuthError::ValidationFailed(format!(
+                "azp claim does not match configured client_id `{expected_client_id}`"
+            )));
+        }
 
         let scopes = if let Some(scope_str) = &claims.scope {
             scope_str.split_whitespace().map(String::from).collect()

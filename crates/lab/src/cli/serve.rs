@@ -76,8 +76,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let upstream_pool = if config.upstream.is_empty() {
         None
     } else {
-        let pool =
-            crate::dispatch::upstream::pool::UpstreamPool::new();
+        let pool = crate::dispatch::upstream::pool::UpstreamPool::new();
         pool.discover_all(&config.upstream).await;
         Some(Arc::new(pool))
     };
@@ -86,8 +85,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         Transport::Stdio => run_stdio(Arc::new(registry), upstream_pool).await,
         Transport::Http => {
             let bearer_token = http_token();
-            let oauth_config = resolve_oauth(config.oauth.as_ref())
-                .context("invalid OAuth configuration")?;
+            let oauth_config =
+                resolve_oauth(config.oauth.as_ref()).context("invalid OAuth configuration")?;
             let auth_configured = bearer_token.is_some() || oauth_config.is_some();
 
             // Safety gate: refuse to bind on a non-localhost address without
@@ -113,6 +112,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 let jwks = crate::api::oauth::JwksManager::discover(
                     &oauth_cfg.issuer,
                     &oauth_cfg.audience,
+                    oauth_cfg.client_id.as_deref(),
                 )
                 .await
                 .with_context(|| {
@@ -177,8 +177,16 @@ fn http_token() -> Option<String> {
 ///
 /// Handles both bare and bracketed IPv6 (e.g. `::1` and `[::1]`).
 fn is_loopback_host(host: &str) -> bool {
-    let normalized = host.trim_start_matches('[').trim_end_matches(']');
+    let normalized = host.trim().trim_start_matches('[').trim_end_matches(']');
     matches!(normalized, "127.0.0.1" | "::1" | "localhost")
+}
+
+fn bind_addr(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
 }
 
 fn filter_registry(registry: ToolRegistry, services: &[String]) -> Result<ToolRegistry> {
@@ -220,7 +228,7 @@ async fn run_http(
     let router =
         crate::api::router::build_router_with_bearer(state, bearer_token, Some(mcp_router));
     // Parse and validate the address at bind time, not at CLI parse time.
-    let addr = format!("{host}:{port}");
+    let addr = bind_addr(host, port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .with_context(|| format!("failed to bind HTTP listener on `{addr}`"))?;
@@ -237,10 +245,8 @@ async fn run_stdio(
         services = registry.services().len(),
         "lab serve (stdio) ready"
     );
-    let clients = Arc::new(crate::api::state::ServiceClients::from_env());
     let server = LabMcpServer {
         registry,
-        clients,
         upstream_pool,
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
@@ -252,11 +258,8 @@ async fn run_stdio(
 ///
 /// The factory closure clones `Arc<ToolRegistry>` from `AppState` and constructs
 /// a new `LabMcpServer` per session. Construction cost: two Arc increments.
-fn build_mcp_service(
-    state: &AppState,
-) -> StreamableHttpService<LabMcpServer, LocalSessionManager> {
+fn build_mcp_service(state: &AppState) -> StreamableHttpService<LabMcpServer, LocalSessionManager> {
     let registry = Arc::clone(&state.registry);
-    let clients = Arc::clone(&state.clients);
     let upstream_pool = state.upstream_pool.clone();
 
     let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
@@ -277,17 +280,20 @@ fn build_mcp_service(
         .unwrap_or(true);
 
     let config = StreamableHttpServerConfig::default()
-        .with_allowed_hosts(allowed_hosts_from_env())
+        .with_allowed_hosts(allowed_hosts(
+            state
+                .oauth_config
+                .as_ref()
+                .and_then(|cfg| cfg.resource_url.as_deref()),
+        ))
         .with_stateful_mode(stateful);
 
     StreamableHttpService::new(
         move || {
             let reg = Arc::clone(&registry);
-            let cl = Arc::clone(&clients);
             let pool = upstream_pool.clone();
             Ok(LabMcpServer {
                 registry: reg,
-                clients: cl,
                 upstream_pool: pool,
             })
         },
@@ -298,9 +304,9 @@ fn build_mcp_service(
 
 /// Build the allowed hosts list for DNS rebinding protection.
 ///
-/// Reads `LAB_MCP_ALLOWED_HOSTS` (comma-separated) and `LAB_RESOURCE_URL`
-/// from the environment. Always includes loopback defaults. Rejects wildcard.
-fn allowed_hosts_from_env() -> Vec<String> {
+/// Reads `LAB_MCP_ALLOWED_HOSTS` (comma-separated) and the resolved resource
+/// URL. Always includes loopback defaults. Rejects wildcard.
+fn allowed_hosts(resource_url: Option<&str>) -> Vec<String> {
     let mut hosts = vec![
         "localhost".to_string(),
         "127.0.0.1".to_string(),
@@ -321,9 +327,8 @@ fn allowed_hosts_from_env() -> Vec<String> {
             }
         }
     }
-    // If LAB_RESOURCE_URL is set, auto-extract and add its hostname
-    if let Ok(url_str) = std::env::var("LAB_RESOURCE_URL")
-        && let Ok(parsed) = url::Url::parse(&url_str)
+    if let Some(url_str) = resource_url
+        && let Ok(parsed) = url::Url::parse(url_str)
         && let Some(host) = parsed.host_str()
     {
         let h = host.to_string();
@@ -336,7 +341,9 @@ fn allowed_hosts_from_env() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Transport, is_loopback_host, resolve_port, resolve_transport};
+    use super::{
+        Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port, resolve_transport,
+    };
     use crate::config::{LabConfig, McpPreferences};
 
     #[test]
@@ -391,5 +398,18 @@ mod tests {
         assert!(!is_loopback_host("0.0.0.0"));
         assert!(!is_loopback_host("192.168.1.100"));
         assert!(!is_loopback_host("lab.example.com"));
+    }
+
+    #[test]
+    fn bind_addr_brackets_bare_ipv6_hosts() {
+        assert_eq!(bind_addr("::1", 8765), "[::1]:8765");
+        assert_eq!(bind_addr("[::1]", 8765), "[::1]:8765");
+        assert_eq!(bind_addr("127.0.0.1", 8765), "127.0.0.1:8765");
+    }
+
+    #[test]
+    fn allowed_hosts_include_resource_url_host() {
+        let hosts = allowed_hosts(Some("https://lab.example.com/mcp"));
+        assert!(hosts.contains(&"lab.example.com".to_string()));
     }
 }

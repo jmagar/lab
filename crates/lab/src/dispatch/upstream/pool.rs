@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransportConfig, StreamableHttpClientWorker,
@@ -58,8 +58,7 @@ struct UpstreamConnection {
 
 impl std::fmt::Debug for UpstreamConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("UpstreamConnection")
-            .finish_non_exhaustive()
+        f.debug_struct("UpstreamConnection").finish_non_exhaustive()
     }
 }
 
@@ -229,7 +228,7 @@ impl UpstreamPool {
         let catalog = self.catalog.read().await;
         catalog
             .values()
-            .filter(|entry| entry.health.is_healthy())
+            .filter(|entry| entry.health.is_routable())
             .flat_map(|entry| entry.tools.values().cloned())
             .collect()
     }
@@ -240,7 +239,7 @@ impl UpstreamPool {
         let catalog = self.catalog.read().await;
         catalog
             .values()
-            .filter(|entry| entry.health.is_healthy())
+            .filter(|entry| entry.health.is_routable())
             .find_map(|entry| {
                 entry
                     .tools
@@ -331,7 +330,7 @@ impl UpstreamPool {
     pub async fn record_success(&self, upstream_name: &str) {
         let mut catalog = self.catalog.write().await;
         if let Some(entry) = catalog.get_mut(upstream_name) {
-            if !entry.health.is_healthy() {
+            if !entry.health.is_routable() {
                 tracing::info!(
                     upstream = %upstream_name,
                     "circuit breaker reset — upstream healthy"
@@ -397,7 +396,19 @@ impl UpstreamPool {
     ///
     /// Resources are prefixed with `lab://upstream/{name}/` to avoid collisions.
     pub async fn list_upstream_resources(&self) -> Vec<rmcp::model::Resource> {
-        let resource_names = self.resource_upstreams.read().await.clone();
+        let resource_names = {
+            let configured = self.resource_upstreams.read().await;
+            let catalog = self.catalog.read().await;
+            configured
+                .iter()
+                .filter(|name| {
+                    catalog
+                        .get(*name)
+                        .is_some_and(|entry| entry.health.is_routable())
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        };
         if resource_names.is_empty() {
             return Vec::new();
         }
@@ -420,6 +431,7 @@ impl UpstreamPool {
         for (name, peer) in &peers {
             match peer.list_resources(None).await {
                 Ok(result) => {
+                    self.record_success(name).await;
                     for mut resource in result.resources {
                         let original_uri = resource.uri.clone();
                         resource.uri = format!("lab://upstream/{name}/{original_uri}");
@@ -427,6 +439,7 @@ impl UpstreamPool {
                     }
                 }
                 Err(e) => {
+                    self.record_failure(name).await;
                     tracing::warn!(
                         upstream = %name,
                         error = %e,
@@ -459,7 +472,14 @@ impl UpstreamPool {
         // Clone the vec and drop the lock before any async work.
         let is_resource_enabled = {
             let resource_names = self.resource_upstreams.read().await;
-            resource_names.iter().any(|n| n == upstream_name)
+            if !resource_names.iter().any(|n| n == upstream_name) {
+                false
+            } else {
+                let catalog = self.catalog.read().await;
+                catalog
+                    .get(upstream_name)
+                    .is_some_and(|entry| entry.health.is_routable())
+            }
         };
         if !is_resource_enabled {
             return None;
@@ -473,10 +493,16 @@ impl UpstreamPool {
 
         let params = rmcp::model::ReadResourceRequestParams::new(original_uri);
 
-        let result = peer
-            .read_resource(params)
-            .await
-            .map_err(|e| format!("upstream resource read failed: {e}"));
+        let result = match peer.read_resource(params).await {
+            Ok(result) => {
+                self.record_success(upstream_name).await;
+                Ok(result)
+            }
+            Err(e) => {
+                self.record_failure(upstream_name).await;
+                Err(format!("upstream resource read failed: {e}"))
+            }
+        };
 
         // Enforce the same response size cap as call_tool (post-hoc).
         if let Ok(ref r) = result {
@@ -656,11 +682,7 @@ mod tests {
 
     #[test]
     fn validate_rejects_bind_all_addresses() {
-        for url in &[
-            "http://0.0.0.0:8080",
-            "http://[::]/mcp",
-            "http://[::]:8080",
-        ] {
+        for url in &["http://0.0.0.0:8080", "http://[::]/mcp", "http://[::]:8080"] {
             let config = UpstreamConfig {
                 name: "test".into(),
                 url: Some((*url).into()),

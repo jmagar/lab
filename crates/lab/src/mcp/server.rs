@@ -43,13 +43,6 @@ fn action_schema() -> serde_json::Map<String, Value> {
 /// MCP server handler — one tool per registered service.
 pub struct LabMcpServer {
     pub registry: Arc<ToolRegistry>,
-    /// Pre-built service clients, shared across requests.
-    ///
-    /// Currently threaded for future use (upstream proxy closures will
-    /// capture this to avoid per-request client construction). Dispatch
-    /// functions that don't yet use it fall back to `require_client()`.
-    #[allow(dead_code)]
-    pub clients: Arc<crate::api::state::ServiceClients>,
     /// Upstream MCP server pool for gateway proxy dispatch.
     ///
     /// `None` when no `[[upstream]]` entries are configured.
@@ -153,6 +146,19 @@ impl ServerHandler for LabMcpServer {
                             )]));
                         }
                     }
+                    ElicitResult::Failed => {
+                        let envelope = build_error(
+                            &service,
+                            &action,
+                            "confirmation_required",
+                            &format!(
+                                "action `{action}` is destructive — confirmation failed, retry with a client that supports MCP elicitation"
+                            ),
+                        );
+                        return Ok(CallToolResult::error(vec![Content::text(
+                            envelope.to_string(),
+                        )]));
+                    }
                 }
             }
         }
@@ -165,7 +171,9 @@ impl ServerHandler for LabMcpServer {
                 .await
                 .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
             let elapsed_ms = start.elapsed().as_millis();
-            return Ok(format_dispatch_result(result, &service, &action, elapsed_ms));
+            return Ok(format_dispatch_result(
+                result, &service, &action, elapsed_ms,
+            ));
         }
 
         // Fall through to upstream proxy dispatch.
@@ -189,9 +197,9 @@ impl ServerHandler for LabMcpServer {
             match pool.call_tool(&upstream_name, upstream_params).await {
                 Some(Ok(result)) => {
                     let elapsed_ms = start.elapsed().as_millis();
-                    // rmcp returns Ok(CallToolResult) even when the upstream
-                    // reports an error via is_error. Detect and handle that.
-                    if result.is_error == Some(true) {
+                    let (result, kind, counts_as_failure) =
+                        normalize_upstream_result(&service, upstream_action, result);
+                    if counts_as_failure {
                         pool.record_failure(&upstream_name).await;
                         tracing::warn!(
                             surface = "mcp",
@@ -199,8 +207,8 @@ impl ServerHandler for LabMcpServer {
                             action = upstream_action,
                             upstream = %upstream_name,
                             elapsed_ms,
-                            kind = "upstream_error",
-                            "upstream returned is_error"
+                            kind,
+                            "upstream proxy failed"
                         );
                     } else {
                         pool.record_success(&upstream_name).await;
@@ -267,7 +275,12 @@ impl ServerHandler for LabMcpServer {
         // Neither built-in nor upstream.
         let elapsed_ms = start.elapsed().as_millis();
         let err = anyhow::anyhow!("service `{service}` has no dispatcher wired");
-        Ok(format_dispatch_result(Err(err), &service, &action, elapsed_ms))
+        Ok(format_dispatch_result(
+            Err(err),
+            &service,
+            &action,
+            elapsed_ms,
+        ))
     }
 }
 
@@ -325,6 +338,8 @@ enum ElicitResult {
     Cancelled,
     /// MCP client does not support the elicitation capability.
     NotSupported,
+    /// The client advertised elicitation support, but the RPC failed.
+    Failed,
 }
 
 /// Ask the MCP client to confirm a destructive action via elicitation.
@@ -378,8 +393,92 @@ async fn elicit_confirm(
             ElicitationAction::Decline => ElicitResult::Declined,
             ElicitationAction::Cancel => ElicitResult::Cancelled,
         },
-        Err(_) => ElicitResult::NotSupported,
+        Err(_) => ElicitResult::Failed,
     }
+}
+
+fn normalize_upstream_result(
+    service: &str,
+    action: &str,
+    result: CallToolResult,
+) -> (CallToolResult, &'static str, bool) {
+    if result.is_error != Some(true) {
+        return (result, "ok", false);
+    }
+
+    let Some(text) = result
+        .content
+        .first()
+        .and_then(|content| content.as_text())
+        .map(|content| content.text.as_str())
+    else {
+        let envelope = build_error(
+            service,
+            action,
+            "upstream_error",
+            "upstream returned a non-text error payload",
+        );
+        return (
+            CallToolResult::error(vec![Content::text(envelope.to_string())]),
+            "upstream_error",
+            true,
+        );
+    };
+
+    let Ok(parsed) = serde_json::from_str::<Value>(text) else {
+        let envelope = build_error(service, action, "upstream_error", text);
+        return (
+            CallToolResult::error(vec![Content::text(envelope.to_string())]),
+            "upstream_error",
+            true,
+        );
+    };
+
+    let error_obj = parsed
+        .get("error")
+        .and_then(Value::as_object)
+        .or_else(|| parsed.as_object());
+
+    let Some(error_obj) = error_obj else {
+        let envelope = build_error(service, action, "upstream_error", text);
+        return (
+            CallToolResult::error(vec![Content::text(envelope.to_string())]),
+            "upstream_error",
+            true,
+        );
+    };
+
+    let kind = error_obj
+        .get("kind")
+        .and_then(Value::as_str)
+        .map(static_kind)
+        .unwrap_or("upstream_error");
+    let message = error_obj
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or(text);
+
+    let extra = serde_json::Map::from_iter(
+        error_obj
+            .iter()
+            .filter(|(key, _)| *key != "kind" && *key != "message")
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
+
+    let envelope = if extra.is_empty() {
+        build_error(service, action, kind, message)
+    } else {
+        build_error_extra(service, action, kind, message, &Value::Object(extra))
+    };
+
+    (
+        CallToolResult::error(vec![Content::text(envelope.to_string())]),
+        kind,
+        matches!(
+            kind,
+            "upstream_error" | "network_error" | "server_error" | "decode_error" | "internal_error"
+        ),
+    )
 }
 
 /// Recover a stable kind tag and message from an `anyhow::Error`.
@@ -452,8 +551,10 @@ pub fn static_kind(s: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::static_kind;
+    use super::{normalize_upstream_result, static_kind};
     use crate::dispatch::error::ToolError;
+    use crate::mcp::envelope::build_error;
+    use rmcp::model::{CallToolResult, Content};
 
     /// Every kind that `ToolError::kind()` can return must have an explicit arm
     /// in `static_kind()`.  If a new variant or SDK kind is added to `ToolError`
@@ -523,5 +624,18 @@ mod tests {
                 static_kind(kind),
             );
         }
+    }
+
+    #[test]
+    fn normalize_upstream_result_preserves_user_errors_without_poisoning_health() {
+        let upstream = CallToolResult::error(vec![Content::text(
+            build_error("radarr", "movie.add", "missing_param", "need title").to_string(),
+        )]);
+
+        let (_, kind, counts_as_failure) =
+            normalize_upstream_result("radarr", "call_tool", upstream);
+
+        assert_eq!(kind, "missing_param");
+        assert!(!counts_as_failure);
     }
 }
