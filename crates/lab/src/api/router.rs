@@ -288,16 +288,22 @@ pub fn build_router(
 
                     // 2. Try lab-auth JWT
                     if let Some(ref auth_state) = auth_state {
-                        match auth_state.signing_keys.validate_access_token(&token) {
+                        let expected_aud = auth_state
+                            .config
+                            .public_url
+                            .as_ref()
+                            .map(|url| url.as_str().trim_end_matches('/').to_string());
+                        // public_url must be configured for JWT validation; if
+                        // absent we cannot verify the audience so reject.
+                        let Some(ref expected_aud) = expected_aud else {
+                            return Ok(auth_error_response(
+                                "server misconfigured: LAB_PUBLIC_URL required for JWT validation",
+                                resource_url.as_deref(),
+                            ));
+                        };
+                        match auth_state.signing_keys.validate_access_token(&token, expected_aud) {
                             Ok(claims) => {
-                                let expected = auth_state
-                                    .config
-                                    .public_url
-                                    .as_ref()
-                                    .map(|url| url.as_str().trim_end_matches('/').to_string());
-                                if let Some(expected) = expected
-                                    && (claims.iss != expected || claims.aud != expected)
-                                {
+                                if claims.iss != *expected_aud {
                                     return Ok(auth_error_response(
                                         "invalid bearer token",
                                         resource_url.as_deref(),

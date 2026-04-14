@@ -13,6 +13,7 @@ use crate::types::{
     AuthorizeQuery, AuthorizationCodeRow, AuthorizationRequestRow, CallbackQuery,
     ClientRegistrationRequest, ClientRegistrationResponse, RegisteredClient,
 };
+use crate::util::{now_unix, random_token};
 
 const AUTH_REQUEST_TTL_SECS: i64 = 300;
 const AUTH_CODE_TTL_SECS: i64 = 300;
@@ -157,7 +158,12 @@ fn require_bootstrap_secret(state: &AuthState, headers: &HeaderMap) -> Result<()
         .and_then(|value| value.to_str().ok())
         .and_then(parse_bearer_token)
         .ok_or_else(|| AuthError::AuthFailed("missing bootstrap secret".to_string()))?;
-    if provided != *expected {
+    let is_equal: bool = subtle::ConstantTimeEq::ct_eq(
+        provided.as_bytes(),
+        expected.as_bytes(),
+    )
+    .into();
+    if !is_equal {
         return Err(AuthError::AuthFailed(
             "invalid bootstrap secret".to_string(),
         ));
@@ -211,20 +217,6 @@ fn is_loopback_redirect(value: &str) -> bool {
     )
 }
 
-fn random_token(bytes: usize) -> Result<String, AuthError> {
-    let mut buf = vec![0_u8; bytes];
-    getrandom::fill(&mut buf)
-        .map_err(|error| AuthError::Storage(format!("generate random token: {error}")))?;
-    Ok(URL_SAFE_NO_PAD.encode(buf))
-}
-
-fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-}
-
 #[cfg(test)]
 pub mod tests {
     use axum::body::Body;
@@ -242,7 +234,7 @@ pub mod tests {
     use crate::state::AuthState;
     use crate::types::{AuthorizationRequestRow, RegisteredClient};
 
-    use super::now_unix;
+    use crate::util::now_unix;
 
     #[tokio::test]
     async fn register_requires_bootstrap_secret_and_loopback_redirect() {

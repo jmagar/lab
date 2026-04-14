@@ -27,9 +27,6 @@ pub enum AuthError {
     #[error("invalid access token")]
     InvalidAccessToken,
 
-    #[error("access token verifier is not configured")]
-    UnconfiguredVerifier,
-
     #[error("path `{path}` has insecure permissions")]
     InsecurePermissions { path: PathBuf },
 }
@@ -37,7 +34,7 @@ pub enum AuthError {
 impl AuthError {
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Config(_) | Self::Storage(_) | Self::UnconfiguredVerifier | Self::InsecurePermissions { .. } => "internal_error",
+            Self::Config(_) | Self::Storage(_) | Self::InsecurePermissions { .. } => "internal_error",
             Self::InvalidGrant(_) => "invalid_grant",
             Self::AuthFailed(_) | Self::InvalidAccessToken => "auth_failed",
             Self::Validation(_) => "validation_failed",
@@ -53,7 +50,6 @@ impl AuthError {
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Config(_)
             | Self::Storage(_)
-            | Self::UnconfiguredVerifier
             | Self::InsecurePermissions { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

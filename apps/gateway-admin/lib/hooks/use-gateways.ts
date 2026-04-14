@@ -4,10 +4,10 @@ import useSWR, { mutate } from 'swr'
 import { gatewayApi } from '@/lib/api/gateway-client'
 import { mockGateways, mockExposurePolicy, mockTestResult, mockReloadResult, mockExposurePolicyPreview } from '@/lib/api/mock-data'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput, ExposurePolicy, TestGatewayResult, ReloadGatewayResult, ExposurePolicyPreview } from '@/lib/types/gateway'
-import { useState, useCallback } from 'react'
+import { useCallback } from 'react'
 
-// Set to true to use mock data for development
-const USE_MOCK_DATA = true
+// Set NEXT_PUBLIC_MOCK_DATA=true to use mock data for development
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
 
 // Simulate network delay for mock data
 const mockDelay = (ms: number = 500) => new Promise(resolve => setTimeout(resolve, ms))
@@ -78,155 +78,98 @@ export function useExposurePolicy(id: string | null) {
 
 // Mutation hooks
 export function useGatewayMutations() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-
   const createGateway = useCallback(async (input: CreateGatewayInput): Promise<Gateway> => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      if (USE_MOCK_DATA) {
-        await mockDelay()
-        const newGateway: Gateway = {
-          id: `gw-${Date.now()}`,
-          name: input.name,
-          transport: input.transport,
-          config: input.config,
-          status: {
-            healthy: false,
-            connected: false,
-            discovered_tool_count: 0,
-            exposed_tool_count: 0,
-          },
-          discovery: { tools: [], resources: [], prompts: [] },
-          warnings: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-        await mutate(GATEWAYS_KEY, (current: Gateway[] = []) => [...current, newGateway], false)
-        return newGateway
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const newGateway: Gateway = {
+        id: `gw-${Date.now()}`,
+        name: input.name,
+        transport: input.transport,
+        config: input.config,
+        status: {
+          healthy: false,
+          connected: false,
+          discovered_tool_count: 0,
+          exposed_tool_count: 0,
+        },
+        discovery: { tools: [], resources: [], prompts: [] },
+        warnings: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }
-      const gateway = await gatewayApi.create(input)
-      await mutate(GATEWAYS_KEY)
-      return gateway
-    } catch (e) {
-      setError(e as Error)
-      throw e
-    } finally {
-      setIsLoading(false)
+      await mutate(GATEWAYS_KEY, (current: Gateway[] = []) => [...current, newGateway], false)
+      return newGateway
     }
+    const gateway = await gatewayApi.create(input)
+    await mutate(GATEWAYS_KEY)
+    return gateway
   }, [])
 
   const updateGateway = useCallback(async (id: string, input: UpdateGatewayInput): Promise<Gateway> => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      if (USE_MOCK_DATA) {
-        await mockDelay()
-        const gateway = mockGateways.find(g => g.id === id)
-        if (!gateway) throw new Error('Gateway not found')
-        const updated = { ...gateway, ...input, updated_at: new Date().toISOString() }
-        await mutate(gatewayKey(id), updated, false)
-        await mutate(GATEWAYS_KEY)
-        return updated
-      }
-      const gateway = await gatewayApi.update(id, input)
-      await mutate(gatewayKey(id))
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const gateway = mockGateways.find(g => g.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      const updated = { ...gateway, ...input, updated_at: new Date().toISOString() }
+      await mutate(gatewayKey(id), updated, false)
       await mutate(GATEWAYS_KEY)
-      return gateway
-    } catch (e) {
-      setError(e as Error)
-      throw e
-    } finally {
-      setIsLoading(false)
+      return updated
     }
+    const gateway = await gatewayApi.update(id, input)
+    await mutate(gatewayKey(id))
+    await mutate(GATEWAYS_KEY)
+    return gateway
   }, [])
 
   const removeGateway = useCallback(async (id: string): Promise<void> => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      if (USE_MOCK_DATA) {
-        await mockDelay()
-        await mutate(GATEWAYS_KEY, (current: Gateway[] = []) => current.filter(g => g.id !== id), false)
-        return
-      }
-      await gatewayApi.remove(id)
-      await mutate(GATEWAYS_KEY)
-    } catch (e) {
-      setError(e as Error)
-      throw e
-    } finally {
-      setIsLoading(false)
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      await mutate(GATEWAYS_KEY, (current: Gateway[] = []) => current.filter(g => g.id !== id), false)
+      return
     }
+    await gatewayApi.remove(id)
+    await mutate(GATEWAYS_KEY)
   }, [])
 
   const testGateway = useCallback(async (id: string): Promise<TestGatewayResult> => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      if (USE_MOCK_DATA) {
-        await mockDelay(1500) // Longer delay for test
-        const gateway = mockGateways.find(g => g.id === id)
-        if (!gateway) throw new Error('Gateway not found')
-        if (!gateway.status.healthy) {
-          return {
-            success: false,
-            message: 'Connection failed',
-            error: gateway.status.last_error,
-          }
+    if (USE_MOCK_DATA) {
+      await mockDelay(1500) // Longer delay for test
+      const gateway = mockGateways.find(g => g.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      if (!gateway.status.healthy) {
+        return {
+          success: false,
+          message: 'Connection failed',
+          error: gateway.status.last_error,
         }
-        return mockTestResult
       }
-      return await gatewayApi.test(id)
-    } catch (e) {
-      setError(e as Error)
-      throw e
-    } finally {
-      setIsLoading(false)
+      return mockTestResult
     }
+    return await gatewayApi.test(id)
   }, [])
 
   const reloadGateway = useCallback(async (id: string): Promise<ReloadGatewayResult> => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      if (USE_MOCK_DATA) {
-        await mockDelay(2000) // Longer delay for reload
-        return mockReloadResult
-      }
-      const result = await gatewayApi.reload(id)
-      await mutate(gatewayKey(id))
-      await mutate(GATEWAYS_KEY)
-      return result
-    } catch (e) {
-      setError(e as Error)
-      throw e
-    } finally {
-      setIsLoading(false)
+    if (USE_MOCK_DATA) {
+      await mockDelay(2000) // Longer delay for reload
+      return mockReloadResult
     }
+    const result = await gatewayApi.reload(id)
+    await mutate(gatewayKey(id))
+    await mutate(GATEWAYS_KEY)
+    return result
   }, [])
 
   const setExposurePolicy = useCallback(async (id: string, policy: ExposurePolicy): Promise<ExposurePolicy> => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      if (USE_MOCK_DATA) {
-        await mockDelay()
-        await mutate(exposurePolicyKey(id), policy, false)
-        await mutate(gatewayKey(id))
-        return policy
-      }
-      const result = await gatewayApi.setExposurePolicy(id, policy)
-      await mutate(exposurePolicyKey(id))
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      await mutate(exposurePolicyKey(id), policy, false)
       await mutate(gatewayKey(id))
-      return result
-    } catch (e) {
-      setError(e as Error)
-      throw e
-    } finally {
-      setIsLoading(false)
+      return policy
     }
+    const result = await gatewayApi.setExposurePolicy(id, policy)
+    await mutate(exposurePolicyKey(id))
+    await mutate(gatewayKey(id))
+    return result
   }, [])
 
   const previewExposurePolicy = useCallback(async (id: string, patterns: string[]): Promise<ExposurePolicyPreview> => {
@@ -281,8 +224,6 @@ export function useGatewayMutations() {
   }, [])
 
   return {
-    isLoading,
-    error,
     createGateway,
     updateGateway,
     removeGateway,

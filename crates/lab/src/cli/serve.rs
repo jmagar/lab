@@ -18,7 +18,7 @@ use crate::config::{LabConfig, config_toml_path, resolve_auth};
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
-use crate::mcp::server::LabMcpServer;
+use crate::mcp::server::{LabMcpServer, PeerNotifier};
 
 /// Transport choices for `lab serve`.
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -81,15 +81,20 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         pool.discover_all(&config.upstream).await;
         gateway_runtime.swap(Some(pool)).await;
     }
-    let gateway_manager = Arc::new(GatewayManager::new(
+    let notifier = PeerNotifier::default();
+    let mut gateway_manager = GatewayManager::new(
         config_toml_path().unwrap_or_else(|| "config.toml".into()),
         gateway_runtime.clone(),
-    ));
+    );
+    gateway_manager.set_notifier(Arc::new(notifier.clone()));
+    let gateway_manager = Arc::new(gateway_manager);
     gateway_manager.seed_config(config.clone()).await;
     install_gateway_manager(Arc::clone(&gateway_manager));
 
     match transport {
-        Transport::Stdio => run_stdio(Arc::new(registry), Arc::clone(&gateway_manager)).await,
+        Transport::Stdio => {
+            run_stdio(Arc::new(registry), Arc::clone(&gateway_manager), notifier).await
+        }
         Transport::Http => {
             let bearer_token = http_token();
             let auth_config = resolve_auth(config.auth.as_ref())
@@ -129,6 +134,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 state,
                 oauth_state,
                 &config.api.cors_origins,
+                notifier,
             )
             .await
         }
@@ -222,10 +228,11 @@ async fn run_http(
     state: AppState,
     auth_state: Option<lab_auth::state::AuthState>,
     config_cors_origins: &[String],
+    notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     // Build the MCP streamable HTTP service in the serve path (not in the
     // router module) to avoid an api->mcp dependency.
-    let mcp_service = build_mcp_service(&state);
+    let mcp_service = build_mcp_service(&state, notifier);
     let mcp_router = axum::Router::new().nest_service("/mcp", mcp_service);
     let router = crate::api::router::build_router(
         state,
@@ -247,6 +254,7 @@ async fn run_http(
 async fn run_stdio(
     registry: Arc<ToolRegistry>,
     gateway_manager: Arc<GatewayManager>,
+    notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     tracing::info!(
         services = registry.services().len(),
@@ -255,7 +263,7 @@ async fn run_stdio(
     let server = LabMcpServer {
         registry,
         gateway_manager: Some(Arc::clone(&gateway_manager)),
-        peers: gateway_manager.peer_sink(),
+        peers: Arc::clone(&notifier.peers),
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
@@ -266,7 +274,10 @@ async fn run_stdio(
 ///
 /// The factory closure clones `Arc<ToolRegistry>` from `AppState` and constructs
 /// a new `LabMcpServer` per session. Construction cost: two Arc increments.
-fn build_mcp_service(state: &AppState) -> StreamableHttpService<LabMcpServer, LocalSessionManager> {
+fn build_mcp_service(
+    state: &AppState,
+    notifier: PeerNotifier,
+) -> StreamableHttpService<LabMcpServer, LocalSessionManager> {
     let registry = Arc::clone(&state.registry);
     let gateway_manager = state.gateway_manager.clone();
 
@@ -296,14 +307,15 @@ fn build_mcp_service(state: &AppState) -> StreamableHttpService<LabMcpServer, Lo
         ))
         .with_stateful_mode(stateful);
 
+    // All HTTP sessions share the same PeerNotifier (and thus the same peers
+    // vec) so that gateway reload notifications reach every connected session.
+    let shared_peers = Arc::clone(&notifier.peers);
+
     StreamableHttpService::new(
         move || {
             let reg = Arc::clone(&registry);
             let manager = gateway_manager.clone();
-            let peers = manager.as_ref().map_or_else(
-                || Arc::new(tokio::sync::RwLock::new(Vec::new())),
-                |m| m.peer_sink(),
-            );
+            let peers = Arc::clone(&shared_peers);
             Ok(LabMcpServer {
                 registry: reg,
                 gateway_manager: manager,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Play, Loader2 } from 'lucide-react'
 import {
   Dialog,
@@ -47,9 +47,16 @@ export function GatewayFormDialog({
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const prevOpenRef = useRef(false)
 
-  // Reset form when dialog opens
+  // Reset form only on closed->open transition (not on SWR revalidation)
   useEffect(() => {
+    const wasOpen = prevOpenRef.current
+    prevOpenRef.current = open
+
+    // Only reset when transitioning from closed to open
+    if (!open || wasOpen) return
+
     if (open) {
       if (gateway) {
         setTransport(gateway.transport)

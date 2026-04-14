@@ -4,6 +4,8 @@
 //! can share the same handler logic.
 
 use std::collections::BTreeSet;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use rmcp::model::{
@@ -19,10 +21,43 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 
 use crate::dispatch::gateway::manager::GatewayManager;
+use crate::dispatch::gateway::types::{CatalogChangeNotifier, GatewayCatalogDiff};
 use crate::dispatch::upstream::types::UpstreamCapability;
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
 use crate::mcp::registry::ToolRegistry;
+
+/// MCP-specific [`CatalogChangeNotifier`] that forwards catalog-change
+/// notifications to all connected `rmcp::Peer<RoleServer>` instances.
+///
+/// This keeps `rmcp` types out of the dispatch layer while allowing
+/// `GatewayManager` to notify peers when the upstream pool changes.
+#[derive(Clone, Default)]
+pub struct PeerNotifier {
+    pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
+}
+
+impl CatalogChangeNotifier for PeerNotifier {
+    fn notify_catalog_changes<'a>(
+        &'a self,
+        diff: &'a GatewayCatalogDiff,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+        Box::pin(async move {
+            let peers = self.peers.read().await.clone();
+            for peer in peers {
+                if diff.tools_changed {
+                    drop(peer.notify_tool_list_changed().await);
+                }
+                if diff.resources_changed {
+                    drop(peer.notify_resource_list_changed().await);
+                }
+                if diff.prompts_changed {
+                    drop(peer.notify_prompt_list_changed().await);
+                }
+            }
+        })
+    }
+}
 
 /// JSON Schema for every service tool's input: `action` (required) + `params` (optional object).
 #[allow(clippy::expect_used)]
@@ -526,17 +561,29 @@ impl LabMcpServer {
         }
 
         let peers = self.peers.read().await.clone();
+        let mut alive = Vec::with_capacity(peers.len());
         for peer in peers {
+            let mut ok = true;
             if before.tools != after.tools {
-                drop(peer.notify_tool_list_changed().await);
+                if peer.notify_tool_list_changed().await.is_err() {
+                    ok = false;
+                }
             }
-            if before.resources != after.resources {
-                drop(peer.notify_resource_list_changed().await);
+            if ok && before.resources != after.resources {
+                if peer.notify_resource_list_changed().await.is_err() {
+                    ok = false;
+                }
             }
-            if before.prompts != after.prompts {
-                drop(peer.notify_prompt_list_changed().await);
+            if ok && before.prompts != after.prompts {
+                if peer.notify_prompt_list_changed().await.is_err() {
+                    ok = false;
+                }
+            }
+            if ok {
+                alive.push(peer);
             }
         }
+        *self.peers.write().await = alive;
     }
 }
 
@@ -926,10 +973,11 @@ mod tests {
             std::path::PathBuf::from("config.toml"),
             runtime.clone(),
         ));
+        let notifier = super::PeerNotifier::default();
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::mcp::registry::ToolRegistry::new()),
             gateway_manager: Some(std::sync::Arc::clone(&manager)),
-            peers: manager.peer_sink(),
+            peers: std::sync::Arc::clone(&notifier.peers),
         };
 
         assert!(server.current_upstream_pool().await.is_none());

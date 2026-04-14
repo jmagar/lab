@@ -2,8 +2,6 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use rmcp::RoleServer;
-use rmcp::service::Peer;
 use tokio::sync::RwLock;
 
 use crate::config::{LabConfig, UpstreamConfig};
@@ -14,7 +12,9 @@ use super::config::{
     insert_upstream, load_gateway_config, remove_upstream, update_upstream, write_gateway_config,
 };
 use super::params::GatewayUpdatePatch;
-use super::types::{GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView, GatewayView};
+use super::types::{
+    CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView, GatewayView,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCatalogSnapshot {
@@ -54,7 +54,7 @@ pub struct GatewayManager {
     path: PathBuf,
     runtime: GatewayRuntimeHandle,
     config: Arc<RwLock<LabConfig>>,
-    peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
+    notifier: Option<Arc<dyn CatalogChangeNotifier>>,
 }
 
 impl GatewayManager {
@@ -63,12 +63,16 @@ impl GatewayManager {
             path,
             runtime,
             config: Arc::new(RwLock::new(LabConfig::default())),
-            peers: Arc::new(RwLock::new(Vec::new())),
+            notifier: None,
         }
     }
 
-    pub fn peer_sink(&self) -> Arc<RwLock<Vec<Peer<RoleServer>>>> {
-        Arc::clone(&self.peers)
+    /// Attach a catalog-change notifier (e.g. the MCP peer notifier).
+    ///
+    /// Must be called before any operations that trigger catalog changes
+    /// (add, update, remove, reload) if the caller wants notifications.
+    pub fn set_notifier(&mut self, notifier: Arc<dyn CatalogChangeNotifier>) {
+        self.notifier = Some(notifier);
     }
 
     pub async fn seed_config(&self, config: LabConfig) {
@@ -82,11 +86,16 @@ impl GatewayManager {
     pub async fn list(&self) -> Result<Vec<GatewayView>, ToolError> {
         let cfg = self.config.read().await.clone();
         let pool = self.runtime.current_pool().await;
+        let prompt_owners = match pool.as_deref() {
+            Some(p) => Some(p.prompt_ownership_map(&[]).await),
+            None => None,
+        };
         let mut views = Vec::with_capacity(cfg.upstream.len());
         for upstream in &cfg.upstream {
             views.push(GatewayView {
                 config: config_view(upstream),
-                runtime: runtime_view(pool.as_deref(), &upstream.name).await,
+                runtime: runtime_view(pool.as_deref(), &upstream.name, prompt_owners.as_ref())
+                    .await,
             });
         }
         Ok(views)
@@ -107,7 +116,7 @@ impl GatewayManager {
 
         Ok(GatewayView {
             config: config_view(&upstream),
-            runtime: runtime_view(self.runtime.current_pool().await.as_deref(), &upstream.name)
+            runtime: runtime_view(self.runtime.current_pool().await.as_deref(), &upstream.name, None)
                 .await,
         })
     }
@@ -123,9 +132,13 @@ impl GatewayManager {
             .cloned()
             .collect();
         let pool = self.runtime.current_pool().await;
+        let prompt_owners = match pool.as_deref() {
+            Some(p) => Some(p.prompt_ownership_map(&[]).await),
+            None => None,
+        };
         let mut items = Vec::new();
         for upstream in &upstreams {
-            items.push(runtime_view(pool.as_deref(), &upstream.name).await);
+            items.push(runtime_view(pool.as_deref(), &upstream.name, prompt_owners.as_ref()).await);
         }
         Ok(items)
     }
@@ -152,13 +165,20 @@ impl GatewayManager {
         let pool = UpstreamPool::new();
         pool.discover_all(&[upstream.clone()]).await;
 
-        Ok(runtime_view(Some(&pool), &upstream.name).await)
+        Ok(runtime_view(Some(&pool), &upstream.name, None).await)
     }
 
     pub async fn add(&self, spec: UpstreamConfig) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
         insert_upstream(&mut cfg, spec.clone())?;
-        write_gateway_config(&self.path, &cfg)?;
+        let path = self.path.clone();
+        let cfg_clone = cfg.clone();
+        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("config write task failed: {e}"),
+            })??;
         *self.config.write().await = cfg;
         let _ = self.reload().await?;
         self.get(&spec.name).await
@@ -172,7 +192,14 @@ impl GatewayManager {
         let mut cfg = self.config.read().await.clone();
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
         update_upstream(&mut cfg, name, patch)?;
-        write_gateway_config(&self.path, &cfg)?;
+        let path = self.path.clone();
+        let cfg_clone = cfg.clone();
+        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("config write task failed: {e}"),
+            })??;
         *self.config.write().await = cfg;
         let _ = self.reload().await?;
         self.get(&updated_name).await
@@ -181,7 +208,14 @@ impl GatewayManager {
     pub async fn remove(&self, name: &str) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
         let removed = remove_upstream(&mut cfg, name)?;
-        write_gateway_config(&self.path, &cfg)?;
+        let path = self.path.clone();
+        let cfg_clone = cfg.clone();
+        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("config write task failed: {e}"),
+            })??;
         *self.config.write().await = cfg;
         let _ = self.reload().await?;
         Ok(GatewayView {
@@ -194,7 +228,13 @@ impl GatewayManager {
     }
 
     pub async fn reload(&self) -> Result<GatewayCatalogDiff, ToolError> {
-        let cfg = load_gateway_config(&self.path)?;
+        let path = self.path.clone();
+        let cfg = tokio::task::spawn_blocking(move || load_gateway_config(&path))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("config read task failed: {e}"),
+            })??;
         let before = snapshot_from_pool(self.runtime.current_pool().await).await;
         let fresh_pool = if cfg.upstream.is_empty() {
             None
@@ -250,17 +290,12 @@ impl GatewayManager {
             return Ok(Vec::new());
         };
 
-        let mut prompts = Vec::new();
-        for prompt in pool.list_upstream_prompts(&[]).await {
-            if pool
-                .find_prompt_owner(prompt.name.as_ref())
-                .await
-                .as_deref()
-                == Some(name)
-            {
-                prompts.push(prompt.name.to_string());
-            }
-        }
+        let owners = pool.prompt_ownership_map(&[]).await;
+        let mut prompts: Vec<String> = owners
+            .into_iter()
+            .filter(|(_, owner)| owner == name)
+            .map(|(prompt_name, _)| prompt_name)
+            .collect();
         prompts.sort();
         Ok(prompts)
     }
@@ -279,17 +314,8 @@ impl GatewayManager {
             return;
         }
 
-        let peers = self.peers.read().await.clone();
-        for peer in peers {
-            if diff.tools_changed {
-                drop(peer.notify_tool_list_changed().await);
-            }
-            if diff.resources_changed {
-                drop(peer.notify_resource_list_changed().await);
-            }
-            if diff.prompts_changed {
-                drop(peer.notify_prompt_list_changed().await);
-            }
+        if let Some(notifier) = &self.notifier {
+            notifier.notify_catalog_changes(diff).await;
         }
     }
 }
@@ -332,7 +358,11 @@ async fn snapshot_from_pool(pool: Option<Arc<UpstreamPool>>) -> GatewayCatalogSn
     }
 }
 
-async fn runtime_view(pool: Option<&UpstreamPool>, name: &str) -> GatewayRuntimeView {
+async fn runtime_view(
+    pool: Option<&UpstreamPool>,
+    name: &str,
+    prompt_owners: Option<&std::collections::HashMap<String, String>>,
+) -> GatewayRuntimeView {
     let Some(pool) = pool else {
         return GatewayRuntimeView {
             name: name.to_string(),
@@ -352,17 +382,14 @@ async fn runtime_view(pool: Option<&UpstreamPool>, name: &str) -> GatewayRuntime
         .into_iter()
         .filter(|resource| resource.uri.starts_with(&format!("lab://upstream/{name}/")))
         .count();
-    let mut prompt_count = 0;
-    for prompt in pool.list_upstream_prompts(&[]).await {
-        if pool
-            .find_prompt_owner(prompt.name.as_ref())
-            .await
-            .as_deref()
-            == Some(name)
-        {
-            prompt_count += 1;
+    let prompt_count = match prompt_owners {
+        Some(owners) => owners.values().filter(|owner| *owner == name).count(),
+        None => {
+            // Fallback: compute on the fly (single-upstream callers like `test`).
+            let owners = pool.prompt_ownership_map(&[]).await;
+            owners.values().filter(|owner| *owner == name).count()
         }
-    }
+    };
 
     GatewayRuntimeView {
         name: name.to_string(),

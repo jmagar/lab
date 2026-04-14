@@ -24,6 +24,13 @@ pub fn load_gateway_config(path: &Path) -> Result<LabConfig, ToolError> {
     }
 }
 
+/// Serialize `cfg` to TOML and atomically replace the file at `path`.
+///
+/// **Limitation:** This serializes the full `LabConfig` struct via `toml::to_string`,
+/// which means any unknown keys, TOML comments, or settings from newer schema
+/// versions that are not represented in `LabConfig` will be dropped on write.
+/// A future migration to `toml_edit` would preserve unknown keys and comments,
+/// but that is deferred as a P2 change.
 pub fn write_gateway_config(path: &Path, cfg: &LabConfig) -> Result<(), ToolError> {
     validate_upstreams(&cfg.upstream)?;
 

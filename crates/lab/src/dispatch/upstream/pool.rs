@@ -616,11 +616,26 @@ impl UpstreamPool {
             return Vec::new();
         }
 
+        // Issue RPCs in parallel, then sort by upstream name for deterministic order.
+        let mut futures = FuturesUnordered::new();
+        for (name, peer) in peers {
+            futures.push(async move {
+                let result = peer.list_resources(None).await;
+                (name, result)
+            });
+        }
+
+        let mut results: Vec<(String, Result<_, _>)> = Vec::new();
+        while let Some(item) = futures.next().await {
+            results.push(item);
+        }
+        results.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
         let mut resources = Vec::new();
-        for (name, peer) in &peers {
-            match peer.list_resources(None).await {
+        for (name, result) in results {
+            match result {
                 Ok(result) => {
-                    self.record_success_for(name, UpstreamCapability::Resources)
+                    self.record_success_for(&name, UpstreamCapability::Resources)
                         .await;
                     for mut resource in result.resources {
                         let original_uri = resource.uri.clone();
@@ -629,7 +644,7 @@ impl UpstreamPool {
                     }
                 }
                 Err(e) => {
-                    self.record_failure_for(name, UpstreamCapability::Resources)
+                    self.record_failure_for(&name, UpstreamCapability::Resources)
                         .await;
                     tracing::warn!(
                         upstream = %name,
@@ -711,20 +726,36 @@ impl UpstreamPool {
         Some(result)
     }
 
-    /// List prompts from all healthy upstreams, filtering built-in and cross-upstream collisions.
-    pub async fn list_upstream_prompts(&self, builtin_names: &[&str]) -> Vec<rmcp::model::Prompt> {
+    /// Fetch prompts from all healthy upstreams and merge them, returning both the
+    /// deduplicated prompt list and the ownership map (prompt_name -> upstream_name).
+    ///
+    /// This is the single RPC pass shared by all prompt-related queries.
+    async fn collect_upstream_prompts(
+        &self,
+        builtin_names: &[&str],
+    ) -> (Vec<rmcp::model::Prompt>, HashMap<String, String>) {
         let peers = routable_upstream_peers(self, UpstreamCapability::Prompts).await;
 
+        // Issue RPCs in parallel. merge_upstream_prompts sorts internally,
+        // so completion order does not affect the final result.
+        let mut futures = FuturesUnordered::new();
+        for (name, peer) in peers {
+            futures.push(async move {
+                let result = peer.list_prompts(None).await;
+                (name, result)
+            });
+        }
+
         let mut upstream_prompts = Vec::new();
-        for (name, peer) in &peers {
-            match peer.list_prompts(None).await {
+        while let Some((name, result)) = futures.next().await {
+            match result {
                 Ok(result) => {
-                    self.record_success_for(name, UpstreamCapability::Prompts)
+                    self.record_success_for(&name, UpstreamCapability::Prompts)
                         .await;
-                    upstream_prompts.push((name.clone(), result.prompts));
+                    upstream_prompts.push((name, result.prompts));
                 }
                 Err(e) => {
-                    self.record_failure_for(name, UpstreamCapability::Prompts)
+                    self.record_failure_for(&name, UpstreamCapability::Prompts)
                         .await;
                     tracing::warn!(
                         upstream = %name,
@@ -735,35 +766,33 @@ impl UpstreamPool {
             }
         }
 
-        let (prompts, _) = merge_upstream_prompts(builtin_names, upstream_prompts);
+        merge_upstream_prompts(builtin_names, upstream_prompts)
+    }
+
+    /// List prompts from all healthy upstreams, filtering built-in and cross-upstream collisions.
+    pub async fn list_upstream_prompts(&self, builtin_names: &[&str]) -> Vec<rmcp::model::Prompt> {
+        let (prompts, _) = self.collect_upstream_prompts(builtin_names).await;
         prompts
     }
 
+    /// Build prompt ownership map: prompt_name -> upstream_name.
+    ///
+    /// Makes M RPCs (one per healthy upstream), not M*N. Use this when you need
+    /// to look up ownership for multiple prompts.
+    pub async fn prompt_ownership_map(
+        &self,
+        builtin_names: &[&str],
+    ) -> HashMap<String, String> {
+        let (_, owners) = self.collect_upstream_prompts(builtin_names).await;
+        owners
+    }
+
     /// Resolve which upstream owns a given prompt name.
+    ///
+    /// Prefer `prompt_ownership_map()` when resolving ownership for multiple
+    /// prompts to avoid an N+1 RPC pattern.
     pub async fn find_prompt_owner(&self, prompt_name: &str) -> Option<String> {
-        let peers = routable_upstream_peers(self, UpstreamCapability::Prompts).await;
-
-        let mut upstream_prompts = Vec::new();
-        for (name, peer) in &peers {
-            match peer.list_prompts(None).await {
-                Ok(result) => {
-                    self.record_success_for(name, UpstreamCapability::Prompts)
-                        .await;
-                    upstream_prompts.push((name.clone(), result.prompts));
-                }
-                Err(e) => {
-                    self.record_failure_for(name, UpstreamCapability::Prompts)
-                        .await;
-                    tracing::warn!(
-                        upstream = %name,
-                        error = %e,
-                        "failed to resolve upstream prompt ownership"
-                    );
-                }
-            }
-        }
-
-        let (_, owners) = merge_upstream_prompts(&[], upstream_prompts);
+        let (_, owners) = self.collect_upstream_prompts(&[]).await;
         owners.get(prompt_name).cloned()
     }
 

@@ -171,6 +171,16 @@ impl GoogleProvider {
     }
 }
 
+/// Extract the `sub` claim from a Google id_token by base64-decoding the JWT payload.
+///
+/// **Signature verification is intentionally skipped.** This function is only called with
+/// id_tokens obtained directly from Google's token endpoint during a server-side OAuth
+/// code exchange over TLS. Because the token never passes through an untrusted client,
+/// the TLS channel itself authenticates the issuer and protects integrity.
+///
+/// If this function is ever called with tokens received from untrusted sources (e.g.
+/// passed in by a browser client), full signature verification against Google's JWKS
+/// endpoint must be added first.
 fn parse_subject_from_id_token(id_token: &str) -> Result<String, AuthError> {
     let mut parts = id_token.split('.');
     let _header = parts.next().ok_or_else(|| {

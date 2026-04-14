@@ -1,5 +1,5 @@
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::error::AuthError;
+use crate::util::{ensure_restrictive_permissions, set_restrictive_permissions};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessClaims {
@@ -55,11 +56,6 @@ impl fmt::Debug for SigningKeys {
             .field("key_id", &self.key_id)
             .finish_non_exhaustive()
     }
-}
-
-pub fn validate_access_token(token: &str) -> Result<AccessClaims, AuthError> {
-    let _ = token;
-    Err(AuthError::UnconfiguredVerifier)
 }
 
 impl SigningKeys {
@@ -109,9 +105,13 @@ impl SigningKeys {
             .map_err(|error| AuthError::Storage(format!("encode access token: {error}")))
     }
 
-    pub fn validate_access_token(&self, token: &str) -> Result<AccessClaims, AuthError> {
+    pub fn validate_access_token(
+        &self,
+        token: &str,
+        expected_audience: &str,
+    ) -> Result<AccessClaims, AuthError> {
         let mut validation = Validation::new(Algorithm::RS256);
-        validation.validate_aud = false;
+        validation.set_audience(&[expected_audience]);
         decode::<AccessClaims>(token, &self.decoding_key, &validation)
             .map(|data| data.claims)
             .map_err(|_| AuthError::InvalidAccessToken)
@@ -195,40 +195,6 @@ impl fmt::Display for SystemRngError {
 
 impl std::error::Error for SystemRngError {}
 
-#[cfg(unix)]
-fn ensure_restrictive_permissions(path: &Path) -> Result<(), AuthError> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let metadata = std::fs::metadata(path)
-        .map_err(|error| AuthError::Storage(format!("stat `{}`: {error}", path.display())))?;
-    let mode = metadata.permissions().mode() & 0o777;
-    if mode & 0o077 != 0 {
-        return Err(AuthError::InsecurePermissions {
-            path: path.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn ensure_restrictive_permissions(_path: &Path) -> Result<(), AuthError> {
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_restrictive_permissions(path: &Path) -> Result<(), AuthError> {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(|error| {
-        AuthError::Storage(format!("chmod 0600 `{}`: {error}", path.display()))
-    })
-}
-
-#[cfg(not(unix))]
-fn set_restrictive_permissions(_path: &Path) -> Result<(), AuthError> {
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use jsonwebtoken::decode_header;
@@ -260,10 +226,20 @@ mod tests {
     fn minted_access_token_round_trips_and_contains_kid() {
         let signer = test_signer();
         let token = signer.issue_access_token(sample_claims()).unwrap();
-        let claims = signer.validate_access_token(&token).unwrap();
+        let claims = signer
+            .validate_access_token(&token, "https://lab.example.com")
+            .unwrap();
         assert_eq!(claims.aud, "https://lab.example.com");
         assert!(!claims.jti.is_empty());
         assert!(decode_header(&token).unwrap().kid.is_some());
+    }
+
+    #[test]
+    fn wrong_audience_is_rejected() {
+        let signer = test_signer();
+        let token = signer.issue_access_token(sample_claims()).unwrap();
+        let result = signer.validate_access_token(&token, "https://other.example.com");
+        assert!(result.is_err(), "token with wrong audience must be rejected");
     }
 
     fn test_signer() -> SigningKeys {

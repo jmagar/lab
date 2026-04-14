@@ -39,41 +39,44 @@ function gatewayPath(id: string, suffix = ''): string {
 
 export const gatewayApi = {
   // List all gateways
-  async list(): Promise<Gateway[]> {
-    const response = await fetch(`${API_BASE}/gateways`)
+  async list(signal?: AbortSignal): Promise<Gateway[]> {
+    const response = await fetch(`${API_BASE}/gateways`, { signal })
     return handleResponse<Gateway[]>(response)
   },
 
   // Get a single gateway by ID
-  async get(id: string): Promise<Gateway> {
-    const response = await fetch(gatewayPath(id))
+  async get(id: string, signal?: AbortSignal): Promise<Gateway> {
+    const response = await fetch(gatewayPath(id), { signal })
     return handleResponse<Gateway>(response)
   },
 
   // Create a new gateway
-  async create(input: CreateGatewayInput): Promise<Gateway> {
+  async create(input: CreateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
     const response = await fetch(`${API_BASE}/gateways`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
+      signal,
     })
     return handleResponse<Gateway>(response)
   },
 
   // Update an existing gateway
-  async update(id: string, input: UpdateGatewayInput): Promise<Gateway> {
+  async update(id: string, input: UpdateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
     const response = await fetch(gatewayPath(id), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
+      signal,
     })
     return handleResponse<Gateway>(response)
   },
 
   // Remove a gateway
-  async remove(id: string): Promise<void> {
+  async remove(id: string, signal?: AbortSignal): Promise<void> {
     const response = await fetch(gatewayPath(id), {
       method: 'DELETE',
+      signal,
     })
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Failed to delete gateway' }))
@@ -82,33 +85,36 @@ export const gatewayApi = {
   },
 
   // Test gateway connection
-  async test(id: string): Promise<TestGatewayResult> {
+  async test(id: string, signal?: AbortSignal): Promise<TestGatewayResult> {
     const response = await fetch(gatewayPath(id, '/test'), {
       method: 'POST',
+      signal,
     })
     return handleResponse<TestGatewayResult>(response)
   },
 
   // Reload gateway (re-discover tools/resources/prompts)
-  async reload(id: string): Promise<ReloadGatewayResult> {
+  async reload(id: string, signal?: AbortSignal): Promise<ReloadGatewayResult> {
     const response = await fetch(gatewayPath(id, '/reload'), {
       method: 'POST',
+      signal,
     })
     return handleResponse<ReloadGatewayResult>(response)
   },
 
   // Get exposure policy for a gateway
-  async getExposurePolicy(id: string): Promise<ExposurePolicy> {
-    const response = await fetch(gatewayPath(id, '/exposure'))
+  async getExposurePolicy(id: string, signal?: AbortSignal): Promise<ExposurePolicy> {
+    const response = await fetch(gatewayPath(id, '/exposure'), { signal })
     return handleResponse<ExposurePolicy>(response)
   },
 
   // Update exposure policy
-  async setExposurePolicy(id: string, policy: ExposurePolicy): Promise<ExposurePolicy> {
+  async setExposurePolicy(id: string, policy: ExposurePolicy, signal?: AbortSignal): Promise<ExposurePolicy> {
     const response = await fetch(gatewayPath(id, '/exposure'), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(policy),
+      signal,
     })
     return handleResponse<ExposurePolicy>(response)
   },
@@ -116,12 +122,14 @@ export const gatewayApi = {
   // Preview exposure policy (dry run)
   async previewExposurePolicy(
     id: string,
-    patterns: string[]
+    patterns: string[],
+    signal?: AbortSignal
   ): Promise<ExposurePolicyPreview> {
     const response = await fetch(gatewayPath(id, '/exposure/preview'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ patterns }),
+      signal,
     })
     return handleResponse<ExposurePolicyPreview>(response)
   },

@@ -1,4 +1,20 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use serde::{Deserialize, Serialize};
+
+/// Surface-neutral notification trait for catalog changes.
+///
+/// The dispatch layer calls this after gateway reload/add/remove to inform
+/// connected transports (e.g. MCP peers) that tools, resources, or prompts
+/// have changed.  The concrete implementation lives in the MCP surface
+/// (`mcp/server.rs`) so that `rmcp::Peer` never leaks into dispatch.
+pub trait CatalogChangeNotifier: Send + Sync {
+    fn notify_catalog_changes<'a>(
+        &'a self,
+        diff: &'a GatewayCatalogDiff,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayConfigView {

@@ -90,3 +90,4 @@ POST /v1/gateway
 - `gateway.reload` is the only action that promises to pick up changed bearer-token env vars.
 - The product HTTP API exposes `/v1/gateway` for gateway management, but it still does not proxy arbitrary upstream MCP tools through `/v1/*`.
 - Runtime counts depend on current discovery state; an unreachable upstream can remain configured while reporting zero discovered items.
+- Gateway mutations rewrite `config.toml` by serializing the full `LabConfig` struct. TOML comments and unknown keys not represented in the struct are dropped on write. A migration to `toml_edit` for comment-preserving round-trips is deferred.

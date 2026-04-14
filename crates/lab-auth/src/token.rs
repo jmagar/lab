@@ -8,6 +8,7 @@ use crate::error::AuthError;
 use crate::jwt::AccessClaims;
 use crate::state::AuthState;
 use crate::types::{RefreshTokenRow, TokenRequest, TokenResponse};
+use crate::util::{now_unix, random_token};
 
 pub async fn token(
     State(state): State<AuthState>,
@@ -168,20 +169,6 @@ fn pkce_challenge(code_verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(code_verifier.as_bytes()))
 }
 
-fn random_token(bytes: usize) -> Result<String, AuthError> {
-    let mut buf = vec![0_u8; bytes];
-    getrandom::fill(&mut buf)
-        .map_err(|error| AuthError::Storage(format!("generate random token: {error}")))?;
-    Ok(URL_SAFE_NO_PAD.encode(buf))
-}
-
-fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-}
-
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
@@ -258,7 +245,7 @@ mod tests {
     #[tokio::test]
     async fn token_endpoint_rejects_expired_authorization_code() {
         let state = test_auth_state_with_registered_client().await;
-        seed_authorization_code_with_expiry(&state, super::now_unix() - 1).await;
+        seed_authorization_code_with_expiry(&state, crate::util::now_unix() - 1).await;
         let app = router(state);
         let response = app
             .oneshot(
@@ -288,8 +275,8 @@ mod tests {
                 subject: "google-subject-123".to_string(),
                 scope: "lab".to_string(),
                 provider_refresh_token: Some("provider-refresh".to_string()),
-                created_at: super::now_unix() - 3600,
-                expires_at: super::now_unix() - 1,
+                created_at: crate::util::now_unix() - 3600,
+                expires_at: crate::util::now_unix() - 1,
             })
             .await
             .unwrap();
@@ -324,8 +311,8 @@ mod tests {
                 subject: "google-subject-123".to_string(),
                 scope: "lab".to_string(),
                 provider_refresh_token: Some("provider-refresh".to_string()),
-                created_at: super::now_unix() - 60,
-                expires_at: super::now_unix() + 3600,
+                created_at: crate::util::now_unix() - 60,
+                expires_at: crate::util::now_unix() + 3600,
             })
             .await
             .unwrap();

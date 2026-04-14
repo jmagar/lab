@@ -46,13 +46,13 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
 
-  // Initialize from policy
+  // Initialize from policy — only when user has no pending edits
   useEffect(() => {
-    if (policy) {
+    if (policy && !hasChanges) {
       setMode(policy.mode)
       setPatterns(policy.patterns)
     }
-  }, [policy])
+  }, [policy]) // eslint-disable-line react-hooks/exhaustive-deps -- intentionally excludes hasChanges to avoid loops
 
   // Track changes
   useEffect(() => {
@@ -63,26 +63,30 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
     }
   }, [mode, patterns, policy])
 
-  // Preview debounce
+  // Preview debounce — canceled flag prevents stale responses from overwriting fresh ones
   useEffect(() => {
     if (mode !== 'allowlist' || patterns.length === 0) {
       setPreview(null)
       return
     }
 
+    let canceled = false
     const timer = setTimeout(async () => {
       setIsPreviewLoading(true)
       try {
         const result = await previewExposurePolicy(gateway.id, patterns)
-        setPreview(result)
+        if (!canceled) setPreview(result)
       } catch {
         // Silently fail preview
       } finally {
-        setIsPreviewLoading(false)
+        if (!canceled) setIsPreviewLoading(false)
       }
     }, 300)
 
-    return () => clearTimeout(timer)
+    return () => {
+      canceled = true
+      clearTimeout(timer)
+    }
   }, [gateway.id, mode, patterns, previewExposurePolicy])
 
   const addPattern = useCallback(() => {
