@@ -17,6 +17,7 @@ use crate::dispatch::unraid::{
 /// Dispatch using a pre-built client (avoids per-request env reads).
 ///
 /// Called by the API handler which holds a client in `AppState`.
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &UnraidClient,
     action: &str,

@@ -14,7 +14,7 @@ use std::collections::HashMap;
 /// Section names are stored lowercase. Keys preserve their original case.
 /// Values are stored as-is (no unquoting).
 #[must_use]
-pub(crate) fn parse(contents: &[u8]) -> HashMap<String, HashMap<String, String>> {
+pub(super) fn parse(contents: &[u8]) -> HashMap<String, HashMap<String, String>> {
     let text = String::from_utf8_lossy(contents);
     let mut out: HashMap<String, HashMap<String, String>> = HashMap::new();
     let mut section = String::new();

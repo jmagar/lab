@@ -24,7 +24,10 @@ pub fn chat_request_from_params(params: &Value) -> Result<ChatCompletionRequest,
         .get("temperature")
         .map(|v| {
             v.as_f64()
-                .map(|f| f as f32)
+                .map(|f| {
+                    #[allow(clippy::cast_possible_truncation)]
+                    { f as f32 }
+                })
                 .ok_or_else(|| ToolError::InvalidParam {
                     message: "parameter `temperature` must be a number".to_string(),
                     param: "temperature".to_string(),

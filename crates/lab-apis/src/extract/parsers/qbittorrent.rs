@@ -44,13 +44,11 @@ impl Parser for QbittorrentParser {
 
         let port = prefs
             .get(r"WebUI\Port")
-            .map(String::as_str)
-            .unwrap_or("8080");
+            .map_or("8080", String::as_str);
 
         let address = prefs
             .get(r"WebUI\Address")
-            .map(String::as_str)
-            .unwrap_or("*");
+            .map_or("*", String::as_str);
         let host = if address == "*" || address == "0.0.0.0" || address.is_empty() {
             "localhost"
         } else {

@@ -10,6 +10,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 /// Dispatch against a pre-built Arcane client (avoids per-request env reads).
 ///
 /// Called by the API handler with the client from `AppState`.
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &ArcaneClient,
     action: &str,

@@ -22,6 +22,7 @@ fn require_management_client(
 }
 
 /// Dispatch against pre-built Gotify clients (avoids per-request env reads).
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     clients: &GotifyClients,
     action: &str,

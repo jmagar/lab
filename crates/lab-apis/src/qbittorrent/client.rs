@@ -13,7 +13,7 @@ use super::types::{
     TransferInfo,
 };
 
-/// Client for a qBittorrent WebUI instance.
+/// Client for a qBittorrent `WebUI` instance.
 pub struct QbittorrentClient {
     http: HttpClient,
 }

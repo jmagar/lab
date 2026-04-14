@@ -7,6 +7,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 
 use super::{catalog::ACTIONS, client, params};
 
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &TeiClient,
     action: &str,
@@ -55,8 +56,8 @@ pub async fn dispatch_with_client(
                         })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let truncate = params_value.get("truncate").and_then(|v| v.as_bool());
-            let raw_scores = params_value.get("raw_scores").and_then(|v| v.as_bool());
+            let truncate = params_value.get("truncate").and_then(Value::as_bool);
+            let raw_scores = params_value.get("raw_scores").and_then(Value::as_bool);
             let request = RerankRequest {
                 query,
                 texts,
@@ -76,7 +77,7 @@ pub async fn dispatch_with_client(
                 })?;
             let add_special_tokens = params_value
                 .get("add_special_tokens")
-                .and_then(|v| v.as_bool());
+                .and_then(Value::as_bool);
             let request = TokenizeRequest {
                 inputs,
                 add_special_tokens,
@@ -129,7 +130,7 @@ pub async fn dispatch_with_client(
                     message: "missing required parameter `inputs`".into(),
                     param: "inputs".into(),
                 })?;
-            let truncate = params_value.get("truncate").and_then(|v| v.as_bool());
+            let truncate = params_value.get("truncate").and_then(Value::as_bool);
             let request = SparseEmbedRequest { inputs, truncate };
             to_json(client.embed_sparse(&request).await?)
         }

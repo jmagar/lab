@@ -7,6 +7,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 
 use super::{catalog::ACTIONS, client};
 
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &QdrantClient,
     action: &str,
@@ -54,6 +55,7 @@ pub async fn dispatch_with_client(
             };
             let body = CreateCollection {
                 vectors: VectorParams {
+                    #[allow(clippy::cast_sign_loss)]
                     size: size as u64,
                     distance,
                 },
@@ -100,12 +102,16 @@ pub async fn dispatch_with_client(
                 });
             }
             let filter = params_value.get("filter").cloned();
-            let with_payload = params_value.get("with_payload").and_then(|v| v.as_bool());
+            let with_payload = params_value.get("with_payload").and_then(Value::as_bool);
             let score_threshold = params_value
                 .get("score_threshold")
-                .and_then(|v| v.as_f64().map(|f| f as f32));
+                .and_then(|v| v.as_f64().map(|f| {
+                    #[allow(clippy::cast_possible_truncation)]
+                    { f as f32 }
+                }));
             let req = SearchRequest {
                 vector,
+                #[allow(clippy::cast_sign_loss)]
                 limit: limit as u64,
                 filter,
                 with_payload,
@@ -133,11 +139,9 @@ pub async fn dispatch_with_client(
 
         "point.count" => {
             let collection = require_str(&params_value, "collection")?;
-            let body = if let Some(filter) = params_value.get("filter") {
-                serde_json::json!({ "filter": filter })
-            } else {
-                Value::Object(serde_json::Map::new())
-            };
+            let body = params_value
+                .get("filter")
+                .map_or_else(|| Value::Object(serde_json::Map::new()), |filter| serde_json::json!({ "filter": filter }));
             to_json(client.point_count(collection, &body).await?)
         }
 

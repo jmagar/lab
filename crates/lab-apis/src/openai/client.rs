@@ -11,7 +11,7 @@ use super::types::{
     ModelsResponse,
 };
 
-/// Client for the OpenAI (or OpenAI-compatible) API.
+/// Client for the `OpenAI` (or OpenAI-compatible) API.
 pub struct OpenAiClient {
     http: HttpClient,
 }

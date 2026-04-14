@@ -42,13 +42,13 @@ impl Parser for TautulliParser {
             message: "missing api_key".to_owned(),
         })?;
 
-        let host = root.get("http_host").map(String::as_str).unwrap_or("localhost");
+        let host = root.get("http_host").map_or("localhost", String::as_str);
         let host = if host == "0.0.0.0" || host.is_empty() {
             "localhost"
         } else {
             host
         };
-        let port = root.get("http_port").map(String::as_str).unwrap_or("8181");
+        let port = root.get("http_port").map_or("8181", String::as_str);
         let url = format!("http://{host}:{port}");
 
         Ok(ServiceCreds {

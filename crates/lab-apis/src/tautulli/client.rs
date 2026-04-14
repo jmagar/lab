@@ -50,14 +50,10 @@ impl TautulliClient {
         let raw: Value = self.http.get_json_query("/api/v2", &params).await?;
         // Tautulli wraps everything in {"response": {"result": "success", "data": ...}}
         // We return the inner data if available, otherwise the full response.
-        if let Some(data) = raw
+        Ok(raw
             .get("response")
             .and_then(|r| r.get("data"))
-        {
-            Ok(data.clone())
-        } else {
-            Ok(raw)
-        }
+            .map_or_else(|| raw.clone(), Clone::clone))
     }
 
     // ── Activity ──────────────────────────────────────────────────────────────

@@ -187,7 +187,7 @@ pub struct TorrentFile {
     /// True if this is a seed file.
     #[serde(rename = "is_seed", default)]
     pub is_seed: Option<bool>,
-    /// Piece range: [first_piece, last_piece] (inclusive).
+    /// Piece range: [`first_piece`, `last_piece`] (inclusive).
     #[serde(rename = "piece_range")]
     pub piece_range: Vec<i64>,
     /// Download availability [0.0, 1.0].

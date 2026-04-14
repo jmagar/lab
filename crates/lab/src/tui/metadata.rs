@@ -285,13 +285,11 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
             use lab_apis::core::Auth;
             let base_url = vars
                 .get("TAILSCALE_BASE_URL")
-                .map(String::as_str)
-                .unwrap_or("https://api.tailscale.com/api/v2")
+                .map_or("https://api.tailscale.com/api/v2", String::as_str)
                 .to_string();
             let tailnet = vars
                 .get("TAILSCALE_TAILNET")
-                .map(String::as_str)
-                .unwrap_or("-")
+                .map_or("-", String::as_str)
                 .to_string();
             if let Ok(client) = lab_apis::tailscale::TailscaleClient::new(
                 &base_url,

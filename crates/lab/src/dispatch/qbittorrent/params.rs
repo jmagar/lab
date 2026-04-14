@@ -17,13 +17,12 @@ pub fn require_i64(params: &Value, key: &str) -> Result<i64, ToolError> {
 
 /// Extract an optional i64 parameter from a JSON object.
 pub fn optional_i64(params: &Value, key: &str) -> Result<Option<i64>, ToolError> {
-    match params.get(key) {
-        None => Ok(None),
-        Some(v) => v.as_i64().map(Some).ok_or_else(|| ToolError::InvalidParam {
+    params.get(key).map_or(Ok(None), |v| {
+        v.as_i64().map(Some).ok_or_else(|| ToolError::InvalidParam {
             message: format!("parameter `{key}` must be an integer"),
             param: key.to_string(),
-        }),
-    }
+        })
+    })
 }
 
 /// Extract a required i32 (32-bit integer) parameter from a JSON object.
@@ -51,14 +50,12 @@ pub fn require_f64(params: &Value, key: &str) -> Result<f64, ToolError> {
 
 /// Extract an optional bool parameter from a JSON object.
 pub fn optional_bool(params: &Value, key: &str) -> Result<Option<bool>, ToolError> {
-    match params.get(key) {
-        None => Ok(None),
-        Some(v) => v
-            .as_bool()
+    params.get(key).map_or(Ok(None), |v| {
+        v.as_bool()
             .map(Some)
             .ok_or_else(|| ToolError::InvalidParam {
                 message: format!("parameter `{key}` must be a boolean"),
                 param: key.to_string(),
-            }),
-    }
+            })
+    })
 }

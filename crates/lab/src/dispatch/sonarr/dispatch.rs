@@ -15,6 +15,7 @@ use super::params::{
 
 /// Dispatch using a pre-built client (avoids per-request env reads and
 /// client construction). Called by the API handler.
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &SonarrClient,
     action: &str,
@@ -130,6 +131,7 @@ pub async fn dispatch_with_client(
         // ── Releases ──────────────────────────────────────────────────────────
         "release.search" => {
             let series_id = params.get("series_id").and_then(Value::as_i64);
+            #[allow(clippy::cast_possible_truncation)]
             let season_number = params.get("season_number").and_then(Value::as_i64).map(|n| n as i32);
             to_json(client.release_search(series_id, season_number).await?)
         }

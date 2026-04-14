@@ -11,6 +11,7 @@ use super::client::require_client;
 use super::params;
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &PlexClient,
     action: &str,
@@ -108,7 +109,7 @@ pub async fn dispatch_with_client(
             let fields = params
                 .get("fields")
                 .cloned()
-                .unwrap_or(Value::Object(Default::default()));
+                .unwrap_or_else(|| Value::Object(serde_json::Map::default()));
             to_json(client.metadata_edit(rating_key, &fields).await?)
         }
         "metadata.refresh" => {
@@ -121,7 +122,7 @@ pub async fn dispatch_with_client(
         "session.history" => {
             let account_id = params
                 .get("account_id")
-                .and_then(|v| v.as_i64());
+                .and_then(Value::as_i64);
             let limit = optional_u32(&params, "limit")?;
             to_json(client.session_history(account_id, limit).await?)
         }

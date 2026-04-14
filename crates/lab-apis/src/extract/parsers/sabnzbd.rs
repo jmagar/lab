@@ -10,7 +10,7 @@ use crate::extract::error::ExtractError;
 use crate::extract::parsers::Parser;
 use crate::extract::types::ServiceCreds;
 
-/// SABnzbd config parser.
+/// `SABnzbd` config parser.
 pub struct SabnzbdParser;
 
 impl Parser for SabnzbdParser {
@@ -36,14 +36,14 @@ impl Parser for SabnzbdParser {
             message: "missing api_key in [misc]".to_owned(),
         })?;
 
-        let host = misc.get("host").map(String::as_str).unwrap_or("localhost");
+        let host = misc.get("host").map_or("localhost", String::as_str);
         let host = if host == "0.0.0.0" || host.is_empty() {
             "localhost"
         } else {
             host
         };
 
-        let port = misc.get("port").map(String::as_str).unwrap_or("8080");
+        let port = misc.get("port").map_or("8080", String::as_str);
         let url = format!("http://{host}:{port}");
 
         Ok(ServiceCreds {

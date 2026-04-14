@@ -4,7 +4,7 @@ use lab_apis::openai::OpenAiClient;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
-/// Default OpenAI base URL.
+/// Default `OpenAI` base URL.
 const DEFAULT_BASE_URL: &str = "https://api.openai.com";
 
 /// Build an `OpenAiClient` from the default-instance env vars.

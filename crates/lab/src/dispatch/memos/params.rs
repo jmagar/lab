@@ -24,16 +24,14 @@ pub fn list_params_from(params: &Value) -> Result<ListMemosParams, ToolError> {
 }
 
 /// Extract a required `name` param (memo resource name).
-pub fn require_name<'a>(params: &'a Value) -> Result<&'a str, ToolError> {
+pub fn require_name(params: &Value) -> Result<&str, ToolError> {
     require_str(params, "name")
 }
 
 /// Build a `CreateMemoRequest` from dispatch params.
 pub fn create_request_from(params: &Value) -> Result<CreateMemoRequest, ToolError> {
     let content = require_str(params, "content")?.to_owned();
-    let visibility = optional_str(params, "visibility")?
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| "PRIVATE".to_string());
+    let visibility = optional_str(params, "visibility")?.map_or_else(|| "PRIVATE".to_string(), ToOwned::to_owned);
     Ok(CreateMemoRequest { content, visibility })
 }
 
@@ -54,7 +52,7 @@ pub fn update_request_from(params: &Value) -> Result<UpdateMemoRequest, ToolErro
 }
 
 /// Extract a required `user` param (user resource name, e.g. `"users/1"`).
-pub fn require_user<'a>(params: &'a Value) -> Result<&'a str, ToolError> {
+pub fn require_user(params: &Value) -> Result<&str, ToolError> {
     require_str(params, "user")
 }
 

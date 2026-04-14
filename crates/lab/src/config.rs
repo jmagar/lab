@@ -346,21 +346,20 @@ pub fn write_env(
     let mut out_lines: Vec<String> = Vec::new();
     for line in &existing_lines {
         let trimmed = line.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with('#') {
-            if let Some((k, _)) = trimmed.split_once('=') {
+        if !trimmed.is_empty() && !trimmed.starts_with('#')
+            && let Some((k, _)) = trimmed.split_once('=') {
                 let key = k.trim();
                 if let Some(new_val) = override_keys.get(key) {
                     out_lines.push(format!("{}={}", key, quote_env_value(new_val)));
                     continue;
                 }
             }
-        }
         out_lines.push((*line).to_owned());
     }
 
     // Append new keys at the end.
     if !new_keys.is_empty() {
-        if !out_lines.last().map(|l| l.trim().is_empty()).unwrap_or(true) {
+        if !out_lines.last().is_none_or(|l| l.trim().is_empty()) {
             out_lines.push(String::new()); // blank separator
         }
         for (key, value) in &new_keys {
@@ -415,11 +414,10 @@ pub fn env_is_up_to_date(path: &Path, new_creds: &[ServiceCreds]) -> bool {
                 return false;
             }
         }
-        if let Some(secret) = &cred.secret {
-            if existing.get(&cred.env_field).map(String::as_str) != Some(secret.as_str()) {
+        if let Some(secret) = &cred.secret
+            && existing.get(&cred.env_field).map(String::as_str) != Some(secret.as_str()) {
                 return false;
             }
-        }
     }
     true
 }

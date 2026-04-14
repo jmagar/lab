@@ -103,7 +103,7 @@ impl TeiClient {
     /// Generate embeddings via the OpenAI-compatible `/v1/embeddings` endpoint.
     ///
     /// The body and response are passed through as raw JSON to avoid coupling to
-    /// the OpenAI envelope shape, which may vary across TEI deployments.
+    /// the `OpenAI` envelope shape, which may vary across TEI deployments.
     ///
     /// # Errors
     /// Returns `TeiError::Api` on HTTP failure or decode failure.

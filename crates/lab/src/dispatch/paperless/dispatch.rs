@@ -10,6 +10,7 @@ use crate::dispatch::paperless::params::{self, require_id_u64};
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 ///
 /// Called by the HTTP API handler which holds a pre-warmed client in `AppState`.
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &PaperlessClient,
     action: &str,
@@ -104,7 +105,7 @@ pub async fn dispatch_with_client(
             let id = require_id_u64(&params_value)?;
             let original = params_value
                 .get("original")
-                .and_then(|v| v.as_bool())
+                .and_then(Value::as_bool)
                 .unwrap_or(false);
             to_json(client.document_download(id, original).await?)
         }
@@ -117,7 +118,7 @@ pub async fn dispatch_with_client(
         // ── Saved Views ─────────────────────────────────────────────────────
         "saved-view.list" => to_json(client.saved_views_list().await?),
         "saved-view.create" => {
-            let body = params::payload_from_params(&params_value)?;
+            let body = params::payload_from_params(&params_value);
             to_json(client.saved_view_create(&body).await?)
         }
         // ── Custom Fields ────────────────────────────────────────────────────
@@ -129,7 +130,7 @@ pub async fn dispatch_with_client(
         // ── Storage Paths ─────────────────────────────────────────────────────
         "storage-path.list" => to_json(client.storage_paths_list().await?),
         "storage-path.create" => {
-            let body = params::payload_from_params(&params_value)?;
+            let body = params::payload_from_params(&params_value);
             to_json(client.storage_path_create(&body).await?)
         }
         unknown => Err(ToolError::UnknownAction {

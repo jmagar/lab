@@ -7,12 +7,13 @@ use serde::{Deserialize, Serialize};
 /// A device in a tailnet (node/machine).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Device {
     /// Legacy device ID.
     pub id: String,
     /// Preferred device ID.
     pub node_id: String,
-    /// MagicDNS name.
+    /// `MagicDNS` name.
     pub name: String,
     /// Machine name in the admin console.
     pub hostname: String,

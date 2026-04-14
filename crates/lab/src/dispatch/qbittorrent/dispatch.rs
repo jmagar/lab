@@ -12,6 +12,7 @@ use super::params::{
 };
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &QbittorrentClient,
     action: &str,

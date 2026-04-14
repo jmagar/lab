@@ -10,6 +10,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 /// Dispatch against a pre-built `TailscaleClient` (avoids per-request env reads).
 ///
 /// Called by the API handler with the client from `AppState`.
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &TailscaleClient,
     action: &str,
@@ -70,14 +71,13 @@ pub async fn dispatch_with_client(
                 });
             }
             // Also check for an "errors" array (Tailscale API v2 shape)
-            if let Some(Value::Array(errs)) = validation.get("errors") {
-                if !errs.is_empty() {
+            if let Some(Value::Array(errs)) = validation.get("errors")
+                && !errs.is_empty() {
                     return Err(ToolError::Sdk {
                         sdk_kind: "validation_failed".to_string(),
-                        message: format!("ACL validation errors: {}", validation),
+                        message: format!("ACL validation errors: {validation}"),
                     });
                 }
-            }
             to_json(client.acl_set(policy).await?)
         }
         // ── Device extended ops ───────────────────────────────────────────────
@@ -114,7 +114,7 @@ pub async fn dispatch_with_client(
             let capabilities = params::required_object(&params_value, "capabilities")?;
             let expiry_seconds = params_value
                 .get("expiry_seconds")
-                .and_then(|v| v.as_u64());
+                .and_then(Value::as_u64);
             let description = params_value
                 .get("description")
                 .and_then(|v| v.as_str())

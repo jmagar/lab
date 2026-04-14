@@ -35,7 +35,7 @@ pub fn require_body(params: &Value) -> Result<Value, ToolError> {
         })
 }
 
-/// Extract optional array-of-integer query params (indexer_ids, categories).
+/// Extract optional array-of-integer query params (`indexer_ids`, categories).
 pub fn optional_i64_array(params: &Value, key: &str) -> Result<Vec<i64>, ToolError> {
     match params.get(key) {
         None => Ok(vec![]),

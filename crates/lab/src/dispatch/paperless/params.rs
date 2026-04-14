@@ -92,14 +92,14 @@ pub fn document_upload_from_params(params: &Value) -> Result<DocumentUploadParam
         .map(str::to_string);
     let correspondent = params
         .get("correspondent")
-        .and_then(|v| v.as_u64());
+        .and_then(Value::as_u64);
     let document_type = params
         .get("document_type")
-        .and_then(|v| v.as_u64());
+        .and_then(Value::as_u64);
     let tags = params
         .get("tags")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect());
+        .map(|arr| arr.iter().filter_map(Value::as_u64).collect());
     Ok(DocumentUploadParams {
         file_bytes,
         filename,
@@ -120,7 +120,7 @@ pub fn document_bulk_edit_from_params(params: &Value) -> Result<DocumentBulkEdit
             param: "documents".to_string(),
         })?
         .iter()
-        .filter_map(|v| v.as_u64())
+        .filter_map(Value::as_u64)
         .collect();
     let method = require_str(params, "method")?.to_string();
     let parameters = params
@@ -155,11 +155,11 @@ pub fn custom_field_create_from_params(params: &Value) -> Result<CustomFieldCrea
 }
 
 /// Extract a `payload` JSON body from params (for free-form endpoints like saved views, storage paths).
-pub fn payload_from_params(params: &Value) -> Result<Value, ToolError> {
+pub fn payload_from_params(params: &Value) -> Value {
     // If a `payload` key is present, use it directly; otherwise use the whole object
     // minus well-known meta-keys.
     if let Some(p) = params.get("payload") {
-        return Ok(p.clone());
+        return p.clone();
     }
-    Ok(body_from_params(params, &["body"]))
+    body_from_params(params, &["body"])
 }

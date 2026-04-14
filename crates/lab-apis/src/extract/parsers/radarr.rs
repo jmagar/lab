@@ -133,7 +133,7 @@ pub fn parse_servarr_config_xml(
 
     let scheme = if enable_ssl { "https" } else { "http" };
     let host = match bind_address.as_deref() {
-        None | Some("*") | Some("0.0.0.0") | Some("") => "localhost",
+        None | Some("*" | "0.0.0.0" | "") => "localhost",
         Some(h) => h,
     };
     let base = {

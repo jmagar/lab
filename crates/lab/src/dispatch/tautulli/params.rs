@@ -103,7 +103,7 @@ pub fn home_stats_params(params: &Value) -> Result<(Option<u32>, Option<u32>), T
 }
 
 /// Extract required `rating_key` as string.
-pub fn require_rating_key<'a>(params: &'a Value) -> Result<&'a str, ToolError> {
+pub fn require_rating_key(params: &Value) -> Result<&str, ToolError> {
     require_str(params, "rating_key")
 }
 

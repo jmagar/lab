@@ -13,6 +13,7 @@ use super::params::{create_issue_body, create_request_body, optional_u64, requir
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 ///
 /// Called by API handlers with the `AppState`-held client.
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &OverseerrClient,
     action: &str,

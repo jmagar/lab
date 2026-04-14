@@ -292,7 +292,7 @@ impl SabnzbdClient {
         Ok(resp)
     }
 
-    /// Get the full SABnzbd configuration (sensitive fields must be redacted by callers).
+    /// Get the full `SABnzbd` configuration (sensitive fields must be redacted by callers).
     ///
     /// # Errors
     /// Returns `SabnzbdError::Api` on HTTP failure.

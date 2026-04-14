@@ -6,6 +6,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, optional_str, requir
 use crate::dispatch::tautulli::{catalog::ACTIONS, client, params};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
+#[allow(clippy::too_many_lines)]
 pub async fn dispatch_with_client(
     client: &TautulliClient,
     action: &str,

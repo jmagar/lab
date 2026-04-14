@@ -1,4 +1,5 @@
 //! `lab extract` — CLI surface for the extract module.
+#![allow(clippy::print_stderr)]
 //!
 //! Thin shim. All logic lives in `lab_apis::extract::ExtractClient`. This
 //! file owns:
@@ -19,6 +20,7 @@ use lab_apis::extract::{ExtractClient, ExtractReport, Uri};
 
 /// `lab extract <uri> [--apply | --diff] [-y] [--json]`
 #[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ExtractCmd {
     /// Appdata path to scan. Local (`/path` or `~/path`) or SSH (`host:/path`).
     pub uri: String,

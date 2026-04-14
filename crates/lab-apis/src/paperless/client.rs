@@ -261,8 +261,10 @@ impl PaperlessClient {
         };
         let bytes = self.http.get_bytes(&path).await?;
         let size = bytes.len();
-        use base64::Engine as _;
-        let content_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let content_base64 = {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        };
         Ok(DocumentDownloadInfo {
             content_base64,
             size,

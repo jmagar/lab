@@ -71,6 +71,7 @@ impl ServiceClient for OpenAiClient {
                 reachable: true,
                 auth_ok: true,
                 version: None,
+                #[allow(clippy::cast_possible_truncation)]
                 latency_ms: start.elapsed().as_millis() as u64,
                 message: None,
             }),
@@ -78,11 +79,12 @@ impl ServiceClient for OpenAiClient {
                 reachable: true,
                 auth_ok: false,
                 version: None,
+                #[allow(clippy::cast_possible_truncation)]
                 latency_ms: start.elapsed().as_millis() as u64,
                 message: Some("authentication failed".to_string()),
             }),
             Err(OpenAiError::Api(ApiError::Network(e))) => {
-                Ok(ServiceStatus::unreachable(e.to_string()))
+                Ok(ServiceStatus::unreachable(e))
             }
             Err(e) => Ok(ServiceStatus::degraded(e.to_string())),
         }

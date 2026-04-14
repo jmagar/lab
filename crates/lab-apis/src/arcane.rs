@@ -58,6 +58,7 @@ impl ServiceClient for ArcaneClient {
                 reachable: true,
                 auth_ok: true,
                 version: None,
+                #[allow(clippy::cast_possible_truncation)]
                 latency_ms: start.elapsed().as_millis() as u64,
                 message: Some(resp.status),
             }),
