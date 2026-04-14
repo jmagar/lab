@@ -71,7 +71,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         Transport::Stdio => run_stdio(Arc::new(registry)).await,
         Transport::Http => {
             let bearer_token = http_token();
-            let oauth_config = resolve_oauth(config.oauth.as_ref());
+            let oauth_config = resolve_oauth(config.oauth.as_ref())
+                .context("invalid OAuth configuration")?;
             let auth_configured = bearer_token.is_some() || oauth_config.is_some();
 
             // Safety gate: refuse to bind on a non-localhost address without
@@ -88,28 +89,25 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             let mut state = AppState::from_registry(registry);
 
             // Wire OAuth JWT validation when configured.
-            if let Some(ref oauth_cfg) = oauth_config {
-                match crate::api::oauth::JwksManager::discover(
+            if let Some(oauth_cfg) = oauth_config {
+                let jwks = crate::api::oauth::JwksManager::discover(
                     &oauth_cfg.issuer,
                     &oauth_cfg.audience,
                 )
                 .await
-                {
-                    Ok(jwks) => {
-                        tracing::info!(
-                            issuer = %oauth_cfg.issuer,
-                            "OAuth JWKS discovery succeeded"
-                        );
-                        state = state.with_jwks(Arc::new(jwks));
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            issuer = %oauth_cfg.issuer,
-                            error = %e,
-                            "OAuth JWKS discovery failed — JWT validation will be unavailable"
-                        );
-                    }
-                }
+                .with_context(|| {
+                    format!(
+                        "OAuth JWKS discovery failed for issuer `{}` — \
+                         refusing to start without JWT validation",
+                        oauth_cfg.issuer
+                    )
+                })?;
+                tracing::info!(
+                    issuer = %oauth_cfg.issuer,
+                    "OAuth JWKS discovery succeeded"
+                );
+                state = state.with_jwks(Arc::new(jwks));
+                state = state.with_oauth_config(oauth_cfg);
             }
 
             run_http(&host, port, bearer_token, state).await
@@ -156,8 +154,11 @@ fn http_token() -> Option<String> {
 }
 
 /// Check whether a host string refers to a loopback address.
+///
+/// Handles both bare and bracketed IPv6 (e.g. `::1` and `[::1]`).
 fn is_loopback_host(host: &str) -> bool {
-    matches!(host, "127.0.0.1" | "::1" | "localhost")
+    let normalized = host.trim_start_matches('[').trim_end_matches(']');
+    matches!(normalized, "127.0.0.1" | "::1" | "localhost")
 }
 
 fn filter_registry(registry: ToolRegistry, services: &[String]) -> Result<ToolRegistry> {
@@ -271,6 +272,7 @@ mod tests {
     fn loopback_host_detection() {
         assert!(is_loopback_host("127.0.0.1"));
         assert!(is_loopback_host("::1"));
+        assert!(is_loopback_host("[::1]"));
         assert!(is_loopback_host("localhost"));
         assert!(!is_loopback_host("0.0.0.0"));
         assert!(!is_loopback_host("192.168.1.100"));

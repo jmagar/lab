@@ -42,7 +42,7 @@ pub struct UpstreamConfig {
     /// Human-readable name for this upstream (used as tool-name prefix).
     pub name: String,
     /// URL of the upstream MCP server (must be `http://` or `https://`).
-    /// For stdio upstreams, use `stdio://` scheme with `command` field.
+    /// For stdio upstreams, omit `url` and use `command`/`args` fields instead.
     #[serde(default)]
     pub url: Option<String>,
     /// Name of an env var holding the bearer token (not the token itself).
@@ -103,27 +103,38 @@ pub struct OAuthConfig {
 /// Resolve `OAuthConfig` from config file + environment variables.
 ///
 /// Env vars take precedence over config file values.
-pub fn resolve_oauth(config: Option<&OAuthConfig>) -> Option<OAuthConfig> {
+///
+/// Returns `Ok(None)` when OAuth is not configured at all (no issuer set).
+/// Returns `Err` when OAuth is partially configured or invalid (e.g.
+/// `LAB_OAUTH_ISSUER` is set but empty, or uses HTTP instead of HTTPS).
+pub fn resolve_oauth(config: Option<&OAuthConfig>) -> Result<Option<OAuthConfig>> {
     let issuer = std::env::var("LAB_OAUTH_ISSUER")
         .ok()
-        .filter(|v| !v.is_empty())
         .or_else(|| config.map(|c| c.issuer.clone()));
 
     let audience = std::env::var("LAB_OAUTH_AUDIENCE")
         .ok()
-        .filter(|v| !v.is_empty())
         .or_else(|| config.map(|c| c.audience.clone()));
 
-    let issuer = issuer?;
-    let audience = audience?;
+    // If neither issuer nor audience is set at all, OAuth is simply not configured.
+    if issuer.is_none() && audience.is_none() {
+        return Ok(None);
+    }
+
+    // If issuer is set but empty, that's a configuration error.
+    let issuer = issuer
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("LAB_OAUTH_ISSUER is set but empty or missing"))?;
+
+    let audience = audience
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!("LAB_OAUTH_AUDIENCE is required when LAB_OAUTH_ISSUER is set")
+        })?;
 
     // Security: reject non-HTTPS issuers.
     if !issuer.starts_with("https://") {
-        tracing::error!(
-            issuer,
-            "LAB_OAUTH_ISSUER must use HTTPS — refusing to start with HTTP issuer"
-        );
-        return None;
+        anyhow::bail!("LAB_OAUTH_ISSUER must use HTTPS — got `{issuer}`");
     }
 
     let client_id = std::env::var("LAB_OAUTH_CLIENT_ID")
@@ -136,12 +147,12 @@ pub fn resolve_oauth(config: Option<&OAuthConfig>) -> Option<OAuthConfig> {
         .filter(|v| !v.is_empty())
         .or_else(|| config.and_then(|c| c.resource_url.clone()));
 
-    Some(OAuthConfig {
+    Ok(Some(OAuthConfig {
         issuer,
         audience,
         client_id,
         resource_url,
-    })
+    }))
 }
 
 /// Load `.env` + `config.toml` from the standard locations.
