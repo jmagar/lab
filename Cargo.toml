@@ -56,6 +56,10 @@ axum         = { version = "0.8", features = ["macros", "json", "tokio", "http2"
 tower        = { version = "0.5", features = ["util"] }
 tower-http   = { version = "0.6", features = ["trace", "cors", "compression-gzip", "timeout", "request-id"] }
 
+# openapi / docs
+utoipa       = { version = "5", features = ["axum_extras"] }
+utoipa-scalar = { version = "0.3", features = ["axum"] }
+
 # extract (always compiled — synthetic service)
 russh        = "0.60.0"
 russh-sftp   = "2.1.1"
