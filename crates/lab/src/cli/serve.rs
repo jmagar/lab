@@ -70,8 +70,26 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     match transport {
         Transport::Stdio => run_stdio(Arc::new(registry)).await,
         Transport::Http => {
+            let bearer_token = http_token();
+            let has_oauth = std::env::var("LAB_OAUTH_ISSUER")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .is_some();
+            let has_auth = bearer_token.is_some() || has_oauth;
+
+            // Safety gate: refuse to bind on a non-localhost address without
+            // any auth configured (lab-319g). This prevents accidental
+            // unauthenticated deployment on a LAN-accessible address.
+            if !has_auth && !is_loopback_host(&host) {
+                anyhow::bail!(
+                    "refusing to bind HTTP on {host}:{port} without authentication. \
+                     Set LAB_MCP_HTTP_TOKEN or LAB_OAUTH_ISSUER, or bind to \
+                     127.0.0.1 for local-only access."
+                );
+            }
+
             let state = AppState::from_registry(registry);
-            run_http(&host, port, &require_http_token()?, state).await
+            run_http(&host, port, bearer_token, state).await
         }
     }
 }
@@ -107,11 +125,16 @@ fn resolve_port(cli: Option<u16>, env: Option<String>, config: Option<u16>) -> R
     Ok(config.unwrap_or(8765))
 }
 
-fn require_http_token() -> Result<String> {
+/// Return the bearer token if configured, or `None` for auth-free operation.
+fn http_token() -> Option<String> {
     std::env::var("LAB_MCP_HTTP_TOKEN")
         .ok()
         .filter(|value| !value.is_empty())
-        .context("LAB_MCP_HTTP_TOKEN must be set when using --transport http")
+}
+
+/// Check whether a host string refers to a loopback address.
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "::1" | "localhost")
 }
 
 fn filter_registry(registry: ToolRegistry, services: &[String]) -> Result<ToolRegistry> {
@@ -140,9 +163,13 @@ fn filter_registry(registry: ToolRegistry, services: &[String]) -> Result<ToolRe
     Ok(out)
 }
 
-async fn run_http(host: &str, port: u16, bearer_token: &str, state: AppState) -> Result<ExitCode> {
-    let router =
-        crate::api::router::build_router_with_bearer(state, Some(bearer_token.to_string()));
+async fn run_http(
+    host: &str,
+    port: u16,
+    bearer_token: Option<String>,
+    state: AppState,
+) -> Result<ExitCode> {
+    let router = crate::api::router::build_router_with_bearer(state, bearer_token);
     // Parse and validate the address at bind time, not at CLI parse time.
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -166,7 +193,7 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Transport, resolve_port, resolve_transport};
+    use super::{Transport, is_loopback_host, resolve_port, resolve_transport};
     use crate::config::{LabConfig, McpPreferences};
 
     #[test]
@@ -210,5 +237,15 @@ mod tests {
             ..LabConfig::default()
         };
         assert_eq!(cfg.mcp.host.as_deref(), Some("0.0.0.0"));
+    }
+
+    #[test]
+    fn loopback_host_detection() {
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("::1"));
+        assert!(is_loopback_host("localhost"));
+        assert!(!is_loopback_host("0.0.0.0"));
+        assert!(!is_loopback_host("192.168.1.100"));
+        assert!(!is_loopback_host("lab.example.com"));
     }
 }
