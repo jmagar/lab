@@ -26,11 +26,16 @@ export function DeleteGatewayDialog({
   onConfirm,
 }: DeleteGatewayDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleConfirm = async () => {
     setIsDeleting(true)
+    setError(null)
     try {
       await onConfirm()
+      onOpenChange(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove gateway')
     } finally {
       setIsDeleting(false)
     }
@@ -50,10 +55,16 @@ export function DeleteGatewayDialog({
             Are you sure you want to remove <strong>{gateway?.name}</strong>? This action cannot be undone and will disconnect all upstream MCP tools from this gateway.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {error ? (
+          <p className="text-destructive text-sm">{error}</p>
+        ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleConfirm}
+            onClick={(event) => {
+              event.preventDefault()
+              void handleConfirm()
+            }}
             disabled={isDeleting}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
