@@ -1,3 +1,4 @@
+use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 
 use crate::config::UpstreamConfig;
@@ -34,8 +35,25 @@ pub struct GatewayUpdatePatch {
     pub bearer_token_env: Option<Option<String>>,
     #[serde(default)]
     pub proxy_resources: Option<bool>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_nullable")]
     pub expose_tools: Option<Option<Vec<String>>>,
+}
+
+/// Distinguish absent from null for `Option<Option<T>>` patch fields.
+///
+/// With plain `#[serde(default)]`, serde_json treats both absent fields and
+/// explicit `null` as `None`, making it impossible to clear a field via patch.
+/// This deserializer wraps the result in `Some(...)` so:
+///
+/// - absent → `None` (from `#[serde(default)]`)
+/// - `null` → `Some(None)` (clear the field)
+/// - `["a"]` → `Some(Some(["a"]))` (set the field)
+fn deserialize_nullable<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Some(Option::deserialize(deserializer)?))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

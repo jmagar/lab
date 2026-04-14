@@ -145,7 +145,12 @@ pub fn update_upstream(
         cfg.upstream[index].proxy_resources = proxy_resources;
     }
     if let Some(expose_tools) = patch.expose_tools {
-        cfg.upstream[index].expose_tools = expose_tools;
+        // Treat empty array as "clear filter" — an empty allowlist that blocks
+        // all tools is never useful and is the natural way to say "remove filter".
+        cfg.upstream[index].expose_tools = match expose_tools {
+            Some(ref v) if v.is_empty() => None,
+            other => other,
+        };
     }
 
     validate_upstream(&cfg.upstream[index])?;
@@ -378,6 +383,93 @@ args = ["server.js"]
         assert_eq!(
             b.expose_tools.as_deref(),
             Some(&["search_*".to_string(), "read_file".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn expose_tools_patch_distinguishes_absent_null_empty_and_values() {
+        let absent: GatewayUpdatePatch = serde_json::from_str(r#"{}"#).unwrap();
+        let null: GatewayUpdatePatch =
+            serde_json::from_str(r#"{"expose_tools": null}"#).unwrap();
+        let empty: GatewayUpdatePatch =
+            serde_json::from_str(r#"{"expose_tools": []}"#).unwrap();
+        let with_values: GatewayUpdatePatch =
+            serde_json::from_str(r#"{"expose_tools": ["foo"]}"#).unwrap();
+
+        // absent → None (skip in patch)
+        assert!(absent.expose_tools.is_none());
+        // null → Some(None) (clear the filter)
+        assert_eq!(null.expose_tools, Some(None));
+        // empty array → Some(Some([])) (will be normalized to clear)
+        assert_eq!(empty.expose_tools, Some(Some(vec![])));
+        // values → Some(Some([...]))
+        assert_eq!(
+            with_values.expose_tools,
+            Some(Some(vec!["foo".to_string()]))
+        );
+    }
+
+    #[test]
+    fn update_upstream_clears_expose_tools_with_null() {
+        let mut cfg = sample_config();
+
+        // First set a filter
+        update_upstream(
+            &mut cfg,
+            "b",
+            GatewayUpdatePatch {
+                expose_tools: Some(Some(vec!["read_*".to_string()])),
+                ..GatewayUpdatePatch::default()
+            },
+        )
+        .expect("set filter");
+        assert!(cfg.upstream[1].expose_tools.is_some());
+
+        // Clear with null (Some(None))
+        update_upstream(
+            &mut cfg,
+            "b",
+            GatewayUpdatePatch {
+                expose_tools: Some(None),
+                ..GatewayUpdatePatch::default()
+            },
+        )
+        .expect("clear filter");
+        assert!(
+            cfg.upstream[1].expose_tools.is_none(),
+            "expose_tools should be cleared"
+        );
+    }
+
+    #[test]
+    fn update_upstream_clears_expose_tools_with_empty_array() {
+        let mut cfg = sample_config();
+
+        // First set a filter
+        update_upstream(
+            &mut cfg,
+            "b",
+            GatewayUpdatePatch {
+                expose_tools: Some(Some(vec!["read_*".to_string()])),
+                ..GatewayUpdatePatch::default()
+            },
+        )
+        .expect("set filter");
+        assert!(cfg.upstream[1].expose_tools.is_some());
+
+        // Clear with empty array (normalized to None)
+        update_upstream(
+            &mut cfg,
+            "b",
+            GatewayUpdatePatch {
+                expose_tools: Some(Some(vec![])),
+                ..GatewayUpdatePatch::default()
+            },
+        )
+        .expect("clear filter");
+        assert!(
+            cfg.upstream[1].expose_tools.is_none(),
+            "empty array should clear expose_tools"
         );
     }
 
