@@ -33,7 +33,9 @@ use crate::dispatch::error::ToolError;
 pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
     // lab-4v9: warn early so operators can see that auth is disabled.
     if bearer_token.is_none() {
-        tracing::warn!("HTTP API started without bearer token — all /v1 routes are unprotected");
+        tracing::warn!(
+            "HTTP API started without bearer token — all protected routes are unprotected"
+        );
     }
 
     let mut v1 = Router::new()
@@ -84,16 +86,15 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
-    // Apply bearer auth as a layer on just the /v1 sub-router while it is
-    // still `Router<AppState>`. This scopes auth to /v1 only — health probes
-    // added to the outer router below are never wrapped by it (lab-3qn.5).
-    //
-    // Use `from_fn` (captures token by closure) rather than `from_fn_with_state`
-    // so no new state type is introduced that would prevent `with_state(AppState)`
-    // from resolving the whole-router state in one shot.
-    let v1 = if let Some(token) = bearer_token {
+    // Build a protected sub-router that nests both /v1 and /mcp (Phase 0.4).
+    // Bearer auth is applied to this sub-router so both surfaces get the same
+    // auth treatment while health probes remain exempt (lab-3qn.5, lab-kq8w).
+    let protected = Router::new().nest("/v1", v1);
+
+    // Apply bearer auth to the protected sub-router.
+    let protected = if let Some(token) = bearer_token {
         let token = std::sync::Arc::<str>::from(token);
-        v1.layer(axum::middleware::from_fn(
+        protected.layer(axum::middleware::from_fn(
             move |request: Request<Body>, next: Next| {
                 let token = token.clone();
                 async move {
@@ -114,17 +115,17 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
             },
         ))
     } else {
-        v1
+        protected
     };
 
-    // Build the outer router: health probes are outside bearer auth, /v1 is inside.
+    // Build the outer router: health probes (no auth) + protected routes (auth).
     // Layers apply bottom-up: last .layer() call = outermost middleware.
     // Desired execution order (outermost → innermost → handler):
     //   SetRequestId → TraceLayer → PropagateRequestId → Timeout → Compression → CORS → handler
     Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
-        .nest("/v1", v1)
+        .merge(protected)
         .with_state(state)
         .layer(build_cors_layer())
         .layer(CompressionLayer::new())
