@@ -9,7 +9,6 @@ pub mod registry;
 pub mod resources;
 pub mod server;
 pub mod services;
-#[allow(dead_code)]
 pub mod upstream;
 
 #[allow(unused_imports)]

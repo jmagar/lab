@@ -77,9 +77,9 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
 
 #[allow(clippy::too_many_lines)]
 pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
-    if bearer_token.is_none() {
+    if bearer_token.is_none() && state.jwks.is_none() {
         tracing::warn!(
-            "HTTP API started without bearer token — all protected routes are unprotected"
+            "HTTP API started without bearer token or OAuth JWKS — all protected routes are unprotected"
         );
     }
 
@@ -281,6 +281,7 @@ fn build_mcp_service(
 ) -> StreamableHttpService<crate::mcp::server::LabMcpServer, LocalSessionManager> {
     let registry = Arc::clone(&state.registry);
     let clients = Arc::clone(&state.clients);
+    let upstream_pool = state.upstream_pool.clone();
 
     let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
         .ok()
@@ -307,10 +308,11 @@ fn build_mcp_service(
         move || {
             let reg = Arc::clone(&registry);
             let cl = Arc::clone(&clients);
+            let pool = upstream_pool.clone();
             Ok(crate::mcp::server::LabMcpServer {
                 registry: reg,
                 clients: cl,
-                upstream_pool: None,
+                upstream_pool: pool,
             })
         },
         session_manager,

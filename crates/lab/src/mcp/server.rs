@@ -74,10 +74,20 @@ impl ServerHandler for LabMcpServer {
             .map(|svc| Tool::new(svc.name, svc.description, Arc::clone(&schema)))
             .collect();
 
-        // Merge upstream tools (healthy only, filtered for collisions).
+        // Merge upstream tools (healthy only, filtered for collisions with built-in services).
         if let Some(ref pool) = self.upstream_pool {
+            let builtin_names: Vec<&str> =
+                self.registry.services().iter().map(|s| s.name).collect();
             let upstream_tools = pool.healthy_tools().await;
             for ut in upstream_tools {
+                let tool_name = ut.tool.name.as_ref();
+                if builtin_names.contains(&tool_name) {
+                    tracing::debug!(
+                        tool = tool_name,
+                        "skipping upstream tool that collides with built-in service"
+                    );
+                    continue;
+                }
                 tools.push(ut.tool);
             }
         }
@@ -159,12 +169,16 @@ impl ServerHandler for LabMcpServer {
         }
 
         // Fall through to upstream proxy dispatch.
+        // Upstream tools don't use lab's action/params wrapper — they receive
+        // raw arguments. Use "call_tool" as the action label for logging/envelopes.
+        let upstream_action = "call_tool";
         if let Some(ref pool) = self.upstream_pool
             && let Some((upstream_name, _tool)) = pool.find_tool(&service).await
         {
             tracing::debug!(
                 surface = "mcp",
                 service,
+                action = upstream_action,
                 upstream = %upstream_name,
                 "proxying to upstream"
             );
@@ -198,7 +212,7 @@ impl ServerHandler for LabMcpServer {
                     );
                     let envelope = build_error(
                         &service,
-                        &action,
+                        upstream_action,
                         "upstream_error",
                         &format!("upstream `{upstream_name}` call failed: {e}"),
                     );
@@ -218,7 +232,7 @@ impl ServerHandler for LabMcpServer {
                     );
                     let envelope = build_error(
                         &service,
-                        &action,
+                        upstream_action,
                         "upstream_error",
                         &format!("upstream `{upstream_name}` is not connected"),
                     );

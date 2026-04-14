@@ -79,9 +79,27 @@ impl UpstreamPool {
     /// Each upstream gets a 15-second timeout. Failures are logged and the
     /// upstream is marked unhealthy, but do not prevent other upstreams from
     /// connecting.
+    #[allow(clippy::too_many_lines)]
     pub async fn discover_all(&self, configs: &[UpstreamConfig]) {
         if configs.is_empty() {
             return;
+        }
+
+        // Validate name uniqueness and URI-safety before starting discovery.
+        let mut seen_names = std::collections::HashSet::new();
+        for config in configs {
+            if !seen_names.insert(&config.name) {
+                tracing::warn!(
+                    upstream = %config.name,
+                    "duplicate upstream name — skipping all but the first"
+                );
+            }
+            if config.name.contains('/') || config.name.contains('?') || config.name.contains('#') {
+                tracing::warn!(
+                    upstream = %config.name,
+                    "upstream name contains URI-unsafe characters (/, ?, #) — skipping"
+                );
+            }
         }
 
         // Track which upstreams have resource proxying enabled.
@@ -93,8 +111,17 @@ impl UpstreamPool {
         *self.resource_upstreams.write().await = resource_names;
 
         let mut futures = FuturesUnordered::new();
+        let mut processed_names = std::collections::HashSet::new();
 
         for config in configs {
+            // Skip duplicates (only process the first occurrence of each name).
+            if !processed_names.insert(&config.name) {
+                continue;
+            }
+            // Skip names with URI-unsafe characters.
+            if config.name.contains('/') || config.name.contains('?') || config.name.contains('#') {
+                continue;
+            }
             // Validate config
             if let Err(msg) = validate_upstream_config(config) {
                 tracing::warn!(
@@ -136,29 +163,41 @@ impl UpstreamPool {
             });
         }
 
+        // Track all tool names across upstreams to detect duplicates.
+        let mut global_tool_names: HashMap<String, String> = HashMap::new();
+
         while let Some(result) = futures.next().await {
             match result {
                 Ok((name, conn, tools)) => {
                     let upstream_name: Arc<str> = Arc::from(name.as_str());
-                    let tool_map: HashMap<String, UpstreamTool> = tools
-                        .into_iter()
-                        .map(|tool| {
-                            let schema = if tool.input_schema.is_empty() {
-                                None
-                            } else {
-                                Some(Value::Object((*tool.input_schema).clone()))
-                            };
-                            let name = tool.name.to_string();
-                            (
-                                name,
-                                UpstreamTool {
-                                    tool,
-                                    input_schema: schema,
-                                    upstream_name: Arc::clone(&upstream_name),
-                                },
-                            )
-                        })
-                        .collect();
+                    let mut tool_map: HashMap<String, UpstreamTool> = HashMap::new();
+                    for tool in tools {
+                        let schema = if tool.input_schema.is_empty() {
+                            None
+                        } else {
+                            Some(Value::Object((*tool.input_schema).clone()))
+                        };
+                        let tool_name = tool.name.to_string();
+                        // Reject duplicate tool names across upstreams.
+                        if let Some(existing_upstream) = global_tool_names.get(&tool_name) {
+                            tracing::warn!(
+                                tool = %tool_name,
+                                upstream = %name,
+                                existing_upstream = %existing_upstream,
+                                "duplicate tool name across upstreams — skipping"
+                            );
+                            continue;
+                        }
+                        global_tool_names.insert(tool_name.clone(), name.clone());
+                        tool_map.insert(
+                            tool_name,
+                            UpstreamTool {
+                                tool,
+                                input_schema: schema,
+                                upstream_name: Arc::clone(&upstream_name),
+                            },
+                        );
+                    }
 
                     let entry = UpstreamEntry {
                         name: Arc::clone(&upstream_name),
@@ -352,27 +391,33 @@ impl UpstreamPool {
     /// List resources from all resource-proxy-enabled upstreams.
     ///
     /// Resources are prefixed with `lab://upstream/{name}/` to avoid collisions.
-    #[allow(clippy::significant_drop_tightening)]
     pub async fn list_upstream_resources(&self) -> Vec<rmcp::model::Resource> {
-        let resource_names = self.resource_upstreams.read().await;
+        let resource_names = self.resource_upstreams.read().await.clone();
         if resource_names.is_empty() {
             return Vec::new();
         }
 
-        let connections = self.connections.read().await;
-        let mut resources = Vec::new();
+        // Clone peer handles out of the connections map, then drop the lock
+        // before awaiting any async calls.
+        let peers: Vec<(String, rmcp::service::Peer<RoleClient>)> = {
+            let connections = self.connections.read().await;
+            resource_names
+                .iter()
+                .filter_map(|name| {
+                    connections
+                        .get(name)
+                        .map(|conn| (name.clone(), conn.peer.clone()))
+                })
+                .collect()
+        };
 
-        for name in resource_names.iter() {
-            let Some(conn) = connections.get(name) else {
-                continue;
-            };
-            match conn.peer.list_resources(None).await {
+        let mut resources = Vec::new();
+        for (name, peer) in &peers {
+            match peer.list_resources(None).await {
                 Ok(result) => {
                     for mut resource in result.resources {
-                        // Prefix the URI with lab://upstream/{name}/
                         let original_uri = resource.uri.clone();
-                        resource.uri =
-                            format!("lab://upstream/{name}/{original_uri}");
+                        resource.uri = format!("lab://upstream/{name}/{original_uri}");
                         resources.push(resource);
                     }
                 }
@@ -393,7 +438,6 @@ impl UpstreamPool {
     ///
     /// Expects URIs in the form `lab://upstream/{name}/{original_uri}`.
     /// Returns `None` if the upstream name is not found or not resource-enabled.
-    #[allow(clippy::significant_drop_tightening)]
     pub async fn read_upstream_resource(
         &self,
         uri: &str,
@@ -406,20 +450,26 @@ impl UpstreamPool {
         let upstream_name = &rest[..slash_pos];
         let original_uri = &rest[slash_pos + 1..];
 
-        // Check if this upstream has resource proxying enabled
-        let resource_names = self.resource_upstreams.read().await;
-        if !resource_names.iter().any(|n| n == upstream_name) {
+        // Check if this upstream has resource proxying enabled.
+        // Clone the vec and drop the lock before any async work.
+        let is_resource_enabled = {
+            let resource_names = self.resource_upstreams.read().await;
+            resource_names.iter().any(|n| n == upstream_name)
+        };
+        if !is_resource_enabled {
             return None;
         }
 
-        let connections = self.connections.read().await;
-        let conn = connections.get(upstream_name)?;
+        // Clone the peer handle out, then drop the lock before awaiting.
+        let peer = {
+            let connections = self.connections.read().await;
+            connections.get(upstream_name)?.peer.clone()
+        };
 
         let params = rmcp::model::ReadResourceRequestParams::new(original_uri);
 
         Some(
-            conn.peer
-                .read_resource(params)
+            peer.read_resource(params)
                 .await
                 .map_err(|e| format!("upstream resource read failed: {e}")),
         )
@@ -451,14 +501,22 @@ fn validate_upstream_config(config: &UpstreamConfig) -> Result<(), String> {
         return Err("upstream must have either 'url' or 'command'".into());
     }
 
-    if let Some(ref url) = config.url {
+    if let Some(ref url_str) = config.url {
         // Reject non-HTTP schemes
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            return Err(format!("upstream URL must use http:// or https:// scheme, got: {url}"));
+        if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
+            return Err(format!(
+                "upstream URL must use http:// or https:// scheme, got: {url_str}"
+            ));
         }
-        // Reject 0.0.0.0 and ::
-        if url.contains("://0.0.0.0") || url.contains("://[::]/") || url.ends_with("://[::]") {
-            return Err("upstream URL must not use 0.0.0.0 or :: (bind-all addresses)".into());
+        // Parse with url::Url to reliably check the host.
+        let parsed = url::Url::parse(url_str)
+            .map_err(|e| format!("invalid upstream URL `{url_str}`: {e}"))?;
+        if let Some(host) = parsed.host_str() {
+            // Reject bind-all addresses (0.0.0.0 or ::).
+            let normalized = host.trim_start_matches('[').trim_end_matches(']');
+            if normalized == "0.0.0.0" || normalized == "::" {
+                return Err("upstream URL must not use 0.0.0.0 or :: (bind-all addresses)".into());
+            }
         }
     }
 
@@ -581,7 +639,11 @@ mod tests {
 
     #[test]
     fn validate_rejects_bind_all_addresses() {
-        for url in &["http://0.0.0.0:8080", "http://[::]/mcp"] {
+        for url in &[
+            "http://0.0.0.0:8080",
+            "http://[::]/mcp",
+            "http://[::]:8080",
+        ] {
             let config = UpstreamConfig {
                 name: "test".into(),
                 url: Some((*url).into()),

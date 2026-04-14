@@ -145,6 +145,16 @@ pub struct AppState {
     /// auth is available. When `Some`, the auth middleware tries JWT validation
     /// after a static bearer mismatch.
     pub jwks: Option<Arc<crate::api::oauth::JwksManager>>,
+    /// Resolved OAuth configuration, if present.
+    ///
+    /// Stored in `AppState` so that handlers (e.g. protected resource metadata,
+    /// WWW-Authenticate headers) can read from resolved config rather than
+    /// re-reading env vars at request time.
+    pub oauth_config: Option<Arc<crate::config::OAuthConfig>>,
+    /// Optional upstream MCP server pool for gateway proxy dispatch.
+    ///
+    /// `None` when no `[[upstream]]` entries are configured in `config.toml`.
+    pub upstream_pool: Option<Arc<crate::mcp::upstream::pool::UpstreamPool>>,
 }
 
 impl AppState {
@@ -178,6 +188,8 @@ impl AppState {
             clients,
             enabled_services: Arc::new(enabled_services),
             jwks: None,
+            oauth_config: None,
+            upstream_pool: None,
         }
     }
 
@@ -185,6 +197,24 @@ impl AppState {
     #[must_use]
     pub fn with_jwks(mut self, jwks: Arc<crate::api::oauth::JwksManager>) -> Self {
         self.jwks = Some(jwks);
+        self
+    }
+
+    /// Attach the resolved OAuth configuration.
+    #[must_use]
+    pub fn with_oauth_config(mut self, config: crate::config::OAuthConfig) -> Self {
+        self.oauth_config = Some(Arc::new(config));
+        self
+    }
+
+    /// Attach an upstream MCP server pool for gateway proxy dispatch.
+    #[must_use]
+    #[allow(dead_code)] // Will be called when `lab serve` wires [[upstream]] config.
+    pub fn with_upstream_pool(
+        mut self,
+        pool: Arc<crate::mcp::upstream::pool::UpstreamPool>,
+    ) -> Self {
+        self.upstream_pool = Some(pool);
         self
     }
 }
