@@ -22,12 +22,15 @@ pub mod health;
 /// Per-service HTTP route handlers (one module per service).
 pub mod services;
 
+/// OpenAPI 3.1 schema generation (all utoipa coupling lives here).
+pub mod openapi;
+
 /// Shared request type for all service action dispatchers.
 ///
 /// Every service handler deserializes `POST /v1/<service>` bodies into this
 /// struct and forwards `action` + `params` to the corresponding MCP dispatch
 /// function, keeping the HTTP and MCP surfaces byte-compatible.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ActionRequest {
     pub action: String,
     #[serde(default)]
