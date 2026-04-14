@@ -8,8 +8,9 @@ use axum::{
     Router,
     body::Body,
     extract::State,
-    http::{HeaderName, Request, StatusCode, header},
+    http::{HeaderName, HeaderValue, Request, StatusCode, header},
     middleware::Next,
+    response::IntoResponse,
     routing::get,
 };
 use rmcp::transport::streamable_http_server::{
@@ -109,12 +110,43 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
     let jwks = state.jwks.clone();
     let needs_auth = static_token.is_some() || jwks.is_some();
 
+    // Resolve resource_url once for WWW-Authenticate headers on 401.
+    let resource_url: Option<Arc<str>> = state
+        .oauth_config
+        .as_ref()
+        .and_then(|c| c.resource_url.as_deref())
+        .map(Arc::from);
+
     let protected = if needs_auth {
         protected.layer(axum::middleware::from_fn(
             move |mut request: Request<Body>, next: Next| {
                 let static_token = static_token.clone();
                 let jwks = jwks.clone();
+                let resource_url = resource_url.clone();
                 async move {
+                    /// Build a 401 response with optional WWW-Authenticate header.
+                    fn auth_error_response(
+                        message: &str,
+                        resource_url: Option<&str>,
+                    ) -> axum::response::Response {
+                        let err = ToolError::Sdk {
+                            sdk_kind: "auth_failed".into(),
+                            message: message.into(),
+                        };
+                        let mut response = err.into_response();
+                        // Add WWW-Authenticate only when we have a resolved resource_url.
+                        if let Some(url) = resource_url {
+                            let www_auth =
+                                crate::api::oauth::www_authenticate_value(url);
+                            if let Ok(value) = HeaderValue::from_str(&www_auth) {
+                                response
+                                    .headers_mut()
+                                    .insert(header::WWW_AUTHENTICATE, value);
+                            }
+                        }
+                        response
+                    }
+
                     let auth_header = request
                         .headers()
                         .get(header::AUTHORIZATION)
@@ -123,10 +155,10 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
                         .map(String::from);
 
                     let Some(token) = auth_header else {
-                        return Err(ToolError::Sdk {
-                            sdk_kind: "auth_failed".into(),
-                            message: "missing bearer token".into(),
-                        });
+                        return Ok(auth_error_response(
+                            "missing bearer token",
+                            resource_url.as_deref(),
+                        ));
                     };
 
                     // 1. Try static bearer (constant-time comparison)
@@ -141,7 +173,7 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
                                 scopes: vec!["lab:read".to_string(), "lab:admin".to_string()],
                                 issuer: "local".to_string(),
                             });
-                        return Ok::<_, ToolError>(next.run(request).await);
+                        return Ok::<_, std::convert::Infallible>(next.run(request).await);
                     }
 
                     // 2. Try OAuth JWT
@@ -157,10 +189,10 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
                         }
                     }
 
-                    Err(ToolError::Sdk {
-                        sdk_kind: "auth_failed".into(),
-                        message: "invalid bearer token".into(),
-                    })
+                    Ok(auth_error_response(
+                        "invalid bearer token",
+                        resource_url.as_deref(),
+                    ))
                 }
             },
         ))

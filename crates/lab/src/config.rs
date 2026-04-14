@@ -145,7 +145,15 @@ pub fn resolve_oauth(config: Option<&OAuthConfig>) -> Result<Option<OAuthConfig>
     let resource_url = std::env::var("LAB_RESOURCE_URL")
         .ok()
         .filter(|v| !v.is_empty())
-        .or_else(|| config.and_then(|c| c.resource_url.clone()));
+        .or_else(|| config.and_then(|c| c.resource_url.clone()))
+        .filter(|v| !v.is_empty());
+
+    if resource_url.is_none() {
+        anyhow::bail!(
+            "LAB_RESOURCE_URL is required when OAuth is configured — \
+             set it to the public URL of this lab instance"
+        );
+    }
 
     Ok(Some(OAuthConfig {
         issuer,

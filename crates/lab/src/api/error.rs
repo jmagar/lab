@@ -32,30 +32,10 @@ impl IntoResponse for ToolError {
             serde_json::json!({"kind": "internal_error", "message": "error serialization failed"})
         });
 
-        // RFC 9728: include WWW-Authenticate on 401 responses so MCP clients
-        // can discover the authorization server via resource metadata.
-        if status == StatusCode::UNAUTHORIZED {
-            // IntoResponse has no access to AppState, so we fall back to the
-            // default resource URL. The auth middleware in router.rs has access
-            // to state and can set a more specific header when needed.
-            let www_auth = crate::api::oauth::www_authenticate_value(None);
-            let mut response = (status, axum::Json(body)).into_response();
-            match axum::http::HeaderValue::from_str(&www_auth) {
-                Ok(value) => {
-                    response
-                        .headers_mut()
-                        .insert(axum::http::header::WWW_AUTHENTICATE, value);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        "failed to construct WWW-Authenticate header value"
-                    );
-                }
-            }
-            response
-        } else {
-            (status, axum::Json(body)).into_response()
-        }
+        // RFC 9728: WWW-Authenticate on 401 responses requires the resolved
+        // resource_url from AppState. IntoResponse has no access to state, so
+        // the auth middleware in router.rs is responsible for adding the header.
+        // We omit it here rather than advertising a wrong (localhost) URL.
+        (status, axum::Json(body)).into_response()
     }
 }

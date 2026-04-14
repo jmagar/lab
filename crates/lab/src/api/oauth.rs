@@ -44,12 +44,12 @@ pub struct ProtectedResourceMetadata {
 pub async fn oauth_protected_resource(State(state): State<AppState>) -> impl IntoResponse {
     let (resource_url, authorization_servers) =
         state.oauth_config.as_ref().map_or_else(
-            || ("https://localhost".to_string(), Vec::new()),
+            || (String::new(), Vec::new()),
             |oauth_cfg| {
                 let resource_url = oauth_cfg
                     .resource_url
                     .clone()
-                    .unwrap_or_else(|| "https://localhost".to_string());
+                    .unwrap_or_default();
                 let servers = vec![oauth_cfg.issuer.clone()];
                 (resource_url, servers)
             },
@@ -65,13 +65,13 @@ pub async fn oauth_protected_resource(State(state): State<AppState>) -> impl Int
 
 /// Build the `WWW-Authenticate` header value for 401 responses.
 ///
-/// Accepts an optional `resource_url` from resolved config. Falls back to
-/// `"https://localhost"` when not provided.
-pub fn www_authenticate_value(resource_url: Option<&str>) -> String {
-    let url = resource_url.unwrap_or("https://localhost");
+/// Requires the resolved `resource_url`. Callers that cannot provide one
+/// should omit the `WWW-Authenticate` header entirely rather than
+/// advertising localhost.
+pub fn www_authenticate_value(resource_url: &str) -> String {
     format!(
         "Bearer resource_metadata=\"{}/.well-known/oauth-protected-resource\"",
-        url.trim_end_matches('/')
+        resource_url.trim_end_matches('/')
     )
 }
 
