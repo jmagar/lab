@@ -12,7 +12,7 @@ Sub-docs for each surface:
 
 ## Feature Flags
 
-21 flags, all 1:1 passthroughs to `lab-apis` features. Default: `radarr sonarr prowlarr plex sabnzbd qbittorrent`. The `all` feature is delegated entirely to `lab-apis/all`.
+22 flags, all 1:1 passthroughs to `lab-apis` features. Default: `all` (every service enabled). The `all` feature is delegated entirely to `lab-apis/all`.
 
 All surface code (axum, rmcp, ratatui, clap) is compiled unconditionally — feature flags gate service-specific code only, not the surface infrastructure.
 
@@ -39,11 +39,9 @@ Adding a new service requires touching all four or it silently disappears from o
 
 ## Shared Dispatch Layer
 
-`src/dispatch/` is the home for surface-neutral dispatch. 13 services are fully migrated there: `apprise`, `bytestash`, `gotify`, `lab_admin`, `linkding`, `paperless`, `prowlarr`, `qdrant`, `radarr`, `sabnzbd`, `tei`, `unifi`, `unraid`. Each has the required directory layout (catalog.rs, client.rs, params.rs, dispatch.rs).
+`src/dispatch/` is the home for surface-neutral dispatch. All 22 services plus `lab_admin` are fully migrated there, each with the required directory layout (catalog.rs, client.rs, params.rs, dispatch.rs). The `mcp/services/<service>.rs` files are now thin bridges that delegate to the shared dispatch layer.
 
-Remaining services still own their dispatch in `mcp/services/<service>.rs` stubs — these are the migration backlog.
-
-When adding new services, use the full `dispatch/<service>/` directory layout from the start — see `crates/lab/src/dispatch/CLAUDE.md` for templates. Do not create new `mcp/services/` stubs.
+When adding new services, use the full `dispatch/<service>/` directory layout from the start — see `crates/lab/src/dispatch/CLAUDE.md` for templates.
 
 `api/services/helpers.rs::handle_action()` is the shared dispatch wrapper (unknown-action gate, destructive confirmation, param stripping, timed dispatch, structured logging). All migrated API handlers call this.
 
