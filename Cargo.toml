@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members  = ["crates/lab-apis", "crates/lab"]
+members  = ["crates/lab-apis", "crates/lab", "crates/lab-auth"]
 
 [workspace.package]
 version      = "0.3.3"
@@ -63,7 +63,10 @@ rmcp         = { version = "1.4", features = [
 ] }
 
 # oauth / jwt
-jsonwebtoken = "9"
+jsonwebtoken = "10"
+rsa          = { version = "0.10", features = ["pem"] }
+rand         = "0.9"
+rusqlite     = { version = "0.37", features = ["bundled"] }
 
 # http server (lab binary only)
 axum         = { version = "0.8", features = ["macros", "json", "tokio", "http2"] }

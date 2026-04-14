@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 lab-apis           = { path = "../lab-apis", default-features = false }
+lab-auth           = { path = "../lab-auth" }
 
 tokio                        = { workspace = true, features = ["process"] }
 futures.workspace            = true
@@ -64,6 +65,9 @@ tower-http.workspace         = true
 
 [dev-dependencies]
 wiremock.workspace           = true
+
+[lib]
+path = "src/lib.rs"
 
 [features]
 default = ["all"]
