@@ -58,13 +58,13 @@ cargo install --path crates/lab --all-features
 `lab` splits secrets from preferences:
 
 - **Secrets:** `~/.lab/.env`
-- **Preferences:** `~/.config/lab/config.toml`
+- **Preferences:** `config.toml` (searched `./` → `~/.lab/` → `~/.config/lab/`)
 
 Config loading order (highest priority wins):
 
 1. Process environment variables
 2. `~/.lab/.env` (via `dotenvy`)
-3. `~/.config/lab/config.toml` (preferences only)
+3. `config.toml` (first found: `./config.toml` → `~/.lab/config.toml` → `~/.config/lab/config.toml`)
 4. `.env` in the current working directory (non-fatal if missing)
 
 Example `~/.lab/.env`:
@@ -104,17 +104,25 @@ UNRAID_NODE2_API_KEY=abc123
 
 MCP callers select instances via `params.instance`; CLI via `--instance`.
 
-Example `~/.config/lab/config.toml`:
+Example `~/.lab/config.toml` (or `./config.toml` for per-repo overrides):
 
 ```toml
 [output]
 format = "json"
 
+[log]
+filter = "lab=debug,lab_apis=info"
+
 [mcp]
-transport = "stdio"
-host = "127.0.0.1"
-port = 8765
+transport = "http"
+host = "0.0.0.0"
+port = 9000
+
+[api]
+cors_origins = ["https://lab.example.com"]
 ```
+
+See `config.example.toml` for all available settings with defaults.
 
 ### 3. Inspect the catalog
 
@@ -172,7 +180,7 @@ Global flag: `--json` — emit JSON instead of human-readable tables.
 | `--port <port>` | HTTP bind port (default: `8765`) |
 | `--services <list>` | Comma-separated service filter (default: all) |
 
-Config precedence: CLI args > env vars (`LAB_MCP_TRANSPORT`, `LAB_MCP_HTTP_HOST`, `LAB_MCP_HTTP_PORT`) > `config.toml` > defaults.
+Config precedence: CLI args > env vars (`LAB_MCP_TRANSPORT`, `LAB_MCP_HTTP_HOST`, `LAB_MCP_HTTP_PORT`) > `config.toml` (first found from search order) > defaults.
 
 HTTP transport requires `LAB_MCP_HTTP_TOKEN` to be set.
 

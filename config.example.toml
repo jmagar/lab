@@ -1,0 +1,94 @@
+# Lab configuration — preferences only, no secrets.
+#
+# Copy to ~/.lab/config.toml (or ./config.toml for per-repo overrides)
+# and uncomment sections as needed.
+#
+# Secrets (API keys, tokens, passwords, URLs) belong in ~/.lab/.env.
+# Everything else belongs here. All values below can still be overridden
+# by environment variables — env always wins over config.toml.
+#
+# Config search order (first found wins):
+#   1. ./config.toml              (repo/CWD override)
+#   2. ~/.lab/config.toml         (user-level, next to .env)
+#   3. ~/.config/lab/config.toml  (XDG-style fallback)
+#
+# Value precedence (highest wins):
+#   1. CLI flags
+#   2. Environment variables (including those loaded from ~/.lab/.env)
+#   3. config.toml (from whichever location was found)
+#   4. Built-in defaults
+
+# ── Output ───────────────────────────────────────────────────────────────────
+
+[output]
+# Default output format for CLI commands: "human" or "json".
+# Override per-command with --json.
+# format = "human"                       # default: "human"
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+
+[log]
+# Tracing filter directive.
+# Override with LAB_LOG env var.
+# filter = "lab=info,lab_apis=warn"       # default: "lab=info,lab_apis=warn"
+
+# Log output format: "text" or "json".
+# Override with LAB_LOG_FORMAT env var.
+# format = "text"                         # default: "text"
+
+# ── MCP Server ───────────────────────────────────────────────────────────────
+
+[mcp]
+# Default transport: "stdio" or "http".
+# Override with --transport or LAB_MCP_TRANSPORT.
+# transport = "stdio"                     # default: "stdio"
+
+# Bind address for the HTTP transport.
+# Override with --host or LAB_MCP_HTTP_HOST.
+# host = "127.0.0.1"                      # default: "127.0.0.1"
+
+# Port for the HTTP transport.
+# Override with --port or LAB_MCP_HTTP_PORT.
+# port = 8765                             # default: 8765
+
+# ── HTTP API ─────────────────────────────────────────────────────────────────
+
+[api]
+# Additional CORS origins beyond the built-in loopback defaults.
+# Loopback origins (localhost, 127.0.0.1, [::1]) are always included.
+# Override with LAB_CORS_ORIGINS env var (comma-separated).
+# cors_origins = []                       # default: [] (loopback only)
+
+# Example:
+# cors_origins = [
+#   "https://lab.example.com",
+#   "http://192.168.1.100:3000",
+# ]
+
+# ── Admin ────────────────────────────────────────────────────────────────────
+
+[admin]
+# Enable the lab_admin MCP tool (onboarding audit).
+# Override with LAB_ADMIN_ENABLED=1 env var.
+# enabled = false                         # default: false
+
+# ── Per-Service Preferences ──────────────────────────────────────────────────
+#
+# Non-secret, non-URL settings for individual services.
+# URLs and auth credentials still go in ~/.lab/.env.
+
+[services.tailscale]
+# Tailnet name for Tailscale API calls.
+# Override with TAILSCALE_TAILNET env var.
+# tailnet = "-"                           # default: "-" (auto-detect)
+
+# ── Secrets (env-only) ───────────────────────────────────────────────────────
+#
+# These MUST be set via environment variables (in ~/.lab/.env), not here:
+#
+#   LAB_MCP_HTTP_TOKEN — bearer token for HTTP transport (required for http)
+#   *_URL              — service base URLs
+#   *_API_KEY          — service API keys
+#   *_TOKEN            — service auth tokens
+#   *_USERNAME         — service usernames
+#   *_PASSWORD         — service passwords

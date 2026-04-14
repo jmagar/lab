@@ -167,7 +167,7 @@ Normal request flow:
 `lab-apis` never reads config files or ambient env on its own. Config loading lives in `lab`.
 
 - secrets: `~/.lab/.env`
-- preferences: `~/.config/lab/config.toml`
+- preferences: `config.toml` (`./` → `~/.lab/` → `~/.config/lab/`)
 
 The binary resolves those inputs, then constructs clients explicitly.
 

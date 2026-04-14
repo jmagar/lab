@@ -32,7 +32,18 @@ use super::{health, services, state::AppState};
 use crate::dispatch::error::ToolError;
 
 #[allow(clippy::too_many_lines)]
+/// Convenience wrapper — delegates to `build_router` with no extra CORS origins.
+#[cfg(test)]
 pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
+    build_router(state, bearer_token, &[])
+}
+
+/// Build the axum router with bearer auth and additional CORS origins from config.
+pub fn build_router(
+    state: AppState,
+    bearer_token: Option<String>,
+    config_cors_origins: &[String],
+) -> Router {
     // lab-4v9: warn early so operators can see that auth is disabled.
     if bearer_token.is_none() {
         tracing::warn!("HTTP API started without bearer token — all /v1 routes are unprotected");
@@ -152,7 +163,7 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
         .route("/ready", get(health::ready))
         .nest("/v1", v1)
         .with_state(state)
-        .layer(build_cors_layer())
+        .layer(build_cors_layer(config_cors_origins))
         .layer(CompressionLayer::new())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::GATEWAY_TIMEOUT,
@@ -184,34 +195,38 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
 
 /// Build a `CorsLayer` that allows only explicit trusted origins.
 ///
-/// Reads `LAB_CORS_ORIGINS` (comma-separated list of `scheme://host[:port]`
-/// values) from the environment; always includes `http://localhost`,
-/// `http://127.0.0.1`, and `http://[::1]` as safe loopback defaults.
+/// Sources (env var overrides config.toml):
+/// - `LAB_CORS_ORIGINS` env var (comma-separated `scheme://host[:port]`)
+/// - `api.cors_origins` in config.toml (array of strings)
 ///
-/// This replaces `CorsLayer::permissive()` which would allow any browser page
-/// on the local network to issue cross-origin requests to destructive endpoints.
-fn build_cors_layer() -> CorsLayer {
+/// Always includes `http://localhost`, `http://127.0.0.1`, and `http://[::1]`
+/// as safe loopback defaults.
+fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
     use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
     use axum::http::{HeaderValue, Method};
 
-    let env_origins: Vec<HeaderValue> = std::env::var("LAB_CORS_ORIGINS")
-        .unwrap_or_default()
-        .split(',')
-        .filter_map(|s| {
-            let trimmed = s.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            match trimmed.parse::<HeaderValue>() {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    tracing::warn!(
-                        origin = trimmed,
-                        error = %e,
-                        "ignoring unparseable CORS origin from LAB_CORS_ORIGINS"
-                    );
-                    None
-                }
+    // Env var overrides config.toml when present.
+    let raw_origins: Vec<String> = match std::env::var("LAB_CORS_ORIGINS") {
+        Ok(val) if !val.trim().is_empty() => val
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => config_origins.to_vec(),
+    };
+
+    let env_origins: Vec<HeaderValue> = raw_origins
+        .iter()
+        .filter_map(|s| match s.parse::<HeaderValue>() {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(
+                    origin = s.as_str(),
+                    error = %e,
+                    "ignoring unparseable CORS origin"
+                );
+                None
             }
         })
         .collect();

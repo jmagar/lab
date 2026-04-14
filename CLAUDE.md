@@ -82,7 +82,7 @@ lab/
 │           │   └── services/         # per-service route groups (feature-gated)
 │           ├── tui/                  # ratatui plugin manager
 │           ├── tui.rs
-│           ├── config.rs             # ~/.lab/.env + config.toml loading
+│           ├── config.rs             # ~/.lab/.env + config.toml loading (CWD → ~/.lab/ → ~/.config/lab/)
 │           └── output.rs             # table/json formatting
 ├── Cargo.toml                        # workspace
 ├── Justfile

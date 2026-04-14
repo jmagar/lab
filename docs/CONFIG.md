@@ -2,24 +2,86 @@
 
 Configuration is intentionally split between secrets and preferences.
 
+## What goes where
+
+| Category | Where | Examples |
+|----------|-------|----------|
+| Secrets | `~/.lab/.env` | `*_API_KEY`, `*_TOKEN`, `*_PASSWORD`, `LAB_MCP_HTTP_TOKEN` |
+| URLs | `~/.lab/.env` | `*_URL`, `*_BASE_URL` |
+| Everything else | `config.toml` | logging, MCP transport, CORS, admin flags, per-service prefs |
+
+All `config.toml` values can still be overridden by env vars. Env always wins.
+
 ## Sources
 
-Secrets live in:
+Secrets and URLs live in:
 
 - `~/.lab/.env`
 
-Preferences live in:
+Preferences live in (first found wins):
 
-- `~/.config/lab/config.toml`
+- `./config.toml` (repo/CWD override)
+- `~/.lab/config.toml` (user-level, next to `.env`)
+- `~/.config/lab/config.toml` (XDG-style fallback)
+
+A reference file is provided at the repo root: `config.example.toml`.
 
 ## Load Order
 
-Config resolution should follow this order:
+Startup sequence:
 
-1. `~/.lab/.env`
-2. `~/.config/lab/config.toml`
-3. environment overrides
-4. explicit CLI path overrides such as `--config`
+1. `config.toml` (first found from the search order above)
+2. Tracing init (using `[log]` section from config.toml)
+3. `~/.lab/.env` (secrets + URLs via `dotenvy`)
+4. `./env` from CWD (dev convenience, non-fatal if missing)
+
+Value precedence at point of use (highest wins):
+
+1. CLI flags (e.g. `--transport`, `--json`, `--port`)
+2. Environment variables (whether from `.env` or the shell)
+3. `config.toml`
+4. Built-in defaults
+
+## Config sections
+
+### `[output]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `format` | `--json` flag | `"human"` | Default output format |
+
+### `[log]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `filter` | `LAB_LOG` | `"lab=info,lab_apis=warn"` | Tracing filter directive |
+| `format` | `LAB_LOG_FORMAT` | `"text"` | Log format: `"text"` or `"json"` |
+
+### `[mcp]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `transport` | `LAB_MCP_TRANSPORT` | `"stdio"` | MCP transport: `"stdio"` or `"http"` |
+| `host` | `LAB_MCP_HTTP_HOST` | `"127.0.0.1"` | HTTP bind address |
+| `port` | `LAB_MCP_HTTP_PORT` | `8765` | HTTP bind port |
+
+### `[api]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `cors_origins` | `LAB_CORS_ORIGINS` | `[]` | Additional CORS origins (loopback always included) |
+
+### `[admin]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `enabled` | `LAB_ADMIN_ENABLED=1` | `false` | Enable the `lab_admin` MCP tool |
+
+### `[services.tailscale]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `tailnet` | `TAILSCALE_TAILNET` | `"-"` | Tailnet name (auto-detect) |
 
 ## Ownership
 
@@ -29,19 +91,13 @@ The SDK should not read files or ambient env automatically. It should receive ex
 
 ## Typed Config
 
-Preferences should be loaded into a typed config structure rather than a stringly-typed map.
-
-Examples of typed settings:
-
-- default output format
-- default MCP port
-- per-service defaults such as quality profile or root folder
+Preferences are loaded into a typed config structure (`LabConfig`), not a stringly-typed map.
 
 Rules:
 
 - partial config files are valid
 - validation happens once at load time
-- service-specific config blocks may use service newtypes
+- service-specific config blocks use their own types under `[services.*]`
 
 ## Secret Handling
 

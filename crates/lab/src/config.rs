@@ -1,9 +1,14 @@
 //! Config loading for the `lab` binary.
 //!
 //! Order of precedence (highest wins):
-//!   1. Process environment variables
+//!   1. CLI flags / process environment variables
 //!   2. `~/.lab/.env` (loaded via `dotenvy`)
-//!   3. `~/.config/lab/config.toml` (preferences, not secrets)
+//!   3. `config.toml` (searched: `./` → `~/.lab/` → `~/.config/lab/`)
+//!   4. Built-in defaults
+//!
+//! URLs and secrets belong in `.env`. Everything else (logging, CORS,
+//! MCP transport, admin flags, per-service preferences) belongs in
+//! `config.toml` but can still be overridden via env vars.
 //!
 //! Multi-instance services follow the `S_<LABEL>_URL` pattern: a service
 //! like `unraid` reads `UNRAID_URL` as the default instance and
@@ -28,6 +33,18 @@ pub struct LabConfig {
     /// MCP server defaults.
     #[serde(default)]
     pub mcp: McpPreferences,
+    /// Logging preferences (overridden by `LAB_LOG` / `LAB_LOG_FORMAT` env vars).
+    #[serde(default)]
+    pub log: LogPreferences,
+    /// HTTP API preferences.
+    #[serde(default)]
+    pub api: ApiPreferences,
+    /// Admin tool settings.
+    #[serde(default)]
+    pub admin: AdminPreferences,
+    /// Per-service preference overrides.
+    #[serde(default)]
+    pub services: ServicePreferences,
 }
 
 /// Table/json formatting defaults.
@@ -52,12 +69,89 @@ pub struct McpPreferences {
     pub port: Option<u16>,
 }
 
-/// Load `.env` + `config.toml` from the standard locations.
+/// Logging preferences.
 ///
-/// Returns `Ok(LabConfig)` if loading succeeded, even if no files were
-/// present. Returns `Err` only for parse failures — missing files are
-/// not errors.
-pub fn load() -> Result<LabConfig> {
+/// These map to `LAB_LOG` and `LAB_LOG_FORMAT` env vars but live in TOML so
+/// operators don't need to clutter `.env` with non-secret preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LogPreferences {
+    /// Tracing filter directive (e.g. `"lab=info,lab_apis=warn"`).
+    /// Overridden by `LAB_LOG` env var.
+    #[serde(default)]
+    pub filter: Option<String>,
+    /// Log format: `"text"` (default) or `"json"`.
+    /// Overridden by `LAB_LOG_FORMAT` env var.
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+/// HTTP API preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ApiPreferences {
+    /// Additional CORS origins (comma-separated string or TOML array).
+    /// Loopback origins are always included.
+    /// Overridden by `LAB_CORS_ORIGINS` env var.
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
+}
+
+/// Admin tool settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AdminPreferences {
+    /// Enable the `lab_admin` MCP tool. Default: `false`.
+    /// Overridden by `LAB_ADMIN_ENABLED=1` env var.
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+/// Per-service preference overrides (non-secret values only).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ServicePreferences {
+    /// Tailscale preferences.
+    #[serde(default)]
+    pub tailscale: TailscalePreferences,
+}
+
+/// Tailscale non-secret preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TailscalePreferences {
+    /// Tailnet name. Overridden by `TAILSCALE_TAILNET` env var.
+    /// Default: `"-"` (auto-detect).
+    #[serde(default)]
+    pub tailnet: Option<String>,
+}
+
+/// Load `config.toml` only — no `.env`, no side effects beyond file reads.
+///
+/// Called early in `main()` before tracing is initialized so that `[log]`
+/// preferences can feed into `init_tracing()`. Safe to call before any
+/// other subsystem.
+///
+/// Config TOML resolution (first found wins):
+///   1. `./config.toml` (repo/CWD override)
+///   2. `~/.lab/config.toml` (user-level, colocated with `.env`)
+///   3. `~/.config/lab/config.toml` (XDG-style fallback)
+pub fn load_toml(candidates: &[PathBuf]) -> Result<LabConfig> {
+    for path in candidates {
+        match std::fs::read_to_string(path) {
+            Ok(raw) => {
+                return toml::from_str::<LabConfig>(&raw)
+                    .with_context(|| format!("failed to parse {}", path.display()));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(anyhow::Error::new(e)
+                .context(format!("failed to read {}", path.display()))),
+        }
+    }
+    Ok(LabConfig::default())
+}
+
+/// Load `.env` files into the process environment.
+///
+/// Called after `load_toml()` and tracing init. Env vars loaded here
+/// override config.toml values at the point of use (each consumer checks
+/// env first, then falls back to config).
+pub fn load_dotenv() -> Result<()> {
     // Load ~/.lab/.env first (user-level secrets).
     if let Some(env_path) = dotenv_path()
         && env_path.exists()
@@ -75,20 +169,25 @@ pub fn load() -> Result<LabConfig> {
         tracing::debug!(path = ".env", error = %e, "failed to load local .env (skipping)");
     }
 
-    let cfg = if let Some(path) = toml_path() {
-        if path.exists() {
-            let raw = std::fs::read_to_string(&path)
-                .with_context(|| format!("failed to read {}", path.display()))?;
-            toml::from_str::<LabConfig>(&raw)
-                .with_context(|| format!("failed to parse {}", path.display()))?
-        } else {
-            LabConfig::default()
-        }
-    } else {
-        LabConfig::default()
-    };
+    Ok(())
+}
 
+/// Load `.env` + `config.toml` in a single call (convenience for tests).
+#[allow(dead_code)]
+pub fn load() -> Result<LabConfig> {
+    let cfg = load_toml(&toml_candidates())?;
+    load_dotenv()?;
     Ok(cfg)
+}
+
+/// Candidate paths for `config.toml`, ordered by priority (highest first).
+pub fn toml_candidates() -> Vec<PathBuf> {
+    let mut paths = vec![PathBuf::from("config.toml")];
+    if let Some(home) = home_dir() {
+        paths.push(home.join(".lab").join("config.toml"));
+        paths.push(home.join(".config").join("lab").join("config.toml"));
+    }
+    paths
 }
 
 /// Cross-platform home directory.
@@ -105,10 +204,6 @@ fn dotenv_path() -> Option<PathBuf> {
     home_dir().map(|home| home.join(".lab").join(".env"))
 }
 
-/// Standard location for the TOML config: `~/.config/lab/config.toml`.
-fn toml_path() -> Option<PathBuf> {
-    home_dir().map(|home| home.join(".config").join("lab").join("config.toml"))
-}
 
 /// A string value that redacts itself in `Debug` and `Display` output.
 ///

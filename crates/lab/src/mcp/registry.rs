@@ -288,13 +288,18 @@ pub fn build_default_registry() -> ToolRegistry {
     reg
 }
 
-/// Returns `true` only when `LAB_ADMIN_ENABLED=1` is set in the environment.
-///
-/// Requires the exact value `"1"` — mere presence of the variable is not enough.
+/// Returns `true` when admin is enabled via `LAB_ADMIN_ENABLED=1` env var
+/// or `admin.enabled = true` in config.toml (env var takes precedence).
 #[cfg(feature = "lab-admin")]
 fn lab_admin_enabled() -> bool {
-    std::env::var("LAB_ADMIN_ENABLED")
-        .map(|value| value == "1")
+    // Env var overrides config.toml.
+    if let Ok(value) = std::env::var("LAB_ADMIN_ENABLED") {
+        return value == "1";
+    }
+    // Fall back to config.toml — load is cheap (cached by the OS) and this
+    // runs once at startup.
+    crate::config::load_toml(&crate::config::toml_candidates())
+        .map(|cfg| cfg.admin.enabled)
         .unwrap_or(false)
 }
 
@@ -382,7 +387,7 @@ mod tests {
     ///
     /// Both sides are derived from the same authoritative source — `lab_apis::<service>::META.name`
     /// — guarded by the same `#[cfg(feature)]` attributes used in `build_default_registry()` and
-    /// `build_router_with_bearer()`. Adding a new service only requires touching those two sites;
+    /// `build_router()`. Adding a new service only requires touching those two sites;
     /// this test self-updates through the shared feature flag.
     ///
     /// If this test fails, a service was registered in the MCP registry but not mounted in the
@@ -390,11 +395,11 @@ mod tests {
     #[test]
     fn registry_and_router_service_sets_are_identical() {
         // Derive the expected HTTP router service set from lab_apis META constants.
-        // These are the same names used by build_router_with_bearer(), so any rename
+        // These are the same names used by build_router(), so any rename
         // in lab_apis automatically propagates here without manual updates.
         //
         // Assumption: every HTTP route mount uses exactly `META.name` as its path prefix.
-        // If a service is added to build_router_with_bearer() under a different name than
+        // If a service is added to build_router() under a different name than
         // META.name, that divergence will NOT be caught here. The trade-off is accepted:
         // the router consistently derives its path prefix from META.name, and if that
         // ever changes the build itself would break on the feature-gated import.
@@ -463,7 +468,7 @@ mod tests {
         assert!(
             only_in_registry.is_empty(),
             "services in MCP registry but NOT in HTTP router: {only_in_registry:?}\n\
-             Add them to build_router_with_bearer() in api/router.rs or add an explicit exemption in registry_and_router_service_sets_are_identical()",
+             Add them to build_router() in api/router.rs or add an explicit exemption in registry_and_router_service_sets_are_identical()",
         );
         assert!(
             only_in_router.is_empty(),

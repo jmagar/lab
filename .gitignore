@@ -5,6 +5,7 @@
 *.env.*
 !.env.example
 !**/.env.example
+config.toml
 
 # ── Runtime artifacts ────────────────────────────────────────────────────────
 logs/
