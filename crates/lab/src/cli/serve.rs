@@ -72,8 +72,18 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let registry = build_default_registry();
     let registry = filter_registry(registry, &args.services)?;
 
+    // Build upstream pool from config if any [[upstream]] entries exist.
+    let upstream_pool = if config.upstream.is_empty() {
+        None
+    } else {
+        let pool =
+            crate::dispatch::upstream::pool::UpstreamPool::new();
+        pool.discover_all(&config.upstream).await;
+        Some(Arc::new(pool))
+    };
+
     match transport {
-        Transport::Stdio => run_stdio(Arc::new(registry)).await,
+        Transport::Stdio => run_stdio(Arc::new(registry), upstream_pool).await,
         Transport::Http => {
             let bearer_token = http_token();
             let oauth_config = resolve_oauth(config.oauth.as_ref())
@@ -92,6 +102,11 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             }
 
             let mut state = AppState::from_registry(registry);
+
+            // Wire upstream pool into state for both HTTP and MCP surfaces.
+            if let Some(ref pool) = upstream_pool {
+                state = state.with_upstream_pool(Arc::clone(pool));
+            }
 
             // Wire OAuth JWT validation when configured.
             if let Some(oauth_cfg) = oauth_config {
@@ -214,7 +229,10 @@ async fn run_http(
     Ok(ExitCode::SUCCESS)
 }
 
-async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
+async fn run_stdio(
+    registry: Arc<ToolRegistry>,
+    upstream_pool: Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>>,
+) -> Result<ExitCode> {
     tracing::info!(
         services = registry.services().len(),
         "lab serve (stdio) ready"
@@ -223,7 +241,7 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
     let server = LabMcpServer {
         registry,
         clients,
-        upstream_pool: None,
+        upstream_pool,
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
