@@ -19,6 +19,9 @@ pub mod router;
 /// `GET /health` and `GET /ready` liveness/readiness probes.
 pub mod health;
 
+/// OAuth 2.1 resource server support (RFC 9728 metadata, WWW-Authenticate).
+pub mod oauth;
+
 /// Per-service HTTP route handlers (one module per service).
 pub mod services;
 

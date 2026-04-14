@@ -129,13 +129,17 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
         protected
     };
 
-    // Build the outer router: health probes (no auth) + protected routes (auth).
+    // Build the outer router: health probes + discovery (no auth) + protected routes (auth).
     // Layers apply bottom-up: last .layer() call = outermost middleware.
     // Desired execution order (outermost → innermost → handler):
     //   SetRequestId → TraceLayer → PropagateRequestId → Timeout → Compression → CORS → handler
     Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(super::oauth::oauth_protected_resource),
+        )
         .merge(protected)
         .with_state(state)
         .layer(build_cors_layer())

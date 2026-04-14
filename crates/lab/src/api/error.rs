@@ -33,6 +33,20 @@ impl IntoResponse for ToolError {
         let body = serde_json::to_value(&self).unwrap_or_else(|_| {
             serde_json::json!({"kind": "internal_error", "message": "error serialization failed"})
         });
-        (status, axum::Json(body)).into_response()
+
+        // RFC 9728: include WWW-Authenticate on 401 responses so MCP clients
+        // can discover the authorization server via resource metadata.
+        if status == StatusCode::UNAUTHORIZED {
+            let www_auth = crate::api::oauth::www_authenticate_value();
+            let mut response = (status, axum::Json(body)).into_response();
+            if let Ok(value) = axum::http::HeaderValue::from_str(&www_auth) {
+                response
+                    .headers_mut()
+                    .insert(axum::http::header::WWW_AUTHENTICATE, value);
+            }
+            response
+        } else {
+            (status, axum::Json(body)).into_response()
+        }
     }
 }
