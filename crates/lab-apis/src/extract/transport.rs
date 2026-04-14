@@ -5,6 +5,12 @@
 //! API object-safety-friendly without `async-trait`.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use russh::client;
+use russh::keys::agent::AgentIdentity;
+use russh::keys::agent::client::AgentClient;
+use russh_sftp::client::SftpSession;
 
 use super::error::ExtractError;
 
@@ -50,52 +56,221 @@ pub struct LocalFs;
 
 impl LocalFs {
     async fn read(&self, path: &Path) -> Result<Vec<u8>, ExtractError> {
-        // Real impl: tokio::fs::read(path).await.map_err(|e| ExtractError::Io { ... })
-        Err(ExtractError::Io {
+        tokio::fs::read(path).await.map_err(|source| ExtractError::Io {
             path: path.to_path_buf(),
-            source: std::io::Error::other("LocalFs::read not yet implemented"),
+            source,
         })
     }
 
     async fn list_subdirs(&self, dir: &Path) -> Result<Vec<PathBuf>, ExtractError> {
-        // Real impl: tokio::fs::read_dir + filter is_dir
-        Err(ExtractError::Io {
-            path: dir.to_path_buf(),
-            source: std::io::Error::other("LocalFs::list_subdirs not yet implemented"),
-        })
+        let mut read_dir =
+            tokio::fs::read_dir(dir)
+                .await
+                .map_err(|source| ExtractError::Io {
+                    path: dir.to_path_buf(),
+                    source,
+                })?;
+
+        let mut entries = Vec::new();
+        while let Some(entry) =
+            read_dir
+                .next_entry()
+                .await
+                .map_err(|source| ExtractError::Io {
+                    path: dir.to_path_buf(),
+                    source,
+                })?
+        {
+            let ft = entry
+                .file_type()
+                .await
+                .map_err(|source| ExtractError::Io {
+                    path: entry.path(),
+                    source,
+                })?;
+            if ft.is_dir() {
+                entries.push(entry.path());
+            }
+        }
+        Ok(entries)
+    }
+}
+
+/// russh `Handler` that trusts all server keys — appropriate for private
+/// homelab hosts where TOFU (trust on first use) is acceptable.
+struct ClientHandler;
+
+impl client::Handler for ClientHandler {
+    type Error = russh::Error;
+
+    async fn check_server_key(
+        &mut self,
+        _server_public_key: &russh::keys::PublicKey,
+    ) -> Result<bool, Self::Error> {
+        // Accept every host key — homelab use only.
+        Ok(true)
     }
 }
 
 /// SSH transport — opens a `russh` session to a host alias resolved via
 /// `~/.ssh/config`, runs an SFTP subsystem, and reads files over the channel.
-#[derive(Debug)]
+///
+/// The inner `russh` `Handle` is kept alive for the lifetime of this struct so
+/// the SFTP channel remains open.
 pub struct SshFs {
-    /// SSH host alias as it appears in `~/.ssh/config`.
-    pub host: String,
+    /// SSH host alias (for error messages).
+    host: String,
+    /// Live SFTP session.
+    sftp: SftpSession,
+    /// Keeps the underlying SSH connection open as long as `SshFs` lives.
+    _session: client::Handle<ClientHandler>,
+}
+
+impl std::fmt::Debug for SshFs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SshFs")
+            .field("host", &self.host)
+            .finish_non_exhaustive()
+    }
 }
 
 impl SshFs {
-    /// Open a new SSH connection. Authentication is whatever ssh-agent has
-    /// loaded plus any keys/certs/jump-hosts declared in `~/.ssh/config`.
+    /// Open a new SSH connection. Authentication uses whatever keys the
+    /// running `ssh-agent` (via `SSH_AUTH_SOCK`) has loaded. The host alias
+    /// is resolved through `~/.ssh/config` — supports `Hostname`, `Port`,
+    /// `User`, and `ProxyCommand` directives.
     ///
     /// # Errors
-    /// Returns `ExtractError::Ssh` on connection or auth failure.
+    /// Returns `ExtractError::Ssh` on config parse, connection, auth, or
+    /// SFTP subsystem failures.
     pub async fn connect(host: impl Into<String>) -> Result<Self, ExtractError> {
-        // Real impl: russh::client::connect_stream + agent auth + open sftp subsystem
-        Ok(Self { host: host.into() })
-    }
+        let host = host.into();
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, ExtractError> {
-        Err(ExtractError::Ssh {
-            host: self.host.clone(),
-            message: "SshFs::read not yet implemented".to_owned(),
+        // Resolve the alias through ~/.ssh/config (Hostname, Port, User, ProxyCommand).
+        let cfg =
+            russh_config::parse_home(&host).map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("ssh config: {e}"),
+            })?;
+        let user = cfg.user();
+
+        // Open TCP stream (or ProxyCommand pipe) to the resolved endpoint.
+        let stream = cfg.stream().await.map_err(|e| ExtractError::Ssh {
+            host: host.clone(),
+            message: format!("connect: {e}"),
+        })?;
+
+        // Perform the SSH handshake.
+        let ssh_cfg = Arc::new(client::Config::default());
+        let mut handle =
+            client::connect_stream(ssh_cfg, stream, ClientHandler)
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("handshake: {e}"),
+                })?;
+
+        // Authenticate using the running ssh-agent.
+        let mut agent =
+            AgentClient::connect_env()
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("ssh-agent: {e}"),
+                })?;
+
+        let identities =
+            agent
+                .request_identities()
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("agent identities: {e}"),
+                })?;
+
+        let mut authenticated = false;
+        for identity in &identities {
+            // Only handle plain public-key identities; skip certificates.
+            let pub_key = match identity {
+                AgentIdentity::PublicKey { key, .. } => key.clone(),
+                AgentIdentity::Certificate { .. } => continue,
+            };
+
+            let result = handle
+                .authenticate_publickey_with(&user, pub_key, None, &mut agent)
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("agent auth: {e:?}"),
+                })?;
+
+            if result.success() {
+                authenticated = true;
+                break;
+            }
+        }
+
+        if !authenticated {
+            return Err(ExtractError::Ssh {
+                host: host.clone(),
+                message: "all agent identities were rejected".to_owned(),
+            });
+        }
+
+        // Open an SSH session channel and request the SFTP subsystem.
+        let channel = handle
+            .channel_open_session()
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("channel open: {e}"),
+            })?;
+
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("sftp subsystem: {e}"),
+            })?;
+
+        let sftp = SftpSession::new(channel.into_stream())
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("sftp init: {e}"),
+            })?;
+
+        Ok(Self {
+            host,
+            sftp,
+            _session: handle,
         })
     }
 
-    async fn list_subdirs(&self, _dir: &Path) -> Result<Vec<PathBuf>, ExtractError> {
-        Err(ExtractError::Ssh {
-            host: self.host.clone(),
-            message: "SshFs::list_subdirs not yet implemented".to_owned(),
-        })
+    async fn read(&self, path: &Path) -> Result<Vec<u8>, ExtractError> {
+        self.sftp
+            .read(path.to_string_lossy().into_owned())
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: self.host.clone(),
+                message: format!("sftp read: {e}"),
+            })
+    }
+
+    async fn list_subdirs(&self, dir: &Path) -> Result<Vec<PathBuf>, ExtractError> {
+        let read_dir = self
+            .sftp
+            .read_dir(dir.to_string_lossy().into_owned())
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: self.host.clone(),
+                message: format!("sftp readdir: {e}"),
+            })?;
+
+        Ok(read_dir
+            .filter(|entry| entry.file_type().is_dir())
+            .map(|entry| dir.join(entry.file_name()))
+            .collect())
     }
 }
