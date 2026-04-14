@@ -42,18 +42,18 @@ pub struct ProtectedResourceMetadata {
 /// to use. This endpoint is unauthenticated — clients need it before they
 /// have a token.
 pub async fn oauth_protected_resource(State(state): State<AppState>) -> impl IntoResponse {
-    let resource_url = std::env::var("LAB_RESOURCE_URL")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "https://localhost".to_string());
-
-    let issuer = std::env::var("LAB_OAUTH_ISSUER")
-        .ok()
-        .filter(|v| !v.is_empty());
-
-    let authorization_servers = issuer.into_iter().collect();
-
-    let _state = state;
+    let (resource_url, authorization_servers) =
+        state.oauth_config.as_ref().map_or_else(
+            || ("https://localhost".to_string(), Vec::new()),
+            |oauth_cfg| {
+                let resource_url = oauth_cfg
+                    .resource_url
+                    .clone()
+                    .unwrap_or_else(|| "https://localhost".to_string());
+                let servers = vec![oauth_cfg.issuer.clone()];
+                (resource_url, servers)
+            },
+        );
 
     Json(ProtectedResourceMetadata {
         resource: resource_url,
@@ -64,15 +64,14 @@ pub async fn oauth_protected_resource(State(state): State<AppState>) -> impl Int
 }
 
 /// Build the `WWW-Authenticate` header value for 401 responses.
-pub fn www_authenticate_value() -> String {
-    let resource_url = std::env::var("LAB_RESOURCE_URL")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "https://localhost".to_string());
-
+///
+/// Accepts an optional `resource_url` from resolved config. Falls back to
+/// `"https://localhost"` when not provided.
+pub fn www_authenticate_value(resource_url: Option<&str>) -> String {
+    let url = resource_url.unwrap_or("https://localhost");
     format!(
         "Bearer resource_metadata=\"{}/.well-known/oauth-protected-resource\"",
-        resource_url.trim_end_matches('/')
+        url.trim_end_matches('/')
     )
 }
 
@@ -184,6 +183,8 @@ impl JwksManager {
             .send()
             .await
             .map_err(|e| AuthError::DiscoveryFailed(format!("fetch {discovery_url}: {e}")))?
+            .error_for_status()
+            .map_err(|e| AuthError::DiscoveryFailed(format!("OIDC discovery HTTP error: {e}")))?
             .json()
             .await
             .map_err(|e| AuthError::DiscoveryFailed(format!("parse discovery: {e}")))?;
@@ -234,8 +235,16 @@ impl JwksManager {
                 Ok(())
             }
             Err(e) => {
-                tracing::warn!(error = %e, kid, "JWKS refresh failed — serving stale keys");
-                Err(AuthError::JwksRefreshFailed(e.to_string()))
+                // Stale-while-revalidate: if we have cached keys, log a
+                // warning and continue with stale keys. Only return an error
+                // if the cache is completely empty (no keys to fall back on).
+                let has_cached_keys = !self.cache.read().await.keys.keys.is_empty();
+                if has_cached_keys {
+                    tracing::warn!(error = %e, kid, "JWKS refresh failed — serving stale keys");
+                    Ok(())
+                } else {
+                    Err(AuthError::JwksRefreshFailed(e.to_string()))
+                }
             }
         }
     }
@@ -326,6 +335,8 @@ impl JwksManager {
             .send()
             .await
             .map_err(|e| AuthError::JwksRefreshFailed(format!("fetch {jwks_uri}: {e}")))?
+            .error_for_status()
+            .map_err(|e| AuthError::JwksRefreshFailed(format!("JWKS HTTP error: {e}")))?
             .json()
             .await
             .map_err(|e| AuthError::JwksRefreshFailed(format!("parse JWKS: {e}")))
