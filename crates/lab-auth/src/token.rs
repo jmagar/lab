@@ -249,7 +249,70 @@ mod tests {
         assert!(a.status() == StatusCode::BAD_REQUEST || b.status() == StatusCode::BAD_REQUEST);
     }
 
+    #[tokio::test]
+    async fn token_endpoint_rejects_expired_authorization_code() {
+        let state = test_auth_state_with_registered_client().await;
+        seed_authorization_code_with_expiry(&state, super::now_unix() - 1).await;
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/token")
+                    .header(
+                        header::CONTENT_TYPE,
+                        "application/x-www-form-urlencoded",
+                    )
+                    .body(Body::from("grant_type=authorization_code&code=lab-code&client_id=client&redirect_uri=http://127.0.0.1:7777/callback&code_verifier=verifier"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn token_endpoint_rejects_expired_refresh_token() {
+        let state = test_auth_state_with_registered_client().await;
+        state
+            .store
+            .upsert_refresh_token(crate::types::RefreshTokenRow {
+                refresh_token: "refresh-token".to_string(),
+                client_id: "client".to_string(),
+                subject: "google-subject-123".to_string(),
+                scope: "lab".to_string(),
+                provider_refresh_token: Some("provider-refresh".to_string()),
+                created_at: super::now_unix() - 3600,
+                expires_at: super::now_unix() - 1,
+            })
+            .await
+            .unwrap();
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/token")
+                    .header(
+                        header::CONTENT_TYPE,
+                        "application/x-www-form-urlencoded",
+                    )
+                    .body(Body::from("grant_type=refresh_token&refresh_token=refresh-token"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
     async fn seed_authorization_code(state: &crate::state::AuthState) {
+        seed_authorization_code_with_expiry(state, 4_102_444_800).await;
+    }
+
+    async fn seed_authorization_code_with_expiry(
+        state: &crate::state::AuthState,
+        expires_at: i64,
+    ) {
         state
             .store
             .insert_auth_code(crate::types::AuthorizationCodeRow {
@@ -262,7 +325,7 @@ mod tests {
                 code_challenge_method: "S256".to_string(),
                 provider_refresh_token: Some("provider-refresh".to_string()),
                 created_at: 1_700_000_000,
-                expires_at: 4_102_444_800,
+                expires_at,
             })
             .await
             .unwrap();

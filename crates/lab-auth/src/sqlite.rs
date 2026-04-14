@@ -134,13 +134,15 @@ impl SqliteStore {
         state: &str,
     ) -> Result<AuthorizationRequestRow, AuthError> {
         let state = state.to_string();
+        let now = now_unix();
         self.with_conn(move |conn| {
             conn.query_row(
                 "DELETE FROM authorization_requests
                  WHERE state = ?1
+                   AND expires_at > ?2
                  RETURNING state, client_id, redirect_uri, client_state, scope, provider_code_verifier,
                            code_challenge, code_challenge_method, created_at, expires_at",
-                params![state],
+                params![state, now],
                 row_to_authorization_request,
             )
             .map_err(|error| match error {
@@ -182,14 +184,16 @@ impl SqliteStore {
 
     pub async fn redeem_auth_code(&self, code: &str) -> Result<AuthorizationCodeRow, AuthError> {
         let code = code.to_string();
+        let now = now_unix();
         self.with_conn(move |conn| {
             conn.query_row(
                 "DELETE FROM authorization_codes
                  WHERE code = ?1
+                   AND expires_at > ?2
                  RETURNING code, client_id, subject, redirect_uri, scope,
                            code_challenge, code_challenge_method, provider_refresh_token,
                            created_at, expires_at",
-                params![code],
+                params![code, now],
                 row_to_authorization_code,
             )
             .map_err(|error| match error {
@@ -237,13 +241,15 @@ impl SqliteStore {
         refresh_token: &str,
     ) -> Result<Option<RefreshTokenRow>, AuthError> {
         let refresh_token = refresh_token.to_string();
+        let now = now_unix();
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT refresh_token, client_id, subject, scope,
                         provider_refresh_token, created_at, expires_at
                  FROM refresh_tokens
-                 WHERE refresh_token = ?1",
-                params![refresh_token],
+                 WHERE refresh_token = ?1
+                   AND expires_at > ?2",
+                params![refresh_token, now],
                 row_to_refresh_token,
             )
             .optional()
@@ -345,6 +351,13 @@ fn sqlite_error(error: rusqlite::Error) -> AuthError {
     AuthError::Storage(format!("sqlite error: {error}"))
 }
 
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
 #[cfg(unix)]
 fn ensure_restrictive_permissions(path: &Path) -> Result<(), AuthError> {
     use std::os::unix::fs::PermissionsExt;
@@ -426,9 +439,9 @@ fn row_to_refresh_token(row: &rusqlite::Row<'_>) -> rusqlite::Result<RefreshToke
 mod tests {
     use std::path::PathBuf;
 
-    use crate::types::AuthorizationCodeRow;
+    use crate::types::{AuthorizationCodeRow, RefreshTokenRow};
 
-    use super::SqliteStore;
+    use super::{SqliteStore, now_unix};
 
     #[tokio::test]
     async fn sqlite_store_enables_wal_and_busy_timeout() {
@@ -460,6 +473,38 @@ mod tests {
         assert!(err.to_string().contains("permissions"));
     }
 
+    #[tokio::test]
+    async fn sqlite_store_rejects_expired_authorization_code() {
+        let store = temp_store().await;
+        let mut code = sample_code();
+        code.expires_at = now_unix() - 1;
+        store.insert_auth_code(code).await.unwrap();
+        let err = store.redeem_auth_code("code-123").await.unwrap_err();
+        assert!(err.to_string().contains("expired"));
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_ignores_expired_refresh_token() {
+        let store = temp_store().await;
+        store
+            .upsert_refresh_token(RefreshTokenRow {
+                refresh_token: "refresh-token".to_string(),
+                client_id: "client".to_string(),
+                subject: "google-user".to_string(),
+                scope: "lab".to_string(),
+                provider_refresh_token: Some("provider-refresh".to_string()),
+                created_at: now_unix() - 300,
+                expires_at: now_unix() - 1,
+            })
+            .await
+            .unwrap();
+        assert!(store
+            .find_refresh_token("refresh-token")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
     async fn temp_store() -> SqliteStore {
         SqliteStore::open(temp_db_path()).await.unwrap()
     }
@@ -477,6 +522,7 @@ mod tests {
     }
 
     fn sample_code() -> AuthorizationCodeRow {
+        let now = now_unix();
         AuthorizationCodeRow {
             code: "code-123".to_string(),
             client_id: "client".to_string(),
@@ -486,8 +532,8 @@ mod tests {
             code_challenge: "challenge".to_string(),
             code_challenge_method: "S256".to_string(),
             provider_refresh_token: Some("provider-refresh".to_string()),
-            created_at: 1_700_000_000,
-            expires_at: 1_700_000_300,
+            created_at: now,
+            expires_at: now + 300,
         }
     }
 }

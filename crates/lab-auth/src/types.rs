@@ -35,6 +35,8 @@ pub struct ClientRegistrationResponse {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthorizeQuery {
+    #[serde(default)]
+    pub response_type: String,
     pub client_id: String,
     pub redirect_uri: String,
     pub state: String,
