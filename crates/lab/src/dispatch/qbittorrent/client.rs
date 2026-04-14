@@ -3,7 +3,7 @@ use lab_apis::qbittorrent::QbittorrentClient;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
-/// Perform a qBittorrent WebUI login and return the `SID=<value>` cookie string.
+/// Perform a qBittorrent `WebUI` login and return the `SID=<value>` cookie string.
 ///
 /// Uses reqwest directly because `HttpClient` does not expose `Set-Cookie` headers.
 /// Parses the `SID` value out of the `Set-Cookie` response header manually since
@@ -73,7 +73,7 @@ pub async fn require_client() -> Result<QbittorrentClient, ToolError> {
         let password = env_non_empty("QBITTORRENT_PASSWORD").ok_or_else(not_configured_error)?;
         obtain_sid(&url, &username, &password)
             .await
-            .ok_or(ToolError::Sdk {
+            .ok_or_else(|| ToolError::Sdk {
                 sdk_kind: "auth_failed".to_string(),
                 message: "qbittorrent login failed — check QBITTORRENT_USERNAME/PASSWORD".to_string(),
             })?

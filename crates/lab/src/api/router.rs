@@ -31,6 +31,7 @@ fn tokens_equal(a: &str, b: &str) -> bool {
 use super::{health, services, state::AppState};
 use crate::dispatch::error::ToolError;
 
+#[allow(clippy::too_many_lines)]
 pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
     // lab-4v9: warn early so operators can see that auth is disabled.
     if bearer_token.is_none() {
@@ -44,7 +45,7 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
             Arc::new(String::from(r#"{"error":"spec generation failed"}"#))
         });
 
-    let spec_for_route = openapi_spec.clone();
+    let spec_for_route = openapi_spec;
     let mut v1 = Router::new()
         .route("/{service}/actions", get(service_actions))
         .route(

@@ -23,6 +23,7 @@ pub mod health;
 pub mod services;
 
 /// OpenAPI 3.1 schema generation (all utoipa coupling lives here).
+#[allow(clippy::needless_for_each)]
 pub mod openapi;
 
 /// Shared request type for all service action dispatchers.

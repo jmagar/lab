@@ -80,7 +80,7 @@ pub struct ErrorSdk {
 
 // ── Param type → OpenAPI schema conversion ──────────────────────────────
 
-/// Convert a `ParamSpec.ty` string label to an OpenAPI `Schema`.
+/// Convert a `ParamSpec.ty` string label to an `OpenAPI` `Schema`.
 ///
 /// Handles the 10 known type labels plus unknown fallback:
 /// - `"string"`, `"integer"`, `"number"`, `"boolean"`, `"object"`, `"array"`
@@ -111,11 +111,7 @@ pub fn param_type_to_schema(ty: &str) -> Schema {
             .schema_type(SchemaType::Type(Type::Object))
             .build()
             .into(),
-        "array" => utoipa::openapi::ArrayBuilder::new()
-            .items(ObjectBuilder::new().schema_type(SchemaType::Type(Type::String)))
-            .build()
-            .into(),
-        "string[]" => utoipa::openapi::ArrayBuilder::new()
+        "array" | "string[]" => utoipa::openapi::ArrayBuilder::new()
             .items(ObjectBuilder::new().schema_type(SchemaType::Type(Type::String)))
             .build()
             .into(),
@@ -165,14 +161,11 @@ pub fn to_pascal_case(dotted: &str) -> String {
         .split('.')
         .map(|seg| {
             let mut chars = seg.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => {
-                    let mut s = c.to_uppercase().to_string();
-                    s.extend(chars);
-                    s
-                }
-            }
+            chars.next().map_or_else(String::new, |c| {
+                let mut s = c.to_uppercase().to_string();
+                s.extend(chars);
+                s
+            })
         })
         .collect()
 }
@@ -181,7 +174,7 @@ pub fn to_pascal_case(dotted: &str) -> String {
 
 /// Build named schemas for each service's actions.
 ///
-/// Returns `(name, Schema)` pairs suitable for injection into OpenAPI components.
+/// Returns `(name, Schema)` pairs suitable for injection into `OpenAPI` components.
 /// Names follow the pattern `{Service}{Action}Params` — e.g., `RadarrMovieSearchParams`.
 #[must_use]
 pub fn build_action_schemas(
@@ -212,7 +205,7 @@ pub fn build_action_schemas(
 
 // ── utoipa::Modify implementations ──────────────────────────────────────
 
-/// Injects all action parameter schemas into the OpenAPI components.
+/// Injects all action parameter schemas into the `OpenAPI` components.
 pub struct ActionSchemaInjector {
     schemas: Vec<(String, RefOr<Schema>)>,
 }
@@ -235,7 +228,7 @@ impl Modify for ActionSchemaInjector {
     }
 }
 
-/// Adds Bearer auth security scheme to the OpenAPI spec.
+/// Adds Bearer auth security scheme to the `OpenAPI` spec.
 pub struct SecurityAddon;
 
 impl Modify for SecurityAddon {
@@ -255,7 +248,7 @@ impl Modify for SecurityAddon {
 
 // ── Path builders ───────────────────────────────────────────────────────
 
-/// Build OpenAPI paths for health endpoints.
+/// Build `OpenAPI` paths for health endpoints.
 #[must_use]
 pub fn build_health_paths() -> Vec<(String, PathItem)> {
     let health_response = ResponseBuilder::new()
@@ -332,7 +325,7 @@ pub fn build_health_paths() -> Vec<(String, PathItem)> {
     ]
 }
 
-/// Build OpenAPI paths for all service endpoints.
+/// Build `OpenAPI` paths for all service endpoints.
 ///
 /// Each service gets `POST /v1/{service}` with the `ActionRequest` body schema.
 #[must_use]
@@ -461,7 +454,7 @@ pub fn build_service_paths(service_names: &[String]) -> Vec<(String, PathItem)> 
 )]
 struct ApiDoc;
 
-/// Build the complete OpenAPI 3.1 JSON spec.
+/// Build the complete `OpenAPI` 3.1 JSON spec.
 ///
 /// Pure function — called once at startup, result wrapped in `Arc<String>`.
 ///
@@ -682,5 +675,88 @@ mod tests {
         assert_eq!(paths.len(), 2);
         assert_eq!(paths[0].0, "/v1/radarr");
         assert_eq!(paths[1].0, "/v1/sonarr");
+    }
+
+    /// Round-trip integration test: build the full spec from the default registry
+    /// and validate its top-level structure.
+    #[test]
+    fn full_spec_round_trip() {
+        use crate::mcp::registry::build_default_registry;
+
+        let registry = build_default_registry();
+        let spec_json = build_openapi_spec(registry.services())
+            .expect("spec serialization should succeed");
+
+        let spec: serde_json::Value =
+            serde_json::from_str(&spec_json).expect("spec should be valid JSON");
+
+        // OpenAPI version
+        assert_eq!(spec["openapi"], "3.1.0", "should be OpenAPI 3.1");
+
+        // Info block
+        assert_eq!(spec["info"]["title"], "lab API");
+        assert!(spec["info"]["version"].as_str().is_some());
+
+        // Paths must include health endpoints
+        let paths = spec["paths"].as_object().expect("paths should be an object");
+        assert!(paths.contains_key("/health"), "missing /health path");
+        assert!(paths.contains_key("/ready"), "missing /ready path");
+
+        // At least extract (always-on) should have a /v1/extract path
+        assert!(
+            paths.contains_key("/v1/extract"),
+            "missing /v1/extract path"
+        );
+
+        // Components must include our error schemas
+        let schemas = spec["components"]["schemas"]
+            .as_object()
+            .expect("schemas should be an object");
+        assert!(
+            schemas.contains_key("ActionRequest"),
+            "missing ActionRequest schema"
+        );
+        assert!(
+            schemas.contains_key("HealthResponse"),
+            "missing HealthResponse schema"
+        );
+        assert!(
+            schemas.contains_key("ErrorUnknownAction"),
+            "missing ErrorUnknownAction schema"
+        );
+        assert!(
+            schemas.contains_key("ErrorMissingParam"),
+            "missing ErrorMissingParam schema"
+        );
+        assert!(
+            schemas.contains_key("ErrorSdk"),
+            "missing ErrorSdk schema"
+        );
+
+        // Security scheme
+        let security_schemes = spec["components"]["securitySchemes"]
+            .as_object()
+            .expect("securitySchemes should be an object");
+        assert!(
+            security_schemes.contains_key("bearer_auth"),
+            "missing bearer_auth security scheme"
+        );
+
+        // Service paths should have POST operations with security requirement
+        for (path, item) in paths {
+            if path.starts_with("/v1/") && !path.ends_with("/actions") {
+                let post = item.get("post");
+                assert!(
+                    post.is_some(),
+                    "service path {path} should have a POST operation"
+                );
+                if let Some(post) = post {
+                    assert!(
+                        post.get("security").is_some(),
+                        "POST {path} should have security requirement"
+                    );
+                }
+            }
+        }
     }
 }
