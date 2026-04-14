@@ -140,10 +140,9 @@ Environment variables override `[auth]` values field-by-field.
 
 ## Upstream MCP Servers
 
-Lab can proxy tool calls and resource reads to upstream MCP servers through its MCP surface.
+Lab can proxy tool calls and resource reads to upstream MCP servers.
 
 Full details in [UPSTREAM.md](./UPSTREAM.md).
-Gateway mutation workflows live in [GATEWAY.md](./GATEWAY.md).
 
 ### config.toml
 
@@ -160,12 +159,6 @@ command = "my-mcp-server"
 args = ["--port", "5000"]
 proxy_resources = false
 ```
-
-After these entries are configured, start `lab serve` as usual and point MCP clients at `lab`. The clients connect to `lab`; `lab` connects to the upstreams and merges their tools into its own MCP catalog.
-
-The `gateway` management surface edits this same `[[upstream]]` array in `~/.config/lab/config.toml`. It never stores bearer-token values in TOML; only `bearer_token_env` references are persisted and returned.
-
-If you change the env var named by `bearer_token_env`, call `gateway.reload` to rebuild the live pool and pick up the new token value.
 
 ### Environment Variables
 

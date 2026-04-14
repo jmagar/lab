@@ -12,7 +12,6 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
 - Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, and lab-issued JWT behavior.
 - See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP gateway setup, configuration, tool merging, circuit breaker behavior, and resource proxying.
-- See [GATEWAY.md](./GATEWAY.md) for the `gateway` management surface that edits and reloads `[[upstream]]` entries at runtime.
 - Consult [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
 - Use [OBSERVABILITY.md](./OBSERVABILITY.md) for the mandatory logging, correlation, redaction, and verification contract.
 - Use [ERRORS.md](./ERRORS.md) for the shared error taxonomy, envelope shapes, and status mapping contract.
@@ -80,8 +79,6 @@ The docs are split by topic so contributors do not have to recover architecture,
   HTTP auth modes: static bearer compatibility, internal Google-backed OAuth, lab-issued JWTs, JWKS, and RFC 9728 metadata.
 - [UPSTREAM.md](./UPSTREAM.md)
   Upstream MCP proxy gateway: config, discovery, tool collision handling, circuit breaker, resource proxying.
-- [GATEWAY.md](./GATEWAY.md)
-  Gateway management surface: `gateway.*` actions, reconcile semantics, and operator examples.
 - [TRANSPORT.md](./TRANSPORT.md)
   Stdio and streamable HTTP transport: middleware stack, session management, DNS rebinding protection, CORS.
 - [SERVICES.md](./SERVICES.md)
@@ -133,7 +130,6 @@ Use the smallest correct doc:
 - RMCP SDK integration, feature posture, and server-shape rules: [RMCP.md](./RMCP.md)
 - HTTP auth modes, JWKS, and JWT validation: [OAUTH.md](./OAUTH.md)
 - upstream MCP proxy, circuit breaker, resource proxying: [UPSTREAM.md](./UPSTREAM.md)
-- gateway management actions and reload behavior: [GATEWAY.md](./GATEWAY.md)
 - transport configuration, middleware, sessions: [TRANSPORT.md](./TRANSPORT.md)
 - TUI behavior: [TUI.md](./TUI.md)
 - config, env, secrets, instance naming: [CONFIG.md](./CONFIG.md)

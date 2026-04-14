@@ -57,7 +57,6 @@ Examples:
 ```json
 { "tool": "radarr", "input": { "action": "movie.search", "params": { "query": "The Matrix" } } }
 { "tool": "plex", "input": { "action": "library.list" } }
-{ "tool": "gateway", "input": { "action": "gateway.list", "params": {} } }
 ```
 
 This avoids exploding the tool list into hundreds of tiny tools.
@@ -86,7 +85,6 @@ Examples:
 - `movie.search`
 - `queue.list`
 - `system.status`
-- `gateway.reload`
 
 ## Action Catalog
 
@@ -237,8 +235,6 @@ That means:
 - `--services` filtering matters
 - `lab.help` only shows what is actually available
 
-`gateway` is part of the default runtime registry for `lab serve` because it manages the active upstream configuration and live pool.
-
 The same catalog builder must feed:
 
 - `lab.help`
@@ -255,7 +251,6 @@ Rules:
 - cross-upstream duplicate tool names: first discovered wins, later tools are skipped with a warning
 - upstream tools with open circuit breakers (3+ consecutive failures) are excluded from `list_tools`
 - callers do not need to distinguish between built-in and upstream tools
-- upstream tools are first-class providers in the merged MCP catalog, not a separate fallback-only surface
 
 ## Upstream Proxy Dispatch
 
@@ -266,8 +261,6 @@ When `call_tool` receives a tool name that is not a built-in service, the dispat
 - on failure, the response uses the `upstream_error` error kind
 - response size is capped at `LAB_UPSTREAM_MAX_RESPONSE_BYTES` (default 10 MB)
 
-This is an internal ownership-resolution rule, not a product-level distinction. To the MCP client, upstream tools appear as normal tools in the server's catalog.
-
 ## Resource Proxying
 
 Upstream resource proxying is opt-in per upstream (`proxy_resources = true`).
@@ -275,24 +268,6 @@ Upstream resource proxying is opt-in per upstream (`proxy_resources = true`).
 Upstream resources are namespaced under `lab://upstream/{name}/{original_uri}` to avoid collisions with lab's own resources.
 
 `list_resources` and `read_resource` are proxied to enabled upstreams. Failed resource listings from individual upstreams are logged as warnings; other upstreams continue to serve.
-
-The upstream gateway behavior described in this section applies to the MCP surface. The HTTP API under `/v1/*` does not currently proxy arbitrary upstream MCP tools.
-
-## Gateway Management Tool
-
-`lab` also registers a `gateway` MCP tool for managing `[[upstream]]` entries without hand-editing TOML.
-
-Representative actions:
-
-- `gateway.list`
-- `gateway.get`
-- `gateway.test`
-- `gateway.add`
-- `gateway.update`
-- `gateway.remove`
-- `gateway.reload`
-
-This tool manages upstream definitions and runtime reconcile. It is separate from the merged upstream tools themselves.
 
 ## Resources
 
