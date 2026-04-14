@@ -53,7 +53,6 @@ pub struct LabMcpServer {
     /// Upstream MCP server pool for gateway proxy dispatch.
     ///
     /// `None` when no `[[upstream]]` entries are configured.
-    #[allow(dead_code)]
     pub upstream_pool: Option<Arc<crate::mcp::upstream::pool::UpstreamPool>>,
 }
 
@@ -68,21 +67,32 @@ impl ServerHandler for LabMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let schema = Arc::new(action_schema());
-        let tools: Vec<Tool> = self
+        let mut tools: Vec<Tool> = self
             .registry
             .services()
             .iter()
             .map(|svc| Tool::new(svc.name, svc.description, Arc::clone(&schema)))
             .collect();
+
+        // Merge upstream tools (healthy only, filtered for collisions).
+        if let Some(ref pool) = self.upstream_pool {
+            let upstream_tools = pool.healthy_tools().await;
+            for ut in upstream_tools {
+                tools.push(ut.tool);
+            }
+        }
+
         Ok(ListToolsResult::with_all_items(tools))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let service = request.name.as_ref().to_string();
+        let raw_arguments = request.arguments.clone();
         let args = request.arguments.unwrap_or_default();
         let action = args
             .get("action")
@@ -138,54 +148,134 @@ impl ServerHandler for LabMcpServer {
         }
 
         let start = std::time::Instant::now();
-        let result = match svc {
-            Some(entry) => (entry.dispatch)(action.clone(), params)
-                .await
-                .map_err(|te| anyhow::Error::from(DispatchError::from(te))),
-            None => Err(anyhow::anyhow!(
-                "service `{service}` has no dispatcher wired"
-            )),
-        };
-        let elapsed_ms = start.elapsed().as_millis();
 
-        match result {
-            Ok(v) => {
-                tracing::info!(surface = "mcp", service, action, elapsed_ms, "dispatch ok");
-                let envelope = build_success(&service, &action, &v);
-                Ok(CallToolResult::success(vec![Content::text(
-                    envelope.to_string(),
-                )]))
-            }
-            Err(e) => {
-                let (kind, message, extra) = extract_error_info(&e);
-                let is_fatal = matches!(kind, "internal_error" | "server_error" | "decode_error");
-                if is_fatal {
-                    tracing::error!(
+        // Try built-in dispatch first.
+        if let Some(entry) = svc {
+            let result = (entry.dispatch)(action.clone(), params)
+                .await
+                .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
+            let elapsed_ms = start.elapsed().as_millis();
+            return Ok(format_dispatch_result(result, &service, &action, elapsed_ms));
+        }
+
+        // Fall through to upstream proxy dispatch.
+        if let Some(ref pool) = self.upstream_pool
+            && let Some((upstream_name, _tool)) = pool.find_tool(&service).await
+        {
+            tracing::debug!(
+                surface = "mcp",
+                service,
+                upstream = %upstream_name,
+                "proxying to upstream"
+            );
+
+            let mut upstream_params = CallToolRequestParams::new(service.clone());
+            upstream_params.arguments = raw_arguments;
+
+            match pool.call_tool(&upstream_name, upstream_params).await {
+                Some(Ok(result)) => {
+                    pool.record_success(&upstream_name).await;
+                    let elapsed_ms = start.elapsed().as_millis();
+                    tracing::info!(
                         surface = "mcp",
                         service,
-                        action,
+                        upstream = %upstream_name,
                         elapsed_ms,
-                        kind,
-                        "dispatch error"
+                        "upstream proxy ok"
                     );
-                } else {
+                    return Ok(result);
+                }
+                Some(Err(e)) => {
+                    pool.record_failure(&upstream_name).await;
+                    let elapsed_ms = start.elapsed().as_millis();
                     tracing::warn!(
                         surface = "mcp",
                         service,
-                        action,
+                        upstream = %upstream_name,
                         elapsed_ms,
-                        kind,
-                        "dispatch error"
+                        kind = "upstream_error",
+                        "upstream proxy failed"
                     );
+                    let envelope = build_error(
+                        &service,
+                        &action,
+                        "upstream_error",
+                        &format!("upstream `{upstream_name}` call failed: {e}"),
+                    );
+                    return Ok(CallToolResult::error(vec![Content::text(
+                        envelope.to_string(),
+                    )]));
                 }
-                let envelope = extra.map_or_else(
-                    || build_error(&service, &action, kind, &message),
-                    |ref extra| build_error_extra(&service, &action, kind, &message, extra),
-                );
-                Ok(CallToolResult::error(vec![Content::text(
-                    envelope.to_string(),
-                )]))
+                None => {
+                    let elapsed_ms = start.elapsed().as_millis();
+                    tracing::warn!(
+                        surface = "mcp",
+                        service,
+                        upstream = %upstream_name,
+                        elapsed_ms,
+                        kind = "upstream_error",
+                        "upstream not connected"
+                    );
+                    let envelope = build_error(
+                        &service,
+                        &action,
+                        "upstream_error",
+                        &format!("upstream `{upstream_name}` is not connected"),
+                    );
+                    return Ok(CallToolResult::error(vec![Content::text(
+                        envelope.to_string(),
+                    )]));
+                }
             }
+        }
+
+        // Neither built-in nor upstream.
+        let elapsed_ms = start.elapsed().as_millis();
+        let err = anyhow::anyhow!("service `{service}` has no dispatcher wired");
+        Ok(format_dispatch_result(Err(err), &service, &action, elapsed_ms))
+    }
+}
+
+/// Format the result of a dispatch operation into an MCP `CallToolResult`.
+fn format_dispatch_result(
+    result: Result<Value, anyhow::Error>,
+    service: &str,
+    action: &str,
+    elapsed_ms: u128,
+) -> CallToolResult {
+    match result {
+        Ok(v) => {
+            tracing::info!(surface = "mcp", service, action, elapsed_ms, "dispatch ok");
+            let envelope = build_success(service, action, &v);
+            CallToolResult::success(vec![Content::text(envelope.to_string())])
+        }
+        Err(e) => {
+            let (kind, message, extra) = extract_error_info(&e);
+            let is_fatal = matches!(kind, "internal_error" | "server_error" | "decode_error");
+            if is_fatal {
+                tracing::error!(
+                    surface = "mcp",
+                    service,
+                    action,
+                    elapsed_ms,
+                    kind,
+                    "dispatch error"
+                );
+            } else {
+                tracing::warn!(
+                    surface = "mcp",
+                    service,
+                    action,
+                    elapsed_ms,
+                    kind,
+                    "dispatch error"
+                );
+            }
+            let envelope = extra.map_or_else(
+                || build_error(service, action, kind, &message),
+                |ref extra| build_error_extra(service, action, kind, &message, extra),
+            );
+            CallToolResult::error(vec![Content::text(envelope.to_string())])
         }
     }
 }
@@ -320,6 +410,7 @@ pub fn static_kind(s: &str) -> &'static str {
         "server_error" => "server_error",
         "decode_error" => "decode_error",
         "confirmation_required" => "confirmation_required",
+        "upstream_error" => "upstream_error",
         _ => "internal_error",
     }
 }

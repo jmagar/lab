@@ -19,6 +19,7 @@ use tokio::sync::RwLock;
 
 use crate::config::UpstreamConfig;
 
+use super::types;
 use super::types::{UpstreamEntry, UpstreamHealth, UpstreamTool};
 
 /// Per-upstream timeout for initial discovery (`list_tools`).
@@ -141,6 +142,7 @@ impl UpstreamPool {
                         name: Arc::clone(&upstream_name),
                         tools: tool_map,
                         health: UpstreamHealth::Healthy,
+                        unhealthy_since: None,
                     };
 
                     self.catalog.write().await.insert(name.clone(), entry);
@@ -153,6 +155,7 @@ impl UpstreamPool {
                         health: UpstreamHealth::Unhealthy {
                             consecutive_failures: 1,
                         },
+                        unhealthy_since: Some(std::time::Instant::now()),
                     };
                     self.catalog.write().await.insert(name, entry);
                 }
@@ -217,29 +220,83 @@ impl UpstreamPool {
     }
 
     /// Record a failure for an upstream, potentially marking it unhealthy.
+    ///
+    /// After [`CIRCUIT_BREAKER_THRESHOLD`] consecutive failures, the upstream
+    /// is excluded from `list_tools` until a successful re-probe.
     pub async fn record_failure(&self, upstream_name: &str) {
         let mut catalog = self.catalog.write().await;
         if let Some(entry) = catalog.get_mut(upstream_name) {
-            match &mut entry.health {
-                UpstreamHealth::Healthy => {
-                    entry.health = UpstreamHealth::Unhealthy {
-                        consecutive_failures: 1,
-                    };
-                }
+            let new_count = match entry.health {
+                UpstreamHealth::Healthy => 1,
                 UpstreamHealth::Unhealthy {
                     consecutive_failures,
-                } => {
-                    *consecutive_failures += 1;
-                }
+                } => consecutive_failures + 1,
+            };
+            entry.health = UpstreamHealth::Unhealthy {
+                consecutive_failures: new_count,
+            };
+            if entry.unhealthy_since.is_none() {
+                entry.unhealthy_since = Some(std::time::Instant::now());
+            }
+            if new_count >= types::CIRCUIT_BREAKER_THRESHOLD {
+                tracing::warn!(
+                    upstream = %upstream_name,
+                    consecutive_failures = new_count,
+                    "circuit breaker open — upstream excluded from tool listing"
+                );
             }
         }
     }
 
-    /// Record a success for an upstream, resetting it to healthy.
+    /// Record a success for an upstream, resetting the circuit breaker.
     pub async fn record_success(&self, upstream_name: &str) {
         let mut catalog = self.catalog.write().await;
         if let Some(entry) = catalog.get_mut(upstream_name) {
+            if !entry.health.is_healthy() {
+                tracing::info!(
+                    upstream = %upstream_name,
+                    "circuit breaker reset — upstream healthy"
+                );
+            }
             entry.health = UpstreamHealth::Healthy;
+            entry.unhealthy_since = None;
+        }
+    }
+
+    /// Check if an upstream is due for a re-probe (unhealthy for > 30s).
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn should_reprobe(&self, upstream_name: &str) -> bool {
+        let catalog = self.catalog.read().await;
+        if let Some(entry) = catalog.get(upstream_name)
+            && entry.health.is_open()
+            && let Some(since) = entry.unhealthy_since
+        {
+            return since.elapsed() >= types::REPROBE_INTERVAL;
+        }
+        false
+    }
+
+    /// Filter out upstream tools whose names collide with built-in service tools.
+    ///
+    /// Built-in lab services permanently take precedence. Upstream tools with
+    /// colliding names are dropped with a warning.
+    pub async fn filter_collisions(&self, builtin_names: &[&str]) {
+        let mut catalog = self.catalog.write().await;
+        for entry in catalog.values_mut() {
+            let collisions: Vec<String> = entry
+                .tools
+                .keys()
+                .filter(|name| builtin_names.contains(&name.as_str()))
+                .cloned()
+                .collect();
+            for name in &collisions {
+                tracing::warn!(
+                    upstream = %entry.name,
+                    tool = %name,
+                    "upstream tool name collides with built-in service — rejecting upstream tool"
+                );
+                entry.tools.remove(name);
+            }
         }
     }
 

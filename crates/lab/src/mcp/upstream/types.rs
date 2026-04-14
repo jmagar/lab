@@ -6,6 +6,12 @@ use std::sync::Arc;
 use rmcp::model::Tool;
 use serde_json::Value;
 
+/// Number of consecutive failures before marking an upstream unhealthy.
+pub const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+
+/// Interval at which unhealthy upstreams are re-probed.
+pub const REPROBE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// A discovered upstream tool with its schema cached.
 #[derive(Debug, Clone)]
 pub struct UpstreamTool {
@@ -35,6 +41,17 @@ impl UpstreamHealth {
     pub const fn is_healthy(self) -> bool {
         matches!(self, Self::Healthy)
     }
+
+    /// Whether this upstream has crossed the circuit breaker threshold.
+    #[must_use]
+    pub const fn is_open(self) -> bool {
+        match self {
+            Self::Healthy => false,
+            Self::Unhealthy {
+                consecutive_failures,
+            } => consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD,
+        }
+    }
 }
 
 /// Snapshot of a single upstream server's state.
@@ -46,4 +63,6 @@ pub struct UpstreamEntry {
     pub tools: HashMap<String, UpstreamTool>,
     /// Current health state.
     pub health: UpstreamHealth,
+    /// When the upstream last became unhealthy (for re-probe scheduling).
+    pub unhealthy_since: Option<std::time::Instant>,
 }
