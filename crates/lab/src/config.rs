@@ -508,8 +508,16 @@ pub fn env_is_up_to_date(path: &Path, new_creds: &[ServiceCreds]) -> bool {
         .lines()
         .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
         .filter_map(|l| {
-            l.split_once('=')
-                .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
+            l.split_once('=').map(|(k, v)| {
+                let trimmed = v.trim();
+                // Strip surrounding double quotes so that quoted values
+                // written by write_env() compare equal to the raw secret.
+                let unquoted = trimmed
+                    .strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .unwrap_or(trimmed);
+                (k.trim().to_owned(), unquoted.to_owned())
+            })
         })
         .collect();
 
@@ -723,5 +731,24 @@ mod tests {
         write_env(&path, &[cred], false).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("SVC_KEY=\"has space\""));
+    }
+
+    #[test]
+    fn env_is_up_to_date_handles_quoted_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        let cred = ServiceCreds {
+            service: "svc".to_owned(),
+            url: None,
+            secret: Some("has space".to_owned()),
+            env_field: "SVC_KEY".to_owned(),
+        };
+        // write_env quotes values with spaces
+        write_env(&path, &[cred.clone()], false).unwrap();
+        // env_is_up_to_date must strip quotes before comparing
+        assert!(
+            env_is_up_to_date(&path, &[cred]),
+            "quoted value in .env should match raw secret"
+        );
     }
 }
