@@ -4,8 +4,10 @@ pub mod apprise;
 pub mod arcane;
 #[cfg(feature = "bytestash")]
 pub mod bytestash;
+pub mod clients;
 pub mod error;
 pub mod extract;
+pub mod gateway;
 #[cfg(feature = "gotify")]
 pub mod gotify;
 pub mod helpers;
@@ -44,3 +46,4 @@ pub mod tei;
 pub mod unifi;
 #[cfg(feature = "unraid")]
 pub mod unraid;
+pub mod upstream;

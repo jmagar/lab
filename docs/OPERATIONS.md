@@ -25,6 +25,26 @@ Purpose:
 - generate or rotate `LAB_MCP_HTTP_TOKEN`
 - update the env file safely
 
+## OAuth Auth State
+
+When `LAB_AUTH_MODE=oauth`, `lab` persists local auth state on disk:
+
+- SQLite database: `~/.lab/auth.db` by default
+- JWT signing key: `~/.lab/auth-jwt.pem` by default
+
+Rules:
+
+- both files must use restrictive permissions; on Unix, `lab` requires they are not group- or world-readable
+- new files are created with `0600` permissions on Unix
+- the SQLite store is opened in WAL mode with a non-zero busy timeout
+- Google tokens stay server-side only; clients receive `lab` access tokens and refresh tokens
+
+Recovery guidance:
+
+- deleting `auth-jwt.pem` invalidates every previously issued `lab` access token and refresh token exchange path tied to those access tokens
+- deleting `auth.db` removes registered clients, pending authorization requests, authorization codes, and refresh tokens
+- if you back up either file, back up both together to preserve a coherent auth state snapshot
+
 ## Product-Level Health Tooling
 
 ### `lab doctor`
@@ -101,16 +121,6 @@ Locked release expectations:
 - `git-cliff` for changelog generation
 
 Tag format should stay `vX.Y.Z`.
-
-## Self-Update
-
-`lab self-update` is explicit-only.
-
-Rules:
-
-- no startup polling
-- no background update checks
-- verify release integrity before replacement
 
 ## Privacy Rule
 

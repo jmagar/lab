@@ -8,7 +8,9 @@ pub mod meta;
 pub mod prompts;
 pub mod registry;
 pub mod resources;
+pub mod server;
 pub mod services;
+pub mod upstream;
 
 #[allow(unused_imports)]
 pub use envelope::{ToolEnvelope, ToolError};

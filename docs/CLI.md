@@ -15,14 +15,18 @@ The CLI includes:
 
 - one subcommand per service
 - `serve`
+- `gateway`
 - `plugins`
 - `install`
 - `uninstall`
 - `init`
 - `health`
 - `doctor`
+- `audit`
+- `scaffold`
+- `extract`
+- `help`
 - `completions`
-- `self-update`
 
 Representative command tree:
 
@@ -30,14 +34,18 @@ Representative command tree:
 lab
 ├── <service> ...
 ├── serve
+├── gateway
 ├── plugins
 ├── install
 ├── uninstall
 ├── init
 ├── health
 ├── doctor
-├── completions
-└── self-update
+├── audit
+├── scaffold
+├── extract
+├── help
+└── completions
 ```
 
 ## Per-Service Commands
@@ -59,25 +67,17 @@ The CLI must not invent a second semantic model that drifts from MCP or the SDK.
 
 Supported output modes are:
 
-- table
+- human-readable terminal output
 - JSON
-- compact JSON
-- YAML
 
 The canonical serialization and output-boundary contract lives in [SERIALIZATION.md](./SERIALIZATION.md).
 
 Rules:
 
-- pretty JSON is acceptable for human-facing TTY output
-- compact JSON is preferred for pipes
-- tables must be derived from local row wrappers, not SDK types
-
-Rules:
-
-- tables are the default for interactive TTY use
-- JSON is the default for pipes and automation
+- human-readable output is the default for interactive TTY use
+- JSON is the machine-readable mode for pipes and automation
 - `lab-apis` types stay presentation-free
-- CLI wrappers or local row types handle table rendering
+- CLI wrappers or local row types handle human rendering
 
 ## Color and TTY Behavior
 
@@ -163,14 +163,3 @@ Expected `.mcp.json` behavior:
 ## Shell Completions
 
 The CLI must generate completions rather than hand-maintaining shell-specific assets.
-
-## Self-Update
-
-`lab self-update` is explicit only.
-
-Rules:
-
-- no automatic update polling
-- update checks happen only when invoked
-- replacement must verify release integrity
-- GitHub releases are the distribution source

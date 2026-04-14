@@ -1,0 +1,203 @@
+'use client'
+
+import Link from 'next/link'
+import { Cable, Wrench, Eye, AlertTriangle, ArrowRight, Activity } from 'lucide-react'
+import { AppHeader } from '@/components/app-header'
+import { Button } from '@/components/ui/button'
+import { useGateways } from '@/lib/hooks/use-gateways'
+import { Skeleton } from '@/components/ui/skeleton'
+
+function StatCard({ 
+  label, 
+  value, 
+  icon: Icon,
+  variant = 'default',
+  loading = false,
+}: { 
+  label: string
+  value: number | string
+  icon: React.ElementType
+  variant?: 'default' | 'success' | 'warning' | 'info'
+  loading?: boolean
+}) {
+  const colorMap = {
+    default: 'bg-[#651fff]/20 text-[#651fff] shadow-md shadow-[#651fff]/20',
+    success: 'bg-[#00e676]/20 text-[#00e676] shadow-md shadow-[#00e676]/20',
+    warning: 'bg-[#ff9100]/20 text-[#ff9100] shadow-md shadow-[#ff9100]/20',
+    info: 'bg-[#00b0ff]/20 text-[#00b0ff] shadow-md shadow-[#00b0ff]/20',
+  }
+
+  return (
+    <div className="flex items-center gap-4 p-4">
+      <div className={`flex size-10 items-center justify-center rounded-lg ${colorMap[variant]}`}>
+        <Icon className="size-5" />
+      </div>
+      <div>
+        {loading ? (
+          <>
+            <Skeleton className="h-7 w-12 mb-1" />
+            <Skeleton className="h-4 w-24" />
+          </>
+        ) : (
+          <>
+            <p className="text-2xl font-semibold tabular-nums">{value}</p>
+            <p className="text-sm text-muted-foreground">{label}</p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function OverviewPage() {
+  const { data: gateways, isLoading } = useGateways()
+
+  const stats = {
+    totalGateways: gateways?.length ?? 0,
+    healthyGateways: gateways?.filter(g => g.status.healthy && g.status.connected).length ?? 0,
+    totalTools: gateways?.reduce((sum, g) => sum + g.status.discovered_tool_count, 0) ?? 0,
+    exposedTools: gateways?.reduce((sum, g) => sum + g.status.exposed_tool_count, 0) ?? 0,
+    totalWarnings: gateways?.reduce((sum, g) => sum + g.warnings.length, 0) ?? 0,
+  }
+
+  const recentGateways = gateways?.slice(0, 5) ?? []
+
+  return (
+    <>
+      <AppHeader
+        breadcrumbs={[
+          { label: 'Overview' }
+        ]}
+      />
+
+      <div className="flex-1 p-6 space-y-8">
+        {/* Stats Grid */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border bg-card">
+            <StatCard
+              label="Total Gateways"
+              value={stats.totalGateways}
+              icon={Cable}
+              loading={isLoading}
+            />
+          </div>
+          <div className="rounded-lg border bg-card">
+            <StatCard
+              label="Healthy Connections"
+              value={stats.healthyGateways}
+              icon={Activity}
+              variant="success"
+              loading={isLoading}
+            />
+          </div>
+          <div className="rounded-lg border bg-card">
+            <StatCard
+              label="Discovered Tools"
+              value={stats.totalTools}
+              icon={Wrench}
+              variant="info"
+              loading={isLoading}
+            />
+          </div>
+          <div className="rounded-lg border bg-card">
+            <StatCard
+              label="Exposed Downstream"
+              value={stats.exposedTools}
+              icon={Eye}
+              variant="success"
+              loading={isLoading}
+            />
+          </div>
+        </div>
+
+        {/* Warnings Banner */}
+        {!isLoading && stats.totalWarnings > 0 && (
+          <div className="flex items-center gap-3 rounded-lg border-2 border-[#ff9100]/50 bg-gradient-to-r from-[#ff9100]/20 to-[#ffea00]/10 p-4 shadow-lg shadow-[#ff9100]/10">
+            <div className="p-2 rounded-full bg-[#ff9100]/20">
+              <AlertTriangle className="size-5 text-[#ff9100]" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-[#ff9100]">
+                {stats.totalWarnings} warning{stats.totalWarnings !== 1 ? 's' : ''} across gateways
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Review gateway configurations to resolve warnings
+              </p>
+            </div>
+            <Button variant="outline" size="sm" asChild className="border-[#ff9100] text-[#ff9100] hover:bg-[#ff9100]/20 hover:text-[#ff9100]">
+              <Link href="/gateways">View gateways</Link>
+            </Button>
+          </div>
+        )}
+
+        {/* Recent Gateways */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Recent Gateways</h2>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/gateways">
+                View all
+                <ArrowRight className="size-4 ml-1" />
+              </Link>
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 rounded-lg border bg-card p-4">
+                  <Skeleton className="size-10 rounded-lg" />
+                  <div className="flex-1">
+                    <Skeleton className="h-5 w-32 mb-1" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              ))}
+            </div>
+          ) : recentGateways.length === 0 ? (
+            <div className="rounded-lg border-2 border-dashed border-[#651fff]/30 bg-gradient-to-br from-[#651fff]/5 to-[#00e5ff]/5 p-8 text-center">
+              <div className="mx-auto size-14 rounded-full bg-gradient-to-br from-[#ea80fc] to-[#651fff] flex items-center justify-center mb-4 shadow-lg shadow-[#651fff]/30">
+                <Cable className="size-7 text-white" />
+              </div>
+              <p className="font-semibold text-lg">No gateways configured</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Add your first MCP gateway to get started
+              </p>
+              <Button className="mt-4 bg-gradient-to-r from-[#651fff] to-[#00e5ff] hover:from-[#7c4dff] hover:to-[#18ffff] text-white shadow-lg shadow-[#651fff]/30" asChild>
+                <Link href="/gateways">Add Gateway</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recentGateways.map((gateway) => (
+                <Link
+                  key={gateway.id}
+                  href={`/gateways/${gateway.id}`}
+                  className="flex items-center gap-4 rounded-lg border bg-card p-4 hover:border-[#651fff]/50 hover:shadow-lg hover:shadow-[#651fff]/10 transition-all duration-200 group"
+                >
+                  <div className={`flex size-10 items-center justify-center rounded-lg transition-colors ${
+                    gateway.status.healthy && gateway.status.connected 
+                      ? 'bg-[#00e676]/20 text-[#00e676] shadow-md shadow-[#00e676]/20'
+                      : 'bg-[#ff1744]/20 text-[#ff1744] shadow-md shadow-[#ff1744]/20'
+                  }`}>
+                    <Cable className="size-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate group-hover:text-[#651fff] transition-colors">{gateway.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {gateway.transport.toUpperCase()} &middot; {gateway.status.discovered_tool_count} tools
+                    </p>
+                  </div>
+                  <div className="text-sm font-medium text-[#00e676] tabular-nums">
+                    {gateway.status.exposed_tool_count} exposed
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}

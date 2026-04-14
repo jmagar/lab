@@ -199,6 +199,15 @@ pub fn build_default_registry() -> ToolRegistry {
         });
     }
 
+    reg.register(RegisteredService {
+        name: "gateway",
+        description: "Manage proxied upstream MCP gateways",
+        category: "bootstrap",
+        status: "available",
+        actions: crate::mcp::services::gateway::ACTIONS,
+        dispatch: dispatch_fn!(crate::mcp::services::gateway::dispatch),
+    });
+
     register_service!(
         reg,
         "radarr",
@@ -430,6 +439,7 @@ mod tests {
         let http_router_services: std::collections::HashSet<&'static str> = {
             let mut s = std::collections::HashSet::new();
             s.insert(lab_apis::extract::META.name); // always-on
+            s.insert("gateway");
             #[cfg(feature = "radarr")]
             s.insert(lab_apis::radarr::META.name);
             #[cfg(feature = "sonarr")]

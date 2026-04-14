@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 lab-apis           = { path = "../lab-apis", default-features = false }
+lab-auth           = { path = "../lab-auth" }
 
 tokio                        = { workspace = true, features = ["process"] }
 futures.workspace            = true
@@ -56,6 +57,7 @@ tokio-util                   = { version = "0.7", features = ["rt"] }
 strip-ansi-escapes           = "0.2"
 
 rmcp.workspace               = true
+jsonwebtoken.workspace       = true
 
 axum.workspace               = true
 tower.workspace              = true
@@ -65,6 +67,9 @@ utoipa-scalar.workspace      = true
 
 [dev-dependencies]
 wiremock.workspace           = true
+
+[lib]
+path = "src/lib.rs"
 
 [features]
 default = ["all"]

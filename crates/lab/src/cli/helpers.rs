@@ -150,6 +150,7 @@ mod tests {
             .unwrap();
         });
 
+        drop(_guard);
         let logs = captured_logs(&buf);
         assert!(logs.contains("\"surface\":\"cli\""));
         assert!(logs.contains("\"service\":\"unifi\""));
@@ -197,6 +198,7 @@ mod tests {
             assert!(err.to_string().contains("missing_param"));
         });
 
+        drop(_guard);
         let logs = captured_logs(&buf);
         assert!(logs.contains("\"surface\":\"cli\""));
         assert!(logs.contains("\"service\":\"bytestash\""));

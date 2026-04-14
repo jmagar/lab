@@ -116,7 +116,7 @@ mod tests {
             "crates/lab/src/mcp/registry.rs",
             "crates/lab/src/api/services.rs",
             "crates/lab/src/api/router.rs",
-            "crates/lab/src/api/state.rs",
+            "crates/lab/src/dispatch/clients.rs",
             "crates/lab/src/tui/metadata.rs",
         ] {
             let src = repo_root.join(rel);

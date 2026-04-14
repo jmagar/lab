@@ -1,0 +1,296 @@
+//! Types for upstream MCP server proxy.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use rmcp::model::Tool;
+use serde_json::Value;
+
+/// Number of consecutive failures before marking an upstream unhealthy.
+pub const CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+
+/// Interval at which unhealthy upstreams are re-probed.
+pub const REPROBE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// A discovered upstream tool with its schema cached.
+#[derive(Debug, Clone)]
+pub struct UpstreamTool {
+    /// The original tool definition from the upstream server.
+    pub tool: Tool,
+    /// Cached input schema as a JSON value for `schema` action proxying.
+    pub input_schema: Option<Value>,
+    /// Name of the upstream server this tool belongs to.
+    pub upstream_name: Arc<str>,
+}
+
+/// Visibility metadata for one discovered upstream tool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpstreamToolExposureRow {
+    pub name: String,
+    pub description: Option<String>,
+    pub exposed: bool,
+    pub matched_by: Option<String>,
+}
+
+/// Runtime exposure policy applied to one upstream's discovered tools.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolExposurePolicy {
+    All,
+    AllowList(Vec<ToolPattern>),
+}
+
+/// One user-provided tool pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolPattern {
+    Exact(String),
+    Wildcard(String),
+}
+
+impl ToolExposurePolicy {
+    pub fn from_optional(patterns: Option<Vec<String>>) -> Result<Self, String> {
+        match patterns {
+            None => Ok(Self::All),
+            Some(patterns) => Self::from_patterns(patterns),
+        }
+    }
+
+    pub fn from_patterns(patterns: Vec<String>) -> Result<Self, String> {
+        let mut compiled = Vec::with_capacity(patterns.len());
+        for pattern in patterns {
+            let trimmed = pattern.trim();
+            if trimmed.is_empty() {
+                return Err("expose_tools entries must not be empty".to_string());
+            }
+            if trimmed.contains('*') {
+                compiled.push(ToolPattern::Wildcard(trimmed.to_string()));
+            } else {
+                compiled.push(ToolPattern::Exact(trimmed.to_string()));
+            }
+        }
+        Ok(Self::AllowList(compiled))
+    }
+
+    #[must_use]
+    pub fn matches(&self, tool_name: &str) -> bool {
+        self.matched_by(tool_name).is_some()
+    }
+
+    #[must_use]
+    pub fn matched_by(&self, tool_name: &str) -> Option<String> {
+        match self {
+            Self::All => Some("*".to_string()),
+            Self::AllowList(patterns) => patterns.iter().find_map(|pattern| {
+                pattern
+                    .matches(tool_name)
+                    .then(|| pattern.as_str().to_string())
+            }),
+        }
+    }
+}
+
+impl ToolPattern {
+    #[must_use]
+    pub fn matches(&self, candidate: &str) -> bool {
+        match self {
+            Self::Exact(value) => value == candidate,
+            Self::Wildcard(pattern) => wildcard_matches(pattern, candidate),
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Exact(value) | Self::Wildcard(value) => value.as_str(),
+        }
+    }
+}
+
+fn wildcard_matches(pattern: &str, candidate: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == candidate;
+    }
+
+    let anchored_start = !pattern.starts_with('*');
+    let anchored_end = !pattern.ends_with('*');
+    let non_empty_parts: Vec<&str> = parts.into_iter().filter(|part| !part.is_empty()).collect();
+
+    if non_empty_parts.is_empty() {
+        return true;
+    }
+
+    let mut cursor = 0usize;
+    for (index, part) in non_empty_parts.iter().enumerate() {
+        if index == 0 && anchored_start {
+            if !candidate[cursor..].starts_with(part) {
+                return false;
+            }
+            cursor += part.len();
+            continue;
+        }
+
+        match candidate[cursor..].find(part) {
+            Some(found) => cursor += found + part.len(),
+            None => return false,
+        }
+    }
+
+    if anchored_end
+        && let Some(last) = non_empty_parts.last()
+    {
+        return candidate.ends_with(last);
+    }
+
+    true
+}
+
+/// Capability-specific health buckets tracked independently for an upstream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UpstreamCapability {
+    /// Tool discovery and tool calls.
+    Tools,
+    /// Prompt listing and prompt retrieval.
+    Prompts,
+    /// Resource listing and resource reads.
+    Resources,
+}
+
+/// Health state of an upstream connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpstreamHealth {
+    /// Upstream is healthy and accepting requests.
+    Healthy,
+    /// Upstream has failed consecutively and is excluded from tool listing.
+    Unhealthy {
+        /// Number of consecutive failures.
+        consecutive_failures: u32,
+    },
+}
+
+impl UpstreamHealth {
+    /// Whether this upstream should be included in tool listings.
+    ///
+    /// An upstream remains routable until its consecutive failures reach
+    /// [`CIRCUIT_BREAKER_THRESHOLD`]. This is the inverse of [`is_open`].
+    #[must_use]
+    pub const fn is_routable(self) -> bool {
+        !self.is_open()
+    }
+
+    /// Whether this upstream has crossed the circuit breaker threshold.
+    #[must_use]
+    pub const fn is_open(self) -> bool {
+        match self {
+            Self::Healthy => false,
+            Self::Unhealthy {
+                consecutive_failures,
+            } => consecutive_failures >= CIRCUIT_BREAKER_THRESHOLD,
+        }
+    }
+}
+
+/// Snapshot of a single upstream server's state.
+#[derive(Debug, Clone)]
+pub struct UpstreamEntry {
+    /// Human-readable name from config.
+    pub name: Arc<str>,
+    /// Discovered tools (keyed by tool name).
+    pub tools: HashMap<String, UpstreamTool>,
+    /// Exposure policy for discovered tools from this upstream.
+    pub exposure_policy: ToolExposurePolicy,
+    /// Current tool-discovery/tool-call health state.
+    pub tool_health: UpstreamHealth,
+    /// Current prompt capability health state.
+    pub prompt_health: UpstreamHealth,
+    /// Current resource capability health state.
+    pub resource_health: UpstreamHealth,
+    /// When the tools capability last became unhealthy.
+    pub tool_unhealthy_since: Option<std::time::Instant>,
+    /// When the prompts capability last became unhealthy.
+    pub prompt_unhealthy_since: Option<std::time::Instant>,
+    /// When the resources capability last became unhealthy.
+    pub resource_unhealthy_since: Option<std::time::Instant>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ToolExposurePolicy, wildcard_matches};
+
+    #[test]
+    fn exact_and_wildcard_patterns_match_tool_names() {
+        let policy = ToolExposurePolicy::from_patterns(vec![
+            "search_repos".to_string(),
+            "github_*".to_string(),
+        ])
+        .expect("policy");
+
+        assert!(policy.matches("search_repos"));
+        assert!(policy.matches("github_create_issue"));
+        assert!(!policy.matches("delete_repo"));
+    }
+
+    #[test]
+    fn missing_policy_defaults_to_all() {
+        let policy = ToolExposurePolicy::from_optional(None).expect("policy");
+        assert!(policy.matches("anything_at_all"));
+    }
+
+    #[test]
+    fn wildcard_matching_supports_simple_globs() {
+        assert!(wildcard_matches("github_*", "github_create_issue"));
+        assert!(wildcard_matches("*_repo", "delete_repo"));
+        assert!(wildcard_matches("search*repos", "search_public_repos"));
+        assert!(!wildcard_matches("github_*", "gitlab_create_issue"));
+    }
+}
+
+impl UpstreamEntry {
+    /// Read the health for a specific upstream capability.
+    #[must_use]
+    pub const fn health_for(&self, capability: UpstreamCapability) -> UpstreamHealth {
+        match capability {
+            UpstreamCapability::Tools => self.tool_health,
+            UpstreamCapability::Prompts => self.prompt_health,
+            UpstreamCapability::Resources => self.resource_health,
+        }
+    }
+
+    /// Update the health for a specific upstream capability.
+    pub fn set_health_for(&mut self, capability: UpstreamCapability, health: UpstreamHealth) {
+        match capability {
+            UpstreamCapability::Tools => self.tool_health = health,
+            UpstreamCapability::Prompts => self.prompt_health = health,
+            UpstreamCapability::Resources => self.resource_health = health,
+        }
+    }
+
+    /// Read the unhealthy timestamp for a specific upstream capability.
+    #[must_use]
+    pub const fn unhealthy_since_for(
+        &self,
+        capability: UpstreamCapability,
+    ) -> Option<std::time::Instant> {
+        match capability {
+            UpstreamCapability::Tools => self.tool_unhealthy_since,
+            UpstreamCapability::Prompts => self.prompt_unhealthy_since,
+            UpstreamCapability::Resources => self.resource_unhealthy_since,
+        }
+    }
+
+    /// Update the unhealthy timestamp for a specific upstream capability.
+    pub fn set_unhealthy_since_for(
+        &mut self,
+        capability: UpstreamCapability,
+        unhealthy_since: Option<std::time::Instant>,
+    ) {
+        match capability {
+            UpstreamCapability::Tools => self.tool_unhealthy_since = unhealthy_since,
+            UpstreamCapability::Prompts => self.prompt_unhealthy_since = unhealthy_since,
+            UpstreamCapability::Resources => self.resource_unhealthy_since = unhealthy_since,
+        }
+    }
+}

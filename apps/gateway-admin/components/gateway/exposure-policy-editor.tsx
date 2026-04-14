@@ -1,0 +1,400 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { 
+  Plus, 
+  X, 
+  GripVertical, 
+  Save, 
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  Asterisk,
+  HelpCircle,
+  Loader2,
+  CheckCircle2,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useGatewayMutations, useExposurePolicy } from '@/lib/hooks/use-gateways'
+import type { Gateway, ExposurePolicyPreview } from '@/lib/types/gateway'
+import { cn } from '@/lib/utils'
+
+interface ExposurePolicyEditorProps {
+  gateway: Gateway
+}
+
+export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
+  const { data: policy, isLoading: policyLoading } = useExposurePolicy(gateway.id)
+  const { setExposurePolicy, previewExposurePolicy } = useGatewayMutations()
+
+  const [mode, setMode] = useState<'expose_all' | 'allowlist'>('expose_all')
+  const [patterns, setPatterns] = useState<string[]>([])
+  const [newPattern, setNewPattern] = useState('')
+  const [preview, setPreview] = useState<ExposurePolicyPreview | null>(null)
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [hasChanges, setHasChanges] = useState(false)
+
+  // Initialize from policy
+  useEffect(() => {
+    if (policy) {
+      setMode(policy.mode)
+      setPatterns(policy.patterns)
+    }
+  }, [policy])
+
+  // Track changes
+  useEffect(() => {
+    if (policy) {
+      const patternsChanged = JSON.stringify(patterns) !== JSON.stringify(policy.patterns)
+      const modeChanged = mode !== policy.mode
+      setHasChanges(patternsChanged || modeChanged)
+    }
+  }, [mode, patterns, policy])
+
+  // Preview debounce
+  useEffect(() => {
+    if (mode !== 'allowlist' || patterns.length === 0) {
+      setPreview(null)
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setIsPreviewLoading(true)
+      try {
+        const result = await previewExposurePolicy(gateway.id, patterns)
+        setPreview(result)
+      } catch {
+        // Silently fail preview
+      } finally {
+        setIsPreviewLoading(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [gateway.id, mode, patterns, previewExposurePolicy])
+
+  const addPattern = useCallback(() => {
+    const trimmed = newPattern.trim()
+    if (!trimmed) return
+    if (patterns.includes(trimmed)) {
+      toast.error('Pattern already exists')
+      return
+    }
+    setPatterns([...patterns, trimmed])
+    setNewPattern('')
+  }, [newPattern, patterns])
+
+  const removePattern = useCallback((index: number) => {
+    setPatterns(patterns.filter((_, i) => i !== index))
+  }, [patterns])
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      await setExposurePolicy(gateway.id, { mode, patterns })
+      toast.success('Exposure policy updated')
+      setHasChanges(false)
+    } catch {
+      toast.error('Failed to update exposure policy')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  if (policyLoading) {
+    return (
+      <div className="rounded-lg border bg-card p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 w-48 bg-muted rounded" />
+          <div className="h-24 bg-muted rounded" />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-card p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-semibold">Exposure Policy</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Control which MCP tools are republished downstream
+            </p>
+          </div>
+          {hasChanges && (
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? (
+                <Loader2 className="size-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="size-4 mr-2" />
+              )}
+              Save Changes
+            </Button>
+          )}
+        </div>
+
+        {/* Mode Toggle */}
+        <div className={cn(
+          "flex items-center justify-between rounded-lg border p-4 mb-6 transition-colors",
+          mode === 'expose_all' ? 'border-success/30 bg-success/5' : ''
+        )}>
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "flex size-10 items-center justify-center rounded-lg transition-colors",
+              mode === 'expose_all' 
+                ? 'bg-success/15 text-success' 
+                : 'bg-muted text-muted-foreground'
+            )}>
+              <Eye className="size-5" />
+            </div>
+            <div>
+              <Label htmlFor="expose-mode" className="font-medium">Expose All Tools</Label>
+              <p className="text-sm text-muted-foreground">
+                All discovered tools will be available downstream
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="expose-mode"
+            checked={mode === 'expose_all'}
+            onCheckedChange={(checked) => setMode(checked ? 'expose_all' : 'allowlist')}
+          />
+        </div>
+
+        {/* Allowlist Editor */}
+        {mode === 'allowlist' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <EyeOff className="size-4 text-muted-foreground" />
+              <Label className="font-medium">Allowlist Patterns</Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="size-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-xs">
+                    <p className="text-sm">
+                      Use exact tool names or wildcard patterns:
+                    </p>
+                    <ul className="text-sm mt-2 space-y-1">
+                      <li><code className="bg-muted px-1 rounded">read_file</code> - exact match</li>
+                      <li><code className="bg-muted px-1 rounded">search_*</code> - prefix wildcard</li>
+                      <li><code className="bg-muted px-1 rounded">*</code> - match all</li>
+                    </ul>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            {/* Pattern input */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter tool name or pattern (e.g., read_*, search_messages)"
+                value={newPattern}
+                onChange={(e) => setNewPattern(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addPattern()}
+                className="font-mono"
+              />
+              <Button onClick={addPattern} disabled={!newPattern.trim()}>
+                <Plus className="size-4 mr-2" />
+                Add
+              </Button>
+            </div>
+
+            {/* Pattern list */}
+            {patterns.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <EyeOff className="size-8 mx-auto text-muted-foreground mb-3 opacity-50" />
+                <p className="text-muted-foreground">No patterns configured</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Add patterns to specify which tools should be exposed
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {patterns.map((pattern, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 group"
+                  >
+                    <GripVertical className="size-4 text-muted-foreground opacity-50" />
+                    <div className="flex items-center gap-2 flex-1">
+                      {pattern.includes('*') && (
+                        <Asterisk className="size-3.5 text-muted-foreground" />
+                      )}
+                      <code className="text-sm font-mono">{pattern}</code>
+                    </div>
+                    {preview && (
+                      <PreviewBadge pattern={pattern} preview={preview} />
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => removePattern(index)}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Preview Panel */}
+      {mode === 'allowlist' && patterns.length > 0 && (
+        <div className="rounded-lg border bg-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Preview</h3>
+            {isPreviewLoading && (
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            )}
+          </div>
+
+          {preview ? (
+            <div className="space-y-4">
+              {/* Stats */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="flex items-center gap-3 rounded-lg border-2 border-[#00e676]/50 bg-[#00e676]/15 p-3 shadow-md shadow-[#00e676]/10">
+                  <CheckCircle2 className="size-5 text-[#00e676]" />
+                  <div>
+                    <p className="text-2xl font-bold tabular-nums text-[#00e676]">{preview.exposed_count}</p>
+                    <p className="text-xs text-muted-foreground">Exposed</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <EyeOff className="size-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-2xl font-semibold tabular-nums">{preview.filtered_count}</p>
+                    <p className="text-xs text-muted-foreground">Filtered</p>
+                  </div>
+                </div>
+                {preview.unmatched_patterns.length > 0 && (
+                  <div className="flex items-center gap-3 rounded-lg border-2 border-[#ff9100]/50 bg-[#ff9100]/15 p-3 shadow-md shadow-[#ff9100]/10">
+                    <AlertTriangle className="size-5 text-[#ff9100]" />
+                    <div>
+                      <p className="text-2xl font-bold tabular-nums text-[#ff9100]">{preview.unmatched_patterns.length}</p>
+                      <p className="text-xs text-muted-foreground">Unmatched</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Unmatched warnings */}
+              {preview.unmatched_patterns.length > 0 && (
+                <div className="rounded-lg border-2 border-[#ff9100]/50 bg-gradient-to-r from-[#ff9100]/15 to-[#ffea00]/10 p-4 shadow-md shadow-[#ff9100]/10">
+                  <div className="flex items-center gap-2 text-[#ff9100] mb-2">
+                    <AlertTriangle className="size-4" />
+                    <span className="text-sm font-semibold">Unmatched Patterns</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    These patterns don&apos;t match any discovered tools:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {preview.unmatched_patterns.map((pattern) => (
+                      <Badge key={pattern} variant="outline" className="font-mono text-xs border-[#ff9100]/50 text-[#ff9100] bg-[#ff9100]/10">
+                        {pattern}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Matched tools */}
+              {preview.matched_tools.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-2 flex items-center gap-2 text-[#00e676]">
+                    <Eye className="size-4" />
+                    Exposed Tools
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {preview.matched_tools.slice(0, 10).map((tool) => (
+                      <Badge key={tool.name} variant="secondary" className="font-mono text-xs bg-[#00e676]/20 text-[#00e676] border-[#00e676]/50 border shadow-sm shadow-[#00e676]/20">
+                        {tool.name}
+                      </Badge>
+                    ))}
+                    {preview.matched_tools.length > 10 && (
+                      <Badge variant="outline" className="text-xs bg-[#651fff]/10 text-[#651fff] border-[#651fff]/50">
+                        +{preview.matched_tools.length - 10} more
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Filtered tools */}
+              {preview.filtered_tools.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
+                    <EyeOff className="size-4" />
+                    Filtered Tools
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {preview.filtered_tools.slice(0, 10).map((tool) => (
+                      <Badge key={tool} variant="outline" className="font-mono text-xs opacity-60">
+                        {tool}
+                      </Badge>
+                    ))}
+                    {preview.filtered_tools.length > 10 && (
+                      <Badge variant="outline" className="text-xs opacity-60">
+                        +{preview.filtered_tools.length - 10} more
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>Preview will appear when patterns are configured</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PreviewBadge({ 
+  pattern, 
+  preview 
+}: { 
+  pattern: string
+  preview: ExposurePolicyPreview 
+}) {
+  const isUnmatched = preview.unmatched_patterns.includes(pattern)
+  const matchCount = preview.matched_tools.filter(t => t.matched_by === pattern).length
+
+  if (isUnmatched) {
+    return (
+      <Badge variant="outline" className="text-xs border-warning/50 text-warning-foreground">
+        No matches
+      </Badge>
+    )
+  }
+
+  if (matchCount > 0) {
+    return (
+      <Badge variant="secondary" className="text-xs bg-success/15 text-success border border-success/30">
+        {matchCount} tool{matchCount !== 1 ? 's' : ''}
+      </Badge>
+    )
+  }
+
+  return null
+}

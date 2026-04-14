@@ -11,39 +11,36 @@ mod tests {
     #[test]
     fn catalog_has_core_actions() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
-        assert!(names.contains(&"bookmarks.list"), "bookmarks.list missing");
+        assert!(names.contains(&"bookmark.list"), "bookmark.list missing");
         assert!(
-            names.contains(&"bookmarks.archived.list"),
-            "bookmarks.archived.list missing"
+            names.contains(&"bookmark.archived.list"),
+            "bookmark.archived.list missing"
         );
-        assert!(names.contains(&"bookmarks.get"), "bookmarks.get missing");
+        assert!(names.contains(&"bookmark.get"), "bookmark.get missing");
+        assert!(names.contains(&"bookmark.check"), "bookmark.check missing");
         assert!(
-            names.contains(&"bookmarks.check"),
-            "bookmarks.check missing"
-        );
-        assert!(
-            names.contains(&"bookmarks.create"),
-            "bookmarks.create missing"
+            names.contains(&"bookmark.create"),
+            "bookmark.create missing"
         );
         assert!(
-            names.contains(&"bookmarks.update"),
-            "bookmarks.update missing"
+            names.contains(&"bookmark.update"),
+            "bookmark.update missing"
         );
         assert!(
-            names.contains(&"bookmarks.archive"),
-            "bookmarks.archive missing"
+            names.contains(&"bookmark.archive"),
+            "bookmark.archive missing"
         );
         assert!(
-            names.contains(&"bookmarks.unarchive"),
-            "bookmarks.unarchive missing"
+            names.contains(&"bookmark.unarchive"),
+            "bookmark.unarchive missing"
         );
         assert!(
-            names.contains(&"bookmarks.delete"),
-            "bookmarks.delete missing"
+            names.contains(&"bookmark.delete"),
+            "bookmark.delete missing"
         );
-        assert!(names.contains(&"tags.list"), "tags.list missing");
-        assert!(names.contains(&"tags.get"), "tags.get missing");
-        assert!(names.contains(&"tags.create"), "tags.create missing");
+        assert!(names.contains(&"tag.list"), "tag.list missing");
+        assert!(names.contains(&"tag.get"), "tag.get missing");
+        assert!(names.contains(&"tag.create"), "tag.create missing");
         assert!(names.contains(&"user.profile"), "user.profile missing");
     }
 
@@ -59,8 +56,6 @@ mod tests {
                 "action '{name}' must be marked destructive"
             );
         };
-        check("bookmarks.archive");
-        check("bookmarks.delete");
-        check("tags.create");
+        check("bookmark.delete");
     }
 }

@@ -46,7 +46,7 @@ The main boundary is simple:
 
 - MCP success and error envelopes
 - HTTP request/response envelope shaping for the product API
-- CLI table, JSON, compact JSON, and YAML output behavior
+- CLI human and JSON output behavior
 
 ## SDK Type Rules
 
@@ -112,15 +112,13 @@ When HTTP and MCP both expose the same action surface, they should not drift in 
 
 The CLI supports:
 
-- table
+- human-readable terminal rendering
 - JSON
-- compact JSON
-- YAML
 
 Rules:
 
-- tables are built from local wrappers in `lab`, not SDK types
-- machine-readable formats serialize the underlying SDK data or surface envelope shape
+- human-readable rendering is built in `lab`, not SDK types
+- machine-readable output serializes the underlying SDK data or surface envelope shape
 - `lab-apis` types must remain presentation-free
 
 If a command needs special display rows, define them in `lab`, not in the SDK.
@@ -179,7 +177,7 @@ At minimum, verify:
 1. upstream request/response types deserialize and serialize correctly
 2. MCP success and error envelopes match the documented shape
 3. HTTP JSON error shape matches the documented shape
-4. CLI JSON and YAML output serialize the intended data rather than presentation wrappers unless that wrapper is the contract
+4. CLI JSON output serializes the intended data rather than presentation wrappers unless that wrapper is the contract
 
 ## Related Docs
 

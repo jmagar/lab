@@ -22,17 +22,38 @@ impl IntoResponse for ToolError {
             "missing_param" | "invalid_param" | "validation_failed" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            "unknown_action"
-            | "unknown_subaction"
-            | "unknown_instance"
-            | "confirmation_required" => StatusCode::BAD_REQUEST,
-            "network_error" | "server_error" => StatusCode::BAD_GATEWAY,
+            "confirmation_required" => StatusCode::UNPROCESSABLE_ENTITY,
+            "unknown_action" | "unknown_subaction" | "unknown_instance" => StatusCode::BAD_REQUEST,
+            "network_error" | "server_error" | "upstream_error" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // Serialize self directly — byte-identical to the MCP error envelope.
         let body = serde_json::to_value(&self).unwrap_or_else(|_| {
             serde_json::json!({"kind": "internal_error", "message": "error serialization failed"})
         });
+
+        // RFC 9728: WWW-Authenticate on 401 responses requires the resolved
+        // resource_url from AppState. IntoResponse has no access to state, so
+        // the auth middleware in router.rs is responsible for adding the header.
+        // We omit it here rather than advertising a wrong (localhost) URL.
         (status, axum::Json(body)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    use super::ToolError;
+
+    #[test]
+    fn confirmation_required_maps_to_422() {
+        let response = ToolError::Sdk {
+            sdk_kind: "confirmation_required".to_string(),
+            message: "confirm".to_string(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 }

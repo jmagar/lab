@@ -14,7 +14,9 @@ The RMCP SDK integration contract that underpins this surface lives in [RMCP.md]
 Rules:
 
 - `stdio` is the default
-- HTTP requires a bearer token via `LAB_MCP_HTTP_TOKEN`
+- HTTP supports `LAB_AUTH_MODE=bearer|oauth`
+- bearer mode preserves `LAB_MCP_HTTP_TOKEN`
+- oauth mode requires `LAB_PUBLIC_URL` and Google client credentials
 - transport changes must not change dispatch or catalog behavior
 - HTTP transport may expose opt-in CORS origins
 
@@ -30,6 +32,34 @@ Rules:
 
 Those capabilities are enabled together on the same server surface. Capability
 support must reflect the running server, not a partial or hypothetical build.
+
+## HTTP Auth Surface
+
+When `lab serve --transport http` is active, `lab` exposes two auth modes:
+
+- `LAB_AUTH_MODE=bearer`
+  `LAB_MCP_HTTP_TOKEN` remains the only credential. This preserves existing HTTP deployments.
+- `LAB_AUTH_MODE=oauth`
+  `lab` runs its own authorization server, brokers Google sign-in server-side, and issues `lab` access tokens plus non-rotating refresh tokens to clients.
+
+OAuth mode keeps Google access and refresh tokens inside the server. MCP clients only receive `lab` tokens.
+
+OAuth mode adds these unauthenticated discovery and auth endpoints alongside `/mcp`:
+
+- `/.well-known/oauth-authorization-server`
+- `/.well-known/oauth-protected-resource`
+- `/jwks`
+- `/register`
+- `/authorize`
+- `/auth/google/callback`
+- `/token`
+
+Dynamic client registration is intentionally restricted in this first launch:
+
+- registration requires `Authorization: Bearer <LAB_AUTH_BOOTSTRAP_SECRET>`
+- redirect URIs must use loopback hosts only (`127.0.0.1`, `localhost`, `::1`)
+- `/revoke` is not implemented in this batch
+- refresh-token rotation is not implemented in this batch
 
 ## One Tool Per Service
 
@@ -281,11 +311,41 @@ The same catalog builder must feed:
 - `lab://catalog`
 - CLI help/catalog rendering
 
+## Upstream Tool Merging
+
+When upstream MCP servers are configured (see [UPSTREAM.md](./UPSTREAM.md)), their tools are merged into the `list_tools` response alongside built-in service tools.
+
+Rules:
+
+- built-in lab service tools always take precedence over upstream tools with the same name
+- cross-upstream duplicate tool names: first discovered wins, later tools are skipped with a warning
+- upstream tools with open circuit breakers (3+ consecutive failures) are excluded from `list_tools`
+- callers do not need to distinguish between built-in and upstream tools
+
+## Upstream Proxy Dispatch
+
+When `call_tool` receives a tool name that is not a built-in service, the dispatcher checks the upstream pool:
+
+- if the tool belongs to a healthy upstream, the call is forwarded
+- the upstream pool records success or failure for circuit breaker tracking
+- on failure, the response uses the `upstream_error` error kind
+- response size is capped at `LAB_UPSTREAM_MAX_RESPONSE_BYTES` (default 10 MB)
+
+## Resource Proxying
+
+Upstream resource proxying is opt-in per upstream (`proxy_resources = true`).
+
+Upstream resources are namespaced under `lab://upstream/{name}/{original_uri}` to avoid collisions with lab's own resources.
+
+`list_resources` and `read_resource` are proxied to enabled upstreams. Failed resource listings from individual upstreams are logged as warnings; other upstreams continue to serve.
+
 ## Resources
 
 Primary resource surfaces:
 
 - `lab://catalog`
 - `lab://<service>/actions`
+- `lab://<service>/actions/<action>`
+- `lab://upstream/{name}/{original_uri}` (when upstream resource proxying is enabled)
 
-These are generated from the same catalog data as tool-based help.
+These are generated from the same catalog data as tool-based help, with upstream resources appended at runtime.

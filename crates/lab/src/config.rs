@@ -21,6 +21,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use lab_auth::config as auth_config;
 use lab_apis::extract::types::ServiceCreds;
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -45,6 +46,38 @@ pub struct LabConfig {
     /// Per-service preference overrides.
     #[serde(default)]
     pub services: ServicePreferences,
+    /// HTTP auth mode preferences.
+    #[serde(default)]
+    pub auth: Option<AuthFileConfig>,
+    /// Upstream MCP servers to proxy through the gateway.
+    #[serde(default)]
+    pub upstream: Vec<UpstreamConfig>,
+}
+
+/// Configuration for a single upstream MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpstreamConfig {
+    /// Human-readable name for this upstream (used as tool-name prefix).
+    pub name: String,
+    /// URL of the upstream MCP server (must be `http://` or `https://`).
+    /// For stdio upstreams, omit `url` and use `command`/`args` fields instead.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Name of an env var holding the bearer token (not the token itself).
+    #[serde(default)]
+    pub bearer_token_env: Option<String>,
+    /// Command to run for stdio transport upstreams.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Arguments to pass to the stdio command.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Whether to proxy resources from this upstream (opt-in).
+    #[serde(default)]
+    pub proxy_resources: bool,
+    /// Optional allowlist of tool names/patterns to expose from this upstream.
+    #[serde(default)]
+    pub expose_tools: Option<Vec<String>>,
 }
 
 /// Table/json formatting defaults.
@@ -69,7 +102,104 @@ pub struct McpPreferences {
     pub port: Option<u16>,
 }
 
-/// Logging preferences.
+/// File-backed auth preferences merged with environment variables at startup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthFileConfig {
+    /// `bearer` preserves LAB_MCP_HTTP_TOKEN; `oauth` enables the internal auth server.
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Public URL used for metadata and Google callback construction.
+    #[serde(default)]
+    pub public_url: Option<String>,
+    /// Optional path override for the SQLite auth store.
+    #[serde(default)]
+    pub sqlite_path: Option<PathBuf>,
+    /// Optional path override for the persisted JWT signing key.
+    #[serde(default)]
+    pub key_path: Option<PathBuf>,
+    /// Bootstrap secret required for dynamic client registration.
+    #[serde(default)]
+    pub bootstrap_secret: Option<String>,
+    /// Google OAuth client ID.
+    #[serde(default)]
+    pub google_client_id: Option<String>,
+    /// Google OAuth client secret.
+    #[serde(default)]
+    pub google_client_secret: Option<String>,
+    /// Optional callback path override.
+    #[serde(default)]
+    pub google_callback_path: Option<String>,
+    /// Optional comma-separated scope list.
+    #[serde(default)]
+    pub google_scopes: Option<Vec<String>>,
+}
+
+/// Resolve auth configuration from config file + environment variables.
+///
+/// Env vars take precedence over config file values.
+pub fn resolve_auth(config: Option<&AuthFileConfig>) -> Result<auth_config::AuthConfig> {
+    let mut merged: HashMap<String, String> = HashMap::new();
+
+    if let Some(config) = config {
+        insert_if_some(&mut merged, "LAB_AUTH_MODE", config.mode.clone());
+        insert_if_some(&mut merged, "LAB_PUBLIC_URL", config.public_url.clone());
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_SQLITE_PATH",
+            config
+                .sqlite_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_KEY_PATH",
+            config.key_path.as_ref().map(|path| path.display().to_string()),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_BOOTSTRAP_SECRET",
+            config.bootstrap_secret.clone(),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_GOOGLE_CLIENT_ID",
+            config.google_client_id.clone(),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_GOOGLE_CLIENT_SECRET",
+            config.google_client_secret.clone(),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_GOOGLE_CALLBACK_PATH",
+            config.google_callback_path.clone(),
+        );
+        if let Some(scopes) = config.google_scopes.as_ref() {
+            insert_if_some(&mut merged, "LAB_GOOGLE_SCOPES", Some(scopes.join(",")));
+        }
+    }
+
+    for (key, value) in std::env::vars() {
+        if key.starts_with("LAB_AUTH_") || key == "LAB_PUBLIC_URL" || key.starts_with("LAB_GOOGLE_")
+        {
+            merged.insert(key, value);
+        }
+    }
+
+    auth_config::AuthConfig::from_sources(merged).map_err(anyhow::Error::from)
+}
+
+fn insert_if_some(target: &mut HashMap<String, String>, key: &str, value: Option<String>) {
+    if let Some(value) = value
+        && !value.trim().is_empty()
+    {
+        target.insert(key.to_string(), value);
+    }
+}
+
+/// Load `.env` + `config.toml` from the standard locations.
 ///
 /// These map to `LAB_LOG` and `LAB_LOG_FORMAT` env vars but live in TOML so
 /// operators don't need to clutter `.env` with non-secret preferences.
@@ -205,6 +335,15 @@ fn home_dir() -> Option<PathBuf> {
 /// Standard location for the `.env` file: `~/.lab/.env`.
 fn dotenv_path() -> Option<PathBuf> {
     home_dir().map(|home| home.join(".lab").join(".env"))
+}
+
+pub fn config_toml_path() -> Option<PathBuf> {
+    toml_candidates()
+        .into_iter()
+        .find(|path| path.exists())
+        .or_else(|| {
+            home_dir().map(|home| home.join(".config").join("lab").join("config.toml"))
+        })
 }
 
 /// A string value that redacts itself in `Debug` and `Display` output.
@@ -494,8 +633,20 @@ pub fn env_is_up_to_date(path: &Path, new_creds: &[ServiceCreds]) -> bool {
         .lines()
         .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
         .filter_map(|l| {
-            l.split_once('=')
-                .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
+            l.split_once('=').map(|(k, v)| {
+                let trimmed = v.trim();
+                // Strip surrounding double quotes so that quoted values
+                // written by write_env() compare equal to the raw secret.
+                let unquoted = trimmed
+                    .strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .map_or_else(
+                        || trimmed.to_owned(),
+                        // Unescape sequences that write_env() would have escaped.
+                        |inner| inner.replace(r#"\""#, "\"").replace(r"\\", r"\"),
+                    );
+                (k.trim().to_owned(), unquoted)
+            })
         })
         .collect();
 
@@ -709,5 +860,24 @@ mod tests {
         write_env(&path, &[cred], false).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("SVC_KEY=\"has space\""));
+    }
+
+    #[test]
+    fn env_is_up_to_date_handles_quoted_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        let cred = ServiceCreds {
+            service: "svc".to_owned(),
+            url: None,
+            secret: Some("has space".to_owned()),
+            env_field: "SVC_KEY".to_owned(),
+        };
+        // write_env quotes values with spaces
+        write_env(&path, &[cred.clone()], false).unwrap();
+        // env_is_up_to_date must strip quotes before comparing
+        assert!(
+            env_is_up_to_date(&path, &[cred]),
+            "quoted value in .env should match raw secret"
+        );
     }
 }

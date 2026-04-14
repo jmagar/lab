@@ -82,6 +82,24 @@ The following kinds are emitted exclusively by the HTTP surface. MCP handles the
 
 **Implementation note:** Emitted as `ToolError::Sdk { sdk_kind: "confirmation_required" }` from `handle_action` in `crates/lab/src/api/services/helpers.rs`.
 
+### MCP-Only Dispatcher Kinds
+
+#### `upstream_error`
+
+**When:** A proxied upstream MCP server call fails — connection lost, timeout, response too large (`LAB_UPSTREAM_MAX_RESPONSE_BYTES`, default 10 MB), or the upstream returned an error.
+
+**Surface:** MCP only. Upstream proxy is MCP-transport infrastructure.
+
+**Resolution:** Check upstream server health. Review circuit breaker status via `lab.help` or logs. If the upstream is consistently failing, it will be excluded from tool listings after 3 consecutive failures.
+
+**Status code:** `502 Bad Gateway` (when mapped to HTTP, e.g. in error.rs)
+
+**Envelope:**
+
+```json
+{ "kind": "upstream_error", "message": "upstream `my-server` call failed: connection refused" }
+```
+
 Do not invent new kinds casually. If a new cross-service kind is needed, update the owning docs and all public surfaces together.
 
 ## Wrapping Rules
@@ -178,6 +196,7 @@ Default mapping expectations:
 - `confirmation_required` -> `422 Unprocessable Entity`
 - `network_error` -> `502 Bad Gateway`
 - `server_error` -> `502 Bad Gateway`
+- `upstream_error` -> `502 Bad Gateway`
 - `internal_error` -> `500 Internal Server Error`
 
 ## Message Rules
