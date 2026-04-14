@@ -119,11 +119,46 @@ impl HttpClient {
                 "absolute URL not permitted: {path}"
             )));
         }
+        // POLICY: Callers must percent-encode any string path segments before
+        // passing to url(). Integer IDs are safe as-is. String segments that may
+        // contain '/', '?', '#', or other reserved characters must be encoded
+        // first. Use `HttpClient::encode_path_segment(s)` for that purpose, which
+        // delegates to the `url` crate's PATH_SEGMENT encode set.
         if path.starts_with('/') {
             Ok(format!("{}{path}", self.base_url.trim_end_matches('/')))
         } else {
             Ok(format!("{}/{path}", self.base_url.trim_end_matches('/')))
         }
+    }
+
+    /// Percent-encode a single path segment so it is safe to interpolate into a
+    /// URL path.
+    ///
+    /// Uses the `url` crate's `path_segments_mut()` API, which applies the
+    /// RFC 3986 §3.3 PATH_SEGMENT encode set. Crucially, `/`, `?`, `#`, and
+    /// `%` are encoded, which prevents a caller-supplied string from escaping
+    /// its intended segment.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use lab_apis::core::HttpClient;
+    /// let encoded = HttpClient::encode_path_segment("hello/world?foo=bar");
+    /// // '/' becomes %2F, '?' becomes %3F, '=' becomes %3D
+    /// assert!(!encoded.contains('/'));
+    /// assert!(!encoded.contains('?'));
+    /// ```
+    #[must_use]
+    pub fn encode_path_segment(s: &str) -> String {
+        // Build a scratch URL and push the segment through path_segments_mut(),
+        // which applies the correct RFC 3986 PATH_SEGMENT encode set without
+        // requiring the percent-encoding crate as a direct dependency.
+        let mut base = Url::parse("http://x").expect("static base url is valid");
+        base.path_segments_mut()
+            .expect("http scheme always has a path")
+            .push(s);
+        // The URL path is now "/<encoded-segment>". Strip the leading "/".
+        base.path().trim_start_matches('/').to_string()
     }
 
     fn apply_auth(&self, req: RequestBuilder) -> RequestBuilder {
@@ -745,5 +780,30 @@ mod tests {
             .url("/api/v1/status")
             .expect("should normalise trailing slash");
         assert_eq!(url, "http://localhost:8080/api/v1/status");
+    }
+
+    #[test]
+    fn encode_path_segment_encodes_slash_and_query() {
+        // A string segment containing '/' and '?' must not produce an
+        // unexpected URL when interpolated as a single path segment.
+        let raw = "foo/bar?baz=1";
+        let encoded = HttpClient::encode_path_segment(raw);
+
+        // Neither '/' nor '?' should survive encoding.
+        assert!(!encoded.contains('/'), "forward slash must be encoded: {encoded}");
+        assert!(!encoded.contains('?'), "question mark must be encoded: {encoded}");
+
+        // The encoded segment should round-trip through url() without splitting.
+        let client = make_client("http://localhost:8080");
+        let path = format!("/api/v1/items/{encoded}");
+        let url = client.url(&path).expect("encoded segment should produce valid url");
+        assert!(url.ends_with(&encoded), "encoded segment must appear verbatim in URL: {url}");
+    }
+
+    #[test]
+    fn encode_path_segment_integer_ids_unchanged() {
+        // Integer IDs (converted to strings) must not be mangled.
+        assert_eq!(HttpClient::encode_path_segment("42"), "42");
+        assert_eq!(HttpClient::encode_path_segment("1234567890"), "1234567890");
     }
 }
