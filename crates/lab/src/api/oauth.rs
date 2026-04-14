@@ -251,7 +251,6 @@ impl JwksManager {
 
     /// Periodic refresh: if the cache TTL has expired, attempt a background
     /// refresh. Stale keys are kept on failure.
-    #[allow(dead_code)] // Public API for future periodic JWKS refresh task
     pub async fn refresh_if_stale(&self) {
         let is_expired = self.cache.read().await.is_expired();
         if !is_expired {
@@ -279,6 +278,10 @@ impl JwksManager {
     /// Validate a JWT and return the extracted `AuthContext`.
     pub async fn validate_jwt(&self, token: &str) -> Result<AuthContext, AuthError> {
         use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
+
+        // Ensure cached JWKS keys are refreshed when the TTL has expired,
+        // so that revoked keys don't stay trusted indefinitely.
+        self.refresh_if_stale().await;
 
         let header = decode_header(token)
             .map_err(|e| AuthError::ValidationFailed(format!("decode header: {e}")))?;
