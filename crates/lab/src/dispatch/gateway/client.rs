@@ -12,13 +12,13 @@ fn manager_slot() -> &'static RwLock<Option<Arc<GatewayManager>>> {
 pub fn install_gateway_manager(manager: Arc<GatewayManager>) {
     *manager_slot()
         .write()
-        .expect("gateway manager lock poisoned") = Some(manager);
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(manager);
 }
 
 pub fn current_gateway_manager() -> Option<Arc<GatewayManager>> {
     manager_slot()
         .read()
-        .expect("gateway manager lock poisoned")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone()
 }
 

@@ -25,16 +25,20 @@ pub struct GatewayUpdatePatch {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    #[allow(clippy::option_option)]
     pub url: Option<Option<String>>,
     #[serde(default)]
+    #[allow(clippy::option_option)]
     pub command: Option<Option<String>>,
     #[serde(default)]
     pub args: Option<Vec<String>>,
     #[serde(default)]
+    #[allow(clippy::option_option)]
     pub bearer_token_env: Option<Option<String>>,
     #[serde(default)]
     pub proxy_resources: Option<bool>,
     #[serde(default)]
+    #[allow(clippy::option_option)]
     pub expose_tools: Option<Option<Vec<String>>>,
 }
 

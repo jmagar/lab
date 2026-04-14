@@ -35,7 +35,7 @@ pub enum AuthError {
 }
 
 impl AuthError {
-    pub fn kind(&self) -> &'static str {
+    pub const fn kind(&self) -> &'static str {
         match self {
             Self::Config(_) | Self::Storage(_) | Self::UnconfiguredVerifier | Self::InsecurePermissions { .. } => "internal_error",
             Self::InvalidGrant(_) => "invalid_grant",
@@ -45,7 +45,7 @@ impl AuthError {
         }
     }
 
-    fn status(&self) -> StatusCode {
+    const fn status(&self) -> StatusCode {
         match self {
             Self::InvalidGrant(_) => StatusCode::BAD_REQUEST,
             Self::AuthFailed(_) | Self::InvalidAccessToken => StatusCode::UNAUTHORIZED,
@@ -67,10 +67,11 @@ impl IntoResponse for AuthError {
             "message": self.to_string(),
         }));
         let mut response = (status, body).into_response();
-        if let Self::RateLimited { retry_after_ms, .. } = self {
-            if let Ok(value) = HeaderValue::from_str(&(retry_after_ms / 1_000).max(1).to_string()) {
-                response.headers_mut().insert(header::RETRY_AFTER, value);
-            }
+        if let Self::RateLimited { retry_after_ms, .. } = self
+            && let Ok(value) =
+                HeaderValue::from_str(&(retry_after_ms / 1_000).max(1).to_string())
+        {
+            response.headers_mut().insert(header::RETRY_AFTER, value);
         }
         response
     }

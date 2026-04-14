@@ -88,13 +88,13 @@ pub struct McpPreferences {
 /// File-backed auth preferences merged with environment variables at startup.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthFileConfig {
-    /// `bearer` preserves LAB_MCP_HTTP_TOKEN; `oauth` enables the internal auth server.
+    /// `bearer` preserves `LAB_MCP_HTTP_TOKEN`; `oauth` enables the internal auth server.
     #[serde(default)]
     pub mode: Option<String>,
     /// Public URL used for metadata and Google callback construction.
     #[serde(default)]
     pub public_url: Option<String>,
-    /// Optional path override for the SQLite auth store.
+    /// Optional path override for the `SQLite` auth store.
     #[serde(default)]
     pub sqlite_path: Option<PathBuf>,
     /// Optional path override for the persisted JWT signing key.

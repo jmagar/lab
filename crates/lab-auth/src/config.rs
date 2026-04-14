@@ -98,7 +98,7 @@ impl AuthConfig {
     ) -> Result<Self, AuthError> {
         let vars = normalize(vars);
         let mode = AuthMode::parse(vars.get("LAB_AUTH_MODE").map(String::as_str))?;
-        let mut config = Self {
+        let config = Self {
             mode,
             public_url: read_url(&vars, "LAB_PUBLIC_URL")?,
             sqlite_path: read_path(&vars, "LAB_AUTH_SQLITE_PATH")
@@ -130,7 +130,7 @@ impl AuthConfig {
         Ok(config)
     }
 
-    fn validate(&mut self) -> Result<(), AuthError> {
+    fn validate(&self) -> Result<(), AuthError> {
         if !self.google.callback_path.starts_with('/') {
             return Err(AuthError::Config(format!(
                 "LAB_GOOGLE_CALLBACK_PATH must start with `/`, got `{}`",
@@ -179,9 +179,7 @@ fn normalize(vars: impl IntoIterator<Item = (String, String)>) -> HashMap<String
 }
 
 fn default_auth_dir() -> PathBuf {
-    home_dir()
-        .map(|home| home.join(".lab"))
-        .unwrap_or_else(|| PathBuf::from(".lab"))
+    home_dir().map_or_else(|| PathBuf::from(".lab"), |home| home.join(".lab"))
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -238,7 +236,7 @@ fn read_u64(vars: &HashMap<String, String>, key: &str) -> Result<Option<u64>, Au
             })
         })
         .transpose()
-        .map(|value| value.flatten())
+        .map(Option::flatten)
 }
 
 #[cfg(test)]

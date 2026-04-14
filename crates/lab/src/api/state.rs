@@ -33,7 +33,7 @@ pub struct AppState {
     /// WWW-Authenticate headers) can read from resolved config rather than
     /// re-reading env vars at request time.
     pub auth_config: Option<Arc<lab_auth::config::AuthConfig>>,
-    /// OAuth-mode auth server state, mounted only when LAB_AUTH_MODE=oauth.
+    /// OAuth-mode auth server state, mounted only when `LAB_AUTH_MODE=oauth`.
     pub oauth_state: Option<Arc<lab_auth::state::AuthState>>,
     /// Shared gateway manager for runtime upstream pool access and config mutation.
     ///

@@ -63,17 +63,17 @@ async fn authorization_code_grant(
             scope: row.scope.clone(),
             provider_refresh_token: row.provider_refresh_token,
             created_at: now_unix(),
-            expires_at: now_unix() + state.config.refresh_token_ttl.as_secs() as i64,
+            expires_at: now_unix() + state.config.refresh_token_ttl.as_secs().cast_signed(),
         })
         .await?;
 
-    Ok(build_token_response(
+    build_token_response(
         &state,
         row.client_id,
         row.subject,
         row.scope,
         refresh_token,
-    )?)
+    )
 }
 
 async fn refresh_token_grant(
@@ -112,17 +112,17 @@ async fn refresh_token_grant(
                 .and_then(|token| token.refresh_token)
                 .or(stored.provider_refresh_token),
             created_at: stored.created_at,
-            expires_at: now_unix() + state.config.refresh_token_ttl.as_secs() as i64,
+            expires_at: now_unix() + state.config.refresh_token_ttl.as_secs().cast_signed(),
         })
         .await?;
 
-    Ok(build_token_response(
+    build_token_response(
         &state,
         stored.client_id,
         stored.subject,
         stored.scope,
         refresh_token,
-    )?)
+    )
 }
 
 fn build_token_response(
@@ -136,16 +136,21 @@ fn build_token_response(
         .config
         .public_url
         .as_ref()
-        .expect("oauth state must have public_url")
+        .ok_or_else(|| {
+            AuthError::Config(
+                "LAB_PUBLIC_URL is required when LAB_AUTH_MODE=oauth".to_string(),
+            )
+        })?
         .as_str()
         .trim_end_matches('/')
         .to_string();
-    let now = now_unix() as usize;
-    let access_token = state.signing_keys.issue_access_token(AccessClaims {
+    let now = usize::try_from(now_unix().max(0)).unwrap_or(0);
+    let ttl_secs = usize::try_from(state.config.access_token_ttl.as_secs()).unwrap_or(0);
+    let access_token = state.signing_keys.issue_access_token(&AccessClaims {
         iss: base.clone(),
         sub: subject,
         aud: base,
-        exp: now + state.config.access_token_ttl.as_secs() as usize,
+        exp: now.saturating_add(ttl_secs),
         iat: now,
         jti: random_token(18)?,
         scope: scope.clone(),
@@ -179,7 +184,8 @@ fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs() as i64
+        .as_secs()
+        .cast_signed()
 }
 
 #[cfg(test)]

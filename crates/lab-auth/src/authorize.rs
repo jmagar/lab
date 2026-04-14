@@ -94,7 +94,7 @@ pub async fn authorize(
         })
         .await?;
 
-    let location = state.google.authorize_url(AuthorizeUrlRequest {
+    let location = state.google.authorize_url(&AuthorizeUrlRequest {
         state: request_state,
         scope,
         code_challenge: provider_code_challenge,
@@ -207,7 +207,7 @@ fn is_loopback_redirect(value: &str) -> bool {
     }
     matches!(
         url.host_str(),
-        Some("127.0.0.1") | Some("localhost") | Some("::1") | Some("[::1]")
+        Some("127.0.0.1" | "localhost" | "::1" | "[::1]")
     )
 }
 
@@ -222,7 +222,7 @@ fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs() as i64
+        .as_secs().cast_signed()
 }
 
 #[cfg(test)]
@@ -434,6 +434,7 @@ pub mod tests {
             "client-secret".to_string(),
             Url::parse("https://lab.example.com/auth/google/callback").unwrap(),
         )
+        .unwrap()
         .with_endpoints(
             server.uri().parse::<Url>().unwrap(),
             server.uri().parse::<Url>().unwrap().join("/token").unwrap(),

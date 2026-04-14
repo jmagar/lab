@@ -134,33 +134,33 @@ fn render_service_discover(
 }
 
 fn service_summary(service_name: &str, service: Option<&RegisteredService>) -> String {
-    match service {
-        Some(service) => format!(
+    service.map_or_else(
+        || format!(
+            "- `{service_name}` is not in the current registry.\n- Use `help` to discover valid service names first."
+        ),
+        |service| format!(
             "- Description: {}\n- Category: {}\n- Status: {}",
             service.description, service.category, service.status
         ),
-        None => format!(
-            "- `{service_name}` is not in the current registry.\n- Use `help` to discover valid service names first."
-        ),
-    }
+    )
 }
 
 fn action_summary(
     action_name: &str,
     action: Option<&lab_apis::core::action::ActionSpec>,
 ) -> String {
-    match action {
-        Some(action) => format!(
+    action.map_or_else(
+        || format!(
+            "- `{action_name}` was not found in the current service catalog.\n- Use `schema` for the exact action payload once you confirm the name."
+        ),
+        |action| format!(
             "- Description: {}\n- Destructive: {}\n- Returns: {}\n- Params: {}",
             action.description,
             if action.destructive { "yes" } else { "no" },
             action.returns,
             render_params(action.params)
         ),
-        None => format!(
-            "- `{action_name}` was not found in the current service catalog.\n- Use `schema` for the exact action payload once you confirm the name."
-        ),
-    }
+    )
 }
 
 fn action_catalog(service: Option<&RegisteredService>) -> String {

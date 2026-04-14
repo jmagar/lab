@@ -44,7 +44,7 @@ async fn routable_upstream_peers(
     pool: &UpstreamPool,
     capability: UpstreamCapability,
 ) -> Vec<(String, rmcp::service::Peer<RoleClient>)> {
-    let mut names: Vec<String> = {
+    let names: Vec<String> = {
         let catalog = pool.catalog.read().await;
         let mut names = match capability {
             UpstreamCapability::Resources => {
@@ -72,7 +72,7 @@ async fn routable_upstream_peers(
 
     let connections = pool.connections.read().await;
     names
-        .drain(..)
+        .into_iter()
         .filter_map(|name| connections.get(&name).map(|conn| (name, conn.peer.clone())))
         .collect()
 }
@@ -93,7 +93,7 @@ fn merge_upstream_prompts(
 
     for (upstream_name, upstream_prompts) in upstream_prompts {
         for prompt in upstream_prompts {
-            let prompt_name = prompt.name.to_string();
+            let prompt_name = prompt.name.clone();
             if seen_names.insert(prompt_name.clone()) {
                 owners.insert(prompt_name, upstream_name.clone());
                 prompts.push(prompt);
@@ -337,12 +337,11 @@ impl UpstreamPool {
             .values()
             .filter(|entry| entry.tool_health.is_routable())
             .flat_map(|entry| {
-                entry.tools.values().filter_map(|tool| {
+                entry.tools.values().filter(|tool| {
                     entry
                         .exposure_policy
                         .matches(tool.tool.name.as_ref())
-                        .then(|| tool.clone())
-                })
+                }).cloned()
             })
             .collect()
     }
@@ -415,12 +414,14 @@ impl UpstreamPool {
         let Some(entry) = catalog.get(upstream_name) else {
             return Vec::new();
         };
+        let policy = entry.exposure_policy.clone();
+        let tools: Vec<_> = entry.tools.values().cloned().collect();
+        drop(catalog);
 
-        let mut rows: Vec<UpstreamToolExposureRow> = entry
-            .tools
-            .values()
+        let mut rows: Vec<UpstreamToolExposureRow> = tools
+            .iter()
             .map(|tool| {
-                let matched_by = entry.exposure_policy.matched_by(tool.tool.name.as_ref());
+                let matched_by = policy.matched_by(tool.tool.name.as_ref());
                 UpstreamToolExposureRow {
                     name: tool.tool.name.to_string(),
                     description: tool
@@ -663,13 +664,13 @@ impl UpstreamPool {
         // Clone the vec and drop the lock before any async work.
         let is_resource_enabled = {
             let resource_names = self.resource_upstreams.read().await;
-            if !resource_names.iter().any(|n| n == upstream_name) {
-                false
-            } else {
+            if resource_names.iter().any(|n| n == upstream_name) {
                 let catalog = self.catalog.read().await;
                 catalog
                     .get(upstream_name)
                     .is_some_and(|entry| entry.resource_health.is_routable())
+            } else {
+                false
             }
         };
         if !is_resource_enabled {

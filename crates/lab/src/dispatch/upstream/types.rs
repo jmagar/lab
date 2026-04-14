@@ -48,10 +48,7 @@ pub enum ToolPattern {
 
 impl ToolExposurePolicy {
     pub fn from_optional(patterns: Option<Vec<String>>) -> Result<Self, String> {
-        match patterns {
-            None => Ok(Self::All),
-            Some(patterns) => Self::from_patterns(patterns),
-        }
+        patterns.map_or(Ok(Self::All), Self::from_patterns)
     }
 
     pub fn from_patterns(patterns: Vec<String>) -> Result<Self, String> {
@@ -98,7 +95,7 @@ impl ToolPattern {
     }
 
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         match self {
             Self::Exact(value) | Self::Wildcard(value) => value.as_str(),
         }
@@ -260,7 +257,7 @@ impl UpstreamEntry {
     }
 
     /// Update the health for a specific upstream capability.
-    pub fn set_health_for(&mut self, capability: UpstreamCapability, health: UpstreamHealth) {
+    pub const fn set_health_for(&mut self, capability: UpstreamCapability, health: UpstreamHealth) {
         match capability {
             UpstreamCapability::Tools => self.tool_health = health,
             UpstreamCapability::Prompts => self.prompt_health = health,
@@ -282,7 +279,7 @@ impl UpstreamEntry {
     }
 
     /// Update the unhealthy timestamp for a specific upstream capability.
-    pub fn set_unhealthy_since_for(
+    pub const fn set_unhealthy_since_for(
         &mut self,
         capability: UpstreamCapability,
         unhealthy_since: Option<std::time::Instant>,

@@ -62,8 +62,8 @@ struct GoogleIdTokenClaims {
 }
 
 impl GoogleProvider {
-    pub fn new(client_id: String, client_secret: String, redirect_uri: Url) -> Self {
-        Self {
+    pub fn new(client_id: String, client_secret: String, redirect_uri: Url) -> Result<Self, AuthError> {
+        Ok(Self {
             client_id,
             client_secret,
             redirect_uri,
@@ -73,9 +73,11 @@ impl GoogleProvider {
                 "profile".to_string(),
             ],
             http: reqwest::Client::new(),
-            authorize_endpoint: Url::parse(GOOGLE_AUTHORIZE_ENDPOINT).expect("valid google auth url"),
-            token_endpoint: Url::parse(GOOGLE_TOKEN_ENDPOINT).expect("valid google token url"),
-        }
+            authorize_endpoint: Url::parse(GOOGLE_AUTHORIZE_ENDPOINT)
+                .map_err(|e| AuthError::Config(format!("invalid Google authorize endpoint: {e}")))?,
+            token_endpoint: Url::parse(GOOGLE_TOKEN_ENDPOINT)
+                .map_err(|e| AuthError::Config(format!("invalid Google token endpoint: {e}")))?,
+        })
     }
 
     #[cfg(test)]
@@ -85,7 +87,7 @@ impl GoogleProvider {
         self
     }
 
-    pub fn authorize_url(&self, request: AuthorizeUrlRequest) -> Result<Url, AuthError> {
+    pub fn authorize_url(&self, request: &AuthorizeUrlRequest) -> Result<Url, AuthError> {
         let mut url = self.authorize_endpoint.clone();
         let scope = self.scopes.join(" ");
         url.query_pairs_mut()
@@ -201,7 +203,7 @@ mod tests {
     #[test]
     fn google_authorize_url_includes_offline_access_and_pkce() {
         let provider = test_google_provider();
-        let url = provider.authorize_url(sample_request()).unwrap();
+        let url = provider.authorize_url(&sample_request()).unwrap();
         assert!(url.as_str().contains("access_type=offline"));
         assert!(url.as_str().contains("code_challenge="));
     }
@@ -220,6 +222,7 @@ mod tests {
             "client-secret".to_string(),
             Url::parse("https://lab.example.com/auth/google/callback").unwrap(),
         )
+        .unwrap()
     }
 
     async fn mocked_google_provider() -> GoogleProvider {

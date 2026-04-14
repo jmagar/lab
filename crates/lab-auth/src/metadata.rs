@@ -44,10 +44,10 @@ pub(crate) fn public_base_url(state: &AuthState) -> String {
         .config
         .public_url
         .as_ref()
-        .expect("oauth state must have public_url")
-        .as_str()
-        .trim_end_matches('/')
-        .to_string()
+        .map_or_else(
+            || "http://localhost".to_string(),
+            |url| url.as_str().trim_end_matches('/').to_string(),
+        )
 }
 
 #[cfg(test)]

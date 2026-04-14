@@ -18,7 +18,7 @@ pub struct SqliteStore {
 
 impl SqliteStore {
     pub async fn open(path: PathBuf) -> Result<Self, AuthError> {
-        let conn = tokio::task::spawn_blocking(move || open_connection(path)).await;
+        let conn = tokio::task::spawn_blocking(move || open_connection(path.as_path())).await;
         match conn {
             Ok(result) => result,
             Err(error) => Err(AuthError::Storage(format!(
@@ -275,7 +275,7 @@ impl SqliteStore {
     }
 }
 
-fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
+fn open_connection(path: &Path) -> Result<Connection, AuthError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
             AuthError::Storage(format!(
@@ -287,10 +287,10 @@ fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
 
     let existed = path.exists();
     if existed {
-        ensure_restrictive_permissions(&path)?;
+        ensure_restrictive_permissions(path)?;
     }
 
-    let conn = Connection::open(&path).map_err(sqlite_error)?;
+    let conn = Connection::open(path).map_err(sqlite_error)?;
     conn.busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .map_err(sqlite_error)?;
     conn.pragma_update(None, "journal_mode", "WAL")
@@ -340,13 +340,14 @@ fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
     .map_err(sqlite_error)?;
 
     if !existed {
-        set_restrictive_permissions(&path)?;
+        set_restrictive_permissions(path)?;
     }
-    ensure_restrictive_permissions(&path)?;
+    ensure_restrictive_permissions(path)?;
 
     Ok(conn)
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn sqlite_error(error: rusqlite::Error) -> AuthError {
     AuthError::Storage(format!("sqlite error: {error}"))
 }
@@ -355,7 +356,8 @@ fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs() as i64
+        .as_secs()
+        .cast_signed()
 }
 
 #[cfg(unix)]

@@ -150,7 +150,7 @@ impl GatewayManager {
         };
 
         let pool = UpstreamPool::new();
-        pool.discover_all(&[upstream.clone()]).await;
+        pool.discover_all(std::slice::from_ref(&upstream)).await;
 
         Ok(runtime_view(Some(&pool), &upstream.name).await)
     }
@@ -258,7 +258,7 @@ impl GatewayManager {
                 .as_deref()
                 == Some(name)
             {
-                prompts.push(prompt.name.to_string());
+                prompts.push(prompt.name.clone());
             }
         }
         prompts.sort();

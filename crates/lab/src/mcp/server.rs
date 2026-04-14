@@ -489,9 +489,7 @@ impl LabMcpServer {
         if let Some(pool) = self.current_upstream_pool().await {
             for tool in pool.healthy_tools().await {
                 let name = tool.tool.name.to_string();
-                if !tools.contains(&name) {
-                    tools.insert(name);
-                }
+                tools.insert(name);
             }
         }
 
@@ -707,19 +705,17 @@ fn normalize_upstream_result(
     let kind = error_obj
         .get("kind")
         .and_then(Value::as_str)
-        .map(static_kind)
-        .unwrap_or("upstream_error");
+        .map_or("upstream_error", static_kind);
     let message = error_obj
         .get("message")
         .and_then(Value::as_str)
         .unwrap_or(text);
 
-    let extra = serde_json::Map::from_iter(
-        error_obj
-            .iter()
-            .filter(|(key, _)| *key != "kind" && *key != "message")
-            .map(|(key, value)| (key.clone(), value.clone())),
-    );
+    let extra: serde_json::Map<_, _> = error_obj
+        .iter()
+        .filter(|(key, _)| *key != "kind" && *key != "message")
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
 
     let envelope = if extra.is_empty() {
         build_error(service, action, kind, message)

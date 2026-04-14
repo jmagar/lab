@@ -1,4 +1,5 @@
 use std::fs::OpenOptions;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -61,7 +62,6 @@ pub fn write_gateway_config(path: &Path, cfg: &LabConfig) -> Result<(), ToolErro
         sdk_kind: "internal_error".to_string(),
         message: format!("failed to create temp file in {}: {e}", parent.display()),
     })?;
-    use std::io::Write as _;
     tmp.write_all(raw.as_bytes()).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: format!("failed to write temp gateway config: {e}"),
@@ -232,8 +232,7 @@ fn lock_path(path: &Path) -> PathBuf {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| format!("{name}.lock"))
-        .unwrap_or_else(|| "config.toml.lock".to_string());
+        .map_or_else(|| "config.toml.lock".to_string(), |name| format!("{name}.lock"));
     path.parent()
         .unwrap_or_else(|| Path::new("."))
         .join(file_name)

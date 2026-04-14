@@ -79,33 +79,33 @@ async fn auth_register(
     headers: axum::http::HeaderMap,
     body: axum::Json<lab_auth::types::ClientRegistrationRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::authorize::register_client(
+    lab_auth::authorize::register_client(
         State(app_auth_state(&state)?),
         headers,
         body,
     )
-    .await?)
+    .await
 }
 
 async fn auth_authorize(
     State(state): State<AppState>,
     query: axum::extract::Query<lab_auth::types::AuthorizeQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::authorize::authorize(State(app_auth_state(&state)?), query).await?)
+    lab_auth::authorize::authorize(State(app_auth_state(&state)?), query).await
 }
 
 async fn auth_callback(
     State(state): State<AppState>,
     query: axum::extract::Query<lab_auth::types::CallbackQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::authorize::callback(State(app_auth_state(&state)?), query).await?)
+    lab_auth::authorize::callback(State(app_auth_state(&state)?), query).await
 }
 
 async fn auth_token(
     State(state): State<AppState>,
     form: axum::extract::Form<lab_auth::types::TokenRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::token::token(State(app_auth_state(&state)?), form).await?)
+    lab_auth::token::token(State(app_auth_state(&state)?), form).await
 }
 
 /// Build the `/v1` sub-router with all feature-gated service routes.
@@ -730,7 +730,7 @@ mod tests {
             .as_secs() as usize;
         auth_state
             .signing_keys
-            .issue_access_token(lab_auth::jwt::AccessClaims {
+            .issue_access_token(&lab_auth::jwt::AccessClaims {
                 iss: "https://lab.example.com".to_string(),
                 sub: "google-user".to_string(),
                 aud: "https://lab.example.com".to_string(),
