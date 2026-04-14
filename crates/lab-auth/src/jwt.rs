@@ -8,9 +8,6 @@ pub struct Claims {
 }
 
 pub fn validate_access_token(token: &str) -> Result<Claims, AuthError> {
-    if token.trim().is_empty() {
-        Err(AuthError::InvalidAccessToken)
-    } else {
-        Ok(Claims::default())
-    }
+    let _ = token;
+    Err(AuthError::UnconfiguredVerifier)
 }

@@ -4,4 +4,7 @@ use thiserror::Error;
 pub enum AuthError {
     #[error("invalid access token")]
     InvalidAccessToken,
+
+    #[error("access token verifier is not configured")]
+    UnconfiguredVerifier,
 }
