@@ -1,6 +1,6 @@
 # Architecture
 
-`lab` is a pluggable homelab CLI and MCP server implemented as a Rust workspace with a hard split between reusable service clients and user-facing surfaces.
+`lab` is a pluggable homelab CLI and MCP server implemented as a Rust workspace with a split between reusable upstream-facing SDK clients and product-facing dispatch and surface layers.
 
 ## Core Shape
 
@@ -39,11 +39,11 @@ It does not own CLI parsing, MCP transport, TUI rendering, `.env` file loading, 
 - install/uninstall flows
 - doctor and operator workflows
 
-It must stay thin. Business logic belongs in `lab-apis`.
+It must stay thin at the surface boundary, but it still owns shared product dispatch and product-local systems such as gateway and upstream management.
 
 ## Golden Rule
 
-If behavior is shared by CLI and MCP, it belongs in `lab-apis`. The CLI and MCP layers are adapters, not logic owners.
+If behavior is shared across product surfaces, it belongs in one shared execution layer. Upstream API logic belongs in `lab-apis`; product-surface dispatch belongs in `crates/lab/src/dispatch`. The CLI and MCP layers are adapters, not logic owners.
 
 That rule is structural, not aspirational:
 
@@ -65,10 +65,12 @@ Per-service layout in `lab-apis`:
 - `<service>/types.rs`
 - `<service>/error.rs`
 
-Per-service layout in `lab`:
+Per-service layout in `lab` typically includes:
 
+- `src/dispatch/<service>.rs` plus `src/dispatch/<service>/`
 - `src/cli/<service>.rs`
 - `src/mcp/services/<service>.rs`
+- `src/api/services/<service>.rs` when the service is exposed over HTTP
 
 ## Shared Contracts
 
@@ -156,11 +158,11 @@ Field-level requirements, redaction rules, and verification gates live in [OBSER
 Normal request flow:
 
 1. Load config in `lab`
-2. Construct the correct client from `lab-apis`
-3. Dispatch a service operation
-4. Let `HttpClient` handle auth, retry, timeout, and error mapping
-5. Return typed data to the caller surface
-6. Render via CLI, MCP envelope, or TUI view
+2. Construct the correct SDK client or product-local subsystem
+3. Dispatch through the shared `crates/lab/src/dispatch` layer
+4. Let `HttpClient` handle auth, retry, timeout, and error mapping for upstream-backed services
+5. Return typed or surface-neutral data to the caller surface
+6. Render via CLI, MCP envelope, API envelope, or TUI view
 
 ## Config Boundary
 
@@ -176,10 +178,11 @@ The binary resolves those inputs, then constructs clients explicitly.
 Each service gets:
 
 - one feature flag
-- one service module in `lab-apis`
+- one service module in `lab-apis` for upstream-backed integrations
+- one shared dispatch entry in `crates/lab/src/dispatch`
 - one CLI entrypoint
-- one MCP dispatch module
-- one `PluginMeta`
-- one health-check implementation
+- one MCP dispatch entry
+- one `PluginMeta` when it participates in install/TUI/doctor flows
+- one health-check implementation when it models a remotely configured service
 
-The one exception is [`EXTRACT.md`](./EXTRACT.md): it is not a remote API client, but it still follows the same structural model to keep the architecture uniform.
+There are product-local exceptions. [`EXTRACT.md`](./EXTRACT.md) is a synthetic bootstrap service, and [`GATEWAY.md`](./GATEWAY.md) is a product-local management surface for runtime upstream configuration rather than a feature-gated `lab-apis` integration.

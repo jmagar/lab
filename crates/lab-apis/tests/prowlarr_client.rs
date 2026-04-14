@@ -177,7 +177,10 @@ async fn application_add_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.application_add(&body).await.expect("application_add");
+    let result = client
+        .application_add(&body)
+        .await
+        .expect("application_add");
     assert_eq!(result["id"], 10);
 }
 

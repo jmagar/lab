@@ -129,14 +129,12 @@ pub const ACTIONS: &[ActionSpec] = &[
         description: "Compute pairwise similarity scores for sentence pairs (POST /similarity). Inputs must be an array of [string, string] pairs.",
         destructive: false,
         returns: "f32[]",
-        params: &[
-            ParamSpec {
-                name: "inputs",
-                ty: "json",
-                required: true,
-                description: "Array of [sentence_a, sentence_b] string pairs",
-            },
-        ],
+        params: &[ParamSpec {
+            name: "inputs",
+            ty: "json",
+            required: true,
+            description: "Array of [sentence_a, sentence_b] string pairs",
+        }],
     },
     ActionSpec {
         name: "embed.sparse",
@@ -163,13 +161,11 @@ pub const ACTIONS: &[ActionSpec] = &[
         description: "Generate embeddings via the OpenAI-compatible endpoint (POST /v1/embeddings). Body and response are passed through as raw JSON.",
         destructive: false,
         returns: "json",
-        params: &[
-            ParamSpec {
-                name: "body",
-                ty: "json",
-                required: true,
-                description: "Full OpenAI-compatible request body (e.g. {model, input})",
-            },
-        ],
+        params: &[ParamSpec {
+            name: "body",
+            ty: "json",
+            required: true,
+            description: "Full OpenAI-compatible request body (e.g. {model, input})",
+        }],
     },
 ];

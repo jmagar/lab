@@ -11,7 +11,7 @@
 curl -fsSL \
   -H "Authorization: Token $PAPERLESS_API_KEY" \
   "$PAPERLESS_URL/api/schema/?format=openapi-json" \
-  -o docs/api-specs/paperless.openapi.json
+  -o docs/upstream-api/paperless.openapi.json
 ```
 
 Or YAML:
@@ -19,7 +19,7 @@ Or YAML:
 curl -fsSL \
   -H "Authorization: Token $PAPERLESS_API_KEY" \
   "$PAPERLESS_URL/api/schema/" \
-  -o docs/api-specs/paperless.openapi.yaml
+  -o docs/upstream-api/paperless.openapi.yaml
 ```
 
 The schema is also browsable at `$PAPERLESS_URL/api/schema/swagger-ui/` and `$PAPERLESS_URL/api/schema/redoc/`.

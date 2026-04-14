@@ -350,14 +350,14 @@ impl HttpClient {
             .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
         let ctx = RequestLogContext::new("POST", &url);
         let resp = self
-            .send(
-                self.apply_auth(self.inner.post(url.clone()).body("")),
-                &ctx,
-            )
+            .send(self.apply_auth(self.inner.post(url.clone()).body("")), &ctx)
             .await?;
         if resp.status().is_success() {
             let status = resp.status().as_u16();
-            let text = resp.text().await.map_err(|e| ApiError::Decode(e.to_string()));
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| ApiError::Decode(e.to_string()));
             match &text {
                 Ok(_) => Self::log_finish(&ctx, status),
                 Err(err) => Self::log_error(&ctx, err),
@@ -385,7 +385,10 @@ impl HttpClient {
             .await?;
         if resp.status().is_success() {
             let status = resp.status().as_u16();
-            let text = resp.text().await.map_err(|e| ApiError::Decode(e.to_string()));
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| ApiError::Decode(e.to_string()));
             match &text {
                 Ok(_) => Self::log_finish(&ctx, status),
                 Err(err) => Self::log_error(&ctx, err),
@@ -411,7 +414,10 @@ impl HttpClient {
             .await?;
         if resp.status().is_success() {
             let status = resp.status().as_u16();
-            let bytes = resp.bytes().await.map_err(|e| ApiError::Decode(e.to_string()))?;
+            let bytes = resp
+                .bytes()
+                .await
+                .map_err(|e| ApiError::Decode(e.to_string()))?;
             Self::log_finish(&ctx, status);
             return Ok(bytes.to_vec());
         }
@@ -446,7 +452,11 @@ impl HttpClient {
     ///
     /// # Errors
     /// Returns [`ApiError`] on transport, status, or decode failure.
-    pub async fn post_form_void(&self, path: &str, fields: &[(&str, &str)]) -> Result<(), ApiError> {
+    pub async fn post_form_void(
+        &self,
+        path: &str,
+        fields: &[(&str, &str)],
+    ) -> Result<(), ApiError> {
         let url = Url::parse(&self.url(path)?)
             .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
         let ctx = RequestLogContext::new("POST", &url);

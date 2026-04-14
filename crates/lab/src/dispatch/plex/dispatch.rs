@@ -120,9 +120,7 @@ pub async fn dispatch_with_client(
 
         // ── Session history ───────────────────────────────────────────────────
         "session.history" => {
-            let account_id = params
-                .get("account_id")
-                .and_then(Value::as_i64);
+            let account_id = params.get("account_id").and_then(Value::as_i64);
             let limit = optional_u32(&params, "limit")?;
             to_json(client.session_history(account_id, limit).await?)
         }

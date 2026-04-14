@@ -1,7 +1,7 @@
 # Overseerr API Coverage
 
 **Last updated:** 2026-04-13
-**OpenAPI spec:** docs/api-specs/overseerr.openapi.yaml
+**OpenAPI spec:** docs/upstream-api/overseerr.openapi.yaml
 **OpenAPI version:** 3.0.2
 **API version:** 1.0.0
 **Paths:** 170

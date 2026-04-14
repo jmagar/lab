@@ -9,6 +9,7 @@ mod catalog;
 mod client;
 mod commands;
 mod config;
+mod customformat;
 mod dispatch;
 mod history;
 mod movies;
@@ -16,7 +17,6 @@ mod params;
 mod queue;
 mod system;
 mod wanted;
-mod customformat;
 
 pub use catalog::actions;
 pub use client::client_from_env;

@@ -1,7 +1,7 @@
 # Arcane API Coverage
 
 **Last updated:** 2026-04-13 (added project, volume, image actions)
-**OpenAPI spec:** docs/api-specs/arcane-api.yaml
+**OpenAPI spec:** docs/upstream-api/arcane-api.yaml
 **OpenAPI version:** 3.1.0
 **API version:** v1.17.1
 **Paths:** 265

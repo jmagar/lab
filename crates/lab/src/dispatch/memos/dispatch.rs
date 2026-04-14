@@ -67,10 +67,8 @@ pub async fn dispatch_with_client(
         }
         // ── Attachments ───────────────────────────────────────────────────
         "attachment.upload" => {
-            let filename =
-                crate::dispatch::helpers::require_str(&params_value, "filename")?;
-            let mime_type =
-                crate::dispatch::helpers::require_str(&params_value, "mime_type")?;
+            let filename = crate::dispatch::helpers::require_str(&params_value, "filename")?;
+            let mime_type = crate::dispatch::helpers::require_str(&params_value, "mime_type")?;
             let file_bytes = params::require_bytes_base64(&params_value)?;
             to_json(
                 client

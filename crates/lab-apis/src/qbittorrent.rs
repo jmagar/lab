@@ -86,9 +86,7 @@ impl ServiceClient for QbittorrentClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed — SID cookie may be expired".into()),
             }),
-            Err(QbittorrentError::Api(ApiError::Network(e))) => {
-                Ok(ServiceStatus::unreachable(e))
-            }
+            Err(QbittorrentError::Api(ApiError::Network(e))) => Ok(ServiceStatus::unreachable(e)),
             Err(QbittorrentError::Api(e)) => Ok(ServiceStatus::degraded(e.to_string())),
             Err(QbittorrentError::CommandFailed(msg)) => Ok(ServiceStatus::degraded(msg)),
         }

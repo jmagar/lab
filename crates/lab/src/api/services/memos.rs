@@ -17,7 +17,11 @@ async fn handle(
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, crate::dispatch::error::ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
-    let client = state.clients.memos.as_deref().ok_or_else(not_configured_error)?;
+    let client = state
+        .clients
+        .memos
+        .as_deref()
+        .ok_or_else(not_configured_error)?;
     handle_action(
         "memos",
         "api",

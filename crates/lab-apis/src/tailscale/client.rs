@@ -26,7 +26,11 @@ impl TailscaleClient {
     ///
     /// # Errors
     /// Returns [`TailscaleError::Api`] if TLS initialization fails.
-    pub fn new(base_url: &str, auth: Auth, tailnet: impl Into<String>) -> Result<Self, TailscaleError> {
+    pub fn new(
+        base_url: &str,
+        auth: Auth,
+        tailnet: impl Into<String>,
+    ) -> Result<Self, TailscaleError> {
         Ok(Self {
             http: HttpClient::new(base_url, auth)?,
             tailnet: tailnet.into(),
@@ -248,11 +252,7 @@ impl TailscaleClient {
     ///
     /// # Errors
     /// Returns `TailscaleError::Api` on HTTP failure.
-    pub async fn device_tag(
-        &self,
-        device_id: &str,
-        tags: &[String],
-    ) -> Result<(), TailscaleError> {
+    pub async fn device_tag(&self, device_id: &str, tags: &[String]) -> Result<(), TailscaleError> {
         let body = serde_json::json!({ "tags": tags });
         Ok(self
             .http
@@ -291,10 +291,7 @@ impl TailscaleClient {
     /// # Errors
     /// Returns `TailscaleError::Api` on HTTP failure.
     pub async fn tailnet_settings_get(&self) -> Result<serde_json::Value, TailscaleError> {
-        Ok(self
-            .http
-            .get_json(&self.tailnet_path("/settings"))
-            .await?)
+        Ok(self.http.get_json(&self.tailnet_path("/settings")).await?)
     }
 
     /// Patch tailnet-level settings.

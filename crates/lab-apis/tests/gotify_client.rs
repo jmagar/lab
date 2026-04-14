@@ -3,8 +3,8 @@
 use lab_apis::core::Auth;
 use lab_apis::gotify::GotifyClient;
 use lab_apis::gotify::types::{
-    Application, ApplicationId, ApplicationParams, Client, ClientId, ClientParams, Plugin, PluginId,
-    ServerVersion, UserId, UserCreate,
+    Application, ApplicationId, ApplicationParams, Client, ClientId, ClientParams, Plugin,
+    PluginId, ServerVersion, UserCreate, UserId,
 };
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -111,7 +111,9 @@ async fn client_update_puts_and_returns_client() {
         .await;
 
     let client = make_client(&server.uri());
-    let params = ClientParams { name: "NewName".into() };
+    let params = ClientParams {
+        name: "NewName".into(),
+    };
     let result = client
         .client_update(ClientId(2), &params)
         .await
@@ -158,7 +160,10 @@ async fn plugin_enable_posts_to_enable_endpoint() {
         .await;
 
     let client = make_client(&server.uri());
-    client.plugin_enable(PluginId(1)).await.expect("plugin_enable");
+    client
+        .plugin_enable(PluginId(1))
+        .await
+        .expect("plugin_enable");
 }
 
 // ── plugin.disable ────────────────────────────────────────────────────────────
@@ -173,7 +178,10 @@ async fn plugin_disable_posts_to_disable_endpoint() {
         .await;
 
     let client = make_client(&server.uri());
-    client.plugin_disable(PluginId(1)).await.expect("plugin_disable");
+    client
+        .plugin_disable(PluginId(1))
+        .await
+        .expect("plugin_disable");
 }
 
 // ── plugin.config-get ─────────────────────────────────────────────────────────

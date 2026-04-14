@@ -13,7 +13,10 @@ mod tests {
         assert!(names.contains(&"library.list"), "library.list missing");
         assert!(names.contains(&"library.get"), "library.get missing");
         assert!(names.contains(&"library.scan"), "library.scan missing");
-        assert!(names.contains(&"library.refresh"), "library.refresh missing");
+        assert!(
+            names.contains(&"library.refresh"),
+            "library.refresh missing"
+        );
         assert!(names.contains(&"media.search"), "media.search missing");
         assert!(names.contains(&"media.get"), "media.get missing");
         assert!(names.contains(&"session.list"), "session.list missing");

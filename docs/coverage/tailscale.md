@@ -1,7 +1,7 @@
 # Tailscale API Coverage
 
 **Last updated:** 2026-04-14
-**OpenAPI spec:** docs/api-specs/tailscale.openapi.yaml
+**OpenAPI spec:** docs/upstream-api/tailscale.openapi.yaml
 **OpenAPI version:** 3.1.0
 **API version:** v2
 **Paths:** 85

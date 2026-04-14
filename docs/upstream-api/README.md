@@ -34,38 +34,38 @@ OpenAPI specs go stale. To pull the latest:
 
 ```bash
 # Radarr / Sonarr / Prowlarr (dev branch — most current)
-curl -fsSL https://raw.githubusercontent.com/Radarr/Radarr/develop/src/Radarr.Api.V3/openapi.json > docs/api-specs/radarr.openapi.json
-curl -fsSL https://raw.githubusercontent.com/Sonarr/Sonarr/develop/src/Sonarr.Api.V3/openapi.json > docs/api-specs/sonarr.openapi.json
-curl -fsSL https://raw.githubusercontent.com/Prowlarr/Prowlarr/develop/src/Prowlarr.Api.V1/openapi.json > docs/api-specs/prowlarr.openapi.json
+curl -fsSL https://raw.githubusercontent.com/Radarr/Radarr/develop/src/Radarr.Api.V3/openapi.json > docs/upstream-api/radarr.openapi.json
+curl -fsSL https://raw.githubusercontent.com/Sonarr/Sonarr/develop/src/Sonarr.Api.V3/openapi.json > docs/upstream-api/sonarr.openapi.json
+curl -fsSL https://raw.githubusercontent.com/Prowlarr/Prowlarr/develop/src/Prowlarr.Api.V1/openapi.json > docs/upstream-api/prowlarr.openapi.json
 
 # Plex (community spec)
-curl -fsSL https://raw.githubusercontent.com/LukeHagar/plex-api-spec/main/plex-api-spec.yaml > docs/api-specs/plex.openapi.yaml
+curl -fsSL https://raw.githubusercontent.com/LukeHagar/plex-api-spec/main/plex-api-spec.yaml > docs/upstream-api/plex.openapi.yaml
 
 # Tailscale
-curl -fsSL "https://api.tailscale.com/api/v2?outputOpenapiSchema=true" > docs/api-specs/tailscale.openapi.yaml
+curl -fsSL "https://api.tailscale.com/api/v2?outputOpenapiSchema=true" > docs/upstream-api/tailscale.openapi.yaml
 
 # Memos
-curl -fsSL https://raw.githubusercontent.com/usememos/memos/main/proto/gen/openapi.yaml > docs/api-specs/memos.openapi.yaml
+curl -fsSL https://raw.githubusercontent.com/usememos/memos/main/proto/gen/openapi.yaml > docs/upstream-api/memos.openapi.yaml
 
 # Overseerr
-curl -fsSL https://raw.githubusercontent.com/sct/overseerr/develop/openapi.yaml > docs/api-specs/overseerr.openapi.yaml
+curl -fsSL https://raw.githubusercontent.com/sct/overseerr/develop/openapi.yaml > docs/upstream-api/overseerr.openapi.yaml
 
 # Paperless / ByteStash — fetch from YOUR instance, see paperless.md / bytestash.md
 
 # Gotify
-curl -fsSL https://raw.githubusercontent.com/gotify/server/master/docs/spec.json > docs/api-specs/gotify.openapi.json
+curl -fsSL https://raw.githubusercontent.com/gotify/server/master/docs/spec.json > docs/upstream-api/gotify.openapi.json
 
 # OpenAI (note: manual_spec branch, not master)
-curl -fsSL https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml > docs/api-specs/openai.openapi.yaml
+curl -fsSL https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml > docs/upstream-api/openai.openapi.yaml
 
 # Qdrant
-curl -fsSL https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json > docs/api-specs/qdrant.openapi.json
+curl -fsSL https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json > docs/upstream-api/qdrant.openapi.json
 
 # HF Text Embeddings Inference
-curl -fsSL https://raw.githubusercontent.com/huggingface/text-embeddings-inference/main/docs/openapi.json > docs/api-specs/tei.openapi.json
+curl -fsSL https://raw.githubusercontent.com/huggingface/text-embeddings-inference/main/docs/openapi.json > docs/upstream-api/tei.openapi.json
 
 # Apprise (no OpenAPI spec — hand-scraped from README)
-curl -fsSL https://raw.githubusercontent.com/caronc/apprise-api/master/README.md > docs/api-specs/apprise.md
+curl -fsSL https://raw.githubusercontent.com/caronc/apprise-api/master/README.md > docs/upstream-api/apprise.md
 ```
 
 A `just refresh-specs` target should be added that runs all of the above.

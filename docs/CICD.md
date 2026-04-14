@@ -73,14 +73,6 @@ Integration tests must be marked `#[ignore]` so `cargo nextest run` skips them w
 
 Binary size is tracked but not hard-gated in CI unless repo tooling enforces a monolith size limit. If a size gate is added, it runs in the fast check job.
 
-## Self-Update
-
-`lab self-update` is explicit-only:
-
-- no startup polling
-- no background update checks
-- verify release integrity before replacement
-
 ## Claude-Powered PR Checks
 
 Two additional jobs run on every PR against `main`. They use `anthropics/claude-code-action@v1` in automation mode (prompt-driven, no `@claude` trigger required).

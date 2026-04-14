@@ -64,7 +64,10 @@ async fn document_bulk_edit_posts_json() {
         method: "set_correspondent".to_string(),
         parameters: serde_json::json!({"correspondent": 5}),
     };
-    let result = client.document_bulk_edit(&req).await.expect("document_bulk_edit");
+    let result = client
+        .document_bulk_edit(&req)
+        .await
+        .expect("document_bulk_edit");
     assert_eq!(result["result"], "OK");
 }
 
@@ -81,7 +84,10 @@ async fn document_download_returns_base64_content() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.document_download(42, false).await.expect("document_download");
+    let result = client
+        .document_download(42, false)
+        .await
+        .expect("document_download");
     assert_eq!(result.size, file_content.len());
     // Verify the content can be decoded back
     use base64::Engine as _;
@@ -144,7 +150,10 @@ async fn saved_view_create_posts_and_returns() {
 
     let client = make_client(&server.uri());
     let payload = serde_json::json!({"name": "My View", "filter_rules": []});
-    let result = client.saved_view_create(&payload).await.expect("saved_view_create");
+    let result = client
+        .saved_view_create(&payload)
+        .await
+        .expect("saved_view_create");
     assert_eq!(result["id"], 10);
 }
 
@@ -164,7 +173,10 @@ async fn custom_fields_list_returns_value() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.custom_fields_list().await.expect("custom_fields_list");
+    let result = client
+        .custom_fields_list()
+        .await
+        .expect("custom_fields_list");
     assert_eq!(result["count"], 2);
 }
 
@@ -185,7 +197,10 @@ async fn custom_field_create_posts_and_returns() {
         name: "Reference".to_string(),
         data_type: "string".to_string(),
     };
-    let result = client.custom_field_create(&req).await.expect("custom_field_create");
+    let result = client
+        .custom_field_create(&req)
+        .await
+        .expect("custom_field_create");
     assert_eq!(result["id"], 3);
 }
 
@@ -202,7 +217,10 @@ async fn storage_paths_list_returns_value() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.storage_paths_list().await.expect("storage_paths_list");
+    let result = client
+        .storage_paths_list()
+        .await
+        .expect("storage_paths_list");
     assert_eq!(result["count"], 1);
 }
 
@@ -220,6 +238,9 @@ async fn storage_path_create_posts_and_returns() {
 
     let client = make_client(&server.uri());
     let payload = serde_json::json!({"name": "Invoices", "path": "/invoices/{{title}}"});
-    let result = client.storage_path_create(&payload).await.expect("storage_path_create");
+    let result = client
+        .storage_path_create(&payload)
+        .await
+        .expect("storage_path_create");
     assert_eq!(result["id"], 5);
 }

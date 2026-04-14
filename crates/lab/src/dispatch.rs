@@ -7,6 +7,7 @@ pub mod bytestash;
 pub mod clients;
 pub mod error;
 pub mod extract;
+pub mod gateway;
 #[cfg(feature = "gotify")]
 pub mod gotify;
 pub mod helpers;

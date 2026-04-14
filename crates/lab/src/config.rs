@@ -58,6 +58,9 @@ pub struct UpstreamConfig {
     /// Whether to proxy resources from this upstream (opt-in).
     #[serde(default)]
     pub proxy_resources: bool,
+    /// Optional allowlist of tool names/patterns to expose from this upstream.
+    #[serde(default)]
+    pub expose_tools: Option<Vec<String>>,
 }
 
 /// Table/json formatting defaults.

@@ -37,7 +37,9 @@ pub fn run(args: AuditArgs, format: OutputFormat) -> Result<ExitCode> {
             let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .ancestors()
                 .nth(2)
-                .ok_or_else(|| anyhow::anyhow!("cannot determine workspace root from CARGO_MANIFEST_DIR"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("cannot determine workspace root from CARGO_MANIFEST_DIR")
+                })?
                 .to_path_buf();
             let report = audit_services(&args.services, &repo_root);
             match format {

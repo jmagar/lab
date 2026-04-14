@@ -1,8 +1,30 @@
 # Upstream MCP Proxy
 
-Lab can act as an MCP gateway, proxying tool calls and resource reads to upstream MCP servers. This lets a single lab instance aggregate tools from multiple MCP servers behind one authenticated endpoint.
+Lab can act as an MCP gateway, proxying tool calls and resource reads to upstream MCP servers. This lets a single `lab` instance aggregate tools from multiple MCP servers behind one authenticated endpoint.
 
-The upstream pool lives in `crates/lab/src/dispatch/upstream/` — a shared dispatch module, not an MCP-specific module. Both the MCP and HTTP API surfaces can route to upstream servers.
+Upstream servers are first-class providers in the merged MCP tool catalog. After discovery, their tools appear in `list_tools()` beside built-in `lab` tools. Callers do not need a separate tool or namespace to invoke proxied upstream tools themselves.
+
+`lab` also exposes a separate `gateway` management surface for editing and reloading upstream definitions. That management surface is documented in [GATEWAY.md](./GATEWAY.md).
+
+The upstream pool lives in `crates/lab/src/dispatch/upstream/` because it is shared infrastructure. The runtime proxy path described in this document is wired into the MCP surface. The HTTP API now exposes `/v1/gateway` for gateway management, but it still does not proxy arbitrary upstream MCP tools.
+
+## What Operators Configure
+
+To proxy an upstream server through `lab`, you configure one or more `[[upstream]]` entries in `~/.config/lab/config.toml`, optionally provide bearer-token env vars in `~/.lab/.env`, then start `lab serve` normally.
+
+`lab` will:
+
+1. connect to every configured upstream at startup
+2. run tool discovery against each upstream
+3. merge discovered tools into its own MCP catalog
+4. serve the combined catalog through whichever MCP transport you expose from `lab`
+
+That means the client connects only to `lab`:
+
+- `lab serve` for stdio clients such as Claude Desktop
+- `lab serve --transport http` for streamable HTTP MCP clients
+
+The client never connects directly to the upstreams once `lab` is acting as the gateway.
 
 ## Configuration
 
@@ -39,19 +61,58 @@ proxy_resources = false
 | `bearer_token_env` | string | no | Name of an env var holding a bearer token. Not the token itself. |
 | `proxy_resources` | bool | no | Whether to proxy resources from this upstream. Default: `false`. |
 
-At least one of `url` or `command` must be set. If both are set, `url` is used.
+Exactly one of `url` or `command` must be set.
+
+### Config File Locations
+
+`lab` loads configuration from:
+
+1. process environment
+2. `~/.lab/.env`
+3. `~/.config/lab/config.toml`
+
+So a typical gateway setup looks like:
+
+`~/.config/lab/config.toml`
+
+```toml
+[mcp]
+transport = "http"
+host = "127.0.0.1"
+port = 8765
+
+[[upstream]]
+name = "remote-lab"
+url = "https://lab2.example.com/mcp"
+bearer_token_env = "REMOTE_LAB_TOKEN"
+proxy_resources = true
+
+[[upstream]]
+name = "filesystem"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/srv/data"]
+proxy_resources = false
+```
+
+`~/.lab/.env`
+
+```bash
+REMOTE_LAB_TOKEN=replace-me
+LAB_MCP_HTTP_TOKEN=replace-this-too
+```
 
 ### Config Validation
 
-Validation runs before discovery. Invalid entries are skipped with a warning.
+Validation runs before discovery. Invalid entries are skipped with a warning during startup discovery. The runtime `gateway` management surface rejects invalid mutations before writing them to disk.
 
 | Condition | Result |
 |-----------|--------|
 | Empty name | Skipped |
-| Duplicate name | First wins, duplicates skipped with warning |
+| Duplicate name | Startup keeps the first and warns; runtime gateway mutations reject the write |
 | Name contains `/`, `?`, or `#` | Skipped |
 | URL not `http://` or `https://` | Skipped |
 | URL uses bind-all address (`0.0.0.0`, `::`) | Skipped |
+| Both `url` and `command` set | Skipped |
 | Neither `url` nor `command` set | Skipped |
 
 ### Bearer Token
@@ -59,6 +120,8 @@ Validation runs before discovery. Invalid entries are skipped with a warning.
 The `bearer_token_env` field names an environment variable — it does not contain the token directly. At connection time, the pool reads the env var and passes the token as an auth header for HTTP upstreams, or injects it into the child process environment for stdio upstreams.
 
 If the named env var is not set, the connection proceeds without auth (HTTP upstreams log a warning; stdio upstreams currently skip injection silently).
+
+Changing a bearer-token env var does not hot-apply by itself. Use `gateway.reload` when you want the live pool to re-read `bearer_token_env`.
 
 ## Discovery
 
@@ -71,6 +134,19 @@ upstream discovery succeeded  upstream=remote-lab tool_count=12
 upstream discovery failed     upstream=broken-server error="connection refused"
 upstream discovery timed out  upstream=slow-server timeout_secs=15
 ```
+
+## How Routing Works
+
+The combined catalog is exposed as one MCP server, but ownership is still resolved internally.
+
+For each incoming MCP tool call:
+
+1. `lab` checks whether the tool name belongs to a built-in local service
+2. if not, it checks the discovered upstream tool map
+3. if an upstream owns that tool name, the request is proxied there using the original MCP arguments
+4. the upstream result is normalized into `lab`'s usual success/error envelope shape
+
+This internal precedence rule does not make upstream tools second-class. It is just how collisions are resolved.
 
 ## Tool Collision Handling
 
@@ -105,9 +181,9 @@ Each upstream has independent health tracking.
 
 ### Recovery
 
-- A successful call resets the upstream to healthy (0 failures).
-- After the circuit breaker opens (3+ failures), the upstream is re-probed after 30 seconds.
-- A successful re-probe resets the circuit breaker.
+- A successful proxied call resets the upstream to healthy (0 failures).
+- The code defines a `REPROBE_INTERVAL` of 30 seconds and tracks when an upstream became unhealthy.
+- Automatic scheduled re-probing is not currently wired into the runtime. In practice, recovery happens when a later proxied call or resource request succeeds.
 
 ## Response Size Cap
 
@@ -145,6 +221,89 @@ lab://upstream/remote-lab/lab://radarr/actions
 - `read_resource()` strips the prefix, identifies the upstream by name, and forwards the read.
 
 Failed resource listings from individual upstreams are logged as warnings. Other upstreams continue to serve.
+
+## What Is Exposed Where
+
+### MCP
+
+The upstream gateway is active on both MCP transports exposed by `lab`:
+
+- stdio
+- streamable HTTP at `/mcp`
+
+If an upstream tool is discovered successfully, MCP clients connected to `lab` can call it as a normal tool.
+
+### HTTP API
+
+The product HTTP API under `/v1/*` does not proxy arbitrary upstream MCP tools. It serves built-in `lab` routes plus `/v1/gateway` for gateway management.
+
+Keep this distinction explicit in operator docs:
+
+- use MCP when you want the upstream gateway behavior
+- use `/v1/gateway` when you want to manage `[[upstream]]` entries over HTTP
+- use the rest of `/v1/*` for `lab`'s built-in HTTP API surface
+
+## End-to-End Setup
+
+### 1. Configure upstreams
+
+Add one or more `[[upstream]]` entries to `~/.config/lab/config.toml`.
+
+### 2. Provide any required secrets
+
+Set bearer-token env vars named by `bearer_token_env` in `~/.lab/.env` or the process environment.
+
+### 3. Start `lab`
+
+For local stdio clients:
+
+```bash
+lab serve
+```
+
+For network MCP clients:
+
+```bash
+lab serve --transport http
+```
+
+### 4. Point the client at `lab`, not the upstreams
+
+Example `.mcp.json` for stdio:
+
+```json
+{
+  "mcpServers": {
+    "lab": {
+      "command": "lab",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+Example HTTP MCP endpoint:
+
+```text
+https://lab.example.com/mcp
+```
+
+### 5. Verify discovery
+
+Startup logs should include lines like:
+
+```text
+upstream discovery succeeded  upstream=remote-lab tool_count=12
+```
+
+Then an MCP client connected to `lab` should see the upstream tools in `list_tools()`.
+
+## Operational Notes
+
+- Upstream tool schemas are cached from discovery and reused for MCP tool metadata.
+- Upstream calls preserve the original MCP argument payload rather than forcing it through `lab`'s `action` + `params` wrapper.
+- Upstream errors are normalized into `lab` envelopes and usually surface as `upstream_error`, `network_error`, `server_error`, `decode_error`, or `internal_error`.
+- Response-size limits are enforced after the upstream response is materialized in memory.
 
 ## Environment Variables
 

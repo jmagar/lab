@@ -126,7 +126,10 @@ async fn request_retry_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let req = client.request_retry(7).await.expect("request_retry should succeed");
+    let req = client
+        .request_retry(7)
+        .await
+        .expect("request_retry should succeed");
     assert_eq!(req.id, 7);
 }
 
@@ -148,7 +151,10 @@ async fn request_count_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let count = client.request_count().await.expect("request_count should succeed");
+    let count = client
+        .request_count()
+        .await
+        .expect("request_count should succeed");
     assert_eq!(count.pending, 3);
     assert_eq!(count.total, 24);
 }
@@ -170,7 +176,10 @@ async fn issue_update_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let issue = client.issue_update(5, "resolved").await.expect("issue_update should succeed");
+    let issue = client
+        .issue_update(5, "resolved")
+        .await
+        .expect("issue_update should succeed");
     assert_eq!(issue.id, 5);
     assert_eq!(issue.status, 2);
 }
@@ -186,7 +195,10 @@ async fn media_delete_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    client.media_delete(99).await.expect("media_delete should succeed");
+    client
+        .media_delete(99)
+        .await
+        .expect("media_delete should succeed");
 }
 
 #[tokio::test]
@@ -200,7 +212,10 @@ async fn media_update_status_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    client.media_update_status(50, "available").await.expect("media_update_status should succeed");
+    client
+        .media_update_status(50, "available")
+        .await
+        .expect("media_update_status should succeed");
 }
 
 #[tokio::test]
@@ -224,7 +239,10 @@ async fn user_requests_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let list = client.user_requests(1).await.expect("user_requests should succeed");
+    let list = client
+        .user_requests(1)
+        .await
+        .expect("user_requests should succeed");
     assert_eq!(list.results.len(), 1);
     assert_eq!(list.results[0].id, 11);
 }
@@ -243,7 +261,10 @@ async fn user_quota_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let quota = client.user_quota(1).await.expect("user_quota should succeed");
+    let quota = client
+        .user_quota(1)
+        .await
+        .expect("user_quota should succeed");
     assert!(quota.get("movie").is_some());
 }
 
@@ -264,7 +285,10 @@ async fn user_edit_ok() {
 
     let client = make_client(&server.uri());
     let body = serde_json::json!({ "email": "updated@example.com" });
-    let user = client.user_edit(2, &body).await.expect("user_edit should succeed");
+    let user = client
+        .user_edit(2, &body)
+        .await
+        .expect("user_edit should succeed");
     assert_eq!(user.id, 2);
     assert_eq!(user.email, "updated@example.com");
 }
@@ -287,7 +311,10 @@ async fn job_run_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.job_run("plex-recently-added-scan").await.expect("job_run should succeed");
+    let result = client
+        .job_run("plex-recently-added-scan")
+        .await
+        .expect("job_run should succeed");
     assert_eq!(result["id"], "plex-recently-added-scan");
 }
 
@@ -307,6 +334,9 @@ async fn discover_trending_ok() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.discover_trending().await.expect("discover_trending should succeed");
+    let result = client
+        .discover_trending()
+        .await
+        .expect("discover_trending should succeed");
     assert_eq!(result["page"], 1);
 }

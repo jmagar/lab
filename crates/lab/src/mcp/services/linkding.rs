@@ -18,14 +18,26 @@ mod tests {
         );
         assert!(names.contains(&"bookmark.get"), "bookmark.get missing");
         assert!(names.contains(&"bookmark.check"), "bookmark.check missing");
-        assert!(names.contains(&"bookmark.create"), "bookmark.create missing");
-        assert!(names.contains(&"bookmark.update"), "bookmark.update missing");
-        assert!(names.contains(&"bookmark.archive"), "bookmark.archive missing");
+        assert!(
+            names.contains(&"bookmark.create"),
+            "bookmark.create missing"
+        );
+        assert!(
+            names.contains(&"bookmark.update"),
+            "bookmark.update missing"
+        );
+        assert!(
+            names.contains(&"bookmark.archive"),
+            "bookmark.archive missing"
+        );
         assert!(
             names.contains(&"bookmark.unarchive"),
             "bookmark.unarchive missing"
         );
-        assert!(names.contains(&"bookmark.delete"), "bookmark.delete missing");
+        assert!(
+            names.contains(&"bookmark.delete"),
+            "bookmark.delete missing"
+        );
         assert!(names.contains(&"tag.list"), "tag.list missing");
         assert!(names.contains(&"tag.get"), "tag.get missing");
         assert!(names.contains(&"tag.create"), "tag.create missing");

@@ -1,8 +1,10 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use lab_apis::core::Auth;
-use lab_apis::qdrant::types::{CreateCollection, CreateIndex, Distance, SearchRequest, UpsertPoint, VectorParams};
 use lab_apis::qdrant::QdrantClient;
+use lab_apis::qdrant::types::{
+    CreateCollection, CreateIndex, Distance, SearchRequest, UpsertPoint, VectorParams,
+};
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
@@ -81,7 +83,10 @@ async fn collection_create_calls_put() {
             distance: Distance::Cosine,
         },
     };
-    client.collection_create("test-col", &body).await.expect("collection_create");
+    client
+        .collection_create("test-col", &body)
+        .await
+        .expect("collection_create");
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +107,10 @@ async fn collection_delete_calls_delete() {
         .await;
 
     let client = QdrantClient::new(&server.uri(), Auth::None).expect("client");
-    client.collection_delete("to-delete").await.expect("collection_delete");
+    client
+        .collection_delete("to-delete")
+        .await
+        .expect("collection_delete");
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +139,7 @@ async fn point_upsert_batched_1200_makes_three_calls() {
             "time": 0.001,
             "result": { "operation_id": 0, "status": "completed" }
         })))
-        .expect(3)          // exactly 3 calls
+        .expect(3) // exactly 3 calls
         .mount(&server)
         .await;
 
@@ -214,7 +222,10 @@ async fn point_search_calls_post() {
         with_payload: Some(true),
         score_threshold: None,
     };
-    let result = client.point_search("vecs", &req).await.expect("point_search");
+    let result = client
+        .point_search("vecs", &req)
+        .await
+        .expect("point_search");
     assert!(result.is_object() || result.is_array() || !result.is_null());
 }
 
@@ -237,7 +248,10 @@ async fn point_query_calls_post() {
 
     let client = QdrantClient::new(&server.uri(), Auth::None).expect("client");
     let body = serde_json::json!({ "query": [0.1, 0.2], "limit": 3 });
-    client.point_query("vecs", &body).await.expect("point_query");
+    client
+        .point_query("vecs", &body)
+        .await
+        .expect("point_query");
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +273,10 @@ async fn point_scroll_calls_post() {
 
     let client = QdrantClient::new(&server.uri(), Auth::None).expect("client");
     let body = serde_json::json!({ "limit": 10 });
-    client.point_scroll("vecs", &body).await.expect("point_scroll");
+    client
+        .point_scroll("vecs", &body)
+        .await
+        .expect("point_scroll");
 }
 
 // ---------------------------------------------------------------------------
@@ -281,7 +298,10 @@ async fn point_count_calls_post() {
 
     let client = QdrantClient::new(&server.uri(), Auth::None).expect("client");
     let body = serde_json::json!({});
-    client.point_count("vecs", &body).await.expect("point_count");
+    client
+        .point_count("vecs", &body)
+        .await
+        .expect("point_count");
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +323,10 @@ async fn point_delete_calls_post() {
 
     let client = QdrantClient::new(&server.uri(), Auth::None).expect("client");
     let body = serde_json::json!({ "points": [1, 2, 3] });
-    client.point_delete("vecs", &body).await.expect("point_delete");
+    client
+        .point_delete("vecs", &body)
+        .await
+        .expect("point_delete");
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +351,10 @@ async fn snapshot_create_calls_post() {
         .await;
 
     let client = QdrantClient::new(&server.uri(), Auth::None).expect("client");
-    let info = client.snapshot_create("vecs").await.expect("snapshot_create");
+    let info = client
+        .snapshot_create("vecs")
+        .await
+        .expect("snapshot_create");
     assert_eq!(info.name, "2026-04-13-snap");
     assert_eq!(info.size, Some(1024));
 }
@@ -355,5 +381,8 @@ async fn index_create_calls_put() {
         field_name: "category".into(),
         field_schema: serde_json::json!("keyword"),
     };
-    client.index_create("vecs", &req).await.expect("index_create");
+    client
+        .index_create("vecs", &req)
+        .await
+        .expect("index_create");
 }

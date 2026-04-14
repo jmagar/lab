@@ -249,7 +249,10 @@ impl SabnzbdClient {
     ///
     /// # Errors
     /// Returns `SabnzbdError::Api` on HTTP failure.
-    pub async fn queue_set_complete_action(&self, action_value: &str) -> Result<bool, SabnzbdError> {
+    pub async fn queue_set_complete_action(
+        &self,
+        action_value: &str,
+    ) -> Result<bool, SabnzbdError> {
         let mut query = self.base_query("change_complete_action");
         query.push(("value".to_string(), action_value.to_string()));
         let resp: StatusResponse = self.http.get_json_query("/api", &query).await?;

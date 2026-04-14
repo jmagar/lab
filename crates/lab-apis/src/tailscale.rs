@@ -27,14 +27,12 @@ pub const META: PluginMeta = PluginMeta {
     description: "WireGuard-based mesh VPN — list devices, manage auth keys, query DNS settings",
     category: Category::Network,
     docs_url: "https://tailscale.com/api",
-    required_env: &[
-        EnvVar {
-            name: "TAILSCALE_API_KEY",
-            description: "Tailscale API access token (tskey-api-*)",
-            example: "tskey-api-xxxxx",
-            secret: true,
-        },
-    ],
+    required_env: &[EnvVar {
+        name: "TAILSCALE_API_KEY",
+        description: "Tailscale API access token (tskey-api-*)",
+        example: "tskey-api-xxxxx",
+        secret: true,
+    }],
     optional_env: &[
         EnvVar {
             name: "TAILSCALE_TAILNET",

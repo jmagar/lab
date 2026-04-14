@@ -3,17 +3,23 @@
 //! Extracted from `cli/serve.rs` so that both the stdio and HTTP transports
 //! can share the same handler logic.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
-    ElicitationAction, ElicitationSchema, ListToolsResult, PaginatedRequestParams, PrimitiveSchema,
+    AnnotateAble, CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
+    ElicitationAction, ElicitationSchema, GetPromptRequestParams, GetPromptResult,
+    ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+    PrimitiveSchema, RawResource, ReadResourceRequestParams, ReadResourceResult, ResourceContents,
     ServerCapabilities, ServerInfo, Tool,
 };
-use rmcp::service::RequestContext;
+use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::Value;
+use tokio::sync::RwLock;
 
+use crate::dispatch::gateway::manager::GatewayManager;
+use crate::dispatch::upstream::types::UpstreamCapability;
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
 use crate::mcp::registry::ToolRegistry;
@@ -43,15 +49,179 @@ fn action_schema() -> serde_json::Map<String, Value> {
 /// MCP server handler — one tool per registered service.
 pub struct LabMcpServer {
     pub registry: Arc<ToolRegistry>,
-    /// Upstream MCP server pool for gateway proxy dispatch.
-    ///
-    /// `None` when no `[[upstream]]` entries are configured.
-    pub upstream_pool: Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>>,
+    /// Shared gateway manager used to resolve the current live upstream pool.
+    pub gateway_manager: Option<Arc<GatewayManager>>,
+    /// Connected peers for list-changed notifications.
+    pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
 }
 
 impl ServerHandler for LabMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tool_list_changed()
+                .enable_resources()
+                .enable_resources_list_changed()
+                .enable_prompts()
+                .enable_prompts_list_changed()
+                .build(),
+        )
+    }
+
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+        self.peers.write().await.push(context.peer);
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        let before = self.snapshot_catalog().await;
+        let mut prompts = crate::mcp::prompts::list_all().prompts;
+
+        if let Some(pool) = self.current_upstream_pool().await {
+            let builtin_names: Vec<&str> =
+                prompts.iter().map(|prompt| prompt.name.as_ref()).collect();
+            let upstream_prompts = pool.list_upstream_prompts(&builtin_names).await;
+            prompts.extend(upstream_prompts);
+        }
+
+        let after = self.snapshot_catalog().await;
+        self.notify_catalog_changes(&before, &after).await;
+
+        Ok(ListPromptsResult::with_all_items(prompts))
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResult, ErrorData> {
+        let before = self.snapshot_catalog().await;
+        let args = request
+            .arguments
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(key, value)| {
+                let string = match value {
+                    Value::String(text) => text,
+                    other => other.to_string(),
+                };
+                (key, string)
+            })
+            .collect();
+
+        if let Some(prompt) = crate::mcp::prompts::get(&self.registry, &request.name, &args) {
+            return Ok(prompt);
+        }
+
+        if let Some(pool) = self.current_upstream_pool().await
+            && let Some(upstream_name) = pool.find_prompt_owner(&request.name).await
+        {
+            let prompt_name = request.name.clone();
+            let outcome = match pool.get_prompt(&upstream_name, request).await {
+                Some(Ok(result)) => Ok(result),
+                Some(Err(message)) => Err(ErrorData::internal_error(message, None)),
+                None => Err(ErrorData::invalid_params(
+                    format!("unknown prompt: {prompt_name}"),
+                    None,
+                )),
+            };
+            let after = self.snapshot_catalog().await;
+            self.notify_catalog_changes(&before, &after).await;
+            return outcome;
+        }
+
+        Err(ErrorData::invalid_params(
+            format!("unknown prompt: {}", request.name),
+            None,
+        ))
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        let before = self.snapshot_catalog().await;
+        let mut resources = vec![
+            RawResource::new("lab://catalog", "catalog")
+                .with_description("Full discovery document for all services")
+                .with_mime_type("application/json")
+                .no_annotation(),
+        ];
+
+        for svc in self.registry.services() {
+            let uri = format!("lab://{}/actions", svc.name);
+            let name = format!("{}/actions", svc.name);
+            resources.push(
+                RawResource::new(uri, name)
+                    .with_description(format!("Action list for {}", svc.name))
+                    .with_mime_type("application/json")
+                    .no_annotation(),
+            );
+        }
+
+        if let Some(pool) = self.current_upstream_pool().await {
+            resources.extend(pool.list_upstream_resources().await);
+        }
+
+        let after = self.snapshot_catalog().await;
+        self.notify_catalog_changes(&before, &after).await;
+
+        Ok(ListResourcesResult::with_all_items(resources))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        let before = self.snapshot_catalog().await;
+        let uri = &request.uri;
+
+        if let Some(pool) = self.current_upstream_pool().await
+            && uri.starts_with("lab://upstream/")
+        {
+            let outcome = match pool.read_upstream_resource(uri).await {
+                Some(Ok(result)) => Ok(result),
+                Some(Err(message)) => Err(ErrorData::internal_error(message, None)),
+                None => Err(ErrorData::resource_not_found(
+                    format!("unknown resource: {uri}"),
+                    None,
+                )),
+            };
+            let after = self.snapshot_catalog().await;
+            self.notify_catalog_changes(&before, &after).await;
+            return outcome;
+        }
+
+        let json = if uri == "lab://catalog" {
+            crate::mcp::resources::catalog_json(&self.registry)
+        } else if let Some(service) = uri
+            .strip_prefix("lab://")
+            .and_then(|value| value.strip_suffix("/actions"))
+        {
+            crate::mcp::resources::service_actions_json(&self.registry, service)
+        } else {
+            return Err(ErrorData::resource_not_found(
+                format!("unknown resource: {uri}"),
+                None,
+            ));
+        };
+
+        match json {
+            Ok(value) => {
+                let text = serde_json::to_string_pretty(&value).unwrap_or_default();
+                Ok(ReadResourceResult::new(vec![
+                    ResourceContents::text(text, uri.clone()).with_mime_type("application/json"),
+                ]))
+            }
+            Err(e) => Err(ErrorData::internal_error(e.to_string(), None)),
+        }
     }
 
     async fn list_tools(
@@ -68,7 +238,7 @@ impl ServerHandler for LabMcpServer {
             .collect();
 
         // Merge upstream tools (healthy only, filtered for collisions with built-in services).
-        if let Some(ref pool) = self.upstream_pool {
+        if let Some(pool) = self.current_upstream_pool().await {
             let builtin_names: Vec<&str> =
                 self.registry.services().iter().map(|s| s.name).collect();
             let upstream_tools = pool.healthy_tools().await;
@@ -180,9 +350,10 @@ impl ServerHandler for LabMcpServer {
         // Upstream tools don't use lab's action/params wrapper — they receive
         // raw arguments. Use "call_tool" as the action label for logging/envelopes.
         let upstream_action = "call_tool";
-        if let Some(ref pool) = self.upstream_pool
+        if let Some(pool) = self.current_upstream_pool().await
             && let Some((upstream_name, _tool)) = pool.find_tool(&service).await
         {
+            let before = self.snapshot_catalog().await;
             tracing::debug!(
                 surface = "mcp",
                 service,
@@ -221,10 +392,14 @@ impl ServerHandler for LabMcpServer {
                             "upstream proxy ok"
                         );
                     }
+                    let after = self.snapshot_catalog().await;
+                    self.notify_catalog_changes(&before, &after).await;
                     return Ok(result);
                 }
                 Some(Err(e)) => {
                     pool.record_failure(&upstream_name).await;
+                    let after = self.snapshot_catalog().await;
+                    self.notify_catalog_changes(&before, &after).await;
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::warn!(
                         surface = "mcp",
@@ -249,6 +424,8 @@ impl ServerHandler for LabMcpServer {
                     // Connection is gone — record failure so the circuit
                     // breaker can eventually exclude this upstream.
                     pool.record_failure(&upstream_name).await;
+                    let after = self.snapshot_catalog().await;
+                    self.notify_catalog_changes(&before, &after).await;
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::warn!(
                         surface = "mcp",
@@ -281,6 +458,85 @@ impl ServerHandler for LabMcpServer {
             &action,
             elapsed_ms,
         ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CatalogSnapshot {
+    tools: BTreeSet<String>,
+    resources: BTreeSet<String>,
+    prompts: BTreeSet<String>,
+}
+
+impl LabMcpServer {
+    async fn current_upstream_pool(
+        &self,
+    ) -> Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>> {
+        match &self.gateway_manager {
+            Some(manager) => manager.current_pool().await,
+            None => None,
+        }
+    }
+
+    async fn snapshot_catalog(&self) -> CatalogSnapshot {
+        let mut tools: BTreeSet<String> = self
+            .registry
+            .services()
+            .iter()
+            .map(|svc| svc.name.to_string())
+            .collect();
+
+        if let Some(pool) = self.current_upstream_pool().await {
+            for tool in pool.healthy_tools().await {
+                let name = tool.tool.name.to_string();
+                if !tools.contains(&name) {
+                    tools.insert(name);
+                }
+            }
+        }
+
+        let resources = if let Some(pool) = self.current_upstream_pool().await {
+            pool.routable_upstream_names(UpstreamCapability::Resources)
+                .await
+                .into_iter()
+                .collect()
+        } else {
+            BTreeSet::new()
+        };
+
+        let prompts = if let Some(pool) = self.current_upstream_pool().await {
+            pool.routable_upstream_names(UpstreamCapability::Prompts)
+                .await
+                .into_iter()
+                .collect()
+        } else {
+            BTreeSet::new()
+        };
+
+        CatalogSnapshot {
+            tools,
+            resources,
+            prompts,
+        }
+    }
+
+    async fn notify_catalog_changes(&self, before: &CatalogSnapshot, after: &CatalogSnapshot) {
+        if before == after {
+            return;
+        }
+
+        let peers = self.peers.read().await.clone();
+        for peer in peers {
+            if before.tools != after.tools {
+                drop(peer.notify_tool_list_changed().await);
+            }
+            if before.resources != after.resources {
+                drop(peer.notify_resource_list_changed().await);
+            }
+            if before.prompts != after.prompts {
+                drop(peer.notify_prompt_list_changed().await);
+            }
+        }
     }
 }
 
@@ -554,6 +810,7 @@ mod tests {
     use super::{normalize_upstream_result, static_kind};
     use crate::dispatch::error::ToolError;
     use crate::mcp::envelope::build_error;
+    use rmcp::ServerHandler;
     use rmcp::model::{CallToolResult, Content};
 
     /// Every kind that `ToolError::kind()` can return must have an explicit arm
@@ -637,5 +894,50 @@ mod tests {
 
         assert_eq!(kind, "missing_param");
         assert!(!counts_as_failure);
+    }
+
+    #[test]
+    fn server_capabilities_advertise_list_changed_support() {
+        let server = super::LabMcpServer {
+            registry: std::sync::Arc::new(crate::mcp::registry::ToolRegistry::new()),
+            gateway_manager: None,
+            peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+
+        let info = server.get_info();
+        assert_eq!(
+            info.capabilities.tools.and_then(|c| c.list_changed),
+            Some(true)
+        );
+        assert_eq!(
+            info.capabilities.resources.and_then(|c| c.list_changed),
+            Some(true)
+        );
+        assert_eq!(
+            info.capabilities.prompts.and_then(|c| c.list_changed),
+            Some(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn server_reads_current_pool_from_gateway_manager() {
+        let runtime = crate::dispatch::gateway::manager::GatewayRuntimeHandle::default();
+        let manager = std::sync::Arc::new(crate::dispatch::gateway::manager::GatewayManager::new(
+            std::path::PathBuf::from("config.toml"),
+            runtime.clone(),
+        ));
+        let server = super::LabMcpServer {
+            registry: std::sync::Arc::new(crate::mcp::registry::ToolRegistry::new()),
+            gateway_manager: Some(std::sync::Arc::clone(&manager)),
+            peers: manager.peer_sink(),
+        };
+
+        assert!(server.current_upstream_pool().await.is_none());
+
+        let pool = std::sync::Arc::new(crate::dispatch::upstream::pool::UpstreamPool::new());
+        runtime.swap(Some(std::sync::Arc::clone(&pool))).await;
+
+        let current = server.current_upstream_pool().await.expect("pool");
+        assert!(std::sync::Arc::ptr_eq(&current, &pool));
     }
 }

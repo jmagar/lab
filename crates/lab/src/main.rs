@@ -50,7 +50,12 @@ fn init_tracing() {
         let ansi = std::io::stderr().is_terminal();
         tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().with_target(false).with_ansi(ansi).with_writer(std::io::stderr))
+            .with(
+                fmt::layer()
+                    .with_target(false)
+                    .with_ansi(ansi)
+                    .with_writer(std::io::stderr),
+            )
             .init();
     }
 }

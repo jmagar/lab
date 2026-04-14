@@ -16,8 +16,11 @@ use crate::dispatch::error::ToolError;
 ///
 /// Changed from a bare `fn` pointer to `Arc<dyn Fn>` so dispatch closures
 /// can capture shared state (e.g. upstream pool connections in later phases).
-pub type DispatchFn =
-    Arc<dyn Fn(String, Value) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send>> + Send + Sync>;
+pub type DispatchFn = Arc<
+    dyn Fn(String, Value) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// Wrap an `async fn(&str, Value) -> Result<Value, ToolError>` into a [`DispatchFn`].
 ///
@@ -35,7 +38,7 @@ macro_rules! dispatch_fn {
                             Output = Result<serde_json::Value, $crate::dispatch::error::ToolError>,
                         > + Send,
                 >,
-            > { Box::pin(async move { $f(&action, params).await }) }
+            > { Box::pin(async move { $f(&action, params).await }) },
         )
     };
 }
@@ -181,6 +184,15 @@ pub fn build_default_registry() -> ToolRegistry {
             dispatch: dispatch_fn!(crate::mcp::services::extract::dispatch),
         });
     }
+
+    reg.register(RegisteredService {
+        name: "gateway",
+        description: "Manage proxied upstream MCP gateways",
+        category: "bootstrap",
+        status: "available",
+        actions: crate::mcp::services::gateway::ACTIONS,
+        dispatch: dispatch_fn!(crate::mcp::services::gateway::dispatch),
+    });
 
     register_service!(
         reg,
@@ -340,6 +352,7 @@ mod tests {
         let names: Vec<&str> = reg.services().iter().map(|s| s.name).collect();
         // extract is always-on (no feature flag)
         assert!(names.contains(&"extract"), "extract missing");
+        assert!(names.contains(&"gateway"), "gateway missing");
         // feature-gated services — present only when the flag is enabled
         #[cfg(feature = "radarr")]
         assert!(names.contains(&"radarr"), "radarr missing");
@@ -408,6 +421,7 @@ mod tests {
         let http_router_services: std::collections::HashSet<&'static str> = {
             let mut s = std::collections::HashSet::new();
             s.insert(lab_apis::extract::META.name); // always-on
+            s.insert("gateway");
             #[cfg(feature = "radarr")]
             s.insert(lab_apis::radarr::META.name);
             #[cfg(feature = "sonarr")]

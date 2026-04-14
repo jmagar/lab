@@ -6,7 +6,7 @@ use crate::dispatch::helpers::{action_schema, help_payload};
 
 use super::catalog::ACTIONS;
 use super::client::require_client;
-use super::params::{opt_u32, opt_str, require_str, require_u64, to_json};
+use super::params::{opt_str, opt_u32, require_str, require_u64, to_json};
 
 /// Redact sensitive fields from the `SABnzbd` config response.
 ///
@@ -18,24 +18,35 @@ pub fn sanitize_config(mut value: Value) -> Value {
     if let Some(obj) = value.as_object_mut() {
         // Redact top-level api_key
         if obj.contains_key("api_key") {
-            obj.insert("api_key".to_string(), Value::String("[redacted]".to_string()));
+            obj.insert(
+                "api_key".to_string(),
+                Value::String("[redacted]".to_string()),
+            );
         }
         // Redact servers[*].password
         if let Some(Value::Array(servers)) = obj.get_mut("servers") {
             for server in servers.iter_mut() {
                 if let Some(s) = server.as_object_mut()
-                    && s.contains_key("password") {
-                        s.insert("password".to_string(), Value::String("[redacted]".to_string()));
-                    }
+                    && s.contains_key("password")
+                {
+                    s.insert(
+                        "password".to_string(),
+                        Value::String("[redacted]".to_string()),
+                    );
+                }
             }
         }
         // Redact indexers[*].apikey
         if let Some(Value::Array(indexers)) = obj.get_mut("indexers") {
             for indexer in indexers.iter_mut() {
                 if let Some(idx) = indexer.as_object_mut()
-                    && idx.contains_key("apikey") {
-                        idx.insert("apikey".to_string(), Value::String("[redacted]".to_string()));
-                    }
+                    && idx.contains_key("apikey")
+                {
+                    idx.insert(
+                        "apikey".to_string(),
+                        Value::String("[redacted]".to_string()),
+                    );
+                }
             }
         }
     }

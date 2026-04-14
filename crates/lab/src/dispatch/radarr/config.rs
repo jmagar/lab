@@ -214,10 +214,14 @@ pub async fn dispatch_with_client(
             to_json(releases)
         }
         "release.grab" => {
-            let release = params.get("release").cloned().ok_or_else(|| ToolError::MissingParam {
-                message: "missing required parameter `release`".to_string(),
-                param: "release".to_string(),
-            })?;
+            let release =
+                params
+                    .get("release")
+                    .cloned()
+                    .ok_or_else(|| ToolError::MissingParam {
+                        message: "missing required parameter `release`".to_string(),
+                        param: "release".to_string(),
+                    })?;
             let grabbed = client.release_grab(&release).await?;
             Ok(grabbed)
         }

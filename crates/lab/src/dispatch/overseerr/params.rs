@@ -35,10 +35,13 @@ pub fn create_request_body(params: &Value) -> Result<CreateRequestBody, ToolErro
             s.split(',')
                 .filter(|p| !p.trim().is_empty())
                 .map(|p| {
-                    p.trim().parse::<u32>().map_err(|_| ToolError::InvalidParam {
-                        message: "seasons must be comma-separated integers (e.g. '1,2,3')".into(),
-                        param: "seasons".to_string(),
-                    })
+                    p.trim()
+                        .parse::<u32>()
+                        .map_err(|_| ToolError::InvalidParam {
+                            message: "seasons must be comma-separated integers (e.g. '1,2,3')"
+                                .into(),
+                            param: "seasons".to_string(),
+                        })
                 })
                 .collect::<Result<Vec<u32>, ToolError>>()
         })

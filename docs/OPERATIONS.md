@@ -122,16 +122,6 @@ Locked release expectations:
 
 Tag format should stay `vX.Y.Z`.
 
-## Self-Update
-
-`lab self-update` is explicit-only.
-
-Rules:
-
-- no startup polling
-- no background update checks
-- verify release integrity before replacement
-
 ## Privacy Rule
 
 Operator workflows must respect the project-wide privacy rule:

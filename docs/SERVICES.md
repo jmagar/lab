@@ -1,23 +1,27 @@
 # Services
 
-`lab` is built around feature-gated service integrations. Each service follows the same structural contract so the CLI, MCP server, and TUI can treat them uniformly.
+`lab` is built around feature-gated service integrations plus a small number of product-local surfaces. Most integrations follow the same structural contract so the CLI, MCP server, API, and TUI can treat them uniformly.
 
 ## Per-Service Shape
 
-Each service must provide:
+Most service integrations provide:
 
 - a `lab-apis` module
 - a typed client
 - request/response types
 - a service-specific error type
+- a shared dispatch entry
 - a `PluginMeta`
 - a health-check implementation
 - a CLI shim
 - an MCP dispatch shim
+- an API shim when the service is exposed over HTTP
+
+Product-local surfaces such as `gateway` are allowed to live entirely in `lab` when they manage product behavior rather than wrapping an upstream service API.
 
 ## Feature Gates
 
-Service integrations are feature-gated in `lab-apis` and re-exported in `lab`.
+Most upstream-backed service integrations are feature-gated in `lab-apis` and re-exported in `lab`.
 
 Categories currently include:
 
@@ -135,7 +139,7 @@ At a high level:
 1. start from the upstream spec in `docs/upstream-api/`
 2. build the `lab-apis` client and types
 3. wire CLI, MCP, and HTTP shims
-4. register the service in feature flags, discovery, and metadata
+4. register the service in feature flags, discovery, dispatch, and metadata
 5. update the coverage doc under `docs/coverage/`
 6. test locally and verify against a real instance when possible
 
@@ -149,4 +153,4 @@ The service set is grouped conceptually, not implemented as unrelated one-offs.
 
 ## Synthetic Service
 
-[`EXTRACT.md`](./EXTRACT.md) documents `extract`, which is not a remote API service but still follows the same structural shape for consistency.
+[`EXTRACT.md`](./EXTRACT.md) documents `extract`, which is not a remote API service but still follows the shared dispatch model for consistency. [`GATEWAY.md`](./GATEWAY.md) documents a product-local management surface that edits and reloads `[[upstream]]` config and therefore does not fit the usual `lab-apis` service shape.

@@ -51,10 +51,7 @@ impl SonarrClient {
     /// # Errors
     /// Returns `SonarrError::Api` on HTTP failure.
     pub async fn series_get(&self, id: i64) -> Result<Series, SonarrError> {
-        Ok(self
-            .http
-            .get_json(&format!("/api/v3/series/{id}"))
-            .await?)
+        Ok(self.http.get_json(&format!("/api/v3/series/{id}")).await?)
     }
 
     /// Lookup series candidates by TVDB ID or search term.
@@ -66,7 +63,10 @@ impl SonarrClient {
     pub async fn series_lookup(&self, query: &str) -> Result<Value, SonarrError> {
         Ok(self
             .http
-            .get_json_query("/api/v3/series/lookup", &[("term".to_string(), query.to_string())])
+            .get_json_query(
+                "/api/v3/series/lookup",
+                &[("term".to_string(), query.to_string())],
+            )
             .await?)
     }
 
@@ -119,10 +119,7 @@ impl SonarrClient {
     /// # Errors
     /// Returns `SonarrError::Api` on HTTP failure.
     pub async fn episode_get(&self, id: i64) -> Result<Episode, SonarrError> {
-        Ok(self
-            .http
-            .get_json(&format!("/api/v3/episode/{id}"))
-            .await?)
+        Ok(self.http.get_json(&format!("/api/v3/episode/{id}")).await?)
     }
 
     // ── Queue ─────────────────────────────────────────────────────────────────
@@ -173,7 +170,11 @@ impl SonarrClient {
     ///
     /// # Errors
     /// Returns `SonarrError::Api` on HTTP failure.
-    pub async fn wanted_missing(&self, page: Option<u32>, page_size: Option<u32>) -> Result<Value, SonarrError> {
+    pub async fn wanted_missing(
+        &self,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Value, SonarrError> {
         let mut pairs = Vec::new();
         if let Some(p) = page {
             pairs.push(("page".to_string(), p.to_string()));
@@ -181,7 +182,10 @@ impl SonarrClient {
         if let Some(ps) = page_size {
             pairs.push(("pageSize".to_string(), ps.to_string()));
         }
-        Ok(self.http.get_json_query("/api/v3/wanted/missing", &pairs).await?)
+        Ok(self
+            .http
+            .get_json_query("/api/v3/wanted/missing", &pairs)
+            .await?)
     }
 
     // ── Calendar ──────────────────────────────────────────────────────────────
@@ -308,7 +312,10 @@ impl SonarrClient {
     /// # Errors
     /// Returns `SonarrError::Api` on HTTP failure.
     pub async fn series_edit(&self, id: i64, body: &Value) -> Result<Value, SonarrError> {
-        Ok(self.http.put_json(&format!("/api/v3/series/{id}"), body).await?)
+        Ok(self
+            .http
+            .put_json(&format!("/api/v3/series/{id}"), body)
+            .await?)
     }
 
     // ── Episode Monitor ───────────────────────────────────────────────────────
@@ -348,7 +355,10 @@ impl SonarrClient {
         if let Some(ps) = page_size {
             pairs.push(("pageSize".to_string(), ps.to_string()));
         }
-        Ok(self.http.get_json_query("/api/v3/wanted/cutoff", &pairs).await?)
+        Ok(self
+            .http
+            .get_json_query("/api/v3/wanted/cutoff", &pairs)
+            .await?)
     }
 
     // ── Releases ──────────────────────────────────────────────────────────────
@@ -447,7 +457,10 @@ impl SonarrClient {
     /// # Errors
     /// Returns `SonarrError::Api` on HTTP failure.
     pub async fn episodefile_delete(&self, id: i64) -> Result<(), SonarrError> {
-        Ok(self.http.delete(&format!("/api/v3/episodefile/{id}")).await?)
+        Ok(self
+            .http
+            .delete(&format!("/api/v3/episodefile/{id}"))
+            .await?)
     }
 
     // ── System ────────────────────────────────────────────────────────────────

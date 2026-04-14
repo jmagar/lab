@@ -43,7 +43,10 @@ async fn series_list_success() {
         .mount(&server)
         .await;
 
-    let series_list = client(&server.uri()).series_list().await.expect("series_list");
+    let series_list = client(&server.uri())
+        .series_list()
+        .await
+        .expect("series_list");
     assert_eq!(series_list.len(), 1);
     assert_eq!(series_list[0].title, "Breaking Bad");
     assert_eq!(series_list[0].id, 1);
@@ -79,7 +82,10 @@ async fn system_status_success() {
         .mount(&server)
         .await;
 
-    let status = client(&server.uri()).system_status().await.expect("system_status");
+    let status = client(&server.uri())
+        .system_status()
+        .await
+        .expect("system_status");
     // Verify the response decoded as Value successfully
     assert!(status.get("version").is_some());
     assert_eq!(status["version"], "4.0.0.123");
@@ -177,7 +183,9 @@ async fn release_grab_success() {
     Mock::given(method("POST"))
         .and(path("/api/v3/release"))
         .and(header("X-Api-Key", "testkey"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "guid": "abc123" })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "guid": "abc123" })),
+        )
         .mount(&server)
         .await;
 

@@ -69,7 +69,10 @@ async fn movie_edit_not_found() {
 
     assert!(matches!(
         err,
-        lab_apis::radarr::error::RadarrError::NotFound { kind: "movie", id: 999 }
+        lab_apis::radarr::error::RadarrError::NotFound {
+            kind: "movie",
+            id: 999
+        }
     ));
 }
 

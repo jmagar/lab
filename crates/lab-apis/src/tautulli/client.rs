@@ -71,8 +71,11 @@ impl TautulliClient {
     /// # Errors
     /// Returns [`TautulliError::Api`] on HTTP failure.
     pub async fn get_stream_data(&self, session_key: &str) -> Result<Value, TautulliError> {
-        self.api_get("get_stream_data", &[("session_key", session_key.to_string())])
-            .await
+        self.api_get(
+            "get_stream_data",
+            &[("session_key", session_key.to_string())],
+        )
+        .await
     }
 
     // ── History ───────────────────────────────────────────────────────────────
@@ -84,7 +87,10 @@ impl TautulliClient {
     pub async fn get_history(&self, query: &HistoryQuery) -> Result<Value, TautulliError> {
         let mut extra: Vec<(&str, String)> = Vec::new();
         if let Some(p) = query.page {
-            extra.push(("start", ((p.saturating_sub(1)) * query.page_size.unwrap_or(25)).to_string()));
+            extra.push((
+                "start",
+                ((p.saturating_sub(1)) * query.page_size.unwrap_or(25)).to_string(),
+            ));
         }
         if let Some(ps) = query.page_size {
             extra.push(("length", ps.to_string()));
@@ -143,11 +149,8 @@ impl TautulliClient {
     /// # Errors
     /// Returns [`TautulliError::Api`] on HTTP failure.
     pub async fn get_user_player_stats(&self, user_id: i64) -> Result<Value, TautulliError> {
-        self.api_get(
-            "get_user_player_stats",
-            &[("user_id", user_id.to_string())],
-        )
-        .await
+        self.api_get("get_user_player_stats", &[("user_id", user_id.to_string())])
+            .await
     }
 
     // ── Libraries ─────────────────────────────────────────────────────────────
@@ -316,8 +319,11 @@ impl TautulliClient {
         time_range: Option<u32>,
     ) -> Result<Value, TautulliError> {
         let days = time_range.unwrap_or(30);
-        self.api_get("get_plays_by_dayofweek", &[("time_range", days.to_string())])
-            .await
+        self.api_get(
+            "get_plays_by_dayofweek",
+            &[("time_range", days.to_string())],
+        )
+        .await
     }
 
     /// Get play count grouped by hour of day.
@@ -331,8 +337,11 @@ impl TautulliClient {
         time_range: Option<u32>,
     ) -> Result<Value, TautulliError> {
         let days = time_range.unwrap_or(30);
-        self.api_get("get_plays_by_hourofday", &[("time_range", days.to_string())])
-            .await
+        self.api_get(
+            "get_plays_by_hourofday",
+            &[("time_range", days.to_string())],
+        )
+        .await
     }
 
     /// Get play count grouped by stream type.

@@ -69,7 +69,12 @@ impl AppriseClient {
     ///
     /// # Errors
     /// Returns `AppriseError::Api` on HTTP failure.
-    pub async fn add_config(&self, key: &str, config: &str, format: &str) -> Result<(), AppriseError> {
+    pub async fn add_config(
+        &self,
+        key: &str,
+        config: &str,
+        format: &str,
+    ) -> Result<(), AppriseError> {
         let path = format!("/add/{}", encode_path_segment(key));
         let body = super::types::AddRequest {
             urls: None,

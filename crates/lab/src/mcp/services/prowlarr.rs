@@ -14,7 +14,10 @@ mod tests {
         assert!(names.contains(&"indexer.get"), "indexer.get missing");
         assert!(names.contains(&"indexer.delete"), "indexer.delete missing");
         assert!(names.contains(&"indexer.test"), "indexer.test missing");
-        assert!(names.contains(&"indexer.testall"), "indexer.testall missing");
+        assert!(
+            names.contains(&"indexer.testall"),
+            "indexer.testall missing"
+        );
         assert!(
             names.contains(&"indexer.categories"),
             "indexer.categories missing"
@@ -24,7 +27,10 @@ mod tests {
             names.contains(&"application.list"),
             "application.list missing"
         );
-        assert!(names.contains(&"application.get"), "application.get missing");
+        assert!(
+            names.contains(&"application.get"),
+            "application.get missing"
+        );
         assert!(
             names.contains(&"application.delete"),
             "application.delete missing"
@@ -35,10 +41,7 @@ mod tests {
 
     #[test]
     fn destructive_actions_are_marked() {
-        let indexer_delete = ACTIONS
-            .iter()
-            .find(|a| a.name == "indexer.delete")
-            .unwrap();
+        let indexer_delete = ACTIONS.iter().find(|a| a.name == "indexer.delete").unwrap();
         assert!(
             indexer_delete.destructive,
             "indexer.delete must be marked destructive"

@@ -1,5 +1,7 @@
-use lab_apis::qdrant::types::{CreateCollection, CreateIndex, Distance, SearchRequest, UpsertPoint, VectorParams};
 use lab_apis::qdrant::QdrantClient;
+use lab_apis::qdrant::types::{
+    CreateCollection, CreateIndex, Distance, SearchRequest, UpsertPoint, VectorParams,
+};
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
@@ -71,29 +73,36 @@ pub async fn dispatch_with_client(
 
         "point.upsert" => {
             let collection = require_str(&params_value, "collection")?;
-            let raw_points = params_value.get("points").ok_or_else(|| ToolError::MissingParam {
-                message: "missing required parameter `points`".into(),
-                param: "points".into(),
-            })?;
-            let points: Vec<UpsertPoint> =
-                serde_json::from_value(raw_points.clone()).map_err(|e| ToolError::InvalidParam {
-                    message: format!("parameter `points` is not valid: {e}"),
+            let raw_points = params_value
+                .get("points")
+                .ok_or_else(|| ToolError::MissingParam {
+                    message: "missing required parameter `points`".into(),
                     param: "points".into(),
+                })?;
+            let points: Vec<UpsertPoint> =
+                serde_json::from_value(raw_points.clone()).map_err(|e| {
+                    ToolError::InvalidParam {
+                        message: format!("parameter `points` is not valid: {e}"),
+                        param: "points".into(),
+                    }
                 })?;
             to_json(client.point_upsert_batched(collection, points).await?)
         }
 
         "point.search" => {
             let collection = require_str(&params_value, "collection")?;
-            let raw_vector = params_value.get("vector").ok_or_else(|| ToolError::MissingParam {
-                message: "missing required parameter `vector`".into(),
-                param: "vector".into(),
-            })?;
-            let vector: Vec<f32> =
-                serde_json::from_value(raw_vector.clone()).map_err(|e| ToolError::InvalidParam {
-                    message: format!("parameter `vector` is not valid: {e}"),
+            let raw_vector = params_value
+                .get("vector")
+                .ok_or_else(|| ToolError::MissingParam {
+                    message: "missing required parameter `vector`".into(),
                     param: "vector".into(),
                 })?;
+            let vector: Vec<f32> = serde_json::from_value(raw_vector.clone()).map_err(|e| {
+                ToolError::InvalidParam {
+                    message: format!("parameter `vector` is not valid: {e}"),
+                    param: "vector".into(),
+                }
+            })?;
             let limit = crate::dispatch::helpers::require_i64(&params_value, "limit")?;
             if limit <= 0 {
                 return Err(ToolError::InvalidParam {
@@ -103,12 +112,14 @@ pub async fn dispatch_with_client(
             }
             let filter = params_value.get("filter").cloned();
             let with_payload = params_value.get("with_payload").and_then(Value::as_bool);
-            let score_threshold = params_value
-                .get("score_threshold")
-                .and_then(|v| v.as_f64().map(|f| {
+            let score_threshold = params_value.get("score_threshold").and_then(|v| {
+                v.as_f64().map(|f| {
                     #[allow(clippy::cast_possible_truncation)]
-                    { f as f32 }
-                }));
+                    {
+                        f as f32
+                    }
+                })
+            });
             let req = SearchRequest {
                 vector,
                 #[allow(clippy::cast_sign_loss)]
@@ -122,9 +133,10 @@ pub async fn dispatch_with_client(
 
         "point.query" => {
             let collection = require_str(&params_value, "collection")?;
-            let query = params_value.get("query").cloned().unwrap_or(Value::Object(
-                serde_json::Map::new(),
-            ));
+            let query = params_value
+                .get("query")
+                .cloned()
+                .unwrap_or(Value::Object(serde_json::Map::new()));
             to_json(client.point_query(collection, &query).await?)
         }
 
@@ -139,9 +151,10 @@ pub async fn dispatch_with_client(
 
         "point.count" => {
             let collection = require_str(&params_value, "collection")?;
-            let body = params_value
-                .get("filter")
-                .map_or_else(|| Value::Object(serde_json::Map::new()), |filter| serde_json::json!({ "filter": filter }));
+            let body = params_value.get("filter").map_or_else(
+                || Value::Object(serde_json::Map::new()),
+                |filter| serde_json::json!({ "filter": filter }),
+            );
             to_json(client.point_count(collection, &body).await?)
         }
 
@@ -161,7 +174,11 @@ pub async fn dispatch_with_client(
                     param: "points".into(),
                 });
             }
-            to_json(client.point_delete(collection, &Value::Object(body)).await?)
+            to_json(
+                client
+                    .point_delete(collection, &Value::Object(body))
+                    .await?,
+            )
         }
 
         "snapshot.create" => {
@@ -172,13 +189,12 @@ pub async fn dispatch_with_client(
         "index.create" => {
             let collection = require_str(&params_value, "collection")?;
             let field_name = require_str(&params_value, "field_name")?.to_string();
-            let field_schema = params_value
-                .get("field_schema")
-                .cloned()
-                .ok_or_else(|| ToolError::MissingParam {
+            let field_schema = params_value.get("field_schema").cloned().ok_or_else(|| {
+                ToolError::MissingParam {
                     message: "missing required parameter `field_schema`".into(),
                     param: "field_schema".into(),
-                })?;
+                }
+            })?;
             let req = CreateIndex {
                 field_name,
                 field_schema,

@@ -73,9 +73,7 @@ impl ServiceClient for TautulliClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed".into()),
             }),
-            Err(TautulliError::Api(ApiError::Network(msg))) => {
-                Ok(ServiceStatus::unreachable(msg))
-            }
+            Err(TautulliError::Api(ApiError::Network(msg))) => Ok(ServiceStatus::unreachable(msg)),
             Err(TautulliError::Api(e)) => Err(e),
         }
     }

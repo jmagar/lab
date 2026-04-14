@@ -11,9 +11,9 @@
 open "$BYTESTASH_URL/api-docs"
 
 # Raw JSON (path may vary — common defaults)
-curl -fsSL "$BYTESTASH_URL/api-docs/swagger.json" -o docs/api-specs/bytestash.openapi.json
+curl -fsSL "$BYTESTASH_URL/api-docs/swagger.json" -o docs/upstream-api/bytestash.openapi.json
 # or
-curl -fsSL "$BYTESTASH_URL/api-docs.json" -o docs/api-specs/bytestash.openapi.json
+curl -fsSL "$BYTESTASH_URL/api-docs.json" -o docs/upstream-api/bytestash.openapi.json
 ```
 
 If neither path works, inspect the network requests in the running Swagger UI to find the actual JSON endpoint.

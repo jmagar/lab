@@ -1,7 +1,7 @@
 # qBittorrent API Coverage
 
 **Last updated:** 2026-04-13
-**Source spec:** docs/api-specs/qbittorrent.md
+**Source spec:** docs/upstream-api/qbittorrent.md
 **Format:** hand-scraped reference
 
 ## Legend

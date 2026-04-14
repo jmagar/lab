@@ -74,9 +74,7 @@ impl ServiceClient for OverseerrClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: Some("auth failed".into()),
             }),
-            Err(OverseerrError::Api(ApiError::Network(msg))) => {
-                Ok(ServiceStatus::unreachable(msg))
-            }
+            Err(OverseerrError::Api(ApiError::Network(msg))) => Ok(ServiceStatus::unreachable(msg)),
             Err(OverseerrError::Api(e)) => Err(e),
         }
     }

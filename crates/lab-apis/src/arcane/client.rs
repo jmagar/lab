@@ -87,9 +87,7 @@ impl ArcaneClient {
     ) -> Result<Container, ArcaneError> {
         let resp: ApiResponse<Container> = self
             .http
-            .get_json(&format!(
-                "/environments/{env_id}/containers/{container_id}"
-            ))
+            .get_json(&format!("/environments/{env_id}/containers/{container_id}"))
             .await?;
         Ok(resp.data)
     }
@@ -432,7 +430,10 @@ mod tests {
             .mount(&server)
             .await;
         let c = client(&server.uri());
-        let result = c.image_update_summary("env1").await.expect("should succeed");
+        let result = c
+            .image_update_summary("env1")
+            .await
+            .expect("should succeed");
         assert_eq!(result.updates_available, Some(3));
     }
 
@@ -445,6 +446,8 @@ mod tests {
             .mount(&server)
             .await;
         let c = client(&server.uri());
-        c.volume_delete("env1", "myvol").await.expect("should succeed");
+        c.volume_delete("env1", "myvol")
+            .await
+            .expect("should succeed");
     }
 }

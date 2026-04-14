@@ -1,7 +1,7 @@
 # Tautulli API Coverage
 
 **Last updated:** 2026-04-14
-**Source spec:** docs/api-specs/tautulli.md
+**Source spec:** docs/upstream-api/tautulli.md
 **Format:** hand-scraped reference
 
 ## Implementation Status

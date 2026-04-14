@@ -2,7 +2,7 @@
 
 use lab_apis::core::Auth;
 use lab_apis::linkding::LinkdingClient;
-use lab_apis::linkding::types::{Bundle, BundleCreate, BookmarkAsset};
+use lab_apis::linkding::types::{BookmarkAsset, Bundle, BundleCreate};
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
@@ -79,7 +79,10 @@ async fn bundle_update_patches_and_returns_bundle() {
 
     let client = make_client(&server.uri());
     let patch = serde_json::json!({"name": "Updated", "search_query": "#updated"});
-    let result = client.bundle_update(5, &patch).await.expect("bundle_update");
+    let result = client
+        .bundle_update(5, &patch)
+        .await
+        .expect("bundle_update");
     assert_eq!(result.name, "Updated");
 }
 

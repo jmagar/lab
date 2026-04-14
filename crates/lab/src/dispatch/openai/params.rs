@@ -13,10 +13,12 @@ use crate::dispatch::helpers::require_str;
 /// values with the wrong type or shape.
 pub fn chat_request_from_params(params: &Value) -> Result<ChatCompletionRequest, ToolError> {
     let model = require_str(params, "model")?;
-    let messages_val = params.get("messages").ok_or_else(|| ToolError::MissingParam {
-        message: "missing required parameter `messages`".to_string(),
-        param: "messages".to_string(),
-    })?;
+    let messages_val = params
+        .get("messages")
+        .ok_or_else(|| ToolError::MissingParam {
+            message: "missing required parameter `messages`".to_string(),
+            param: "messages".to_string(),
+        })?;
 
     let messages = parse_messages(messages_val)?;
 
@@ -26,7 +28,9 @@ pub fn chat_request_from_params(params: &Value) -> Result<ChatCompletionRequest,
             v.as_f64()
                 .map(|f| {
                     #[allow(clippy::cast_possible_truncation)]
-                    { f as f32 }
+                    {
+                        f as f32
+                    }
                 })
                 .ok_or_else(|| ToolError::InvalidParam {
                     message: "parameter `temperature` must be a number".to_string(),
@@ -80,13 +84,13 @@ fn parse_messages(val: &Value) -> Result<Vec<ChatMessage>, ToolError> {
     arr.iter()
         .enumerate()
         .map(|(i, m)| {
-            let role_str = m
-                .get("role")
-                .and_then(Value::as_str)
-                .ok_or_else(|| ToolError::InvalidParam {
-                    message: format!("messages[{i}].role must be a string"),
-                    param: "messages".to_string(),
-                })?;
+            let role_str =
+                m.get("role")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ToolError::InvalidParam {
+                        message: format!("messages[{i}].role must be a string"),
+                        param: "messages".to_string(),
+                    })?;
             let role = match role_str {
                 "system" => ChatRole::System,
                 "user" => ChatRole::User,
@@ -102,13 +106,12 @@ fn parse_messages(val: &Value) -> Result<Vec<ChatMessage>, ToolError> {
                     });
                 }
             };
-            let content = m
-                .get("content")
-                .and_then(Value::as_str)
-                .ok_or_else(|| ToolError::InvalidParam {
+            let content = m.get("content").and_then(Value::as_str).ok_or_else(|| {
+                ToolError::InvalidParam {
                     message: format!("messages[{i}].content must be a string"),
                     param: "messages".to_string(),
-                })?;
+                }
+            })?;
             Ok(ChatMessage {
                 role,
                 content: content.to_string(),

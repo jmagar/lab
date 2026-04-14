@@ -219,7 +219,11 @@ impl PaperlessClient {
         let part = reqwest::multipart::Part::bytes(file_bytes)
             .file_name(filename)
             .mime_str("application/octet-stream")
-            .map_err(|e| PaperlessError::Api(crate::core::ApiError::Internal(format!("multipart mime: {e}"))))?;
+            .map_err(|e| {
+                PaperlessError::Api(crate::core::ApiError::Internal(format!(
+                    "multipart mime: {e}"
+                )))
+            })?;
         let mut form = reqwest::multipart::Form::new().part("document", part);
         if let Some(t) = title {
             form = form.text("title", t);
@@ -235,7 +239,10 @@ impl PaperlessClient {
                 form = form.text("tags", tag_id.to_string());
             }
         }
-        Ok(self.http.post_multipart("/api/documents/post_document/", form).await?)
+        Ok(self
+            .http
+            .post_multipart("/api/documents/post_document/", form)
+            .await?)
     }
 
     /// Perform a bulk edit operation on multiple documents.

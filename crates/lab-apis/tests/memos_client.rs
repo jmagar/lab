@@ -12,9 +12,12 @@ use wiremock::{
 };
 
 fn make_client(base_url: &str) -> MemosClient {
-    MemosClient::new(base_url, Auth::Bearer {
-        token: "test-token".into(),
-    })
+    MemosClient::new(
+        base_url,
+        Auth::Bearer {
+            token: "test-token".into(),
+        },
+    )
     .expect("client construction")
 }
 
@@ -55,7 +58,10 @@ async fn users_list_propagates_403() {
     let err = client.users_list().await.unwrap_err();
     let kind = format!("{err:?}");
     // 403 maps to ApiError::Auth
-    assert!(kind.contains("Api(Auth)"), "expected Auth error, got: {kind}");
+    assert!(
+        kind.contains("Api(Auth)"),
+        "expected Auth error, got: {kind}"
+    );
 }
 
 // ── user_stats ────────────────────────────────────────────────────────────────
@@ -96,7 +102,10 @@ async fn webhooks_list_returns_vec() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.webhooks_list("users/1").await.expect("webhooks_list");
+    let result = client
+        .webhooks_list("users/1")
+        .await
+        .expect("webhooks_list");
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].url, "https://example.com/hook");
 }
@@ -123,7 +132,10 @@ async fn webhook_create_posts_and_returns_webhook() {
         url: "https://example.com/new".into(),
         display_name: "New hook".into(),
     };
-    let result = client.webhook_create("users/1", &req).await.expect("webhook_create");
+    let result = client
+        .webhook_create("users/1", &req)
+        .await
+        .expect("webhook_create");
     assert_eq!(result.name, "users/1/webhooks/8");
 }
 
@@ -190,7 +202,10 @@ async fn memo_comments_list_returns_vec() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.memo_comments_list("memos/123").await.expect("memo_comments_list");
+    let result = client
+        .memo_comments_list("memos/123")
+        .await
+        .expect("memo_comments_list");
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].content, "Nice memo!");
 }
@@ -239,7 +254,10 @@ async fn memo_shares_list_returns_vec() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.memo_shares_list("memos/123").await.expect("memo_shares_list");
+    let result = client
+        .memo_shares_list("memos/123")
+        .await
+        .expect("memo_shares_list");
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].name, "memos/123/shares/abc");
 }
@@ -260,6 +278,9 @@ async fn memo_share_create_posts_and_returns_share() {
         .await;
 
     let client = make_client(&server.uri());
-    let result = client.memo_share_create("memos/123").await.expect("memo_share_create");
+    let result = client
+        .memo_share_create("memos/123")
+        .await
+        .expect("memo_share_create");
     assert_eq!(result.name, "memos/123/shares/xyz");
 }

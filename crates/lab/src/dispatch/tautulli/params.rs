@@ -40,30 +40,24 @@ pub fn history_query_from_params(params: &Value) -> Result<HistoryQuery, ToolErr
     let media_type = optional_str(params, "media_type")?.map(str::to_owned);
 
     let user_id = params.get("user_id").map_or(Ok(None), |v| {
-        v.as_i64()
-            .map(Some)
-            .ok_or_else(|| ToolError::InvalidParam {
-                message: "parameter `user_id` must be an integer".to_string(),
-                param: "user_id".to_string(),
-            })
+        v.as_i64().map(Some).ok_or_else(|| ToolError::InvalidParam {
+            message: "parameter `user_id` must be an integer".to_string(),
+            param: "user_id".to_string(),
+        })
     })?;
 
     let section_id = params.get("section_id").map_or(Ok(None), |v| {
-        v.as_i64()
-            .map(Some)
-            .ok_or_else(|| ToolError::InvalidParam {
-                message: "parameter `section_id` must be an integer".to_string(),
-                param: "section_id".to_string(),
-            })
+        v.as_i64().map(Some).ok_or_else(|| ToolError::InvalidParam {
+            message: "parameter `section_id` must be an integer".to_string(),
+            param: "section_id".to_string(),
+        })
     })?;
 
     let rating_key = params.get("rating_key").map_or(Ok(None), |v| {
-        v.as_i64()
-            .map(Some)
-            .ok_or_else(|| ToolError::InvalidParam {
-                message: "parameter `rating_key` must be an integer".to_string(),
-                param: "rating_key".to_string(),
-            })
+        v.as_i64().map(Some).ok_or_else(|| ToolError::InvalidParam {
+            message: "parameter `rating_key` must be an integer".to_string(),
+            param: "rating_key".to_string(),
+        })
     })?;
 
     Ok(HistoryQuery {
@@ -118,9 +112,7 @@ pub fn optional_count(params: &Value) -> Result<Option<u32>, ToolError> {
 }
 
 /// Extract optional `time_range` and `y_axis` for plays-by-date.
-pub fn plays_by_date_params(
-    params: &Value,
-) -> Result<(Option<u32>, Option<String>), ToolError> {
+pub fn plays_by_date_params(params: &Value) -> Result<(Option<u32>, Option<String>), ToolError> {
     let time_range = params.get("time_range").map_or(Ok(None), |v| {
         v.as_u64()
             .and_then(|n| u32::try_from(n).ok())

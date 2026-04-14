@@ -79,9 +79,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client =
-            lab_apis::openai::OpenAiClient::new(&server.uri(), Auth::Bearer { token: "test-key".into() })
-                .unwrap();
+        let client = lab_apis::openai::OpenAiClient::new(
+            &server.uri(),
+            Auth::Bearer {
+                token: "test-key".into(),
+            },
+        )
+        .unwrap();
         let result = dispatch_with_client(&client, "model.list", serde_json::json!({}))
             .await
             .unwrap();

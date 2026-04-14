@@ -89,7 +89,8 @@ impl PlexClient {
     /// # Errors
     /// Returns `PlexError::Api` on HTTP failure.
     pub async fn library_get(&self, section_id: &str) -> Result<Value, PlexError> {
-        self.get_value(&format!("/library/sections/{section_id}")).await
+        self.get_value(&format!("/library/sections/{section_id}"))
+            .await
     }
 
     /// Trigger a scan of a library section for new content.
@@ -107,11 +108,8 @@ impl PlexClient {
     /// Returns `PlexError::Api` on HTTP failure.
     pub async fn library_refresh(&self, section_id: &str) -> Result<Value, PlexError> {
         let query = vec![("force".to_string(), "1".to_string())];
-        self.get_value_query(
-            &format!("/library/sections/{section_id}/refresh"),
-            &query,
-        )
-        .await
+        self.get_value_query(&format!("/library/sections/{section_id}/refresh"), &query)
+            .await
     }
 
     // ── Media ─────────────────────────────────────────────────────────────────
@@ -136,7 +134,8 @@ impl PlexClient {
     /// # Errors
     /// Returns `PlexError::Api` on HTTP failure.
     pub async fn media_get(&self, rating_key: &str) -> Result<Value, PlexError> {
-        self.get_value(&format!("/library/metadata/{rating_key}")).await
+        self.get_value(&format!("/library/metadata/{rating_key}"))
+            .await
     }
 
     // ── Sessions ──────────────────────────────────────────────────────────────
@@ -162,7 +161,8 @@ impl PlexClient {
         if let Some(r) = reason {
             query.push(("reason".to_string(), r.to_string()));
         }
-        self.get_value_query("/status/sessions/terminate", &query).await
+        self.get_value_query("/status/sessions/terminate", &query)
+            .await
     }
 
     // ── Playlists ─────────────────────────────────────────────────────────────
@@ -209,7 +209,8 @@ impl PlexClient {
     /// # Errors
     /// Returns `PlexError::Api` on HTTP failure.
     pub async fn playlist_delete(&self, playlist_id: &str) -> Result<(), PlexError> {
-        self.delete_no_body(&format!("/playlists/{playlist_id}")).await
+        self.delete_no_body(&format!("/playlists/{playlist_id}"))
+            .await
     }
 
     // ── Library browse / trash ────────────────────────────────────────────────
@@ -234,11 +235,8 @@ impl PlexClient {
         if let Some(s) = sort {
             query.push(("sort".to_string(), s.to_string()));
         }
-        self.get_value_query(
-            &format!("/library/sections/{section_id}/all"),
-            &query,
-        )
-        .await
+        self.get_value_query(&format!("/library/sections/{section_id}/all"), &query)
+            .await
     }
 
     /// Empty the trash for a library section.
@@ -271,7 +269,8 @@ impl PlexClient {
     /// # Errors
     /// Returns `PlexError::Api` on HTTP failure.
     pub async fn metadata_delete(&self, rating_key: &str) -> Result<(), PlexError> {
-        self.delete_no_body(&format!("/library/metadata/{rating_key}")).await
+        self.delete_no_body(&format!("/library/metadata/{rating_key}"))
+            .await
     }
 
     /// Edit (overwrite) metadata for an item using a raw JSON body.
@@ -281,11 +280,7 @@ impl PlexClient {
     ///
     /// # Errors
     /// Returns `PlexError::Api` on HTTP failure.
-    pub async fn metadata_edit(
-        &self,
-        rating_key: &str,
-        body: &Value,
-    ) -> Result<Value, PlexError> {
+    pub async fn metadata_edit(&self, rating_key: &str, body: &Value) -> Result<Value, PlexError> {
         let query: Vec<(String, String)> = body
             .as_object()
             .map(|m| {
@@ -300,11 +295,8 @@ impl PlexClient {
                     .collect()
             })
             .unwrap_or_default();
-        self.get_value_query(
-            &format!("/library/metadata/{rating_key}"),
-            &query,
-        )
-        .await
+        self.get_value_query(&format!("/library/metadata/{rating_key}"), &query)
+            .await
     }
 
     /// Trigger a metadata refresh for a specific item.
@@ -347,7 +339,8 @@ impl PlexClient {
         if let Some(l) = limit {
             query.push(("X-Plex-Container-Size".to_string(), l.to_string()));
         }
-        self.get_value_query("/status/sessions/history/all", &query).await
+        self.get_value_query("/status/sessions/history/all", &query)
+            .await
     }
 
     // ── Hubs ──────────────────────────────────────────────────────────────────

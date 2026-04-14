@@ -21,9 +21,12 @@ pub fn client_from_env() -> Option<MemosClient> {
 pub fn client_from_vars(url: Option<&str>, token: Option<&str>) -> Option<MemosClient> {
     let url = url.filter(|v| !v.is_empty())?;
     let token = token.filter(|v| !v.is_empty())?;
-    MemosClient::new(url, Auth::Bearer {
-        token: token.to_string(),
-    })
+    MemosClient::new(
+        url,
+        Auth::Bearer {
+            token: token.to_string(),
+        },
+    )
     .map_err(|e| tracing::warn!(error = %e, url, "memos client construction failed"))
     .ok()
 }
