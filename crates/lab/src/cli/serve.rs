@@ -180,8 +180,7 @@ struct LabMcpServer {
     registry: Arc<ToolRegistry>,
     /// Captured on `on_initialized` — used to send logging notifications.
     peer: Arc<OnceLock<Peer<RoleServer>>>,
-    /// Client-requested logging level. 255 = disabled (no notifications).
-    /// Stores `level_to_severity(level)` so comparisons are cheap.
+    /// Client-requested logging level as RFC 5424 severity. 255 = disabled.
     log_level: Arc<AtomicU8>,
 }
 
@@ -262,9 +261,7 @@ impl ServerHandler for LabMcpServer {
                     &self.registry,
                 )
             }
-            Reference::Resource(resource_ref) => {
-                complete_resource_arg(&resource_ref.uri, argument_name, partial)
-            }
+            Reference::Resource(_) => vec![]
         };
         let completion = CompletionInfo::with_all_values(values)
             .unwrap_or_default();
@@ -429,10 +426,11 @@ impl ServerHandler for LabMcpServer {
         };
         let elapsed_ms = start.elapsed().as_millis();
 
-        let (call_result, log_level, log_data_fn) =
+        let (call_result, log_level, log_err) =
             dispatch_to_result(&service, &action, elapsed_ms, result);
 
-        self.maybe_notify_log(log_level, log_data_fn).await;
+        self.maybe_notify_log(log_level, &service, &action, elapsed_ms, log_err.as_deref())
+            .await;
 
         call_result
     }
@@ -441,19 +439,34 @@ impl ServerHandler for LabMcpServer {
 impl LabMcpServer {
     /// Send an MCP logging notification if the client threshold permits it.
     ///
-    /// Accepts a closure to defer `Value` construction until we know the
-    /// notification will actually be sent (avoids allocation when logging
-    /// is disabled — the common case).
-    async fn maybe_notify_log(&self, level: LoggingLevel, data_fn: impl FnOnce() -> Value) {
+    /// Takes raw components instead of a pre-built `Value` to avoid heap
+    /// allocation on every dispatch when logging is disabled (the common case).
+    async fn maybe_notify_log(
+        &self,
+        level: LoggingLevel,
+        service: &str,
+        action: &str,
+        elapsed_ms: u128,
+        error: Option<&str>,
+    ) {
         let client_severity = self.log_level.load(Ordering::Relaxed);
         if client_severity != 255
             && level_to_severity(level) <= client_severity
             && let Some(peer) = self.peer.get()
         {
+            let data = error.map_or_else(
+                || serde_json::json!({
+                    "service": service, "action": action, "elapsed_ms": elapsed_ms,
+                }),
+                |err| serde_json::json!({
+                    "service": service, "action": action,
+                    "elapsed_ms": elapsed_ms, "error": err,
+                }),
+            );
             drop(
                 peer.notify_logging_message(LoggingMessageNotificationParam {
                     level,
-                    data: data_fn(),
+                    data,
                     logger: Some("lab".to_string()),
                 })
                 .await,
@@ -464,8 +477,8 @@ impl LabMcpServer {
 
 /// Convert a dispatch result into a `CallToolResult` + logging metadata.
 ///
-/// Returns a closure for the log data to avoid allocating a `serde_json::Value`
-/// when MCP logging is disabled (the common case).
+/// Returns the error message (if any) separately so `maybe_notify_log` can
+/// build the JSON `Value` only when a notification will actually be sent.
 fn dispatch_to_result(
     service: &str,
     action: &str,
@@ -474,7 +487,7 @@ fn dispatch_to_result(
 ) -> (
     std::result::Result<CallToolResult, ErrorData>,
     LoggingLevel,
-    impl FnOnce() -> Value,
+    Option<String>,
 ) {
     match result {
         Ok(v) => {
@@ -483,12 +496,7 @@ fn dispatch_to_result(
             let call = Ok(CallToolResult::success(vec![Content::text(
                 envelope.to_string(),
             )]));
-            let svc = service.to_string();
-            let act = action.to_string();
-            let data_fn = move || serde_json::json!({
-                "service": svc, "action": act, "elapsed_ms": elapsed_ms,
-            });
-            (call, LoggingLevel::Info, data_fn)
+            (call, LoggingLevel::Info, None)
         }
         Err(e) => {
             let (kind, message, extra) = extract_error_info(&e);
@@ -510,14 +518,7 @@ fn dispatch_to_result(
             let call = Ok(CallToolResult::error(vec![Content::text(
                 envelope.to_string(),
             )]));
-            let svc = service.to_string();
-            let act = action.to_string();
-            let kind = kind.to_string();
-            let data_fn = move || serde_json::json!({
-                "service": svc, "action": act, "elapsed_ms": elapsed_ms,
-                "kind": kind, "message": message,
-            });
-            (call, level, data_fn)
+            (call, level, Some(format!("{kind}: {message}")))
         }
     }
 }
@@ -636,11 +637,6 @@ fn complete_prompt_arg(
         }
         _ => vec![],
     }
-}
-
-/// Complete a resource argument value (currently unused but required for the match).
-const fn complete_resource_arg(_uri: &str, _argument_name: &str, _partial: &str) -> Vec<String> {
-    vec![]
 }
 
 async fn run_http(
