@@ -43,6 +43,9 @@ pub struct ServiceCatalog {
 }
 
 /// One action inside a service's catalog.
+///
+/// Includes the full parameter list so agents can plan from a single
+/// `lab://catalog` resource read without issuing per-action `schema` calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionEntry {
     /// Dotted action name (e.g., `movie.search`).
@@ -51,6 +54,25 @@ pub struct ActionEntry {
     pub description: String,
     /// Whether the action mutates state and requires confirmation.
     pub destructive: bool,
+    /// Declared parameters for this action. Empty when the action takes no params.
+    pub params: Vec<ParamEntry>,
+    /// Type-name hint for the return shape, e.g. `"Movie[]"`. Informational only.
+    pub returns: String,
+}
+
+/// One declared parameter in an action's catalog entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParamEntry {
+    /// Parameter name.
+    pub name: String,
+    /// Free-form type label: `"string"`, `"integer"`, `"boolean"`, `"object"`,
+    /// `"array"`, union literals like `"string|null"`, or enum literals like
+    /// `"queued|running|done"`.
+    pub ty: String,
+    /// Whether this parameter must be present for the action to succeed.
+    pub required: bool,
+    /// Human-readable description of the parameter.
+    pub description: String,
 }
 
 /// Build a [`Catalog`] from the current tool registry.
@@ -72,6 +94,17 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
                     name: a.name.into(),
                     description: a.description.into(),
                     destructive: a.destructive,
+                    returns: a.returns.into(),
+                    params: a
+                        .params
+                        .iter()
+                        .map(|p| ParamEntry {
+                            name: p.name.into(),
+                            ty: p.ty.into(),
+                            required: p.required,
+                            description: p.description.into(),
+                        })
+                        .collect(),
                 })
                 .collect(),
         })
