@@ -188,15 +188,31 @@ impl ServerHandler for LabMcpServer {
 
             match pool.call_tool(&upstream_name, upstream_params).await {
                 Some(Ok(result)) => {
-                    pool.record_success(&upstream_name).await;
                     let elapsed_ms = start.elapsed().as_millis();
-                    tracing::info!(
-                        surface = "mcp",
-                        service,
-                        upstream = %upstream_name,
-                        elapsed_ms,
-                        "upstream proxy ok"
-                    );
+                    // rmcp returns Ok(CallToolResult) even when the upstream
+                    // reports an error via is_error. Detect and handle that.
+                    if result.is_error == Some(true) {
+                        pool.record_failure(&upstream_name).await;
+                        tracing::warn!(
+                            surface = "mcp",
+                            service,
+                            action = upstream_action,
+                            upstream = %upstream_name,
+                            elapsed_ms,
+                            kind = "upstream_error",
+                            "upstream returned is_error"
+                        );
+                    } else {
+                        pool.record_success(&upstream_name).await;
+                        tracing::info!(
+                            surface = "mcp",
+                            service,
+                            action = upstream_action,
+                            upstream = %upstream_name,
+                            elapsed_ms,
+                            "upstream proxy ok"
+                        );
+                    }
                     return Ok(result);
                 }
                 Some(Err(e)) => {
@@ -205,6 +221,7 @@ impl ServerHandler for LabMcpServer {
                     tracing::warn!(
                         surface = "mcp",
                         service,
+                        action = upstream_action,
                         upstream = %upstream_name,
                         elapsed_ms,
                         kind = "upstream_error",
@@ -221,10 +238,14 @@ impl ServerHandler for LabMcpServer {
                     )]));
                 }
                 None => {
+                    // Connection is gone — record failure so the circuit
+                    // breaker can eventually exclude this upstream.
+                    pool.record_failure(&upstream_name).await;
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::warn!(
                         surface = "mcp",
                         service,
+                        action = upstream_action,
                         upstream = %upstream_name,
                         elapsed_ms,
                         kind = "upstream_error",
