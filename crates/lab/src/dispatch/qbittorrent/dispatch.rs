@@ -96,7 +96,7 @@ pub async fn dispatch_with_client(
             Ok(serde_json::json!({ "ok": true }))
         }
 
-        "categories.list" => {
+        "category.list" => {
             let map = client.categories().await?;
             let list: Vec<_> = map.into_values().collect();
             to_json(list)
@@ -231,5 +231,5 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         _ => {}
     }
-    dispatch_with_client(&require_client()?, action, params).await
+    dispatch_with_client(&require_client().await?, action, params).await
 }

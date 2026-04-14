@@ -26,7 +26,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     // ── Bookmarks ──────────────────────────────────────────────────────────
     ActionSpec {
-        name: "bookmarks.list",
+        name: "bookmark.list",
         description: "List bookmarks with optional search and pagination",
         destructive: false,
         returns: "Value",
@@ -52,7 +52,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "bookmarks.archived.list",
+        name: "bookmark.archived.list",
         description: "List archived bookmarks with optional search and pagination",
         destructive: false,
         returns: "Value",
@@ -78,7 +78,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "bookmarks.get",
+        name: "bookmark.get",
         description: "Retrieve a single bookmark by ID",
         destructive: false,
         returns: "Value",
@@ -90,7 +90,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "bookmarks.check",
+        name: "bookmark.check",
         description: "Check whether a URL is already bookmarked",
         destructive: false,
         returns: "Value",
@@ -102,7 +102,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "bookmarks.create",
+        name: "bookmark.create",
         description: "Create a new bookmark",
         destructive: false,
         returns: "Value",
@@ -164,7 +164,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "bookmarks.update",
+        name: "bookmark.update",
         description: "Partially update a bookmark (PATCH — only provided fields are changed)",
         destructive: false,
         returns: "Value",
@@ -226,9 +226,9 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "bookmarks.archive",
+        name: "bookmark.archive",
         description: "Archive a bookmark",
-        destructive: true,
+        destructive: false,
         returns: "Value",
         params: &[ParamSpec {
             name: "id",
@@ -238,7 +238,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "bookmarks.unarchive",
+        name: "bookmark.unarchive",
         description: "Unarchive a bookmark",
         destructive: false,
         returns: "Value",
@@ -250,7 +250,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "bookmarks.delete",
+        name: "bookmark.delete",
         description: "Delete a bookmark by ID",
         destructive: true,
         returns: "void",
@@ -263,14 +263,14 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     // ── Tags ──────────────────────────────────────────────────────────────
     ActionSpec {
-        name: "tags.list",
+        name: "tag.list",
         description: "List all tags",
         destructive: false,
         returns: "Value",
         params: &[],
     },
     ActionSpec {
-        name: "tags.get",
+        name: "tag.get",
         description: "Retrieve a single tag by ID",
         destructive: false,
         returns: "Value",
@@ -282,9 +282,9 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "tags.create",
-        description: "Create a new tag",
-        destructive: true,
+        name: "tag.create",
+        description: "Create a new tag (linkding has no tag-delete API — tags are permanent)",
+        destructive: false,
         returns: "Value",
         params: &[
             ParamSpec {

@@ -20,51 +20,53 @@ pub async fn dispatch_with_client(
             action_schema(ACTIONS, action_name)
         }
         // ── Bookmarks ──────────────────────────────────────────────────────
-        "bookmarks.list" => {
+        "bookmark.list" => {
             let p = params::bookmark_list_params_from(&params_value)?;
             to_json(client.bookmarks_list(&p).await?)
         }
-        "bookmarks.archived.list" => {
+        "bookmark.archived.list" => {
             let p = params::bookmark_list_params_from(&params_value)?;
             to_json(client.bookmarks_archived_list(&p).await?)
         }
-        "bookmarks.get" => {
+        "bookmark.get" => {
             let id = require_id_u64(&params_value)?;
             to_json(client.bookmark_get(id).await?)
         }
-        "bookmarks.check" => {
+        "bookmark.check" => {
             let url = require_str(&params_value, "url")?;
             to_json(client.bookmark_check(url).await?)
         }
-        "bookmarks.create" => {
+        "bookmark.create" => {
             let body = params::bookmark_write_from_params(&params_value)?;
             to_json(client.bookmark_create(&body).await?)
         }
-        "bookmarks.update" => {
+        "bookmark.update" => {
             let id = require_id_u64(&params_value)?;
             let body = params::bookmark_update_from_params(&params_value)?;
             to_json(client.bookmark_update(id, &body).await?)
         }
-        "bookmarks.archive" => {
+        "bookmark.archive" => {
             let id = require_id_u64(&params_value)?;
-            to_json(client.bookmark_archive(id).await?)
+            client.bookmark_archive(id).await?;
+            Ok(Value::Null)
         }
-        "bookmarks.unarchive" => {
+        "bookmark.unarchive" => {
             let id = require_id_u64(&params_value)?;
-            to_json(client.bookmark_unarchive(id).await?)
+            client.bookmark_unarchive(id).await?;
+            Ok(Value::Null)
         }
-        "bookmarks.delete" => {
+        "bookmark.delete" => {
             let id = require_id_u64(&params_value)?;
             client.bookmark_delete(id).await?;
             Ok(Value::Null)
         }
         // ── Tags ──────────────────────────────────────────────────────────
-        "tags.list" => to_json(client.tags_list().await?),
-        "tags.get" => {
+        "tag.list" => to_json(client.tags_list().await?),
+        "tag.get" => {
             let id = require_id_u64(&params_value)?;
             to_json(client.tag_get(id).await?)
         }
-        "tags.create" => {
+        "tag.create" => {
             let body = params::tag_create_from_params(&params_value)?;
             to_json(client.tag_create(&body).await?)
         }

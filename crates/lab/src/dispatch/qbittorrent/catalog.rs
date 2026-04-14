@@ -218,7 +218,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "categories.list",
+        name: "category.list",
         description: "List all torrent categories",
         destructive: false,
         returns: "Category[]",

@@ -25,14 +25,14 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "indexers.list",
+        name: "indexer.list",
         description: "List all configured indexers",
         destructive: false,
         returns: "Value",
         params: &[],
     },
     ActionSpec {
-        name: "indexers.get",
+        name: "indexer.get",
         description: "Get a single indexer by ID",
         destructive: false,
         returns: "Value",
@@ -44,7 +44,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "indexers.delete",
+        name: "indexer.delete",
         description: "Delete an indexer by ID",
         destructive: true,
         returns: "void",
@@ -56,7 +56,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "indexers.test",
+        name: "indexer.test",
         description: "Test a single indexer by ID (fetches the indexer then POSTs to test endpoint)",
         destructive: false,
         returns: "Value",
@@ -68,14 +68,14 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "indexers.testall",
+        name: "indexer.testall",
         description: "Test all configured indexers",
         destructive: false,
         returns: "Value",
         params: &[],
     },
     ActionSpec {
-        name: "indexers.categories",
+        name: "indexer.categories",
         description: "List all indexer categories",
         destructive: false,
         returns: "Value",
@@ -120,14 +120,14 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "applications.list",
+        name: "application.list",
         description: "List configured applications (download clients connected to Prowlarr)",
         destructive: false,
         returns: "Value",
         params: &[],
     },
     ActionSpec {
-        name: "applications.get",
+        name: "application.get",
         description: "Get a single application by ID",
         destructive: false,
         returns: "Value",
@@ -139,7 +139,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "applications.delete",
+        name: "application.delete",
         description: "Delete an application by ID",
         destructive: true,
         returns: "void",

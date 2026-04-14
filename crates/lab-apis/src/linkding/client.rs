@@ -140,22 +140,20 @@ impl LinkdingClient {
             .await
     }
 
-    /// Archive a bookmark.
-    pub async fn bookmark_archive(&self, id: u64) -> Result<Value, LinkdingError> {
-        self.post_value(
-            &format!("/api/bookmarks/{id}/archive/"),
-            &serde_json::json!({}),
-        )
-        .await
+    /// Archive a bookmark (returns 204 No Content).
+    pub async fn bookmark_archive(&self, id: u64) -> Result<(), LinkdingError> {
+        Ok(self
+            .http
+            .post_void(&format!("/api/bookmarks/{id}/archive/"), &serde_json::json!({}))
+            .await?)
     }
 
-    /// Unarchive a bookmark.
-    pub async fn bookmark_unarchive(&self, id: u64) -> Result<Value, LinkdingError> {
-        self.post_value(
-            &format!("/api/bookmarks/{id}/unarchive/"),
-            &serde_json::json!({}),
-        )
-        .await
+    /// Unarchive a bookmark (returns 204 No Content).
+    pub async fn bookmark_unarchive(&self, id: u64) -> Result<(), LinkdingError> {
+        Ok(self
+            .http
+            .post_void(&format!("/api/bookmarks/{id}/unarchive/"), &serde_json::json!({}))
+            .await?)
     }
 
     /// Delete a bookmark by ID.

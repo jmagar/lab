@@ -422,17 +422,23 @@ pub struct SharesData {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginsData {
-    pub installed_unraid_plugins: Vec<serde_json::Value>,
+    pub installed_unraid_plugins: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
 // Network
 // ---------------------------------------------------------------------------
 
-/// Wrapper for the `network` query response.
+/// Wrapper for the `info { networkInterfaces }` query response.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NetworkData {
-    pub network: serde_json::Value,
+    pub info: NetworkInfo,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkInfo {
+    pub network_interfaces: serde_json::Value,
 }
 
 // ---------------------------------------------------------------------------

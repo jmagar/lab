@@ -59,7 +59,9 @@ Each service dispatcher must:
 
 ## Elicitation for destructive ops
 
-When an action's `ActionSpec.destructive == true`, the dispatcher **must** call the MCP elicitation flow before executing. The client confirms, then the dispatcher proceeds. Do not bypass this even if the caller passed a "confirm" param — elicitation is the protocol contract.
+When an action's `ActionSpec.destructive == true`, the dispatcher **must** call the MCP elicitation flow before executing. The client confirms, then the dispatcher proceeds.
+
+When the MCP client does not support elicitation (e.g. headless agents, CI, Claude Desktop non-interactive), the dispatcher accepts `params.confirm == true` as a machine-to-machine bypass. Without that flag, destructive actions are refused with a `confirmation_required` error.
 
 ## Built-in actions
 

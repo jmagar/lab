@@ -115,7 +115,7 @@ pub enum Command {
     Scaffold(scaffold::ScaffoldArgs),
     /// Generate shell completions.
     Completions(completions::CompletionsArgs),
-    /// Scan appdata directories and extract service credentials.
+    /// Scan a local or SSH appdata path and extract service credentials.
     Extract(extract::ExtractCmd),
     /// Radarr movie collection manager.
     #[cfg(feature = "radarr")]

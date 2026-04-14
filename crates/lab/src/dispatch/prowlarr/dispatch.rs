@@ -12,32 +12,32 @@ pub async fn dispatch_with_client(
     params_value: Value,
 ) -> Result<Value, ToolError> {
     match action {
-        "indexers.list" => to_json(client.indexers_list().await?),
-        "indexers.get" => {
+        "indexer.list" => to_json(client.indexers_list().await?),
+        "indexer.get" => {
             let id = params::require_id(&params_value)?;
             to_json(client.indexer_get(id).await?)
         }
-        "indexers.delete" => {
+        "indexer.delete" => {
             let id = params::require_id(&params_value)?;
             client.indexer_delete(id).await?;
             Ok(Value::Null)
         }
-        "indexers.test" => {
+        "indexer.test" => {
             let id = params::require_id(&params_value)?;
             to_json(client.indexer_test(id).await?)
         }
-        "indexers.testall" => to_json(client.indexers_testall().await?),
-        "indexers.categories" => to_json(client.indexer_categories().await?),
+        "indexer.testall" => to_json(client.indexers_testall().await?),
+        "indexer.categories" => to_json(client.indexer_categories().await?),
         "history.list" => {
             let query = params::history_query_from_params(&params_value)?;
             to_json(client.history_list(&query).await?)
         }
-        "applications.list" => to_json(client.applications_list().await?),
-        "applications.get" => {
+        "application.list" => to_json(client.applications_list().await?),
+        "application.get" => {
             let id = params::require_id(&params_value)?;
             to_json(client.application_get(id).await?)
         }
-        "applications.delete" => {
+        "application.delete" => {
             let id = params::require_id(&params_value)?;
             client.application_delete(id).await?;
             Ok(Value::Null)

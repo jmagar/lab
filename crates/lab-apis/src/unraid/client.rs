@@ -198,30 +198,28 @@ query {
 
 const QUERY_PLUGINS: &str = r"
 query {
-  installedUnraidPlugins {
-    id
-    name
-    version
-    author
-    description
-    updateAvailable
-  }
+  installedUnraidPlugins
 }
 ";
 
 const QUERY_NETWORK: &str = r"
 query {
-  network {
-    id
-    interfaces {
+  info {
+    networkInterfaces {
       id
       name
-      ipv4 { address prefix }
-      ipv6 { address prefix }
+      description
       macAddress
-      connected
-      mtu
-      speed
+      status
+      protocol
+      ipAddress
+      netmask
+      gateway
+      useDhcp
+      ipv6Address
+      ipv6Netmask
+      ipv6Gateway
+      useDhcp6
     }
   }
 }
@@ -642,7 +640,7 @@ impl UnraidClient {
     ///
     /// # Errors
     /// Returns [`UnraidError::Http`] on transport or GraphQL error.
-    pub async fn plugin_list(&self) -> Result<Vec<serde_json::Value>, UnraidError> {
+    pub async fn plugin_list(&self) -> Result<Vec<String>, UnraidError> {
         let data: PluginsData = self
             .http
             .post_graphql("/graphql", QUERY_PLUGINS, None)
@@ -659,7 +657,7 @@ impl UnraidClient {
             .http
             .post_graphql("/graphql", QUERY_NETWORK, None)
             .await?;
-        Ok(data.network)
+        Ok(data.info.network_interfaces)
     }
 
     /// List UPS devices attached to the server.
