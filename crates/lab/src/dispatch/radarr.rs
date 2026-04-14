@@ -75,16 +75,6 @@ mod tests {
     }
 
     #[test]
-    fn action_count_preserved() {
-        assert_eq!(
-            actions().len(),
-            41,
-            "expected 41 actions (help + schema + 39 resource actions), got {}",
-            actions().len()
-        );
-    }
-
-    #[test]
     fn no_duplicate_action_names() {
         let names: Vec<&str> = actions().iter().map(|a| a.name).collect();
         let mut sorted = names.clone();

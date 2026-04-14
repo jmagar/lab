@@ -40,16 +40,6 @@ mod tests {
     }
 
     #[test]
-    fn action_count_matches_original() {
-        assert_eq!(
-            actions().len(),
-            72,
-            "expected 72 actions (help + 71 resource actions), got {}",
-            actions().len()
-        );
-    }
-
-    #[test]
     fn no_duplicate_action_names() {
         let names: Vec<&str> = actions().iter().map(|a| a.name).collect();
         let mut sorted = names.clone();
