@@ -154,7 +154,7 @@ pub struct AppState {
     /// Optional upstream MCP server pool for gateway proxy dispatch.
     ///
     /// `None` when no `[[upstream]]` entries are configured in `config.toml`.
-    pub upstream_pool: Option<Arc<crate::mcp::upstream::pool::UpstreamPool>>,
+    pub upstream_pool: Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>>,
 }
 
 impl AppState {
@@ -212,7 +212,7 @@ impl AppState {
     #[allow(dead_code)] // Will be called when `lab serve` wires [[upstream]] config.
     pub fn with_upstream_pool(
         mut self,
-        pool: Arc<crate::mcp::upstream::pool::UpstreamPool>,
+        pool: Arc<crate::dispatch::upstream::pool::UpstreamPool>,
     ) -> Self {
         self.upstream_pool = Some(pool);
         self

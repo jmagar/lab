@@ -53,7 +53,7 @@ pub struct LabMcpServer {
     /// Upstream MCP server pool for gateway proxy dispatch.
     ///
     /// `None` when no `[[upstream]]` entries are configured.
-    pub upstream_pool: Option<Arc<crate::mcp::upstream::pool::UpstreamPool>>,
+    pub upstream_pool: Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>>,
 }
 
 impl ServerHandler for LabMcpServer {

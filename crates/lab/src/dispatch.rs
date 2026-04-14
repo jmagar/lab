@@ -6,6 +6,7 @@ pub mod arcane;
 pub mod bytestash;
 pub mod error;
 pub mod extract;
+pub mod upstream;
 #[cfg(feature = "gotify")]
 pub mod gotify;
 pub mod helpers;

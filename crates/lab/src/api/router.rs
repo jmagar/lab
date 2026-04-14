@@ -13,10 +13,6 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
-use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService,
-    session::local::{LocalSessionManager, SessionConfig},
-};
 use subtle::ConstantTimeEq;
 use tower_http::{
     compression::CompressionLayer,
@@ -77,7 +73,11 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
+pub fn build_router_with_bearer(
+    state: AppState,
+    bearer_token: Option<String>,
+    mcp_router: Option<Router<AppState>>,
+) -> Router {
     if bearer_token.is_none() && state.jwks.is_none() {
         tracing::warn!(
             "HTTP API started without bearer token or OAuth JWKS — all protected routes are unprotected"
@@ -88,15 +88,13 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
-    // Build the MCP streamable HTTP service.
-    let mcp_service = build_mcp_service(&state);
-
-    // Build a protected sub-router that nests both /v1 and /mcp (lab-kq8w).
+    // Build a protected sub-router that nests /v1 and optionally /mcp (lab-kq8w).
     // Bearer auth is applied to this sub-router so both surfaces get the same
     // auth treatment while health probes remain exempt (lab-3qn.5).
-    let protected = Router::new()
-        .nest("/v1", v1)
-        .nest_service("/mcp", mcp_service);
+    let mut protected = Router::new().nest("/v1", v1);
+    if let Some(mcp) = mcp_router {
+        protected = protected.merge(mcp);
+    }
 
     // Apply layered auth to the protected sub-router (lab-y8aa).
     //
@@ -304,91 +302,6 @@ fn build_cors_layer() -> CorsLayer {
         ])
 }
 
-/// Build the MCP streamable HTTP service from app state.
-///
-/// The factory closure clones `Arc<ToolRegistry>` from `AppState` and constructs
-/// a new `LabMcpServer` per session. Construction cost: two Arc increments.
-fn build_mcp_service(
-    state: &AppState,
-) -> StreamableHttpService<crate::mcp::server::LabMcpServer, LocalSessionManager> {
-    let registry = Arc::clone(&state.registry);
-    let clients = Arc::clone(&state.clients);
-    let upstream_pool = state.upstream_pool.clone();
-
-    let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300);
-
-    let mut session_config = SessionConfig::default();
-    session_config.keep_alive = Some(Duration::from_secs(session_ttl_secs));
-
-    let mut session_manager = LocalSessionManager::default();
-    session_manager.session_config = session_config;
-    let session_manager = Arc::new(session_manager);
-
-    let stateful = std::env::var("LAB_MCP_STATEFUL")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(true);
-
-    let config = StreamableHttpServerConfig::default()
-        .with_allowed_hosts(allowed_hosts_from_env())
-        .with_stateful_mode(stateful);
-
-    StreamableHttpService::new(
-        move || {
-            let reg = Arc::clone(&registry);
-            let cl = Arc::clone(&clients);
-            let pool = upstream_pool.clone();
-            Ok(crate::mcp::server::LabMcpServer {
-                registry: reg,
-                clients: cl,
-                upstream_pool: pool,
-            })
-        },
-        session_manager,
-        config,
-    )
-}
-
-/// Build the allowed hosts list for DNS rebinding protection.
-///
-/// Reads `LAB_MCP_ALLOWED_HOSTS` (comma-separated) and `LAB_RESOURCE_URL`
-/// from the environment. Always includes loopback defaults. Rejects wildcard.
-fn allowed_hosts_from_env() -> Vec<String> {
-    let mut hosts = vec![
-        "localhost".to_string(),
-        "127.0.0.1".to_string(),
-        "::1".to_string(),
-    ];
-    if let Ok(extra) = std::env::var("LAB_MCP_ALLOWED_HOSTS") {
-        for h in extra.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            // Reject wildcard — would disable Host header validation entirely
-            if h == "*" {
-                tracing::warn!(
-                    "ignoring wildcard '*' in LAB_MCP_ALLOWED_HOSTS — \
-                     would disable DNS rebinding protection"
-                );
-                continue;
-            }
-            if !hosts.contains(&h.to_string()) {
-                hosts.push(h.to_string());
-            }
-        }
-    }
-    // If LAB_RESOURCE_URL is set (Phase 1), auto-extract and add its hostname
-    if let Ok(url_str) = std::env::var("LAB_RESOURCE_URL")
-        && let Ok(parsed) = url::Url::parse(&url_str)
-        && let Some(host) = parsed.host_str()
-    {
-        let h = host.to_string();
-        if !hosts.contains(&h) {
-            hosts.push(h);
-        }
-    }
-    hosts
-}
 
 async fn service_actions(
     State(state): State<AppState>,
@@ -421,7 +334,7 @@ mod tests {
     #[tokio::test]
     async fn actions_known_service_returns_200() {
         let state = AppState::new();
-        let app = build_router_with_bearer(state, None);
+        let app = build_router_with_bearer(state, None, None);
         let response = app
             .oneshot(
                 Request::builder()
@@ -443,7 +356,7 @@ mod tests {
     #[tokio::test]
     async fn actions_unknown_service_returns_404() {
         let state = AppState::new();
-        let app = build_router_with_bearer(state, None);
+        let app = build_router_with_bearer(state, None, None);
         let response = app
             .oneshot(
                 Request::builder()
@@ -465,7 +378,7 @@ mod tests {
     #[tokio::test]
     async fn auth_layer_rejects_missing_bearer_token() {
         let state = AppState::new();
-        let app = build_router_with_bearer(state, Some("secret-token".into()));
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
         // /v1/extract/actions is behind bearer auth; /health is NOT (lab-3qn.5).
         let response = app
             .oneshot(
@@ -488,7 +401,7 @@ mod tests {
     #[tokio::test]
     async fn auth_layer_accepts_valid_bearer_token() {
         let state = AppState::new();
-        let app = build_router_with_bearer(state, Some("secret-token".into()));
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
         // Confirm that a valid token reaches the protected /v1 route.
         let response = app
             .oneshot(
@@ -508,7 +421,7 @@ mod tests {
     async fn health_endpoint_open_without_auth() {
         // /health must be reachable by monitoring probes without any token (lab-3qn.5).
         let state = AppState::new();
-        let app = build_router_with_bearer(state, Some("secret-token".into()));
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
         let response = app
             .oneshot(
                 Request::builder()
@@ -526,7 +439,7 @@ mod tests {
     async fn ready_endpoint_open_without_auth() {
         // /ready must be reachable by monitoring probes without any token (lab-3qn.5).
         let state = AppState::new();
-        let app = build_router_with_bearer(state, Some("secret-token".into()));
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
         let response = app
             .oneshot(
                 Request::builder()
@@ -555,7 +468,7 @@ mod tests {
         // An empty registry = no services enabled at runtime.
         let registry = ToolRegistry::new();
         let state = AppState::from_registry(registry);
-        let app = build_router_with_bearer(state, None);
+        let app = build_router_with_bearer(state, None, None);
         let response = app
             .oneshot(
                 Request::builder()

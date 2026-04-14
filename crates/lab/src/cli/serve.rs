@@ -2,10 +2,15 @@
 
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
 use rmcp::ServiceExt;
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService,
+    session::local::{LocalSessionManager, SessionConfig},
+};
 
 use crate::api::AppState;
 use crate::config::{LabConfig, resolve_oauth};
@@ -193,7 +198,12 @@ async fn run_http(
     bearer_token: Option<String>,
     state: AppState,
 ) -> Result<ExitCode> {
-    let router = crate::api::router::build_router_with_bearer(state, bearer_token);
+    // Build the MCP streamable HTTP service in the serve path (not in the
+    // router module) to avoid an api->mcp dependency.
+    let mcp_service = build_mcp_service(&state);
+    let mcp_router = axum::Router::new().nest_service("/mcp", mcp_service);
+    let router =
+        crate::api::router::build_router_with_bearer(state, bearer_token, Some(mcp_router));
     // Parse and validate the address at bind time, not at CLI parse time.
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -218,6 +228,92 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Build the MCP streamable HTTP service from app state.
+///
+/// The factory closure clones `Arc<ToolRegistry>` from `AppState` and constructs
+/// a new `LabMcpServer` per session. Construction cost: two Arc increments.
+fn build_mcp_service(
+    state: &AppState,
+) -> StreamableHttpService<LabMcpServer, LocalSessionManager> {
+    let registry = Arc::clone(&state.registry);
+    let clients = Arc::clone(&state.clients);
+    let upstream_pool = state.upstream_pool.clone();
+
+    let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+
+    let mut session_config = SessionConfig::default();
+    session_config.keep_alive = Some(Duration::from_secs(session_ttl_secs));
+
+    let mut session_manager = LocalSessionManager::default();
+    session_manager.session_config = session_config;
+    let session_manager = Arc::new(session_manager);
+
+    let stateful = std::env::var("LAB_MCP_STATEFUL")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(true);
+
+    let config = StreamableHttpServerConfig::default()
+        .with_allowed_hosts(allowed_hosts_from_env())
+        .with_stateful_mode(stateful);
+
+    StreamableHttpService::new(
+        move || {
+            let reg = Arc::clone(&registry);
+            let cl = Arc::clone(&clients);
+            let pool = upstream_pool.clone();
+            Ok(LabMcpServer {
+                registry: reg,
+                clients: cl,
+                upstream_pool: pool,
+            })
+        },
+        session_manager,
+        config,
+    )
+}
+
+/// Build the allowed hosts list for DNS rebinding protection.
+///
+/// Reads `LAB_MCP_ALLOWED_HOSTS` (comma-separated) and `LAB_RESOURCE_URL`
+/// from the environment. Always includes loopback defaults. Rejects wildcard.
+fn allowed_hosts_from_env() -> Vec<String> {
+    let mut hosts = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    if let Ok(extra) = std::env::var("LAB_MCP_ALLOWED_HOSTS") {
+        for h in extra.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            // Reject wildcard — would disable Host header validation entirely
+            if h == "*" {
+                tracing::warn!(
+                    "ignoring wildcard '*' in LAB_MCP_ALLOWED_HOSTS — \
+                     would disable DNS rebinding protection"
+                );
+                continue;
+            }
+            if !hosts.contains(&h.to_string()) {
+                hosts.push(h.to_string());
+            }
+        }
+    }
+    // If LAB_RESOURCE_URL is set, auto-extract and add its hostname
+    if let Ok(url_str) = std::env::var("LAB_RESOURCE_URL")
+        && let Ok(parsed) = url::Url::parse(&url_str)
+        && let Some(host) = parsed.host_str()
+    {
+        let h = host.to_string();
+        if !hosts.contains(&h) {
+            hosts.push(h);
+        }
+    }
+    hosts
 }
 
 #[cfg(test)]
