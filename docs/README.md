@@ -10,9 +10,9 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Read [CONVENTIONS.md](./CONVENTIONS.md) before changing implementation patterns or core APIs.
 - Use [SERVICES.md](./SERVICES.md), [CLI.md](./CLI.md), [MCP.md](./MCP.md), and [TUI.md](./TUI.md) for surface-specific behavior.
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
-- Use [OAUTH.md](./OAUTH.md) for OAuth 2.1 resource server configuration, JWKS caching, and JWT validation.
-- Use [UPSTREAM.md](./UPSTREAM.md) for upstream MCP proxy gateway configuration, circuit breaker, and resource proxying.
-- Use [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
+- Refer to [OAUTH.md](./OAUTH.md) for OAuth 2.1 resource server configuration, JWKS caching, and JWT validation.
+- See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP proxy gateway configuration, circuit breaker, and resource proxying.
+- Consult [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
 - Use [OBSERVABILITY.md](./OBSERVABILITY.md) for the mandatory logging, correlation, redaction, and verification contract.
 - Use [ERRORS.md](./ERRORS.md) for the shared error taxonomy, envelope shapes, and status mapping contract.
 - Use [SERIALIZATION.md](./SERIALIZATION.md) for the shared serde, envelope, and output-boundary contract.

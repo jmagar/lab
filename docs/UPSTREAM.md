@@ -39,7 +39,7 @@ proxy_resources = false
 | `bearer_token_env` | string | no | Name of an env var holding a bearer token. Not the token itself. |
 | `proxy_resources` | bool | no | Whether to proxy resources from this upstream. Default: `false`. |
 
-Exactly one of `url` or `command` must be set.
+At least one of `url` or `command` must be set. If both are set, `url` is used.
 
 ### Config Validation
 
@@ -58,7 +58,7 @@ Validation runs before discovery. Invalid entries are skipped with a warning.
 
 The `bearer_token_env` field names an environment variable — it does not contain the token directly. At connection time, the pool reads the env var and passes the token as an auth header for HTTP upstreams, or injects it into the child process environment for stdio upstreams.
 
-If the named env var is not set, a warning is logged and the connection proceeds without auth.
+If the named env var is not set, the connection proceeds without auth (HTTP upstreams log a warning; stdio upstreams currently skip injection silently).
 
 ## Discovery
 
@@ -66,7 +66,7 @@ At startup, lab connects to all configured upstreams in parallel. Each upstream 
 
 Failed upstreams are marked unhealthy. Healthy upstreams continue operating. A single failed upstream does not prevent others from connecting.
 
-```
+```text
 upstream discovery succeeded  upstream=remote-lab tool_count=12
 upstream discovery failed     upstream=broken-server error="connection refused"
 upstream discovery timed out  upstream=slow-server timeout_secs=15
@@ -129,13 +129,13 @@ Resource proxying is opt-in per upstream via `proxy_resources = true`.
 
 Upstream resources are prefixed to avoid URI collisions with lab's own resources:
 
-```
+```text
 lab://upstream/{name}/{original_uri}
 ```
 
 For example, if upstream `remote-lab` exposes a resource `lab://radarr/actions`, it appears as:
 
-```
+```text
 lab://upstream/remote-lab/lab://radarr/actions
 ```
 

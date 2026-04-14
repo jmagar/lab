@@ -118,7 +118,7 @@ The JWKS cache uses a stale-while-revalidate strategy.
 
 Lab exposes a metadata endpoint so MCP clients can discover which authorization server to use:
 
-```
+```http
 GET /.well-known/oauth-protected-resource
 ```
 
@@ -139,7 +139,7 @@ Response:
 
 When a request fails authentication (401), the response includes:
 
-```
+```http
 WWW-Authenticate: Bearer resource_metadata="https://lab.example.com/.well-known/oauth-protected-resource"
 ```
 
@@ -159,7 +159,7 @@ Static bearer tokens bypass all JWT validation. This allows operators to use a s
 
 Lab refuses to bind on a non-localhost address without any auth configured:
 
-```
+```text
 refusing to bind HTTP on 0.0.0.0:8765 without authentication.
 Set LAB_MCP_HTTP_TOKEN or LAB_OAUTH_ISSUER, or bind to 127.0.0.1 for local-only access.
 ```

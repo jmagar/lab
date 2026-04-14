@@ -80,19 +80,20 @@ Wildcard (`*`) is rejected with a warning — it would disable Host header valid
 
 ### Authentication
 
-Protected routes (`/v1/*` and `/mcp`) require authentication. Unauthenticated routes (`/health`, `/ready`, `/.well-known/oauth-protected-resource`) are always accessible.
+Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth/JWKS validation is configured. Unauthenticated routes (`/health`, `/ready`, `/.well-known/oauth-protected-resource`) are always accessible.
 
 Auth methods (see [OAUTH.md](./OAUTH.md) for details):
 
 - **Static bearer token** via `LAB_MCP_HTTP_TOKEN` — constant-time comparison.
 - **OAuth 2.1 JWT** via `LAB_OAUTH_ISSUER` and related config.
 - Both can be active simultaneously. Static bearer is checked first.
+- If neither auth method is configured, the router permits local loopback requests only; non-loopback binds are rejected by the safety gate below.
 
 ### Safety Gate
 
 Lab refuses to bind on a non-localhost address without auth:
 
-```
+```text
 refusing to bind HTTP on 0.0.0.0:8765 without authentication.
 Set LAB_MCP_HTTP_TOKEN or LAB_OAUTH_ISSUER, or bind to 127.0.0.1 for local-only access.
 ```
@@ -150,7 +151,7 @@ When HTTP transport is active, the server exposes:
 ## Example: Local Development
 
 ```bash
-# Bind to localhost, no auth needed
+# Bind to localhost, no auth needed when neither static bearer nor OAuth is configured
 LAB_MCP_TRANSPORT=http lab serve
 # → listening on 127.0.0.1:8765
 
