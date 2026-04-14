@@ -1,5 +1,6 @@
 //! Top-level axum router — mounts `POST /v1/<service>` for every enabled service.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
@@ -8,7 +9,7 @@ use axum::{
     extract::State,
     http::{HeaderName, Request, StatusCode, header},
     middleware::Next,
-    response::Response,
+    response::{Html, Response},
     routing::get,
 };
 use subtle::ConstantTimeEq;
@@ -36,8 +37,32 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
         tracing::warn!("HTTP API started without bearer token — all /v1 routes are unprotected");
     }
 
+    // Build OpenAPI spec once at startup (pure function, no I/O).
+    let openapi_spec: Arc<String> = super::openapi::build_openapi_spec(state.registry.services())
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "failed to serialize OpenAPI spec");
+            Arc::new(String::from(r#"{"error":"spec generation failed"}"#))
+        });
+
+    let spec_for_route = openapi_spec.clone();
     let mut v1 = Router::new()
         .route("/{service}/actions", get(service_actions))
+        .route(
+            "/openapi.json",
+            get(move || {
+                let spec = spec_for_route.clone();
+                async move {
+                    (
+                        [(header::CONTENT_TYPE, "application/json"), (header::CACHE_CONTROL, "private, no-store")],
+                        (*spec).clone(),
+                    )
+                }
+            }),
+        )
+        .route(
+            "/docs",
+            get(|| async { Html(include_str!("openapi_docs.html")) }),
+        )
         // always-on service
         .nest("/extract", services::extract::routes(state.clone()));
 
@@ -92,7 +117,7 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
     // so no new state type is introduced that would prevent `with_state(AppState)`
     // from resolving the whole-router state in one shot.
     let v1 = if let Some(token) = bearer_token {
-        let token = std::sync::Arc::<str>::from(token);
+        let token = Arc::<str>::from(token);
         v1.layer(axum::middleware::from_fn(
             move |request: Request<Body>, next: Next| {
                 let token = token.clone();
@@ -219,7 +244,7 @@ fn build_cors_layer() -> CorsLayer {
 
 #[allow(dead_code)]
 pub async fn require_bearer_auth(
-    State(expected_token): State<std::sync::Arc<str>>,
+    State(expected_token): State<Arc<str>>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, ToolError> {
@@ -387,6 +412,74 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn openapi_json_requires_bearer_auth() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn openapi_json_returns_spec_with_auth() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/openapi.json")
+                    .header(header::AUTHORIZATION, "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let ct = response.headers().get(header::CONTENT_TYPE).unwrap();
+        assert_eq!(ct, "application/json");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let spec: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(spec["openapi"], "3.1.0");
+        assert!(spec["info"]["title"].as_str().is_some());
+        assert!(spec["paths"].as_object().is_some());
+    }
+
+    #[tokio::test]
+    async fn docs_endpoint_returns_html_with_auth() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/docs")
+                    .header(header::AUTHORIZATION, "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("scalar"), "HTML should reference Scalar");
+        assert!(html.contains("openapi.json"), "HTML should reference spec URL");
     }
 
     /// When a service is absent from the runtime registry (e.g. filtered out by
