@@ -265,6 +265,11 @@ impl UpstreamPool {
     ///
     /// Returns `None` if the upstream is not connected or the tool is not found.
     /// Enforces a response size cap (`LAB_UPSTREAM_MAX_RESPONSE_BYTES`, default 10 MB).
+    ///
+    /// NOTE: The size check is post-hoc — rmcp materializes the full response before
+    /// we can inspect it. This guards against forwarding oversized payloads to callers
+    /// but cannot prevent the memory allocation itself. A streaming limit would require
+    /// rmcp transport-level support.
     pub async fn call_tool(
         &self,
         upstream_name: &str,
@@ -468,11 +473,23 @@ impl UpstreamPool {
 
         let params = rmcp::model::ReadResourceRequestParams::new(original_uri);
 
-        Some(
-            peer.read_resource(params)
-                .await
-                .map_err(|e| format!("upstream resource read failed: {e}")),
-        )
+        let result = peer
+            .read_resource(params)
+            .await
+            .map_err(|e| format!("upstream resource read failed: {e}"));
+
+        // Enforce the same response size cap as call_tool (post-hoc).
+        if let Ok(ref r) = result {
+            let response_size = serde_json::to_string(r).map_or(0, |s| s.len());
+            let max_bytes = max_response_bytes();
+            if response_size > max_bytes {
+                return Some(Err(format!(
+                    "upstream resource response too large ({response_size} bytes, max {max_bytes})"
+                )));
+            }
+        }
+
+        Some(result)
     }
 }
 
