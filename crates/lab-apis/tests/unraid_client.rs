@@ -278,7 +278,7 @@ async fn plugin_list_returns_plugins() {
     let server = MockServer::start().await;
     let body = graphql_response(serde_json::json!({
         "installedUnraidPlugins": [
-            { "id": "p1", "name": "dynamix", "version": "1.0.0" }
+            "dynamix"
         ]
     }));
 
@@ -291,13 +291,18 @@ async fn plugin_list_returns_plugins() {
     let client = make_client(&server.uri());
     let plugins = client.plugin_list().await.expect("plugin_list");
     assert_eq!(plugins.len(), 1);
+    assert_eq!(plugins[0], "dynamix");
 }
 
 #[tokio::test]
 async fn network_list_returns_value() {
     let server = MockServer::start().await;
     let body = graphql_response(serde_json::json!({
-        "network": { "id": "net1", "interfaces": [] }
+        "info": {
+            "networkInterfaces": [
+                { "id": "net1", "name": "eth0" }
+            ]
+        }
     }));
 
     Mock::given(method("POST"))
@@ -308,7 +313,7 @@ async fn network_list_returns_value() {
 
     let client = make_client(&server.uri());
     let network = client.network_list().await.expect("network_list");
-    assert_eq!(network["id"], "net1");
+    assert_eq!(network[0]["id"], "net1");
 }
 
 #[tokio::test]

@@ -134,6 +134,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             }])
             .await;
 
@@ -166,6 +167,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             }])
             .await;
 
@@ -267,6 +269,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             }])
             .await;
 

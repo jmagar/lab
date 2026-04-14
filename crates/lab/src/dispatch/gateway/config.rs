@@ -137,6 +137,9 @@ pub fn update_upstream(
     if let Some(proxy_resources) = patch.proxy_resources {
         cfg.upstream[index].proxy_resources = proxy_resources;
     }
+    if let Some(expose_tools) = patch.expose_tools {
+        cfg.upstream[index].expose_tools = expose_tools;
+    }
 
     validate_upstream(&cfg.upstream[index])?;
     Ok(())
@@ -252,6 +255,7 @@ mod tests {
                     command: None,
                     args: Vec::new(),
                     proxy_resources: false,
+                    expose_tools: None,
                 },
                 UpstreamConfig {
                     name: "b".to_string(),
@@ -260,6 +264,7 @@ mod tests {
                     command: Some("node".to_string()),
                     args: vec!["server.js".to_string()],
                     proxy_resources: false,
+                    expose_tools: None,
                 },
             ],
             ..LabConfig::default()
@@ -304,6 +309,7 @@ args = ["server.js"]
                 command: None,
                 args: Vec::new(),
                 proxy_resources: true,
+                expose_tools: None,
             },
         )
         .expect("insert");
@@ -343,6 +349,32 @@ args = ["server.js"]
     }
 
     #[test]
+    fn update_upstream_applies_expose_tools_patch() {
+        let mut cfg = sample_config();
+
+        update_upstream(
+            &mut cfg,
+            "b",
+            GatewayUpdatePatch {
+                expose_tools: Some(Some(vec!["search_*".to_string(), "read_file".to_string()])),
+                ..GatewayUpdatePatch::default()
+            },
+        )
+        .expect("update should succeed");
+
+        let b = cfg
+            .upstream
+            .iter()
+            .find(|u| u.name == "b")
+            .expect("b upstream");
+
+        assert_eq!(
+            b.expose_tools.as_deref(),
+            Some(&["search_*".to_string(), "read_file".to_string()][..])
+        );
+    }
+
+    #[test]
     fn remove_upstream_removes_named_gateway_entry() {
         let mut cfg = sample_config();
         let removed = remove_upstream(&mut cfg, "b").expect("remove");
@@ -364,6 +396,7 @@ args = ["server.js"]
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             },
         )
         .expect_err("duplicate should fail");
@@ -383,6 +416,7 @@ args = ["server.js"]
                 command: Some("node".to_string()),
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             }],
             ..LabConfig::default()
         };
@@ -403,6 +437,7 @@ args = ["server.js"]
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             }],
             ..LabConfig::default()
         };
@@ -422,6 +457,7 @@ args = ["server.js"]
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             },
         )
         .expect_err("invalid scheme");
@@ -440,6 +476,7 @@ args = ["server.js"]
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                expose_tools: None,
             },
         )
         .expect_err("bind-all should be rejected");

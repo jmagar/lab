@@ -80,12 +80,18 @@ async fn refresh_token_grant(
     state: AuthState,
     request: TokenRequest,
 ) -> Result<TokenResponse, AuthError> {
+    let client_id = require_field(request.client_id, "client_id")?;
     let refresh_token = require_field(request.refresh_token, "refresh_token")?;
     let stored = state
         .store
         .find_refresh_token(&refresh_token)
         .await?
         .ok_or_else(|| AuthError::InvalidGrant("unknown refresh_token".to_string()))?;
+    if stored.client_id != client_id {
+        return Err(AuthError::InvalidGrant(
+            "client_id does not match the refresh token".to_string(),
+        ));
+    }
 
     let google = if let Some(provider_refresh_token) = stored.provider_refresh_token.clone() {
         Some(state.google.refresh(&provider_refresh_token).await?)
@@ -297,7 +303,45 @@ mod tests {
                         header::CONTENT_TYPE,
                         "application/x-www-form-urlencoded",
                     )
-                    .body(Body::from("grant_type=refresh_token&refresh_token=refresh-token"))
+                    .body(Body::from(
+                        "grant_type=refresh_token&refresh_token=refresh-token&client_id=client",
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn token_endpoint_rejects_refresh_token_client_mismatch() {
+        let state = test_auth_state_with_registered_client().await;
+        state
+            .store
+            .upsert_refresh_token(crate::types::RefreshTokenRow {
+                refresh_token: "refresh-token".to_string(),
+                client_id: "client".to_string(),
+                subject: "google-subject-123".to_string(),
+                scope: "lab".to_string(),
+                provider_refresh_token: Some("provider-refresh".to_string()),
+                created_at: super::now_unix() - 60,
+                expires_at: super::now_unix() + 3600,
+            })
+            .await
+            .unwrap();
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/token")
+                    .header(
+                        header::CONTENT_TYPE,
+                        "application/x-www-form-urlencoded",
+                    )
+                    .body(Body::from(
+                        "grant_type=refresh_token&refresh_token=refresh-token&client_id=other-client",
+                    ))
                     .unwrap(),
             )
             .await

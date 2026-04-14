@@ -33,6 +33,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json()
 }
 
+function gatewayPath(id: string, suffix = ''): string {
+  return `${API_BASE}/gateways/${encodeURIComponent(id)}${suffix}`
+}
+
 export const gatewayApi = {
   // List all gateways
   async list(): Promise<Gateway[]> {
@@ -42,7 +46,7 @@ export const gatewayApi = {
 
   // Get a single gateway by ID
   async get(id: string): Promise<Gateway> {
-    const response = await fetch(`${API_BASE}/gateways/${id}`)
+    const response = await fetch(gatewayPath(id))
     return handleResponse<Gateway>(response)
   },
 
@@ -58,7 +62,7 @@ export const gatewayApi = {
 
   // Update an existing gateway
   async update(id: string, input: UpdateGatewayInput): Promise<Gateway> {
-    const response = await fetch(`${API_BASE}/gateways/${id}`, {
+    const response = await fetch(gatewayPath(id), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -68,7 +72,7 @@ export const gatewayApi = {
 
   // Remove a gateway
   async remove(id: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/gateways/${id}`, {
+    const response = await fetch(gatewayPath(id), {
       method: 'DELETE',
     })
     if (!response.ok) {
@@ -79,7 +83,7 @@ export const gatewayApi = {
 
   // Test gateway connection
   async test(id: string): Promise<TestGatewayResult> {
-    const response = await fetch(`${API_BASE}/gateways/${id}/test`, {
+    const response = await fetch(gatewayPath(id, '/test'), {
       method: 'POST',
     })
     return handleResponse<TestGatewayResult>(response)
@@ -87,7 +91,7 @@ export const gatewayApi = {
 
   // Reload gateway (re-discover tools/resources/prompts)
   async reload(id: string): Promise<ReloadGatewayResult> {
-    const response = await fetch(`${API_BASE}/gateways/${id}/reload`, {
+    const response = await fetch(gatewayPath(id, '/reload'), {
       method: 'POST',
     })
     return handleResponse<ReloadGatewayResult>(response)
@@ -95,13 +99,13 @@ export const gatewayApi = {
 
   // Get exposure policy for a gateway
   async getExposurePolicy(id: string): Promise<ExposurePolicy> {
-    const response = await fetch(`${API_BASE}/gateways/${id}/exposure`)
+    const response = await fetch(gatewayPath(id, '/exposure'))
     return handleResponse<ExposurePolicy>(response)
   },
 
   // Update exposure policy
   async setExposurePolicy(id: string, policy: ExposurePolicy): Promise<ExposurePolicy> {
-    const response = await fetch(`${API_BASE}/gateways/${id}/exposure`, {
+    const response = await fetch(gatewayPath(id, '/exposure'), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(policy),
@@ -114,7 +118,7 @@ export const gatewayApi = {
     id: string,
     patterns: string[]
   ): Promise<ExposurePolicyPreview> {
-    const response = await fetch(`${API_BASE}/gateways/${id}/exposure/preview`, {
+    const response = await fetch(gatewayPath(id, '/exposure/preview'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ patterns }),

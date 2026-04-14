@@ -231,7 +231,7 @@ impl UpstreamPool {
                             tool_count = tools.len(),
                             "upstream discovery succeeded"
                         );
-                        Ok((name, conn, tools))
+                        Ok((name, config.expose_tools.clone(), conn, tools))
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(
@@ -258,7 +258,7 @@ impl UpstreamPool {
 
         while let Some(result) = futures.next().await {
             match result {
-                Ok((name, conn, tools)) => {
+                Ok((name, expose_tools, conn, tools)) => {
                     let upstream_name: Arc<str> = Arc::from(name.as_str());
                     let mut tool_map: HashMap<String, UpstreamTool> = HashMap::new();
                     for tool in tools {
@@ -289,13 +289,12 @@ impl UpstreamPool {
                         );
                     }
 
+                    let exposure_policy = resolve_exposure_policy(&name, expose_tools);
+
                     let entry = UpstreamEntry {
                         name: Arc::clone(&upstream_name),
                         tools: tool_map,
-                        exposure_policy: ToolExposurePolicy::from_optional(
-                            config.expose_tools.clone(),
-                        )
-                        .unwrap_or(ToolExposurePolicy::All),
+                        exposure_policy,
                         tool_health: UpstreamHealth::Healthy,
                         prompt_health: UpstreamHealth::Healthy,
                         resource_health: UpstreamHealth::Healthy,
@@ -424,7 +423,11 @@ impl UpstreamPool {
                 let matched_by = entry.exposure_policy.matched_by(tool.tool.name.as_ref());
                 UpstreamToolExposureRow {
                     name: tool.tool.name.to_string(),
-                    description: Some(tool.tool.description.to_string())
+                    description: tool
+                        .tool
+                        .description
+                        .as_ref()
+                        .map(ToString::to_string)
                         .filter(|text| !text.trim().is_empty()),
                     exposed: matched_by.is_some(),
                     matched_by,
@@ -925,6 +928,23 @@ async fn connect_stdio_upstream(
     Ok((conn, tools))
 }
 
+fn resolve_exposure_policy(
+    upstream_name: &str,
+    expose_tools: Option<Vec<String>>,
+) -> ToolExposurePolicy {
+    match ToolExposurePolicy::from_optional(expose_tools) {
+        Ok(policy) => policy,
+        Err(error) => {
+            tracing::warn!(
+                upstream = %upstream_name,
+                error = %error,
+                "invalid upstream exposure policy; hiding all upstream tools"
+            );
+            ToolExposurePolicy::AllowList(Vec::new())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1169,5 +1189,12 @@ mod tests {
 
         assert!(pool.find_tool("search_repos").await.is_some());
         assert!(pool.find_tool("delete_repo").await.is_none());
+    }
+
+    #[test]
+    fn invalid_exposure_policy_fails_closed() {
+        let policy = resolve_exposure_policy("github", Some(vec!["   ".to_string()]));
+        assert_eq!(policy, ToolExposurePolicy::AllowList(Vec::new()));
+        assert!(!policy.matches("search_repos"));
     }
 }

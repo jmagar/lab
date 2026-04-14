@@ -151,7 +151,6 @@ mod tests {
     use clap::Parser;
     use clap::CommandFactory;
 
-    use super::*;
     use crate::cli::Cli;
 
     #[test]
