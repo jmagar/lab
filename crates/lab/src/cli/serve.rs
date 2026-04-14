@@ -226,7 +226,13 @@ impl ServerHandler for LabMcpServer {
             .arguments
             .unwrap_or_default()
             .into_iter()
-            .map(|(k, v)| (k, v.to_string()))
+            .map(|(k, v)| {
+                let s = match v {
+                    Value::String(s) => s,
+                    other => other.to_string(),
+                };
+                (k, s)
+            })
             .collect();
         crate::mcp::prompts::get(&request.name, &args).ok_or_else(|| {
             ErrorData::new(
@@ -423,10 +429,10 @@ impl ServerHandler for LabMcpServer {
         };
         let elapsed_ms = start.elapsed().as_millis();
 
-        let (call_result, log_level, log_data) =
+        let (call_result, log_level, log_data_fn) =
             dispatch_to_result(&service, &action, elapsed_ms, result);
 
-        self.maybe_notify_log(log_level, log_data).await;
+        self.maybe_notify_log(log_level, log_data_fn).await;
 
         call_result
     }

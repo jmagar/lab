@@ -1,10 +1,10 @@
 # UniFi API Coverage
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 **Source spec:** `docs/upstream-api/unifi.md`
 **SDK surface:** `crates/lab-apis/src/unifi/client.rs` (20 public methods: 13 typed wrappers + 7 generic helpers)
-**Shared dispatch layer:** `crates/lab/src/dispatch/unifi.rs` + `crates/lab/src/dispatch/unifi/` (catalog, client, params, dispatch, and 10 domain modules)
-**MCP actions:** delegated directly from `dispatch::unifi::dispatch` (no separate MCP service module)
+**Shared dispatch layer:** `crates/lab/src/dispatch/unifi/` (catalog.rs, client.rs, params.rs, dispatch.rs, and 10 domain modules)
+**MCP actions:** delegated directly from `dispatch::unifi::dispatch` (tests in `mcp/services/unifi.rs`)
 **CLI surface:** `crates/lab/src/cli/unifi.rs` (action string + `key=value` trailing params)
 **API handler:** `crates/lab/src/api/services/unifi.rs` (thin adapter over the shared dispatch layer)
 **Total actions:** 81 (1 built-in `help` + 80 resource actions)
@@ -13,14 +13,15 @@
 
 | Symbol | Meaning |
 |--------|---------|
-| ✅ | Implemented in code |
-| ⚠️ | Implemented, but destructive |
-| — | Not applicable |
+| MCP | Exposed via MCP tool dispatcher |
+| CLI | Exposed via `lab unifi <action>` command |
+| API | Exposed via `POST /v1/unifi` endpoint |
 
 > UniFi is exposed as a single action dispatcher across MCP, CLI, and API. All shared
 > execution logic lives in `crates/lab/src/dispatch/unifi/`. The implementation is
-> action-centric. No live controller calls were made during development of this workspace
-> because no UniFi credentials are configured here. Destructive actions were not exercised.
+> action-centric. All 80 resource actions are wired to all three surfaces via the
+> shared dispatch layer. No live controller calls were made during development because
+> no UniFi credentials are configured. Destructive actions were not exercised.
 
 ## Implementation Model
 
@@ -241,33 +242,57 @@ All generic helpers prepend `/proxy/network/integration/v1` internally.
 |--------|------------|-------------|--------|
 | `countries.list` | `get_value()` | No | `offset`, `limit` (optional query) |
 
-## Surface Notes
+## Surface Coverage
+
+All 80 resource actions are wired to all three surfaces (MCP, CLI, API) via
+the shared dispatch layer in `crates/lab/src/dispatch/unifi/dispatch.rs`.
 
 ### CLI (`crates/lab/src/cli/unifi.rs`)
 
-Tier-2 shim. `lab unifi <action> [key=value ...]`. Supports `--instance <label>`,
-`-y`/`--yes` (skip destructive confirm), and `--dry-run`. The dry-run check runs
-twice in the current code (a minor implementation artifact, not a user-visible bug).
+Tier-2 shim. Command: `lab unifi <action> [key=value ...]`
+
+- Supports `--instance <label>` for multi-instance clients
+- Honors `-y`/`--yes` to skip destructive-action confirmation
+- `--dry-run` previews action without executing
+- Calls `dispatch::unifi::dispatch(&action, params)` after parsing
 
 ### MCP
 
-No dedicated `mcp/services/unifi.rs` dispatch function — the MCP registry wires directly
-to `dispatch::unifi::dispatch`. The file `mcp/services/unifi.rs` exists but contains only
-tests; it does not export a `dispatch` function.
+Single tool: `unifi({ "action": "<name>", "params": {...} })`
+
+- All 80 actions reachable via the unified tool dispatcher
+- Built-in `help` and `schema` actions (introspection)
+- Elicitation enforced for destructive actions (confirms before executing)
+- `mcp/services/unifi.rs` contains only tests; dispatch wired directly to
+  `dispatch::unifi::dispatch` in the registry
 
 ### API (`crates/lab/src/api/services/unifi.rs`)
 
-`POST /v1/unifi` — single route. Calls `dispatch::unifi::dispatch` via the shared
-`handle_action` helper. Does not use a pre-built client from `AppState`; client resolution
-happens inside the dispatch layer (via `client_from_instance`).
+Single route: `POST /v1/unifi`
 
-## Config
+```jsonc
+{ "action": "sites.list", "params": { "instance": "default" } }
+```
+
+- Calls `dispatch::unifi::dispatch` via the shared `handle_action` helper
+- Client resolution (instance lookup, auth) happens inside the dispatch layer
+- Destructive actions require `"confirm": true` in the request params
+- All 80 actions reachable (help, schema, and resource actions)
+
+## Configuration
+
+Loaded from `~/.lab/.env` (secrets, `dotenvy`).
 
 | Env var | Required | Purpose |
 |---------|----------|---------|
 | `UNIFI_URL` | Yes | Controller root URL (e.g. `https://10.1.0.1`) |
-| `UNIFI_API_KEY` | Yes | API key sent as `X-API-KEY` header |
+| `UNIFI_API_KEY` | Yes | API key sent as `X-API-KEY` header (exact casing enforced) |
 
-The client appends `/proxy/network/integration/v1` internally. Multi-instance support: set
-`UNIFI_<LABEL>_URL` and `UNIFI_<LABEL>_API_KEY` for additional instances; select via
-`params.instance` (MCP/API) or `--instance` (CLI).
+The SDK client appends `/proxy/network/integration/v1` internally.
+
+**Multi-instance support:** Set `UNIFI_<LABEL>_URL` and `UNIFI_<LABEL>_API_KEY` for
+additional named instances (e.g. `UNIFI_NODE2_URL`, `UNIFI_NODE2_API_KEY`).
+
+- MCP/API: select instance via `"instance": "<label>"` in params
+- CLI: select instance via `--instance <label>` flag
+- Default instance: omit the label (no label → use `UNIFI_URL` and `UNIFI_API_KEY`)

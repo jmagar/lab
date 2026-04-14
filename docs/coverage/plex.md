@@ -1,6 +1,6 @@
 # Plex API Coverage
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 **OpenAPI spec:** docs/api-specs/plex.openapi.yaml
 **OpenAPI version:** 3.1.1
 **API version:** 1.1.1
@@ -22,10 +22,12 @@ The source spec is the contract. This document is the implementation planning ai
 
 The following actions are fully implemented across SDK (`lab-apis`), dispatch layer, CLI, MCP, and HTTP API.
 
-- CLI: thin dispatch shim (`lab plex <action> [--params <json>]`)
-- MCP: one tool `plex` with action dispatch
-- API: `POST /v1/plex`
-- Auth: `PLEX_URL` + `PLEX_TOKEN` env vars; token sent as `X-Plex-Token` header
+- **SDK:** `PlexClient` in `crates/lab-apis/src/plex/client.rs` with individual async methods
+- **Dispatch layer:** `crates/lab/src/dispatch/plex/` (catalog, client, params, dispatch)
+- **CLI:** thin dispatch shim (`lab plex <action> [--params <json>]`)
+- **MCP:** one tool `plex` with action dispatch
+- **API:** `POST /v1/plex`
+- **Auth:** `PLEX_URL` + `PLEX_TOKEN` env vars; token sent as `X-Plex-Token` header
 
 | Action | SDK Method | Destructive | Params | Returns |
 |--------|-----------|-------------|--------|---------|
@@ -58,6 +60,98 @@ The following actions are fully implemented across SDK (`lab-apis`), dispatch la
 | `item.scrobble` | `item_scrobble(rating_key)` | no | `rating_key: string` | void (`GET /:/scrobble`) |
 | `item.unscrobble` | `item_unscrobble(rating_key)` | no | `rating_key: string` | void (`GET /:/unscrobble`) |
 | `updater.status` | `updater_status()` | no | — | Value (`GET /updater/status`) |
+
+## Surface Coverage
+
+### SDK (`lab-apis/src/plex/client.rs`)
+
+All 29 implemented actions have corresponding async methods in `PlexClient`:
+
+- **Server:** `server_info()`, `server_capabilities()`, `probe()`
+- **Library:** `library_list()`, `library_get()`, `library_scan()`, `library_refresh()`, `library_browse()`, `library_empty_trash()`
+- **Media:** `media_search()`, `media_get()`
+- **Sessions:** `session_list()`, `session_terminate()`, `session_history()`
+- **Playlists:** `playlist_list()`, `playlist_get()`, `playlist_create()`, `playlist_delete()`
+- **Metadata:** `metadata_delete()`, `metadata_edit()`, `metadata_refresh()`
+- **Hubs:** `hubs_continue_watching()`
+- **Butler:** `butler_list()`, `butler_run()`
+- **Scrobbling:** `item_scrobble()`, `item_unscrobble()`
+- **Updates:** `updater_status()`
+
+All methods use `HttpClient` from `lab_apis::core`. Errors are typed as `PlexError`, which wraps `ApiError` transparently.
+
+### Dispatch Layer (`crates/lab/src/dispatch/plex/`)
+
+Structure follows the standard layout:
+
+- **catalog.rs:** ActionSpec definitions for all 31 actions (29 service + `help` + `schema`)
+- **client.rs:** `client_from_env()` and `require_client()` for env-based client construction
+- **params.rs:** Parameter extraction helpers (require_key, optional_string, etc.)
+- **dispatch.rs:** `dispatch(action, params)` and `dispatch_with_client(client, action, params)` routing
+  - Unmarked actions: `help`, `schema`
+  - Marked destructive: `library.refresh`, `session.terminate`, `playlist.create`, `playlist.delete`, `library.empty-trash`, `metadata.delete`
+
+All 29 service actions wire through `dispatch_with_client()`, which calls the corresponding SDK method and serializes results to JSON.
+
+### CLI (`crates/lab/src/cli/plex.rs`)
+
+Thin shim using generic action dispatch:
+
+```bash
+lab plex help
+lab plex library.list
+lab plex media.search --params '{"query":"The Matrix"}'
+lab plex session.terminate --params '{"session_id":"123"}' --yes
+```
+
+- Supports `--json` for JSON output (default: human table)
+- Supports `--verbose` for debug logs (via `tracing`)
+- Respects `-y` / `--yes` for destructive operations
+- Respects `--dry-run` for dry-run mode
+
+### MCP (`crates/lab/src/mcp/services/plex.rs`)
+
+Thin bridge that delegates to dispatch layer. Registered as one tool `plex` with:
+
+```json
+{
+  "name": "plex",
+  "description": "Plex Media Server control",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": { "type": "string", "description": "Action to run (e.g., library.list)" },
+      "params": { "type": "object", "description": "Action-specific parameters" }
+    },
+    "required": ["action"]
+  }
+}
+```
+
+- `help` action returns the action catalog
+- `schema` action returns the parameter schema for a named action
+- Destructive actions (`library.refresh`, `session.terminate`, etc.) require elicitation confirmation from the client
+- All actions return `Result<Value, ToolError>` with structured error envelopes
+
+### API (`crates/lab/src/api/services/plex.rs`)
+
+HTTP route group at `POST /v1/plex`:
+
+```bash
+curl -X POST http://localhost:8080/v1/plex \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"library.list"}'
+
+curl -X POST http://localhost:8080/v1/plex \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"session.terminate","params":{"session_id":"123","confirm":true}}'
+```
+
+- Handlers call `dispatch_with_client()` with pre-built client from `AppState`
+- Destructive actions require `"confirm": true` in the JSON request body
+- All errors return structured JSON envelopes with `kind` field mapping to HTTP status
 
 ## OpenAPI Endpoint Inventory
 

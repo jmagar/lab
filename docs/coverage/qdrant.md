@@ -22,28 +22,28 @@ The source spec is the contract. This document is the implementation planning ai
 
 The following actions are implemented end-to-end (SDK → dispatch → MCP → CLI → API):
 
-| Action | SDK Method | Params | Returns | Destructive |
-|--------|-----------|--------|---------|-------------|
-| `help` | — (built-in) | — | Catalog | no |
-| `schema` | — (built-in) | `action: string` (required) | Schema | no |
-| `server.health` | `health()` | — | `{ ok: true }` | no |
-| `collections.list` | `collections_list()` | — | `CollectionDescription[]` | no |
-| `collections.get` | `collection_get(name)` | `name: string` (required) | `CollectionInfo` (raw Value) | no |
-| `collection.create` | `collection_create(name, body)` | `name: string`, `size: integer`, `distance: string` | Value | no |
-| `collection.delete` | `collection_delete(name)` | `name: string` | void | **yes** |
-| `point.upsert` | `point_upsert_batched(collection, points)` | `collection: string`, `points: array` | Value | no |
-| `point.search` | `point_search(collection, req)` | `collection: string`, `vector: array`, `limit: integer`, `filter?`, `with_payload?`, `score_threshold?` | Value | no |
-| `point.query` | `point_query(collection, body)` | `collection: string`, `query: object` | Value | no |
-| `point.scroll` | `point_scroll(collection, body)` | `collection: string`, `scroll?: object` | Value | no |
-| `point.count` | `point_count(collection, body)` | `collection: string`, `filter?: object` | Value | no |
-| `point.delete` | `point_delete(collection, body)` | `collection: string`, `points?: array`, `filter?: object` | Value | **yes** |
-| `snapshot.create` | `snapshot_create(collection)` | `collection: string` | SnapshotInfo | no |
-| `index.create` | `index_create(collection, req)` | `collection: string`, `field_name: string`, `field_schema: object` | Value | no |
+| Action | SDK Method | Params | Returns | Destructive | MCP | CLI | API |
+|--------|-----------|--------|---------|-------------|-----|-----|-----|
+| `help` | — (built-in) | — | Catalog | no | ✅ | ✅ | ✅ |
+| `schema` | — (built-in) | `action: string` (required) | Schema | no | ✅ | ✅ | ✅ |
+| `server.health` | `health()` | — | `{ ok: true }` | no | ✅ | ✅ | ✅ |
+| `collections.list` | `collections_list()` | — | `CollectionDescription[]` | no | ✅ | ✅ | ✅ |
+| `collections.get` | `collection_get(name)` | `name: string` (required) | `CollectionInfo` | no | ✅ | ✅ | ✅ |
+| `collection.create` | `collection_create(name, body)` | `name: string`, `size: integer`, `distance: string` | Value | no | ✅ | ✅ | ✅ |
+| `collection.delete` | `collection_delete(name)` | `name: string` | `{ ok: true }` | yes | ✅ | ✅ | ✅ |
+| `point.upsert` | `point_upsert_batched(collection, points)` | `collection: string`, `points: array` | Value | no | ✅ | ✅ | ✅ |
+| `point.search` | `point_search(collection, req)` | `collection: string`, `vector: array`, `limit: integer`, `filter?`, `with_payload?`, `score_threshold?` | Value | no | ✅ | ✅ | ✅ |
+| `point.query` | `point_query(collection, body)` | `collection: string`, `query: object` | Value | no | ✅ | ✅ | ✅ |
+| `point.scroll` | `point_scroll(collection, body)` | `collection: string`, `scroll?: object` | Value | no | ✅ | ✅ | ✅ |
+| `point.count` | `point_count(collection, body)` | `collection: string`, `filter?: object` | Value | no | ✅ | ✅ | ✅ |
+| `point.delete` | `point_delete(collection, body)` | `collection: string`, `points?: array`, `filter?: object` | Value | yes | ✅ | ✅ | ✅ |
+| `snapshot.create` | `snapshot_create(collection)` | `collection: string` | `SnapshotInfo` | no | ✅ | ✅ | ✅ |
+| `index.create` | `index_create(collection, req)` | `collection: string`, `field_name: string`, `field_schema: object` | Value | no | ✅ | ✅ | ✅ |
 
 **Surface wiring:**
-- MCP: `mcp/services/qdrant.rs` forwards to `dispatch::qdrant::dispatch()`
-- CLI: `cli/qdrant.rs` calls `mcp::services::qdrant::dispatch()` directly (Tier-2 shim)
-- API: `api/services/qdrant.rs` calls `dispatch::qdrant::dispatch_with_client()`
+- **MCP:** `mcp/services/qdrant.rs` delegates to `dispatch::qdrant::dispatch()`
+- **CLI:** `cli/qdrant.rs` (Tier-2 shim) calls `mcp::services::qdrant::dispatch()` directly, which delegates to dispatch
+- **API:** `api/services/qdrant.rs` calls `dispatch::qdrant::dispatch_with_client()` with pre-built client from `AppState`
 
 **Auth:** `QDRANT_URL` is required. `QDRANT_API_KEY` is optional — if present, sent as `api-key` header; if absent, `Auth::None` is used (unauthenticated local instance).
 
@@ -165,9 +165,26 @@ The following actions are implemented end-to-end (SDK → dispatch → MCP → C
 | DELETE | /issues | — | — | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /issues | — | — | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Notes
+## Implementation Notes
 
-- The CLI shim (`cli/qdrant.rs`) is Tier-2: it calls `mcp::services::qdrant::dispatch()` directly rather than the shared dispatch layer. This is correct current behavior but does not match the canonical Tier-1 typed pattern used by radarr.
-- The SDK client (`lab-apis/src/qdrant/client.rs`) now implements 13 methods: `health()`, `collections_list()`, `collection_get()`, `collection_create()`, `collection_delete()`, `point_upsert()`, `point_upsert_batched()`, `point_search()`, `point_query()`, `point_scroll()`, `point_count()`, `point_delete()`, `snapshot_create()`, and `index_create()`.
-- `point_upsert_batched()` auto-chunks large point sets at 500 points/chunk and fails fast (returning chunk context) if any chunk fails.
-- `QDRANT_API_KEY` is optional. `QDRANT_URL` is required.
+**SDK client (`lab-apis/src/qdrant/client.rs`):**
+- Implements 14 public methods: `health()`, `collections_list()`, `collection_get()`, `collection_create()`, `collection_delete()`, `point_upsert()`, `point_upsert_batched()`, `point_search()`, `point_query()`, `point_scroll()`, `point_count()`, `point_delete()`, `snapshot_create()`, and `index_create()`.
+- `point_upsert_batched()` auto-chunks large point sets at 500 points/chunk and fails fast (returning chunk context on failure). Partial commits up to the failed chunk are already persisted; retrying from the beginning is safe due to Qdrant upsert idempotence.
+- All collection name parameters are validated: empty names are rejected with `ApiError::Validation`.
+- URL path segments are percent-encoded (RFC 3986) to handle special characters in collection names.
+
+**Dispatch layer (`crates/lab/src/dispatch/qdrant/`):**
+- `dispatch.rs`: Routes actions to SDK methods. Handles param coercion (e.g., distance metric validation, vector parsing).
+- `params.rs`: Provides `collection_name_from_params()` to extract and validate the collection name parameter across actions.
+- `client.rs`: Owns env var lookup and client construction. `client_from_env()` is called by `AppState` at startup; `require_client()` is the fallback for MCP/CLI when `AppState` is unavailable.
+
+**Destructive actions:**
+- `collection.delete` and `point.delete` are marked `destructive: true` in the catalog.
+- API clients must pass `"confirm": true` in the JSON request body.
+- CLI requires `-y` or `--yes` flag in non-interactive mode; prompts on TTY.
+- MCP supports client elicitation or `"confirm": true` in params.
+
+**Auth and config:**
+- `QDRANT_URL` is required for all operations.
+- `QDRANT_API_KEY` is optional. If present, it is sent as the `api-key` header; if absent, no auth header is sent (suitable for local, unauthenticated instances).
+- Config is loaded from `~/.lab/.env` via `dotenvy` at startup.

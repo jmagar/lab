@@ -4,18 +4,19 @@
 **OpenAPI spec:** `docs/upstream-api/gotify.openapi.json`
 **API version:** 2.0.2
 **SDK surface:** `crates/lab-apis/src/gotify/client.rs` (26 public methods)
-**Shared dispatch:** `crates/lab/src/dispatch/gotify.rs` + `crates/lab/src/dispatch/gotify/` (catalog, client, params, dispatch)
-**MCP adapter:** `crates/lab/src/mcp/services/gotify.rs` (thin re-export of dispatch layer)
-**CLI surface:** `crates/lab/src/cli/gotify.rs` (generic `action` + `key=value` params → shared dispatch)
-**API handler:** `crates/lab/src/api/services/gotify.rs` (thin adapter over shared dispatch)
+**Shared dispatch:** `crates/lab/src/dispatch/gotify/` (catalog.rs, client.rs, params.rs, dispatch.rs)
+**MCP adapter:** `crates/lab/src/mcp/services/gotify.rs` (thin bridge to dispatch)
+**CLI surface:** `crates/lab/src/cli/gotify.rs` (generic `action` + `key=value` params via `run_confirmable_action_command`)
+**API handler:** `crates/lab/src/api/services/gotify.rs` (thin adapter via `handle_action` helper)
 
 ## Legend
 
 | Symbol | Meaning |
 |--------|---------|
-| ✅ | Implemented and live-tested |
-| ⬜ | Implemented, not yet live-tested |
-| — | Not implemented (out of scope for initial cut) |
+| ✅ | Fully implemented across all surfaces (SDK, Dispatch, MCP, CLI, API) |
+| — | Not implemented (out of scope) |
+
+All implemented actions are live in all surfaces (MCP, CLI, API). The dispatch layer enforces destructive confirmation via `-y` flag (CLI) or `"confirm": true` param (API/MCP).
 
 > **Auth note:** Gotify uses the `X-Gotify-Key` header.
 > App tokens have send-only scope; client tokens have read/manage scope.
@@ -32,57 +33,57 @@
 
 ### Messages
 
-| Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
-|--------|----------|-----|----------|-----|-----|-----|
-| `message.send` | `POST /message` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `message.list` | `GET /message` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `message.delete` | `DELETE /message/{id}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `message.purge` | `DELETE /message` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| Action | Endpoint | Destructive | Status |
+|--------|----------|-------------|--------|
+| `message.send` | `POST /message` | No | ✅ |
+| `message.list` | `GET /message` | No | ✅ |
+| `message.delete` | `DELETE /message/{id}` | Yes | ✅ |
+| `message.purge` | `DELETE /message` | Yes | ✅ |
 
 ### Applications
 
-| Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
-|--------|----------|-----|----------|-----|-----|-----|
-| `app.list` | `GET /application` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `app.create` | `POST /application` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `app.delete` | `DELETE /application/{id}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `application.update` | `PUT /application/{id}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `application.messages` | `GET /application/{id}/message` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `application.messages-delete` | `DELETE /application/{id}/message` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| Action | Endpoint | Destructive | Status |
+|--------|----------|-------------|--------|
+| `app.list` | `GET /application` | No | ✅ |
+| `app.create` | `POST /application` | No | ✅ |
+| `app.delete` | `DELETE /application/{id}` | Yes | ✅ |
+| `application.update` | `PUT /application/{id}` | No | ✅ |
+| `application.messages` | `GET /application/{id}/message` | No | ✅ |
+| `application.messages-delete` | `DELETE /application/{id}/message` | Yes | ✅ |
 
 ### Clients
 
-| Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
-|--------|----------|-----|----------|-----|-----|-----|
-| `client.list` | `GET /client` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `client.create` | `POST /client` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `client.delete` | `DELETE /client/{id}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `client.update` | `PUT /client/{id}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| Action | Endpoint | Destructive | Status |
+|--------|----------|-------------|--------|
+| `client.list` | `GET /client` | No | ✅ |
+| `client.create` | `POST /client` | No | ✅ |
+| `client.delete` | `DELETE /client/{id}` | Yes | ✅ |
+| `client.update` | `PUT /client/{id}` | No | ✅ |
 
 ### Plugins
 
-| Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
-|--------|----------|-----|----------|-----|-----|-----|
-| `plugin.list` | `GET /plugin` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `plugin.enable` | `POST /plugin/{id}/enable` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `plugin.disable` | `POST /plugin/{id}/disable` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `plugin.config-get` | `GET /plugin/{id}/config` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `plugin.config-set` | `POST /plugin/{id}/config` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| Action | Endpoint | Destructive | Status |
+|--------|----------|-------------|--------|
+| `plugin.list` | `GET /plugin` | No | ✅ |
+| `plugin.enable` | `POST /plugin/{id}/enable` | No | ✅ |
+| `plugin.disable` | `POST /plugin/{id}/disable` | No | ✅ |
+| `plugin.config-get` | `GET /plugin/{id}/config` | No | ✅ |
+| `plugin.config-set` | `POST /plugin/{id}/config` | No | ✅ |
 
 ### Users
 
-| Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
-|--------|----------|-----|----------|-----|-----|-----|
-| `user.list` | `GET /user` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `user.create` | `POST /user` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `user.delete` | `DELETE /user/{id}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| Action | Endpoint | Destructive | Status |
+|--------|----------|-------------|--------|
+| `user.list` | `GET /user` | No | ✅ |
+| `user.create` | `POST /user` | No | ✅ |
+| `user.delete` | `DELETE /user/{id}` | Yes | ✅ |
 
 ### Server
 
-| Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
-|--------|----------|-----|----------|-----|-----|-----|
-| `server.health` | `GET /health` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `server.version` | `GET /version` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| Action | Endpoint | Destructive | Status |
+|--------|----------|-------------|--------|
+| `server.health` | `GET /health` | No | ✅ |
+| `server.version` | `GET /version` | No | ✅ |
 
 ## Action Parameters
 
@@ -186,16 +187,18 @@ No params. Returns `{version, commit, buildDate}`.
 
 ## Destructive Actions
 
-The following actions are marked `destructive: true` in the catalog:
+The following actions are marked `destructive: true` in the catalog. All require confirmation before execution:
 
-| Action | Confirmation (CLI) | Confirmation (API) |
-|--------|-------------------|--------------------|
-| `message.delete` | `-y` / `--yes` flag | `"confirm": true` in params |
-| `message.purge` | `-y` / `--yes` flag | `"confirm": true` in params |
-| `app.delete` | `-y` / `--yes` flag | `"confirm": true` in params |
-| `client.delete` | `-y` / `--yes` flag | `"confirm": true` in params |
-| `application.messages-delete` | `-y` / `--yes` flag | `"confirm": true` in params |
-| `user.delete` | `-y` / `--yes` flag | `"confirm": true` in params |
+| Action | CLI Confirmation | API Confirmation | MCP Confirmation |
+|--------|------------------|------------------|------------------|
+| `message.delete` | `-y` / `--yes` flag | `"confirm": true` in params | Elicitation prompt to user |
+| `message.purge` | `-y` / `--yes` flag | `"confirm": true` in params | Elicitation prompt to user |
+| `app.delete` | `-y` / `--yes` flag | `"confirm": true` in params | Elicitation prompt to user |
+| `application.messages-delete` | `-y` / `--yes` flag | `"confirm": true` in params | Elicitation prompt to user |
+| `client.delete` | `-y` / `--yes` flag | `"confirm": true` in params | Elicitation prompt to user |
+| `user.delete` | `-y` / `--yes` flag | `"confirm": true` in params | Elicitation prompt to user |
+
+All destructive actions are gated at the shared dispatch layer via `ActionSpec.destructive` metadata in `catalog.rs`.
 
 ## Spec Endpoints Not Implemented
 

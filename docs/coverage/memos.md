@@ -1,20 +1,20 @@
 # Memos API Coverage
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 **API target:** Memos v1 REST API (resource-name style, RFC3339 timestamps)
 **SDK surface:** `crates/lab-apis/src/memos/client.rs` (18 public methods)
-**Shared dispatch:** `crates/lab/src/dispatch/memos.rs` + `crates/lab/src/dispatch/memos/` (catalog, client, params, dispatch)
+**Shared dispatch:** `crates/lab/src/dispatch/memos/` (catalog.rs, client.rs, params.rs, dispatch.rs)
 **MCP adapter:** `crates/lab/src/mcp/services/memos.rs` (thin re-export of dispatch layer)
-**CLI surface:** `crates/lab/src/cli/memos.rs` (generic `action` + `--params JSON` → shared dispatch)
-**API handler:** `crates/lab/src/api/services/memos.rs` (thin adapter over shared dispatch)
+**CLI surface:** `crates/lab/src/cli/memos.rs` (generic action + `--params JSON` → shared dispatch)
+**API handler:** `crates/lab/src/api/services/memos.rs` (thin POST handler over shared dispatch)
 
 ## Legend
 
 | Symbol | Meaning |
 |--------|---------|
-| ✅ | Implemented and live-tested |
+| ✅ | Implemented and wired to all surfaces (MCP, CLI, API) |
 | ⬜ | Implemented, not yet live-tested |
-| — | Not implemented (out of scope for initial cut) |
+| — | Not implemented (out of scope for initial cut)
 
 > **Auth note:** Memos uses `Authorization: Bearer <token>`.
 > Env vars: `MEMOS_URL`, `MEMOS_TOKEN`.
@@ -32,7 +32,7 @@
 | `tags_list()` | `GET /api/v1/tags` | List all tags |
 | `workspace_profile()` | `GET /api/v1/workspace/profile` | Get workspace profile |
 | `user_me()` | `GET /api/v1/users/me` | Get authenticated user profile |
-| `users_list()` | `GET /api/v1/users` | List all users (admin only) |
+| `users_list()` | `GET /api/v1/users` | List all users |
 | `user_stats(user)` | `GET /api/v1/{user}:getStats` | Get memo statistics for a user |
 | `webhooks_list(user)` | `GET /api/v1/{user}/webhooks` | List webhooks for a user |
 | `webhook_create(user, req)` | `POST /api/v1/{user}/webhooks` | Create a webhook for a user |
@@ -45,60 +45,60 @@
 
 ## Action Catalog
 
-All actions are implemented in the shared dispatch layer and wired to MCP, CLI, and API surfaces.
+All 18 actions are implemented in the shared dispatch layer and wired to MCP, CLI, and API surfaces.
 
 ### Memos
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `memos.list` | `GET /api/v1/memos` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `memos.get` | `GET /api/v1/{name}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `memos.create` | `POST /api/v1/memos` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `memos.update` | `PATCH /api/v1/{name}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `memos.delete` | `DELETE /api/v1/{name}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| `memos.list` | `GET /api/v1/memos` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `memos.get` | `GET /api/v1/{name}` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `memos.create` | `POST /api/v1/memos` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `memos.update` | `PATCH /api/v1/{name}` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `memos.delete` | `DELETE /api/v1/{name}` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Tags
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `tags.list` | `GET /api/v1/tags` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| `tags.list` | `GET /api/v1/tags` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Workspace
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `workspace.profile` | `GET /api/v1/workspace/profile` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| `workspace.profile` | `GET /api/v1/workspace/profile` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### User
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `user.me` | `GET /api/v1/users/me` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `user.list` | `GET /api/v1/users` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `user.stats` | `GET /api/v1/{user}:getStats` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| `user.me` | `GET /api/v1/users/me` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `user.list` | `GET /api/v1/users` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `user.stats` | `GET /api/v1/{user}:getStats` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Webhooks
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `webhook.list` | `GET /api/v1/{user}/webhooks` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `webhook.create` | `POST /api/v1/{user}/webhooks` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| `webhook.list` | `GET /api/v1/{user}/webhooks` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `webhook.create` | `POST /api/v1/{user}/webhooks` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Attachments
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `attachment.upload` | `POST /api/v1/attachments` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `attachment.delete` | `DELETE /api/v1/{name}` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| `attachment.upload` | `POST /api/v1/attachments` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `attachment.delete` | `DELETE /api/v1/{name}` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### Memo Sub-Resources
 
 | Action | Endpoint | SDK | Dispatch | MCP | CLI | API |
 |--------|----------|-----|----------|-----|-----|-----|
-| `memo.comment-list` | `GET /api/v1/{name}/comments` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `memo.comment-create` | `POST /api/v1/{name}/comments` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `memo.share-list` | `GET /api/v1/{name}/shares` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
-| `memo.share-create` | `POST /api/v1/{name}/shares` | ✅ | ✅ | ✅ | ⬜ | ⬜ |
+| `memo.comment-list` | `GET /api/v1/{name}/comments` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `memo.comment-create` | `POST /api/v1/{name}/comments` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `memo.share-list` | `GET /api/v1/{name}/shares` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `memo.share-create` | `POST /api/v1/{name}/shares` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ## Action Parameters
 
@@ -187,11 +187,12 @@ All actions are implemented in the shared dispatch layer and wired to MCP, CLI, 
 
 | Action | Confirmation (CLI) | Confirmation (API) |
 |--------|-------------------|--------------------|
-| `memos.delete` | no `-y` flag (CLI uses `run_action_command`) | `"confirm": true` in params |
-| `attachment.delete` | no `-y` flag (CLI uses `run_action_command`) | `"confirm": true` in params |
+| `memos.delete` | Not required (CLI uses `run_action_command`) | `"confirm": true` in params |
+| `attachment.delete` | Not required (CLI uses `run_action_command`) | `"confirm": true` in params |
 
 > **Note:** The Memos CLI shim uses `run_action_command` (not `run_confirmable_action_command`),
-> so it does not require a `-y` flag at the CLI level. Destructive confirmation applies to the API surface only.
+> so it does not require a `-y` flag at the CLI level. API-level destructive confirmation requires
+> `"confirm": true` in the request params object.
 
 ## CLI Interface
 
@@ -210,6 +211,39 @@ lab memos workspace.profile
 lab memos user.me
 ```
 
+## MCP Interface
+
+All 18 actions are available via the `memos` MCP tool:
+
+```jsonc
+memos({ "action": "memos.list" })
+memos({ "action": "memos.get", "params": { "name": "memos/123" } })
+memos({ "action": "memos.create", "params": { "content": "Hello world" } })
+memos({ "action": "help" })           // Show action catalog
+memos({ "action": "schema", "params": { "action": "memos.create" } })  // Per-action schema
+```
+
+## API Interface
+
+All 18 actions are available via POST to `/v1/memos`:
+
+```bash
+curl -X POST http://localhost:3000/v1/memos \
+  -H "Content-Type: application/json" \
+  -d '{"action":"memos.list"}'
+
+curl -X POST http://localhost:3000/v1/memos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":"memos.create",
+    "params":{"content":"Hello world","visibility":"PRIVATE"}
+  }'
+
+curl -X POST http://localhost:3000/v1/memos \
+  -H "Content-Type: application/json" \
+  -d '{"action":"memos.delete","params":{"name":"memos/123","confirm":true}}'
+```
+
 ## Upstream API Endpoints Not Implemented
 
 The following Memos v1 API endpoints exist upstream but are not implemented in the SDK or dispatch layer:
@@ -218,8 +252,6 @@ The following Memos v1 API endpoints exist upstream but are not implemented in t
 | Method | Endpoint |
 |--------|----------|
 | GET | /api/v1/attachments |
-| POST | /api/v1/attachments |
-| DELETE | /api/v1/attachments/{attachment} |
 | GET | /api/v1/attachments/{attachment} |
 | PATCH | /api/v1/attachments/{attachment} |
 | POST | /api/v1/attachments:batchDelete |
@@ -244,15 +276,13 @@ The following Memos v1 API endpoints exist upstream but are not implemented in t
 | GET | /api/v1/instance/profile |
 | GET/PATCH | /api/v1/instance/{instance}/* |
 
-### MemoService (partial — sub-resources not implemented)
+### MemoService (partial — sub-resource mutations not implemented)
 | Method | Endpoint |
 |--------|----------|
 | GET/PATCH | /api/v1/memos/{memo}/attachments |
-| GET/POST | /api/v1/memos/{memo}/comments |
-| GET/POST | /api/v1/memos/{memo}/reactions |
+| PATCH | /api/v1/memos/{memo}/reactions |
 | DELETE | /api/v1/memos/{memo}/reactions/{reaction} |
 | GET/PATCH | /api/v1/memos/{memo}/relations |
-| GET/POST | /api/v1/memos/{memo}/shares |
 | DELETE | /api/v1/memos/{memo}/shares/{share} |
 | GET | /api/v1/shares/{shareId} |
 
@@ -262,19 +292,17 @@ The following Memos v1 API endpoints exist upstream but are not implemented in t
 | GET/POST | /api/v1/users/{user}/shortcuts |
 | GET/PATCH/DELETE | /api/v1/users/{user}/shortcuts/{shortcut} |
 
-### UserService (partial — only `users/me` is implemented)
+### UserService (partial — only basic operations implemented)
 | Method | Endpoint |
 |--------|----------|
-| GET/POST | /api/v1/users |
+| POST | /api/v1/users |
 | GET/PATCH/DELETE | /api/v1/users/{user} |
 | GET/DELETE/PATCH | /api/v1/users/{user}/notifications/{notification} |
 | GET/POST | /api/v1/users/{user}/personalAccessTokens |
 | DELETE | /api/v1/users/{user}/personalAccessTokens/{personalAccessToken} |
 | GET | /api/v1/users/{user}/settings |
 | GET/PATCH | /api/v1/users/{user}/settings/{setting} |
-| GET/POST | /api/v1/users/{user}/webhooks |
 | PATCH/DELETE | /api/v1/users/{user}/webhooks/{webhook} |
-| GET | /api/v1/users/{user}:getStats |
 | POST | /api/v1/users:batchGet |
 | GET | /api/v1/users:stats |
 
@@ -285,3 +313,4 @@ The following Memos v1 API endpoints exist upstream but are not implemented in t
 - Memo identifiers are resource names (`"memos/123"`), not bare integers.
 - `memos.update` uses PATCH semantics — only provided fields are changed.
 - The `health()` SDK method calls `workspace_profile` internally; it is used by `lab doctor` and not exposed as a separate action.
+- Built-in `help` and `schema` actions are supported by all surfaces and do not require explicit declaration.

@@ -1,8 +1,8 @@
 # qBittorrent API Coverage
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 **Source spec:** docs/api-specs/qbittorrent.md
-**Format:** hand-scraped reference
+**Format:** dispatch layer + shared surfaces
 
 ## Legend
 
@@ -14,15 +14,16 @@
 
 ## Summary
 
-- Auth: qBittorrent uses cookie-based session auth (SID cookie). The lab binary reads `QBITTORRENT_URL` and `QBITTORRENT_SID` from env. The SID must be obtained externally by calling `POST /api/v2/auth/login` once and is passed via `Auth::Session { cookie }`.
-- All 29 dispatch actions are reachable via CLI, MCP, and API.
-- CLI is a thin dispatch shim (`lab qbittorrent <action> [--params <json>]`).
-- MCP exposes one tool: `qbittorrent`.
-- API route: `POST /v1/qbittorrent`.
+- **Auth:** qBittorrent uses cookie-based session auth (SID cookie). The lab binary reads `QBITTORRENT_URL` and `QBITTORRENT_SID` from env. The SID must be obtained externally by calling `POST /api/v2/auth/login` once and is passed via `Auth::Session { cookie }`.
+- **All 32 dispatch actions are fully implemented** across all surfaces: SDK, dispatch layer, MCP, CLI, and API.
+- **CLI:** thin dispatch shim (`lab qbittorrent <action> [--params <json>]`).
+- **MCP:** exposes one tool: `qbittorrent`.
+- **API:** route group at `POST /v1/qbittorrent`.
+- **Surfaces:** All actions reachable via dispatch, MCP tool, CLI thin shim, and HTTP API handler.
 
 ## Action Inventory
 
-| Action | SDK Method | Destructive | CLI | MCP | API | Params |
+| Action | SDK Method | Destructive | MCP | CLI | API | Params |
 |--------|-----------|-------------|-----|-----|-----|--------|
 | `help` | built-in | no | ✅ | ✅ | ✅ | — |
 | `schema` | built-in | no | ✅ | ✅ | ✅ | `action: string` |
@@ -50,7 +51,7 @@
 | `torrent.add-tags` | `add_tags(hashes, tags)` | no | ✅ | ✅ | ✅ | `hashes: string`, `tags: string (comma-sep)` |
 | `torrent.remove-tags` | `remove_tags(hashes, tags)` | no | ✅ | ✅ | ✅ | `hashes: string`, `tags: string (comma-sep, empty=all)` |
 | `torrent.set-share-limits` | `set_share_limits(hashes, ratio_limit, seeding_time_limit, inactive_seeding_time_limit)` | no | ✅ | ✅ | ✅ | `hashes: string`, `ratio_limit: number`, `seeding_time_limit: integer`, `inactive_seeding_time_limit: integer` |
-| `categories.list` | `categories()` | no | ✅ | ✅ | ✅ | — |
+| `category.list` | `categories()` | no | ✅ | ✅ | ✅ | — |
 | `category.create` | `create_category(category, save_path)` | no | ✅ | ✅ | ✅ | `category: string`, `savepath?: string` |
 | `category.edit` | `edit_category(category, save_path)` | no | ✅ | ✅ | ✅ | `category: string`, `savepath: string` |
 | `log.list` | `log(last_known_id)` | no | ✅ | ✅ | ✅ | `last_known_id?: integer (-1=all)` |
@@ -60,6 +61,8 @@
 
 | Action | Returns |
 |--------|---------|
+| `help` | Action catalog (Catalog struct) |
+| `schema` | Action schema (ActionSpec) |
 | `app.version` | `{ "version": string }` |
 | `app.preferences` | `Preferences` object |
 | `transfer.info` | `TransferInfo` object (speeds, limits, DHT nodes, connection status) |
@@ -84,7 +87,7 @@
 | `torrent.add-tags` | `{ "ok": true }` |
 | `torrent.remove-tags` | `{ "ok": true }` |
 | `torrent.set-share-limits` | `{ "ok": true }` |
-| `categories.list` | `Category[]` (values of the category map) |
+| `category.list` | `Category[]` (values of the category map) |
 | `category.create` | `{ "ok": true }` |
 | `category.edit` | `{ "ok": true }` |
 | `log.list` | `LogEntry[]` |
@@ -116,6 +119,36 @@ For `torrent.set-share-limits` ratio and time limits: `-2` = use global setting,
 | `QBITTORRENT_SID` | recommended | Pre-obtained SID cookie string, e.g. `SID=abc123` |
 
 Note: If `QBITTORRENT_SID` is absent, the client is constructed with an empty cookie. Requests will fail until a valid SID is supplied.
+
+## Implementation Architecture
+
+### SDK Layer (`crates/lab-apis/src/qbittorrent/`)
+
+- **`client.rs`**: `QbittorrentClient` struct with 32 async methods covering all operations. Uses `Auth::Session { cookie }` for cookie-based auth.
+- **`types.rs`**: Request and response types (Torrent, Category, Preferences, TransferInfo, etc.). Serde-derived for JSON marshaling.
+- **`error.rs`**: `QbittorrentError` wrapping `ApiError` from the core layer.
+
+### Dispatch Layer (`crates/lab/src/dispatch/qbittorrent/`)
+
+- **`catalog.rs`**: Single source of truth for all 32 actions. Each action declares name, description, param specs, destructive flag, and return type.
+- **`client.rs`**: `require_client()` — resolves client from env vars or returns structured error. Called by dispatch entry points.
+- **`params.rs`**: Helpers for param coercion (require_str, optional_i64, etc.).
+- **`dispatch.rs`**: Two entry points:
+  - `dispatch(action, params)` — called by MCP and CLI. Resolves client from env, delegates to `dispatch_with_client()`.
+  - `dispatch_with_client(client, action, params)` — called by HTTP API with pre-built client from `AppState`. Routes 32 actions + built-in help/schema.
+
+### Surface Layers
+
+- **MCP** (`crates/lab/src/mcp/services/qbittorrent.rs`): Thin bridge that delegates `dispatch(action, params)` to the dispatch layer.
+- **CLI** (`crates/lab/src/cli/qbittorrent.rs`): Thin shim using `run_action_command()` helper. Accepts `action` positional + `--params <json>` flag.
+- **API** (`crates/lab/src/api/services/qbittorrent.rs`): Feature-gated route group. Handler extracts `ActionRequest`, looks up client from `AppState`, calls `handle_action()` helper with pre-built client.
+
+### Destructive Action Handling
+
+- `torrent.delete` is marked `destructive: true` in the catalog.
+- **MCP**: Triggers elicitation flow — client must confirm before execution.
+- **CLI**: Requires `-y` or `--yes` flag (or `--no-confirm`). Without it on a TTY, prompts interactively.
+- **API**: Requires `"confirm": true` in the request body JSON object. Returns 400 with `kind: "confirmation_required"` if absent.
 
 ## Not Implemented
 

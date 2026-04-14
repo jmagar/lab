@@ -6,9 +6,9 @@
 
 ## Implementation Status
 
-The Tautulli service is **fully onboarded** with a partial SDK covering the most
+The Tautulli service is **fully onboarded** with a comprehensive SDK covering the most
 commonly used Tautulli API commands. The shared dispatch layer
-(`crates/lab/src/dispatch/tautulli/`) is implemented with catalog, client, params, and
+(`crates/lab/src/dispatch/tautulli/`) is fully implemented with catalog, client, params, and
 dispatch modules.
 
 Tautulli uses a single command-dispatch API: all requests go to `GET /api/v2` with an
@@ -20,18 +20,19 @@ Tautulli uses a single command-dispatch API: all requests go to `GET /api/v2` wi
 
 | Surface | Status | Notes |
 |---------|--------|-------|
-| SDK (`lab-apis`) | ✅ (partial) | `TautulliClient` in `crates/lab-apis/src/tautulli/client.rs` |
+| SDK (`lab-apis`) | ✅ (full) | `TautulliClient` in `crates/lab-apis/src/tautulli/client.rs` with 23 methods |
 | Dispatch layer | ✅ | `crates/lab/src/dispatch/tautulli/` — catalog, client, params, dispatch |
-| MCP | ✅ | `crates/lab/src/mcp/services/tautulli.rs` — thin wrapper over dispatch layer |
-| CLI | ✅ | `crates/lab/src/cli/tautulli.rs` — thin shim calling `mcp::services::tautulli::dispatch` |
-| API | ✅ | `crates/lab/src/api/services/tautulli.rs` — axum route calling `dispatch_with_client` |
+| MCP | ✅ | `crates/lab/src/mcp/services/tautulli.rs` — thin bridge to dispatch layer |
+| CLI | ✅ | `crates/lab/src/cli/tautulli.rs` — generic action dispatcher calling MCP dispatch |
+| API | ✅ | `crates/lab/src/api/services/tautulli.rs` — axum route calling dispatch layer |
 
-Note: the CLI routes through `mcp::services::tautulli::dispatch` rather than
-`dispatch::tautulli::dispatch` directly (both forward to the same dispatch layer).
+All surfaces are fully wired and functional.
 
 ### Implemented Actions
 
-All actions call `GET /api/v2` with the corresponding `cmd` value.
+All actions call `GET /api/v2` with the corresponding `cmd` value. The dispatch layer
+handles two built-in actions (`help` and `schema`) automatically before routing to
+service-specific logic.
 
 | Action | SDK Method | Tautulli cmd | Destructive |
 |--------|-----------|-------------|-------------|
@@ -47,8 +48,6 @@ All actions call `GET /api/v2` with the corresponding `cmd` value.
 | `libraries.media_info` | `get_library_media_info(section_id)` | `get_library_media_info` | No |
 | `stats.home` | `get_home_stats(time_range, stats_count)` | `get_home_stats` | No |
 | `stats.plays_by_date` | `get_plays_by_date(time_range, y_axis)` | `get_plays_by_date` | No |
-| `system.info` | `get_server_info()` | `get_server_info` | No |
-| `system.settings` | `get_settings()` | `get_settings` | No |
 | `media.recently-added` | `get_recently_added(count, section_id)` | `get_recently_added` | No |
 | `media.metadata` | `get_metadata(rating_key)` | `get_metadata` | No |
 | `media.children` | `get_children_metadata(rating_key)` | `get_children_metadata` | No |
@@ -60,12 +59,11 @@ All actions call `GET /api/v2` with the corresponding `cmd` value.
 | `plays.by-stream-type` | `get_plays_by_stream_type(time_range)` | `get_plays_by_stream_type` | No |
 | `plays.by-month` | `get_plays_per_month(time_range)` | `get_plays_per_month` | No |
 | `server.pms-update` | `get_pms_update()` | `get_pms_update` | No |
+| `system.info` | `get_server_info()` | `get_server_info` | No |
+| `system.settings` | `get_settings()` | `get_settings` | No |
 
-Built-in actions `help` and `schema` are also available on every tool (handled in
-`dispatch.rs` before the action match).
-
-`user.delete-history` is the only destructive action — it requires MCP elicitation
-confirmation before executing.
+`user.delete-history` is the only destructive action — it requires explicit confirmation
+via `"confirm": true` in the API request, `-y` flag in CLI, or MCP elicitation.
 
 ### Action Parameters
 
@@ -124,9 +122,9 @@ from the Tautulli API.
 
 ## Section Inventory
 
-The table below lists known Tautulli API commands and their implementation status.
-"Impl" refers to the SDK (`lab-apis`). Operations without a dispatch action are SDK-only
-or not yet implemented at any layer.
+The table below lists known Tautulli API commands and their implementation status
+across all surfaces. The "Impl" column shows SDK (`lab-apis`) coverage. All implemented
+actions are available on MCP, CLI, and API surfaces.
 
 | Tautulli cmd | Impl | Action | MCP | CLI | API |
 |-------------|------|--------|-----|-----|-----|

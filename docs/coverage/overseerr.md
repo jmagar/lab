@@ -1,6 +1,6 @@
 # Overseerr API Coverage
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 **OpenAPI spec:** docs/api-specs/overseerr.openapi.yaml
 **OpenAPI version:** 3.0.2
 **API version:** 1.0.0
@@ -53,6 +53,8 @@ The dispatch action strings are the canonical identifiers; the SDK method names 
 | `media.update-status` | POST | /api/v1/media/{id}/{status} | `media_update_status()` | ✅ | ✅ | ✅ |
 | `job.run` | POST | /api/v1/settings/jobs/{id}/run | `job_run()` | ✅ | ✅ | ✅ |
 | `discover.trending` | GET | /api/v1/discover/trending | `discover_trending()` | ✅ | ✅ | ✅ |
+| `help` | - | - | - | ✅ | ✅ | ✅ |
+| `schema` | - | - | - | ✅ | ✅ | ✅ |
 
 ## Config / Auth
 
@@ -66,7 +68,7 @@ The dispatch action strings are the canonical identifiers; the SDK method names 
 The CLI is a flat action+params shim (`OverseerrArgs { action, params }`). There are no typed subcommands.
 
 ```bash
-lab overseerr help
+lab overseerr                                            # shows help
 lab overseerr status
 lab overseerr health
 lab overseerr request.list --params '{"filter":"pending"}'
@@ -74,22 +76,48 @@ lab overseerr request.get --params '{"id":42}'
 lab overseerr request.create --params '{"media_type":"movie","media_id":603}'
 lab overseerr request.approve --params '{"id":42}'
 lab overseerr request.decline --params '{"id":42}'
-lab overseerr request.delete --params '{"id":42}'
+lab overseerr request.delete --params '{"id":42,"confirm":true}'
+lab overseerr request.retry --params '{"id":42}'
+lab overseerr request.count
 lab overseerr movie.search --params '{"query":"The Matrix"}'
 lab overseerr tv.search --params '{"query":"Breaking Bad"}'
 lab overseerr movie.get --params '{"tmdb_id":603}'
 lab overseerr tv.get --params '{"tmdb_id":1396}'
 lab overseerr user.list
 lab overseerr user.get --params '{"id":1}'
+lab overseerr user.requests --params '{"id":1}'
+lab overseerr user.quota --params '{"id":1}'
+lab overseerr user.edit --params '{"id":1,"body":{"email":"new@example.com"}}'
 lab overseerr issue.list
 lab overseerr issue.get --params '{"id":5}'
 lab overseerr issue.create --params '{"issue_type":1,"message":"Video stutters","media_id":42}'
 lab overseerr issue.comment --params '{"id":5,"message":"Still happening"}'
+lab overseerr issue.update --params '{"id":5,"status":"resolved"}'
+lab overseerr media.delete --params '{"id":42,"confirm":true}'
+lab overseerr media.update-status --params '{"id":42,"status":"available"}'
+lab overseerr job.run --params '{"id":"plex-recently-added-scan"}'
+lab overseerr discover.trending
+lab overseerr schema --params '{"action":"request.create"}'
 ```
 
 ## Action Details
 
-### `health`
+### Built-in Actions
+
+#### `help`
+- **Params:** none
+- **Returns:** Catalog of all available actions with descriptions and parameter specs
+- **Notes:** Available on every tool. Shown when no action is specified.
+
+#### `schema`
+- **Params:**
+  - `action` (string, required) — action name to describe
+- **Returns:** Parameter schema for the specified action (types and required flags)
+- **Notes:** Available on every tool. Returns `unknown_action` if the action doesn't exist.
+
+### Service Actions
+
+#### `health`
 - **Params:** none
 - **Returns:** `{ "ok": true }`
 - **Notes:** Fetches `/api/v1/status` and discards the body; lightweight connectivity probe.
@@ -131,7 +159,7 @@ lab overseerr issue.comment --params '{"id":5,"message":"Still happening"}'
 ### `request.delete` *(destructive)*
 - **Params:** `id` (integer, required)
 - **Returns:** `{ "deleted": true }`
-- **Notes:** Requires `"confirm": true` in HTTP API params; elicitation in MCP; `-y`/`--yes` in CLI.
+- **Notes:** Destructive operation. Requires `"confirm": true` in params (MCP/HTTP/CLI). CLI will prompt interactively without `-y`/`--yes` flag.
 
 ### `movie.search` / `tv.search`
 - **Params:**
@@ -206,7 +234,7 @@ lab overseerr issue.comment --params '{"id":5,"message":"Still happening"}'
 ### `media.delete` *(destructive)*
 - **Params:** `id` (integer, required) — Overseerr media ID (not TMDB ID)
 - **Returns:** `{ "deleted": true }`
-- **Notes:** Requires `"confirm": true` in HTTP API params; elicitation in MCP; `-y`/`--yes` in CLI.
+- **Notes:** Destructive operation. Requires `"confirm": true` in params (MCP/HTTP/CLI). CLI will prompt interactively without `-y`/`--yes` flag.
 
 ### `media.update-status`
 - **Params:**

@@ -11,70 +11,69 @@
 ## Implementation Status
 
 The Tailscale service is **fully onboarded** with a partial SDK covering the most
-commonly used endpoints. The shared dispatch layer
-(`crates/lab/src/dispatch/tailscale/`) is implemented with catalog, client, params, and
-dispatch modules.
+commonly used endpoints. The shared dispatch layer (`crates/lab/src/dispatch/tailscale/`)
+is fully implemented with catalog, client, params, and dispatch modules.
 
 ### Surface wiring
 
 | Surface | Status | Notes |
 |---------|--------|-------|
 | SDK (`lab-apis`) | ✅ (partial) | `TailscaleClient` in `crates/lab-apis/src/tailscale/client.rs` |
-| Dispatch layer | ✅ | `crates/lab/src/dispatch/tailscale/` — catalog, client, params, dispatch |
-| MCP | ✅ | `crates/lab/src/mcp/services/tailscale.rs` — thin wrapper over dispatch layer |
-| CLI | ✅ | `crates/lab/src/cli/tailscale.rs` — thin shim calling `mcp::services::tailscale::dispatch` |
+| Dispatch layer | ✅ | `crates/lab/src/dispatch/tailscale/` — catalog, client, params, dispatch + entrypoint |
+| MCP | ✅ | `crates/lab/src/mcp/services/tailscale.rs` — thin delegate to dispatch layer |
+| CLI | ✅ | `crates/lab/src/cli/tailscale.rs` — thin shim, action+params dispatch |
 | API | ✅ | `crates/lab/src/api/services/tailscale.rs` — axum route calling `dispatch_with_client` |
 
-Note: the CLI routes through `mcp::services::tailscale::dispatch` rather than
-`dispatch::tailscale::dispatch` directly (both forward to the same dispatch layer).
+All surfaces delegate to the shared dispatch layer at
+`crates/lab/src/dispatch/tailscale/dispatch.rs`.
 
-### Implemented Actions
+### Implemented Actions (24 total)
 
-| Action | SDK Method | Endpoint | Destructive |
-|--------|-----------|---------|-------------|
-| `device.list` | `devices_list()` | GET /tailnet/{tailnet}/devices | No |
-| `device.get` | `device_get(device_id)` | GET /device/{deviceId} | No |
-| `device.delete` | `device_delete(device_id)` | DELETE /device/{deviceId} | **Yes** |
-| `device.authorize` | `device_authorize(device_id, authorized)` | POST /device/{deviceId}/authorized | No |
-| `device.routes-get` | `device_routes_get(device_id)` | GET /device/{deviceId}/routes | No |
-| `device.routes-set` | `device_routes_set(device_id, routes)` | POST /device/{deviceId}/routes | No |
-| `device.tag` | `device_tag(device_id, tags)` | POST /device/{deviceId}/tags | No |
-| `device.expire` | `device_expire(device_id)` | POST /device/{deviceId}/expire | **Yes** |
-| `key.list` | `keys_list()` | GET /tailnet/{tailnet}/keys | No |
-| `key.get` | `key_get(key_id)` | GET /tailnet/{tailnet}/keys/{keyId} | No |
-| `key.delete` | `key_delete(key_id)` | DELETE /tailnet/{tailnet}/keys/{keyId} | **Yes** |
-| `key.create` | `key_create(req)` | POST /tailnet/{tailnet}/keys | No |
-| `dns.nameservers` | `dns_nameservers()` | GET /tailnet/{tailnet}/dns/nameservers | No |
-| `dns.search_paths` | `dns_search_paths()` | GET /tailnet/{tailnet}/dns/searchpaths | No |
-| `dns.split-get` | `dns_split_get()` | GET /tailnet/{tailnet}/dns/split-dns | No |
-| `dns.split-set` | `dns_split_set(config)` | PUT /tailnet/{tailnet}/dns/split-dns | No |
-| `acl.get` | `acl_get()` | GET /tailnet/{tailnet}/acl | No |
-| `acl.validate` | `acl_validate(policy)` | POST /tailnet/{tailnet}/acl/validate | No |
-| `acl.set` | `acl_validate(policy)` → `acl_set(policy)` | POST /tailnet/{tailnet}/acl (validate-first guard) | No |
-| `user.list` | `user_list()` | GET /tailnet/{tailnet}/users | No |
-| `tailnet.settings-get` | `tailnet_settings_get()` | GET /tailnet/{tailnet}/settings | No |
-| `tailnet.settings-patch` | `tailnet_settings_patch(settings)` | PATCH /tailnet/{tailnet}/settings | No |
+| Action | SDK Method | Endpoint | MCP | CLI | API | Destructive |
+|--------|-----------|---------|-----|-----|-----|-------------|
+| `help` | N/A | N/A | ✅ | ✅ | ✅ | No |
+| `schema` | N/A | N/A | ✅ | ✅ | ✅ | No |
+| `device.list` | `devices_list()` | GET /tailnet/{tailnet}/devices | ✅ | ✅ | ✅ | No |
+| `device.get` | `device_get()` | GET /device/{deviceId} | ✅ | ✅ | ✅ | No |
+| `device.delete` | `device_delete()` | DELETE /device/{deviceId} | ✅ | ✅ | ✅ | **Yes** |
+| `device.authorize` | `device_authorize()` | POST /device/{deviceId}/authorized | ✅ | ✅ | ✅ | No |
+| `device.routes-get` | `device_routes_get()` | GET /device/{deviceId}/routes | ✅ | ✅ | ✅ | No |
+| `device.routes-set` | `device_routes_set()` | POST /device/{deviceId}/routes | ✅ | ✅ | ✅ | No |
+| `device.tag` | `device_tag()` | POST /device/{deviceId}/tags | ✅ | ✅ | ✅ | No |
+| `device.expire` | `device_expire()` | POST /device/{deviceId}/expire | ✅ | ✅ | ✅ | **Yes** |
+| `key.list` | `keys_list()` | GET /tailnet/{tailnet}/keys | ✅ | ✅ | ✅ | No |
+| `key.get` | `key_get()` | GET /tailnet/{tailnet}/keys/{keyId} | ✅ | ✅ | ✅ | No |
+| `key.delete` | `key_delete()` | DELETE /tailnet/{tailnet}/keys/{keyId} | ✅ | ✅ | ✅ | **Yes** |
+| `key.create` | `key_create()` | POST /tailnet/{tailnet}/keys | ✅ | ✅ | ✅ | No |
+| `dns.nameservers` | `dns_nameservers()` | GET /tailnet/{tailnet}/dns/nameservers | ✅ | ✅ | ✅ | No |
+| `dns.search_paths` | `dns_search_paths()` | GET /tailnet/{tailnet}/dns/searchpaths | ✅ | ✅ | ✅ | No |
+| `dns.split-get` | `dns_split_get()` | GET /tailnet/{tailnet}/dns/split-dns | ✅ | ✅ | ✅ | No |
+| `dns.split-set` | `dns_split_set()` | PUT /tailnet/{tailnet}/dns/split-dns | ✅ | ✅ | ✅ | No |
+| `acl.get` | `acl_get()` | GET /tailnet/{tailnet}/acl | ✅ | ✅ | ✅ | No |
+| `acl.validate` | `acl_validate()` | POST /tailnet/{tailnet}/acl/validate | ✅ | ✅ | ✅ | No |
+| `acl.set` | `acl_set()` (with validate-first guard) | POST /tailnet/{tailnet}/acl | ✅ | ✅ | ✅ | No |
+| `user.list` | `user_list()` | GET /tailnet/{tailnet}/users | ✅ | ✅ | ✅ | No |
+| `tailnet.settings-get` | `tailnet_settings_get()` | GET /tailnet/{tailnet}/settings | ✅ | ✅ | ✅ | No |
+| `tailnet.settings-patch` | `tailnet_settings_patch()` | PATCH /tailnet/{tailnet}/settings | ✅ | ✅ | ✅ | No |
 
-Built-in actions `help` and `schema` are also available on every tool (handled in
-`dispatch.rs` before the action match).
+Built-in actions `help` and `schema` are handled in `dispatch.rs` before the
+service-specific action match and are available on all surfaces.
 
 ### Safety: acl.set validate-first guard
 
-The `acl.set` dispatch arm always calls `acl_validate` with the same policy body first.
-If the validation response contains a non-empty `errors` array or a non-null `message`
-field, dispatch returns a `validation_failed` error to the caller **without** calling
-`acl_set`. This prevents blind policy overwrites that could lock all devices out of the
-tailnet.
+The `acl.set` dispatch arm in `dispatch.rs` always calls `acl_validate()` with the same
+policy body first. If validation returns a non-null `message` field or a non-empty `errors`
+array, dispatch returns a `validation_failed` error **without** calling `acl_set()`.
+This prevents blind policy overwrites that could lock all devices out of the tailnet.
 
 ### Action Parameters
 
 **`device.get`** — required: `device_id` (string, nodeId or legacy numeric ID).
 
-**`device.delete`** — required: `device_id` (string). Requires `confirm: true` on the API
-surface; requires `-y`/`--yes` on the CLI.
+**`device.delete`** — required: `device_id` (string). Destructive: requires `confirm: true`
+in JSON params or `-y`/`--yes` on CLI.
 
-**`device.authorize`** — required: `device_id` (string), `authorized` (bool — true to
-authorize, false to de-authorize).
+**`device.authorize`** — required: `device_id` (string), `authorized` (bool).
 
 **`device.routes-get`** — required: `device_id` (string).
 
@@ -82,52 +81,53 @@ authorize, false to de-authorize).
 
 **`device.tag`** — required: `device_id` (string), `tags` (array of tag strings, e.g. `["tag:server"]`).
 
-**`device.expire`** — required: `device_id` (string). Requires `confirm: true` / `-y`.
-Forces device re-authentication; device briefly disconnects.
+**`device.expire`** — required: `device_id` (string). Destructive: requires `confirm: true`
+or `-y`. Forces device re-authentication.
 
 **`key.get`** — required: `key_id` (string).
 
-**`key.delete`** — required: `key_id` (string). Requires `confirm: true` / `-y`.
+**`key.delete`** — required: `key_id` (string). Destructive: requires `confirm: true` or `-y`.
 
 **`key.create`** — required: `capabilities` (object). Optional: `expiry_seconds` (integer),
-`description` (string). Response includes the key string — handle with care.
+`description` (string). Response includes the key string.
 
 **`acl.validate`** — required: `policy` (object, HuJSON policy).
 
-**`acl.set`** — required: `policy` (object, HuJSON policy). Validates before applying.
+**`acl.set`** — required: `policy` (object, HuJSON policy). Validates first; returns
+`validation_failed` error if validation fails, preventing blind overwrites.
 
-**`dns.split-set`** — required: `config` (object mapping domain suffixes to resolver lists).
+**`dns.split-set`** — required: `config` (object, domain→resolver list mapping).
 
 **`tailnet.settings-patch`** — required: `settings` (partial settings object).
 
-**`schema`** — required: `action` (string).
+**`schema`** — required: `action` (string, action name to describe).
 
 ### Return Types
 
 | Action | Return Type |
 |--------|-------------|
-| `device.list` | `DeviceList` — `{ devices: Device[] }` |
+| `device.list` | `DeviceList` (`{ devices: Device[] }`) |
 | `device.get` | `Device` |
 | `device.delete` | `null` |
 | `device.authorize` | `null` |
-| `device.routes-get` | `object` — `{ advertisedRoutes: string[], enabledRoutes: string[] }` |
-| `device.routes-set` | `object` — same shape as routes-get |
+| `device.routes-get` | Object (`{ advertisedRoutes: string[], enabledRoutes: string[] }`) |
+| `device.routes-set` | Object (same shape as routes-get) |
 | `device.tag` | `null` |
 | `device.expire` | `null` |
-| `key.list` | `KeyList` — `{ keys: AuthKey[] }` |
+| `key.list` | `KeyList` (`{ keys: AuthKey[] }`) |
 | `key.get` | `AuthKey` |
 | `key.delete` | `null` |
-| `key.create` | `AuthKey` — includes `key` string on creation |
-| `dns.nameservers` | `DnsNameservers` — `{ dns: string[] }` |
-| `dns.search_paths` | `DnsSearchPaths` — `{ searchPaths: string[] }` |
-| `dns.split-get` | `object` — map of domain→resolver list |
-| `dns.split-set` | `object` — same shape as split-get |
-| `acl.get` | `object` — HuJSON policy |
-| `acl.validate` | `object` — `{}` on success, or `{ errors: [...] }` |
-| `acl.set` | `object` — applied HuJSON policy |
-| `user.list` | `object` — `{ users: User[] }` |
-| `tailnet.settings-get` | `object` — settings object |
-| `tailnet.settings-patch` | `object` — updated settings object |
+| `key.create` | `AuthKey` (includes `key` string) |
+| `dns.nameservers` | `DnsNameservers` (`{ dns: string[] }`) |
+| `dns.search_paths` | `DnsSearchPaths` (`{ searchPaths: string[] }`) |
+| `dns.split-get` | Object (domain→resolver list mapping) |
+| `dns.split-set` | Object (same shape as split-get) |
+| `acl.get` | Object (HuJSON policy) |
+| `acl.validate` | Object (`{}` on success, or `{ errors: [...], message?: string }` on failure) |
+| `acl.set` | Object (applied HuJSON policy) |
+| `user.list` | Object (`{ users: User[] }`) |
+| `tailnet.settings-get` | Object (settings object) |
+| `tailnet.settings-patch` | Object (updated settings object) |
 
 ## Legend
 

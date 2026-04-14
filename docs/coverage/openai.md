@@ -1,6 +1,6 @@
 # OpenAI API Coverage
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 **OpenAPI spec:** docs/api-specs/openai.openapi.yaml
 **OpenAPI version:** 3.0.0
 **API version:** 2.3.0
@@ -23,39 +23,39 @@ The source spec is the contract. This document is the implementation planning ai
 
 These actions are fully wired: `lab-apis` client method → dispatch layer → MCP + CLI + HTTP API.
 
-| Action | HTTP Method | Endpoint | SDK Method | MCP | CLI | API |
-|--------|-------------|----------|------------|-----|-----|-----|
-| `server.health` | GET | /v1/models | `health()` | ✅ | ✅ | ✅ |
-| `model.list` | GET | /v1/models | `list_models()` | ✅ | ✅ | ✅ |
-| `chat.complete` | POST | /v1/chat/completions | `chat_completion()` | ✅ | ✅ | ✅ |
-| `embed.create` | POST | /v1/embeddings | `create_embeddings()` | ✅ | ✅ | ✅ |
-
-### `server.health`
-- **Params:** none
-- **Returns:** `{ "ok": true }`
-- **Notes:** Pings `GET /v1/models` as a cheap health probe. Succeeds if the server is
-  reachable and the API key has at least read scope.
+| Action | HTTP Method | Endpoint | SDK Method | Destructive | MCP | CLI | API |
+|--------|-------------|----------|------------|-------------|-----|-----|-----|
+| `model.list` | GET | /v1/models | `list_models()` | false | ✅ | ✅ | ✅ |
+| `chat.complete` | POST | /v1/chat/completions | `chat_completion()` | false | ✅ | ✅ | ✅ |
+| `embed.create` | POST | /v1/embeddings | `create_embeddings()` | false | ✅ | ✅ | ✅ |
+| `server.health` | GET | /v1/models | `health()` | false | ✅ | ✅ | ✅ |
 
 ### `model.list`
 - **Params:** none
 - **Returns:** `ModelsResponse` — `{ "object": "list", "data": [{ "id", "object", "created", "owned_by" }, ...] }`
+- **Notes:** Lists all models available from the configured OpenAI server (or compatible server).
 
 ### `chat.complete`
 - **Params:**
   - `model` (string, required) — model identifier (e.g. `gpt-4o-mini`, `llama3`)
-  - `messages` (json array, required) — `[{"role":"user|system|assistant|tool","content":"..."}]`. Also accepted as a JSON-encoded string.
+  - `messages` (json, required) — array of chat messages: `[{"role":"user|system|assistant|tool","content":"..."}]`. Also accepted as a JSON-encoded string.
   - `temperature` (number, optional) — sampling temperature (0.0–2.0)
   - `max_tokens` (integer, optional) — maximum tokens to generate
 - **Returns:** `ChatCompletionResponse` — `{ "id", "object", "created", "model", "choices": [{ "index", "message": {"role","content"}, "finish_reason" }], "usage": {"prompt_tokens","completion_tokens","total_tokens"} }`
-- **Notes:** `stream` is never set (non-streaming only).
+- **Notes:** Non-streaming completions only. `stream` is not supported.
 
 ### `embed.create`
 - **Params:**
-  - `model` (string, required) — embedding model (e.g. `text-embedding-3-small`)
+  - `model` (string, required) — embedding model identifier (e.g. `text-embedding-3-small`)
   - `input` (string, optional) — single input string shortcut
-  - `inputs` (json array, optional) — array of input strings (batch mode). Use `input` OR `inputs`, not both.
-  - `dimensions` (integer, optional) — output embedding dimension
+  - `inputs` (json, optional) — array of input strings (batch mode). Use `input` OR `inputs`, not both.
+  - `dimensions` (integer, optional) — number of dimensions for the output embeddings
 - **Returns:** `EmbeddingsResponse` — `{ "object", "data": [{ "index", "embedding": [f32,...], "object" }], "model", "usage" }`
+
+### `server.health`
+- **Params:** none
+- **Returns:** `{ "ok": true }`
+- **Notes:** Pings `GET /v1/models` as a cheap health probe. Succeeds if the server is reachable and the API key has at least read scope.
 
 ## Config / Auth
 
@@ -66,8 +66,12 @@ These actions are fully wired: `lab-apis` client method → dispatch layer → M
 
 Setting `OPENAI_URL` to a local server (e.g. `http://localhost:11434`) enables OpenAI-compatible servers.
 
-## CLI Usage
+## Surfaces
 
+### MCP
+The `openai` tool is registered in the MCP server and forwards actions to the shared dispatch layer. All four actions are available via tool dispatch.
+
+### CLI
 ```bash
 lab openai help
 lab openai model.list
@@ -76,7 +80,17 @@ lab openai embed.create --params '{"model":"text-embedding-3-small","input":"Hel
 lab openai server.health
 ```
 
-The CLI is a flat action+params shim (`OpenaiArgs { action, params }`). There are no typed subcommands.
+The CLI is a flat action+params shim: `lab openai <action> --params <json>`. There are no typed subcommands.
+
+### HTTP API
+```bash
+curl -X POST http://localhost:6180/v1/openai \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"model.list","params":{}}'
+```
+
+All four actions are available via `POST /v1/openai`.
 
 ## Not Yet Implemented
 

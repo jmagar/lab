@@ -1,142 +1,174 @@
 # Arcane API Coverage
 
-**Last updated:** 2026-04-13 (added project, volume, image actions)
-**OpenAPI spec:** docs/api-specs/arcane-api.yaml
-**OpenAPI version:** 3.1.0
-**API version:** v1.17.1
-**Paths:** 265
-**Servers:** https://arcane.tootie.tv/api
-**Security schemes:** ApiKeyAuth, BearerAuth
+**Last updated:** 2026-04-14
+**Service status:** Fully implemented and wired across all surfaces (SDK, dispatch, CLI, MCP, API)
 
-## Legend
+## Overview
 
-| Symbol | Meaning |
-|--------|---------|
-| ✅ | Implemented and wired through SDK, dispatch, CLI, MCP, and API |
-| ⬜ | Not implemented yet; rows are spec inventory only |
-| — | Not applicable / not represented in the spec |
+Arcane is a multi-environment Docker management UI client. All 21 actions plus 2 built-ins are fully implemented through the complete product stack.
 
-The source spec is the contract. This document reflects what is actually implemented.
+## Configuration
 
-## Config
+| Environment Variable | Purpose | Required |
+|----------------------|---------|----------|
+| `ARCANE_URL` | Base URL to the Arcane API | yes |
+| `ARCANE_API_KEY` | API key for authentication | yes |
 
-- `ARCANE_URL` — base URL (required)
-- `ARCANE_API_KEY` — API key (required); sent as `X-API-Key` header
+Authentication uses `X-Api-Key` header.
 
-## SDK Surface (`lab-apis`)
+## Action Inventory
 
-All methods live in `crates/lab-apis/src/arcane/client.rs`.
+This catalog reflects the authoritative action specs in `crates/lab/src/dispatch/arcane/catalog.rs`.
 
-| Method | Endpoint | Returns |
-|--------|----------|---------|
-| `health()` | `GET /health` | `HealthResponse { status: String }` |
-| `environments_list()` | `GET /environments` | `Vec<Environment>` |
-| `environment_get(id)` | `GET /environments/{id}` | `Environment` |
-| `containers_list(env_id)` | `GET /environments/{id}/containers` | `Vec<Container>` |
-| `container_get(env_id, container_id)` | `GET /environments/{id}/containers/{containerId}` | `Container` |
-| `container_start(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/start` | `ContainerActionResult` |
-| `container_stop(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/stop` | `ContainerActionResult` |
-| `container_restart(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/restart` | `ContainerActionResult` |
-| `container_redeploy(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/redeploy` | `ContainerActionResult` |
-| `projects_list(env_id)` | `GET /environments/{envId}/projects` | `Vec<Project>` |
-| `project_create(env_id, body)` | `POST /environments/{envId}/projects` | `Project` |
-| `project_up(env_id, project_id)` | `POST /environments/{envId}/projects/{projId}/up` | `ProjectActionResult` |
-| `project_down(env_id, project_id)` | `POST /environments/{envId}/projects/{projId}/down` | `ProjectActionResult` |
-| `project_redeploy(env_id, project_id)` | `POST /environments/{envId}/projects/{projId}/redeploy` | `ProjectActionResult` |
-| `volumes_list(env_id)` | `GET /environments/{envId}/volumes` | `Vec<Volume>` |
-| `volume_delete(env_id, name)` | `DELETE /environments/{envId}/volumes/{name}` | `()` |
-| `volumes_prune(env_id)` | `POST /environments/{envId}/volumes/prune` | `PruneResult` |
-| `images_list(env_id)` | `GET /environments/{envId}/images` | `Vec<Image>` |
-| `image_pull(env_id, image)` | `POST /environments/{envId}/images/pull` | `ImagePullResult` |
-| `images_prune(env_id)` | `POST /environments/{envId}/images/prune` | `ImagePruneResult` |
-| `image_update_summary(env_id)` | `GET /environments/{envId}/image-updates/summary` | `ImageUpdateSummary` |
+### Built-in Actions (automatic for all services)
 
-## Action Catalog (dispatch layer)
+| Action | Purpose | Parameters | Returns |
+|--------|---------|-----------|---------|
+| `help` | Display this action catalog | none | Catalog |
+| `schema` | Get parameter schema for a specific action | `action: string` | Schema |
 
-The catalog is in `crates/lab/src/dispatch/arcane/catalog.rs`.
+### Service Actions
 
-### Built-ins (every tool)
+#### Health
 
-| Action | Params | Returns |
-|--------|--------|---------|
-| `help` | — | Catalog |
-| `schema` | `action` (string, required) | Schema |
+| Action | Destructive | SDK Method | MCP | CLI | API |
+|--------|-------------|-----------|-----|-----|-----|
+| `health` | no | `health()` | Wired | Wired | Wired |
 
-### Implemented Actions
+Checks Arcane API health. Returns `HealthResponse` with status details.
 
-| Action | SDK method | Destructive | MCP | CLI | API |
-|--------|-----------|-------------|-----|-----|-----|
-| `health` | `health()` | no | ✅ | ✅ | ✅ |
-| `environment.list` | `environments_list()` | no | ✅ | ✅ | ✅ |
-| `environment.get` | `environment_get(id)` | no | ✅ | ✅ | ✅ |
-| `container.list` | `containers_list(env_id)` | no | ✅ | ✅ | ✅ |
-| `container.get` | `container_get(env_id, container_id)` | no | ✅ | ✅ | ✅ |
-| `container.start` | `container_start(env_id, container_id)` | no | ✅ | ✅ | ✅ |
-| `container.stop` | `container_stop(env_id, container_id)` | no | ✅ | ✅ | ✅ |
-| `container.restart` | `container_restart(env_id, container_id)` | no | ✅ | ✅ | ✅ |
-| `container.redeploy` | `container_redeploy(env_id, container_id)` | **yes** | ✅ | ✅ | ✅ |
-| `project.list` | `projects_list(env_id)` | no | ✅ | ✅ | ✅ |
-| `project.create` | `project_create(env_id, body)` | no | ✅ | ✅ | ✅ |
-| `project.up` | `project_up(env_id, project_id)` | no | ✅ | ✅ | ✅ |
-| `project.down` | `project_down(env_id, project_id)` | **yes** | ✅ | ✅ | ✅ |
-| `project.redeploy` | `project_redeploy(env_id, project_id)` | no | ✅ | ✅ | ✅ |
-| `volume.list` | `volumes_list(env_id)` | no | ✅ | ✅ | ✅ |
-| `volume.delete` | `volume_delete(env_id, volume_name)` | **yes** | ✅ | ✅ | ✅ |
-| `volume.prune` | `volumes_prune(env_id)` | **yes** | ✅ | ✅ | ✅ |
-| `image.list` | `images_list(env_id)` | no | ✅ | ✅ | ✅ |
-| `image.pull` | `image_pull(env_id, image)` | no | ✅ | ✅ | ✅ |
-| `image.prune` | `images_prune(env_id)` | **yes** | ✅ | ✅ | ✅ |
-| `image.update-summary` | `image_update_summary(env_id)` | no | ✅ | ✅ | ✅ |
+#### Environments
 
-### Action Parameters
+| Action | Destructive | SDK Method | Parameters | MCP | CLI | API |
+|--------|-------------|-----------|------------|-----|-----|-----|
+| `environment.list` | no | `environments_list()` | none | Wired | Wired | Wired |
+| `environment.get` | no | `environment_get(id)` | `id: string` | Wired | Wired | Wired |
 
-**`environment.get`**
-| Param | Type | Required |
-|-------|------|----------|
-| `id` | string | yes |
+List registered Docker environments or fetch details for a specific environment.
 
-**`container.list`**
-| Param | Type | Required |
-|-------|------|----------|
-| `env_id` | string | yes |
+#### Containers
 
-**`container.get`, `container.start`, `container.stop`, `container.restart`, `container.redeploy`**
-| Param | Type | Required |
-|-------|------|----------|
-| `env_id` | string | yes |
-| `container_id` | string | yes |
+| Action | Destructive | SDK Method | Parameters | MCP | CLI | API |
+|--------|-------------|-----------|------------|-----|-----|-----|
+| `container.list` | no | `containers_list(env_id)` | `env_id: string` | Wired | Wired | Wired |
+| `container.get` | no | `container_get(env_id, container_id)` | `env_id: string`; `container_id: string` | Wired | Wired | Wired |
+| `container.start` | no | `container_start(env_id, container_id)` | `env_id: string`; `container_id: string` | Wired | Wired | Wired |
+| `container.stop` | no | `container_stop(env_id, container_id)` | `env_id: string`; `container_id: string` | Wired | Wired | Wired |
+| `container.restart` | no | `container_restart(env_id, container_id)` | `env_id: string`; `container_id: string` | Wired | Wired | Wired |
+| `container.redeploy` | **yes** | `container_redeploy(env_id, container_id)` | `env_id: string`; `container_id: string` | Wired | Wired | Wired |
 
-**`project.list`, `volume.list`, `image.list`, `volume.prune`, `image.prune`, `image.update-summary`**
-| Param | Type | Required |
-|-------|------|----------|
-| `env_id` | string | yes |
+Manage containers: list, get details, start, stop, restart. Redeploy pulls the latest image and recreates the container (destructive).
 
-**`project.create`**
-| Param | Type | Required |
-|-------|------|----------|
-| `env_id` | string | yes |
-| `body` | object | yes |
+#### Projects (Docker Compose)
 
-**`project.up`, `project.down`, `project.redeploy`**
-| Param | Type | Required |
-|-------|------|----------|
-| `env_id` | string | yes |
-| `project_id` | string | yes |
+| Action | Destructive | SDK Method | Parameters | MCP | CLI | API |
+|--------|-------------|-----------|------------|-----|-----|-----|
+| `project.list` | no | `projects_list(env_id)` | `env_id: string` | Wired | Wired | Wired |
+| `project.create` | no | `project_create(env_id, body)` | `env_id: string`; `body: object` | Wired | Wired | Wired |
+| `project.up` | no | `project_up(env_id, project_id)` | `env_id: string`; `project_id: string` | Wired | Wired | Wired |
+| `project.down` | **yes** | `project_down(env_id, project_id)` | `env_id: string`; `project_id: string` | Wired | Wired | Wired |
+| `project.redeploy` | no | `project_redeploy(env_id, project_id)` | `env_id: string`; `project_id: string` | Wired | Wired | Wired |
 
-**`volume.delete`**
-| Param | Type | Required |
-|-------|------|----------|
-| `env_id` | string | yes |
-| `volume_name` | string | yes |
+Manage Compose projects: list, create, bring up, bring down (destructive), redeploy with latest images.
 
-**`image.pull`**
-| Param | Type | Required |
-|-------|------|----------|
-| `env_id` | string | yes |
-| `image` | string | yes |
+#### Volumes
 
-Destructive actions: `container.redeploy`, `project.down`, `volume.delete`, `volume.prune`, `image.prune`.
-MCP requires elicitation confirmation; CLI requires `-y` / `--yes`; API requires `"confirm": true` in params.
+| Action | Destructive | SDK Method | Parameters | MCP | CLI | API |
+|--------|-------------|-----------|------------|-----|-----|-----|
+| `volume.list` | no | `volumes_list(env_id)` | `env_id: string` | Wired | Wired | Wired |
+| `volume.delete` | **yes** | `volume_delete(env_id, volume_name)` | `env_id: string`; `volume_name: string` | Wired | Wired | Wired |
+| `volume.prune` | **yes** | `volumes_prune(env_id)` | `env_id: string` | Wired | Wired | Wired |
+
+Manage Docker volumes: list, delete by name (destructive), prune unused (destructive).
+
+#### Images
+
+| Action | Destructive | SDK Method | Parameters | MCP | CLI | API |
+|--------|-------------|-----------|------------|-----|-----|-----|
+| `image.list` | no | `images_list(env_id)` | `env_id: string` | Wired | Wired | Wired |
+| `image.pull` | no | `image_pull(env_id, image)` | `env_id: string`; `image: string` (e.g., `nginx:latest`) | Wired | Wired | Wired |
+| `image.prune` | **yes** | `images_prune(env_id)` | `env_id: string` | Wired | Wired | Wired |
+| `image.update-summary` | no | `image_update_summary(env_id)` | `env_id: string` | Wired | Wired | Wired |
+
+Manage Docker images: list, pull by reference, prune unused (destructive), get update summary.
+
+## Implementation Details
+
+### SDK Layer (`crates/lab-apis/src/arcane/client.rs`)
+
+The `ArcaneClient` implements all 21 methods, each wrapping one or more Arcane API endpoints. All methods are async and return typed `Result<T, ArcaneError>`.
+
+Client construction:
+
+```rust
+let client = ArcaneClient::new(base_url, Auth::ApiKey {
+    header: "X-Api-Key".into(),
+    key: api_key,
+})?;
+```
+
+### Dispatch Layer (`crates/lab/src/dispatch/arcane/`)
+
+Shared dispatch module with standard layout:
+
+- **catalog.rs:** Authoritative action specs with destructive metadata
+- **client.rs:** Client initialization from env (`ARCANE_URL`, `ARCANE_API_KEY`)
+- **params.rs:** Parameter extraction helpers
+- **dispatch.rs:** Action routing and client dispatch
+
+Top-level `dispatch()` function handles built-in actions (`help`, `schema`), then delegates to `dispatch_with_client()`.
+
+### CLI Surface (`crates/lab/src/cli/arcane.rs`)
+
+Tier 2 dispatch-backed thin shim. Accepts action and optional `--params` JSON string:
+
+```
+lab arcane help
+lab arcane environment.list
+lab arcane container.start --params '{"env_id":"default","container_id":"my-app"}'
+```
+
+Defaults to `help` when no action given. Destructive actions require `-y` / `--yes` flag on interactive terminals.
+
+### MCP Surface (`crates/lab/src/mcp/services/arcane.rs`)
+
+One MCP tool named `arcane`. Dispatches actions via shared dispatch layer:
+
+```json
+{ "action": "container.list", "params": { "env_id": "default" } }
+```
+
+Destructive actions trigger MCP elicitation (client must confirm) or accept `params.confirm: true` as machine-to-machine bypass.
+
+### API Surface (`crates/lab/src/api/services/arcane.rs`)
+
+HTTP route group at `POST /v1/arcane` with shared `handle_action()` dispatch:
+
+```
+POST /v1/arcane
+Authorization: Bearer <token>
+X-Request-Id: <uuid>
+
+{ "action": "project.list", "params": { "env_id": "default" } }
+```
+
+Destructive actions require `"confirm": true` in params object. Returns JSON envelope with `kind`, `message`, and typed response data.
+
+## Destructive Actions
+
+Five actions require explicit confirmation:
+
+- `container.redeploy`
+- `project.down`
+- `volume.delete`
+- `volume.prune`
+- `image.prune`
+
+Confirmation flow varies by surface:
+
+- **MCP:** Elicitation flow (client confirms); agents can bypass with `confirm: true` in params
+- **CLI:** Interactive prompt (skip with `-y` / `--yes` flag); non-interactive requires `-y`
+- **API:** Requires `"confirm": true` in JSON request params
 
 ## Surface Details
 
@@ -145,26 +177,41 @@ MCP requires elicitation confirmation; CLI requires `-y` / `--yes`; API requires
 Tier 2 (dispatch-backed thin shim). Accepts `action` as positional arg and `--params` as a
 JSON string. Defaults to `help` when no action is given.
 
-```
+```bash
 lab arcane health
 lab arcane environment.list
 lab arcane container.list --params '{"env_id":"abc123"}'
 lab arcane container.redeploy --params '{"env_id":"abc123","container_id":"xyz"}'
 ```
 
-No `-y` flag is wired in the current CLI shim (the CLI uses `run_action_command`, not
-`run_confirmable_action_command`). Confirmation for `container.redeploy` is therefore only
-enforced on the MCP and API surfaces.
+Destructive actions use the standard CLI confirmation flow: interactive prompt on TTY (skip with `-y` / `--yes`), requires `-y` for non-interactive.
 
-### MCP
+### MCP (`arcane` tool)
 
-Single tool `arcane`. Thin adapter forwarding to `crate::dispatch::arcane::dispatch`.
+Single MCP tool named `arcane`. Thin adapter that forwards all dispatch calls to `crate::dispatch::arcane::dispatch()`.
+
+Supports:
+- Standard `action` + `params` envelope
+- Built-in `help` and `schema` actions
+- Elicitation for destructive actions (or `confirm: true` bypass in params)
 
 ### API (`POST /v1/arcane`)
 
-Standard action+params envelope. Uses `AppState.clients.arcane` (pre-built at startup). The
-`help` and `schema` built-ins are handled inline by `handle_action`; all other actions pass
-through `dispatch_with_client`.
+HTTP route group at `/v1/arcane` using shared `handle_action()` dispatcher.
+
+Request format:
+
+```json
+{
+  "action": "project.list",
+  "params": {
+    "env_id": "default",
+    "confirm": true
+  }
+}
+```
+
+Pre-built client from `AppState.clients.arcane` is passed to `dispatch_with_client()`. Destructive actions require `"confirm": true` in the params object.
 
 ## Types
 

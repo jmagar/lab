@@ -1,6 +1,6 @@
 # ByteStash API Coverage
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 **Source spec:** `docs/upstream-api/bytestash.md`
 **SDK surface:** `crates/lab-apis/src/bytestash/client.rs`
 **Shared dispatch:** `crates/lab/src/dispatch/bytestash/` (catalog.rs, client.rs, params.rs, dispatch.rs)
@@ -54,11 +54,22 @@
 ## Action Catalog
 
 All actions are dispatched via the shared dispatch layer in `crates/lab/src/dispatch/bytestash/`.
-The catalog is the single source of truth in `catalog.rs`.
+The catalog is the authoritative source of truth in `catalog.rs`. Every action listed below
+is wired across all surfaces: SDK, dispatch, MCP, CLI, and API.
 
-The CLI uses `run_confirmable_action_command` — all actions in the catalog are accessible
-via `lab bytestash <action> [key=value ...]`. Destructive actions require `-y` / `--yes` or
-`--dry-run`. There is no separate whitelist for "CLI-only" actions.
+All actions are accessible via:
+- **MCP:** `bytestash({ "action": "<action>", "params": {...} })`
+- **CLI:** `lab bytestash <action> [key=value ...]`
+- **API:** `POST /v1/bytestash { "action": "<action>", "params": {...}, "confirm": true/false }`
+
+Destructive actions require `-y` / `--yes` flag on CLI or `"confirm": true` in API params.
+
+### Built-in
+
+| Action | Endpoint | SDK | Destructive | MCP | CLI | API | Notes |
+|--------|----------|-----|-------------|-----|-----|-----|-------|
+| `help` | — | — | no | ✅ | ✅ | ✅ | Show action catalog; always available |
+| `schema` | — | — | no | ✅ | ✅ | ✅ | Return parameter schema for an action |
 
 ### Auth
 
@@ -67,7 +78,6 @@ via `lab bytestash <action> [key=value ...]`. Destructive actions require `-y` /
 | `auth.config` | `GET /api/auth/config` | ✅ | no | ✅ | ✅ | ✅ |
 | `auth.register` | `POST /api/auth/register` | ✅ | **yes** | ✅ | ✅ | ✅ |
 | `auth.login` | `POST /api/auth/login` | ✅ | no | ✅ | ✅ | ✅ |
-| ~~`auth.refresh`~~ | ~~`POST /api/auth/refresh`~~ | ❌ | — | ❌ | ❌ | ❌ |
 
 ### Snippets
 
@@ -93,7 +103,6 @@ via `lab bytestash <action> [key=value ...]`. Destructive actions require `-y` /
 | Action | Endpoint | SDK | Destructive | MCP | CLI | API | Notes |
 |--------|----------|-----|-------------|-----|-----|-----|-------|
 | `categories.list` | derived from `GET /api/snippets` | ✅ | no | ✅ | ✅ | ✅ | No dedicated endpoint; deduped client-side |
-| ~~`categories.create`~~ | — | ❌ | — | ❌ | ❌ | ❌ | Categories are implicit tags on snippets |
 
 ### Users (admin — requires newer ByteStash with `/api/admin` routes)
 
@@ -105,28 +114,86 @@ via `lab bytestash <action> [key=value ...]`. Destructive actions require `-y` /
 
 ## Key Param Details
 
-**`auth.register` and `auth.login`** accept `username` + `password` as individual params, or a
-`payload` JSON object as a full body override.
+**`auth.register` and `auth.login`** (both accept alternative full-body override via `payload`):
+- `username` (required) — username
+- `password` (required) — password
+- `payload` (optional) — full JSON body (overrides individual params)
 
-**`snippets.create` and `snippets.update`** accept `title` (required for create), `description`,
-`language`, `fragments` (JSON), `categories` (JSON), or a `payload` JSON override. `snippets.update`
-also requires `id`.
+**`snippets.list`** — no params
 
-**`snippets.share.create`** accepts `snippetId` (required), `requiresAuth` (bool), `expiresIn`
-(integer seconds; null = never), or a `payload` JSON override.
+**`snippets.get`** (requires `id`):
+- `id` (required) — snippet ID
 
-**`snippets.share.get`** requires `share_id`.
+**`snippets.create`** (accepts alternative full-body override via `payload`):
+- `title` (required) — snippet title
+- `description` (optional) — optional description
+- `language` (optional) — optional language label
+- `fragments` (optional, JSON) — snippet fragments JSON
+- `categories` (optional, JSON) — category list JSON
+- `payload` (optional) — full JSON body (overrides individual params)
 
-**`users.toggle-active` and `users.delete`** require `id`.
+**`snippets.update`** (accepts alternative full-body override via `payload`):
+- `id` (required) — snippet ID
+- `title` (optional) — snippet title
+- `description` (optional) — optional description
+- `language` (optional) — optional language label
+- `fragments` (optional, JSON) — snippet fragments JSON
+- `categories` (optional, JSON) — category list JSON
+- `payload` (optional) — full JSON body (overrides individual params)
+
+**`snippets.delete`** (requires `id`):
+- `id` (required) — snippet ID
+
+**`snippets.public.list`** — no params
+
+**`snippets.public.get`** (requires `id`):
+- `id` (required) — public snippet ID
+
+**`snippets.share.create`** (accepts alternative full-body override via `payload`):
+- `snippetId` (required) — snippet ID to share
+- `requiresAuth` (optional, bool) — whether the link requires auth to view
+- `expiresIn` (optional, integer) — expiry in seconds (null = never)
+- `payload` (optional) — full JSON body (overrides individual params)
+
+**`snippets.share.get`** (requires `share_id`):
+- `share_id` (required) — share link ID
+
+**`categories.list`** — no params
+
+**`users.list`** — no params
+
+**`users.toggle-active`** (requires `id`):
+- `id` (required) — user ID
+
+**`users.delete`** (requires `id`):
+- `id` (required) — user ID
 
 ## Surface Details
 
-### CLI (`lab bytestash`)
+### SDK (`lab-apis/src/bytestash/`)
 
-Tier 2 (dispatch-backed thin shim). Accepts positional `action` and trailing `key=value` params.
+Pure Rust client library. Types live in `types.rs`, client methods in `client.rs`, service-specific
+errors in `error.rs`. All HTTP methods implemented: `probe()` for health checks, plus 13 business
+methods (auth, snippets, categories, users admin). Returns `Result<Value, ByteStashError>` where
+`Value` is a `serde_json::Value` for flexibility across heterogeneous responses.
+
+### Shared Dispatch (`crates/lab/src/dispatch/bytestash/`)
+
+Migrated to the standard 4-file layout:
+
+- **`catalog.rs`** — 19 `ActionSpec` definitions (help, schema, 17 service actions) — source of truth
+- **`client.rs`** — client resolution: `require_client()` for dispatch/CLI, `client_from_env()` for startup
+- **`params.rs`** — parameter coercion and validation helpers (credentials, snippet writes, share requests)
+- **`dispatch.rs`** — action routing and client dispatch; handles help/schema built-ins
+
+The dispatcher returns surface-neutral `Result<Value, ToolError>` consumed by MCP, CLI, and API.
+
+### CLI (`crates/lab/src/cli/bytestash.rs`)
+
+Tier 2 dispatch-backed thin shim. Accepts positional `action` and trailing `key=value` params.
 Supports `-y` / `--yes` (alias `--no-confirm`) and `--dry-run`.
 
-```
+```bash
 lab bytestash help
 lab bytestash snippets.list
 lab bytestash snippets.get id=abc123
@@ -135,24 +202,88 @@ lab bytestash snippets.delete id=abc123 -y
 lab bytestash auth.login username=admin password=secret
 ```
 
+Destructive actions (registered in the catalog) require `-y` or `--dry-run` on non-TTY or TTY without `-y`.
+
 ### MCP
 
-Single tool `bytestash`. The `mcp/services/bytestash.rs` file contains only tests; the registry
-in `mcp/registry.rs` wires `crate::dispatch::bytestash::dispatch` directly.
+Single tool: `bytestash`. The `mcp/services/bytestash.rs` file contains only tests; the registry
+in `mcp/registry.rs` wires `crate::dispatch::bytestash::dispatch` directly (not a thin adapter).
+
+Tool schema and action catalog are auto-generated from `dispatch/bytestash/catalog.rs` via `ACTIONS`.
+
+```
+bytestash({ "action": "snippets.list", "params": {} })
+bytestash({ "action": "snippets.create", "params": { "title": "...", "language": "rust" } })
+bytestash({ "action": "help", "params": {} })
+bytestash({ "action": "schema", "params": { "action": "snippets.create" } })
+```
 
 ### API (`POST /v1/bytestash`)
 
-Standard action+params envelope. Uses `AppState.clients.bytestash` (pre-built at startup from
-`BYTESTASH_URL` + `BYTESTASH_TOKEN`). Destructive actions require `"confirm": true` in params.
+Standard action+params envelope. Route mounted at `POST /v1/bytestash` in `api/services/bytestash.rs`.
+Uses `AppState.clients.bytestash` (pre-built at startup from `BYTESTASH_URL` + `BYTESTASH_TOKEN`).
 
-## Notes
+Destructive actions require `"confirm": true` in params (boolean, not string).
 
-- `BYTESTASH_URL` must point at the service root, e.g. `https://bytestash.tootie.tv`.
-- `BYTESTASH_TOKEN` must be a JWT from `auth.login` — **not** a static API key.
-- Auth header: `bytestashauth: Bearer <jwt>` (non-standard; not `Authorization: Bearer`).
-- Admin user endpoints (`users.*`) require a ByteStash deployment with `/api/admin` routes
-  (added after the version currently deployed at `bytestash.tootie.tv`).
-- `categories.list` has no server-side endpoint — the client fetches all snippets and
+```json
+POST /v1/bytestash
+{
+  "action": "snippets.create",
+  "params": {
+    "title": "My snippet",
+    "language": "rust",
+    "confirm": true
+  }
+}
+```
+
+## Implementation Notes
+
+### Architecture
+
+The bytestash service is fully migrated to the shared dispatch layer (`crates/lab/src/dispatch/bytestash/`).
+All 19 actions (17 service-level + 2 built-ins) are defined in `catalog.rs` and routed through
+`dispatch.rs` to SDK client methods in `lab-apis`. The dispatcher returns `Result<Value, ToolError>`,
+which is then formatted for display by the surface layer (CLI, MCP, or HTTP API).
+
+### Configuration
+
+- `BYTESTASH_URL` — base URL, e.g. `https://bytestash.tootie.tv` (required)
+- `BYTESTASH_TOKEN` — JWT from `auth.login` (required; **not** a static API key)
+
+Loaded from `~/.lab/.env`. Both must be present; if either is missing, the dispatcher returns
+`internal_error` with a clear message.
+
+### Auth
+
+ByteStash uses a **non-standard auth header**: `bytestashauth: Bearer <jwt>`.
+
+The client constructs this via `Auth::ApiKey { header: "bytestashauth", key: format!("Bearer {token}") }`.
+This is wired in `dispatch/bytestash/client.rs` and applies to all API calls.
+
+### Client Resolution
+
+- **Startup (AppState):** `dispatch::bytestash::client_from_env()` — called by `AppState::ServiceClients::from_env()` at startup
+- **MCP/CLI:** `dispatch::bytestash::client::require_client()` — fallback when called without AppState; reads env and propagates errors
+- **API:** Pre-built client from `AppState.clients.bytestash` — passed to `dispatch_with_client()`
+
+### Notable Behaviors
+
+- `categories.list` has no server-side endpoint — the dispatcher fetches all snippets and
   deduplicates the category strings locally.
-- `dispatch/bytestash/client.rs` also exposes `client_from_vars(url, token)` for callers
-  that supply explicit values rather than reading env vars.
+- Admin user endpoints (`users.*`) require a ByteStash deployment with `/api/admin` routes.
+  These are typically available in newer versions; older deployments (like `bytestash.tootie.tv`)
+  may not expose them and will return 404.
+- `snippets.delete` and `users.delete` return `void` (HTTP 204 No Content); the dispatcher
+  returns `Value::Null` to callers.
+- Destructive actions are marked in the catalog and enforced at the surface layer: CLI requires
+  `-y` / `--yes`, API requires `"confirm": true` in params, MCP triggers elicitation.
+
+### Test Coverage
+
+The dispatch layer has unit tests in `dispatch/bytestash.rs`:
+- Action catalog completeness
+- Destructive action metadata
+- Unknown action rejection
+- Help and schema built-ins
+- Client resolution from env vars and explicit values
