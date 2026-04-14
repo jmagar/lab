@@ -15,12 +15,22 @@ use std::path::{Path, PathBuf};
 use super::error::ExtractError;
 use super::types::ServiceCreds;
 
+/// Shared minimal INI parser (no external dep).
+pub(super) mod ini;
+/// Plex Media Server config parser.
+pub mod plex;
 /// Prowlarr parser (same XML shape as Radarr).
 pub mod prowlarr;
+/// qBittorrent WebUI config parser.
+pub mod qbittorrent;
 /// Concrete parsers for the Servarr stack.
 pub mod radarr;
+/// SABnzbd config parser.
+pub mod sabnzbd;
 /// Sonarr parser (same XML shape as Radarr).
 pub mod sonarr;
+/// Tautulli config parser.
+pub mod tautulli;
 
 /// One per-app parser. All methods are sync; I/O is the transport layer's job.
 pub trait Parser: Send + Sync {
@@ -47,5 +57,9 @@ pub fn all() -> Vec<Box<dyn Parser>> {
         Box::new(radarr::RadarrParser),
         Box::new(sonarr::SonarrParser),
         Box::new(prowlarr::ProwlarrParser),
+        Box::new(sabnzbd::SabnzbdParser),
+        Box::new(qbittorrent::QbittorrentParser),
+        Box::new(plex::PlexParser),
+        Box::new(tautulli::TautulliParser),
     ]
 }
