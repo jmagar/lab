@@ -458,7 +458,7 @@ mod tests {
             store.redeem_auth_code("code-123"),
             store.redeem_auth_code("code-123"),
         );
-        assert!(a.is_ok() ^ b.is_ok());
+        assert!(a.is_ok() ^ b.is_ok(), "a={a:?} b={b:?}");
     }
 
     #[cfg(unix)]

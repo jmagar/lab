@@ -64,7 +64,7 @@ Registration rules in the initial launch:
 Flow summary:
 
 1. A trusted client registers a loopback redirect URI.
-2. The client sends the user to `/authorize`.
+2. The client sends the user to `/authorize` with `response_type=code`.
 3. `lab` stores the request state, generates PKCE data, and redirects to Google.
 4. Google redirects back to `/auth/google/callback`.
 5. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its loopback URI with the local code.
@@ -133,7 +133,7 @@ Response:
 {
   "resource": "https://lab.example.com",
   "authorization_servers": ["https://lab.example.com"],
-  "scopes_supported": ["lab:read", "lab:admin"],
+  "scopes_supported": ["lab"],
   "bearer_methods_supported": ["header"]
 }
 ```
@@ -153,7 +153,7 @@ This header is only included when `LAB_PUBLIC_URL` is configured. If not, the he
 When both static bearer and OAuth are configured, auth is checked in this order:
 
 1. **Static bearer token** — constant-time comparison via `LAB_MCP_HTTP_TOKEN`. If it matches, the request is authenticated with implicit `lab:read` and `lab:admin` scopes.
-2. **OAuth JWT** — if the static bearer check fails (or no static token is configured), the token is validated as a JWT against the cached JWKS.
+2. **OAuth JWT** — if the static bearer check fails (or no static token is configured), the token is validated as a JWT against the cached JWKS. OAuth-issued tokens currently carry the single supported scope `lab`.
 3. **401** — if both checks fail (or neither auth method is configured for the token presented).
 
 Static bearer tokens bypass all JWT validation. This allows operators to use a simple token for automation while also supporting OAuth for interactive or multi-tenant use.
