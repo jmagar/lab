@@ -27,22 +27,18 @@ pub struct AppState {
     /// appear here, so filtered-out services have no reachable POST endpoint.
     #[allow(dead_code)]
     pub enabled_services: Arc<HashSet<String>>,
-    /// Optional JWKS manager for OAuth JWT validation.
-    ///
-    /// `None` when `LAB_OAUTH_ISSUER` is not configured — only static bearer
-    /// auth is available. When `Some`, the auth middleware tries JWT validation
-    /// after a static bearer mismatch.
-    pub jwks: Option<Arc<crate::api::oauth::JwksManager>>,
-    /// Resolved OAuth configuration, if present.
+    /// Resolved auth configuration, if present.
     ///
     /// Stored in `AppState` so that handlers (e.g. protected resource metadata,
     /// WWW-Authenticate headers) can read from resolved config rather than
     /// re-reading env vars at request time.
-    pub oauth_config: Option<Arc<crate::config::OAuthConfig>>,
-    /// Optional upstream MCP server pool for gateway proxy dispatch.
+    pub auth_config: Option<Arc<lab_auth::config::AuthConfig>>,
+    /// OAuth-mode auth server state, mounted only when LAB_AUTH_MODE=oauth.
+    pub oauth_state: Option<Arc<lab_auth::state::AuthState>>,
+    /// Shared gateway manager for runtime upstream pool access and config mutation.
     ///
-    /// `None` when no `[[upstream]]` entries are configured in `config.toml`.
-    pub upstream_pool: Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>>,
+    /// `None` when gateway management is not wired for this process.
+    pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
 }
 
 impl AppState {
@@ -75,34 +71,33 @@ impl AppState {
             registry: Arc::new(registry),
             clients,
             enabled_services: Arc::new(enabled_services),
-            jwks: None,
-            oauth_config: None,
-            upstream_pool: None,
+            auth_config: None,
+            oauth_state: None,
+            gateway_manager: None,
         }
     }
 
-    /// Attach a pre-built `JwksManager` for OAuth JWT validation.
+    /// Attach the resolved auth configuration.
     #[must_use]
-    pub fn with_jwks(mut self, jwks: Arc<crate::api::oauth::JwksManager>) -> Self {
-        self.jwks = Some(jwks);
+    pub fn with_auth_config(mut self, config: lab_auth::config::AuthConfig) -> Self {
+        self.auth_config = Some(Arc::new(config));
         self
     }
 
-    /// Attach the resolved OAuth configuration.
     #[must_use]
-    pub fn with_oauth_config(mut self, config: crate::config::OAuthConfig) -> Self {
-        self.oauth_config = Some(Arc::new(config));
+    pub fn with_oauth_state(mut self, auth_state: lab_auth::state::AuthState) -> Self {
+        self.oauth_state = Some(Arc::new(auth_state));
         self
     }
 
-    /// Attach an upstream MCP server pool for gateway proxy dispatch.
+    /// Attach the shared gateway manager.
     #[must_use]
-    #[allow(dead_code)] // Will be called when `lab serve` wires [[upstream]] config.
-    pub fn with_upstream_pool(
+    #[allow(dead_code)] // Called by `lab serve` when gateway runtime is wired.
+    pub fn with_gateway_manager(
         mut self,
-        pool: Arc<crate::dispatch::upstream::pool::UpstreamPool>,
+        manager: Arc<crate::dispatch::gateway::manager::GatewayManager>,
     ) -> Self {
-        self.upstream_pool = Some(pool);
+        self.gateway_manager = Some(manager);
         self
     }
 }

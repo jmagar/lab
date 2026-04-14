@@ -23,6 +23,8 @@ use tower_http::{
 };
 use tracing::Level;
 
+use lab_auth::error::AuthError as LabAuthError;
+
 /// Constant-time byte comparison using `subtle::ConstantTimeEq` to prevent
 /// timing-based token prefix leakage (lab-63jc).
 fn tokens_equal(a: &str, b: &str) -> bool {
@@ -42,10 +44,75 @@ fn parse_bearer_token(header_value: &str) -> Option<String> {
 use super::{health, services, state::AppState};
 use crate::dispatch::error::ToolError;
 
+fn app_auth_state(state: &AppState) -> Result<lab_auth::state::AuthState, LabAuthError> {
+    state
+        .oauth_state
+        .as_ref()
+        .map(|state| (**state).clone())
+        .ok_or_else(|| LabAuthError::Config("oauth auth state is not configured".to_string()))
+}
+
+async fn auth_authorization_server_metadata(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::metadata::authorization_server_metadata(State(app_auth_state(
+        &state,
+    )?))
+    .await)
+}
+
+async fn auth_protected_resource_metadata(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::metadata::protected_resource_metadata(State(app_auth_state(
+        &state,
+    )?))
+    .await)
+}
+
+async fn auth_jwks(State(state): State<AppState>) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::metadata::jwks(State(app_auth_state(&state)?)).await)
+}
+
+async fn auth_register(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    body: axum::Json<lab_auth::types::ClientRegistrationRequest>,
+) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::authorize::register_client(
+        State(app_auth_state(&state)?),
+        headers,
+        body,
+    )
+    .await?)
+}
+
+async fn auth_authorize(
+    State(state): State<AppState>,
+    query: axum::extract::Query<lab_auth::types::AuthorizeQuery>,
+) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::authorize::authorize(State(app_auth_state(&state)?), query).await?)
+}
+
+async fn auth_callback(
+    State(state): State<AppState>,
+    query: axum::extract::Query<lab_auth::types::CallbackQuery>,
+) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::authorize::callback(State(app_auth_state(&state)?), query).await?)
+}
+
+async fn auth_token(
+    State(state): State<AppState>,
+    form: axum::extract::Form<lab_auth::types::TokenRequest>,
+) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::token::token(State(app_auth_state(&state)?), form).await?)
+}
+
 /// Build the `/v1` sub-router with all feature-gated service routes.
 fn build_v1_router(state: &AppState) -> Router<AppState> {
     let mut v1 = Router::new()
         .route("/{service}/actions", get(service_actions))
+        .nest("/gateway", services::gateway::routes(state.clone()))
         .nest("/extract", services::extract::routes(state.clone()));
 
     macro_rules! mount_if_enabled {
@@ -83,14 +150,18 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn build_router_with_bearer(
-    state: AppState,
+pub fn build_router(
+    mut state: AppState,
     bearer_token: Option<String>,
+    auth_state: Option<lab_auth::state::AuthState>,
     mcp_router: Option<Router<AppState>>,
 ) -> Router {
-    if bearer_token.is_none() && state.jwks.is_none() {
+    if let Some(ref auth_state) = auth_state {
+        state = state.with_oauth_state(auth_state.clone());
+    }
+    if bearer_token.is_none() && auth_state.is_none() {
         tracing::warn!(
-            "HTTP API started without bearer token or OAuth JWKS — all protected routes are unprotected"
+            "HTTP API started without bearer token or OAuth auth state — all protected routes are unprotected"
         );
     }
 
@@ -115,21 +186,27 @@ pub fn build_router_with_bearer(
     // `AuthContext` is injected as an Extension for downstream scope checks.
     // Static bearer tokens get implicit lab:admin scope (full access).
     let static_token = bearer_token.map(Arc::<str>::from);
-    let jwks = state.jwks.clone();
-    let needs_auth = static_token.is_some() || jwks.is_some();
+    let auth_state = auth_state.map(Arc::new);
+    let auth_state_for_middleware = auth_state.clone();
+    let needs_auth = static_token.is_some() || auth_state.is_some();
 
     // Resolve resource_url once for WWW-Authenticate headers on 401.
-    let resource_url: Option<Arc<str>> = state
-        .oauth_config
+    let resource_url: Option<Arc<str>> = auth_state
         .as_ref()
-        .and_then(|c| c.resource_url.as_deref())
+        .and_then(|state| state.config.public_url.as_ref().map(url::Url::as_str))
+        .or_else(|| {
+            state
+                .auth_config
+                .as_ref()
+                .and_then(|cfg| cfg.public_url.as_ref().map(url::Url::as_str))
+        })
         .map(Arc::from);
 
     let protected = if needs_auth {
         protected.layer(axum::middleware::from_fn(
             move |mut request: Request<Body>, next: Next| {
                 let static_token = static_token.clone();
-                let jwks = jwks.clone();
+                let auth_state = auth_state_for_middleware.clone();
                 let resource_url = resource_url.clone();
                 async move {
                     /// Build a 401 response with optional WWW-Authenticate header.
@@ -182,15 +259,38 @@ pub fn build_router_with_bearer(
                         return Ok::<_, std::convert::Infallible>(next.run(request).await);
                     }
 
-                    // 2. Try OAuth JWT
-                    if let Some(ref jwks_mgr) = jwks {
-                        match jwks_mgr.validate_jwt(&token).await {
-                            Ok(auth_ctx) => {
-                                request.extensions_mut().insert(auth_ctx);
+                    // 2. Try lab-auth JWT
+                    if let Some(ref auth_state) = auth_state {
+                        match auth_state.signing_keys.validate_access_token(&token) {
+                            Ok(claims) => {
+                                let expected = auth_state
+                                    .config
+                                    .public_url
+                                    .as_ref()
+                                    .map(|url| url.as_str().trim_end_matches('/').to_string());
+                                if let Some(expected) = expected
+                                    && (claims.iss != expected || claims.aud != expected)
+                                {
+                                    return Ok(auth_error_response(
+                                        "invalid bearer token",
+                                        resource_url.as_deref(),
+                                    ));
+                                }
+
+                                request.extensions_mut().insert(crate::api::oauth::AuthContext {
+                                    sub: claims.sub,
+                                    scopes: claims
+                                        .scope
+                                        .split_whitespace()
+                                        .filter(|scope| !scope.is_empty())
+                                        .map(ToOwned::to_owned)
+                                        .collect(),
+                                    issuer: claims.iss,
+                                });
                                 return Ok(next.run(request).await);
                             }
-                            Err(e) => {
-                                tracing::debug!(error = %e, "JWT validation failed");
+                            Err(error) => {
+                                tracing::debug!(error = %error, "lab-auth JWT validation failed");
                             }
                         }
                     }
@@ -210,14 +310,29 @@ pub fn build_router_with_bearer(
     // Layers apply bottom-up: last .layer() call = outermost middleware.
     // Desired execution order (outermost → innermost → handler):
     //   SetRequestId → TraceLayer → PropagateRequestId → Timeout → Compression → CORS → handler
-    Router::new()
+    let mut router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
-        .route(
-            "/.well-known/oauth-protected-resource",
-            get(super::oauth::oauth_protected_resource),
-        )
-        .merge(protected)
+        .merge(protected);
+    if let Some(auth_state) = auth_state.as_ref() {
+        let _ = auth_state;
+        router = router
+            .route(
+                "/.well-known/oauth-authorization-server",
+                get(auth_authorization_server_metadata),
+            )
+            .route(
+                "/.well-known/oauth-protected-resource",
+                get(auth_protected_resource_metadata),
+            )
+            .route("/jwks", get(auth_jwks))
+            .route("/register", axum::routing::post(auth_register))
+            .route("/authorize", get(auth_authorize))
+            .route("/auth/google/callback", get(auth_callback))
+            .route("/token", axum::routing::post(auth_token));
+    }
+
+    router
         .with_state(state)
         .layer(build_cors_layer())
         .layer(CompressionLayer::new())
@@ -247,6 +362,16 @@ pub fn build_router_with_bearer(
         )
         // SetRequestId generates a UUID for every request that lacks one.
         .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid))
+}
+
+#[allow(clippy::too_many_lines)]
+#[allow(dead_code)]
+pub fn build_router_with_bearer(
+    state: AppState,
+    bearer_token: Option<String>,
+    mcp_router: Option<Router<AppState>>,
+) -> Router {
+    build_router(state, bearer_token, None, mcp_router)
 }
 
 /// Build a `CorsLayer` that allows only explicit trusted origins.
@@ -510,5 +635,111 @@ mod tests {
             StatusCode::NOT_FOUND,
             "radarr routes must not be mounted when radarr is absent from the runtime registry"
         );
+    }
+
+    #[tokio::test]
+    async fn bearer_mode_still_accepts_lab_mcp_http_token() {
+        let state = AppState::new();
+        let app = build_router(state, Some("secret-token".into()), None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .header(header::AUTHORIZATION, "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn oauth_mode_accepts_lab_auth_jwt() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let token = issue_test_lab_token(&auth_state);
+        let app = build_router(state, None, Some(auth_state), None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn oauth_mode_missing_token_returns_www_authenticate_metadata_hint() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let app = build_router(state, None, Some(auth_state), None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let header = response
+            .headers()
+            .get(header::WWW_AUTHENTICATE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(header.contains("resource_metadata="));
+    }
+
+    async fn test_lab_auth_state() -> lab_auth::state::AuthState {
+        let dir = Box::leak(Box::new(tempfile::tempdir().unwrap()));
+        let config = lab_auth::config::AuthConfig {
+            mode: lab_auth::config::AuthMode::OAuth,
+            public_url: Some(url::Url::parse("https://lab.example.com").unwrap()),
+            sqlite_path: dir.path().join("auth.db"),
+            key_path: dir.path().join("auth-jwt.pem"),
+            bootstrap_secret: Some("bootstrap-secret".to_string()),
+            google: lab_auth::config::GoogleConfig {
+                client_id: "client-id".to_string(),
+                client_secret: "client-secret".to_string(),
+                callback_path: "/auth/google/callback".to_string(),
+                scopes: vec![
+                    "openid".to_string(),
+                    "email".to_string(),
+                    "profile".to_string(),
+                ],
+            },
+            ..lab_auth::config::AuthConfig::default()
+        };
+        lab_auth::state::AuthState::new(config).await.unwrap()
+    }
+
+    fn issue_test_lab_token(auth_state: &lab_auth::state::AuthState) -> String {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        auth_state
+            .signing_keys
+            .issue_access_token(lab_auth::jwt::AccessClaims {
+                iss: "https://lab.example.com".to_string(),
+                sub: "google-user".to_string(),
+                aud: "https://lab.example.com".to_string(),
+                exp: now + 3600,
+                iat: now,
+                jti: "test-jti".to_string(),
+                scope: "lab".to_string(),
+                azp: "client".to_string(),
+            })
+            .unwrap()
     }
 }

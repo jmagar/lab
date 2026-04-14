@@ -39,3 +39,21 @@ impl IntoResponse for ToolError {
         (status, axum::Json(body)).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    use super::ToolError;
+
+    #[test]
+    fn confirmation_required_maps_to_422() {
+        let response = ToolError::Sdk {
+            sdk_kind: "confirmation_required".to_string(),
+            message: "confirm".to_string(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+}

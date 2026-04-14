@@ -16,6 +16,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use lab_auth::config as auth_config;
 use lab_apis::extract::types::ServiceCreds;
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -28,9 +29,9 @@ pub struct LabConfig {
     /// MCP server defaults.
     #[serde(default)]
     pub mcp: McpPreferences,
-    /// OAuth 2.1 resource server configuration (optional).
+    /// HTTP auth mode preferences.
     #[serde(default)]
-    pub oauth: Option<OAuthConfig>,
+    pub auth: Option<AuthFileConfig>,
     /// Upstream MCP servers to proxy through the gateway.
     #[serde(default)]
     pub upstream: Vec<UpstreamConfig>,
@@ -81,86 +82,101 @@ pub struct McpPreferences {
     pub port: Option<u16>,
 }
 
-/// OAuth 2.1 resource server configuration.
-///
-/// Lab acts as a resource server (RFC 9728) — it validates tokens,
-/// it does not issue them. Populated from `[oauth]` in `config.toml`
-/// and/or `LAB_OAUTH_*` env vars.
+/// File-backed auth preferences merged with environment variables at startup.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OAuthConfig {
-    /// OIDC issuer URL (must be HTTPS). Used for JWKS discovery.
-    pub issuer: String,
-    /// Expected `aud` claim (RFC 8707).
-    pub audience: String,
-    /// Optional `azp` claim validation.
+pub struct AuthFileConfig {
+    /// `bearer` preserves LAB_MCP_HTTP_TOKEN; `oauth` enables the internal auth server.
     #[serde(default)]
-    pub client_id: Option<String>,
-    /// Public URL of this lab instance (for metadata + `allowed_hosts`).
+    pub mode: Option<String>,
+    /// Public URL used for metadata and Google callback construction.
     #[serde(default)]
-    pub resource_url: Option<String>,
+    pub public_url: Option<String>,
+    /// Optional path override for the SQLite auth store.
+    #[serde(default)]
+    pub sqlite_path: Option<PathBuf>,
+    /// Optional path override for the persisted JWT signing key.
+    #[serde(default)]
+    pub key_path: Option<PathBuf>,
+    /// Bootstrap secret required for dynamic client registration.
+    #[serde(default)]
+    pub bootstrap_secret: Option<String>,
+    /// Google OAuth client ID.
+    #[serde(default)]
+    pub google_client_id: Option<String>,
+    /// Google OAuth client secret.
+    #[serde(default)]
+    pub google_client_secret: Option<String>,
+    /// Optional callback path override.
+    #[serde(default)]
+    pub google_callback_path: Option<String>,
+    /// Optional comma-separated scope list.
+    #[serde(default)]
+    pub google_scopes: Option<Vec<String>>,
 }
 
-/// Resolve `OAuthConfig` from config file + environment variables.
+/// Resolve auth configuration from config file + environment variables.
 ///
 /// Env vars take precedence over config file values.
-///
-/// Returns `Ok(None)` when OAuth is not configured at all (no issuer set).
-/// Returns `Err` when OAuth is partially configured or invalid (e.g.
-/// `LAB_OAUTH_ISSUER` is set but empty, or uses HTTP instead of HTTPS).
-pub fn resolve_oauth(config: Option<&OAuthConfig>) -> Result<Option<OAuthConfig>> {
-    let issuer = std::env::var("LAB_OAUTH_ISSUER")
-        .ok()
-        .or_else(|| config.map(|c| c.issuer.clone()));
+pub fn resolve_auth(config: Option<&AuthFileConfig>) -> Result<auth_config::AuthConfig> {
+    let mut merged: HashMap<String, String> = HashMap::new();
 
-    let audience = std::env::var("LAB_OAUTH_AUDIENCE")
-        .ok()
-        .or_else(|| config.map(|c| c.audience.clone()));
-
-    // If neither issuer nor audience is set at all, OAuth is simply not configured.
-    if issuer.is_none() && audience.is_none() {
-        return Ok(None);
-    }
-
-    // If issuer is set but empty, that's a configuration error.
-    let issuer = issuer
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("LAB_OAUTH_ISSUER is set but empty or missing"))?;
-
-    let audience = audience
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| {
-            anyhow::anyhow!("LAB_OAUTH_AUDIENCE is required when LAB_OAUTH_ISSUER is set")
-        })?;
-
-    // Security: reject non-HTTPS issuers.
-    if !issuer.starts_with("https://") {
-        anyhow::bail!("LAB_OAUTH_ISSUER must use HTTPS — got `{issuer}`");
-    }
-
-    let client_id = std::env::var("LAB_OAUTH_CLIENT_ID")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .or_else(|| config.and_then(|c| c.client_id.clone()));
-
-    let resource_url = std::env::var("LAB_RESOURCE_URL")
-        .ok()
-        .filter(|v| !v.is_empty())
-        .or_else(|| config.and_then(|c| c.resource_url.clone()))
-        .filter(|v| !v.is_empty());
-
-    if resource_url.is_none() {
-        anyhow::bail!(
-            "LAB_RESOURCE_URL is required when OAuth is configured — \
-             set it to the public URL of this lab instance"
+    if let Some(config) = config {
+        insert_if_some(&mut merged, "LAB_AUTH_MODE", config.mode.clone());
+        insert_if_some(&mut merged, "LAB_PUBLIC_URL", config.public_url.clone());
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_SQLITE_PATH",
+            config
+                .sqlite_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
         );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_KEY_PATH",
+            config.key_path.as_ref().map(|path| path.display().to_string()),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_BOOTSTRAP_SECRET",
+            config.bootstrap_secret.clone(),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_GOOGLE_CLIENT_ID",
+            config.google_client_id.clone(),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_GOOGLE_CLIENT_SECRET",
+            config.google_client_secret.clone(),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_GOOGLE_CALLBACK_PATH",
+            config.google_callback_path.clone(),
+        );
+        if let Some(scopes) = config.google_scopes.as_ref() {
+            insert_if_some(&mut merged, "LAB_GOOGLE_SCOPES", Some(scopes.join(",")));
+        }
     }
 
-    Ok(Some(OAuthConfig {
-        issuer,
-        audience,
-        client_id,
-        resource_url,
-    }))
+    for (key, value) in std::env::vars() {
+        if key.starts_with("LAB_AUTH_") || key == "LAB_PUBLIC_URL" || key.starts_with("LAB_GOOGLE_")
+        {
+            merged.insert(key, value);
+        }
+    }
+
+    auth_config::AuthConfig::from_sources(merged).map_err(anyhow::Error::from)
+}
+
+fn insert_if_some(target: &mut HashMap<String, String>, key: &str, value: Option<String>) {
+    if let Some(value) = value
+        && !value.trim().is_empty()
+    {
+        target.insert(key.to_string(), value);
+    }
 }
 
 /// Load `.env` + `config.toml` from the standard locations.
@@ -219,6 +235,10 @@ fn dotenv_path() -> Option<PathBuf> {
 /// Standard location for the TOML config: `~/.config/lab/config.toml`.
 fn toml_path() -> Option<PathBuf> {
     home_dir().map(|home| home.join(".config").join("lab").join("config.toml"))
+}
+
+pub fn config_toml_path() -> Option<PathBuf> {
+    toml_path()
 }
 
 /// A string value that redacts itself in `Debug` and `Display` output.

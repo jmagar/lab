@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
+use lab_auth::config::AuthMode;
 use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService,
@@ -13,7 +14,9 @@ use rmcp::transport::streamable_http_server::{
 };
 
 use crate::api::AppState;
-use crate::config::{LabConfig, resolve_oauth};
+use crate::config::{LabConfig, config_toml_path, resolve_auth};
+use crate::dispatch::gateway::install_gateway_manager;
+use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
 use crate::mcp::server::LabMcpServer;
 
@@ -72,22 +75,27 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let registry = build_default_registry();
     let registry = filter_registry(registry, &args.services)?;
 
-    // Build upstream pool from config if any [[upstream]] entries exist.
-    let upstream_pool = if config.upstream.is_empty() {
-        None
-    } else {
-        let pool = crate::dispatch::upstream::pool::UpstreamPool::new();
+    let gateway_runtime = GatewayRuntimeHandle::default();
+    if !config.upstream.is_empty() {
+        let pool = Arc::new(crate::dispatch::upstream::pool::UpstreamPool::new());
         pool.discover_all(&config.upstream).await;
-        Some(Arc::new(pool))
-    };
+        gateway_runtime.swap(Some(pool)).await;
+    }
+    let gateway_manager = Arc::new(GatewayManager::new(
+        config_toml_path().unwrap_or_else(|| "config.toml".into()),
+        gateway_runtime.clone(),
+    ));
+    gateway_manager.seed_config(config.clone()).await;
+    install_gateway_manager(Arc::clone(&gateway_manager));
 
     match transport {
-        Transport::Stdio => run_stdio(Arc::new(registry), upstream_pool).await,
+        Transport::Stdio => run_stdio(Arc::new(registry), Arc::clone(&gateway_manager)).await,
         Transport::Http => {
             let bearer_token = http_token();
-            let oauth_config =
-                resolve_oauth(config.oauth.as_ref()).context("invalid OAuth configuration")?;
-            let auth_configured = bearer_token.is_some() || oauth_config.is_some();
+            let auth_config = resolve_auth(config.auth.as_ref())
+                .context("invalid HTTP auth configuration")?;
+            let auth_configured =
+                bearer_token.is_some() || matches!(auth_config.mode, AuthMode::OAuth);
 
             // Safety gate: refuse to bind on a non-localhost address without
             // any auth configured (lab-319g). This prevents accidental
@@ -95,42 +103,26 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             if !auth_configured && !is_loopback_host(&host) {
                 anyhow::bail!(
                     "refusing to bind HTTP on {host}:{port} without authentication. \
-                     Set LAB_MCP_HTTP_TOKEN or LAB_OAUTH_ISSUER, or bind to \
+                     Set LAB_MCP_HTTP_TOKEN or LAB_AUTH_MODE=oauth, or bind to \
                      127.0.0.1 for local-only access."
                 );
             }
 
-            let mut state = AppState::from_registry(registry);
-
-            // Wire upstream pool into state for both HTTP and MCP surfaces.
-            if let Some(ref pool) = upstream_pool {
-                state = state.with_upstream_pool(Arc::clone(pool));
-            }
-
-            // Wire OAuth JWT validation when configured.
-            if let Some(oauth_cfg) = oauth_config {
-                let jwks = crate::api::oauth::JwksManager::discover(
-                    &oauth_cfg.issuer,
-                    &oauth_cfg.audience,
-                    oauth_cfg.client_id.as_deref(),
+            let oauth_state = if matches!(auth_config.mode, AuthMode::OAuth) {
+                Some(
+                    lab_auth::state::AuthState::new(auth_config.clone())
+                        .await
+                        .context("initialize lab-auth oauth state")?,
                 )
-                .await
-                .with_context(|| {
-                    format!(
-                        "OAuth JWKS discovery failed for issuer `{}` — \
-                         refusing to start without JWT validation",
-                        oauth_cfg.issuer
-                    )
-                })?;
-                tracing::info!(
-                    issuer = %oauth_cfg.issuer,
-                    "OAuth JWKS discovery succeeded"
-                );
-                state = state.with_jwks(Arc::new(jwks));
-                state = state.with_oauth_config(oauth_cfg);
-            }
+            } else {
+                None
+            };
 
-            run_http(&host, port, bearer_token, state).await
+            let mut state = AppState::from_registry(registry);
+            state = state.with_gateway_manager(Arc::clone(&gateway_manager));
+            state = state.with_auth_config(auth_config);
+
+            run_http(&host, port, bearer_token, state, oauth_state).await
         }
     }
 }
@@ -220,13 +212,13 @@ async fn run_http(
     port: u16,
     bearer_token: Option<String>,
     state: AppState,
+    auth_state: Option<lab_auth::state::AuthState>,
 ) -> Result<ExitCode> {
     // Build the MCP streamable HTTP service in the serve path (not in the
     // router module) to avoid an api->mcp dependency.
     let mcp_service = build_mcp_service(&state);
     let mcp_router = axum::Router::new().nest_service("/mcp", mcp_service);
-    let router =
-        crate::api::router::build_router_with_bearer(state, bearer_token, Some(mcp_router));
+    let router = crate::api::router::build_router(state, bearer_token, auth_state, Some(mcp_router));
     // Parse and validate the address at bind time, not at CLI parse time.
     let addr = bind_addr(host, port);
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -239,7 +231,7 @@ async fn run_http(
 
 async fn run_stdio(
     registry: Arc<ToolRegistry>,
-    upstream_pool: Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>>,
+    gateway_manager: Arc<GatewayManager>,
 ) -> Result<ExitCode> {
     tracing::info!(
         services = registry.services().len(),
@@ -247,7 +239,8 @@ async fn run_stdio(
     );
     let server = LabMcpServer {
         registry,
-        upstream_pool,
+        gateway_manager: Some(Arc::clone(&gateway_manager)),
+        peers: gateway_manager.peer_sink(),
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
@@ -260,7 +253,7 @@ async fn run_stdio(
 /// a new `LabMcpServer` per session. Construction cost: two Arc increments.
 fn build_mcp_service(state: &AppState) -> StreamableHttpService<LabMcpServer, LocalSessionManager> {
     let registry = Arc::clone(&state.registry);
-    let upstream_pool = state.upstream_pool.clone();
+    let gateway_manager = state.gateway_manager.clone();
 
     let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
         .ok()
@@ -282,19 +275,24 @@ fn build_mcp_service(state: &AppState) -> StreamableHttpService<LabMcpServer, Lo
     let config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(allowed_hosts(
             state
-                .oauth_config
+                .auth_config
                 .as_ref()
-                .and_then(|cfg| cfg.resource_url.as_deref()),
+                .and_then(|cfg| cfg.public_url.as_ref().map(url::Url::as_str)),
         ))
         .with_stateful_mode(stateful);
 
     StreamableHttpService::new(
         move || {
             let reg = Arc::clone(&registry);
-            let pool = upstream_pool.clone();
+            let manager = gateway_manager.clone();
+            let peers = manager.as_ref().map_or_else(
+                || Arc::new(tokio::sync::RwLock::new(Vec::new())),
+                |m| m.peer_sink(),
+            );
             Ok(LabMcpServer {
                 registry: reg,
-                upstream_pool: pool,
+                gateway_manager: manager,
+                peers,
             })
         },
         session_manager,
