@@ -440,7 +440,11 @@ impl ServerHandler for LabMcpServer {
 
 impl LabMcpServer {
     /// Send an MCP logging notification if the client threshold permits it.
-    async fn maybe_notify_log(&self, level: LoggingLevel, data: Value) {
+    ///
+    /// Accepts a closure to defer `Value` construction until we know the
+    /// notification will actually be sent (avoids allocation when logging
+    /// is disabled — the common case).
+    async fn maybe_notify_log(&self, level: LoggingLevel, data_fn: impl FnOnce() -> Value) {
         let client_severity = self.log_level.load(Ordering::Relaxed);
         if client_severity != 255
             && level_to_severity(level) <= client_severity
@@ -449,7 +453,7 @@ impl LabMcpServer {
             drop(
                 peer.notify_logging_message(LoggingMessageNotificationParam {
                     level,
-                    data,
+                    data: data_fn(),
                     logger: Some("lab".to_string()),
                 })
                 .await,
@@ -459,6 +463,9 @@ impl LabMcpServer {
 }
 
 /// Convert a dispatch result into a `CallToolResult` + logging metadata.
+///
+/// Returns a closure for the log data to avoid allocating a `serde_json::Value`
+/// when MCP logging is disabled (the common case).
 fn dispatch_to_result(
     service: &str,
     action: &str,
@@ -467,7 +474,7 @@ fn dispatch_to_result(
 ) -> (
     std::result::Result<CallToolResult, ErrorData>,
     LoggingLevel,
-    Value,
+    impl FnOnce() -> Value,
 ) {
     match result {
         Ok(v) => {
@@ -476,10 +483,12 @@ fn dispatch_to_result(
             let call = Ok(CallToolResult::success(vec![Content::text(
                 envelope.to_string(),
             )]));
-            let data = serde_json::json!({
-                "service": service, "action": action, "elapsed_ms": elapsed_ms,
+            let svc = service.to_string();
+            let act = action.to_string();
+            let data_fn = move || serde_json::json!({
+                "service": svc, "action": act, "elapsed_ms": elapsed_ms,
             });
-            (call, LoggingLevel::Info, data)
+            (call, LoggingLevel::Info, data_fn)
         }
         Err(e) => {
             let (kind, message, extra) = extract_error_info(&e);
@@ -501,11 +510,14 @@ fn dispatch_to_result(
             let call = Ok(CallToolResult::error(vec![Content::text(
                 envelope.to_string(),
             )]));
-            let data = serde_json::json!({
-                "service": service, "action": action, "elapsed_ms": elapsed_ms,
+            let svc = service.to_string();
+            let act = action.to_string();
+            let kind = kind.to_string();
+            let data_fn = move || serde_json::json!({
+                "service": svc, "action": act, "elapsed_ms": elapsed_ms,
                 "kind": kind, "message": message,
             });
-            (call, level, data)
+            (call, level, data_fn)
         }
     }
 }
