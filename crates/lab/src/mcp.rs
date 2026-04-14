@@ -5,6 +5,7 @@
 pub mod envelope;
 pub mod error;
 pub mod meta;
+pub mod prompts;
 pub mod registry;
 pub mod resources;
 pub mod services;

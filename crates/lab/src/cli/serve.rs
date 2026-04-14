@@ -1,17 +1,22 @@
 //! `lab serve` — start the MCP server.
 
 use std::process::ExitCode;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
-    ElicitationAction, ElicitationSchema, ListToolsResult, PaginatedRequestParams, PrimitiveSchema,
-    ServerCapabilities, ServerInfo, Tool,
+    AnnotateAble, CallToolRequestParams, CallToolResult, CompleteRequestParams, CompleteResult,
+    CompletionInfo, Content, CreateElicitationRequestParams, ElicitationAction,
+    ElicitationSchema, ErrorCode, GetPromptRequestParams, GetPromptResult, ListPromptsResult,
+    ListResourcesResult, ListToolsResult, LoggingLevel, LoggingMessageNotificationParam,
+    PaginatedRequestParams, PrimitiveSchema, RawResource, ReadResourceRequestParams,
+    ReadResourceResult, Reference, ResourceContents, ServerCapabilities, ServerInfo,
+    SetLevelRequestParams, Tool,
 };
 use rmcp::service::RequestContext;
-use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt};
+use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, ServiceExt};
 use serde_json::Value;
 
 use crate::api::AppState;
@@ -79,7 +84,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         Transport::Stdio => run_stdio(Arc::new(registry)).await,
         Transport::Http => {
             let state = AppState::from_registry(registry);
-            run_http(&host, port, &require_http_token()?, state).await
+            run_http(&host, port, &require_http_token()?, state, &config.api.cors_origins).await
         }
     }
 }
@@ -173,11 +178,161 @@ fn action_schema() -> serde_json::Map<String, Value> {
 /// MCP server handler — one tool per registered service.
 struct LabMcpServer {
     registry: Arc<ToolRegistry>,
+    /// Captured on `on_initialized` — used to send logging notifications.
+    peer: Arc<OnceLock<Peer<RoleServer>>>,
+    /// Client-requested logging level. 255 = disabled (no notifications).
+    /// Stores `level_to_severity(level)` so comparisons are cheap.
+    log_level: Arc<AtomicU8>,
 }
 
 impl ServerHandler for LabMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .enable_prompts()
+                .enable_completions()
+                .enable_logging()
+                .build(),
+        )
+    }
+
+    // ── Lifecycle ────────────────────────────────────────────────────
+
+    async fn on_initialized(
+        &self,
+        context: rmcp::service::NotificationContext<RoleServer>,
+    ) {
+        drop(self.peer.set(context.peer));
+    }
+
+    // ── Prompts ─────────────────────────────────────────────────────
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> std::result::Result<ListPromptsResult, ErrorData> {
+        Ok(crate::mcp::prompts::list_all())
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> std::result::Result<GetPromptResult, ErrorData> {
+        let args = request
+            .arguments
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| (k, v.to_string()))
+            .collect();
+        crate::mcp::prompts::get(&request.name, &args).ok_or_else(|| {
+            ErrorData::new(
+                ErrorCode::INVALID_PARAMS,
+                format!("unknown prompt: {}", request.name),
+                None,
+            )
+        })
+    }
+
+    // ── Completions ─────────────────────────────────────────────────
+
+    async fn complete(
+        &self,
+        request: CompleteRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> std::result::Result<CompleteResult, ErrorData> {
+        let argument_name = &request.argument.name;
+        let partial = &request.argument.value;
+
+        let values = match &request.r#ref {
+            Reference::Prompt(prompt_ref) => {
+                complete_prompt_arg(
+                    &prompt_ref.name,
+                    argument_name,
+                    partial,
+                    &self.registry,
+                )
+            }
+            Reference::Resource(resource_ref) => {
+                complete_resource_arg(&resource_ref.uri, argument_name, partial)
+            }
+        };
+        let completion = CompletionInfo::with_all_values(values)
+            .unwrap_or_default();
+        Ok(CompleteResult::new(completion))
+    }
+
+    // ── Logging ─────────────────────────────────────────────────────
+
+    async fn set_level(
+        &self,
+        request: SetLevelRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> std::result::Result<(), ErrorData> {
+        self.log_level
+            .store(level_to_severity(request.level), Ordering::Relaxed);
+        tracing::debug!(level = ?request.level, "MCP client set logging level");
+        Ok(())
+    }
+
+    // ── Resources ───────────────────────────────────────────────────
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        let mut resources = vec![RawResource::new("lab://catalog", "catalog")
+            .with_description("Full discovery document for all services")
+            .with_mime_type("application/json")
+            .no_annotation()];
+        for svc in self.registry.services() {
+            let uri = format!("lab://{}/actions", svc.name);
+            let name = format!("{}/actions", svc.name);
+            resources.push(
+                RawResource::new(uri, name)
+                    .with_description(format!("Action list for {}", svc.name))
+                    .with_mime_type("application/json")
+                    .no_annotation(),
+            );
+        }
+        Ok(ListResourcesResult::with_all_items(resources))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        let uri = &request.uri;
+        let json = if uri == "lab://catalog" {
+            crate::mcp::resources::catalog_json(&self.registry)
+        } else if let Some(service) = uri.strip_prefix("lab://").and_then(|s| s.strip_suffix("/actions")) {
+            crate::mcp::resources::service_actions_json(&self.registry, service)
+        } else {
+            return Err(ErrorData::new(
+                ErrorCode::RESOURCE_NOT_FOUND,
+                format!("unknown resource: {uri}"),
+                None,
+            ));
+        };
+        match json {
+            Ok(value) => {
+                let text = serde_json::to_string_pretty(&value).unwrap_or_default();
+                Ok(ReadResourceResult::new(vec![
+                    ResourceContents::text(text, uri.clone())
+                        .with_mime_type("application/json"),
+                ]))
+            }
+            Err(e) => Err(ErrorData::new(
+                ErrorCode::INTERNAL_ERROR,
+                e.to_string(),
+                None,
+            )),
+        }
     }
 
     async fn list_tools(
@@ -268,44 +423,83 @@ impl ServerHandler for LabMcpServer {
         };
         let elapsed_ms = start.elapsed().as_millis();
 
-        match result {
-            Ok(v) => {
-                tracing::info!(surface = "mcp", service, action, elapsed_ms, "dispatch ok");
-                let envelope = build_success(&service, &action, &v);
-                Ok(CallToolResult::success(vec![Content::text(
-                    envelope.to_string(),
-                )]))
+        let (call_result, log_level, log_data) =
+            dispatch_to_result(&service, &action, elapsed_ms, result);
+
+        self.maybe_notify_log(log_level, log_data).await;
+
+        call_result
+    }
+}
+
+impl LabMcpServer {
+    /// Send an MCP logging notification if the client threshold permits it.
+    async fn maybe_notify_log(&self, level: LoggingLevel, data: Value) {
+        let client_severity = self.log_level.load(Ordering::Relaxed);
+        if client_severity != 255
+            && level_to_severity(level) <= client_severity
+            && let Some(peer) = self.peer.get()
+        {
+            drop(
+                peer.notify_logging_message(LoggingMessageNotificationParam {
+                    level,
+                    data,
+                    logger: Some("lab".to_string()),
+                })
+                .await,
+            );
+        }
+    }
+}
+
+/// Convert a dispatch result into a `CallToolResult` + logging metadata.
+fn dispatch_to_result(
+    service: &str,
+    action: &str,
+    elapsed_ms: u128,
+    result: Result<Value>,
+) -> (
+    std::result::Result<CallToolResult, ErrorData>,
+    LoggingLevel,
+    Value,
+) {
+    match result {
+        Ok(v) => {
+            tracing::info!(surface = "mcp", service, action, elapsed_ms, "dispatch ok");
+            let envelope = build_success(service, action, &v);
+            let call = Ok(CallToolResult::success(vec![Content::text(
+                envelope.to_string(),
+            )]));
+            let data = serde_json::json!({
+                "service": service, "action": action, "elapsed_ms": elapsed_ms,
+            });
+            (call, LoggingLevel::Info, data)
+        }
+        Err(e) => {
+            let (kind, message, extra) = extract_error_info(&e);
+            let is_fatal = matches!(kind, "internal_error" | "server_error" | "decode_error");
+            let level = if is_fatal {
+                LoggingLevel::Error
+            } else {
+                LoggingLevel::Warning
+            };
+            if is_fatal {
+                tracing::error!(surface = "mcp", service, action, elapsed_ms, kind, "dispatch error");
+            } else {
+                tracing::warn!(surface = "mcp", service, action, elapsed_ms, kind, "dispatch error");
             }
-            Err(e) => {
-                let (kind, message, extra) = extract_error_info(&e);
-                let is_fatal = matches!(kind, "internal_error" | "server_error" | "decode_error");
-                if is_fatal {
-                    tracing::error!(
-                        surface = "mcp",
-                        service,
-                        action,
-                        elapsed_ms,
-                        kind,
-                        "dispatch error"
-                    );
-                } else {
-                    tracing::warn!(
-                        surface = "mcp",
-                        service,
-                        action,
-                        elapsed_ms,
-                        kind,
-                        "dispatch error"
-                    );
-                }
-                let envelope = extra.map_or_else(
-                    || build_error(&service, &action, kind, &message),
-                    |ref extra| build_error_extra(&service, &action, kind, &message, extra),
-                );
-                Ok(CallToolResult::error(vec![Content::text(
-                    envelope.to_string(),
-                )]))
-            }
+            let envelope = extra.map_or_else(
+                || build_error(service, action, kind, &message),
+                |ref extra| build_error_extra(service, action, kind, &message, extra),
+            );
+            let call = Ok(CallToolResult::error(vec![Content::text(
+                envelope.to_string(),
+            )]));
+            let data = serde_json::json!({
+                "service": service, "action": action, "elapsed_ms": elapsed_ms,
+                "kind": kind, "message": message,
+            });
+            (call, level, data)
         }
     }
 }
@@ -377,9 +571,69 @@ async fn elicit_confirm(
     }
 }
 
-async fn run_http(host: &str, port: u16, bearer_token: &str, state: AppState) -> Result<ExitCode> {
+/// Map `LoggingLevel` to RFC 5424 severity (Emergency=0, Debug=7).
+///
+/// **Do not use `as u8`** — rmcp's variant ordering is Debug=0..Emergency=7,
+/// which is the inverse of RFC 5424. An `as u8` cast would invert comparisons.
+const fn level_to_severity(level: LoggingLevel) -> u8 {
+    match level {
+        LoggingLevel::Emergency => 0,
+        LoggingLevel::Alert => 1,
+        LoggingLevel::Critical => 2,
+        LoggingLevel::Error => 3,
+        LoggingLevel::Warning => 4,
+        LoggingLevel::Notice => 5,
+        LoggingLevel::Info => 6,
+        LoggingLevel::Debug => 7,
+    }
+}
+
+/// Complete a prompt argument value.
+fn complete_prompt_arg(
+    prompt_name: &str,
+    argument_name: &str,
+    partial: &str,
+    registry: &ToolRegistry,
+) -> Vec<String> {
+    match (prompt_name, argument_name) {
+        // service arg on any prompt → service names
+        (_, "service") => registry
+            .services()
+            .iter()
+            .map(|s| s.name.to_string())
+            .filter(|n| n.starts_with(partial))
+            .collect(),
+        // action arg on run-action → action names (need service context from prior args,
+        // but MCP completions don't provide that yet — return all action names across services)
+        ("run-action", "action") => {
+            let mut actions: Vec<String> = registry
+                .services()
+                .iter()
+                .flat_map(|s| s.actions.iter().map(|a| a.name.to_string()))
+                .filter(|n| n.starts_with(partial))
+                .collect();
+            actions.sort();
+            actions.dedup();
+            actions
+        }
+        _ => vec![],
+    }
+}
+
+/// Complete a resource argument value (currently unused but required for the match).
+const fn complete_resource_arg(_uri: &str, _argument_name: &str, _partial: &str) -> Vec<String> {
+    vec![]
+}
+
+async fn run_http(
+    host: &str,
+    port: u16,
+    bearer_token: &str,
+    state: AppState,
+    cors_origins: &[String],
+) -> Result<ExitCode> {
     let router =
-        crate::api::router::build_router_with_bearer(state, Some(bearer_token.to_string()));
+        crate::api::router::build_router(state, Some(bearer_token.to_string()), cors_origins);
     // Parse and validate the address at bind time, not at CLI parse time.
     // This defers host/port errors to when the HTTP transport is actually used
     // and gives tokio a chance to surface OS-level bind errors directly.
@@ -397,7 +651,11 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
         services = registry.services().len(),
         "lab serve (stdio) ready"
     );
-    let server = LabMcpServer { registry };
+    let server = LabMcpServer {
+        registry,
+        peer: Arc::new(OnceLock::new()),
+        log_level: Arc::new(AtomicU8::new(255)),
+    };
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
     Ok(ExitCode::SUCCESS)
