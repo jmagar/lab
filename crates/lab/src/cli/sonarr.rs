@@ -38,9 +38,7 @@ pub async fn run(args: SonarrArgs, format: OutputFormat) -> Result<ExitCode> {
         action,
         params,
         format,
-        |action, params| async move {
-            crate::dispatch::sonarr::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::sonarr::dispatch(&action, params).await },
     )
     .await
 }

@@ -7,8 +7,8 @@ use serde_json::Value;
 
 use lab_apis::sonarr::types::{AddSeriesRequest, CalendarQuery, HistoryQuery, QueueListQuery};
 
-pub use crate::dispatch::helpers::{optional_u32, require_i64, require_str};
 use crate::dispatch::error::ToolError;
+pub use crate::dispatch::helpers::{optional_u32, require_i64, require_str};
 
 /// Extract an optional i64 from params.
 pub fn optional_i64(params: &Value, key: &str) -> Result<Option<i64>, ToolError> {
@@ -101,8 +101,14 @@ pub fn episode_ids_from_params(params: &Value) -> Result<Vec<i64>, ToolError> {
 #[allow(clippy::unnecessary_wraps)]
 pub fn calendar_query_from_params(params: &Value) -> Result<CalendarQuery, ToolError> {
     Ok(CalendarQuery {
-        start: params.get("start").and_then(Value::as_str).map(ToOwned::to_owned),
-        end: params.get("end").and_then(Value::as_str).map(ToOwned::to_owned),
+        start: params
+            .get("start")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        end: params
+            .get("end")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
         unmonitored: params.get("unmonitored").and_then(Value::as_bool),
     })
 }

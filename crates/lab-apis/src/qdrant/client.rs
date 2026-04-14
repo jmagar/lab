@@ -157,16 +157,19 @@ impl QdrantClient {
             let chunk_vec = chunk.to_vec();
             let start = i * CHUNK_SIZE;
             let end = (start + chunk_vec.len()).saturating_sub(1);
-            last_result = self.point_upsert(collection, chunk_vec).await.map_err(|e| {
-                QdrantError::Api(crate::core::ApiError::Internal(format!(
-                    "failed on chunk {} of {} (points {}-{}): {}",
-                    i + 1,
-                    num_chunks,
-                    start,
-                    end,
-                    e,
-                )))
-            })?;
+            last_result = self
+                .point_upsert(collection, chunk_vec)
+                .await
+                .map_err(|e| {
+                    QdrantError::Api(crate::core::ApiError::Internal(format!(
+                        "failed on chunk {} of {} (points {}-{}): {}",
+                        i + 1,
+                        num_chunks,
+                        start,
+                        end,
+                        e,
+                    )))
+                })?;
         }
 
         Ok(last_result)

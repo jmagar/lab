@@ -110,7 +110,10 @@ pub async fn dispatch_with_client(
             let body = params
                 .get("body")
                 .cloned()
-                .ok_or_else(|| ToolError::MissingParam { param: "body".to_string(), message: "parameter `body` is required".to_string() })?;
+                .ok_or_else(|| ToolError::MissingParam {
+                    param: "body".to_string(),
+                    message: "parameter `body` is required".to_string(),
+                })?;
             to_json(client.series_edit(id, &body).await?)
         }
         // ── Episode Monitor ───────────────────────────────────────────────────
@@ -119,7 +122,10 @@ pub async fn dispatch_with_client(
             let monitored = params
                 .get("monitored")
                 .and_then(Value::as_bool)
-                .ok_or_else(|| ToolError::MissingParam { param: "monitored".to_string(), message: "parameter `monitored` is required".to_string() })?;
+                .ok_or_else(|| ToolError::MissingParam {
+                    param: "monitored".to_string(),
+                    message: "parameter `monitored` is required".to_string(),
+                })?;
             to_json(client.episode_monitor(&episode_ids, monitored).await?)
         }
         // ── Wanted Cutoff ─────────────────────────────────────────────────────
@@ -132,7 +138,10 @@ pub async fn dispatch_with_client(
         "release.search" => {
             let series_id = params.get("series_id").and_then(Value::as_i64);
             #[allow(clippy::cast_possible_truncation)]
-            let season_number = params.get("season_number").and_then(Value::as_i64).map(|n| n as i32);
+            let season_number = params
+                .get("season_number")
+                .and_then(Value::as_i64)
+                .map(|n| n as i32);
             to_json(client.release_search(series_id, season_number).await?)
         }
         "release.grab" => {

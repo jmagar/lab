@@ -95,7 +95,11 @@ pub async fn dispatch_with_client(
         }
         "bookmark.assets-upload" => {
             let (id, file_name, file_bytes) = params::asset_upload_params(&params_value)?;
-            to_json(client.bookmark_assets_upload(id, file_name, file_bytes).await?)
+            to_json(
+                client
+                    .bookmark_assets_upload(id, file_name, file_bytes)
+                    .await?,
+            )
         }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),

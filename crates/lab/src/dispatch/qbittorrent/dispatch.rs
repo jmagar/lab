@@ -172,10 +172,14 @@ pub async fn dispatch_with_client(
             let hashes = require_str(&params, "hashes")?;
             let ratio_limit = require_f64(&params, "ratio_limit")?;
             let seeding_time_limit = require_i64(&params, "seeding_time_limit")?;
-            let inactive_seeding_time_limit =
-                require_i64(&params, "inactive_seeding_time_limit")?;
+            let inactive_seeding_time_limit = require_i64(&params, "inactive_seeding_time_limit")?;
             client
-                .set_share_limits(hashes, ratio_limit, seeding_time_limit, inactive_seeding_time_limit)
+                .set_share_limits(
+                    hashes,
+                    ratio_limit,
+                    seeding_time_limit,
+                    inactive_seeding_time_limit,
+                )
                 .await?;
             Ok(serde_json::json!({ "ok": true }))
         }

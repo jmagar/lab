@@ -31,8 +31,12 @@ pub fn require_name(params: &Value) -> Result<&str, ToolError> {
 /// Build a `CreateMemoRequest` from dispatch params.
 pub fn create_request_from(params: &Value) -> Result<CreateMemoRequest, ToolError> {
     let content = require_str(params, "content")?.to_owned();
-    let visibility = optional_str(params, "visibility")?.map_or_else(|| "PRIVATE".to_string(), ToOwned::to_owned);
-    Ok(CreateMemoRequest { content, visibility })
+    let visibility = optional_str(params, "visibility")?
+        .map_or_else(|| "PRIVATE".to_string(), ToOwned::to_owned);
+    Ok(CreateMemoRequest {
+        content,
+        visibility,
+    })
 }
 
 /// Build an `UpdateMemoRequest` from dispatch params.
@@ -48,7 +52,10 @@ pub fn update_request_from(params: &Value) -> Result<UpdateMemoRequest, ToolErro
             param: "params".into(),
         });
     }
-    Ok(UpdateMemoRequest { content, visibility })
+    Ok(UpdateMemoRequest {
+        content,
+        visibility,
+    })
 }
 
 /// Extract a required `user` param (user resource name, e.g. `"users/1"`).

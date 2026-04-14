@@ -38,13 +38,19 @@ mod tests {
     #[test]
     fn destructive_actions_are_marked() {
         let delete = ACTIONS.iter().find(|a| a.name == "memos.delete").unwrap();
-        assert!(delete.destructive, "memos.delete must be marked destructive");
+        assert!(
+            delete.destructive,
+            "memos.delete must be marked destructive"
+        );
     }
 
     #[test]
     fn non_destructive_actions_are_not_marked() {
         let list = ACTIONS.iter().find(|a| a.name == "memos.list").unwrap();
-        assert!(!list.destructive, "memos.list must not be marked destructive");
+        assert!(
+            !list.destructive,
+            "memos.list must not be marked destructive"
+        );
 
         let create = ACTIONS.iter().find(|a| a.name == "memos.create").unwrap();
         assert!(

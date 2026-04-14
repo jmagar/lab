@@ -36,11 +36,14 @@ impl Parser for TautulliParser {
                 message: "no root section or [General] in config.ini".to_owned(),
             })?;
 
-        let api_key = root.get("api_key").cloned().ok_or_else(|| ExtractError::Parse {
-            service: "tautulli".to_owned(),
-            path: PathBuf::new(),
-            message: "missing api_key".to_owned(),
-        })?;
+        let api_key = root
+            .get("api_key")
+            .cloned()
+            .ok_or_else(|| ExtractError::Parse {
+                service: "tautulli".to_owned(),
+                path: PathBuf::new(),
+                message: "missing api_key".to_owned(),
+            })?;
 
         let host = root.get("http_host").map_or("localhost", String::as_str);
         let host = if host == "0.0.0.0" || host.is_empty() {

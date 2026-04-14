@@ -107,8 +107,7 @@ impl ExtractCmd {
         }
 
         // Rule 1: backup before any write.
-        let backup =
-            backup_env(&target).with_context(|| format!("backup {}", target.display()))?;
+        let backup = backup_env(&target).with_context(|| format!("backup {}", target.display()))?;
         if backup.exists() {
             eprintln!(
                 "  {} {}",
@@ -184,11 +183,7 @@ impl ExtractCmd {
     }
 }
 
-fn print_diff_line(
-    key: &str,
-    value: &str,
-    existing: &std::collections::HashMap<String, String>,
-) {
+fn print_diff_line(key: &str, value: &str, existing: &std::collections::HashMap<String, String>) {
     match existing.get(key) {
         None => eprintln!(
             "  {} {}={}",

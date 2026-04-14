@@ -263,9 +263,7 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "overseerr")]
     {
-        if let (Some(url), Some(key)) =
-            (vars.get("OVERSEERR_URL"), vars.get("OVERSEERR_API_KEY"))
-        {
+        if let (Some(url), Some(key)) = (vars.get("OVERSEERR_URL"), vars.get("OVERSEERR_API_KEY")) {
             use lab_apis::core::Auth;
             if let Ok(client) = lab_apis::overseerr::OverseerrClient::new(
                 url,

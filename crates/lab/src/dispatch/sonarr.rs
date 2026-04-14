@@ -39,22 +39,40 @@ mod tests {
         assert!(names.contains(&"tag.list"), "missing 'tag.list'");
         assert!(names.contains(&"tag.create"), "missing 'tag.create'");
         assert!(names.contains(&"tag.delete"), "missing 'tag.delete'");
-        assert!(names.contains(&"rootfolder.list"), "missing 'rootfolder.list'");
-        assert!(names.contains(&"qualityprofile.list"), "missing 'qualityprofile.list'");
-        assert!(names.contains(&"languageprofile.list"), "missing 'languageprofile.list'");
+        assert!(
+            names.contains(&"rootfolder.list"),
+            "missing 'rootfolder.list'"
+        );
+        assert!(
+            names.contains(&"qualityprofile.list"),
+            "missing 'qualityprofile.list'"
+        );
+        assert!(
+            names.contains(&"languageprofile.list"),
+            "missing 'languageprofile.list'"
+        );
         assert!(names.contains(&"calendar.list"), "missing 'calendar.list'");
     }
 
     #[test]
     fn destructive_actions_are_marked() {
         let series_delete = ACTIONS.iter().find(|a| a.name == "series.delete").unwrap();
-        assert!(series_delete.destructive, "series.delete must be marked destructive");
+        assert!(
+            series_delete.destructive,
+            "series.delete must be marked destructive"
+        );
 
         let queue_delete = ACTIONS.iter().find(|a| a.name == "queue.delete").unwrap();
-        assert!(queue_delete.destructive, "queue.delete must be marked destructive");
+        assert!(
+            queue_delete.destructive,
+            "queue.delete must be marked destructive"
+        );
 
         let tag_delete = ACTIONS.iter().find(|a| a.name == "tag.delete").unwrap();
-        assert!(tag_delete.destructive, "tag.delete must be marked destructive");
+        assert!(
+            tag_delete.destructive,
+            "tag.delete must be marked destructive"
+        );
     }
 
     #[test]

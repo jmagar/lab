@@ -85,7 +85,10 @@ impl RadarrClient {
     /// Returns `RadarrError::Api` on HTTP failure.
     pub async fn history_failed_retry(&self, id: HistoryId) -> Result<(), RadarrError> {
         self.http
-            .post_void(&format!("/api/v3/history/failed/{}", id.0), &serde_json::Value::Null)
+            .post_void(
+                &format!("/api/v3/history/failed/{}", id.0),
+                &serde_json::Value::Null,
+            )
             .await
             .map_err(RadarrError::from)
     }

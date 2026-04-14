@@ -42,13 +42,9 @@ impl Parser for QbittorrentParser {
                 message: "missing [Preferences] section".to_owned(),
             })?;
 
-        let port = prefs
-            .get(r"WebUI\Port")
-            .map_or("8080", String::as_str);
+        let port = prefs.get(r"WebUI\Port").map_or("8080", String::as_str);
 
-        let address = prefs
-            .get(r"WebUI\Address")
-            .map_or("*", String::as_str);
+        let address = prefs.get(r"WebUI\Address").map_or("*", String::as_str);
         let host = if address == "*" || address == "0.0.0.0" || address.is_empty() {
             "localhost"
         } else {

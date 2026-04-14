@@ -30,11 +30,14 @@ impl Parser for SabnzbdParser {
             message: "missing [misc] section".to_owned(),
         })?;
 
-        let api_key = misc.get("api_key").cloned().ok_or_else(|| ExtractError::Parse {
-            service: "sabnzbd".to_owned(),
-            path: PathBuf::new(),
-            message: "missing api_key in [misc]".to_owned(),
-        })?;
+        let api_key = misc
+            .get("api_key")
+            .cloned()
+            .ok_or_else(|| ExtractError::Parse {
+                service: "sabnzbd".to_owned(),
+                path: PathBuf::new(),
+                message: "missing api_key in [misc]".to_owned(),
+            })?;
 
         let host = misc.get("host").map_or("localhost", String::as_str);
         let host = if host == "0.0.0.0" || host.is_empty() {

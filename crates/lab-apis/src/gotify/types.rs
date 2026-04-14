@@ -54,10 +54,14 @@ pub struct SendMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Paging {
     pub size: i64,
-    pub page: i64,
-    pub total_page: i64,
+    #[serde(default)]
+    pub page: Option<i64>,
+    #[serde(default)]
+    pub total_page: Option<i64>,
     pub since: Option<i64>,
     pub limit: i64,
+    #[serde(default)]
+    pub next: Option<String>,
 }
 
 /// Paginated message list response.

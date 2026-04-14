@@ -159,12 +159,12 @@ impl MemosClient {
 
     // ── Users ─────────────────────────────────────────────────────────────
 
-    /// Get the authenticated user's profile (`users/me`).
+    /// Get the authenticated user's profile (`auth/me`).
     ///
     /// # Errors
     /// Returns `MemosError::Api` on HTTP failure.
     pub async fn user_me(&self) -> Result<Value, MemosError> {
-        self.get_value("/api/v1/users/me").await
+        self.get_value("/api/v1/auth/me").await
     }
 
     /// List all users (admin only; propagates 403 as `MemosError::Api(ApiError::Auth)`).
@@ -182,7 +182,10 @@ impl MemosClient {
     /// # Errors
     /// Returns `MemosError::Api` on HTTP failure.
     pub async fn user_stats(&self, user: &str) -> Result<UserStats, MemosError> {
-        Ok(self.http.get_json(&format!("/api/v1/{user}:getStats")).await?)
+        Ok(self
+            .http
+            .get_json(&format!("/api/v1/{user}:getStats"))
+            .await?)
     }
 
     // ── Webhooks ──────────────────────────────────────────────────────────
@@ -231,9 +234,7 @@ impl MemosClient {
         let part = reqwest::multipart::Part::bytes(file_bytes)
             .file_name(filename.to_string())
             .mime_str(mime_type)
-            .map_err(|e| {
-                crate::core::ApiError::Internal(format!("invalid mime type: {e}"))
-            })?;
+            .map_err(|e| crate::core::ApiError::Internal(format!("invalid mime type: {e}")))?;
         let form = reqwest::multipart::Form::new().part("file", part);
         Ok(self
             .http
@@ -298,7 +299,10 @@ impl MemosClient {
         // POST with an empty body — Memos creates a share link without parameters.
         Ok(self
             .http
-            .post_json(&format!("/api/v1/{memo_name}/shares"), &serde_json::json!({}))
+            .post_json(
+                &format!("/api/v1/{memo_name}/shares"),
+                &serde_json::json!({}),
+            )
             .await?)
     }
 }

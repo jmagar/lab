@@ -12,8 +12,14 @@ use wiremock::{
 };
 
 fn client(base_url: &str) -> TailscaleClient {
-    TailscaleClient::new(base_url, Auth::Bearer { token: "tskey-test".into() }, "-")
-        .expect("client")
+    TailscaleClient::new(
+        base_url,
+        Auth::Bearer {
+            token: "tskey-test".into(),
+        },
+        "-",
+    )
+    .expect("client")
 }
 
 // ── acl.get ──────────────────────────────────────────────────────────────────
@@ -80,9 +86,11 @@ async fn acl_set_calls_validate_before_set() {
     let c = client(&server.uri());
     let validation = c.acl_validate(&policy).await.expect("validate");
     // Dispatch logic: only call acl_set if no errors
-    assert!(!validation.get("errors").is_some_and(|v| {
-        v.as_array().map_or(false, |arr| !arr.is_empty())
-    }));
+    assert!(
+        !validation
+            .get("errors")
+            .is_some_and(|v| { v.as_array().map_or(false, |arr| !arr.is_empty()) })
+    );
     let result = c.acl_set(&policy).await.expect("acl_set");
     assert_eq!(result, set_response);
 }

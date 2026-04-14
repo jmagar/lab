@@ -68,6 +68,10 @@ Optional when applicable:
 
 Every MCP tool action must emit one dispatch event.
 
+If the client has opted into MCP logging notifications, any notification derived
+from that dispatch must reuse the same action context and apply the same
+redaction rules before shipping error text back to the client.
+
 Required fields:
 
 - `surface = "mcp"`

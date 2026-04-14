@@ -4,6 +4,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::OnceLock;
 
 use lab_apis::core::action::ActionSpec;
 use serde_json::Value;
@@ -122,6 +123,7 @@ impl std::fmt::Debug for RegisteredService {
 #[derive(Debug, Default)]
 pub struct ToolRegistry {
     services: Vec<RegisteredService>,
+    sorted_action_names: OnceLock<Vec<String>>,
 }
 
 impl ToolRegistry {
@@ -130,6 +132,7 @@ impl ToolRegistry {
     pub const fn new() -> Self {
         Self {
             services: Vec::new(),
+            sorted_action_names: OnceLock::new(),
         }
     }
 
@@ -144,6 +147,27 @@ impl ToolRegistry {
     #[must_use]
     pub fn services(&self) -> &[RegisteredService] {
         &self.services
+    }
+
+    /// Look up one registered service by name.
+    #[must_use]
+    pub fn service(&self, name: &str) -> Option<&RegisteredService> {
+        self.services.iter().find(|service| service.name == name)
+    }
+
+    /// Lazily build and cache a sorted, deduplicated action-name list.
+    #[must_use]
+    pub fn sorted_action_names(&self) -> &[String] {
+        self.sorted_action_names.get_or_init(|| {
+            let mut actions: Vec<String> = self
+                .services
+                .iter()
+                .flat_map(|service| service.actions.iter().map(|action| action.name.to_string()))
+                .collect();
+            actions.sort();
+            actions.dedup();
+            actions
+        })
     }
 }
 

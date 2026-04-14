@@ -194,10 +194,7 @@ async fn port_profile_update_puts_to_profile_endpoint() {
     let client = make_client(&server.uri());
     let update = serde_json::json!({"name": "Updated Profile"});
     let result = client
-        .put_value(
-            "/sites/site-abc/switching/port-profiles/pp-001",
-            &update,
-        )
+        .put_value("/sites/site-abc/switching/port-profiles/pp-001", &update)
         .await
         .expect("port_profile_update");
     assert_eq!(result["name"], "Updated Profile");

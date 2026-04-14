@@ -9,8 +9,7 @@ use crate::core::HttpClient;
 
 use super::error::QbittorrentError;
 use super::types::{
-    Category, LogEntry, Preferences, Torrent, TorrentFile, TorrentProperties, Tracker,
-    TransferInfo,
+    Category, LogEntry, Preferences, Torrent, TorrentFile, TorrentProperties, Tracker, TransferInfo,
 };
 
 /// Client for a qBittorrent `WebUI` instance.
@@ -345,8 +344,7 @@ impl QbittorrentClient {
         priority: i32,
     ) -> Result<(), QbittorrentError> {
         let priority_s = priority.to_string();
-        let fields: &[(&str, &str)] =
-            &[("hash", hash), ("id", id), ("priority", &priority_s)];
+        let fields: &[(&str, &str)] = &[("hash", hash), ("id", id), ("priority", &priority_s)];
         self.http
             .post_form_void("/api/v2/torrents/filePrio", fields)
             .await?;
@@ -357,11 +355,7 @@ impl QbittorrentClient {
     ///
     /// # Errors
     /// Returns `QbittorrentError::Api` on HTTP failure.
-    pub async fn set_location(
-        &self,
-        hashes: &str,
-        location: &str,
-    ) -> Result<(), QbittorrentError> {
+    pub async fn set_location(&self, hashes: &str, location: &str) -> Result<(), QbittorrentError> {
         let fields: &[(&str, &str)] = &[("hashes", hashes), ("location", location)];
         self.http
             .post_form_void("/api/v2/torrents/setLocation", fields)

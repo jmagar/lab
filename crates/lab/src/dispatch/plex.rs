@@ -37,7 +37,10 @@ mod tests {
 
     #[test]
     fn destructive_actions_are_marked() {
-        let refresh = ACTIONS.iter().find(|a| a.name == "library.refresh").unwrap();
+        let refresh = ACTIONS
+            .iter()
+            .find(|a| a.name == "library.refresh")
+            .unwrap();
         assert!(
             refresh.destructive,
             "library.refresh must be marked destructive"
@@ -80,7 +83,10 @@ mod tests {
         assert!(!search.destructive, "media.search must not be destructive");
 
         let sessions = ACTIONS.iter().find(|a| a.name == "session.list").unwrap();
-        assert!(!sessions.destructive, "session.list must not be destructive");
+        assert!(
+            !sessions.destructive,
+            "session.list must not be destructive"
+        );
     }
 
     #[test]
@@ -119,11 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn schema_returns_spec_for_known_action() {
-        let result = dispatch(
-            "schema",
-            serde_json::json!({ "action": "media.search" }),
-        )
-        .await;
+        let result = dispatch("schema", serde_json::json!({ "action": "media.search" })).await;
         assert!(result.is_ok(), "schema for media.search must succeed");
         let val = result.unwrap();
         assert_eq!(val["action"], "media.search");

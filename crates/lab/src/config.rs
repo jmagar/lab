@@ -139,8 +139,11 @@ pub fn load_toml(candidates: &[PathBuf]) -> Result<LabConfig> {
                     .with_context(|| format!("failed to parse {}", path.display()));
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(anyhow::Error::new(e)
-                .context(format!("failed to read {}", path.display()))),
+            Err(e) => {
+                return Err(
+                    anyhow::Error::new(e).context(format!("failed to read {}", path.display()))
+                );
+            }
         }
     }
     Ok(LabConfig::default())
@@ -203,7 +206,6 @@ fn home_dir() -> Option<PathBuf> {
 fn dotenv_path() -> Option<PathBuf> {
     home_dir().map(|home| home.join(".lab").join(".env"))
 }
-
 
 /// A string value that redacts itself in `Debug` and `Display` output.
 ///
@@ -374,15 +376,10 @@ pub fn backup_env(path: &Path) -> Result<PathBuf> {
 ///
 /// # Errors
 /// Returns an error if the tmp file cannot be written or renamed.
-pub fn write_env(
-    path: &Path,
-    new_creds: &[ServiceCreds],
-    force: bool,
-) -> Result<Vec<String>> {
+pub fn write_env(path: &Path, new_creds: &[ServiceCreds], force: bool) -> Result<Vec<String>> {
     // Read the existing file (empty if absent).
     let existing_raw = if path.exists() {
-        std::fs::read_to_string(path)
-            .with_context(|| format!("read {}", path.display()))?
+        std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?
     } else {
         String::new()
     };
@@ -441,14 +438,16 @@ pub fn write_env(
     let mut out_lines: Vec<String> = Vec::new();
     for line in &existing_lines {
         let trimmed = line.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with('#')
-            && let Some((k, _)) = trimmed.split_once('=') {
-                let key = k.trim();
-                if let Some(new_val) = override_keys.get(key) {
-                    out_lines.push(format!("{}={}", key, quote_env_value(new_val)));
-                    continue;
-                }
+        if !trimmed.is_empty()
+            && !trimmed.starts_with('#')
+            && let Some((k, _)) = trimmed.split_once('=')
+        {
+            let key = k.trim();
+            if let Some(new_val) = override_keys.get(key) {
+                out_lines.push(format!("{}={}", key, quote_env_value(new_val)));
+                continue;
             }
+        }
         out_lines.push((*line).to_owned());
     }
 
@@ -473,8 +472,7 @@ pub fn write_env(
         let mut file = std::fs::File::create(&tmp_path)
             .with_context(|| format!("create {}", tmp_path.display()))?;
         for line in &out_lines {
-            writeln!(file, "{line}")
-                .with_context(|| format!("write {}", tmp_path.display()))?;
+            writeln!(file, "{line}").with_context(|| format!("write {}", tmp_path.display()))?;
         }
         file.sync_all()
             .with_context(|| format!("sync {}", tmp_path.display()))?;
@@ -510,16 +508,19 @@ pub fn env_is_up_to_date(path: &Path, new_creds: &[ServiceCreds]) -> bool {
             }
         }
         if let Some(secret) = &cred.secret
-            && existing.get(&cred.env_field).map(String::as_str) != Some(secret.as_str()) {
-                return false;
-            }
+            && existing.get(&cred.env_field).map(String::as_str) != Some(secret.as_str())
+        {
+            return false;
+        }
     }
     true
 }
 
 /// Quote a value that contains shell-significant characters.
 fn quote_env_value(v: &str) -> String {
-    let needs_quotes = v.chars().any(|c| matches!(c, ' ' | '\t' | '#' | '$' | '\\' | '"' | '\'' | '`'));
+    let needs_quotes = v
+        .chars()
+        .any(|c| matches!(c, ' ' | '\t' | '#' | '$' | '\\' | '"' | '\'' | '`'));
     if needs_quotes {
         let escaped = v.replace('\\', r"\\").replace('"', r#"\""#);
         format!("\"{escaped}\"")

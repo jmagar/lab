@@ -37,9 +37,11 @@ async fn recently_added_default_count() {
         .and(query_param("apikey", API_KEY))
         .and(query_param("cmd", "get_recently_added"))
         .and(query_param("count", "5"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "recently_added": []
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "recently_added": []
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -58,9 +60,11 @@ async fn recently_added_with_count_and_section() {
         .and(query_param("cmd", "get_recently_added"))
         .and(query_param("count", "10"))
         .and(query_param("section_id", "1"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "recently_added": [{"title": "Dune"}]
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "recently_added": [{"title": "Dune"}]
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -81,11 +85,13 @@ async fn get_metadata_success() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_metadata"))
         .and(query_param("rating_key", "12345"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "title": "The Matrix",
-            "rating_key": "12345",
-            "media_type": "movie"
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "title": "The Matrix",
+                "rating_key": "12345",
+                "media_type": "movie"
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -106,9 +112,11 @@ async fn get_children_metadata_success() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_children_metadata"))
         .and(query_param("rating_key", "999"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "children_list": [{"title": "Episode 1"}]
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "children_list": [{"title": "Episode 1"}]
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -128,9 +136,11 @@ async fn get_item_user_stats_no_media_type() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_item_user_stats"))
         .and(query_param("rating_key", "42"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!([
-            {"user_id": 1, "plays": 5}
-        ]))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!([
+                {"user_id": 1, "plays": 5}
+            ]))),
+        )
         .mount(&server)
         .await;
 
@@ -149,9 +159,11 @@ async fn get_item_user_stats_with_media_type() {
         .and(query_param("cmd", "get_item_user_stats"))
         .and(query_param("rating_key", "42"))
         .and(query_param("media_type", "movie"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!([
-            {"user_id": 2, "plays": 3}
-        ]))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!([
+                {"user_id": 2, "plays": 3}
+            ]))),
+        )
         .mount(&server)
         .await;
 
@@ -172,10 +184,12 @@ async fn get_plays_by_dayofweek_default() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_plays_by_dayofweek"))
         .and(query_param("time_range", "30"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "categories": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-            "series": []
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "categories": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+                "series": []
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -193,9 +207,11 @@ async fn get_plays_by_dayofweek_custom_range() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_plays_by_dayofweek"))
         .and(query_param("time_range", "7"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "series": [{"name": "Movies", "data": [1,2,3,4,5,6,7]}]
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "series": [{"name": "Movies", "data": [1,2,3,4,5,6,7]}]
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -215,10 +231,12 @@ async fn get_plays_by_hourofday_success() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_plays_by_hourofday"))
         .and(query_param("time_range", "30"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "categories": [],
-            "series": []
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "categories": [],
+                "series": []
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -238,10 +256,12 @@ async fn get_plays_by_stream_type_success() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_plays_by_stream_type"))
         .and(query_param("time_range", "30"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "categories": ["Direct Play", "Transcode"],
-            "series": []
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "categories": ["Direct Play", "Transcode"],
+                "series": []
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -261,10 +281,12 @@ async fn get_plays_per_month_success() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_plays_per_month"))
         .and(query_param("time_range", "12"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "categories": ["Jan","Feb","Mar"],
-            "series": []
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "categories": ["Jan","Feb","Mar"],
+                "series": []
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -284,10 +306,12 @@ async fn get_pms_update_success() {
     Mock::given(method("GET"))
         .and(path("/api/v2"))
         .and(query_param("cmd", "get_pms_update"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "update_available": false,
-            "version": "1.32.5"
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "update_available": false,
+                "version": "1.32.5"
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -308,10 +332,12 @@ async fn export_metadata_success() {
         .and(query_param("cmd", "export_metadata"))
         .and(query_param("rating_key", "77"))
         .and(query_param("media_type", "movie"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "export_id": 1,
-            "file_format": "csv"
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "export_id": 1,
+                "file_format": "csv"
+            }))),
+        )
         .mount(&server)
         .await;
 
@@ -331,9 +357,11 @@ async fn delete_all_user_history_success() {
         .and(path("/api/v2"))
         .and(query_param("cmd", "delete_all_user_history"))
         .and(query_param("user_id", "42"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
-            "deleted": true
-        }))))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(tautulli_ok(serde_json::json!({
+                "deleted": true
+            }))),
+        )
         .mount(&server)
         .await;
 

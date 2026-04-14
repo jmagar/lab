@@ -29,16 +29,16 @@ pub async fn dispatch_with_client(
 
         // ── Requests ──────────────────────────────────────────────────────
         "request.list" => {
-            let take = optional_u64(&params, "take")?
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-            let skip = optional_u64(&params, "skip")?
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-            let filter = params
-                .get("filter")
-                .and_then(Value::as_str);
+            let take = optional_u64(&params, "take")?.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let skip = optional_u64(&params, "skip")?.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let filter = params.get("filter").and_then(Value::as_str);
             let sort = params.get("sort").and_then(Value::as_str);
             let requested_by = optional_u64(&params, "requested_by")?;
-            to_json(client.request_list(take, skip, filter, sort, requested_by).await?)
+            to_json(
+                client
+                    .request_list(take, skip, filter, sort, requested_by)
+                    .await?,
+            )
         }
         "request.get" => {
             let id = require_u64(&params, "id")?;
@@ -65,8 +65,7 @@ pub async fn dispatch_with_client(
         // ── Search ────────────────────────────────────────────────────────
         "movie.search" | "tv.search" => {
             let query = require_str(&params, "query")?;
-            let page = optional_u64(&params, "page")?
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let page = optional_u64(&params, "page")?.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
             to_json(client.search(query, page).await?)
         }
 
@@ -84,10 +83,8 @@ pub async fn dispatch_with_client(
 
         // ── Users ─────────────────────────────────────────────────────────
         "user.list" => {
-            let take = optional_u64(&params, "take")?
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-            let skip = optional_u64(&params, "skip")?
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let take = optional_u64(&params, "take")?.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let skip = optional_u64(&params, "skip")?.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
             to_json(client.user_list(take, skip).await?)
         }
         "user.get" => {
@@ -97,10 +94,8 @@ pub async fn dispatch_with_client(
 
         // ── Issues ────────────────────────────────────────────────────────
         "issue.list" => {
-            let take = optional_u64(&params, "take")?
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-            let skip = optional_u64(&params, "skip")?
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let take = optional_u64(&params, "take")?.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let skip = optional_u64(&params, "skip")?.map(|n| u32::try_from(n).unwrap_or(u32::MAX));
             let filter = params.get("filter").and_then(Value::as_str);
             let sort = params.get("sort").and_then(Value::as_str);
             to_json(client.issue_list(take, skip, filter, sort).await?)

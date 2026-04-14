@@ -66,7 +66,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [TECH.md](./TECH.md)
   Stack choices, toolchain, feature posture, verification surfaces, and release tooling.
 - [MCP.md](./MCP.md)
-  Transport model, one-tool-per-service design, discovery, envelopes, and destructive-op elicitation.
+  Transport model, prompts/completions/logging capabilities, one-tool-per-service design, discovery, envelopes, and destructive-op elicitation.
 - [RMCP.md](./RMCP.md)
   RMCP SDK integration contract: transports, feature posture, handler patterns, auth ownership, and capability rules.
 - [SERVICES.md](./SERVICES.md)

@@ -56,38 +56,35 @@ pub struct LocalFs;
 
 impl LocalFs {
     async fn read(&self, path: &Path) -> Result<Vec<u8>, ExtractError> {
-        tokio::fs::read(path).await.map_err(|source| ExtractError::Io {
-            path: path.to_path_buf(),
-            source,
-        })
+        tokio::fs::read(path)
+            .await
+            .map_err(|source| ExtractError::Io {
+                path: path.to_path_buf(),
+                source,
+            })
     }
 
     async fn list_subdirs(&self, dir: &Path) -> Result<Vec<PathBuf>, ExtractError> {
-        let mut read_dir =
-            tokio::fs::read_dir(dir)
-                .await
-                .map_err(|source| ExtractError::Io {
-                    path: dir.to_path_buf(),
-                    source,
-                })?;
+        let mut read_dir = tokio::fs::read_dir(dir)
+            .await
+            .map_err(|source| ExtractError::Io {
+                path: dir.to_path_buf(),
+                source,
+            })?;
 
         let mut entries = Vec::new();
-        while let Some(entry) =
-            read_dir
-                .next_entry()
-                .await
-                .map_err(|source| ExtractError::Io {
-                    path: dir.to_path_buf(),
-                    source,
-                })?
+        while let Some(entry) = read_dir
+            .next_entry()
+            .await
+            .map_err(|source| ExtractError::Io {
+                path: dir.to_path_buf(),
+                source,
+            })?
         {
-            let ft = entry
-                .file_type()
-                .await
-                .map_err(|source| ExtractError::Io {
-                    path: entry.path(),
-                    source,
-                })?;
+            let ft = entry.file_type().await.map_err(|source| ExtractError::Io {
+                path: entry.path(),
+                source,
+            })?;
             if ft.is_dir() {
                 entries.push(entry.path());
             }
@@ -147,11 +144,10 @@ impl SshFs {
         let host = host.into();
 
         // Resolve the alias through ~/.ssh/config (Hostname, Port, User, ProxyCommand).
-        let cfg =
-            russh_config::parse_home(&host).map_err(|e| ExtractError::Ssh {
-                host: host.clone(),
-                message: format!("ssh config: {e}"),
-            })?;
+        let cfg = russh_config::parse_home(&host).map_err(|e| ExtractError::Ssh {
+            host: host.clone(),
+            message: format!("ssh config: {e}"),
+        })?;
         let user = cfg.user();
 
         // Open TCP stream (or ProxyCommand pipe) to the resolved endpoint.
@@ -162,31 +158,28 @@ impl SshFs {
 
         // Perform the SSH handshake.
         let ssh_cfg = Arc::new(client::Config::default());
-        let mut handle =
-            client::connect_stream(ssh_cfg, stream, ClientHandler)
-                .await
-                .map_err(|e| ExtractError::Ssh {
-                    host: host.clone(),
-                    message: format!("handshake: {e}"),
-                })?;
+        let mut handle = client::connect_stream(ssh_cfg, stream, ClientHandler)
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("handshake: {e}"),
+            })?;
 
         // Authenticate using the running ssh-agent.
-        let mut agent =
-            AgentClient::connect_env()
-                .await
-                .map_err(|e| ExtractError::Ssh {
-                    host: host.clone(),
-                    message: format!("ssh-agent: {e}"),
-                })?;
+        let mut agent = AgentClient::connect_env()
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("ssh-agent: {e}"),
+            })?;
 
-        let identities =
-            agent
-                .request_identities()
-                .await
-                .map_err(|e| ExtractError::Ssh {
-                    host: host.clone(),
-                    message: format!("agent identities: {e}"),
-                })?;
+        let identities = agent
+            .request_identities()
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("agent identities: {e}"),
+            })?;
 
         let mut authenticated = false;
         for identity in &identities {
@@ -234,12 +227,13 @@ impl SshFs {
                 message: format!("sftp subsystem: {e}"),
             })?;
 
-        let sftp = SftpSession::new(channel.into_stream())
-            .await
-            .map_err(|e| ExtractError::Ssh {
-                host: host.clone(),
-                message: format!("sftp init: {e}"),
-            })?;
+        let sftp =
+            SftpSession::new(channel.into_stream())
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("sftp init: {e}"),
+                })?;
 
         Ok(Self {
             host,

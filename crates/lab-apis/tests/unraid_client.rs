@@ -224,7 +224,10 @@ async fn parity_check_pause_sends_mutation() {
         .await;
 
     let client = make_client(&server.uri());
-    client.parity_check_pause().await.expect("parity_check_pause");
+    client
+        .parity_check_pause()
+        .await
+        .expect("parity_check_pause");
 }
 
 #[tokio::test]

@@ -35,9 +35,11 @@ pub fn require_client() -> Result<TailscaleClient, ToolError> {
     let base_url = env_non_empty("TAILSCALE_BASE_URL")
         .unwrap_or_else(|| "https://api.tailscale.com/api/v2".to_string());
     let tailnet = resolve_tailnet();
-    TailscaleClient::new(&base_url, Auth::Bearer { token: key }, tailnet).map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".to_string(),
-        message: format!("Tailscale client init failed: {e}"),
+    TailscaleClient::new(&base_url, Auth::Bearer { token: key }, tailnet).map_err(|e| {
+        ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!("Tailscale client init failed: {e}"),
+        }
     })
 }
 

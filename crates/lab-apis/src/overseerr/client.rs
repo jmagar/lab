@@ -72,10 +72,7 @@ impl OverseerrClient {
         if let Some(u) = requested_by {
             query.push(("requestedBy".into(), u.to_string()));
         }
-        Ok(self
-            .http
-            .get_json_query("/api/v1/request", &query)
-            .await?)
+        Ok(self.http.get_json_query("/api/v1/request", &query).await?)
     }
 
     /// Get a single request by ID.
@@ -83,17 +80,17 @@ impl OverseerrClient {
     /// # Errors
     /// Returns [`OverseerrError`] on transport, not-found, or decode failure.
     pub async fn request_get(&self, id: u64) -> Result<MediaRequest, OverseerrError> {
-        Ok(self
-            .http
-            .get_json(&format!("/api/v1/request/{id}"))
-            .await?)
+        Ok(self.http.get_json(&format!("/api/v1/request/{id}")).await?)
     }
 
     /// Create a new media request.
     ///
     /// # Errors
     /// Returns [`OverseerrError`] on transport, validation, or decode failure.
-    pub async fn request_create(&self, body: &CreateRequestBody) -> Result<MediaRequest, OverseerrError> {
+    pub async fn request_create(
+        &self,
+        body: &CreateRequestBody,
+    ) -> Result<MediaRequest, OverseerrError> {
         Ok(self.http.post_json("/api/v1/request", body).await?)
     }
 
@@ -126,10 +123,7 @@ impl OverseerrClient {
     /// # Errors
     /// Returns [`OverseerrError`] on transport failure.
     pub async fn request_delete(&self, id: u64) -> Result<(), OverseerrError> {
-        Ok(self
-            .http
-            .delete(&format!("/api/v1/request/{id}"))
-            .await?)
+        Ok(self.http.delete(&format!("/api/v1/request/{id}")).await?)
     }
 
     // ── Search ────────────────────────────────────────────────────────────
@@ -170,10 +164,7 @@ impl OverseerrClient {
     /// # Errors
     /// Returns [`OverseerrError`] on transport or decode failure.
     pub async fn tv_get(&self, tmdb_id: u64) -> Result<TvDetail, OverseerrError> {
-        Ok(self
-            .http
-            .get_json(&format!("/api/v1/tv/{tmdb_id}"))
-            .await?)
+        Ok(self.http.get_json(&format!("/api/v1/tv/{tmdb_id}")).await?)
     }
 
     // ── Users ─────────────────────────────────────────────────────────────
@@ -202,10 +193,7 @@ impl OverseerrClient {
     /// # Errors
     /// Returns [`OverseerrError`] on transport or decode failure.
     pub async fn user_get(&self, id: u64) -> Result<User, OverseerrError> {
-        Ok(self
-            .http
-            .get_json(&format!("/api/v1/user/{id}"))
-            .await?)
+        Ok(self.http.get_json(&format!("/api/v1/user/{id}")).await?)
     }
 
     // ── Issues ────────────────────────────────────────────────────────────
@@ -242,10 +230,7 @@ impl OverseerrClient {
     /// # Errors
     /// Returns [`OverseerrError`] on transport or decode failure.
     pub async fn issue_get(&self, id: u64) -> Result<Issue, OverseerrError> {
-        Ok(self
-            .http
-            .get_json(&format!("/api/v1/issue/{id}"))
-            .await?)
+        Ok(self.http.get_json(&format!("/api/v1/issue/{id}")).await?)
     }
 
     /// Create a new issue.
@@ -301,10 +286,7 @@ impl OverseerrClient {
     /// # Errors
     /// Returns [`OverseerrError`] on transport failure.
     pub async fn media_delete(&self, id: u64) -> Result<(), OverseerrError> {
-        Ok(self
-            .http
-            .delete(&format!("/api/v1/media/{id}"))
-            .await?)
+        Ok(self.http.delete(&format!("/api/v1/media/{id}")).await?)
     }
 
     /// Update the status of a media item.

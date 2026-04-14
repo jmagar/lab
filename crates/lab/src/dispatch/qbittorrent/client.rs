@@ -75,7 +75,8 @@ pub async fn require_client() -> Result<QbittorrentClient, ToolError> {
             .await
             .ok_or_else(|| ToolError::Sdk {
                 sdk_kind: "auth_failed".to_string(),
-                message: "qbittorrent login failed — check QBITTORRENT_USERNAME/PASSWORD".to_string(),
+                message: "qbittorrent login failed — check QBITTORRENT_USERNAME/PASSWORD"
+                    .to_string(),
             })?
     };
     QbittorrentClient::new(&url, sid).map_err(|e| ToolError::Sdk {

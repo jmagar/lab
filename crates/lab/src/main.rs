@@ -35,16 +35,16 @@ use crate::cli::Cli;
 fn init_tracing(log: &config::LogPreferences) {
     // Env var wins → config.toml → default.
     let filter = EnvFilter::try_from_env("LAB_LOG").unwrap_or_else(|_| {
-        let directive = log
-            .filter
-            .as_deref()
-            .unwrap_or("lab=info,lab_apis=warn");
+        let directive = log.filter.as_deref().unwrap_or("lab=info,lab_apis=warn");
         EnvFilter::new(directive)
     });
 
     let use_json = match std::env::var("LAB_LOG_FORMAT").ok() {
         Some(v) => v.eq_ignore_ascii_case("json"),
-        None => log.format.as_deref().is_some_and(|f| f.eq_ignore_ascii_case("json")),
+        None => log
+            .format
+            .as_deref()
+            .is_some_and(|f| f.eq_ignore_ascii_case("json")),
     };
 
     if use_json {
@@ -57,7 +57,12 @@ fn init_tracing(log: &config::LogPreferences) {
         let ansi = std::io::stderr().is_terminal();
         tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().with_target(false).with_ansi(ansi).with_writer(std::io::stderr))
+            .with(
+                fmt::layer()
+                    .with_target(false)
+                    .with_ansi(ansi)
+                    .with_writer(std::io::stderr),
+            )
             .init();
     }
 }

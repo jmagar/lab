@@ -103,9 +103,7 @@ pub async fn dispatch_with_client(
             to_json(client.client_update(id, &p).await?)
         }
         // ── Plugins ───────────────────────────────────────────────────────────
-        "plugin.list" => {
-            to_json(require_management_client(clients)?.plugins_list().await?)
-        }
+        "plugin.list" => to_json(require_management_client(clients)?.plugins_list().await?),
         "plugin.enable" => {
             let client = require_management_client(clients)?;
             let id = params::plugin_id_from_params(&params_value)?;
@@ -132,9 +130,7 @@ pub async fn dispatch_with_client(
             Ok(Value::Null)
         }
         // ── Users ────────────────────────────────────────────────────────────
-        "user.list" => {
-            to_json(require_management_client(clients)?.users_list().await?)
-        }
+        "user.list" => to_json(require_management_client(clients)?.users_list().await?),
         "user.create" => {
             let client = require_management_client(clients)?;
             let p = params::user_create_from_params(&params_value)?;

@@ -3,8 +3,8 @@
 use lab_apis::core::Auth;
 use lab_apis::gotify::GotifyClient;
 use lab_apis::gotify::types::{
-    Application, ApplicationId, ApplicationParams, Client, ClientId, ClientParams, Plugin, PluginId,
-    ServerVersion, UserId, UserCreate,
+    Application, ApplicationId, ApplicationParams, Client, ClientId, ClientParams, Plugin,
+    PluginId, ServerVersion, UserCreate, UserId,
 };
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -20,6 +20,40 @@ fn make_client(base_url: &str) -> GotifyClient {
         },
     )
     .expect("client construction")
+}
+
+// ── message.list ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn messages_list_accepts_live_paging_shape() {
+    let server = MockServer::start().await;
+    let body = serde_json::json!({
+        "paging": {
+            "next": "https://gotify.example/message?limit=5&since=210031",
+            "size": 5,
+            "since": 210031,
+            "limit": 5
+        },
+        "messages": [
+            {
+                "id": 210035,
+                "appid": 14,
+                "message": "hello",
+                "title": "test",
+                "priority": 8,
+                "date": "2026-04-14T08:47:08.742834276-04:00"
+            }
+        ]
+    });
+    Mock::given(method("GET"))
+        .and(path("/message"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+        .mount(&server)
+        .await;
+
+    let client = make_client(&server.uri());
+    let result = client.messages_list(Some(5)).await.expect("messages_list");
+    assert_eq!(result.messages.len(), 1);
 }
 
 // ── application.update ────────────────────────────────────────────────────────
@@ -111,7 +145,9 @@ async fn client_update_puts_and_returns_client() {
         .await;
 
     let client = make_client(&server.uri());
-    let params = ClientParams { name: "NewName".into() };
+    let params = ClientParams {
+        name: "NewName".into(),
+    };
     let result = client
         .client_update(ClientId(2), &params)
         .await
@@ -158,7 +194,10 @@ async fn plugin_enable_posts_to_enable_endpoint() {
         .await;
 
     let client = make_client(&server.uri());
-    client.plugin_enable(PluginId(1)).await.expect("plugin_enable");
+    client
+        .plugin_enable(PluginId(1))
+        .await
+        .expect("plugin_enable");
 }
 
 // ── plugin.disable ────────────────────────────────────────────────────────────
@@ -173,7 +212,10 @@ async fn plugin_disable_posts_to_disable_endpoint() {
         .await;
 
     let client = make_client(&server.uri());
-    client.plugin_disable(PluginId(1)).await.expect("plugin_disable");
+    client
+        .plugin_disable(PluginId(1))
+        .await
+        .expect("plugin_disable");
 }
 
 // ── plugin.config-get ─────────────────────────────────────────────────────────

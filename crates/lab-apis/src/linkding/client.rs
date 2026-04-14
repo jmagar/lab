@@ -144,7 +144,10 @@ impl LinkdingClient {
     pub async fn bookmark_archive(&self, id: u64) -> Result<(), LinkdingError> {
         Ok(self
             .http
-            .post_void(&format!("/api/bookmarks/{id}/archive/"), &serde_json::json!({}))
+            .post_void(
+                &format!("/api/bookmarks/{id}/archive/"),
+                &serde_json::json!({}),
+            )
             .await?)
     }
 
@@ -152,7 +155,10 @@ impl LinkdingClient {
     pub async fn bookmark_unarchive(&self, id: u64) -> Result<(), LinkdingError> {
         Ok(self
             .http
-            .post_void(&format!("/api/bookmarks/{id}/unarchive/"), &serde_json::json!({}))
+            .post_void(
+                &format!("/api/bookmarks/{id}/unarchive/"),
+                &serde_json::json!({}),
+            )
             .await?)
     }
 

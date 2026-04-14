@@ -8,12 +8,11 @@ use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
 use rmcp::model::{
     AnnotateAble, CallToolRequestParams, CallToolResult, CompleteRequestParams, CompleteResult,
-    CompletionInfo, Content, CreateElicitationRequestParams, ElicitationAction,
-    ElicitationSchema, ErrorCode, GetPromptRequestParams, GetPromptResult, ListPromptsResult,
-    ListResourcesResult, ListToolsResult, LoggingLevel, LoggingMessageNotificationParam,
-    PaginatedRequestParams, PrimitiveSchema, RawResource, ReadResourceRequestParams,
-    ReadResourceResult, Reference, ResourceContents, ServerCapabilities, ServerInfo,
-    SetLevelRequestParams, Tool,
+    CompletionInfo, Content, CreateElicitationRequestParams, ElicitationAction, ElicitationSchema,
+    ErrorCode, GetPromptRequestParams, GetPromptResult, ListPromptsResult, ListResourcesResult,
+    ListToolsResult, LoggingLevel, LoggingMessageNotificationParam, PaginatedRequestParams,
+    PrimitiveSchema, RawResource, ReadResourceRequestParams, ReadResourceResult, Reference,
+    ResourceContents, ServerCapabilities, ServerInfo, SetLevelRequestParams, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, ServiceExt};
@@ -24,6 +23,9 @@ use crate::config::LabConfig;
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
+
+/// Sentinel severity value meaning "MCP logging disabled until the client opts in".
+const LOG_DISABLED: u8 = u8::MAX;
 
 /// Transport choices for `lab serve`.
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -84,7 +86,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         Transport::Stdio => run_stdio(Arc::new(registry)).await,
         Transport::Http => {
             let state = AppState::from_registry(registry);
-            run_http(&host, port, &require_http_token()?, state, &config.api.cors_origins).await
+            run_http(
+                &host,
+                port,
+                &require_http_token()?,
+                state,
+                &config.api.cors_origins,
+            )
+            .await
         }
     }
 }
@@ -199,11 +208,8 @@ impl ServerHandler for LabMcpServer {
 
     // ── Lifecycle ────────────────────────────────────────────────────
 
-    async fn on_initialized(
-        &self,
-        context: rmcp::service::NotificationContext<RoleServer>,
-    ) {
-        drop(self.peer.set(context.peer));
+    async fn on_initialized(&self, context: rmcp::service::NotificationContext<RoleServer>) {
+        let _previous_peer = self.peer.set(context.peer);
     }
 
     // ── Prompts ─────────────────────────────────────────────────────
@@ -233,7 +239,7 @@ impl ServerHandler for LabMcpServer {
                 (k, s)
             })
             .collect();
-        crate::mcp::prompts::get(&request.name, &args).ok_or_else(|| {
+        crate::mcp::prompts::get(&self.registry, &request.name, &args).ok_or_else(|| {
             ErrorData::new(
                 ErrorCode::INVALID_PARAMS,
                 format!("unknown prompt: {}", request.name),
@@ -254,17 +260,11 @@ impl ServerHandler for LabMcpServer {
 
         let values = match &request.r#ref {
             Reference::Prompt(prompt_ref) => {
-                complete_prompt_arg(
-                    &prompt_ref.name,
-                    argument_name,
-                    partial,
-                    &self.registry,
-                )
+                complete_prompt_arg(&prompt_ref.name, argument_name, partial, &self.registry)
             }
-            Reference::Resource(_) => vec![]
+            Reference::Resource(_) => vec![],
         };
-        let completion = CompletionInfo::with_all_values(values)
-            .unwrap_or_default();
+        let completion = CompletionInfo::with_all_values(values).unwrap_or_default();
         Ok(CompleteResult::new(completion))
     }
 
@@ -288,10 +288,12 @@ impl ServerHandler for LabMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        let mut resources = vec![RawResource::new("lab://catalog", "catalog")
-            .with_description("Full discovery document for all services")
-            .with_mime_type("application/json")
-            .no_annotation()];
+        let mut resources = vec![
+            RawResource::new("lab://catalog", "catalog")
+                .with_description("Full discovery document for all services")
+                .with_mime_type("application/json")
+                .no_annotation(),
+        ];
         for svc in self.registry.services() {
             let uri = format!("lab://{}/actions", svc.name);
             let name = format!("{}/actions", svc.name);
@@ -313,7 +315,10 @@ impl ServerHandler for LabMcpServer {
         let uri = &request.uri;
         let json = if uri == "lab://catalog" {
             crate::mcp::resources::catalog_json(&self.registry)
-        } else if let Some(service) = uri.strip_prefix("lab://").and_then(|s| s.strip_suffix("/actions")) {
+        } else if let Some(service) = uri
+            .strip_prefix("lab://")
+            .and_then(|s| s.strip_suffix("/actions"))
+        {
             crate::mcp::resources::service_actions_json(&self.registry, service)
         } else {
             return Err(ErrorData::new(
@@ -326,8 +331,7 @@ impl ServerHandler for LabMcpServer {
             Ok(value) => {
                 let text = serde_json::to_string_pretty(&value).unwrap_or_default();
                 Ok(ReadResourceResult::new(vec![
-                    ResourceContents::text(text, uri.clone())
-                        .with_mime_type("application/json"),
+                    ResourceContents::text(text, uri.clone()).with_mime_type("application/json"),
                 ]))
             }
             Err(e) => Err(ErrorData::new(
@@ -450,27 +454,30 @@ impl LabMcpServer {
         error: Option<&str>,
     ) {
         let client_severity = self.log_level.load(Ordering::Relaxed);
-        if client_severity != 255
+        if client_severity != LOG_DISABLED
             && level_to_severity(level) <= client_severity
             && let Some(peer) = self.peer.get()
         {
             let data = error.map_or_else(
-                || serde_json::json!({
-                    "service": service, "action": action, "elapsed_ms": elapsed_ms,
-                }),
-                |err| serde_json::json!({
-                    "service": service, "action": action,
-                    "elapsed_ms": elapsed_ms, "error": err,
-                }),
+                || {
+                    serde_json::json!({
+                        "service": service, "action": action, "elapsed_ms": elapsed_ms,
+                    })
+                },
+                |err| {
+                    serde_json::json!({
+                        "service": service, "action": action,
+                        "elapsed_ms": elapsed_ms, "error": err,
+                    })
+                },
             );
-            drop(
-                peer.notify_logging_message(LoggingMessageNotificationParam {
+            let _notify_result = peer
+                .notify_logging_message(LoggingMessageNotificationParam {
                     level,
                     data,
                     logger: Some("lab".to_string()),
                 })
-                .await,
-            );
+                .await;
         }
     }
 }
@@ -507,9 +514,23 @@ fn dispatch_to_result(
                 LoggingLevel::Warning
             };
             if is_fatal {
-                tracing::error!(surface = "mcp", service, action, elapsed_ms, kind, "dispatch error");
+                tracing::error!(
+                    surface = "mcp",
+                    service,
+                    action,
+                    elapsed_ms,
+                    kind,
+                    "dispatch error"
+                );
             } else {
-                tracing::warn!(surface = "mcp", service, action, elapsed_ms, kind, "dispatch error");
+                tracing::warn!(
+                    surface = "mcp",
+                    service,
+                    action,
+                    elapsed_ms,
+                    kind,
+                    "dispatch error"
+                );
             }
             let envelope = extra.map_or_else(
                 || build_error(service, action, kind, &message),
@@ -518,7 +539,11 @@ fn dispatch_to_result(
             let call = Ok(CallToolResult::error(vec![Content::text(
                 envelope.to_string(),
             )]));
-            (call, level, Some(format!("{kind}: {message}")))
+            (
+                call,
+                level,
+                Some(format!("{kind}: {}", sanitize_log_error(kind, &message))),
+            )
         }
     }
 }
@@ -624,19 +649,44 @@ fn complete_prompt_arg(
             .collect(),
         // action arg on run-action → action names (need service context from prior args,
         // but MCP completions don't provide that yet — return all action names across services)
-        ("run-action", "action") => {
-            let mut actions: Vec<String> = registry
-                .services()
-                .iter()
-                .flat_map(|s| s.actions.iter().map(|a| a.name.to_string()))
-                .filter(|n| n.starts_with(partial))
-                .collect();
-            actions.sort();
-            actions.dedup();
-            actions
-        }
+        ("run-action", "action") => registry
+            .sorted_action_names()
+            .iter()
+            .filter(|name| name.starts_with(partial))
+            .cloned()
+            .collect(),
         _ => vec![],
     }
+}
+
+fn sanitize_log_error(kind: &str, message: &str) -> String {
+    let single_line = message.lines().next().unwrap_or_default().trim();
+    let redacted = redact_home_paths(single_line);
+    let sanitized = if matches!(kind, "internal_error" | "server_error") {
+        "internal server error".to_string()
+    } else if redacted.is_empty() {
+        kind.replace('_', " ")
+    } else {
+        redacted
+    };
+
+    const MAX_LOG_ERROR_LEN: usize = 200;
+    if sanitized.chars().count() > MAX_LOG_ERROR_LEN {
+        let truncated: String = sanitized.chars().take(MAX_LOG_ERROR_LEN - 1).collect();
+        format!("{truncated}…")
+    } else {
+        sanitized
+    }
+}
+
+fn redact_home_paths(message: &str) -> String {
+    let mut out = message.to_string();
+    if let Some(home) = std::env::var_os("HOME").and_then(|value| value.into_string().ok())
+        && !home.is_empty()
+    {
+        out = out.replace(&home, "~");
+    }
+    out
 }
 
 async fn run_http(
@@ -668,7 +718,7 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
     let server = LabMcpServer {
         registry,
         peer: Arc::new(OnceLock::new()),
-        log_level: Arc::new(AtomicU8::new(255)),
+        log_level: Arc::new(AtomicU8::new(LOG_DISABLED)),
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
@@ -745,9 +795,62 @@ fn static_kind(s: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::static_kind;
-    use super::{Transport, resolve_port, resolve_transport};
+    use super::{
+        LOG_DISABLED, Transport, complete_prompt_arg, extract_error_info, redact_home_paths,
+        resolve_port, resolve_transport, sanitize_log_error,
+    };
     use crate::config::{LabConfig, McpPreferences};
     use crate::dispatch::error::ToolError;
+    use crate::mcp::error::DispatchError;
+    use crate::mcp::registry::{RegisteredService, ToolRegistry};
+    use lab_apis::core::action::ActionSpec;
+    use serde_json::Value;
+
+    const ACTIONS_ALPHA: &[ActionSpec] = &[
+        ActionSpec {
+            name: "alpha.read",
+            description: "Read alpha data",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+        ActionSpec {
+            name: "alpha.write",
+            description: "Write alpha data",
+            destructive: true,
+            params: &[],
+            returns: "object",
+        },
+    ];
+
+    const ACTIONS_BETA: &[ActionSpec] = &[ActionSpec {
+        name: "beta.list",
+        description: "List beta data",
+        destructive: false,
+        params: &[],
+        returns: "object[]",
+    }];
+
+    fn registry() -> ToolRegistry {
+        let mut registry = ToolRegistry::new();
+        registry.register(RegisteredService {
+            name: "alpha",
+            description: "alpha service",
+            category: "test",
+            status: "available",
+            actions: ACTIONS_ALPHA,
+            dispatch: |_action, _params| Box::pin(async { Ok(Value::Null) }),
+        });
+        registry.register(RegisteredService {
+            name: "beta",
+            description: "beta service",
+            category: "test",
+            status: "available",
+            actions: ACTIONS_BETA,
+            dispatch: |_action, _params| Box::pin(async { Ok(Value::Null) }),
+        });
+        registry
+    }
 
     /// Every kind that `ToolError::kind()` can return must have an explicit arm
     /// in `static_kind()`.  If a new variant or SDK kind is added to `ToolError`
@@ -861,5 +964,92 @@ mod tests {
             ..LabConfig::default()
         };
         assert_eq!(cfg.mcp.host.as_deref(), Some("0.0.0.0"));
+    }
+
+    #[test]
+    fn completion_handler_reuses_cached_sorted_actions() {
+        let registry = registry();
+
+        let all = complete_prompt_arg("run-action", "action", "", &registry);
+        assert_eq!(
+            all,
+            vec![
+                "alpha.read".to_string(),
+                "alpha.write".to_string(),
+                "beta.list".to_string()
+            ]
+        );
+
+        let filtered = complete_prompt_arg("run-action", "action", "alpha.", &registry);
+        assert_eq!(
+            filtered,
+            vec!["alpha.read".to_string(), "alpha.write".to_string()]
+        );
+    }
+
+    #[test]
+    fn sanitize_log_error_redacts_and_flattens_messages() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/tester".to_string());
+        let raw = format!("boom at {home}/workspace/lab\nstack trace line 2");
+
+        let sanitized = sanitize_log_error("network_error", &raw);
+
+        assert!(!sanitized.contains(&home));
+        assert!(sanitized.contains("~/workspace/lab"));
+        assert!(!sanitized.contains("stack trace line 2"));
+    }
+
+    #[test]
+    fn sanitize_log_error_hides_internal_details() {
+        let sanitized = sanitize_log_error(
+            "internal_error",
+            "decode panic at /home/jmagar/workspace/lab/crates/lab/src/cli/serve.rs:123",
+        );
+        assert_eq!(sanitized, "internal server error");
+    }
+
+    #[test]
+    fn redact_home_paths_replaces_user_home() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/tester".to_string());
+        let redacted = redact_home_paths(&format!("see {home}/secret/file"));
+        assert!(!redacted.contains(&home));
+        assert!(redacted.contains("~/secret/file"));
+    }
+
+    #[tokio::test]
+    async fn extract_error_info_preserves_dispatch_error_downcast() {
+        let tool_error = crate::mcp::services::extract::dispatch("missing.action", Value::Null)
+            .await
+            .expect_err("unknown action should fail");
+        let err = anyhow::Error::from(DispatchError::from(tool_error));
+
+        let (kind, message, extra) = extract_error_info(&err);
+
+        assert_eq!(kind, "unknown_action");
+        assert!(message.contains("missing.action"));
+        let extra = extra.expect("unknown action should carry valid actions");
+        assert!(extra["valid"].is_array());
+    }
+
+    #[test]
+    fn extract_error_info_preserves_json_fallback() {
+        let err = anyhow::anyhow!(
+            "{}",
+            ToolError::MissingParam {
+                message: "missing required parameter `query`".to_string(),
+                param: "query".to_string(),
+            }
+        );
+
+        let (kind, message, extra) = extract_error_info(&err);
+
+        assert_eq!(kind, "missing_param");
+        assert_eq!(message, "missing required parameter `query`");
+        assert_eq!(extra.expect("param metadata")["param"], "query");
+    }
+
+    #[test]
+    fn log_disabled_constant_uses_max_sentinel() {
+        assert_eq!(LOG_DISABLED, u8::MAX);
     }
 }

@@ -112,9 +112,7 @@ async fn tokenize_returns_token_sequences() {
 async fn similarity_returns_scores() {
     let server = MockServer::start().await;
     let request = SimilarityRequest {
-        inputs: vec![
-            ["the cat sat".to_string(), "a cat was sitting".to_string()],
-        ],
+        inputs: vec![["the cat sat".to_string(), "a cat was sitting".to_string()]],
     };
 
     Mock::given(method("POST"))

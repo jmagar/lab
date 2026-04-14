@@ -23,7 +23,10 @@ pub async fn dispatch_with_client(
         a if a.starts_with("command.") => {
             commands::dispatch_with_client(client, action, params).await
         }
-        "history.list" | "history.movie" | "history.failed-retry" | "blocklist.list"
+        "history.list"
+        | "history.movie"
+        | "history.failed-retry"
+        | "blocklist.list"
         | "blocklist.delete" => history::dispatch_with_client(client, action, params).await,
         a if a.starts_with("wanted.") => wanted::dispatch_with_client(client, action, params).await,
         "customformat.list" => customformat::dispatch_with_client(client, action, params).await,

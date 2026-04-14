@@ -2,7 +2,9 @@ use lab_apis::tautulli::TautulliClient;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, optional_str, require_i64, require_str, to_json};
+use crate::dispatch::helpers::{
+    action_schema, help_payload, optional_str, require_i64, require_str, to_json,
+};
 use crate::dispatch::tautulli::{catalog::ACTIONS, client, params};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).

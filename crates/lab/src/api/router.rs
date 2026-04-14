@@ -65,7 +65,10 @@ pub fn build_router(
                 let spec = spec_for_route.clone();
                 async move {
                     (
-                        [(header::CONTENT_TYPE, "application/json"), (header::CACHE_CONTROL, "private, no-store")],
+                        [
+                            (header::CONTENT_TYPE, "application/json"),
+                            (header::CACHE_CONTROL, "private, no-store"),
+                        ],
                         (*spec).clone(),
                     )
                 }
@@ -495,7 +498,10 @@ mod tests {
             .unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
         assert!(html.contains("scalar"), "HTML should reference Scalar");
-        assert!(html.contains("openapi.json"), "HTML should reference spec URL");
+        assert!(
+            html.contains("openapi.json"),
+            "HTML should reference spec URL"
+        );
     }
 
     /// When a service is absent from the runtime registry (e.g. filtered out by

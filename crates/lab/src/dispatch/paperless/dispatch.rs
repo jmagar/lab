@@ -88,14 +88,18 @@ pub async fn dispatch_with_client(
         // ── Document Upload & Bulk Edit ─────────────────────────────────────
         "document.upload" => {
             let body = params::document_upload_from_params(&params_value)?;
-            to_json(client.document_upload(
-                body.file_bytes,
-                body.filename,
-                body.title,
-                body.correspondent,
-                body.document_type,
-                body.tags,
-            ).await?)
+            to_json(
+                client
+                    .document_upload(
+                        body.file_bytes,
+                        body.filename,
+                        body.title,
+                        body.correspondent,
+                        body.document_type,
+                        body.tags,
+                    )
+                    .await?,
+            )
         }
         "document.bulk-edit" => {
             let body = params::document_bulk_edit_from_params(&params_value)?;

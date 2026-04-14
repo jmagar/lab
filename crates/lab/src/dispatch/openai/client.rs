@@ -13,8 +13,7 @@ const DEFAULT_BASE_URL: &str = "https://api.openai.com";
 /// Called by `AppState` at startup — keep pure (no side effects, no logging).
 pub fn client_from_env() -> Option<OpenAiClient> {
     let key = env_non_empty("OPENAI_API_KEY")?;
-    let base_url = env_non_empty("OPENAI_URL")
-        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let base_url = env_non_empty("OPENAI_URL").unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
     OpenAiClient::new(&base_url, Auth::Bearer { token: key }).ok()
 }
 
@@ -26,8 +25,7 @@ pub fn client_from_env() -> Option<OpenAiClient> {
 /// - TLS init fails
 pub fn require_client() -> Result<OpenAiClient, ToolError> {
     let key = env_non_empty("OPENAI_API_KEY").ok_or_else(not_configured_error)?;
-    let base_url = env_non_empty("OPENAI_URL")
-        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+    let base_url = env_non_empty("OPENAI_URL").unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
     OpenAiClient::new(&base_url, Auth::Bearer { token: key }).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: format!("openai client init failed: {e}"),

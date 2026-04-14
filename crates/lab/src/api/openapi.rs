@@ -134,8 +134,10 @@ pub fn param_type_to_schema(ty: &str) -> Schema {
             .into(),
         other if other.contains('|') => {
             // Pipe-separated enum: "queued|running|done"
-            let variants: Vec<serde_json::Value> =
-                other.split('|').map(|s| serde_json::Value::String(s.to_string())).collect();
+            let variants: Vec<serde_json::Value> = other
+                .split('|')
+                .map(|s| serde_json::Value::String(s.to_string()))
+                .collect();
             ObjectBuilder::new()
                 .schema_type(SchemaType::Type(Type::String))
                 .enum_values(Some(variants))
@@ -177,9 +179,7 @@ pub fn to_pascal_case(dotted: &str) -> String {
 /// Returns `(name, Schema)` pairs suitable for injection into `OpenAPI` components.
 /// Names follow the pattern `{Service}{Action}Params` — e.g., `RadarrMovieSearchParams`.
 #[must_use]
-pub fn build_action_schemas(
-    services: &[RegisteredService],
-) -> Vec<(String, RefOr<Schema>)> {
+pub fn build_action_schemas(services: &[RegisteredService]) -> Vec<(String, RefOr<Schema>)> {
     let mut schemas = Vec::new();
     for svc in services {
         let svc_pascal = to_pascal_case(svc.name);
@@ -284,9 +284,7 @@ pub fn build_health_paths() -> Vec<(String, PathItem)> {
                     OperationBuilder::new()
                         .tag("health")
                         .summary(Some("Liveness probe"))
-                        .description(Some(
-                            "Returns 200 as long as the process is running.",
-                        ))
+                        .description(Some("Returns 200 as long as the process is running."))
                         .responses(
                             ResponsesBuilder::new()
                                 .response("200", health_response)
@@ -507,7 +505,10 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&err).unwrap();
         let obj = v.as_object().unwrap();
         assert!(obj.contains_key("kind"), "UnknownAction missing 'kind'");
-        assert!(obj.contains_key("message"), "UnknownAction missing 'message'");
+        assert!(
+            obj.contains_key("message"),
+            "UnknownAction missing 'message'"
+        );
         assert!(obj.contains_key("valid"), "UnknownAction missing 'valid'");
         assert!(obj.contains_key("hint"), "UnknownAction missing 'hint'");
 
@@ -519,7 +520,10 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&err).unwrap();
         let obj = v.as_object().unwrap();
         assert!(obj.contains_key("kind"), "MissingParam missing 'kind'");
-        assert!(obj.contains_key("message"), "MissingParam missing 'message'");
+        assert!(
+            obj.contains_key("message"),
+            "MissingParam missing 'message'"
+        );
         assert!(obj.contains_key("param"), "MissingParam missing 'param'");
 
         // InvalidParam
@@ -530,7 +534,10 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&err).unwrap();
         let obj = v.as_object().unwrap();
         assert!(obj.contains_key("kind"), "InvalidParam missing 'kind'");
-        assert!(obj.contains_key("message"), "InvalidParam missing 'message'");
+        assert!(
+            obj.contains_key("message"),
+            "InvalidParam missing 'message'"
+        );
         assert!(obj.contains_key("param"), "InvalidParam missing 'param'");
 
         // ConfirmationRequired
@@ -684,8 +691,8 @@ mod tests {
         use crate::mcp::registry::build_default_registry;
 
         let registry = build_default_registry();
-        let spec_json = build_openapi_spec(registry.services())
-            .expect("spec serialization should succeed");
+        let spec_json =
+            build_openapi_spec(registry.services()).expect("spec serialization should succeed");
 
         let spec: serde_json::Value =
             serde_json::from_str(&spec_json).expect("spec should be valid JSON");
@@ -698,7 +705,9 @@ mod tests {
         assert!(spec["info"]["version"].as_str().is_some());
 
         // Paths must include health endpoints
-        let paths = spec["paths"].as_object().expect("paths should be an object");
+        let paths = spec["paths"]
+            .as_object()
+            .expect("paths should be an object");
         assert!(paths.contains_key("/health"), "missing /health path");
         assert!(paths.contains_key("/ready"), "missing /ready path");
 
@@ -728,10 +737,7 @@ mod tests {
             schemas.contains_key("ErrorMissingParam"),
             "missing ErrorMissingParam schema"
         );
-        assert!(
-            schemas.contains_key("ErrorSdk"),
-            "missing ErrorSdk schema"
-        );
+        assert!(schemas.contains_key("ErrorSdk"), "missing ErrorSdk schema");
 
         // Security scheme
         let security_schemes = spec["components"]["securitySchemes"]

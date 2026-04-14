@@ -183,12 +183,16 @@ mod tests {
         let xml =
             br#"<Config><Port>7878</Port><UrlBase>/radarr</UrlBase><ApiKey>abc</ApiKey></Config>"#;
         let creds = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap();
-        assert_eq!(creds.url.as_deref().unwrap(), "http://localhost:7878/radarr");
+        assert_eq!(
+            creds.url.as_deref().unwrap(),
+            "http://localhost:7878/radarr"
+        );
     }
 
     #[test]
     fn enable_ssl_true() {
-        let xml = br#"<Config><Port>9898</Port><EnableSsl>True</EnableSsl><ApiKey>abc</ApiKey></Config>"#;
+        let xml =
+            br#"<Config><Port>9898</Port><EnableSsl>True</EnableSsl><ApiKey>abc</ApiKey></Config>"#;
         let creds = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap();
         assert!(creds.url.as_deref().unwrap().starts_with("https://"));
     }
@@ -202,8 +206,7 @@ mod tests {
 
     #[test]
     fn empty_url_base_element() {
-        let xml =
-            br#"<Config><Port>7878</Port><UrlBase></UrlBase><ApiKey>abc</ApiKey></Config>"#;
+        let xml = br#"<Config><Port>7878</Port><UrlBase></UrlBase><ApiKey>abc</ApiKey></Config>"#;
         let creds = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap();
         assert_eq!(creds.url.as_deref().unwrap(), "http://localhost:7878");
     }

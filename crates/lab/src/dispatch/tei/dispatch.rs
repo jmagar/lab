@@ -1,5 +1,5 @@
-use lab_apis::tei::types::{RerankRequest, SimilarityRequest, SparseEmbedRequest, TokenizeRequest};
 use lab_apis::tei::TeiClient;
+use lab_apis::tei::types::{RerankRequest, SimilarityRequest, SparseEmbedRequest, TokenizeRequest};
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
@@ -30,12 +30,13 @@ pub async fn dispatch_with_client(
         }
         "embed.rerank" => {
             let query = require_str(&params_value, "query")?.to_string();
-            let texts_raw = params_value["texts"]
-                .as_array()
-                .ok_or_else(|| ToolError::MissingParam {
-                    message: "missing required parameter `texts`".into(),
-                    param: "texts".into(),
-                })?;
+            let texts_raw =
+                params_value["texts"]
+                    .as_array()
+                    .ok_or_else(|| ToolError::MissingParam {
+                        message: "missing required parameter `texts`".into(),
+                        param: "texts".into(),
+                    })?;
             if texts_raw.len() > 100 {
                 return Err(ToolError::Sdk {
                     sdk_kind: "validation_error".to_string(),
@@ -68,13 +69,14 @@ pub async fn dispatch_with_client(
             to_json(client.rerank(&request).await?)
         }
         "embed.tokenize" => {
-            let inputs = params_value
-                .get("inputs")
-                .cloned()
-                .ok_or_else(|| ToolError::MissingParam {
-                    message: "missing required parameter `inputs`".into(),
-                    param: "inputs".into(),
-                })?;
+            let inputs =
+                params_value
+                    .get("inputs")
+                    .cloned()
+                    .ok_or_else(|| ToolError::MissingParam {
+                        message: "missing required parameter `inputs`".into(),
+                        param: "inputs".into(),
+                    })?;
             let add_special_tokens = params_value
                 .get("add_special_tokens")
                 .and_then(Value::as_bool);
@@ -85,12 +87,13 @@ pub async fn dispatch_with_client(
             to_json(client.tokenize(&request).await?)
         }
         "embed.similarity" => {
-            let inputs_raw = params_value["inputs"]
-                .as_array()
-                .ok_or_else(|| ToolError::MissingParam {
-                    message: "missing required parameter `inputs`".into(),
-                    param: "inputs".into(),
-                })?;
+            let inputs_raw =
+                params_value["inputs"]
+                    .as_array()
+                    .ok_or_else(|| ToolError::MissingParam {
+                        message: "missing required parameter `inputs`".into(),
+                        param: "inputs".into(),
+                    })?;
             let inputs = inputs_raw
                 .iter()
                 .enumerate()
@@ -123,25 +126,27 @@ pub async fn dispatch_with_client(
             to_json(client.similarity(&request).await?)
         }
         "embed.sparse" => {
-            let inputs = params_value
-                .get("inputs")
-                .cloned()
-                .ok_or_else(|| ToolError::MissingParam {
-                    message: "missing required parameter `inputs`".into(),
-                    param: "inputs".into(),
-                })?;
+            let inputs =
+                params_value
+                    .get("inputs")
+                    .cloned()
+                    .ok_or_else(|| ToolError::MissingParam {
+                        message: "missing required parameter `inputs`".into(),
+                        param: "inputs".into(),
+                    })?;
             let truncate = params_value.get("truncate").and_then(Value::as_bool);
             let request = SparseEmbedRequest { inputs, truncate };
             to_json(client.embed_sparse(&request).await?)
         }
         "embed.openai" => {
-            let body = params_value
-                .get("body")
-                .cloned()
-                .ok_or_else(|| ToolError::MissingParam {
-                    message: "missing required parameter `body`".into(),
-                    param: "body".into(),
-                })?;
+            let body =
+                params_value
+                    .get("body")
+                    .cloned()
+                    .ok_or_else(|| ToolError::MissingParam {
+                        message: "missing required parameter `body`".into(),
+                        param: "body".into(),
+                    })?;
             to_json(client.openai_embed(&body).await?)
         }
         unknown => Err(ToolError::UnknownAction {

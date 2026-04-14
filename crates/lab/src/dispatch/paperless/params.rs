@@ -90,12 +90,8 @@ pub fn document_upload_from_params(params: &Value) -> Result<DocumentUploadParam
         .get("title")
         .and_then(|v| v.as_str())
         .map(str::to_string);
-    let correspondent = params
-        .get("correspondent")
-        .and_then(Value::as_u64);
-    let document_type = params
-        .get("document_type")
-        .and_then(Value::as_u64);
+    let correspondent = params.get("correspondent").and_then(Value::as_u64);
+    let document_type = params.get("document_type").and_then(Value::as_u64);
     let tags = params
         .get("tags")
         .and_then(|v| v.as_array())
@@ -111,7 +107,9 @@ pub fn document_upload_from_params(params: &Value) -> Result<DocumentUploadParam
 }
 
 /// Build a `DocumentBulkEditRequest` from params.
-pub fn document_bulk_edit_from_params(params: &Value) -> Result<DocumentBulkEditRequest, ToolError> {
+pub fn document_bulk_edit_from_params(
+    params: &Value,
+) -> Result<DocumentBulkEditRequest, ToolError> {
     let documents = params
         .get("documents")
         .and_then(|v| v.as_array())
@@ -145,7 +143,9 @@ pub fn tag_update_from_params(params: &Value) -> Result<TagUpdateRequest, ToolEr
 }
 
 /// Build a `CustomFieldCreateRequest` from params.
-pub fn custom_field_create_from_params(params: &Value) -> Result<CustomFieldCreateRequest, ToolError> {
+pub fn custom_field_create_from_params(
+    params: &Value,
+) -> Result<CustomFieldCreateRequest, ToolError> {
     serde_json::from_value(body_from_params(params, &["payload", "body"])).map_err(|e| {
         ToolError::InvalidParam {
             message: format!("body parameters could not be parsed: {e}"),

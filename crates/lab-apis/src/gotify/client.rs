@@ -207,7 +207,10 @@ impl GotifyClient {
     pub async fn plugin_enable(&self, id: PluginId) -> Result<(), GotifyError> {
         Ok(self
             .http
-            .post_void(&format!("/plugin/{}/enable", id.0), &serde_json::Value::Null)
+            .post_void(
+                &format!("/plugin/{}/enable", id.0),
+                &serde_json::Value::Null,
+            )
             .await?)
     }
 
@@ -218,7 +221,10 @@ impl GotifyClient {
     pub async fn plugin_disable(&self, id: PluginId) -> Result<(), GotifyError> {
         Ok(self
             .http
-            .post_void(&format!("/plugin/{}/disable", id.0), &serde_json::Value::Null)
+            .post_void(
+                &format!("/plugin/{}/disable", id.0),
+                &serde_json::Value::Null,
+            )
             .await?)
     }
 

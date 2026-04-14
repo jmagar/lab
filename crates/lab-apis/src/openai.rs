@@ -83,9 +83,7 @@ impl ServiceClient for OpenAiClient {
                 latency_ms: start.elapsed().as_millis() as u64,
                 message: Some("authentication failed".to_string()),
             }),
-            Err(OpenAiError::Api(ApiError::Network(e))) => {
-                Ok(ServiceStatus::unreachable(e))
-            }
+            Err(OpenAiError::Api(ApiError::Network(e))) => Ok(ServiceStatus::unreachable(e)),
             Err(e) => Ok(ServiceStatus::degraded(e.to_string())),
         }
     }

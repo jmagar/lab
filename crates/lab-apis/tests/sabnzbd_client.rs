@@ -55,11 +55,7 @@ async fn queue_addurl_with_cat_and_priority() {
         .await;
 
     let resp = client(&server.uri())
-        .queue_addurl(
-            "https://example.com/movie.nzb",
-            Some("movies"),
-            Some("1"),
-        )
+        .queue_addurl("https://example.com/movie.nzb", Some("movies"), Some("1"))
         .await
         .expect("queue_addurl with options");
     assert_eq!(resp["status"], true);
@@ -257,4 +253,3 @@ async fn config_get_sends_mode_get_config() {
         .expect("config_get");
     assert!(resp["config"].is_object());
 }
-

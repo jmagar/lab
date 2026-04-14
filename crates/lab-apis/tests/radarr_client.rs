@@ -21,6 +21,32 @@ fn client(base_url: &str) -> RadarrClient {
     .expect("RadarrClient::new")
 }
 
+// ── system.logs ──────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn system_logs_accepts_contents_url_field() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/log/file"))
+        .and(header("X-Api-Key", "testkey"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {
+                "id": 50,
+                "filename": "radarr.txt",
+                "lastWriteTime": "2026-04-14T13:40:12Z",
+                "contentsUrl": "/api/v1//radarr.txt",
+                "downloadUrl": "/logfile/radarr.txt"
+            }
+        ])))
+        .mount(&server)
+        .await;
+
+    let result = client(&server.uri()).log_files().await.expect("log_files");
+
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].filename, "radarr.txt");
+}
+
 // ── movie.edit ───────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -69,7 +95,10 @@ async fn movie_edit_not_found() {
 
     assert!(matches!(
         err,
-        lab_apis::radarr::error::RadarrError::NotFound { kind: "movie", id: 999 }
+        lab_apis::radarr::error::RadarrError::NotFound {
+            kind: "movie",
+            id: 999
+        }
     ));
 }
 

@@ -18,13 +18,22 @@ pub struct ArcaneClient {
 }
 
 impl ArcaneClient {
+    fn normalize_base_url(base_url: &str) -> String {
+        let trimmed = base_url.trim_end_matches('/');
+        if trimmed.ends_with("/api") {
+            trimmed.to_string()
+        } else {
+            format!("{trimmed}/api")
+        }
+    }
+
     /// Build a client against `base_url` with the given auth.
     ///
     /// # Errors
     /// Returns [`ArcaneError::Api`] if the TLS backend fails to initialise.
     pub fn new(base_url: &str, auth: Auth) -> Result<Self, ArcaneError> {
         Ok(Self {
-            http: HttpClient::new(base_url, auth)?,
+            http: HttpClient::new(Self::normalize_base_url(base_url), auth)?,
         })
     }
 
@@ -87,9 +96,7 @@ impl ArcaneClient {
     ) -> Result<Container, ArcaneError> {
         let resp: ApiResponse<Container> = self
             .http
-            .get_json(&format!(
-                "/environments/{env_id}/containers/{container_id}"
-            ))
+            .get_json(&format!("/environments/{env_id}/containers/{container_id}"))
             .await?;
         Ok(resp.data)
     }
@@ -370,10 +377,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn health_uses_api_prefix() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/health"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "UP"
+            })))
+            .mount(&server)
+            .await;
+        let c = client(&server.uri());
+        let result = c.health().await.expect("should succeed");
+        assert_eq!(result.status, "UP");
+    }
+
+    #[tokio::test]
     async fn projects_list_returns_projects() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/environments/env1/projects"))
+            .and(path("/api/environments/env1/projects"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "success": true,
                 "data": [{ "id": "proj1", "name": "myproject" }]
@@ -390,7 +412,7 @@ mod tests {
     async fn volumes_list_returns_volumes() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/environments/env1/volumes"))
+            .and(path("/api/environments/env1/volumes"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "success": true,
                 "data": [{ "name": "myvol" }]
@@ -407,7 +429,7 @@ mod tests {
     async fn images_list_returns_images() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/environments/env1/images"))
+            .and(path("/api/environments/env1/images"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "success": true,
                 "data": [{ "id": "sha256:abc" }]
@@ -424,7 +446,7 @@ mod tests {
     async fn image_update_summary_returns_summary() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/environments/env1/image-updates/summary"))
+            .and(path("/api/environments/env1/image-updates/summary"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "success": true,
                 "data": { "updatesAvailable": 3 }
@@ -432,7 +454,10 @@ mod tests {
             .mount(&server)
             .await;
         let c = client(&server.uri());
-        let result = c.image_update_summary("env1").await.expect("should succeed");
+        let result = c
+            .image_update_summary("env1")
+            .await
+            .expect("should succeed");
         assert_eq!(result.updates_available, Some(3));
     }
 
@@ -440,11 +465,13 @@ mod tests {
     async fn volume_delete_ok() {
         let server = MockServer::start().await;
         Mock::given(method("DELETE"))
-            .and(path("/environments/env1/volumes/myvol"))
+            .and(path("/api/environments/env1/volumes/myvol"))
             .respond_with(ResponseTemplate::new(204))
             .mount(&server)
             .await;
         let c = client(&server.uri());
-        c.volume_delete("env1", "myvol").await.expect("should succeed");
+        c.volume_delete("env1", "myvol")
+            .await
+            .expect("should succeed");
     }
 }

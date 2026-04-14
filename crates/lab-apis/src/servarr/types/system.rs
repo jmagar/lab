@@ -64,6 +64,7 @@ pub struct LogFile {
     pub id: i64,
     pub filename: String,
     pub last_write_time: String,
+    #[serde(alias = "contentsUrl")]
     pub content_url: String,
     pub download_url: String,
 }

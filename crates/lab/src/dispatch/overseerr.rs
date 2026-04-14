@@ -47,7 +47,10 @@ mod tests {
     #[test]
     fn destructive_actions_are_marked() {
         let delete = ACTIONS.iter().find(|a| a.name == "request.delete").unwrap();
-        assert!(delete.destructive, "request.delete must be marked destructive");
+        assert!(
+            delete.destructive,
+            "request.delete must be marked destructive"
+        );
     }
 
     #[test]
@@ -85,10 +88,7 @@ mod tests {
         let val = result.unwrap();
         assert_eq!(val["service"], "overseerr");
         let actions = val["actions"].as_array().unwrap();
-        let names: Vec<&str> = actions
-            .iter()
-            .filter_map(|a| a["name"].as_str())
-            .collect();
+        let names: Vec<&str> = actions.iter().filter_map(|a| a["name"].as_str()).collect();
         assert!(names.contains(&"request.list"));
         assert!(names.contains(&"movie.search"));
         assert!(names.contains(&"health"));
@@ -105,8 +105,7 @@ mod tests {
 
     #[tokio::test]
     async fn schema_returns_action_schema() {
-        let result =
-            dispatch("schema", serde_json::json!({ "action": "request.list" })).await;
+        let result = dispatch("schema", serde_json::json!({ "action": "request.list" })).await;
         assert!(result.is_ok());
         let val = result.unwrap();
         assert_eq!(val["action"], "request.list");

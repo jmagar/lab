@@ -60,12 +60,7 @@ pub async fn dispatch_with_client(
             let search_type = params::optional_search_type(&params_value)?;
             to_json(
                 client
-                    .indexer_search(
-                        &query,
-                        &indexer_ids,
-                        &categories,
-                        search_type.as_deref(),
-                    )
+                    .indexer_search(&query, &indexer_ids, &categories, search_type.as_deref())
                     .await?,
             )
         }
