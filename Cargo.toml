@@ -61,6 +61,9 @@ rmcp         = { version = "1.4", features = [
   "schemars",
 ] }
 
+# oauth / jwt
+jsonwebtoken = "9"
+
 # http server (lab binary only)
 axum         = { version = "0.8", features = ["macros", "json", "tokio", "http2"] }
 tower        = { version = "0.5", features = ["util"] }

@@ -28,6 +28,9 @@ pub struct LabConfig {
     /// MCP server defaults.
     #[serde(default)]
     pub mcp: McpPreferences,
+    /// OAuth 2.1 resource server configuration (optional).
+    #[serde(default)]
+    pub oauth: Option<OAuthConfig>,
 }
 
 /// Table/json formatting defaults.
@@ -50,6 +53,70 @@ pub struct McpPreferences {
     /// Default port for the HTTP transport.
     #[serde(default)]
     pub port: Option<u16>,
+}
+
+/// OAuth 2.1 resource server configuration.
+///
+/// Lab acts as a resource server (RFC 9728) — it validates tokens,
+/// it does not issue them. Populated from `[oauth]` in `config.toml`
+/// and/or `LAB_OAUTH_*` env vars.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthConfig {
+    /// OIDC issuer URL (must be HTTPS). Used for JWKS discovery.
+    pub issuer: String,
+    /// Expected `aud` claim (RFC 8707).
+    pub audience: String,
+    /// Optional `azp` claim validation.
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// Public URL of this lab instance (for metadata + allowed_hosts).
+    #[serde(default)]
+    pub resource_url: Option<String>,
+}
+
+/// Resolve `OAuthConfig` from config file + environment variables.
+///
+/// Env vars take precedence over config file values.
+#[allow(dead_code)] // Used starting in Phase 1.4 (JWT validation middleware)
+pub fn resolve_oauth(config: Option<&OAuthConfig>) -> Option<OAuthConfig> {
+    let issuer = std::env::var("LAB_OAUTH_ISSUER")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| config.map(|c| c.issuer.clone()));
+
+    let audience = std::env::var("LAB_OAUTH_AUDIENCE")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| config.map(|c| c.audience.clone()));
+
+    let issuer = issuer?;
+    let audience = audience?;
+
+    // Security: reject non-HTTPS issuers.
+    if !issuer.starts_with("https://") {
+        tracing::error!(
+            issuer,
+            "LAB_OAUTH_ISSUER must use HTTPS — refusing to start with HTTP issuer"
+        );
+        return None;
+    }
+
+    let client_id = std::env::var("LAB_OAUTH_CLIENT_ID")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| config.and_then(|c| c.client_id.clone()));
+
+    let resource_url = std::env::var("LAB_RESOURCE_URL")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| config.and_then(|c| c.resource_url.clone()));
+
+    Some(OAuthConfig {
+        issuer,
+        audience,
+        client_id,
+        resource_url,
+    })
 }
 
 /// Load `.env` + `config.toml` from the standard locations.
