@@ -1,5 +1,7 @@
-//! Top-level axum router — mounts `POST /v1/<service>` for every enabled service.
+//! Top-level axum router — mounts `POST /v1/<service>` for every enabled service
+//! and the MCP streamable HTTP transport at `/mcp`.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
@@ -10,6 +12,10 @@ use axum::{
     middleware::Next,
     response::Response,
     routing::get,
+};
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService,
+    session::local::{LocalSessionManager, SessionConfig},
 };
 use subtle::ConstantTimeEq;
 use tower_http::{
@@ -86,14 +92,19 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
-    // Build a protected sub-router that nests both /v1 and /mcp (Phase 0.4).
+    // Build the MCP streamable HTTP service.
+    let mcp_service = build_mcp_service(&state);
+
+    // Build a protected sub-router that nests both /v1 and /mcp (lab-kq8w).
     // Bearer auth is applied to this sub-router so both surfaces get the same
-    // auth treatment while health probes remain exempt (lab-3qn.5, lab-kq8w).
-    let protected = Router::new().nest("/v1", v1);
+    // auth treatment while health probes remain exempt (lab-3qn.5).
+    let protected = Router::new()
+        .nest("/v1", v1)
+        .nest_service("/mcp", mcp_service);
 
     // Apply bearer auth to the protected sub-router.
     let protected = if let Some(token) = bearer_token {
-        let token = std::sync::Arc::<str>::from(token);
+        let token = Arc::<str>::from(token);
         protected.layer(axum::middleware::from_fn(
             move |request: Request<Body>, next: Next| {
                 let token = token.clone();
@@ -218,9 +229,87 @@ fn build_cors_layer() -> CorsLayer {
         ])
 }
 
+/// Build the MCP streamable HTTP service from app state.
+///
+/// The factory closure clones `Arc<ToolRegistry>` from `AppState` and constructs
+/// a new `LabMcpServer` per session. Construction cost: two Arc increments.
+fn build_mcp_service(
+    state: &AppState,
+) -> StreamableHttpService<crate::mcp::server::LabMcpServer, LocalSessionManager> {
+    let registry = Arc::clone(&state.registry);
+
+    let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+
+    let mut session_config = SessionConfig::default();
+    session_config.keep_alive = Some(Duration::from_secs(session_ttl_secs));
+
+    let mut session_manager = LocalSessionManager::default();
+    session_manager.session_config = session_config;
+    let session_manager = Arc::new(session_manager);
+
+    let stateful = std::env::var("LAB_MCP_STATEFUL")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(true);
+
+    let config = StreamableHttpServerConfig::default()
+        .with_allowed_hosts(allowed_hosts_from_env())
+        .with_stateful_mode(stateful);
+
+    StreamableHttpService::new(
+        move || {
+            let reg = Arc::clone(&registry);
+            Ok(crate::mcp::server::LabMcpServer { registry: reg })
+        },
+        session_manager,
+        config,
+    )
+}
+
+/// Build the allowed hosts list for DNS rebinding protection.
+///
+/// Reads `LAB_MCP_ALLOWED_HOSTS` (comma-separated) and `LAB_RESOURCE_URL`
+/// from the environment. Always includes loopback defaults. Rejects wildcard.
+fn allowed_hosts_from_env() -> Vec<String> {
+    let mut hosts = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    if let Ok(extra) = std::env::var("LAB_MCP_ALLOWED_HOSTS") {
+        for h in extra.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            // Reject wildcard — would disable Host header validation entirely
+            if h == "*" {
+                tracing::warn!(
+                    "ignoring wildcard '*' in LAB_MCP_ALLOWED_HOSTS — \
+                     would disable DNS rebinding protection"
+                );
+                continue;
+            }
+            if !hosts.contains(&h.to_string()) {
+                hosts.push(h.to_string());
+            }
+        }
+    }
+    // If LAB_RESOURCE_URL is set (Phase 1), auto-extract and add its hostname
+    if let Ok(url_str) = std::env::var("LAB_RESOURCE_URL")
+        && let Ok(parsed) = url::Url::parse(&url_str)
+        && let Some(host) = parsed.host_str()
+    {
+        let h = host.to_string();
+        if !hosts.contains(&h) {
+            hosts.push(h);
+        }
+    }
+    hosts
+}
+
 #[allow(dead_code)]
 pub async fn require_bearer_auth(
-    State(expected_token): State<std::sync::Arc<str>>,
+    State(expected_token): State<Arc<str>>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, ToolError> {

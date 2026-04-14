@@ -252,7 +252,7 @@ async fn elicit_confirm(
 /// 2. Parse `e.to_string()` as JSON `{ "kind": "…" }` — covers `ToolError`
 ///    errors that were serialized to string before entering anyhow (radarr).
 /// 3. Fall back to `"internal_error"`.
-pub(crate) fn extract_error_info(e: &anyhow::Error) -> (&'static str, String, Option<Value>) {
+pub fn extract_error_info(e: &anyhow::Error) -> (&'static str, String, Option<Value>) {
     // 1. Structured DispatchError
     if let Some(de) = e.downcast_ref::<DispatchError>() {
         let extra = if de.valid.is_some() || de.param.is_some() || de.hint.is_some() {
@@ -293,7 +293,7 @@ pub(crate) fn extract_error_info(e: &anyhow::Error) -> (&'static str, String, Op
 }
 
 /// Map a serialized kind string to a `&'static str` from the canonical vocabulary.
-pub(crate) fn static_kind(s: &str) -> &'static str {
+pub fn static_kind(s: &str) -> &'static str {
     match s {
         "unknown_action" => "unknown_action",
         "unknown_subaction" => "unknown_subaction",
