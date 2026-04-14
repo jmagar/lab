@@ -76,6 +76,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
     v1
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
     if bearer_token.is_none() {
         tracing::warn!(
@@ -97,26 +98,73 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
         .nest("/v1", v1)
         .nest_service("/mcp", mcp_service);
 
-    // Apply bearer auth to the protected sub-router.
-    let protected = if let Some(token) = bearer_token {
-        let token = Arc::<str>::from(token);
+    // Apply layered auth to the protected sub-router (lab-y8aa).
+    //
+    // Auth priority: try static bearer first (cheapest), then OAuth JWT.
+    // Either is accepted. If both are absent, no auth middleware is applied
+    // (the safety gate in serve.rs prevents non-localhost bind without auth).
+    //
+    // `AuthContext` is injected as an Extension for downstream scope checks.
+    // Static bearer tokens get implicit lab:admin scope (full access).
+    let static_token = bearer_token.map(Arc::<str>::from);
+    let jwks = state.jwks.clone();
+    let needs_auth = static_token.is_some() || jwks.is_some();
+
+    let protected = if needs_auth {
         protected.layer(axum::middleware::from_fn(
-            move |request: Request<Body>, next: Next| {
-                let token = token.clone();
+            move |mut request: Request<Body>, next: Next| {
+                let static_token = static_token.clone();
+                let jwks = jwks.clone();
                 async move {
-                    let provided = request
+                    let auth_header = request
                         .headers()
                         .get(header::AUTHORIZATION)
                         .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.strip_prefix("Bearer "));
-                    if provided.is_some_and(|t| tokens_equal(t, token.as_ref())) {
-                        Ok::<_, ToolError>(next.run(request).await)
-                    } else {
-                        Err(ToolError::Sdk {
+                        .and_then(|v| v.strip_prefix("Bearer "))
+                        .map(String::from);
+
+                    let Some(token) = auth_header else {
+                        return Err(ToolError::Sdk {
                             sdk_kind: "auth_failed".into(),
-                            message: "missing or invalid bearer token".into(),
-                        })
+                            message: "missing bearer token".into(),
+                        });
+                    };
+
+                    // 1. Try static bearer (constant-time comparison)
+                    if let Some(ref expected) = static_token
+                        && tokens_equal(&token, expected.as_ref())
+                    {
+                        // Static tokens get implicit lab:admin
+                        request.extensions_mut().insert(
+                            crate::api::oauth::AuthContext {
+                                sub: "static-bearer".to_string(),
+                                scopes: vec![
+                                    "lab:read".to_string(),
+                                    "lab:admin".to_string(),
+                                ],
+                                issuer: "local".to_string(),
+                            },
+                        );
+                        return Ok::<_, ToolError>(next.run(request).await);
                     }
+
+                    // 2. Try OAuth JWT
+                    if let Some(ref jwks_mgr) = jwks {
+                        match jwks_mgr.validate_jwt(&token).await {
+                            Ok(auth_ctx) => {
+                                request.extensions_mut().insert(auth_ctx);
+                                return Ok(next.run(request).await);
+                            }
+                            Err(e) => {
+                                tracing::debug!(error = %e, "JWT validation failed");
+                            }
+                        }
+                    }
+
+                    Err(ToolError::Sdk {
+                        sdk_kind: "auth_failed".into(),
+                        message: "invalid bearer token".into(),
+                    })
                 }
             },
         ))

@@ -139,6 +139,12 @@ pub struct AppState {
     /// appear here, so filtered-out services have no reachable POST endpoint.
     #[allow(dead_code)]
     pub enabled_services: Arc<HashSet<String>>,
+    /// Optional JWKS manager for OAuth JWT validation.
+    ///
+    /// `None` when `LAB_OAUTH_ISSUER` is not configured — only static bearer
+    /// auth is available. When `Some`, the auth middleware tries JWT validation
+    /// after a static bearer mismatch.
+    pub jwks: Option<Arc<crate::api::oauth::JwksManager>>,
 }
 
 impl AppState {
@@ -171,7 +177,16 @@ impl AppState {
             registry: Arc::new(registry),
             clients,
             enabled_services: Arc::new(enabled_services),
+            jwks: None,
         }
+    }
+
+    /// Attach a pre-built `JwksManager` for OAuth JWT validation.
+    #[must_use]
+    #[allow(dead_code)] // Called from serve.rs when LAB_OAUTH_ISSUER is configured
+    pub fn with_jwks(mut self, jwks: Arc<crate::api::oauth::JwksManager>) -> Self {
+        self.jwks = Some(jwks);
+        self
     }
 }
 
