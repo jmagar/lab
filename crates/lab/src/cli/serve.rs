@@ -71,16 +71,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         Transport::Stdio => run_stdio(Arc::new(registry)).await,
         Transport::Http => {
             let bearer_token = http_token();
-            let has_oauth = std::env::var("LAB_OAUTH_ISSUER")
+            let oauth_issuer_configured = std::env::var("LAB_OAUTH_ISSUER")
                 .ok()
                 .filter(|v| !v.is_empty())
                 .is_some();
-            let has_auth = bearer_token.is_some() || has_oauth;
+            let auth_configured = bearer_token.is_some() || oauth_issuer_configured;
 
             // Safety gate: refuse to bind on a non-localhost address without
             // any auth configured (lab-319g). This prevents accidental
             // unauthenticated deployment on a LAN-accessible address.
-            if !has_auth && !is_loopback_host(&host) {
+            if !auth_configured && !is_loopback_host(&host) {
                 anyhow::bail!(
                     "refusing to bind HTTP on {host}:{port} without authentication. \
                      Set LAB_MCP_HTTP_TOKEN or LAB_OAUTH_ISSUER, or bind to \

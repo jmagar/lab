@@ -36,29 +36,12 @@ fn tokens_equal(a: &str, b: &str) -> bool {
 use super::{health, services, state::AppState};
 use crate::dispatch::error::ToolError;
 
-pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
-    // lab-4v9: warn early so operators can see that auth is disabled.
-    if bearer_token.is_none() {
-        tracing::warn!(
-            "HTTP API started without bearer token — all protected routes are unprotected"
-        );
-    }
-
+/// Build the `/v1` sub-router with all feature-gated service routes.
+fn build_v1_router(state: &AppState) -> Router<AppState> {
     let mut v1 = Router::new()
         .route("/{service}/actions", get(service_actions))
-        // always-on service
         .nest("/extract", services::extract::routes(state.clone()));
 
-    // Feature-gated per-service route groups (lab-9ngs).
-    //
-    // Each invocation has two guards:
-    //   1. Compile-time `#[cfg(feature)]` — the handler code must exist.
-    //   2. Runtime registry check — only mount if the service was not filtered
-    //      out by `--services` (or equivalent) at startup.
-    //
-    // Both guards are required: the feature flag ensures the handler module
-    // compiles; the registry check ensures that `lab serve --services radarr`
-    // cannot be bypassed by POSTing to `/v1/sonarr`.
     macro_rules! mount_if_enabled {
         ($v1:ident, $state:ident, $feat:literal, $name:literal, $mod:ident) => {
             #[cfg(feature = $feat)]
@@ -89,6 +72,18 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
     mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
     mount_if_enabled!(v1, state, "tei", "tei", tei);
     mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
+
+    v1
+}
+
+pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -> Router {
+    if bearer_token.is_none() {
+        tracing::warn!(
+            "HTTP API started without bearer token — all protected routes are unprotected"
+        );
+    }
+
+    let v1 = build_v1_router(&state);
 
     let x_request_id = HeaderName::from_static("x-request-id");
 

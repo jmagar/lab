@@ -69,7 +69,7 @@ pub struct OAuthConfig {
     /// Optional `azp` claim validation.
     #[serde(default)]
     pub client_id: Option<String>,
-    /// Public URL of this lab instance (for metadata + allowed_hosts).
+    /// Public URL of this lab instance (for metadata + `allowed_hosts`).
     #[serde(default)]
     pub resource_url: Option<String>,
 }
