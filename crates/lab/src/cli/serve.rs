@@ -208,7 +208,8 @@ async fn run_stdio(registry: Arc<ToolRegistry>) -> Result<ExitCode> {
         services = registry.services().len(),
         "lab serve (stdio) ready"
     );
-    let server = LabMcpServer { registry };
+    let clients = Arc::new(crate::api::state::ServiceClients::from_env());
+    let server = LabMcpServer { registry, clients };
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
     Ok(ExitCode::SUCCESS)

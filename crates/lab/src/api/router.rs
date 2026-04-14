@@ -280,6 +280,7 @@ fn build_mcp_service(
     state: &AppState,
 ) -> StreamableHttpService<crate::mcp::server::LabMcpServer, LocalSessionManager> {
     let registry = Arc::clone(&state.registry);
+    let clients = Arc::clone(&state.clients);
 
     let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
         .ok()
@@ -305,7 +306,8 @@ fn build_mcp_service(
     StreamableHttpService::new(
         move || {
             let reg = Arc::clone(&registry);
-            Ok(crate::mcp::server::LabMcpServer { registry: reg })
+            let cl = Arc::clone(&clients);
+            Ok(crate::mcp::server::LabMcpServer { registry: reg, clients: cl })
         },
         session_manager,
         config,

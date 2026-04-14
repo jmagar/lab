@@ -4,32 +4,39 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use lab_apis::core::action::ActionSpec;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 
-/// A dispatch function pointer: takes an owned action name and params,
+/// A dispatch function: takes an owned action name and params,
 /// returns a boxed future resolving to `Result<Value, ToolError>`.
+///
+/// Changed from a bare `fn` pointer to `Arc<dyn Fn>` so dispatch closures
+/// can capture shared state (e.g. upstream pool connections in later phases).
 pub type DispatchFn =
-    fn(String, Value) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send>>;
+    Arc<dyn Fn(String, Value) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send>> + Send + Sync>;
 
 /// Wrap an `async fn(&str, Value) -> Result<Value, ToolError>` into a [`DispatchFn`].
 ///
 /// Bridges the `&str`-taking dispatch signatures into the owned-`String`
-/// function pointer stored in the registry.
+/// closure stored in the registry. Wraps in `Arc::new()` so the result is
+/// a cheaply-cloneable `DispatchFn`.
 macro_rules! dispatch_fn {
     ($f:path) => {
-        |action: String,
-         params: serde_json::Value|
-         -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = Result<serde_json::Value, $crate::dispatch::error::ToolError>,
-                    > + Send,
-            >,
-        > { Box::pin(async move { $f(&action, params).await }) }
+        std::sync::Arc::new(
+            |action: String,
+             params: serde_json::Value|
+             -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = Result<serde_json::Value, $crate::dispatch::error::ToolError>,
+                        > + Send,
+                >,
+            > { Box::pin(async move { $f(&action, params).await }) }
+        )
     };
 }
 

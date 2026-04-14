@@ -43,6 +43,13 @@ fn action_schema() -> serde_json::Map<String, Value> {
 /// MCP server handler — one tool per registered service.
 pub struct LabMcpServer {
     pub registry: Arc<ToolRegistry>,
+    /// Pre-built service clients, shared across requests.
+    ///
+    /// Currently threaded for future use (upstream proxy closures will
+    /// capture this to avoid per-request client construction). Dispatch
+    /// functions that don't yet use it fall back to `require_client()`.
+    #[allow(dead_code)]
+    pub clients: Arc<crate::api::state::ServiceClients>,
 }
 
 impl ServerHandler for LabMcpServer {
