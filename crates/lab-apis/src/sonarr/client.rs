@@ -298,4 +298,178 @@ impl SonarrClient {
     pub async fn languageprofile_list(&self) -> Result<Value, SonarrError> {
         Ok(self.http.get_json("/api/v3/languageprofile").await?)
     }
+
+    // ── Series Edit ───────────────────────────────────────────────────────────
+
+    /// Update an existing series by ID with a full series resource body.
+    ///
+    /// `PUT /api/v3/series/{id}`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn series_edit(&self, id: i64, body: &Value) -> Result<Value, SonarrError> {
+        Ok(self.http.put_json(&format!("/api/v3/series/{id}"), body).await?)
+    }
+
+    // ── Episode Monitor ───────────────────────────────────────────────────────
+
+    /// Set the monitored state for a list of episodes.
+    ///
+    /// `PUT /api/v3/episode/monitor`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn episode_monitor(
+        &self,
+        episode_ids: &[i64],
+        monitored: bool,
+    ) -> Result<Value, SonarrError> {
+        let body = serde_json::json!({ "episodeIds": episode_ids, "monitored": monitored });
+        Ok(self.http.put_json("/api/v3/episode/monitor", &body).await?)
+    }
+
+    // ── Wanted Cutoff ─────────────────────────────────────────────────────────
+
+    /// List episodes that have not met their cutoff quality.
+    ///
+    /// `GET /api/v3/wanted/cutoff`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn wanted_cutoff(
+        &self,
+        page: Option<u32>,
+        page_size: Option<u32>,
+    ) -> Result<Value, SonarrError> {
+        let mut pairs = Vec::new();
+        if let Some(p) = page {
+            pairs.push(("page".to_string(), p.to_string()));
+        }
+        if let Some(ps) = page_size {
+            pairs.push(("pageSize".to_string(), ps.to_string()));
+        }
+        Ok(self.http.get_json_query("/api/v3/wanted/cutoff", &pairs).await?)
+    }
+
+    // ── Releases ──────────────────────────────────────────────────────────────
+
+    /// Search for available releases for a series/season.
+    ///
+    /// `GET /api/v3/release?seriesId=&seasonNumber=`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn release_search(
+        &self,
+        series_id: Option<i64>,
+        season_number: Option<i32>,
+    ) -> Result<Value, SonarrError> {
+        let mut pairs = Vec::new();
+        if let Some(sid) = series_id {
+            pairs.push(("seriesId".to_string(), sid.to_string()));
+        }
+        if let Some(sn) = season_number {
+            pairs.push(("seasonNumber".to_string(), sn.to_string()));
+        }
+        Ok(self.http.get_json_query("/api/v3/release", &pairs).await?)
+    }
+
+    /// Grab a release by GUID.
+    ///
+    /// `POST /api/v3/release`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn release_grab(&self, body: &Value) -> Result<Value, SonarrError> {
+        Ok(self.http.post_json("/api/v3/release", body).await?)
+    }
+
+    // ── History ───────────────────────────────────────────────────────────────
+
+    /// List history records for a specific series.
+    ///
+    /// `GET /api/v3/history/series?seriesId={id}`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn history_series(&self, series_id: i64) -> Result<Value, SonarrError> {
+        Ok(self
+            .http
+            .get_json_query(
+                "/api/v3/history/series",
+                &[("seriesId".to_string(), series_id.to_string())],
+            )
+            .await?)
+    }
+
+    /// Retry a failed history item by ID.
+    ///
+    /// `POST /api/v3/history/failed/{id}`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn history_failed_retry(&self, id: i64) -> Result<(), SonarrError> {
+        let body = serde_json::json!({});
+        Ok(self
+            .http
+            .post_void(&format!("/api/v3/history/failed/{id}"), &body)
+            .await?)
+    }
+
+    // ── Blocklist ─────────────────────────────────────────────────────────────
+
+    /// List all blocklisted releases.
+    ///
+    /// `GET /api/v3/blocklist`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn blocklist_list(&self) -> Result<Value, SonarrError> {
+        Ok(self.http.get_json("/api/v3/blocklist").await?)
+    }
+
+    /// Remove a release from the blocklist by ID.
+    ///
+    /// `DELETE /api/v3/blocklist/{id}`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn blocklist_delete(&self, id: i64) -> Result<(), SonarrError> {
+        Ok(self.http.delete(&format!("/api/v3/blocklist/{id}")).await?)
+    }
+
+    // ── Episode Files ─────────────────────────────────────────────────────────
+
+    /// Delete an episode file by ID.
+    ///
+    /// `DELETE /api/v3/episodefile/{id}`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn episodefile_delete(&self, id: i64) -> Result<(), SonarrError> {
+        Ok(self.http.delete(&format!("/api/v3/episodefile/{id}")).await?)
+    }
+
+    // ── System ────────────────────────────────────────────────────────────────
+
+    /// Restart the Sonarr application.
+    ///
+    /// `POST /api/v3/system/restart`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn system_restart(&self) -> Result<(), SonarrError> {
+        let body = serde_json::json!({});
+        Ok(self.http.post_void("/api/v3/system/restart", &body).await?)
+    }
+
+    /// List system backup files.
+    ///
+    /// `GET /api/v3/system/backup`
+    ///
+    /// # Errors
+    /// Returns `SonarrError::Api` on HTTP failure.
+    pub async fn system_backup(&self) -> Result<Value, SonarrError> {
+        Ok(self.http.get_json("/api/v3/system/backup").await?)
+    }
 }

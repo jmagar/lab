@@ -84,6 +84,54 @@ pub async fn dispatch_with_client(
         // ── Statistics & Tasks ──────────────────────────────────────────────
         "statistics" => to_json(client.statistics().await?),
         "tasks.list" => to_json(client.tasks_list().await?),
+        // ── Document Upload & Bulk Edit ─────────────────────────────────────
+        "document.upload" => {
+            let body = params::document_upload_from_params(&params_value)?;
+            to_json(client.document_upload(
+                body.file_bytes,
+                body.filename,
+                body.title,
+                body.correspondent,
+                body.document_type,
+                body.tags,
+            ).await?)
+        }
+        "document.bulk-edit" => {
+            let body = params::document_bulk_edit_from_params(&params_value)?;
+            to_json(client.document_bulk_edit(&body).await?)
+        }
+        "document.download" => {
+            let id = require_id_u64(&params_value)?;
+            let original = params_value
+                .get("original")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            to_json(client.document_download(id, original).await?)
+        }
+        // ── Tag Update ──────────────────────────────────────────────────────
+        "tag.update" => {
+            let id = require_id_u64(&params_value)?;
+            let body = params::tag_update_from_params(&params_value)?;
+            to_json(client.tag_update(id, &body).await?)
+        }
+        // ── Saved Views ─────────────────────────────────────────────────────
+        "saved-view.list" => to_json(client.saved_views_list().await?),
+        "saved-view.create" => {
+            let body = params::payload_from_params(&params_value)?;
+            to_json(client.saved_view_create(&body).await?)
+        }
+        // ── Custom Fields ────────────────────────────────────────────────────
+        "custom-field.list" => to_json(client.custom_fields_list().await?),
+        "custom-field.create" => {
+            let body = params::custom_field_create_from_params(&params_value)?;
+            to_json(client.custom_field_create(&body).await?)
+        }
+        // ── Storage Paths ─────────────────────────────────────────────────────
+        "storage-path.list" => to_json(client.storage_paths_list().await?),
+        "storage-path.create" => {
+            let body = params::payload_from_params(&params_value)?;
+            to_json(client.storage_path_create(&body).await?)
+        }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

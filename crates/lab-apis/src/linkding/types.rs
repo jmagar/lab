@@ -78,3 +78,65 @@ pub struct TagCreateRequest {
     /// Tag name.
     pub name: String,
 }
+
+// ── Bundles ───────────────────────────────────────────────────────────────────
+
+/// A Linkding bundle (saved search / smart collection).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bundle {
+    /// Bundle ID.
+    pub id: i64,
+    /// Bundle name.
+    pub name: String,
+    /// Linkding search query that populates this bundle.
+    pub search_query: String,
+    /// Optional description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Payload for creating a new bundle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BundleCreate {
+    /// Bundle name.
+    pub name: String,
+    /// Linkding search query.
+    pub search_query: String,
+    /// Optional description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Payload for partially updating a bundle (PATCH).
+///
+/// All fields are optional — only provided fields are updated.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BundleUpdate {
+    /// New name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// New search query.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_query: Option<String>,
+    /// New description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+// ── Bookmark Assets ───────────────────────────────────────────────────────────
+
+/// An asset attached to a bookmark (snapshot, PDF, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmarkAsset {
+    /// Asset ID.
+    pub id: i64,
+    /// Asset type: `"snapshot"` or `"pdf"`.
+    pub asset_type: String,
+    /// Processing status: `"pending"`, `"complete"`, or `"failure"`.
+    pub status: String,
+    /// File size in bytes, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size: Option<i64>,
+    /// ISO-8601 creation timestamp.
+    pub date_created: String,
+}

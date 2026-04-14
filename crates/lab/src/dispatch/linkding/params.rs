@@ -1,11 +1,13 @@
 use serde_json::Value;
 
 use lab_apis::linkding::types::{
-    BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, TagCreateRequest,
+    BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, BundleCreate, TagCreateRequest,
 };
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{body_from_params, optional_str, optional_u32, require_i64};
+use crate::dispatch::helpers::{
+    body_from_params, optional_str, optional_u32, require_i64, require_str,
+};
 
 /// Extract a required `id` param as `u64`, rejecting negative values.
 pub fn require_id_u64(params: &Value) -> Result<u64, ToolError> {
@@ -78,4 +80,42 @@ pub fn tag_create_from_params(params: &Value) -> Result<TagCreateRequest, ToolEr
             param: "payload".to_string(),
         }
     })
+}
+
+/// Build a `BundleCreate` from dispatch params.
+///
+/// Requires `name` and `search_query`; `description` is optional.
+pub fn bundle_create_from_params(params: &Value) -> Result<BundleCreate, ToolError> {
+    let name = require_str(params, "name")?.to_owned();
+    let search_query = require_str(params, "search_query")?.to_owned();
+    let description = optional_str(params, "description")?.map(ToOwned::to_owned);
+    Ok(BundleCreate {
+        name,
+        search_query,
+        description,
+    })
+}
+
+/// Extract the PATCH body for a bundle update.
+///
+/// Strips `id` from the params and returns the rest as the patch body.
+pub fn bundle_update_body_from_params(params: &Value) -> Value {
+    body_from_params(params, &["id"])
+}
+
+/// Extract `(id, file_name, file_bytes)` for a bookmark asset upload.
+///
+/// `file_base64` is decoded from base64 into raw bytes.
+pub fn asset_upload_params(params: &Value) -> Result<(i64, String, Vec<u8>), ToolError> {
+    use base64::Engine as _;
+    let id = require_i64(params, "id")?;
+    let file_name = require_str(params, "file_name")?.to_owned();
+    let b64 = require_str(params, "file_base64")?;
+    let file_bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.as_bytes())
+        .map_err(|e| ToolError::InvalidParam {
+            message: format!("file_base64 is not valid base64: {e}"),
+            param: "file_base64".to_string(),
+        })?;
+    Ok((id, file_name, file_bytes))
 }

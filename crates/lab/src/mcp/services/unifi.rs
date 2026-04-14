@@ -20,6 +20,6 @@ mod tests {
 
     #[test]
     fn action_count_matches_service_layer() {
-        assert_eq!(crate::dispatch::unifi::actions().len(), 72);
+        assert_eq!(crate::dispatch::unifi::actions().len(), 81);
     }
 }

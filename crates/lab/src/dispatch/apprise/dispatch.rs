@@ -32,6 +32,38 @@ pub async fn dispatch_with_client(
             client.notify_key(key, &request).await?;
             Ok(Value::Null)
         }
+        "config.add" => {
+            let key = require_str(&params_value, "key")?;
+            let config = require_str(&params_value, "config")?;
+            let format = params_value
+                .get("format")
+                .and_then(Value::as_str)
+                .unwrap_or("yaml");
+            client.add_config(key, config, format).await?;
+            Ok(Value::Null)
+        }
+        "config.get" => {
+            let key = require_str(&params_value, "key")?;
+            let config = client.get_config(key).await?;
+            Ok(serde_json::json!({ "config": config }))
+        }
+        "config.delete" => {
+            let key = require_str(&params_value, "key")?;
+            client.delete_config(key).await?;
+            Ok(Value::Null)
+        }
+        "config.urls" => {
+            let key = require_str(&params_value, "key")?;
+            let urls = client.get_urls(key).await?;
+            Ok(serde_json::to_value(urls).map_err(|e| ToolError::Sdk {
+                sdk_kind: "decode_error".into(),
+                message: format!("failed to serialize urls: {e}"),
+            })?)
+        }
+        "server.details" => {
+            let details = client.details().await?;
+            Ok(details)
+        }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

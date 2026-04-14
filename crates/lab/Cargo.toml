@@ -45,6 +45,7 @@ toml.workspace               = true
 ratatui.workspace            = true
 crossterm.workspace          = true
 
+base64.workspace             = true
 fd-lock                      = "4"
 tempfile                     = "3.10"
 subtle                       = "2"

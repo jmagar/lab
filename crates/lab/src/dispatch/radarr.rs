@@ -15,6 +15,8 @@ mod movies;
 mod params;
 mod queue;
 mod system;
+mod wanted;
+mod customformat;
 
 pub use catalog::actions;
 pub use client::client_from_env;

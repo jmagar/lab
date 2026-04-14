@@ -6,7 +6,8 @@ use crate::core::{Auth, HttpClient};
 
 use super::error::LinkdingError;
 use super::types::{
-    BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, TagCreateRequest,
+    BookmarkAsset, BookmarkListParams, BookmarkUpdateRequest, BookmarkWriteRequest, Bundle,
+    BundleCreate, TagCreateRequest,
 };
 
 /// Client for a Linkding bookmark manager instance.
@@ -184,5 +185,58 @@ impl LinkdingClient {
     /// Retrieve user profile / preferences.
     pub async fn user_profile(&self) -> Result<Value, LinkdingError> {
         self.get_value("/api/user/profile/").await
+    }
+
+    // ── Bundles ───────────────────────────────────────────────────────────
+
+    /// List all bundles.
+    pub async fn bundles_list(&self) -> Result<Value, LinkdingError> {
+        self.get_value("/api/bundles/").await
+    }
+
+    /// Create a new bundle.
+    pub async fn bundle_create(&self, body: &BundleCreate) -> Result<Bundle, LinkdingError> {
+        Ok(self.http.post_json("/api/bundles/", body).await?)
+    }
+
+    /// Partially update a bundle (PATCH — only provided fields are changed).
+    pub async fn bundle_update(&self, id: i64, body: &Value) -> Result<Bundle, LinkdingError> {
+        Ok(self
+            .http
+            .patch_json(&format!("/api/bundles/{id}/"), body)
+            .await?)
+    }
+
+    /// Delete a bundle by ID.
+    pub async fn bundle_delete(&self, id: i64) -> Result<(), LinkdingError> {
+        Ok(self.http.delete(&format!("/api/bundles/{id}/")).await?)
+    }
+
+    // ── Bookmark Assets ───────────────────────────────────────────────────
+
+    /// List assets attached to a bookmark.
+    pub async fn bookmark_assets(&self, id: i64) -> Result<Vec<BookmarkAsset>, LinkdingError> {
+        Ok(self
+            .http
+            .get_json(&format!("/api/bookmarks/{id}/assets/"))
+            .await?)
+    }
+
+    /// Upload an asset file for a bookmark via multipart/form-data.
+    ///
+    /// `file_name` is the filename hint sent to the server.
+    /// `file_bytes` are the raw bytes of the file to upload.
+    pub async fn bookmark_assets_upload(
+        &self,
+        id: i64,
+        file_name: String,
+        file_bytes: Vec<u8>,
+    ) -> Result<BookmarkAsset, LinkdingError> {
+        let part = reqwest::multipart::Part::bytes(file_bytes).file_name(file_name);
+        let form = reqwest::multipart::Form::new().part("file", part);
+        Ok(self
+            .http
+            .post_multipart(&format!("/api/bookmarks/{id}/assets/upload/"), form)
+            .await?)
     }
 }

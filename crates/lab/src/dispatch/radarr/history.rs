@@ -2,11 +2,13 @@
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use lab_apis::radarr::RadarrClient;
+use lab_apis::radarr::types::history::{BlocklistId, HistoryId};
+use lab_apis::radarr::types::movie::MovieId;
 use serde_json::Value;
 
 use super::params::to_json;
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::optional_u32;
+use crate::dispatch::helpers::{optional_u32, require_i64};
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -30,11 +32,47 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
+        name: "history.movie",
+        description: "List history records for a specific movie",
+        destructive: false,
+        returns: "HistoryRecord[]",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "i64",
+            required: true,
+            description: "Radarr movie ID",
+        }],
+    },
+    ActionSpec {
+        name: "history.failed-retry",
+        description: "Mark a history record as failed and trigger a retry search",
+        destructive: false,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "i64",
+            required: true,
+            description: "History record ID to mark failed and retry",
+        }],
+    },
+    ActionSpec {
         name: "blocklist.list",
         description: "List blocked releases",
         destructive: false,
         returns: "BlocklistItem[]",
         params: &[],
+    },
+    ActionSpec {
+        name: "blocklist.delete",
+        description: "Delete a specific blocklist entry",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "i64",
+            required: true,
+            description: "Blocklist entry ID to delete",
+        }],
     },
 ];
 
@@ -50,9 +88,24 @@ pub async fn dispatch_with_client(
             let page_data = client.history_list(page, page_size).await?;
             to_json(page_data)
         }
+        "history.movie" => {
+            let id = MovieId(require_i64(&params, "id")?);
+            let records = client.history_movie(id).await?;
+            Ok(records)
+        }
+        "history.failed-retry" => {
+            let id = HistoryId(require_i64(&params, "id")?);
+            client.history_failed_retry(id).await?;
+            Ok(serde_json::json!({ "retried": true }))
+        }
         "blocklist.list" => {
             let items = client.blocklist_list().await?;
             to_json(items)
+        }
+        "blocklist.delete" => {
+            let id = BlocklistId(require_i64(&params, "id")?);
+            client.blocklist_delete(id).await?;
+            Ok(serde_json::json!({ "deleted": true }))
         }
         _ => unreachable!(),
     }

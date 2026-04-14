@@ -49,13 +49,17 @@ pub async fn dispatch_with_client(
         a if a.starts_with("devices.") || a == "pending-devices.list" => {
             devices::dispatch(client, action, params).await
         }
+        a if a.starts_with("device.") => devices::dispatch(client, action, params).await,
         a if a.starts_with("clients.") => clients::dispatch(client, action, params).await,
+        a if a.starts_with("client.") => clients::dispatch(client, action, params).await,
         a if a.starts_with("networks.") => networks::dispatch(client, action, params).await,
         a if a.starts_with("wifi.") => wifi::dispatch(client, action, params).await,
         a if a.starts_with("hotspot.") => hotspot::dispatch(client, action, params).await,
         a if a.starts_with("firewall.") => firewall::dispatch(client, action, params).await,
         a if a.starts_with("acl.") => acl::dispatch(client, action, params).await,
-        a if a.starts_with("switching.") => switching::dispatch(client, action, params).await,
+        a if a.starts_with("switching.") || a.starts_with("port-profile.") => {
+            switching::dispatch(client, action, params).await
+        }
         a if a.starts_with("dns.") => dns::dispatch(client, action, params).await,
         a if a.starts_with("traffic-matching-lists.") => {
             traffic::dispatch(client, action, params).await
@@ -66,7 +70,8 @@ pub async fn dispatch_with_client(
         a if a.starts_with("vpn.")
             || a.starts_with("radius.")
             || a.starts_with("device-tags.")
-            || a.starts_with("dpi.") =>
+            || a.starts_with("dpi.")
+            || a.starts_with("wan.") =>
         {
             misc::dispatch(client, action, params).await
         }

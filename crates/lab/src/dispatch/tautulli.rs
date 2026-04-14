@@ -34,15 +34,19 @@ mod tests {
     }
 
     #[test]
-    fn no_actions_are_destructive() {
-        // Tautulli is a read-only analytics tool — no destructive actions.
-        for action in ACTIONS {
-            assert!(
-                !action.destructive,
-                "action '{}' must not be marked destructive (Tautulli is read-only)",
-                action.name
-            );
-        }
+    fn only_expected_actions_are_destructive() {
+        // user.delete-history permanently removes all watch history for a user.
+        // All other Tautulli actions are read-only analytics queries.
+        let destructive: Vec<&str> = ACTIONS
+            .iter()
+            .filter(|a| a.destructive)
+            .map(|a| a.name)
+            .collect();
+        assert_eq!(
+            destructive,
+            vec!["user.delete-history"],
+            "unexpected destructive actions in tautulli"
+        );
     }
 
     #[tokio::test]

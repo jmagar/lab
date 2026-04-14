@@ -172,6 +172,26 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    ActionSpec {
+        name: "device.update",
+        description: "Update configuration for one adopted device",
+        destructive: true,
+        returns: "Device",
+        params: &[
+            ParamSpec {
+                name: "site_id",
+                ty: "string",
+                required: true,
+                description: "Site UUID",
+            },
+            ParamSpec {
+                name: "device_id",
+                ty: "string",
+                required: true,
+                description: "Device UUID",
+            },
+        ],
+    },
 ];
 
 pub async fn dispatch(
@@ -255,6 +275,15 @@ pub async fn dispatch(
                 .delete_value(&format!("/sites/{site_id}/devices/{device_id}"))
                 .await?;
             to_json(serde_json::json!({"deleted": true}))
+        }
+        "device.update" => {
+            let site_id = require_str(&params, "site_id")?;
+            let device_id = require_str(&params, "device_id")?;
+            let body = object_without(&params, &["site_id", "device_id"])?;
+            let result = client
+                .put_value(&format!("/sites/{site_id}/devices/{device_id}"), &body)
+                .await?;
+            to_json(result)
         }
         _ => Err(ToolError::UnknownAction {
             message: format!("unknown action `{action}` for service `unifi`"),

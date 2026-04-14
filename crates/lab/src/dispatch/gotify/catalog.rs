@@ -153,12 +153,209 @@ pub const ACTIONS: &[ActionSpec] = &[
             description: "Client id",
         }],
     },
+    // ── Application (extended) ────────────────────────────────────────────────
+    ActionSpec {
+        name: "application.update",
+        description: "Update an application's name or description",
+        destructive: false,
+        returns: "Application",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Application id",
+            },
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "New application name",
+            },
+            ParamSpec {
+                name: "description",
+                ty: "string",
+                required: false,
+                description: "Optional description",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "application.messages",
+        description: "List all messages for a specific application",
+        destructive: false,
+        returns: "PagedMessages",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Application id",
+            },
+            ParamSpec {
+                name: "limit",
+                ty: "integer",
+                required: false,
+                description: "Max messages to return",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "application.messages-delete",
+        description: "Delete ALL messages for a specific application",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Application id",
+        }],
+    },
+    // ── Client (extended) ────────────────────────────────────────────────────
+    ActionSpec {
+        name: "client.update",
+        description: "Update a client's name",
+        destructive: false,
+        returns: "Client",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Client id",
+            },
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "New client name",
+            },
+        ],
+    },
+    // ── Plugins ───────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "plugin.list",
+        description: "List all server plugins",
+        destructive: false,
+        returns: "Plugin[]",
+        params: &[],
+    },
+    ActionSpec {
+        name: "plugin.enable",
+        description: "Enable a plugin",
+        destructive: false,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Plugin id",
+        }],
+    },
+    ActionSpec {
+        name: "plugin.disable",
+        description: "Disable a plugin",
+        destructive: false,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Plugin id",
+        }],
+    },
+    ActionSpec {
+        name: "plugin.config-get",
+        description: "Get plugin configuration as YAML text",
+        destructive: false,
+        returns: "{config: string}",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Plugin id",
+        }],
+    },
+    ActionSpec {
+        name: "plugin.config-set",
+        description: "Set plugin configuration from a YAML string",
+        destructive: false,
+        returns: "void",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Plugin id",
+            },
+            ParamSpec {
+                name: "config",
+                ty: "string",
+                required: true,
+                description: "YAML configuration string",
+            },
+        ],
+    },
+    // ── Users ────────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "user.list",
+        description: "List all users (admin only)",
+        destructive: false,
+        returns: "User[]",
+        params: &[],
+    },
+    ActionSpec {
+        name: "user.create",
+        description: "Create a user (admin only)",
+        destructive: false,
+        returns: "User",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Username",
+            },
+            ParamSpec {
+                name: "pass",
+                ty: "string",
+                required: true,
+                description: "Password",
+            },
+            ParamSpec {
+                name: "admin",
+                ty: "bool",
+                required: false,
+                description: "Whether the user is an admin (default: false)",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "user.delete",
+        description: "Delete a user (admin only)",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "User id",
+        }],
+    },
     // ── Server ────────────────────────────────────────────────────────────────
     ActionSpec {
         name: "server.health",
         description: "Get server health status (no auth required)",
         destructive: false,
         returns: "Health",
+        params: &[],
+    },
+    ActionSpec {
+        name: "server.version",
+        description: "Get server version information",
+        destructive: false,
+        returns: "ServerVersion",
         params: &[],
     },
 ];

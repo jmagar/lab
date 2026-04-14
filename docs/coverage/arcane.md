@@ -1,6 +1,6 @@
 # Arcane API Coverage
 
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-13 (added project, volume, image actions)
 **OpenAPI spec:** docs/api-specs/arcane-api.yaml
 **OpenAPI version:** 3.1.0
 **API version:** v1.17.1
@@ -12,12 +12,203 @@
 
 | Symbol | Meaning |
 |--------|---------|
+| ✅ | Implemented and wired through SDK, dispatch, CLI, MCP, and API |
 | ⬜ | Not implemented yet; rows are spec inventory only |
-| - | Not applicable / not represented in the spec |
+| — | Not applicable / not represented in the spec |
 
-The source spec is the contract. This document is the implementation planning aid.
+The source spec is the contract. This document reflects what is actually implemented.
 
-## Endpoint Inventory
+## Config
+
+- `ARCANE_URL` — base URL (required)
+- `ARCANE_API_KEY` — API key (required); sent as `X-API-Key` header
+
+## SDK Surface (`lab-apis`)
+
+All methods live in `crates/lab-apis/src/arcane/client.rs`.
+
+| Method | Endpoint | Returns |
+|--------|----------|---------|
+| `health()` | `GET /health` | `HealthResponse { status: String }` |
+| `environments_list()` | `GET /environments` | `Vec<Environment>` |
+| `environment_get(id)` | `GET /environments/{id}` | `Environment` |
+| `containers_list(env_id)` | `GET /environments/{id}/containers` | `Vec<Container>` |
+| `container_get(env_id, container_id)` | `GET /environments/{id}/containers/{containerId}` | `Container` |
+| `container_start(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/start` | `ContainerActionResult` |
+| `container_stop(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/stop` | `ContainerActionResult` |
+| `container_restart(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/restart` | `ContainerActionResult` |
+| `container_redeploy(env_id, container_id)` | `POST /environments/{id}/containers/{containerId}/redeploy` | `ContainerActionResult` |
+| `projects_list(env_id)` | `GET /environments/{envId}/projects` | `Vec<Project>` |
+| `project_create(env_id, body)` | `POST /environments/{envId}/projects` | `Project` |
+| `project_up(env_id, project_id)` | `POST /environments/{envId}/projects/{projId}/up` | `ProjectActionResult` |
+| `project_down(env_id, project_id)` | `POST /environments/{envId}/projects/{projId}/down` | `ProjectActionResult` |
+| `project_redeploy(env_id, project_id)` | `POST /environments/{envId}/projects/{projId}/redeploy` | `ProjectActionResult` |
+| `volumes_list(env_id)` | `GET /environments/{envId}/volumes` | `Vec<Volume>` |
+| `volume_delete(env_id, name)` | `DELETE /environments/{envId}/volumes/{name}` | `()` |
+| `volumes_prune(env_id)` | `POST /environments/{envId}/volumes/prune` | `PruneResult` |
+| `images_list(env_id)` | `GET /environments/{envId}/images` | `Vec<Image>` |
+| `image_pull(env_id, image)` | `POST /environments/{envId}/images/pull` | `ImagePullResult` |
+| `images_prune(env_id)` | `POST /environments/{envId}/images/prune` | `ImagePruneResult` |
+| `image_update_summary(env_id)` | `GET /environments/{envId}/image-updates/summary` | `ImageUpdateSummary` |
+
+## Action Catalog (dispatch layer)
+
+The catalog is in `crates/lab/src/dispatch/arcane/catalog.rs`.
+
+### Built-ins (every tool)
+
+| Action | Params | Returns |
+|--------|--------|---------|
+| `help` | — | Catalog |
+| `schema` | `action` (string, required) | Schema |
+
+### Implemented Actions
+
+| Action | SDK method | Destructive | MCP | CLI | API |
+|--------|-----------|-------------|-----|-----|-----|
+| `health` | `health()` | no | ✅ | ✅ | ✅ |
+| `environment.list` | `environments_list()` | no | ✅ | ✅ | ✅ |
+| `environment.get` | `environment_get(id)` | no | ✅ | ✅ | ✅ |
+| `container.list` | `containers_list(env_id)` | no | ✅ | ✅ | ✅ |
+| `container.get` | `container_get(env_id, container_id)` | no | ✅ | ✅ | ✅ |
+| `container.start` | `container_start(env_id, container_id)` | no | ✅ | ✅ | ✅ |
+| `container.stop` | `container_stop(env_id, container_id)` | no | ✅ | ✅ | ✅ |
+| `container.restart` | `container_restart(env_id, container_id)` | no | ✅ | ✅ | ✅ |
+| `container.redeploy` | `container_redeploy(env_id, container_id)` | **yes** | ✅ | ✅ | ✅ |
+| `project.list` | `projects_list(env_id)` | no | ✅ | ✅ | ✅ |
+| `project.create` | `project_create(env_id, body)` | no | ✅ | ✅ | ✅ |
+| `project.up` | `project_up(env_id, project_id)` | no | ✅ | ✅ | ✅ |
+| `project.down` | `project_down(env_id, project_id)` | **yes** | ✅ | ✅ | ✅ |
+| `project.redeploy` | `project_redeploy(env_id, project_id)` | no | ✅ | ✅ | ✅ |
+| `volume.list` | `volumes_list(env_id)` | no | ✅ | ✅ | ✅ |
+| `volume.delete` | `volume_delete(env_id, volume_name)` | **yes** | ✅ | ✅ | ✅ |
+| `volume.prune` | `volumes_prune(env_id)` | **yes** | ✅ | ✅ | ✅ |
+| `image.list` | `images_list(env_id)` | no | ✅ | ✅ | ✅ |
+| `image.pull` | `image_pull(env_id, image)` | no | ✅ | ✅ | ✅ |
+| `image.prune` | `images_prune(env_id)` | **yes** | ✅ | ✅ | ✅ |
+| `image.update-summary` | `image_update_summary(env_id)` | no | ✅ | ✅ | ✅ |
+
+### Action Parameters
+
+**`environment.get`**
+| Param | Type | Required |
+|-------|------|----------|
+| `id` | string | yes |
+
+**`container.list`**
+| Param | Type | Required |
+|-------|------|----------|
+| `env_id` | string | yes |
+
+**`container.get`, `container.start`, `container.stop`, `container.restart`, `container.redeploy`**
+| Param | Type | Required |
+|-------|------|----------|
+| `env_id` | string | yes |
+| `container_id` | string | yes |
+
+**`project.list`, `volume.list`, `image.list`, `volume.prune`, `image.prune`, `image.update-summary`**
+| Param | Type | Required |
+|-------|------|----------|
+| `env_id` | string | yes |
+
+**`project.create`**
+| Param | Type | Required |
+|-------|------|----------|
+| `env_id` | string | yes |
+| `body` | object | yes |
+
+**`project.up`, `project.down`, `project.redeploy`**
+| Param | Type | Required |
+|-------|------|----------|
+| `env_id` | string | yes |
+| `project_id` | string | yes |
+
+**`volume.delete`**
+| Param | Type | Required |
+|-------|------|----------|
+| `env_id` | string | yes |
+| `volume_name` | string | yes |
+
+**`image.pull`**
+| Param | Type | Required |
+|-------|------|----------|
+| `env_id` | string | yes |
+| `image` | string | yes |
+
+Destructive actions: `container.redeploy`, `project.down`, `volume.delete`, `volume.prune`, `image.prune`.
+MCP requires elicitation confirmation; CLI requires `-y` / `--yes`; API requires `"confirm": true` in params.
+
+## Surface Details
+
+### CLI (`lab arcane`)
+
+Tier 2 (dispatch-backed thin shim). Accepts `action` as positional arg and `--params` as a
+JSON string. Defaults to `help` when no action is given.
+
+```
+lab arcane health
+lab arcane environment.list
+lab arcane container.list --params '{"env_id":"abc123"}'
+lab arcane container.redeploy --params '{"env_id":"abc123","container_id":"xyz"}'
+```
+
+No `-y` flag is wired in the current CLI shim (the CLI uses `run_action_command`, not
+`run_confirmable_action_command`). Confirmation for `container.redeploy` is therefore only
+enforced on the MCP and API surfaces.
+
+### MCP
+
+Single tool `arcane`. Thin adapter forwarding to `crate::dispatch::arcane::dispatch`.
+
+### API (`POST /v1/arcane`)
+
+Standard action+params envelope. Uses `AppState.clients.arcane` (pre-built at startup). The
+`help` and `schema` built-ins are handled inline by `handle_action`; all other actions pass
+through `dispatch_with_client`.
+
+## Types
+
+```rust
+// HealthResponse
+{ status: String }
+
+// Environment
+{ id, api_url, status, enabled, is_edge, name?, connected?, connected_at?, last_heartbeat? }
+
+// Container
+{ id, names: Vec<String>, image, image_id, command, created: i64, state, status, labels?, ports? }
+
+// ContainerActionResult
+{ success?: bool, message?: String }
+
+// Project
+{ id, name, status?, environment_id?, created_at?, updated_at? }
+
+// ProjectActionResult
+{ success?: bool, message?: String }
+
+// Volume
+{ name, driver?, mountpoint?, scope?, created_at?, labels?, options? }
+
+// PruneResult
+{ volumes_deleted?: Vec<String>, space_reclaimed?: i64 }
+
+// Image
+{ id, repo_tags?: Vec<String>, repo_digests?: Vec<String>, size?: i64, created?: i64, labels? }
+
+// ImagePullResult
+{ success?: bool, message?: String }
+
+// ImagePruneResult
+{ images_deleted?: Vec<Value>, space_reclaimed?: i64 }
+
+// ImageUpdateSummary
+{ updates_available?: i32, images?: Vec<Value> }
+```
+
+## Endpoint Inventory (upstream spec — 265 paths)
+
+Rows marked ✅ are implemented. All others remain at ⬜ (spec inventory only).
 
 | Method | Endpoint | Operation | Impl | MCP | CLI | API |
 |--------|----------|-----------|------|-----|-----|-----|
@@ -54,11 +245,11 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /customize/git-repositories/{id}/files | browseGitRepositoryFiles | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /customize/git-repositories/{id}/test | testGitRepository | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /customize/search | search-customize | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments | listEnvironments | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /environments | listEnvironments | ✅ | ✅ | ✅ | ✅ |
 | POST | /environments | createEnvironment | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/pair | pairEnvironment | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /environments/{id} | deleteEnvironment | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments/{id} | getEnvironment | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /environments/{id} | getEnvironment | ✅ | ✅ | ✅ | ✅ |
 | PUT | /environments/{id} | updateEnvironment | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/agent/pair | pairAgent | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /environments/{id}/builds/browse | builds-browse-delete | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -67,16 +258,16 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /environments/{id}/builds/browse/download | builds-browse-download | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/builds/browse/mkdir | builds-browse-mkdir | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/builds/browse/upload | builds-browse-upload | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments/{id}/containers | list-containers | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /environments/{id}/containers | list-containers | ✅ | ✅ | ✅ | ✅ |
 | POST | /environments/{id}/containers | create-container | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/containers/counts | container-status-counts | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /environments/{id}/containers/{containerId} | delete-container | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments/{id}/containers/{containerId} | get-container | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /environments/{id}/containers/{containerId} | get-container | ✅ | ✅ | ✅ | ✅ |
 | PUT | /environments/{id}/containers/{containerId}/auto-update | set-container-auto-update | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/containers/{containerId}/redeploy | redeploy-container | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/containers/{containerId}/restart | restart-container | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/containers/{containerId}/start | start-container | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/containers/{containerId}/stop | stop-container | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /environments/{id}/containers/{containerId}/redeploy | redeploy-container | ✅ | ✅ | ✅ | ✅ |
+| POST | /environments/{id}/containers/{containerId}/restart | restart-container | ✅ | ✅ | ✅ | ✅ |
+| POST | /environments/{id}/containers/{containerId}/start | start-container | ✅ | ✅ | ✅ | ✅ |
+| POST | /environments/{id}/containers/{containerId}/stop | stop-container | ✅ | ✅ | ✅ | ✅ |
 | POST | /environments/{id}/containers/{containerId}/update | update-container | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/dashboard | get-dashboard | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/dashboard/action-items | get-dashboard-action-items | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -96,14 +287,14 @@ The source spec is the contract. This document is the implementation planning ai
 | POST | /environments/{id}/image-updates/check-batch | check-multiple-images | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/image-updates/check/{imageId} | check-image-update-by-id | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/image-updates/check/{imageId} | check-image-update-by-id-post | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments/{id}/image-updates/summary | get-update-summary | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments/{id}/images | list-images | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /environments/{id}/image-updates/summary | get-update-summary | ✅ | ✅ | ✅ | ✅ |
+| GET | /environments/{id}/images | list-images | ✅ | ✅ | ✅ | ✅ |
 | POST | /environments/{id}/images/build | build-image | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/images/builds | list-image-builds | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/images/builds/{buildId} | get-image-build | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/images/counts | get-image-usage-counts | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/images/prune | prune-images | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/images/pull | pull-image | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /environments/{id}/images/prune | prune-images | ✅ | ✅ | ✅ | ✅ |
+| POST | /environments/{id}/images/pull | pull-image | ✅ | ✅ | ✅ | ✅ |
 | POST | /environments/{id}/images/upload | upload-image | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/images/vulnerabilities/summaries | get-image-vulnerability-summaries | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /environments/{id}/images/{imageId} | remove-image | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -132,19 +323,19 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /environments/{id}/notifications/settings/{provider} | get-notification-settings | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/notifications/test/{provider} | test-notification | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/ports | list-ports | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments/{id}/projects | list-projects | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/projects | create-project | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /environments/{id}/projects | list-projects | ✅ | ✅ | ✅ | ✅ |
+| POST | /environments/{id}/projects | create-project | ✅ | ✅ | ✅ | ✅ |
 | GET | /environments/{id}/projects/counts | get-project-status-counts | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/projects/{projectId} | get-project | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /environments/{id}/projects/{projectId} | update-project | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/projects/{projectId}/build | build-project-images | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /environments/{id}/projects/{projectId}/destroy | destroy-project | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/projects/{projectId}/down | down-project | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /environments/{id}/projects/{projectId}/down | down-project | ✅ | ✅ | ✅ | ✅ |
 | PUT | /environments/{id}/projects/{projectId}/includes | update-project-include | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/projects/{projectId}/pull | pull-project-images | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/projects/{projectId}/redeploy | redeploy-project | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /environments/{id}/projects/{projectId}/redeploy | redeploy-project | ✅ | ✅ | ✅ | ✅ |
 | POST | /environments/{id}/projects/{projectId}/restart | restart-project | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/projects/{projectId}/up | deploy-project | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /environments/{id}/projects/{projectId}/up | deploy-project | ✅ | ✅ | ✅ | ✅ |
 | GET | /environments/{id}/settings | get-settings | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /environments/{id}/settings | update-settings | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/settings/public | get-public-settings | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -211,16 +402,16 @@ The source spec is the contract. This document is the implementation planning ai
 | POST | /environments/{id}/updater/run | run-updater | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/updater/status | get-updater-status | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/version | getEnvironmentVersion | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /environments/{id}/volumes | list-volumes | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /environments/{id}/volumes | list-volumes | ✅ | ✅ | ✅ | ✅ |
 | POST | /environments/{id}/volumes | create-volume | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /environments/{id}/volumes/backups/{backupId} | delete-volume-backup | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/volumes/backups/{backupId}/download | download-volume-backup | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/volumes/backups/{backupId}/files | list-backup-files | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/volumes/backups/{backupId}/has-path | backup-has-path | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/volumes/counts | get-volume-usage-counts | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /environments/{id}/volumes/prune | prune-volumes | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /environments/{id}/volumes/prune | prune-volumes | ✅ | ✅ | ✅ | ✅ |
 | GET | /environments/{id}/volumes/sizes | get-volume-sizes | ⬜ | ⬜ | ⬜ | ⬜ |
-| DELETE | /environments/{id}/volumes/{volumeName} | remove-volume | ⬜ | ⬜ | ⬜ | ⬜ |
+| DELETE | /environments/{id}/volumes/{volumeName} | remove-volume | ✅ | ✅ | ✅ | ✅ |
 | GET | /environments/{id}/volumes/{volumeName} | get-volume | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /environments/{id}/volumes/{volumeName}/backups | list-volume-backups | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /environments/{id}/volumes/{volumeName}/backups | create-volume-backup | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -253,7 +444,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /fonts/sans | get-sans-font | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /fonts/serif | get-serif-font | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /git-repositories/sync | syncGitRepositories | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /health | health-check | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /health | health-check | ✅ | ✅ | ✅ | ✅ |
 | HEAD | /health | health-check-head | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /notifications/dispatch | dispatch-notification | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /oidc/callback | handle-oidc-callback | ⬜ | ⬜ | ⬜ | ⬜ |

@@ -67,6 +67,12 @@ pub mod filesystem;
 /// Release search results.
 pub mod releases;
 
+/// Wanted — missing and below-cutoff movies.
+pub mod wanted;
+
+/// Custom formats (quality scoring rules).
+pub mod customformat;
+
 /// Session login/logout (rarely used — most deploys use API-key auth).
 pub mod auth;
 

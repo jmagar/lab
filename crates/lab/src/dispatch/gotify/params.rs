@@ -1,7 +1,8 @@
 use serde_json::Value;
 
 use lab_apis::gotify::types::{
-    ApplicationId, ApplicationParams, ClientId, ClientParams, MessageId, SendMessage,
+    ApplicationId, ApplicationParams, ClientId, ClientParams, MessageId, PluginId, SendMessage,
+    UserCreate, UserId,
 };
 
 use crate::dispatch::error::ToolError;
@@ -96,4 +97,39 @@ pub fn client_id_from_params(params: &Value) -> Result<ClientId, ToolError> {
 pub fn client_params_from_params(params: &Value) -> Result<ClientParams, ToolError> {
     let name = require_str(params, "name")?.to_string();
     Ok(ClientParams { name })
+}
+
+/// Extract a `PluginId` from the `id` param.
+pub fn plugin_id_from_params(params: &Value) -> Result<PluginId, ToolError> {
+    params
+        .get("id")
+        .and_then(Value::as_u64)
+        .map(PluginId)
+        .ok_or_else(|| ToolError::MissingParam {
+            message: "missing required parameter `id`".to_string(),
+            param: "id".to_string(),
+        })
+}
+
+/// Extract a `UserId` from the `id` param.
+pub fn user_id_from_params(params: &Value) -> Result<UserId, ToolError> {
+    params
+        .get("id")
+        .and_then(Value::as_u64)
+        .map(UserId)
+        .ok_or_else(|| ToolError::MissingParam {
+            message: "missing required parameter `id`".to_string(),
+            param: "id".to_string(),
+        })
+}
+
+/// Build a `UserCreate` from action params.
+pub fn user_create_from_params(params: &Value) -> Result<UserCreate, ToolError> {
+    let name = require_str(params, "name")?.to_string();
+    let pass = require_str(params, "pass")?.to_string();
+    let admin = params
+        .get("admin")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    Ok(UserCreate { name, pass, admin })
 }

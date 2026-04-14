@@ -50,6 +50,57 @@ pub async fn dispatch_with_client(
         "workspace.profile" => to_json(client.workspace_profile().await?),
         // ── User ──────────────────────────────────────────────────────────
         "user.me" => to_json(client.user_me().await?),
+        "user.list" => to_json(client.users_list().await?),
+        "user.stats" => {
+            let user = params::require_user(&params_value)?;
+            to_json(client.user_stats(user).await?)
+        }
+        // ── Webhooks ──────────────────────────────────────────────────────
+        "webhook.list" => {
+            let user = params::require_user(&params_value)?;
+            to_json(client.webhooks_list(user).await?)
+        }
+        "webhook.create" => {
+            let user = params::require_user(&params_value)?;
+            let req = params::create_webhook_request_from(&params_value)?;
+            to_json(client.webhook_create(user, &req).await?)
+        }
+        // ── Attachments ───────────────────────────────────────────────────
+        "attachment.upload" => {
+            let filename =
+                crate::dispatch::helpers::require_str(&params_value, "filename")?;
+            let mime_type =
+                crate::dispatch::helpers::require_str(&params_value, "mime_type")?;
+            let file_bytes = params::require_bytes_base64(&params_value)?;
+            to_json(
+                client
+                    .attachment_upload(filename, file_bytes, mime_type)
+                    .await?,
+            )
+        }
+        "attachment.delete" => {
+            let name = params::require_name(&params_value)?;
+            client.attachment_delete(name).await?;
+            Ok(Value::Null)
+        }
+        // ── Memo sub-resources ────────────────────────────────────────────
+        "memo.comment-list" => {
+            let name = params::require_name(&params_value)?;
+            to_json(client.memo_comments_list(name).await?)
+        }
+        "memo.comment-create" => {
+            let name = params::require_name(&params_value)?;
+            let req = params::create_comment_request_from(&params_value)?;
+            to_json(client.memo_comment_create(name, &req).await?)
+        }
+        "memo.share-list" => {
+            let name = params::require_name(&params_value)?;
+            to_json(client.memo_shares_list(name).await?)
+        }
+        "memo.share-create" => {
+            let name = params::require_name(&params_value)?;
+            to_json(client.memo_share_create(name).await?)
+        }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

@@ -211,4 +211,222 @@ impl PlexClient {
     pub async fn playlist_delete(&self, playlist_id: &str) -> Result<(), PlexError> {
         self.delete_no_body(&format!("/playlists/{playlist_id}")).await
     }
+
+    // ── Library browse / trash ────────────────────────────────────────────────
+
+    /// List all content in a library section.
+    ///
+    /// Optional `type_filter` filters by media type (e.g. `"movie"`, `"show"`).
+    /// Optional `sort` specifies the sort field (e.g. `"titleSort"`, `"addedAt:desc"`).
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn library_browse(
+        &self,
+        section_id: i64,
+        type_filter: Option<&str>,
+        sort: Option<&str>,
+    ) -> Result<Value, PlexError> {
+        let mut query: Vec<(String, String)> = Vec::new();
+        if let Some(t) = type_filter {
+            query.push(("type".to_string(), t.to_string()));
+        }
+        if let Some(s) = sort {
+            query.push(("sort".to_string(), s.to_string()));
+        }
+        self.get_value_query(
+            &format!("/library/sections/{section_id}/all"),
+            &query,
+        )
+        .await
+    }
+
+    /// Empty the trash for a library section.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn library_empty_trash(&self, section_id: i64) -> Result<(), PlexError> {
+        Ok(self
+            .http
+            .put_json::<Value, Value>(
+                &format!("/library/sections/{section_id}/emptyTrash"),
+                &Value::Null,
+            )
+            .await
+            .map(|_| ())
+            .or_else(|e| {
+                // Plex returns 200 with empty body on success; tolerate decode errors
+                use crate::core::ApiError;
+                match e {
+                    ApiError::Decode(_) => Ok(()),
+                    other => Err(other),
+                }
+            })?)
+    }
+
+    // ── Metadata ──────────────────────────────────────────────────────────────
+
+    /// Delete a metadata item by rating key.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn metadata_delete(&self, rating_key: &str) -> Result<(), PlexError> {
+        self.delete_no_body(&format!("/library/metadata/{rating_key}")).await
+    }
+
+    /// Edit (overwrite) metadata for an item using a raw JSON body.
+    ///
+    /// Plex accepts metadata edits as PUT query parameters; pass them as a
+    /// flat JSON object and they will be forwarded as query params.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn metadata_edit(
+        &self,
+        rating_key: &str,
+        body: &Value,
+    ) -> Result<Value, PlexError> {
+        let query: Vec<(String, String)> = body
+            .as_object()
+            .map(|m| {
+                m.iter()
+                    .map(|(k, v)| {
+                        let s = match v {
+                            Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        (k.clone(), s)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.get_value_query(
+            &format!("/library/metadata/{rating_key}"),
+            &query,
+        )
+        .await
+    }
+
+    /// Trigger a metadata refresh for a specific item.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn metadata_refresh(&self, rating_key: &str) -> Result<(), PlexError> {
+        Ok(self
+            .http
+            .put_json::<Value, Value>(
+                &format!("/library/metadata/{rating_key}/refresh"),
+                &Value::Null,
+            )
+            .await
+            .map(|_| ())
+            .or_else(|e| {
+                use crate::core::ApiError;
+                match e {
+                    ApiError::Decode(_) => Ok(()),
+                    other => Err(other),
+                }
+            })?)
+    }
+
+    // ── Session history ───────────────────────────────────────────────────────
+
+    /// Get session history (recently played items).
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn session_history(
+        &self,
+        account_id: Option<i64>,
+        limit: Option<u32>,
+    ) -> Result<Value, PlexError> {
+        let mut query: Vec<(String, String)> = Vec::new();
+        if let Some(id) = account_id {
+            query.push(("accountID".to_string(), id.to_string()));
+        }
+        if let Some(l) = limit {
+            query.push(("X-Plex-Container-Size".to_string(), l.to_string()));
+        }
+        self.get_value_query("/status/sessions/history/all", &query).await
+    }
+
+    // ── Hubs ──────────────────────────────────────────────────────────────────
+
+    /// Get the Continue Watching hub items.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn hubs_continue_watching(&self) -> Result<Value, PlexError> {
+        self.get_value("/hubs/continueWatching").await
+    }
+
+    // ── Butler ────────────────────────────────────────────────────────────────
+
+    /// List all butler tasks and their status.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn butler_list(&self) -> Result<Value, PlexError> {
+        self.get_value("/butler").await
+    }
+
+    /// Trigger a specific butler task by name.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn butler_run(&self, task_name: &str) -> Result<(), PlexError> {
+        Ok(self
+            .http
+            .post_void(&format!("/butler/{task_name}"), &Value::Null)
+            .await?)
+    }
+
+    // ── Scrobble / Unscrobble ─────────────────────────────────────────────────
+
+    /// Mark an item as played (scrobble).
+    ///
+    /// Plex uses a GET to `/:/scrobble` with query params (not a POST).
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn item_scrobble(&self, rating_key: &str) -> Result<(), PlexError> {
+        let query = vec![
+            ("key".to_string(), rating_key.to_string()),
+            (
+                "identifier".to_string(),
+                "com.plexapp.plugins.library".to_string(),
+            ),
+        ];
+        // Plex returns 200 with empty or minimal body; use get_value_query and discard.
+        drop(self.get_value_query("/:/scrobble", &query).await.ok());
+        Ok(())
+    }
+
+    /// Mark an item as unplayed (unscrobble).
+    ///
+    /// Plex uses a GET to `/:/unscrobble` with query params (not a POST).
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn item_unscrobble(&self, rating_key: &str) -> Result<(), PlexError> {
+        let query = vec![
+            ("key".to_string(), rating_key.to_string()),
+            (
+                "identifier".to_string(),
+                "com.plexapp.plugins.library".to_string(),
+            ),
+        ];
+        drop(self.get_value_query("/:/unscrobble", &query).await.ok());
+        Ok(())
+    }
+
+    // ── Updater ───────────────────────────────────────────────────────────────
+
+    /// Get the current Plex Media Server update status.
+    ///
+    /// # Errors
+    /// Returns `PlexError::Api` on HTTP failure.
+    pub async fn updater_status(&self) -> Result<Value, PlexError> {
+        self.get_value("/updater/status").await
+    }
 }

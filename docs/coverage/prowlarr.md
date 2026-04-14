@@ -1,6 +1,6 @@
 # Prowlarr API Coverage
 
-**Last updated:** 2026-04-12
+**Last updated:** 2026-04-13
 **OpenAPI spec:** docs/api-specs/prowlarr.openapi.json
 **OpenAPI version:** 3.0.4
 **API version:** 1.0.0
@@ -12,11 +12,49 @@
 
 | Symbol | Meaning |
 |--------|---------|
-| ✅ | Implemented (SDK + MCP/dispatch) |
+| ✅ | Implemented (SDK + dispatch + MCP/CLI/API) |
 | ⬜ | Not implemented yet; rows are spec inventory only |
 | - | Not applicable / not represented in the spec |
 
 The source spec is the contract. This document is the implementation planning aid.
+
+## Implementation Notes
+
+- CLI is a thin dispatch shim: `lab prowlarr <action> [--params <json>]`. All dispatch actions are available via CLI.
+- MCP: one tool `prowlarr` with action dispatch.
+- API: `POST /v1/prowlarr`.
+- Auth: `PROWLARR_URL` + `PROWLARR_API_KEY` env vars; key sent as `X-Api-Key` header.
+- There is no `health` dispatch action. The SDK has a `probe()` method used internally by `lab doctor`.
+
+## Implemented Action Catalog
+
+| Action | SDK Method | Destructive | Params |
+|--------|-----------|-------------|--------|
+| `help` | built-in | no | — |
+| `schema` | built-in | no | `action: string` |
+| `indexers.list` | `indexers_list()` | no | — |
+| `indexers.get` | `indexer_get(id)` | no | `id: integer` |
+| `indexers.delete` | `indexer_delete(id)` | **yes** | `id: integer` |
+| `indexers.test` | `indexer_test(id)` | no | `id: integer` |
+| `indexers.testall` | `indexers_testall()` | no | — |
+| `indexers.categories` | `indexer_categories()` | no | — |
+| `history.list` | `history_list(query)` | no | `page?: integer`, `page_size?: integer`, `sort_key?: string`, `sort_dir?: string`, `indexer_id?: integer` |
+| `applications.list` | `applications_list()` | no | — |
+| `applications.get` | `application_get(id)` | no | `id: integer` |
+| `applications.delete` | `application_delete(id)` | **yes** | `id: integer` |
+| `indexer.edit` | `indexer_edit(id, body)` | no | `id: integer`, `body: object` |
+| `indexer.add` | `indexer_add(body)` | no | `body: object` |
+| `indexer.stats` | `indexer_stats()` | no | — |
+| `indexer.status` | `indexer_status()` | no | — |
+| `indexer.search` | `indexer_search(query, indexer_ids, categories, type)` | no | `query: string`, `indexer_ids?: array[integer]`, `categories?: array[integer]`, `search_type?: string` |
+| `indexer.grab` | `indexer_grab(guid)` | no | `guid: string` |
+| `history.indexer` | `history_indexer(id)` | no | `id: integer` |
+| `application.add` | `application_add(body)` | no | `body: object` |
+| `system.restart` | `system_restart()` | **yes** | — |
+| `system.backup` | `system_backup()` | no | — |
+| `tag.list` | `tag_list()` | no | — |
+| `system.status` | `system_status()` | no | — |
+| `system.health` | `system_health()` | no | — |
 
 ## Live Test Evidence
 
@@ -38,16 +76,16 @@ Live smoke tests run 2026-04-12 against `https://prowlarr.tootie.tv` (v2.3.5.532
 |--------|----------|------------|------|-----|-----|-----|
 | GET | / | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/applications | `applications_list` | ✅ | ✅ | ⬜ | ✅ |
-| POST | /api/v1/applications | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/applications | `applications_list` → `applications.list` | ✅ | ✅ | ✅ | ✅ |
+| POST | /api/v1/applications | `application_add` → `application.add` | ✅ | ✅ | ✅ | ✅ |
 | POST | /api/v1/applications/action/{name} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /api/v1/applications/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /api/v1/applications/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/applications/schema | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/applications/test | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/applications/testall | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| DELETE | /api/v1/applications/{id} | `application_delete` | ✅ | ✅ | ⬜ | ✅ |
-| GET | /api/v1/applications/{id} | `application_get` | ✅ | ✅ | ⬜ | ✅ |
+| DELETE | /api/v1/applications/{id} | `application_delete` → `applications.delete` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/applications/{id} | `application_get` → `applications.get` | ✅ | ✅ | ✅ | ✅ |
 | PUT | /api/v1/applications/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/appprofile | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/appprofile | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -89,22 +127,22 @@ Live smoke tests run 2026-04-12 against `https://prowlarr.tootie.tv` (v2.3.5.532
 | PUT | /api/v1/downloadclient/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/filesystem | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/filesystem/type | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/health | `system_health` | ✅ | ✅ | ✅ | ✅ |
-| GET | /api/v1/history | `history_list` | ✅ | ✅ | ✅ | ✅ |
-| GET | /api/v1/history/indexer | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/health | `system_health` → `system.health` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/history | `history_list` → `history.list` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/history/indexer | `history_indexer` → `history.indexer` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/history/since | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexer | `indexers_list` | ✅ | ✅ | ✅ | ✅ |
-| POST | /api/v1/indexer | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/indexer | `indexers_list` → `indexers.list` | ✅ | ✅ | ✅ | ✅ |
+| POST | /api/v1/indexer | `indexer_add` → `indexer.add` | ✅ | ✅ | ✅ | ✅ |
 | POST | /api/v1/indexer/action/{name} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /api/v1/indexer/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /api/v1/indexer/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexer/categories | `indexer_categories` | ✅ | ✅ | ⬜ | ✅ |
+| GET | /api/v1/indexer/categories | `indexer_categories` → `indexers.categories` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/indexer/schema | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /api/v1/indexer/test | `indexer_test` (via GET+POST) | ✅ | ✅ | ⬜ | ✅ |
-| POST | /api/v1/indexer/testall | `indexers_testall` | ✅ | ✅ | ⬜ | ✅ |
-| DELETE | /api/v1/indexer/{id} | `indexer_delete` | ✅ | ✅ | ⬜ | ✅ |
-| GET | /api/v1/indexer/{id} | `indexer_get` | ✅ | ✅ | ⬜ | ✅ |
-| PUT | /api/v1/indexer/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /api/v1/indexer/test | `indexer_test` (GET+POST) → `indexers.test` | ✅ | ✅ | ✅ | ✅ |
+| POST | /api/v1/indexer/testall | `indexers_testall` → `indexers.testall` | ✅ | ✅ | ✅ | ✅ |
+| DELETE | /api/v1/indexer/{id} | `indexer_delete` → `indexers.delete` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/indexer/{id} | `indexer_get` → `indexers.get` | ✅ | ✅ | ✅ | ✅ |
+| PUT | /api/v1/indexer/{id} | `indexer_edit` → `indexer.edit` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/indexer/{id}/download | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/indexer/{id}/newznab | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/indexerproxy | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -116,8 +154,8 @@ Live smoke tests run 2026-04-12 against `https://prowlarr.tootie.tv` (v2.3.5.532
 | DELETE | /api/v1/indexerproxy/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/indexerproxy/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /api/v1/indexerproxy/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexerstats | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/indexerstatus | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/indexerstats | `indexer_stats` → `indexer.stats` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/indexerstatus | `indexer_status` → `indexer.status` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/localization | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/localization/options | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/log | - | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -134,21 +172,21 @@ Live smoke tests run 2026-04-12 against `https://prowlarr.tootie.tv` (v2.3.5.532
 | DELETE | /api/v1/notification/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/notification/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /api/v1/notification/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/search | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /api/v1/search | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/search | `indexer_search` → `indexer.search` | ✅ | ✅ | ✅ | ✅ |
+| POST | /api/v1/search | `indexer_grab` → `indexer.grab` | ✅ | ✅ | ✅ | ✅ |
 | POST | /api/v1/search/bulk | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/system/backup | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/system/backup | `system_backup` → `system.backup` | ✅ | ✅ | ✅ | ✅ |
 | POST | /api/v1/system/backup/restore/upload | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/system/backup/restore/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /api/v1/system/backup/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /api/v1/system/restart | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /api/v1/system/restart | `system_restart` → `system.restart` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/system/routes | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/system/routes/duplicate | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /api/v1/system/shutdown | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/system/status | `system_status` / `health` | ✅ | ✅ | ✅ | ✅ |
+| GET | /api/v1/system/status | `system_status` → `system.status` | ✅ | ✅ | ✅ | ✅ |
 | GET | /api/v1/system/task | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/system/task/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /api/v1/tag | - | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /api/v1/tag | `tag_list` → `tag.list` | ✅ | ✅ | ✅ | ✅ |
 | POST | /api/v1/tag | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/tag/detail | - | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /api/v1/tag/detail/{id} | - | ⬜ | ⬜ | ⬜ | ⬜ |

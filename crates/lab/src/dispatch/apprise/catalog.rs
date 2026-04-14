@@ -127,4 +127,73 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    ActionSpec {
+        name: "config.add",
+        description: "Persist a YAML/text Apprise config blob under a named key",
+        destructive: false,
+        returns: "void",
+        params: &[
+            ParamSpec {
+                name: "key",
+                ty: "string",
+                required: true,
+                description: "Config key to store the config under",
+            },
+            ParamSpec {
+                name: "config",
+                ty: "string",
+                required: true,
+                description: "Raw YAML or text Apprise config content",
+            },
+            ParamSpec {
+                name: "format",
+                ty: "string",
+                required: false,
+                description: "Config format: yaml or text (default: yaml)",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "config.get",
+        description: "Retrieve the stored config blob for a named key",
+        destructive: false,
+        returns: "{config: string}",
+        params: &[ParamSpec {
+            name: "key",
+            ty: "string",
+            required: true,
+            description: "Config key to retrieve",
+        }],
+    },
+    ActionSpec {
+        name: "config.delete",
+        description: "Delete the stored config for a named key",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "key",
+            ty: "string",
+            required: true,
+            description: "Config key to delete",
+        }],
+    },
+    ActionSpec {
+        name: "config.urls",
+        description: "List the notification URLs stored under a named key",
+        destructive: false,
+        returns: "Vec<{url: string, tags: Vec<string>}>",
+        params: &[ParamSpec {
+            name: "key",
+            ty: "string",
+            required: true,
+            description: "Config key to list URLs for",
+        }],
+    },
+    ActionSpec {
+        name: "server.details",
+        description: "Retrieve server details listing all loaded Apprise plugins",
+        destructive: false,
+        returns: "json",
+        params: &[],
+    },
 ];

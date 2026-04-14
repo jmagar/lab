@@ -9,7 +9,7 @@ use crate::core::{Auth, HttpClient};
 use super::error::GotifyError;
 use super::types::{
     Application, ApplicationId, ApplicationParams, Client, ClientId, ClientParams, Health, Message,
-    MessageId, PagedMessages, SendMessage,
+    MessageId, PagedMessages, Plugin, PluginId, SendMessage, ServerVersion, UserCreate, UserId,
 };
 
 /// Client for a Gotify push-notification server.
@@ -188,5 +188,95 @@ impl GotifyClient {
     /// Returns `GotifyError::Api` on HTTP failure.
     pub async fn client_delete(&self, id: ClientId) -> Result<(), GotifyError> {
         Ok(self.http.delete(&format!("/client/{}", id.0)).await?)
+    }
+
+    // ── Plugins ─────────────────────────────────────────────────────────────
+
+    /// List all server plugins.
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn plugins_list(&self) -> Result<Vec<Plugin>, GotifyError> {
+        Ok(self.http.get_json("/plugin").await?)
+    }
+
+    /// Enable a plugin.
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn plugin_enable(&self, id: PluginId) -> Result<(), GotifyError> {
+        Ok(self
+            .http
+            .post_void(&format!("/plugin/{}/enable", id.0), &serde_json::Value::Null)
+            .await?)
+    }
+
+    /// Disable a plugin.
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn plugin_disable(&self, id: PluginId) -> Result<(), GotifyError> {
+        Ok(self
+            .http
+            .post_void(&format!("/plugin/{}/disable", id.0), &serde_json::Value::Null)
+            .await?)
+    }
+
+    /// Get the configuration of a plugin as a YAML string.
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn plugin_config_get(&self, id: PluginId) -> Result<String, GotifyError> {
+        Ok(self
+            .http
+            .get_text(&format!("/plugin/{}/config", id.0))
+            .await?)
+    }
+
+    /// Set the configuration of a plugin. Body must be valid YAML.
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn plugin_config_set(&self, id: PluginId, config: &str) -> Result<(), GotifyError> {
+        Ok(self
+            .http
+            .post_text_void(&format!("/plugin/{}/config", id.0), config)
+            .await?)
+    }
+
+    // ── Users ────────────────────────────────────────────────────────────────
+
+    /// List all users (admin only).
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn users_list(&self) -> Result<serde_json::Value, GotifyError> {
+        Ok(self.http.get_json("/user").await?)
+    }
+
+    /// Create a user (admin only).
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn user_create(&self, params: &UserCreate) -> Result<serde_json::Value, GotifyError> {
+        Ok(self.http.post_json("/user", params).await?)
+    }
+
+    /// Delete a user (admin only).
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn user_delete(&self, id: UserId) -> Result<(), GotifyError> {
+        Ok(self.http.delete(&format!("/user/{}", id.0)).await?)
+    }
+
+    // ── Server ───────────────────────────────────────────────────────────────
+
+    /// Fetch server version information.
+    ///
+    /// # Errors
+    /// Returns `GotifyError::Api` on HTTP failure.
+    pub async fn server_version(&self) -> Result<ServerVersion, GotifyError> {
+        Ok(self.http.get_json("/version").await?)
     }
 }

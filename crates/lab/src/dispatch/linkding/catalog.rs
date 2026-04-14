@@ -309,4 +309,109 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "Value",
         params: &[],
     },
+    // ── Bundles ───────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "bundle.list",
+        description: "List all bundles (saved searches)",
+        destructive: false,
+        returns: "Value",
+        params: &[],
+    },
+    ActionSpec {
+        name: "bundle.create",
+        description: "Create a new bundle (saved search)",
+        destructive: false,
+        returns: "Bundle",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Bundle name",
+            },
+            ParamSpec {
+                name: "search_query",
+                ty: "string",
+                required: true,
+                description: "Linkding search query that populates this bundle",
+            },
+            ParamSpec {
+                name: "description",
+                ty: "string",
+                required: false,
+                description: "Optional description",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "bundle.update",
+        description: "Partially update a bundle (PATCH — only provided fields are changed)",
+        destructive: false,
+        returns: "Bundle",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Bundle ID",
+            },
+            ParamSpec {
+                name: "payload",
+                ty: "json",
+                required: true,
+                description: "JSON object with fields to update (name, search_query, description)",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "bundle.delete",
+        description: "Delete a bundle by ID",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Bundle ID",
+        }],
+    },
+    // ── Bookmark Assets ───────────────────────────────────────────────────
+    ActionSpec {
+        name: "bookmark.assets",
+        description: "List assets attached to a bookmark (snapshots, PDFs)",
+        destructive: false,
+        returns: "Vec<BookmarkAsset>",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Bookmark ID",
+        }],
+    },
+    ActionSpec {
+        name: "bookmark.assets-upload",
+        description: "Upload an asset file for a bookmark via multipart/form-data",
+        destructive: false,
+        returns: "BookmarkAsset",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Bookmark ID",
+            },
+            ParamSpec {
+                name: "file_name",
+                ty: "string",
+                required: true,
+                description: "Filename to use for the uploaded asset",
+            },
+            ParamSpec {
+                name: "file_base64",
+                ty: "string",
+                required: true,
+                description: "Base64-encoded file content to upload",
+            },
+        ],
+    },
 ];

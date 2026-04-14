@@ -76,6 +76,27 @@ pub fn history_query_from_params(params: &Value) -> Result<HistoryQuery, ToolErr
     })
 }
 
+/// Extract a list of episode IDs from params.
+///
+/// Expects `episode_ids` to be a JSON array of integers.
+pub fn episode_ids_from_params(params: &Value) -> Result<Vec<i64>, ToolError> {
+    let arr = params
+        .get("episode_ids")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ToolError::MissingParam {
+            param: "episode_ids".to_string(),
+            message: "parameter `episode_ids` must be an array of integers".to_string(),
+        })?;
+    arr.iter()
+        .map(|v| {
+            v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+                message: "each element of `episode_ids` must be an integer".to_string(),
+                param: "episode_ids".to_string(),
+            })
+        })
+        .collect()
+}
+
 /// Build a `CalendarQuery` from dispatch params.
 #[allow(clippy::unnecessary_wraps)]
 pub fn calendar_query_from_params(params: &Value) -> Result<CalendarQuery, ToolError> {

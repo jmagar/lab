@@ -6,7 +6,10 @@ use crate::dispatch::helpers::{action_schema, help_payload};
 
 use super::catalog::ACTIONS;
 use super::client::require_client;
-use super::params::{optional_bool, optional_i64, optional_str, optional_u32, require_i64, require_str, to_json};
+use super::params::{
+    optional_bool, optional_i64, optional_str, optional_u32, require_f64, require_i32, require_i64,
+    require_str, to_json,
+};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 pub async fn dispatch_with_client(
@@ -108,6 +111,98 @@ pub async fn dispatch_with_client(
         "log.list" => {
             let last_known_id = optional_i64(&params, "last_known_id")?;
             to_json(client.log(last_known_id).await?)
+        }
+
+        "torrent.add" => {
+            let urls = require_str(&params, "urls")?;
+            let savepath = optional_str(&params, "savepath")?;
+            let category = optional_str(&params, "category")?;
+            let tags = optional_str(&params, "tags")?;
+            client.add_torrent(urls, savepath, category, tags).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "transfer.toggle-speed-limits" => {
+            client.toggle_speed_limits().await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "torrent.files" => {
+            let hash = require_str(&params, "hash")?;
+            to_json(client.torrent_files(hash).await?)
+        }
+
+        "torrent.set-file-prio" => {
+            let hash = require_str(&params, "hash")?;
+            let id = require_str(&params, "id")?;
+            let priority = require_i32(&params, "priority")?;
+            client.set_file_priority(hash, id, priority).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "torrent.set-location" => {
+            let hashes = require_str(&params, "hashes")?;
+            let location = require_str(&params, "location")?;
+            client.set_location(hashes, location).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "torrent.add-tags" => {
+            let hashes = require_str(&params, "hashes")?;
+            let tags = require_str(&params, "tags")?;
+            client.add_tags(hashes, tags).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "torrent.remove-tags" => {
+            let hashes = require_str(&params, "hashes")?;
+            let tags = require_str(&params, "tags")?;
+            client.remove_tags(hashes, tags).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "torrent.reannounce" => {
+            let hashes = require_str(&params, "hashes")?;
+            client.reannounce(hashes).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "torrent.set-share-limits" => {
+            let hashes = require_str(&params, "hashes")?;
+            let ratio_limit = require_f64(&params, "ratio_limit")?;
+            let seeding_time_limit = require_i64(&params, "seeding_time_limit")?;
+            let inactive_seeding_time_limit =
+                require_i64(&params, "inactive_seeding_time_limit")?;
+            client
+                .set_share_limits(hashes, ratio_limit, seeding_time_limit, inactive_seeding_time_limit)
+                .await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "category.create" => {
+            let category = require_str(&params, "category")?;
+            let savepath = optional_str(&params, "savepath")?;
+            client.create_category(category, savepath).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "category.edit" => {
+            let category = require_str(&params, "category")?;
+            let savepath = require_str(&params, "savepath")?;
+            client.edit_category(category, savepath).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        "sync.maindata" => {
+            let rid = optional_i64(&params, "rid")?.unwrap_or(0);
+            if rid == 0 {
+                tracing::warn!(
+                    action = "sync.maindata",
+                    rid = 0,
+                    "rid=0 triggers full dump; pass returned rid on subsequent calls"
+                );
+            }
+            to_json(client.sync_maindata(rid).await?)
         }
 
         unknown => Err(ToolError::UnknownAction {

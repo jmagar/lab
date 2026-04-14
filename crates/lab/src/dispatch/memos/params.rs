@@ -1,6 +1,10 @@
 use serde_json::Value;
 
-use lab_apis::memos::types::{CreateMemoRequest, ListMemosParams, UpdateMemoRequest};
+use base64::Engine as _;
+use lab_apis::memos::types::{
+    CreateCommentRequest, CreateMemoRequest, CreateWebhookRequest, ListMemosParams,
+    UpdateMemoRequest,
+};
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{optional_str, optional_u32, require_str};
@@ -47,4 +51,39 @@ pub fn update_request_from(params: &Value) -> Result<UpdateMemoRequest, ToolErro
         });
     }
     Ok(UpdateMemoRequest { content, visibility })
+}
+
+/// Extract a required `user` param (user resource name, e.g. `"users/1"`).
+pub fn require_user<'a>(params: &'a Value) -> Result<&'a str, ToolError> {
+    require_str(params, "user")
+}
+
+/// Build a `CreateCommentRequest` from dispatch params.
+pub fn create_comment_request_from(params: &Value) -> Result<CreateCommentRequest, ToolError> {
+    let content = require_str(params, "content")?.to_owned();
+    Ok(CreateCommentRequest { content })
+}
+
+/// Build a `CreateWebhookRequest` from dispatch params.
+pub fn create_webhook_request_from(params: &Value) -> Result<CreateWebhookRequest, ToolError> {
+    let url = require_str(params, "url")?.to_owned();
+    let display_name = require_str(params, "name")?.to_owned();
+    Ok(CreateWebhookRequest { url, display_name })
+}
+
+/// Extract and decode a `data_base64` param as raw bytes.
+///
+/// Accepts standard base64, URL-safe base64, with or without padding.
+pub fn require_bytes_base64(params: &Value) -> Result<Vec<u8>, ToolError> {
+    let b64 = require_str(params, "data_base64")?;
+    // Try standard alphabet first, then URL-safe.
+    base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(b64))
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(b64))
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(b64))
+        .map_err(|e| ToolError::InvalidParam {
+            message: format!("data_base64 is not valid base64: {e}"),
+            param: "data_base64".into(),
+        })
 }

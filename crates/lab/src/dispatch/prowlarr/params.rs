@@ -2,11 +2,59 @@ use lab_apis::prowlarr::types::HistoryQuery;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{optional_str, require_i64};
+use crate::dispatch::helpers::{optional_str, require_i64, require_str};
 
 /// Extract a required integer `id` parameter and return it as `i64`.
 pub fn require_id(params: &Value) -> Result<i64, ToolError> {
     require_i64(params, "id")
+}
+
+/// Extract a required string `guid` parameter.
+pub fn require_guid(params: &Value) -> Result<String, ToolError> {
+    require_str(params, "guid").map(str::to_owned)
+}
+
+/// Extract a required string `query` parameter.
+pub fn require_query_str(params: &Value) -> Result<String, ToolError> {
+    require_str(params, "query").map(str::to_owned)
+}
+
+/// Extract an optional string `search_type` parameter.
+pub fn optional_search_type(params: &Value) -> Result<Option<String>, ToolError> {
+    optional_str(params, "search_type").map(|opt| opt.map(str::to_owned))
+}
+
+/// Extract a required JSON object `body` parameter.
+pub fn require_body(params: &Value) -> Result<Value, ToolError> {
+    params
+        .get("body")
+        .cloned()
+        .ok_or_else(|| ToolError::MissingParam {
+            message: "parameter `body` is required".to_string(),
+            param: "body".to_string(),
+        })
+}
+
+/// Extract optional array-of-integer query params (indexer_ids, categories).
+pub fn optional_i64_array(params: &Value, key: &str) -> Result<Vec<i64>, ToolError> {
+    match params.get(key) {
+        None => Ok(vec![]),
+        Some(Value::Array(arr)) => {
+            let mut out = Vec::with_capacity(arr.len());
+            for v in arr {
+                let n = v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+                    message: format!("each element of `{key}` must be an integer"),
+                    param: key.to_string(),
+                })?;
+                out.push(n);
+            }
+            Ok(out)
+        }
+        Some(_) => Err(ToolError::InvalidParam {
+            message: format!("parameter `{key}` must be an array of integers"),
+            param: key.to_string(),
+        }),
+    }
 }
 
 /// Extract optional history query parameters from params.

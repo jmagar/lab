@@ -65,6 +65,17 @@ pub struct NotifyRequest {
     pub tag: Option<String>,
 }
 
+/// A single URL entry returned by `GET /json/urls/{key}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UrlInfo {
+    /// The Apprise notification URL (e.g. `slack://...`, `tgram://...`).
+    pub url: String,
+
+    /// Tags associated with this URL, if any.
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
 /// Request body for `POST /add/{key}` — persist a config under `key`.
 ///
 /// Exactly one of `urls` or `config` should be set:

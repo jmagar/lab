@@ -212,6 +212,161 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    // ── Media ─────────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "media.recently-added",
+        description: "Get recently added media items",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "count",
+                ty: "integer",
+                required: false,
+                description: "Number of items to return (default: 5)",
+            },
+            ParamSpec {
+                name: "section_id",
+                ty: "string",
+                required: false,
+                description: "Filter by Plex library section ID",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "media.metadata",
+        description: "Get metadata for a media item by rating key",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "rating_key",
+            ty: "string",
+            required: true,
+            description: "Plex rating key (media item ID)",
+        }],
+    },
+    ActionSpec {
+        name: "media.children",
+        description: "Get children metadata for a media item by rating key",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "rating_key",
+            ty: "string",
+            required: true,
+            description: "Plex rating key (media item ID)",
+        }],
+    },
+    ActionSpec {
+        name: "media.export-metadata",
+        description: "Export metadata for a media item",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "rating_key",
+                ty: "string",
+                required: true,
+                description: "Plex rating key (media item ID)",
+            },
+            ParamSpec {
+                name: "media_type",
+                ty: "string",
+                required: true,
+                description: "Media type (movie, show, season, episode, artist, album, track)",
+            },
+        ],
+    },
+    // ── User stats ────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "user.item-stats",
+        description: "Get user statistics for a media item by rating key",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "rating_key",
+                ty: "string",
+                required: true,
+                description: "Plex rating key (media item ID)",
+            },
+            ParamSpec {
+                name: "media_type",
+                ty: "string",
+                required: false,
+                description: "Media type filter",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "user.delete-history",
+        description: "Delete all play history for a user (permanent)",
+        destructive: true,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "user_id",
+            ty: "integer",
+            required: true,
+            description: "Tautulli user ID whose history will be deleted",
+        }],
+    },
+    // ── Play analytics ────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "plays.by-day",
+        description: "Get play count grouped by day of week",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "time_range",
+            ty: "integer",
+            required: false,
+            description: "Number of days to include (default: 30)",
+        }],
+    },
+    ActionSpec {
+        name: "plays.by-hour",
+        description: "Get play count grouped by hour of day",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "time_range",
+            ty: "integer",
+            required: false,
+            description: "Number of days to include (default: 30)",
+        }],
+    },
+    ActionSpec {
+        name: "plays.by-stream-type",
+        description: "Get play count grouped by stream type (transcode vs direct play)",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "time_range",
+            ty: "integer",
+            required: false,
+            description: "Number of days to include (default: 30)",
+        }],
+    },
+    ActionSpec {
+        name: "plays.by-month",
+        description: "Get play count grouped by month",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "time_range",
+            ty: "integer",
+            required: false,
+            description: "Number of months to include (default: 30)",
+        }],
+    },
+    // ── Server ────────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "server.pms-update",
+        description: "Check for Plex Media Server updates",
+        destructive: false,
+        returns: "Value",
+        params: &[],
+    },
     // ── System ────────────────────────────────────────────────────────────────
     ActionSpec {
         name: "system.info",

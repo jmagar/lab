@@ -76,8 +76,78 @@ pub async fn dispatch_with_client(
             client.client_delete(id).await?;
             Ok(Value::Null)
         }
+        // ── Application (extended) ────────────────────────────────────────────
+        "application.update" => {
+            let client = require_management_client(clients)?;
+            let id = params::application_id_from_params(&params_value)?;
+            let p = params::application_params_from_params(&params_value)?;
+            to_json(client.app_update(id, &p).await?)
+        }
+        "application.messages" => {
+            let client = require_management_client(clients)?;
+            let id = params::application_id_from_params(&params_value)?;
+            to_json(client.app_messages_list(id).await?)
+        }
+        "application.messages-delete" => {
+            let client = require_management_client(clients)?;
+            let id = params::application_id_from_params(&params_value)?;
+            client.app_messages_delete(id).await?;
+            Ok(Value::Null)
+        }
+        // ── Client (extended) ────────────────────────────────────────────────
+        "client.update" => {
+            let client = require_management_client(clients)?;
+            let id = params::client_id_from_params(&params_value)?;
+            let p = params::client_params_from_params(&params_value)?;
+            to_json(client.client_update(id, &p).await?)
+        }
+        // ── Plugins ───────────────────────────────────────────────────────────
+        "plugin.list" => {
+            to_json(require_management_client(clients)?.plugins_list().await?)
+        }
+        "plugin.enable" => {
+            let client = require_management_client(clients)?;
+            let id = params::plugin_id_from_params(&params_value)?;
+            client.plugin_enable(id).await?;
+            Ok(Value::Null)
+        }
+        "plugin.disable" => {
+            let client = require_management_client(clients)?;
+            let id = params::plugin_id_from_params(&params_value)?;
+            client.plugin_disable(id).await?;
+            Ok(Value::Null)
+        }
+        "plugin.config-get" => {
+            let client = require_management_client(clients)?;
+            let id = params::plugin_id_from_params(&params_value)?;
+            let config = client.plugin_config_get(id).await?;
+            to_json(serde_json::json!({ "config": config }))
+        }
+        "plugin.config-set" => {
+            let client = require_management_client(clients)?;
+            let id = params::plugin_id_from_params(&params_value)?;
+            let config = require_str(&params_value, "config")?;
+            client.plugin_config_set(id, config).await?;
+            Ok(Value::Null)
+        }
+        // ── Users ────────────────────────────────────────────────────────────
+        "user.list" => {
+            to_json(require_management_client(clients)?.users_list().await?)
+        }
+        "user.create" => {
+            let client = require_management_client(clients)?;
+            let p = params::user_create_from_params(&params_value)?;
+            to_json(client.user_create(&p).await?)
+        }
+        "user.delete" => {
+            let client = require_management_client(clients)?;
+            let id = params::user_id_from_params(&params_value)?;
+            client.user_delete(id).await?;
+            Ok(Value::Null)
+        }
         // ── Server ────────────────────────────────────────────────────────────
         "server.health" => to_json(clients.health().server_health().await?),
+        "server.version" => to_json(clients.health().server_version().await?),
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

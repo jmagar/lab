@@ -4,6 +4,8 @@
 //! The API key is passed as a query param, not a header, so the client stores
 //! it separately and uses `Auth::None` for the underlying `HttpClient`.
 
+use serde_json::Value;
+
 use crate::core::HttpClient;
 
 use super::error::SabnzbdError;
@@ -172,5 +174,133 @@ impl SabnzbdClient {
         query.push(("value".to_string(), "all".to_string()));
         let resp: StatusResponse = self.http.get_json_query("/api", &query).await?;
         Ok(resp.status)
+    }
+
+    /// Add a URL to the download queue.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn queue_addurl(
+        &self,
+        url: &str,
+        cat: Option<&str>,
+        priority: Option<&str>,
+    ) -> Result<Value, SabnzbdError> {
+        let mut query = self.base_query("addurl");
+        query.push(("name".to_string(), url.to_string()));
+        if let Some(c) = cat {
+            query.push(("cat".to_string(), c.to_string()));
+        }
+        if let Some(p) = priority {
+            query.push(("priority".to_string(), p.to_string()));
+        }
+        let resp: Value = self.http.get_json_query("/api", &query).await?;
+        Ok(resp)
+    }
+
+    /// Retry a failed history item by `nzo_id`.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn history_retry(&self, nzo_id: &str) -> Result<bool, SabnzbdError> {
+        let mut query = self.base_query("retry");
+        query.push(("value".to_string(), nzo_id.to_string()));
+        let resp: StatusResponse = self.http.get_json_query("/api", &query).await?;
+        Ok(resp.status)
+    }
+
+    /// Retry all failed history items.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn history_retry_all(&self) -> Result<bool, SabnzbdError> {
+        let resp: StatusResponse = self
+            .http
+            .get_json_query("/api", &self.base_query("retry_all"))
+            .await?;
+        Ok(resp.status)
+    }
+
+    /// Get full server status details.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn server_fullstatus(&self) -> Result<Value, SabnzbdError> {
+        let resp: Value = self
+            .http
+            .get_json_query("/api", &self.base_query("fullstatus"))
+            .await?;
+        Ok(resp)
+    }
+
+    /// Get the list of configured download categories.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn category_list(&self) -> Result<Value, SabnzbdError> {
+        let resp: Value = self
+            .http
+            .get_json_query("/api", &self.base_query("get_cats"))
+            .await?;
+        Ok(resp)
+    }
+
+    /// Set the post-download complete action.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn queue_set_complete_action(&self, action_value: &str) -> Result<bool, SabnzbdError> {
+        let mut query = self.base_query("change_complete_action");
+        query.push(("value".to_string(), action_value.to_string()));
+        let resp: StatusResponse = self.http.get_json_query("/api", &query).await?;
+        Ok(resp.status)
+    }
+
+    /// Pause post-processing.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn pp_pause(&self) -> Result<bool, SabnzbdError> {
+        let resp: StatusResponse = self
+            .http
+            .get_json_query("/api", &self.base_query("pause_pp"))
+            .await?;
+        Ok(resp.status)
+    }
+
+    /// Resume post-processing.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn pp_resume(&self) -> Result<bool, SabnzbdError> {
+        let resp: StatusResponse = self
+            .http
+            .get_json_query("/api", &self.base_query("resume_pp"))
+            .await?;
+        Ok(resp.status)
+    }
+
+    /// Trigger an immediate RSS feed fetch.
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn rss_fetch_now(&self) -> Result<Value, SabnzbdError> {
+        let resp: Value = self
+            .http
+            .get_json_query("/api", &self.base_query("rss_now"))
+            .await?;
+        Ok(resp)
+    }
+
+    /// Get the full SABnzbd configuration (sensitive fields must be redacted by callers).
+    ///
+    /// # Errors
+    /// Returns `SabnzbdError::Api` on HTTP failure.
+    pub async fn config_get(&self) -> Result<Value, SabnzbdError> {
+        let resp: Value = self
+            .http
+            .get_json_query("/api", &self.base_query("get_config"))
+            .await?;
+        Ok(resp)
     }
 }

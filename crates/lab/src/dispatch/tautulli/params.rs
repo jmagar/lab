@@ -2,7 +2,7 @@ use lab_apis::tautulli::types::HistoryQuery;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{optional_str, require_i64};
+use crate::dispatch::helpers::{optional_str, optional_u32, require_i64, require_str};
 
 /// Extract a required integer `user_id` param.
 pub fn require_user_id(params: &Value) -> Result<i64, ToolError> {
@@ -100,6 +100,21 @@ pub fn home_stats_params(params: &Value) -> Result<(Option<u32>, Option<u32>), T
     })?;
 
     Ok((time_range, stats_count))
+}
+
+/// Extract required `rating_key` as string.
+pub fn require_rating_key<'a>(params: &'a Value) -> Result<&'a str, ToolError> {
+    require_str(params, "rating_key")
+}
+
+/// Extract optional `time_range` (u32) from params, defaulting to `None`.
+pub fn optional_time_range(params: &Value) -> Result<Option<u32>, ToolError> {
+    optional_u32(params, "time_range")
+}
+
+/// Extract optional `count` (u32) from params.
+pub fn optional_count(params: &Value) -> Result<Option<u32>, ToolError> {
+    optional_u32(params, "count")
 }
 
 /// Extract optional `time_range` and `y_axis` for plays-by-date.

@@ -42,6 +42,51 @@ pub async fn dispatch_with_client(
             client.application_delete(id).await?;
             Ok(Value::Null)
         }
+        "indexer.edit" => {
+            let id = params::require_id(&params_value)?;
+            let body = params::require_body(&params_value)?;
+            to_json(client.indexer_edit(id, &body).await?)
+        }
+        "indexer.add" => {
+            let body = params::require_body(&params_value)?;
+            to_json(client.indexer_add(&body).await?)
+        }
+        "indexer.stats" => to_json(client.indexer_stats().await?),
+        "indexer.status" => to_json(client.indexer_status().await?),
+        "indexer.search" => {
+            let query = params::require_query_str(&params_value)?;
+            let indexer_ids = params::optional_i64_array(&params_value, "indexer_ids")?;
+            let categories = params::optional_i64_array(&params_value, "categories")?;
+            let search_type = params::optional_search_type(&params_value)?;
+            to_json(
+                client
+                    .indexer_search(
+                        &query,
+                        &indexer_ids,
+                        &categories,
+                        search_type.as_deref(),
+                    )
+                    .await?,
+            )
+        }
+        "indexer.grab" => {
+            let guid = params::require_guid(&params_value)?;
+            to_json(client.indexer_grab(&guid).await?)
+        }
+        "history.indexer" => {
+            let id = params::require_id(&params_value)?;
+            to_json(client.history_indexer(id).await?)
+        }
+        "application.add" => {
+            let body = params::require_body(&params_value)?;
+            to_json(client.application_add(&body).await?)
+        }
+        "system.restart" => {
+            client.system_restart().await?;
+            Ok(Value::Null)
+        }
+        "system.backup" => to_json(client.system_backup().await?),
+        "tag.list" => to_json(client.tag_list().await?),
         "system.status" => to_json(client.system_status().await?),
         "system.health" => to_json(client.system_health().await?),
         unknown => Err(ToolError::UnknownAction {

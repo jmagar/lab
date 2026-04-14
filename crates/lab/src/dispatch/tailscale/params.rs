@@ -27,3 +27,47 @@ pub fn authorized_from_params(params: &Value) -> Result<bool, ToolError> {
         }),
     }
 }
+
+/// Extract a required JSON object from a named param field.
+pub fn required_object<'a>(params: &'a Value, name: &str) -> Result<&'a Value, ToolError> {
+    match params.get(name) {
+        Some(v) if v.is_object() => Ok(v),
+        Some(other) => Err(ToolError::InvalidParam {
+            message: format!("'{name}' must be a JSON object, got: {other}"),
+            param: name.to_string(),
+        }),
+        None => Err(ToolError::MissingParam {
+            message: format!("missing required parameter '{name}'"),
+            param: name.to_string(),
+        }),
+    }
+}
+
+/// Extract a required array of strings from params.
+pub fn required_string_array(params: &Value, name: &str) -> Result<Vec<String>, ToolError> {
+    match params.get(name) {
+        Some(Value::Array(arr)) => {
+            let mut result = Vec::with_capacity(arr.len());
+            for item in arr {
+                match item.as_str() {
+                    Some(s) => result.push(s.to_string()),
+                    None => {
+                        return Err(ToolError::InvalidParam {
+                            message: format!("'{name}' must be an array of strings"),
+                            param: name.to_string(),
+                        });
+                    }
+                }
+            }
+            Ok(result)
+        }
+        Some(other) => Err(ToolError::InvalidParam {
+            message: format!("'{name}' must be an array of strings, got: {other}"),
+            param: name.to_string(),
+        }),
+        None => Err(ToolError::MissingParam {
+            message: format!("missing required parameter '{name}'"),
+            param: name.to_string(),
+        }),
+    }
+}

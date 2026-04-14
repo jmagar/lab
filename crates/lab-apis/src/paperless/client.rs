@@ -6,7 +6,9 @@ use crate::core::{Auth, HttpClient};
 
 use super::error::PaperlessError;
 use super::types::{
-    CorrespondentCreateRequest, DocumentTypeCreateRequest, DocumentUpdateRequest, TagCreateRequest,
+    CorrespondentCreateRequest, CustomFieldCreateRequest, DocumentBulkEditRequest,
+    DocumentDownloadInfo, DocumentTypeCreateRequest, DocumentUpdateRequest, TagCreateRequest,
+    TagUpdateRequest,
 };
 
 /// Client for a Paperless-ngx instance.
@@ -197,6 +199,125 @@ impl PaperlessClient {
     /// List async tasks.
     pub async fn tasks_list(&self) -> Result<Value, PaperlessError> {
         self.get_value("/api/tasks/").await
+    }
+
+    // ── Document Upload & Bulk Edit ───────────────────────────────────────────
+
+    /// Upload a document via multipart/form-data.
+    ///
+    /// `file_bytes` is the raw file content. `filename` is the file name (e.g. `"invoice.pdf"`).
+    /// Optional metadata fields may be supplied via the remaining parameters.
+    pub async fn document_upload(
+        &self,
+        file_bytes: Vec<u8>,
+        filename: String,
+        title: Option<String>,
+        correspondent: Option<u64>,
+        document_type: Option<u64>,
+        tags: Option<Vec<u64>>,
+    ) -> Result<Value, PaperlessError> {
+        let part = reqwest::multipart::Part::bytes(file_bytes)
+            .file_name(filename)
+            .mime_str("application/octet-stream")
+            .map_err(|e| PaperlessError::Api(crate::core::ApiError::Internal(format!("multipart mime: {e}"))))?;
+        let mut form = reqwest::multipart::Form::new().part("document", part);
+        if let Some(t) = title {
+            form = form.text("title", t);
+        }
+        if let Some(c) = correspondent {
+            form = form.text("correspondent", c.to_string());
+        }
+        if let Some(dt) = document_type {
+            form = form.text("document_type", dt.to_string());
+        }
+        if let Some(tag_ids) = tags {
+            for tag_id in tag_ids {
+                form = form.text("tags", tag_id.to_string());
+            }
+        }
+        Ok(self.http.post_multipart("/api/documents/post_document/", form).await?)
+    }
+
+    /// Perform a bulk edit operation on multiple documents.
+    pub async fn document_bulk_edit(
+        &self,
+        body: &DocumentBulkEditRequest,
+    ) -> Result<Value, PaperlessError> {
+        self.post_value("/api/documents/bulk_edit/", body).await
+    }
+
+    /// Download a document's file content and return it as base64-encoded bytes.
+    ///
+    /// The `original` flag (if true) requests the original file before OCR post-processing.
+    pub async fn document_download(
+        &self,
+        id: u64,
+        original: bool,
+    ) -> Result<DocumentDownloadInfo, PaperlessError> {
+        let path = if original {
+            format!("/api/documents/{id}/download/?original=true")
+        } else {
+            format!("/api/documents/{id}/download/")
+        };
+        let bytes = self.http.get_bytes(&path).await?;
+        let size = bytes.len();
+        use base64::Engine as _;
+        let content_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Ok(DocumentDownloadInfo {
+            content_base64,
+            size,
+            content_type: "application/octet-stream".to_string(),
+        })
+    }
+
+    // ── Tag Update ────────────────────────────────────────────────────────────
+
+    /// Partially update a tag (PATCH).
+    pub async fn tag_update(
+        &self,
+        id: u64,
+        body: &TagUpdateRequest,
+    ) -> Result<Value, PaperlessError> {
+        self.patch_value(&format!("/api/tags/{id}/"), body).await
+    }
+
+    // ── Saved Views ───────────────────────────────────────────────────────────
+
+    /// List all saved views.
+    pub async fn saved_views_list(&self) -> Result<Value, PaperlessError> {
+        self.get_value("/api/saved_views/").await
+    }
+
+    /// Create a saved view.
+    pub async fn saved_view_create(&self, body: &Value) -> Result<Value, PaperlessError> {
+        self.post_value("/api/saved_views/", body).await
+    }
+
+    // ── Custom Fields ─────────────────────────────────────────────────────────
+
+    /// List all custom fields.
+    pub async fn custom_fields_list(&self) -> Result<Value, PaperlessError> {
+        self.get_value("/api/custom_fields/").await
+    }
+
+    /// Create a custom field.
+    pub async fn custom_field_create(
+        &self,
+        body: &CustomFieldCreateRequest,
+    ) -> Result<Value, PaperlessError> {
+        self.post_value("/api/custom_fields/", body).await
+    }
+
+    // ── Storage Paths ─────────────────────────────────────────────────────────
+
+    /// List all storage paths.
+    pub async fn storage_paths_list(&self) -> Result<Value, PaperlessError> {
+        self.get_value("/api/storage_paths/").await
+    }
+
+    /// Create a storage path.
+    pub async fn storage_path_create(&self, body: &Value) -> Result<Value, PaperlessError> {
+        self.post_value("/api/storage_paths/", body).await
     }
 }
 

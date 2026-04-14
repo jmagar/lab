@@ -1,6 +1,6 @@
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
-use super::{calendar, commands, config, history, movies, queue, system};
+use super::{calendar, commands, config, customformat, history, movies, queue, system, wanted};
 
 pub fn actions() -> &'static [ActionSpec] {
     static ACTIONS: std::sync::LazyLock<&'static [ActionSpec]> = std::sync::LazyLock::new(|| {
@@ -32,6 +32,8 @@ pub fn actions() -> &'static [ActionSpec] {
         all.extend_from_slice(commands::ACTIONS);
         all.extend_from_slice(history::ACTIONS);
         all.extend_from_slice(config::ACTIONS);
+        all.extend_from_slice(wanted::ACTIONS);
+        all.extend_from_slice(customformat::ACTIONS);
         Vec::leak(all)
     });
     &ACTIONS

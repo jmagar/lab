@@ -15,6 +15,7 @@ categories             = ["api-bindings", "command-line-utilities"]
 tokio.workspace       = true
 futures.workspace     = true
 reqwest.workspace     = true
+base64.workspace      = true
 url.workspace         = true
 serde.workspace       = true
 serde_json.workspace  = true
@@ -59,6 +60,14 @@ all = [
     "arcane", "unraid", "unifi",
     "gotify", "openai", "qdrant", "tei", "apprise",
 ]
+
+[[test]]
+name     = "plex_client"
+required-features = ["plex"]
+
+[[test]]
+name     = "gotify_client"
+required-features = ["gotify"]
 
 [lints]
 workspace = true

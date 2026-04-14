@@ -72,4 +72,104 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    ActionSpec {
+        name: "embed.rerank",
+        description: "Rerank texts against a query (POST /rerank). Max 100 texts per call — split larger batches across multiple requests.",
+        destructive: false,
+        returns: "RerankHit[]",
+        params: &[
+            ParamSpec {
+                name: "query",
+                ty: "string",
+                required: true,
+                description: "Query string to rank texts against",
+            },
+            ParamSpec {
+                name: "texts",
+                ty: "json",
+                required: true,
+                description: "Array of candidate texts (max 100)",
+            },
+            ParamSpec {
+                name: "truncate",
+                ty: "bool",
+                required: false,
+                description: "Whether to truncate overlong inputs",
+            },
+            ParamSpec {
+                name: "raw_scores",
+                ty: "bool",
+                required: false,
+                description: "Return raw logit scores instead of probabilities",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "embed.tokenize",
+        description: "Tokenize one or more input strings (POST /tokenize). Returns token-id sequences.",
+        destructive: false,
+        returns: "u32[][]",
+        params: &[
+            ParamSpec {
+                name: "inputs",
+                ty: "json",
+                required: true,
+                description: "String or array of strings to tokenize",
+            },
+            ParamSpec {
+                name: "add_special_tokens",
+                ty: "bool",
+                required: false,
+                description: "Whether to add model special tokens (e.g. CLS/SEP)",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "embed.similarity",
+        description: "Compute pairwise similarity scores for sentence pairs (POST /similarity). Inputs must be an array of [string, string] pairs.",
+        destructive: false,
+        returns: "f32[]",
+        params: &[
+            ParamSpec {
+                name: "inputs",
+                ty: "json",
+                required: true,
+                description: "Array of [sentence_a, sentence_b] string pairs",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "embed.sparse",
+        description: "Generate sparse (SPLADE-style) embeddings for one or more inputs (POST /embed_sparse).",
+        destructive: false,
+        returns: "SparseToken[][]",
+        params: &[
+            ParamSpec {
+                name: "inputs",
+                ty: "json",
+                required: true,
+                description: "String or array of strings to embed",
+            },
+            ParamSpec {
+                name: "truncate",
+                ty: "bool",
+                required: false,
+                description: "Whether to truncate overlong inputs",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "embed.openai",
+        description: "Generate embeddings via the OpenAI-compatible endpoint (POST /v1/embeddings). Body and response are passed through as raw JSON.",
+        destructive: false,
+        returns: "json",
+        params: &[
+            ParamSpec {
+                name: "body",
+                ty: "json",
+                required: true,
+                description: "Full OpenAI-compatible request body (e.g. {model, input})",
+            },
+        ],
+    },
 ];

@@ -9,8 +9,8 @@ use crate::dispatch::helpers::{action_schema, help_payload, to_json};
 use super::catalog::ACTIONS;
 use super::client::require_client;
 use super::params::{
-    add_series_from_params, calendar_query_from_params, history_query_from_params,
-    optional_u32, queue_query_from_params, require_i64, require_str,
+    add_series_from_params, calendar_query_from_params, episode_ids_from_params,
+    history_query_from_params, optional_u32, queue_query_from_params, require_i64, require_str,
 };
 
 /// Dispatch using a pre-built client (avoids per-request env reads and
@@ -103,6 +103,70 @@ pub async fn dispatch_with_client(
         "qualityprofile.list" => to_json(client.qualityprofile_list().await?),
         // ── Language Profiles ─────────────────────────────────────────────────
         "languageprofile.list" => to_json(client.languageprofile_list().await?),
+        // ── Series Edit ───────────────────────────────────────────────────────
+        "series.edit" => {
+            let id = require_i64(&params, "id")?;
+            let body = params
+                .get("body")
+                .cloned()
+                .ok_or_else(|| ToolError::MissingParam { param: "body".to_string(), message: "parameter `body` is required".to_string() })?;
+            to_json(client.series_edit(id, &body).await?)
+        }
+        // ── Episode Monitor ───────────────────────────────────────────────────
+        "episode.monitor" => {
+            let episode_ids = episode_ids_from_params(&params)?;
+            let monitored = params
+                .get("monitored")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| ToolError::MissingParam { param: "monitored".to_string(), message: "parameter `monitored` is required".to_string() })?;
+            to_json(client.episode_monitor(&episode_ids, monitored).await?)
+        }
+        // ── Wanted Cutoff ─────────────────────────────────────────────────────
+        "wanted.cutoff" => {
+            let page = optional_u32(&params, "page")?;
+            let page_size = optional_u32(&params, "page_size")?;
+            to_json(client.wanted_cutoff(page, page_size).await?)
+        }
+        // ── Releases ──────────────────────────────────────────────────────────
+        "release.search" => {
+            let series_id = params.get("series_id").and_then(Value::as_i64);
+            let season_number = params.get("season_number").and_then(Value::as_i64).map(|n| n as i32);
+            to_json(client.release_search(series_id, season_number).await?)
+        }
+        "release.grab" => {
+            let guid = require_str(&params, "guid")?;
+            let body = serde_json::json!({ "guid": guid });
+            to_json(client.release_grab(&body).await?)
+        }
+        // ── History Series / Failed Retry ─────────────────────────────────────
+        "history.series" => {
+            let series_id = require_i64(&params, "series_id")?;
+            to_json(client.history_series(series_id).await?)
+        }
+        "history.failed-retry" => {
+            let id = require_i64(&params, "id")?;
+            client.history_failed_retry(id).await?;
+            Ok(serde_json::json!({ "retried": true }))
+        }
+        // ── Blocklist ─────────────────────────────────────────────────────────
+        "blocklist.list" => to_json(client.blocklist_list().await?),
+        "blocklist.delete" => {
+            let id = require_i64(&params, "id")?;
+            client.blocklist_delete(id).await?;
+            Ok(serde_json::json!({ "deleted": true }))
+        }
+        // ── Episode File ──────────────────────────────────────────────────────
+        "episodefile.delete" => {
+            let id = require_i64(&params, "id")?;
+            client.episodefile_delete(id).await?;
+            Ok(serde_json::json!({ "deleted": true }))
+        }
+        // ── System ────────────────────────────────────────────────────────────
+        "system.restart" => {
+            client.system_restart().await?;
+            Ok(serde_json::json!({ "restarted": true }))
+        }
+        "system.backup" => to_json(client.system_backup().await?),
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

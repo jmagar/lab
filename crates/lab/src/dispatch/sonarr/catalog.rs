@@ -351,4 +351,173 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "LanguageProfile[]",
         params: &[],
     },
+    // ── Series Edit ───────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "series.edit",
+        description: "Update an existing series with a full series resource body",
+        destructive: false,
+        returns: "Series",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "i64",
+                required: true,
+                description: "Sonarr series ID",
+            },
+            ParamSpec {
+                name: "body",
+                ty: "object",
+                required: true,
+                description: "Full series resource JSON (obtain via series.get then modify)",
+            },
+        ],
+    },
+    // ── Episode Monitor ───────────────────────────────────────────────────────
+    ActionSpec {
+        name: "episode.monitor",
+        description: "Set monitored state for one or more episodes",
+        destructive: false,
+        returns: "object",
+        params: &[
+            ParamSpec {
+                name: "episode_ids",
+                ty: "i64[]",
+                required: true,
+                description: "List of episode IDs to update",
+            },
+            ParamSpec {
+                name: "monitored",
+                ty: "bool",
+                required: true,
+                description: "Whether to monitor the episodes",
+            },
+        ],
+    },
+    // ── Wanted Cutoff ─────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "wanted.cutoff",
+        description: "List episodes that have not met their cutoff quality",
+        destructive: false,
+        returns: "WantedPage",
+        params: &[
+            ParamSpec {
+                name: "page",
+                ty: "u32",
+                required: false,
+                description: "Page number (1-based)",
+            },
+            ParamSpec {
+                name: "page_size",
+                ty: "u32",
+                required: false,
+                description: "Number of results per page",
+            },
+        ],
+    },
+    // ── Releases ──────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "release.search",
+        description: "Search for available releases for a series or season",
+        destructive: false,
+        returns: "Release[]",
+        params: &[
+            ParamSpec {
+                name: "series_id",
+                ty: "i64",
+                required: false,
+                description: "Sonarr series ID to search releases for",
+            },
+            ParamSpec {
+                name: "season_number",
+                ty: "i32",
+                required: false,
+                description: "Season number to search releases for",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "release.grab",
+        description: "Grab a release by GUID and send to download client",
+        destructive: false,
+        returns: "object",
+        params: &[ParamSpec {
+            name: "guid",
+            ty: "string",
+            required: true,
+            description: "Release GUID from release.search results",
+        }],
+    },
+    // ── History Series / Failed Retry ─────────────────────────────────────────
+    ActionSpec {
+        name: "history.series",
+        description: "List history records for a specific series",
+        destructive: false,
+        returns: "HistoryRecord[]",
+        params: &[ParamSpec {
+            name: "series_id",
+            ty: "i64",
+            required: true,
+            description: "Sonarr series ID",
+        }],
+    },
+    ActionSpec {
+        name: "history.failed-retry",
+        description: "Retry a failed download by history ID",
+        destructive: false,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "i64",
+            required: true,
+            description: "History record ID of the failed download",
+        }],
+    },
+    // ── Blocklist ─────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "blocklist.list",
+        description: "List all blocklisted releases",
+        destructive: false,
+        returns: "BlocklistPage",
+        params: &[],
+    },
+    ActionSpec {
+        name: "blocklist.delete",
+        description: "Remove a release from the blocklist by ID",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "i64",
+            required: true,
+            description: "Blocklist entry ID",
+        }],
+    },
+    // ── Episode File ──────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "episodefile.delete",
+        description: "Delete an episode file from disk by ID",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "i64",
+            required: true,
+            description: "Episode file ID",
+        }],
+    },
+    // ── System ────────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "system.restart",
+        description: "Restart the Sonarr application",
+        destructive: true,
+        returns: "void",
+        params: &[],
+    },
+    ActionSpec {
+        name: "system.backup",
+        description: "List available system backup files",
+        destructive: false,
+        returns: "Backup[]",
+        params: &[],
+    },
 ];

@@ -5,7 +5,10 @@ use serde_json::Value;
 use crate::core::{Auth, HttpClient};
 
 use super::error::MemosError;
-use super::types::{CreateMemoRequest, ListMemosParams, UpdateMemoRequest};
+use super::types::{
+    Attachment, Comment, CreateCommentRequest, CreateMemoRequest, CreateWebhookRequest,
+    ListMemosParams, MemoUser, ShareLink, UpdateMemoRequest, UserStats, Webhook,
+};
 
 /// Client for a Memos instance (v1 API).
 pub struct MemosClient {
@@ -162,5 +165,140 @@ impl MemosClient {
     /// Returns `MemosError::Api` on HTTP failure.
     pub async fn user_me(&self) -> Result<Value, MemosError> {
         self.get_value("/api/v1/users/me").await
+    }
+
+    /// List all users (admin only; propagates 403 as `MemosError::Api(ApiError::Auth)`).
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure, including 403 for non-admins.
+    pub async fn users_list(&self) -> Result<Vec<MemoUser>, MemosError> {
+        Ok(self.http.get_json("/api/v1/users").await?)
+    }
+
+    /// Get statistics for a user by resource name (e.g. `"users/1"` or `"users/me"`).
+    ///
+    /// Uses the Google-API-style colon path: `/api/v1/{user}:getStats`.
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn user_stats(&self, user: &str) -> Result<UserStats, MemosError> {
+        Ok(self.http.get_json(&format!("/api/v1/{user}:getStats")).await?)
+    }
+
+    // ── Webhooks ──────────────────────────────────────────────────────────
+
+    /// List webhooks for a user by resource name (e.g. `"users/1"`).
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn webhooks_list(&self, user: &str) -> Result<Vec<Webhook>, MemosError> {
+        Ok(self
+            .http
+            .get_json(&format!("/api/v1/{user}/webhooks"))
+            .await?)
+    }
+
+    /// Create a webhook for a user.
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn webhook_create(
+        &self,
+        user: &str,
+        req: &CreateWebhookRequest,
+    ) -> Result<Webhook, MemosError> {
+        Ok(self
+            .http
+            .post_json(&format!("/api/v1/{user}/webhooks"), req)
+            .await?)
+    }
+
+    // ── Attachments ───────────────────────────────────────────────────────
+
+    /// Upload a file attachment via multipart/form-data POST.
+    ///
+    /// The `file_bytes` are the raw file content, `filename` is the original name,
+    /// and `mime_type` is the MIME type (e.g. `"image/png"`).
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn attachment_upload(
+        &self,
+        filename: &str,
+        file_bytes: Vec<u8>,
+        mime_type: &str,
+    ) -> Result<Attachment, MemosError> {
+        let part = reqwest::multipart::Part::bytes(file_bytes)
+            .file_name(filename.to_string())
+            .mime_str(mime_type)
+            .map_err(|e| {
+                crate::core::ApiError::Internal(format!("invalid mime type: {e}"))
+            })?;
+        let form = reqwest::multipart::Form::new().part("file", part);
+        Ok(self
+            .http
+            .post_multipart("/api/v1/attachments", form)
+            .await?)
+    }
+
+    /// Delete an attachment by resource name (e.g. `"attachments/123"`).
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn attachment_delete(&self, name: &str) -> Result<(), MemosError> {
+        self.delete_value(&format!("/api/v1/{name}")).await
+    }
+
+    // ── Memo comments ─────────────────────────────────────────────────────
+
+    /// List comments for a memo by memo resource name (e.g. `"memos/123"`).
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn memo_comments_list(&self, memo_name: &str) -> Result<Vec<Comment>, MemosError> {
+        Ok(self
+            .http
+            .get_json(&format!("/api/v1/{memo_name}/comments"))
+            .await?)
+    }
+
+    /// Create a comment on a memo.
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn memo_comment_create(
+        &self,
+        memo_name: &str,
+        req: &CreateCommentRequest,
+    ) -> Result<Comment, MemosError> {
+        Ok(self
+            .http
+            .post_json(&format!("/api/v1/{memo_name}/comments"), req)
+            .await?)
+    }
+
+    // ── Memo shares ───────────────────────────────────────────────────────
+
+    /// List share links for a memo by memo resource name (e.g. `"memos/123"`).
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn memo_shares_list(&self, memo_name: &str) -> Result<Vec<ShareLink>, MemosError> {
+        Ok(self
+            .http
+            .get_json(&format!("/api/v1/{memo_name}/shares"))
+            .await?)
+    }
+
+    /// Create a share link for a memo.
+    ///
+    /// # Errors
+    /// Returns `MemosError::Api` on HTTP failure.
+    pub async fn memo_share_create(&self, memo_name: &str) -> Result<ShareLink, MemosError> {
+        // POST with an empty body — Memos creates a share link without parameters.
+        Ok(self
+            .http
+            .post_json(&format!("/api/v1/{memo_name}/shares"), &serde_json::json!({}))
+            .await?)
     }
 }

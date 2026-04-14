@@ -57,6 +57,70 @@ pub async fn dispatch_with_client(
             to_json(client.container_redeploy(&env_id, &container_id).await?)
         }
 
+        // ── Projects ──────────────────────────────────────────────────────────
+        "project.list" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            to_json(client.projects_list(&env_id).await?)
+        }
+        "project.create" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            let body = params_value
+                .get("body")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            to_json(client.project_create(&env_id, &body).await?)
+        }
+        "project.up" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            let project_id = params::project_id_from_params(&params_value)?;
+            to_json(client.project_up(&env_id, &project_id).await?)
+        }
+        "project.down" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            let project_id = params::project_id_from_params(&params_value)?;
+            to_json(client.project_down(&env_id, &project_id).await?)
+        }
+        "project.redeploy" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            let project_id = params::project_id_from_params(&params_value)?;
+            to_json(client.project_redeploy(&env_id, &project_id).await?)
+        }
+
+        // ── Volumes ───────────────────────────────────────────────────────────
+        "volume.list" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            to_json(client.volumes_list(&env_id).await?)
+        }
+        "volume.delete" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            let volume_name = params::volume_name_from_params(&params_value)?;
+            client.volume_delete(&env_id, &volume_name).await?;
+            to_json(serde_json::json!({ "success": true }))
+        }
+        "volume.prune" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            to_json(client.volumes_prune(&env_id).await?)
+        }
+
+        // ── Images ────────────────────────────────────────────────────────────
+        "image.list" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            to_json(client.images_list(&env_id).await?)
+        }
+        "image.pull" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            let image = params::image_from_params(&params_value)?;
+            to_json(client.image_pull(&env_id, &image).await?)
+        }
+        "image.prune" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            to_json(client.images_prune(&env_id).await?)
+        }
+        "image.update-summary" => {
+            let env_id = params::env_id_from_params(&params_value)?;
+            to_json(client.image_update_summary(&env_id).await?)
+        }
+
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

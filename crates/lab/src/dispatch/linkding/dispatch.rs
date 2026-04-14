@@ -2,7 +2,7 @@ use lab_apis::linkding::LinkdingClient;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
+use crate::dispatch::helpers::{action_schema, help_payload, require_i64, require_str, to_json};
 use crate::dispatch::linkding::catalog::ACTIONS;
 use crate::dispatch::linkding::client;
 use crate::dispatch::linkding::params::{self, require_id_u64};
@@ -70,6 +70,31 @@ pub async fn dispatch_with_client(
         }
         // ── User ──────────────────────────────────────────────────────────
         "user.profile" => to_json(client.user_profile().await?),
+        // ── Bundles ───────────────────────────────────────────────────────
+        "bundle.list" => to_json(client.bundles_list().await?),
+        "bundle.create" => {
+            let body = params::bundle_create_from_params(&params_value)?;
+            to_json(client.bundle_create(&body).await?)
+        }
+        "bundle.update" => {
+            let id = require_i64(&params_value, "id")?;
+            let patch = params::bundle_update_body_from_params(&params_value);
+            to_json(client.bundle_update(id, &patch).await?)
+        }
+        "bundle.delete" => {
+            let id = require_i64(&params_value, "id")?;
+            client.bundle_delete(id).await?;
+            Ok(Value::Null)
+        }
+        // ── Bookmark Assets ───────────────────────────────────────────────
+        "bookmark.assets" => {
+            let id = require_i64(&params_value, "id")?;
+            to_json(client.bookmark_assets(id).await?)
+        }
+        "bookmark.assets-upload" => {
+            let (id, file_name, file_bytes) = params::asset_upload_params(&params_value)?;
+            to_json(client.bookmark_assets_upload(id, file_name, file_bytes).await?)
+        }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

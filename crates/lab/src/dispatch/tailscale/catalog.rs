@@ -122,4 +122,161 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "DnsSearchPaths",
         params: &[],
     },
+    ActionSpec {
+        name: "dns.split-get",
+        description: "Get the split DNS configuration for the tailnet",
+        destructive: false,
+        returns: "object",
+        params: &[],
+    },
+    ActionSpec {
+        name: "dns.split-set",
+        description: "Replace the split DNS configuration for the tailnet",
+        destructive: false,
+        returns: "object",
+        params: &[ParamSpec {
+            name: "config",
+            ty: "object",
+            required: true,
+            description: "Split DNS config object mapping domain suffixes to resolver lists",
+        }],
+    },
+    // ── ACL / Policy ──────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "acl.get",
+        description: "Get the current ACL policy file for the tailnet",
+        destructive: false,
+        returns: "object",
+        params: &[],
+    },
+    ActionSpec {
+        name: "acl.validate",
+        description: "Validate an ACL policy file without applying it",
+        destructive: false,
+        returns: "object",
+        params: &[ParamSpec {
+            name: "policy",
+            ty: "object",
+            required: true,
+            description: "HuJSON policy object to validate",
+        }],
+    },
+    ActionSpec {
+        name: "acl.set",
+        description: "Set the ACL policy file for the tailnet (validates first)",
+        destructive: false,
+        returns: "object",
+        params: &[ParamSpec {
+            name: "policy",
+            ty: "object",
+            required: true,
+            description: "HuJSON policy object to apply",
+        }],
+    },
+    // ── Device extended ops ────────────────────────────────────────────────────
+    ActionSpec {
+        name: "device.routes-get",
+        description: "Get advertised and accepted routes for a device",
+        destructive: false,
+        returns: "object",
+        params: &[ParamSpec {
+            name: "device_id",
+            ty: "string",
+            required: true,
+            description: "Device node ID (nodeId) or legacy numeric ID",
+        }],
+    },
+    ActionSpec {
+        name: "device.routes-set",
+        description: "Set the subnet routes for a device",
+        destructive: false,
+        returns: "object",
+        params: &[
+            ParamSpec {
+                name: "device_id",
+                ty: "string",
+                required: true,
+                description: "Device node ID (nodeId) or legacy numeric ID",
+            },
+            ParamSpec {
+                name: "routes",
+                ty: "array",
+                required: true,
+                description: "List of CIDR routes to advertise",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "device.tag",
+        description: "Set tags on a device (replaces existing tags)",
+        destructive: false,
+        returns: "void",
+        params: &[
+            ParamSpec {
+                name: "device_id",
+                ty: "string",
+                required: true,
+                description: "Device node ID (nodeId) or legacy numeric ID",
+            },
+            ParamSpec {
+                name: "tags",
+                ty: "array",
+                required: true,
+                description: "List of ACL tags to apply (e.g. [\"tag:server\"])",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "device.expire",
+        description: "Expire the key for a device, forcing re-authentication",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "device_id",
+            ty: "string",
+            required: true,
+            description: "Device node ID (nodeId) or legacy numeric ID",
+        }],
+    },
+    // ── Users ──────────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "user.list",
+        description: "List all users in the tailnet",
+        destructive: false,
+        returns: "object",
+        params: &[],
+    },
+    // ── Tailnet Settings ───────────────────────────────────────────────────────
+    ActionSpec {
+        name: "tailnet.settings-get",
+        description: "Get tailnet-level settings",
+        destructive: false,
+        returns: "object",
+        params: &[],
+    },
+    ActionSpec {
+        name: "tailnet.settings-patch",
+        description: "Patch tailnet-level settings",
+        destructive: false,
+        returns: "object",
+        params: &[ParamSpec {
+            name: "settings",
+            ty: "object",
+            required: true,
+            description: "Partial settings object with fields to update",
+        }],
+    },
+    // ── Key (extended) ─────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "key.create",
+        description: "Create a new auth key for the tailnet",
+        destructive: false,
+        returns: "object",
+        params: &[ParamSpec {
+            name: "capabilities",
+            ty: "object",
+            required: true,
+            description: "Capabilities object (e.g. {\"devices\":{\"create\":{\"reusable\":true}}})",
+        }],
+    },
 ];

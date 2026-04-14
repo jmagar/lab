@@ -151,4 +151,158 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "Value",
         params: &[],
     },
+    ActionSpec {
+        name: "user.list",
+        description: "List all users (admin only; returns auth_failed for non-admins)",
+        destructive: false,
+        returns: "Value",
+        params: &[],
+    },
+    ActionSpec {
+        name: "user.stats",
+        description: "Get memo statistics for a user by resource name (e.g. \"users/1\" or \"users/me\")",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "user",
+            ty: "string",
+            required: true,
+            description: "User resource name, e.g. \"users/1\" or \"users/me\"",
+        }],
+    },
+    // ── Webhooks ──────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "webhook.list",
+        description: "List webhooks for a user by resource name",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "user",
+            ty: "string",
+            required: true,
+            description: "User resource name, e.g. \"users/1\" or \"users/me\"",
+        }],
+    },
+    ActionSpec {
+        name: "webhook.create",
+        description: "Create a webhook for a user",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "user",
+                ty: "string",
+                required: true,
+                description: "User resource name, e.g. \"users/1\" or \"users/me\"",
+            },
+            ParamSpec {
+                name: "url",
+                ty: "string",
+                required: true,
+                description: "Webhook target URL to POST events to",
+            },
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Display name for the webhook",
+            },
+        ],
+    },
+    // ── Attachments ───────────────────────────────────────────────────────
+    ActionSpec {
+        name: "attachment.upload",
+        description: "Upload a file attachment via multipart/form-data (base64-encoded bytes)",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "filename",
+                ty: "string",
+                required: true,
+                description: "Original filename, e.g. \"photo.png\"",
+            },
+            ParamSpec {
+                name: "data_base64",
+                ty: "string",
+                required: true,
+                description: "Base64-encoded file content",
+            },
+            ParamSpec {
+                name: "mime_type",
+                ty: "string",
+                required: true,
+                description: "MIME type, e.g. \"image/png\" or \"application/pdf\"",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "attachment.delete",
+        description: "Delete an attachment by resource name",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "name",
+            ty: "string",
+            required: true,
+            description: "Attachment resource name, e.g. \"attachments/123\"",
+        }],
+    },
+    // ── Memo sub-resources ─────────────────────────────────────────────────
+    ActionSpec {
+        name: "memo.comment-list",
+        description: "List comments on a memo",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "name",
+            ty: "string",
+            required: true,
+            description: "Memo resource name, e.g. \"memos/123\"",
+        }],
+    },
+    ActionSpec {
+        name: "memo.comment-create",
+        description: "Create a comment on a memo",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Memo resource name, e.g. \"memos/123\"",
+            },
+            ParamSpec {
+                name: "content",
+                ty: "string",
+                required: true,
+                description: "Comment text content",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "memo.share-list",
+        description: "List share links for a memo",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "name",
+            ty: "string",
+            required: true,
+            description: "Memo resource name, e.g. \"memos/123\"",
+        }],
+    },
+    ActionSpec {
+        name: "memo.share-create",
+        description: "Create a share link for a memo",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "name",
+            ty: "string",
+            required: true,
+            description: "Memo resource name, e.g. \"memos/123\"",
+        }],
+    },
 ];

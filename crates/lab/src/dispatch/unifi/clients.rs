@@ -67,6 +67,66 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    ActionSpec {
+        name: "client.history",
+        description: "Retrieve connection history for one client by MAC address",
+        destructive: false,
+        returns: "Page",
+        params: &[
+            ParamSpec {
+                name: "site_id",
+                ty: "string",
+                required: true,
+                description: "Site UUID",
+            },
+            ParamSpec {
+                name: "client_mac",
+                ty: "string",
+                required: true,
+                description: "Client MAC address",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "client.block",
+        description: "Block a client by MAC address (cuts network access)",
+        destructive: true,
+        returns: "Confirmation",
+        params: &[
+            ParamSpec {
+                name: "site_id",
+                ty: "string",
+                required: true,
+                description: "Site UUID",
+            },
+            ParamSpec {
+                name: "client_mac",
+                ty: "string",
+                required: true,
+                description: "Client MAC address",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "client.unblock",
+        description: "Unblock a previously blocked client by MAC address",
+        destructive: false,
+        returns: "Confirmation",
+        params: &[
+            ParamSpec {
+                name: "site_id",
+                ty: "string",
+                required: true,
+                description: "Site UUID",
+            },
+            ParamSpec {
+                name: "client_mac",
+                ty: "string",
+                required: true,
+                description: "Client MAC address",
+            },
+        ],
+    },
 ];
 
 pub async fn dispatch(
@@ -93,6 +153,38 @@ pub async fn dispatch(
             let result = client
                 .post_value(
                     &format!("/sites/{site_id}/clients/{client_id}/actions"),
+                    &body,
+                )
+                .await?;
+            to_json(result)
+        }
+        "client.history" => {
+            let site_id = require_str(&params, "site_id")?;
+            let client_mac = require_str(&params, "client_mac")?;
+            let history = client
+                .get_value(&format!("/sites/{site_id}/clients/{client_mac}/history"))
+                .await?;
+            to_json(history)
+        }
+        "client.block" => {
+            let site_id = require_str(&params, "site_id")?;
+            let client_mac = require_str(&params, "client_mac")?;
+            let body = serde_json::json!({});
+            let result = client
+                .post_value(
+                    &format!("/sites/{site_id}/clients/{client_mac}/block"),
+                    &body,
+                )
+                .await?;
+            to_json(result)
+        }
+        "client.unblock" => {
+            let site_id = require_str(&params, "site_id")?;
+            let client_mac = require_str(&params, "client_mac")?;
+            let body = serde_json::json!({});
+            let result = client
+                .post_value(
+                    &format!("/sites/{site_id}/clients/{client_mac}/unblock"),
                     &body,
                 )
                 .await?;

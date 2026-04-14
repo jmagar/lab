@@ -314,6 +314,174 @@ impl HttpClient {
         Self::check_status(resp, &ctx).await
     }
 
+    /// POST a plain-text body, discarding the response body on success.
+    ///
+    /// Sets `Content-Type: text/plain` on the outgoing request.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport or status failure.
+    pub async fn post_text_void(&self, path: &str, text: &str) -> Result<(), ApiError> {
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
+        let resp = self
+            .send(
+                self.apply_auth(
+                    self.inner
+                        .post(url.clone())
+                        .header("Content-Type", "text/plain")
+                        .body(text.to_owned()),
+                ),
+                &ctx,
+            )
+            .await?;
+        Self::check_status(resp, &ctx).await
+    }
+
+    /// POST an empty body and return the response body as a UTF-8 string.
+    ///
+    /// Used by APIs (such as apprise-api `/get/{key}`) that expose a POST
+    /// endpoint returning plain text (YAML, config blobs, etc.).
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or UTF-8 decode failure.
+    pub async fn post_empty_get_text(&self, path: &str) -> Result<String, ApiError> {
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
+        let resp = self
+            .send(
+                self.apply_auth(self.inner.post(url.clone()).body("")),
+                &ctx,
+            )
+            .await?;
+        if resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.map_err(|e| ApiError::Decode(e.to_string()));
+            match &text {
+                Ok(_) => Self::log_finish(&ctx, status),
+                Err(err) => Self::log_error(&ctx, err),
+            }
+            return text;
+        }
+        let (code, body) = Self::read_error_body(resp).await;
+        let err = Self::error_for_status(code, body);
+        Self::log_error(&ctx, &err);
+        Err(err)
+    }
+
+    /// GET a path and return the raw response as a UTF-8 string.
+    ///
+    /// Useful for endpoints that return `text/plain` or `text/yaml` instead of JSON.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or UTF-8 decode failure.
+    pub async fn get_text(&self, path: &str) -> Result<String, ApiError> {
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("GET", &url);
+        let resp = self
+            .send(self.apply_auth(self.inner.get(url.clone())), &ctx)
+            .await?;
+        if resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let text = resp.text().await.map_err(|e| ApiError::Decode(e.to_string()));
+            match &text {
+                Ok(_) => Self::log_finish(&ctx, status),
+                Err(err) => Self::log_error(&ctx, err),
+            }
+            return text;
+        }
+        let (code, body) = Self::read_error_body(resp).await;
+        let err = Self::error_for_status(code, body);
+        Self::log_error(&ctx, &err);
+        Err(err)
+    }
+
+    /// GET a path and return the raw response bytes.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport or status failure.
+    pub async fn get_bytes(&self, path: &str) -> Result<Vec<u8>, ApiError> {
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("GET", &url);
+        let resp = self
+            .send(self.apply_auth(self.inner.get(url.clone())), &ctx)
+            .await?;
+        if resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let bytes = resp.bytes().await.map_err(|e| ApiError::Decode(e.to_string()))?;
+            Self::log_finish(&ctx, status);
+            return Ok(bytes.to_vec());
+        }
+        let (code, body) = Self::read_error_body(resp).await;
+        let err = Self::error_for_status(code, body);
+        Self::log_error(&ctx, &err);
+        Err(err)
+    }
+
+    /// POST a multipart/form-data body and decode the JSON response.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn post_multipart<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        form: reqwest::multipart::Form,
+    ) -> Result<T, ApiError> {
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
+        let resp = self
+            .send(
+                self.apply_auth(self.inner.post(url.clone()).multipart(form)),
+                &ctx,
+            )
+            .await?;
+        Self::decode(resp, &ctx).await
+    }
+
+    /// POST a URL-encoded form body, discarding the response body on success.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn post_form_void(&self, path: &str, fields: &[(&str, &str)]) -> Result<(), ApiError> {
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
+        let params: Vec<(&str, &str)> = fields.to_vec();
+        let resp = self
+            .send(
+                self.apply_auth(self.inner.post(url.clone()).form(&params)),
+                &ctx,
+            )
+            .await?;
+        Self::check_status(resp, &ctx).await
+    }
+
+    /// POST a URL-encoded form body and decode the JSON response.
+    ///
+    /// # Errors
+    /// Returns [`ApiError`] on transport, status, or decode failure.
+    pub async fn post_form_json<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        fields: &[(&str, &str)],
+    ) -> Result<T, ApiError> {
+        let url = Url::parse(&self.url(path)?)
+            .map_err(|e| ApiError::Internal(format!("invalid url: {e}")))?;
+        let ctx = RequestLogContext::new("POST", &url);
+        let params: Vec<(&str, &str)> = fields.to_vec();
+        let resp = self
+            .send(
+                self.apply_auth(self.inner.post(url.clone()).form(&params)),
+                &ctx,
+            )
+            .await?;
+        Self::decode(resp, &ctx).await
+    }
+
     /// POST a GraphQL query and decode the `data` field of the response.
     ///
     /// Unlike REST endpoints, GraphQL servers always return HTTP 200 — even when the

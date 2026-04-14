@@ -105,6 +105,26 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "Page",
         params: &[],
     },
+    ActionSpec {
+        name: "wan.get",
+        description: "Inspect one WAN interface for one site",
+        destructive: false,
+        returns: "Wan",
+        params: &[
+            ParamSpec {
+                name: "site_id",
+                ty: "string",
+                required: true,
+                description: "Site UUID",
+            },
+            ParamSpec {
+                name: "wan_id",
+                ty: "string",
+                required: true,
+                description: "WAN interface UUID",
+            },
+        ],
+    },
 ];
 
 pub async fn dispatch(
@@ -180,6 +200,14 @@ pub async fn dispatch(
                 client.get_value_query("/countries", &q).await?
             };
             to_json(countries)
+        }
+        "wan.get" => {
+            let site_id = require_str(&params, "site_id")?;
+            let wan_id = require_str(&params, "wan_id")?;
+            let wan = client
+                .get_value(&format!("/sites/{site_id}/wans/{wan_id}"))
+                .await?;
+            to_json(wan)
         }
         _ => Err(ToolError::UnknownAction {
             message: format!("unknown action `{action}` for service `unifi`"),

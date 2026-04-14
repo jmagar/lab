@@ -309,3 +309,174 @@ pub struct DiskInfo {
     pub temperature: Option<f64>,
     pub serial_num: String,
 }
+
+// ---------------------------------------------------------------------------
+// VM
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `vms` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VmsData {
+    pub vms: Vec<VmInfo>,
+}
+
+/// A single VM entry.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VmInfo {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cores: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<String>,
+}
+
+/// Wrapper for VM action mutations.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VmActionData {
+    pub vm_action: Option<serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `notifications` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NotificationsData {
+    pub notifications: Vec<NotificationInfo>,
+}
+
+/// A single notification entry.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationInfo {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub importance: Option<String>,
+    #[serde(rename = "type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notification_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+}
+
+/// Wrapper for `createNotification` mutation.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateNotificationData {
+    pub create_notification: Option<serde_json::Value>,
+}
+
+/// Wrapper for `archiveNotification` mutation.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveNotificationData {
+    pub archive_notification: Option<serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// Parity
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `parityHistory` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParityHistoryData {
+    pub parity_history: Vec<serde_json::Value>,
+}
+
+/// Wrapper for `parityCheck` mutation.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParityCheckData {
+    pub parity_check: Option<serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// Shares
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `shares` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SharesData {
+    pub shares: Vec<serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// Plugins
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `installedUnraidPlugins` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginsData {
+    pub installed_unraid_plugins: Vec<serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// Network
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `network` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NetworkData {
+    pub network: serde_json::Value,
+}
+
+// ---------------------------------------------------------------------------
+// UPS
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `upsDevices` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsDevicesData {
+    pub ups_devices: Vec<serde_json::Value>,
+}
+
+/// Wrapper for the `upsConfiguration` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsConfigData {
+    pub ups_configuration: serde_json::Value,
+}
+
+// ---------------------------------------------------------------------------
+// Log file
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `logFile` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogFileData {
+    pub log_file: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Flash
+// ---------------------------------------------------------------------------
+
+/// Wrapper for the `flash` query response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FlashData {
+    pub flash: serde_json::Value,
+}
+
+/// Wrapper for `initiateFlashBackup` mutation.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlashBackupData {
+    pub initiate_flash_backup: Option<serde_json::Value>,
+}

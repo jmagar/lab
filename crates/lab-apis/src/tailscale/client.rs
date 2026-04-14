@@ -146,4 +146,168 @@ impl TailscaleClient {
             .get_json(&self.tailnet_path("/dns/searchpaths"))
             .await?)
     }
+
+    /// Get the split DNS configuration for the tailnet.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn dns_split_get(&self) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self
+            .http
+            .get_json(&self.tailnet_path("/dns/split-dns"))
+            .await?)
+    }
+
+    /// Replace the split DNS configuration for the tailnet.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn dns_split_set(
+        &self,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self
+            .http
+            .put_json(&self.tailnet_path("/dns/split-dns"), body)
+            .await?)
+    }
+
+    // ── ACL / Policy ─────────────────────────────────────────────────────────
+
+    /// Get the current ACL policy file for the tailnet.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn acl_get(&self) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self.http.get_json(&self.tailnet_path("/acl")).await?)
+    }
+
+    /// Validate an ACL policy file without applying it.
+    ///
+    /// Returns any validation errors from the API.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn acl_validate(
+        &self,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self
+            .http
+            .post_json(&self.tailnet_path("/acl/validate"), body)
+            .await?)
+    }
+
+    /// Set the ACL policy file for the tailnet.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn acl_set(
+        &self,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self
+            .http
+            .post_json(&self.tailnet_path("/acl"), body)
+            .await?)
+    }
+
+    // ── Device extended ops ───────────────────────────────────────────────────
+
+    /// Get advertised and accepted routes for a device.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn device_routes_get(
+        &self,
+        device_id: &str,
+    ) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self
+            .http
+            .get_json(&format!("/device/{device_id}/routes"))
+            .await?)
+    }
+
+    /// Set the routes for a device.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn device_routes_set(
+        &self,
+        device_id: &str,
+        routes: &[String],
+    ) -> Result<serde_json::Value, TailscaleError> {
+        let body = serde_json::json!({ "routes": routes });
+        Ok(self
+            .http
+            .post_json(&format!("/device/{device_id}/routes"), &body)
+            .await?)
+    }
+
+    /// Set tags for a device.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn device_tag(
+        &self,
+        device_id: &str,
+        tags: &[String],
+    ) -> Result<(), TailscaleError> {
+        let body = serde_json::json!({ "tags": tags });
+        Ok(self
+            .http
+            .post_json::<_, serde_json::Value>(&format!("/device/{device_id}/tags"), &body)
+            .await
+            .map(|_| ())?)
+    }
+
+    /// Expire the key for a device, forcing re-authentication.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn device_expire(&self, device_id: &str) -> Result<(), TailscaleError> {
+        let body = serde_json::json!({});
+        Ok(self
+            .http
+            .post_json::<_, serde_json::Value>(&format!("/device/{device_id}/expire"), &body)
+            .await
+            .map(|_| ())?)
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+
+    /// List all users in the tailnet.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn user_list(&self) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self.http.get_json(&self.tailnet_path("/users")).await?)
+    }
+
+    // ── Tailnet Settings ──────────────────────────────────────────────────────
+
+    /// Get tailnet-level settings.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn tailnet_settings_get(&self) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self
+            .http
+            .get_json(&self.tailnet_path("/settings"))
+            .await?)
+    }
+
+    /// Patch tailnet-level settings.
+    ///
+    /// # Errors
+    /// Returns `TailscaleError::Api` on HTTP failure.
+    pub async fn tailnet_settings_patch(
+        &self,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, TailscaleError> {
+        Ok(self
+            .http
+            .patch_json(&self.tailnet_path("/settings"), body)
+            .await?)
+    }
 }

@@ -361,4 +361,144 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    // ── Requests (extended) ───────────────────────────────────────────────────
+    ActionSpec {
+        name: "request.retry",
+        description: "Retry a failed media request",
+        destructive: false,
+        returns: "MediaRequest",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Request ID to retry",
+        }],
+    },
+    ActionSpec {
+        name: "request.count",
+        description: "Get request counts broken down by status",
+        destructive: false,
+        returns: "RequestCount",
+        params: &[],
+    },
+    // ── Issues (extended) ────────────────────────────────────────────────────
+    ActionSpec {
+        name: "issue.update",
+        description: "Update the status of an issue (resolved or open)",
+        destructive: false,
+        returns: "Issue",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Issue ID",
+            },
+            ParamSpec {
+                name: "status",
+                ty: "string",
+                required: true,
+                description: "New status: resolved|open",
+            },
+        ],
+    },
+    // ── Media ────────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "media.delete",
+        description: "Delete a media item permanently by Overseerr media ID",
+        destructive: true,
+        returns: "void",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "Overseerr media ID",
+        }],
+    },
+    ActionSpec {
+        name: "media.update-status",
+        description: "Update the status of a media item",
+        destructive: false,
+        returns: "void",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Overseerr media ID",
+            },
+            ParamSpec {
+                name: "status",
+                ty: "string",
+                required: true,
+                description: "New status (e.g. available, unknown, blacklisted)",
+            },
+        ],
+    },
+    // ── Users (extended) ─────────────────────────────────────────────────────
+    ActionSpec {
+        name: "user.requests",
+        description: "List media requests belonging to a user",
+        destructive: false,
+        returns: "RequestList",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "User ID",
+        }],
+    },
+    ActionSpec {
+        name: "user.quota",
+        description: "Get the quota information for a user",
+        destructive: false,
+        returns: "UserQuota",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "integer",
+            required: true,
+            description: "User ID",
+        }],
+    },
+    ActionSpec {
+        name: "user.edit",
+        description: "Update a user by ID with a JSON body of fields to change",
+        destructive: false,
+        returns: "User",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "User ID",
+            },
+            ParamSpec {
+                name: "body",
+                ty: "object",
+                required: true,
+                description: "Partial user fields to update (JSON object)",
+            },
+        ],
+    },
+    // ── Settings / Jobs ───────────────────────────────────────────────────────
+    ActionSpec {
+        name: "job.run",
+        description: "Trigger a background job by its job ID string",
+        destructive: false,
+        returns: "JobResult",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Job ID (e.g. plex-scan, radarr-scan)",
+        }],
+    },
+    // ── Discover (extended) ───────────────────────────────────────────────────
+    ActionSpec {
+        name: "discover.trending",
+        description: "Get trending media from the Overseerr discover endpoint",
+        destructive: false,
+        returns: "DiscoverResponse",
+        params: &[],
+    },
 ];

@@ -118,6 +118,57 @@ pub async fn dispatch_with_client(
             to_json(client.issue_comment(id, message).await?)
         }
 
+        // ── Requests (extended) ───────────────────────────────────────────
+        "request.retry" => {
+            let id = require_u64(&params, "id")?;
+            to_json(client.request_retry(id).await?)
+        }
+        "request.count" => to_json(client.request_count().await?),
+
+        // ── Issues (extended) ─────────────────────────────────────────────
+        "issue.update" => {
+            let id = require_u64(&params, "id")?;
+            let status = require_str(&params, "status")?;
+            to_json(client.issue_update(id, status).await?)
+        }
+
+        // ── Media ─────────────────────────────────────────────────────────
+        "media.delete" => {
+            let id = require_u64(&params, "id")?;
+            client.media_delete(id).await?;
+            Ok(serde_json::json!({ "deleted": true }))
+        }
+        "media.update-status" => {
+            let id = require_u64(&params, "id")?;
+            let status = require_str(&params, "status")?;
+            client.media_update_status(id, status).await?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        // ── Users (extended) ──────────────────────────────────────────────
+        "user.requests" => {
+            let id = require_u64(&params, "id")?;
+            to_json(client.user_requests(id).await?)
+        }
+        "user.quota" => {
+            let id = require_u64(&params, "id")?;
+            to_json(client.user_quota(id).await?)
+        }
+        "user.edit" => {
+            let id = require_u64(&params, "id")?;
+            let body = params.get("body").cloned().unwrap_or(serde_json::json!({}));
+            to_json(client.user_edit(id, &body).await?)
+        }
+
+        // ── Settings / Jobs ───────────────────────────────────────────────
+        "job.run" => {
+            let id = require_str(&params, "id")?;
+            to_json(client.job_run(id).await?)
+        }
+
+        // ── Discover (extended) ───────────────────────────────────────────
+        "discover.trending" => to_json(client.discover_trending().await?),
+
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `{unknown}` for service `overseerr`"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

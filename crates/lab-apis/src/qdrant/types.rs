@@ -86,3 +86,56 @@ pub struct ScoredPoint {
     #[serde(default)]
     pub vector: Option<Vec<f32>>,
 }
+
+// ---------------------------------------------------------------------------
+// Request / upsert types
+// ---------------------------------------------------------------------------
+
+/// Config for creating a new collection (`PUT /collections/{name}`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCollection {
+    pub vectors: VectorParams,
+}
+
+/// A single point to upsert into a collection.
+///
+/// Qdrant accepts numeric or UUID ids; use `serde_json::Value` so callers
+/// can pass either without the dispatch layer needing to distinguish.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpsertPoint {
+    /// Point identifier — numeric (`u64`) or UUID string.
+    pub id: serde_json::Value,
+    pub vector: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
+}
+
+/// Request body sent to `POST /collections/{name}/points/search`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchRequest {
+    pub vector: Vec<f32>,
+    pub limit: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub with_payload: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_threshold: Option<f32>,
+}
+
+/// Snapshot metadata returned by `POST /collections/{name}/snapshots`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SnapshotInfo {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+}
+
+/// Request body for `PUT /collections/{name}/index`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateIndex {
+    pub field_name: String,
+    pub field_schema: serde_json::Value,
+}

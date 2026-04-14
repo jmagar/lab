@@ -164,4 +164,199 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    // ── Projects ──────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "project.list",
+        description: "List all Compose/Docker projects in an environment",
+        destructive: false,
+        returns: "Project[]",
+        params: &[ParamSpec {
+            name: "env_id",
+            ty: "string",
+            required: true,
+            description: "Environment ID",
+        }],
+    },
+    ActionSpec {
+        name: "project.create",
+        description: "Create a new project in an environment",
+        destructive: false,
+        returns: "Project",
+        params: &[
+            ParamSpec {
+                name: "env_id",
+                ty: "string",
+                required: true,
+                description: "Environment ID",
+            },
+            ParamSpec {
+                name: "body",
+                ty: "object",
+                required: true,
+                description: "Project creation payload (JSON object)",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "project.up",
+        description: "Bring a project up (docker compose up)",
+        destructive: false,
+        returns: "ProjectActionResult",
+        params: &[
+            ParamSpec {
+                name: "env_id",
+                ty: "string",
+                required: true,
+                description: "Environment ID",
+            },
+            ParamSpec {
+                name: "project_id",
+                ty: "string",
+                required: true,
+                description: "Project ID",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "project.down",
+        description: "Bring a project down (docker compose down)",
+        destructive: true,
+        returns: "ProjectActionResult",
+        params: &[
+            ParamSpec {
+                name: "env_id",
+                ty: "string",
+                required: true,
+                description: "Environment ID",
+            },
+            ParamSpec {
+                name: "project_id",
+                ty: "string",
+                required: true,
+                description: "Project ID",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "project.redeploy",
+        description: "Redeploy a project (pull latest images and recreate)",
+        destructive: false,
+        returns: "ProjectActionResult",
+        params: &[
+            ParamSpec {
+                name: "env_id",
+                ty: "string",
+                required: true,
+                description: "Environment ID",
+            },
+            ParamSpec {
+                name: "project_id",
+                ty: "string",
+                required: true,
+                description: "Project ID",
+            },
+        ],
+    },
+    // ── Volumes ───────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "volume.list",
+        description: "List all Docker volumes in an environment",
+        destructive: false,
+        returns: "Volume[]",
+        params: &[ParamSpec {
+            name: "env_id",
+            ty: "string",
+            required: true,
+            description: "Environment ID",
+        }],
+    },
+    ActionSpec {
+        name: "volume.delete",
+        description: "Delete a Docker volume by name",
+        destructive: true,
+        returns: "void",
+        params: &[
+            ParamSpec {
+                name: "env_id",
+                ty: "string",
+                required: true,
+                description: "Environment ID",
+            },
+            ParamSpec {
+                name: "volume_name",
+                ty: "string",
+                required: true,
+                description: "Volume name to delete",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "volume.prune",
+        description: "Prune all unused Docker volumes in an environment",
+        destructive: true,
+        returns: "PruneResult",
+        params: &[ParamSpec {
+            name: "env_id",
+            ty: "string",
+            required: true,
+            description: "Environment ID",
+        }],
+    },
+    // ── Images ────────────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "image.list",
+        description: "List all Docker images in an environment",
+        destructive: false,
+        returns: "Image[]",
+        params: &[ParamSpec {
+            name: "env_id",
+            ty: "string",
+            required: true,
+            description: "Environment ID",
+        }],
+    },
+    ActionSpec {
+        name: "image.pull",
+        description: "Pull a Docker image in an environment",
+        destructive: false,
+        returns: "ImagePullResult",
+        params: &[
+            ParamSpec {
+                name: "env_id",
+                ty: "string",
+                required: true,
+                description: "Environment ID",
+            },
+            ParamSpec {
+                name: "image",
+                ty: "string",
+                required: true,
+                description: "Image reference to pull (e.g. nginx:latest)",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "image.prune",
+        description: "Prune unused Docker images in an environment",
+        destructive: true,
+        returns: "ImagePruneResult",
+        params: &[ParamSpec {
+            name: "env_id",
+            ty: "string",
+            required: true,
+            description: "Environment ID",
+        }],
+    },
+    ActionSpec {
+        name: "image.update-summary",
+        description: "Get a summary of available image updates in an environment",
+        destructive: false,
+        returns: "ImageUpdateSummary",
+        params: &[ParamSpec {
+            name: "env_id",
+            ty: "string",
+            required: true,
+            description: "Environment ID",
+        }],
+    },
 ];

@@ -7,8 +7,8 @@ use crate::core::{Auth, HttpClient};
 use super::error::OverseerrError;
 use super::types::{
     CreateIssueBody, CreateRequestBody, Issue, IssueComment, IssueCommentBody, IssueList,
-    MediaRequest, MovieDetail, OverseerrStatus, RequestList, SearchResponse, TvDetail, User,
-    UserList,
+    MediaRequest, MovieDetail, OverseerrStatus, RequestCount, RequestList, SearchResponse,
+    TvDetail, User, UserList,
 };
 
 /// Async client for the Overseerr REST API.
@@ -272,6 +272,131 @@ impl OverseerrClient {
             .http
             .post_json(&format!("/api/v1/issue/{id}/comment"), &body)
             .await?)
+    }
+
+    /// Retry a failed request by ID.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport failure.
+    pub async fn request_retry(&self, id: u64) -> Result<MediaRequest, OverseerrError> {
+        let body = serde_json::json!({});
+        Ok(self
+            .http
+            .post_json(&format!("/api/v1/request/{id}/retry"), &body)
+            .await?)
+    }
+
+    /// Get request counts by status.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport or decode failure.
+    pub async fn request_count(&self) -> Result<RequestCount, OverseerrError> {
+        Ok(self.http.get_json("/api/v1/request/count").await?)
+    }
+
+    // ── Media ─────────────────────────────────────────────────────────────────
+
+    /// Delete a media item by Overseerr media ID.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport failure.
+    pub async fn media_delete(&self, id: u64) -> Result<(), OverseerrError> {
+        Ok(self
+            .http
+            .delete(&format!("/api/v1/media/{id}"))
+            .await?)
+    }
+
+    /// Update the status of a media item.
+    ///
+    /// `status` is a path segment accepted by Overseerr (e.g. `available`, `unknown`).
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport failure.
+    pub async fn media_update_status(&self, id: u64, status: &str) -> Result<(), OverseerrError> {
+        let body = serde_json::json!({});
+        self.http
+            .post_void(&format!("/api/v1/media/{id}/{status}"), &body)
+            .await?;
+        Ok(())
+    }
+
+    // ── Users (extended) ──────────────────────────────────────────────────────
+
+    /// List requests belonging to a user.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport or decode failure.
+    pub async fn user_requests(&self, id: u64) -> Result<RequestList, OverseerrError> {
+        Ok(self
+            .http
+            .get_json(&format!("/api/v1/user/{id}/requests"))
+            .await?)
+    }
+
+    /// Get the quota info for a user.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport or decode failure.
+    pub async fn user_quota(&self, id: u64) -> Result<Value, OverseerrError> {
+        Ok(self
+            .http
+            .get_json(&format!("/api/v1/user/{id}/quota"))
+            .await?)
+    }
+
+    /// Update a user by ID with an arbitrary JSON body.
+    ///
+    /// `body` is accepted as a free-form [`Value`] because the User object is complex
+    /// and callers rarely need to set every field at once.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport or decode failure.
+    pub async fn user_edit(&self, id: u64, body: &Value) -> Result<User, OverseerrError> {
+        Ok(self
+            .http
+            .put_json(&format!("/api/v1/user/{id}"), body)
+            .await?)
+    }
+
+    // ── Issues (extended) ────────────────────────────────────────────────────
+
+    /// Update the status of an issue.
+    ///
+    /// `status` is a path segment — one of `resolved` or `open`.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport failure.
+    pub async fn issue_update(&self, id: u64, status: &str) -> Result<Issue, OverseerrError> {
+        let body = serde_json::json!({});
+        Ok(self
+            .http
+            .post_json(&format!("/api/v1/issue/{id}/{status}"), &body)
+            .await?)
+    }
+
+    // ── Settings / Jobs ───────────────────────────────────────────────────────
+
+    /// Trigger a background job by ID.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport failure.
+    pub async fn job_run(&self, id: &str) -> Result<Value, OverseerrError> {
+        let body = serde_json::json!({});
+        Ok(self
+            .http
+            .post_json(&format!("/api/v1/settings/jobs/{id}/run"), &body)
+            .await?)
+    }
+
+    // ── Discover ─────────────────────────────────────────────────────────────
+
+    /// Get trending media from the discover endpoint.
+    ///
+    /// # Errors
+    /// Returns [`OverseerrError`] on transport or decode failure.
+    pub async fn discover_trending(&self) -> Result<Value, OverseerrError> {
+        Ok(self.http.get_json("/api/v1/discover/trending").await?)
     }
 
     // ── Health probe ─────────────────────────────────────────────────────

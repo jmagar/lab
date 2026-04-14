@@ -20,3 +20,8 @@ pub fn require_u64(params: &Value, key: &str) -> Result<u64, ToolError> {
 pub fn opt_u32(params: &Value, key: &str) -> Result<Option<u32>, ToolError> {
     optional_u32(params, key)
 }
+
+/// Extract an optional string parameter.
+pub fn opt_str<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
+    params.get(key).and_then(Value::as_str)
+}

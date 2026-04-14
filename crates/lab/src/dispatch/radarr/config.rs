@@ -28,6 +28,18 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
+        name: "release.grab",
+        description: "Grab (download) a release returned from release.search",
+        destructive: false,
+        returns: "Release",
+        params: &[ParamSpec {
+            name: "release",
+            ty: "object",
+            required: true,
+            description: "Release object as returned by release.search",
+        }],
+    },
+    ActionSpec {
         name: "indexer.list",
         description: "List configured indexers",
         destructive: false,
@@ -200,6 +212,14 @@ pub async fn dispatch_with_client(
             let movie_id = MovieId(require_i64(&params, "movie_id")?);
             let releases = client.release_search(movie_id).await?;
             to_json(releases)
+        }
+        "release.grab" => {
+            let release = params.get("release").cloned().ok_or_else(|| ToolError::MissingParam {
+                message: "missing required parameter `release`".to_string(),
+                param: "release".to_string(),
+            })?;
+            let grabbed = client.release_grab(&release).await?;
+            Ok(grabbed)
         }
         "indexer.list" => {
             let indexers = client.indexer_list().await?;

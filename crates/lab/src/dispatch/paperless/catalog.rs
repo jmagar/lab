@@ -338,4 +338,196 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "Value",
         params: &[],
     },
+    // ── Document Upload & Bulk Edit ─────────────────────────────────────────
+    ActionSpec {
+        name: "document.upload",
+        description: "Upload a document via multipart/form-data",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "file_base64",
+                ty: "string",
+                required: true,
+                description: "Base64-encoded file content",
+            },
+            ParamSpec {
+                name: "filename",
+                ty: "string",
+                required: true,
+                description: "File name (e.g. invoice.pdf)",
+            },
+            ParamSpec {
+                name: "title",
+                ty: "string",
+                required: false,
+                description: "Optional document title",
+            },
+            ParamSpec {
+                name: "correspondent",
+                ty: "integer",
+                required: false,
+                description: "Optional correspondent ID",
+            },
+            ParamSpec {
+                name: "document_type",
+                ty: "integer",
+                required: false,
+                description: "Optional document type ID",
+            },
+            ParamSpec {
+                name: "tags",
+                ty: "json",
+                required: false,
+                description: "Optional array of tag IDs",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "document.bulk-edit",
+        description: "Perform a bulk operation on multiple documents (delete, set_correspondent, set_document_type, add_tag, remove_tag, etc.)",
+        destructive: true,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "documents",
+                ty: "json",
+                required: true,
+                description: "Array of document IDs to act on",
+            },
+            ParamSpec {
+                name: "method",
+                ty: "string",
+                required: true,
+                description: "Bulk method (e.g. delete, set_correspondent, set_document_type, add_tag, remove_tag)",
+            },
+            ParamSpec {
+                name: "parameters",
+                ty: "json",
+                required: false,
+                description: "Method-specific parameters object",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "document.download",
+        description: "Download a document and return base64-encoded content",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Document ID",
+            },
+            ParamSpec {
+                name: "original",
+                ty: "bool",
+                required: false,
+                description: "If true, return the original file before OCR post-processing",
+            },
+        ],
+    },
+    // ── Tag Update ──────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "tag.update",
+        description: "Partially update a tag (PATCH)",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "integer",
+                required: true,
+                description: "Tag ID",
+            },
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: false,
+                description: "Tag name",
+            },
+            ParamSpec {
+                name: "colour",
+                ty: "string",
+                required: false,
+                description: "Hex colour string (e.g. #ff0000)",
+            },
+            ParamSpec {
+                name: "match",
+                ty: "string",
+                required: false,
+                description: "Matching expression",
+            },
+        ],
+    },
+    // ── Saved Views ─────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "saved-view.list",
+        description: "List all saved views",
+        destructive: false,
+        returns: "Value",
+        params: &[],
+    },
+    ActionSpec {
+        name: "saved-view.create",
+        description: "Create a saved view",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "payload",
+            ty: "json",
+            required: true,
+            description: "Saved view definition (name, filter_rules, sort_field, etc.)",
+        }],
+    },
+    // ── Custom Fields ────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "custom-field.list",
+        description: "List all custom fields",
+        destructive: false,
+        returns: "Value",
+        params: &[],
+    },
+    ActionSpec {
+        name: "custom-field.create",
+        description: "Create a custom field",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Field name",
+            },
+            ParamSpec {
+                name: "data_type",
+                ty: "string",
+                required: true,
+                description: "Data type (string, integer, date, boolean, url, monetary)",
+            },
+        ],
+    },
+    // ── Storage Paths ────────────────────────────────────────────────────────
+    ActionSpec {
+        name: "storage-path.list",
+        description: "List all storage paths",
+        destructive: false,
+        returns: "Value",
+        params: &[],
+    },
+    ActionSpec {
+        name: "storage-path.create",
+        description: "Create a storage path",
+        destructive: false,
+        returns: "Value",
+        params: &[ParamSpec {
+            name: "payload",
+            ty: "json",
+            required: true,
+            description: "Storage path definition (name, path, etc.)",
+        }],
+    },
 ];

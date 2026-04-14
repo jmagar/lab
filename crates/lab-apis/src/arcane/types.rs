@@ -67,3 +67,84 @@ pub struct ContainerActionResult {
     pub success: Option<bool>,
     pub message: Option<String>,
 }
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+/// A Compose/Docker project as reported by Arcane.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub status: Option<String>,
+    pub environment_id: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// Generic project action result (up/down/redeploy).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectActionResult {
+    pub success: Option<bool>,
+    pub message: Option<String>,
+}
+
+// ── Volumes ───────────────────────────────────────────────────────────────────
+
+/// A Docker volume as reported by Arcane.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Volume {
+    pub name: String,
+    pub driver: Option<String>,
+    pub mountpoint: Option<String>,
+    pub scope: Option<String>,
+    pub created_at: Option<String>,
+    pub labels: Option<serde_json::Value>,
+    pub options: Option<serde_json::Value>,
+}
+
+/// Result returned by prune operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PruneResult {
+    pub volumes_deleted: Option<Vec<String>>,
+    pub space_reclaimed: Option<i64>,
+}
+
+// ── Images ────────────────────────────────────────────────────────────────────
+
+/// A Docker image as reported by Arcane.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Image {
+    pub id: String,
+    pub repo_tags: Option<Vec<String>>,
+    pub repo_digests: Option<Vec<String>>,
+    pub size: Option<i64>,
+    pub created: Option<i64>,
+    pub labels: Option<serde_json::Value>,
+}
+
+/// Result returned by image pull operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImagePullResult {
+    pub success: Option<bool>,
+    pub message: Option<String>,
+}
+
+/// Result returned by image prune operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImagePruneResult {
+    pub images_deleted: Option<Vec<serde_json::Value>>,
+    pub space_reclaimed: Option<i64>,
+}
+
+/// Summary of available image updates.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageUpdateSummary {
+    pub updates_available: Option<i32>,
+    pub images: Option<Vec<serde_json::Value>>,
+}

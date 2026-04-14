@@ -1,4 +1,4 @@
-//! Movie resource dispatch: list, get, lookup, add, delete.
+//! Movie resource dispatch: list, get, lookup, add, edit, delete.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use lab_apis::radarr::RadarrClient;
@@ -86,6 +86,26 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
+        name: "movie.edit",
+        description: "Update an existing movie resource (PUT full resource)",
+        destructive: false,
+        returns: "Movie",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "i64",
+                required: true,
+                description: "Radarr movie ID to update",
+            },
+            ParamSpec {
+                name: "body",
+                ty: "object",
+                required: true,
+                description: "Full movie resource JSON (fetch via movie.get, modify, send back)",
+            },
+        ],
+    },
+    ActionSpec {
         name: "movie.delete",
         description: "Delete a movie from Radarr",
         destructive: true,
@@ -158,6 +178,18 @@ pub async fn dispatch_with_client(
             };
             let added = client.movie_add(&movie).await?;
             to_json(added)
+        }
+        "movie.edit" => {
+            let id = MovieId(require_i64(&params, "id")?);
+            let body = params
+                .get("body")
+                .cloned()
+                .ok_or_else(|| ToolError::MissingParam {
+                    message: "missing required parameter `body`".to_string(),
+                    param: "body".to_string(),
+                })?;
+            let updated = client.movie_edit(id, &body).await?;
+            Ok(updated)
         }
         "movie.delete" => {
             let id = MovieId(require_i64(&params, "id")?);

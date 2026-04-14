@@ -171,6 +171,29 @@ pub struct LogEntry {
     pub message_type: i32,
 }
 
+/// A file entry within a torrent from `/api/v2/torrents/files`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentFile {
+    /// File index within the torrent.
+    pub index: i64,
+    /// File name (relative path within torrent).
+    pub name: String,
+    /// File size in bytes.
+    pub size: i64,
+    /// Download progress [0.0, 1.0].
+    pub progress: f64,
+    /// File priority (0=do not download, 1=normal, 6=high, 7=maximum).
+    pub priority: i32,
+    /// True if this is a seed file.
+    #[serde(rename = "is_seed", default)]
+    pub is_seed: Option<bool>,
+    /// Piece range: [first_piece, last_piece] (inclusive).
+    #[serde(rename = "piece_range")]
+    pub piece_range: Vec<i64>,
+    /// Download availability [0.0, 1.0].
+    pub availability: f64,
+}
+
 /// Tracker entry from `/api/v2/torrents/trackers`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tracker {

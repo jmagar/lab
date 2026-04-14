@@ -23,4 +23,22 @@ impl RadarrClient {
             .await
             .map_err(RadarrError::from)
     }
+
+    /// Grab (download) a specific release.
+    ///
+    /// Maps to `POST /api/v3/release`. The `release` body should be the full
+    /// release object returned from [`Self::release_search`] (Radarr echoes
+    /// key fields back). Returns the grabbed release resource as a JSON value.
+    ///
+    /// # Errors
+    /// Returns `RadarrError::Api` on HTTP failure.
+    pub async fn release_grab(
+        &self,
+        release: &serde_json::Value,
+    ) -> Result<serde_json::Value, RadarrError> {
+        self.http
+            .post_json("/api/v3/release", release)
+            .await
+            .map_err(RadarrError::from)
+    }
 }

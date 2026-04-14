@@ -69,4 +69,24 @@ impl RadarrClient {
                 other => RadarrError::Api(other),
             })
     }
+
+    /// Execute a named scheduled task immediately.
+    ///
+    /// Maps to `POST /api/v3/command` with body `{"name": "<TaskName>"}`.
+    /// `task_name` must match one of Radarr's internal task names (e.g.
+    /// `"RssSync"`, `"RefreshMonitoredDownloads"`, `"ApplicationCheckUpdate"`).
+    /// Returns the queued `Command` object whose `id` can be polled.
+    ///
+    /// Destructive in the sense that it triggers background processing that
+    /// may alter library state.
+    ///
+    /// # Errors
+    /// Returns `RadarrError::Api` on HTTP failure.
+    pub async fn system_task_execute(&self, task_name: &str) -> Result<Command, RadarrError> {
+        let body = serde_json::json!({ "name": task_name });
+        self.http
+            .post_json("/api/v3/command", &body)
+            .await
+            .map_err(RadarrError::from)
+    }
 }

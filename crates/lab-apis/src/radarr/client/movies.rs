@@ -74,6 +74,32 @@ impl RadarrClient {
             .map_err(RadarrError::from)
     }
 
+    /// Update an existing movie resource.
+    ///
+    /// Maps to `PUT /api/v3/movie/{id}`. The `body` should be the full movie
+    /// resource JSON (typically fetched via [`Self::movie_get`], modified, then
+    /// sent back). Returns the updated movie.
+    ///
+    /// # Errors
+    /// Returns `RadarrError::NotFound` if the id does not exist,
+    /// `RadarrError::Api` on any other HTTP failure.
+    pub async fn movie_edit(
+        &self,
+        id: MovieId,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, RadarrError> {
+        self.http
+            .put_json(&format!("/api/v3/movie/{}", id.0), body)
+            .await
+            .map_err(|e| match e {
+                ApiError::NotFound => RadarrError::NotFound {
+                    kind: "movie",
+                    id: id.0,
+                },
+                other => RadarrError::Api(other),
+            })
+    }
+
     /// Delete a movie by id.
     ///
     /// Maps to `DELETE /api/v3/movie/{id}`. When `delete_files` is true,

@@ -225,6 +225,179 @@ impl TautulliClient {
         self.api_get("get_plays_by_date", &extra).await
     }
 
+    // ── Media ─────────────────────────────────────────────────────────────────
+
+    /// Get recently added media items.
+    ///
+    /// `count` defaults to 5 if not provided. `section_id` optionally filters
+    /// to a specific library section.
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_recently_added(
+        &self,
+        count: Option<u32>,
+        section_id: Option<&str>,
+    ) -> Result<Value, TautulliError> {
+        let mut extra: Vec<(&str, String)> = Vec::new();
+        let count_val = count.unwrap_or(5);
+        extra.push(("count", count_val.to_string()));
+        if let Some(sid) = section_id {
+            extra.push(("section_id", sid.to_string()));
+        }
+        self.api_get("get_recently_added", &extra).await
+    }
+
+    /// Get metadata for a media item by rating key.
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_metadata(&self, rating_key: &str) -> Result<Value, TautulliError> {
+        self.api_get("get_metadata", &[("rating_key", rating_key.to_string())])
+            .await
+    }
+
+    /// Get children metadata for a media item by rating key.
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_children_metadata(&self, rating_key: &str) -> Result<Value, TautulliError> {
+        self.api_get(
+            "get_children_metadata",
+            &[("rating_key", rating_key.to_string())],
+        )
+        .await
+    }
+
+    /// Get item user statistics by rating key.
+    ///
+    /// Optional `media_type` filters results to a specific media type.
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_item_user_stats(
+        &self,
+        rating_key: &str,
+        media_type: Option<&str>,
+    ) -> Result<Value, TautulliError> {
+        let mut extra: Vec<(&str, String)> = Vec::new();
+        extra.push(("rating_key", rating_key.to_string()));
+        if let Some(mt) = media_type {
+            extra.push(("media_type", mt.to_string()));
+        }
+        self.api_get("get_item_user_stats", &extra).await
+    }
+
+    /// Export metadata for a media item.
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn export_metadata(
+        &self,
+        rating_key: &str,
+        media_type: &str,
+    ) -> Result<Value, TautulliError> {
+        self.api_get(
+            "export_metadata",
+            &[
+                ("rating_key", rating_key.to_string()),
+                ("media_type", media_type.to_string()),
+            ],
+        )
+        .await
+    }
+
+    // ── Play analytics ────────────────────────────────────────────────────────
+
+    /// Get play count grouped by day of week.
+    ///
+    /// `time_range` is the number of days to include (default 30).
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_plays_by_dayofweek(
+        &self,
+        time_range: Option<u32>,
+    ) -> Result<Value, TautulliError> {
+        let days = time_range.unwrap_or(30);
+        self.api_get("get_plays_by_dayofweek", &[("time_range", days.to_string())])
+            .await
+    }
+
+    /// Get play count grouped by hour of day.
+    ///
+    /// `time_range` is the number of days to include (default 30).
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_plays_by_hourofday(
+        &self,
+        time_range: Option<u32>,
+    ) -> Result<Value, TautulliError> {
+        let days = time_range.unwrap_or(30);
+        self.api_get("get_plays_by_hourofday", &[("time_range", days.to_string())])
+            .await
+    }
+
+    /// Get play count grouped by stream type.
+    ///
+    /// `time_range` is the number of days to include (default 30).
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_plays_by_stream_type(
+        &self,
+        time_range: Option<u32>,
+    ) -> Result<Value, TautulliError> {
+        let days = time_range.unwrap_or(30);
+        self.api_get(
+            "get_plays_by_stream_type",
+            &[("time_range", days.to_string())],
+        )
+        .await
+    }
+
+    /// Get play count grouped by month.
+    ///
+    /// `time_range` is the number of months to include (default 30).
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_plays_per_month(
+        &self,
+        time_range: Option<u32>,
+    ) -> Result<Value, TautulliError> {
+        let months = time_range.unwrap_or(30);
+        self.api_get("get_plays_per_month", &[("time_range", months.to_string())])
+            .await
+    }
+
+    // ── Server ────────────────────────────────────────────────────────────────
+
+    /// Check for Plex Media Server updates.
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn get_pms_update(&self) -> Result<Value, TautulliError> {
+        self.api_get("get_pms_update", &[]).await
+    }
+
+    // ── Users (destructive) ───────────────────────────────────────────────────
+
+    /// Delete all play history for a user by user ID.
+    ///
+    /// **Destructive**: this permanently removes all history for the specified user.
+    ///
+    /// # Errors
+    /// Returns [`TautulliError::Api`] on HTTP failure.
+    pub async fn delete_all_user_history(&self, user_id: i64) -> Result<Value, TautulliError> {
+        self.api_get(
+            "delete_all_user_history",
+            &[("user_id", user_id.to_string())],
+        )
+        .await
+    }
+
     // ── System ────────────────────────────────────────────────────────────────
 
     /// Get Tautulli server info and status.

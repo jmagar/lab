@@ -174,6 +174,144 @@ impl ProwlarrClient {
         Ok(self.http.get_json("/api/v1/health").await?)
     }
 
+    /// Edit (update) an indexer by ID.
+    ///
+    /// `PUT /api/v1/indexer/{id}`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn indexer_edit(&self, id: i64, body: &Value) -> Result<Value, ProwlarrError> {
+        Ok(self
+            .http
+            .put_json(&format!("/api/v1/indexer/{id}"), body)
+            .await?)
+    }
+
+    /// Add (create) a new indexer.
+    ///
+    /// `POST /api/v1/indexer`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn indexer_add(&self, body: &Value) -> Result<Value, ProwlarrError> {
+        Ok(self.http.post_json("/api/v1/indexer", body).await?)
+    }
+
+    /// Get indexer statistics.
+    ///
+    /// `GET /api/v1/indexerstats`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn indexer_stats(&self) -> Result<Value, ProwlarrError> {
+        Ok(self.http.get_json("/api/v1/indexerstats").await?)
+    }
+
+    /// Get indexer status (indexers with errors).
+    ///
+    /// `GET /api/v1/indexerstatus`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn indexer_status(&self) -> Result<Value, ProwlarrError> {
+        Ok(self.http.get_json("/api/v1/indexerstatus").await?)
+    }
+
+    /// Search across indexers.
+    ///
+    /// `GET /api/v1/search?query=...&indexerIds[]=...&categories[]=...&type=search`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn indexer_search(
+        &self,
+        query: &str,
+        indexer_ids: &[i64],
+        categories: &[i64],
+        search_type: Option<&str>,
+    ) -> Result<Value, ProwlarrError> {
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        pairs.push(("query".to_string(), query.to_string()));
+        for id in indexer_ids {
+            pairs.push(("indexerIds[]".to_string(), id.to_string()));
+        }
+        for cat in categories {
+            pairs.push(("categories[]".to_string(), cat.to_string()));
+        }
+        if let Some(t) = search_type {
+            pairs.push(("type".to_string(), t.to_string()));
+        } else {
+            pairs.push(("type".to_string(), "search".to_string()));
+        }
+        Ok(self.http.get_json_query("/api/v1/search", &pairs).await?)
+    }
+
+    /// Grab a release (send to download client) by GUID.
+    ///
+    /// `POST /api/v1/search` with body `{"guid": "..."}`.
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn indexer_grab(&self, guid: &str) -> Result<Value, ProwlarrError> {
+        let body = serde_json::json!({ "guid": guid });
+        Ok(self.http.post_json("/api/v1/search", &body).await?)
+    }
+
+    /// Get history for a specific indexer.
+    ///
+    /// `GET /api/v1/history?indexerId={id}`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn history_indexer(&self, indexer_id: i64) -> Result<Value, ProwlarrError> {
+        let pairs = vec![("indexerId".to_string(), indexer_id.to_string())];
+        Ok(self.http.get_json_query("/api/v1/history", &pairs).await?)
+    }
+
+    /// Add (create) a new application.
+    ///
+    /// `POST /api/v1/applications`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn application_add(&self, body: &Value) -> Result<Value, ProwlarrError> {
+        Ok(self.http.post_json("/api/v1/applications", body).await?)
+    }
+
+    /// Restart the Prowlarr server.
+    ///
+    /// `POST /api/v1/system/restart`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn system_restart(&self) -> Result<(), ProwlarrError> {
+        let empty = serde_json::json!({});
+        Ok(self
+            .http
+            .post_void("/api/v1/system/restart", &empty)
+            .await?)
+    }
+
+    /// Get system backups.
+    ///
+    /// `GET /api/v1/system/backup`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn system_backup(&self) -> Result<Value, ProwlarrError> {
+        Ok(self.http.get_json("/api/v1/system/backup").await?)
+    }
+
+    /// List all tags.
+    ///
+    /// `GET /api/v1/tag`
+    ///
+    /// # Errors
+    /// Returns `ProwlarrError::Api` on HTTP failure.
+    pub async fn tag_list(&self) -> Result<Value, ProwlarrError> {
+        Ok(self.http.get_json("/api/v1/tag").await?)
+    }
+
     /// Health check — probe via system status (lightest authenticated endpoint).
     ///
     /// Calls `GET /api/v1/system/status` and discards the body. This is the

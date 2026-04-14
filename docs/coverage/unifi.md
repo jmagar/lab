@@ -1,12 +1,13 @@
 # UniFi API Coverage
 
-**Last updated:** 2026-04-09  
-**Source spec:** `docs/upstream-api/unifi.md`  
-**SDK surface:** `crates/lab-apis/src/unifi/client.rs` (20 public methods: 13 typed wrappers + 7 generic helpers)  
-**Shared dispatch layer:** `crates/lab/src/dispatch/unifi.rs` + `crates/lab/src/dispatch/unifi/` (catalog, client, params, dispatch, domain modules)  
-**MCP actions:** `crates/lab/src/mcp/services/unifi.rs` (thin adapter over `dispatch::unifi`)  
-**CLI surface:** `crates/lab/src/cli/unifi.rs` (generic `action` + `key=value` params)  
+**Last updated:** 2026-04-13
+**Source spec:** `docs/upstream-api/unifi.md`
+**SDK surface:** `crates/lab-apis/src/unifi/client.rs` (20 public methods: 13 typed wrappers + 7 generic helpers)
+**Shared dispatch layer:** `crates/lab/src/dispatch/unifi.rs` + `crates/lab/src/dispatch/unifi/` (catalog, client, params, dispatch, and 10 domain modules)
+**MCP actions:** delegated directly from `dispatch::unifi::dispatch` (no separate MCP service module)
+**CLI surface:** `crates/lab/src/cli/unifi.rs` (action string + `key=value` trailing params)
 **API handler:** `crates/lab/src/api/services/unifi.rs` (thin adapter over the shared dispatch layer)
+**Total actions:** 81 (1 built-in `help` + 80 resource actions)
 
 ## Legend
 
@@ -14,26 +15,24 @@
 |--------|---------|
 | ✅ | Implemented in code |
 | ⚠️ | Implemented, but destructive |
-| ⬜ | Not live-tested in this workspace |
 | — | Not applicable |
 
-> UniFi is exposed as a single action dispatcher across MCP, CLI, and API, but
-> the shared execution path now lives in `crates/lab/src/dispatch/unifi.rs`.
-> The implementation remains action-centric, not subcommand-centric. The safe
-> smoke-tests run in this workspace were limited to discovery and dispatch
-> routing because no UniFi controller credentials are configured here.
-> Destructive actions were intentionally not exercised.
+> UniFi is exposed as a single action dispatcher across MCP, CLI, and API. All shared
+> execution logic lives in `crates/lab/src/dispatch/unifi/`. The implementation is
+> action-centric. No live controller calls were made during development of this workspace
+> because no UniFi credentials are configured here. Destructive actions were not exercised.
 
 ## Implementation Model
 
-- The SDK keeps the typed read-only wrappers for the common inventory calls.
-- The rest of the surface is handled by generic JSON helpers in `UnifiClient`
-  so the shared `dispatch::unifi` dispatcher can serve MCP, CLI, and API.
-- Action names are the contract: `system.info`, `devices.list`, `networks.update`,
-  and so on.
-- `help` is built in to the dispatcher and is not a service endpoint.
+- Typed SDK wrappers cover the most-common read-only inventory calls.
+- Remaining endpoints use the generic JSON helpers (`get_value`, `post_value`, etc.) so the
+  shared dispatcher can reach any API path without requiring a new typed method per endpoint.
+- Action names are the contract: `system.info`, `devices.list`, `networks.update`, and so on.
+- `help` and `schema` are built-in to the dispatcher and are not service endpoints.
+- 10 domain modules partition the action catalog: `misc`, `devices`, `clients`, `networks`,
+  `wifi`, `hotspot`, `firewall`, `acl`, `switching`, `dns`, `traffic`.
 
-## SDK Surface
+## SDK Surface (`crates/lab-apis/src/unifi/client.rs`)
 
 | Method | Purpose |
 |--------|---------|
@@ -43,198 +42,232 @@
 | `device_get(site_id, device_id)` | Inspect one adopted device |
 | `device_stats_latest(site_id, device_id)` | Latest device statistics |
 | `pending_devices_list()` | List devices pending adoption |
-| `clients_list(site_id)` | List connected clients |
+| `clients_list(site_id)` | List active clients |
 | `client_get(site_id, client_id)` | Inspect one client |
 | `networks_list(site_id)` | List networks |
 | `network_get(site_id, network_id)` | Inspect one network |
 | `network_references(site_id, network_id)` | Reference graph for one network |
-| `wifi_broadcasts_list(site_id)` | List WiFi broadcasts |
-| `wifi_broadcast_get(site_id, wifi_broadcast_id)` | Inspect one WiFi broadcast |
-| `get_value(path)` / `get_value_query(path, query)` | Generic GET helpers |
+| `wifi_broadcasts_list(site_id)` | List Wi-Fi broadcasts |
+| `wifi_broadcast_get(site_id, wifi_broadcast_id)` | Inspect one Wi-Fi broadcast |
+| `get_value(path)` | Generic GET helper |
+| `get_value_query(path, query)` | Generic GET helper with query params |
 | `post_value(path, body)` | Generic POST helper |
 | `put_value(path, body)` | Generic PUT helper |
 | `patch_value(path, body)` | Generic PATCH helper |
-| `delete_value(path)` / `delete_value_query(path, query)` | Generic DELETE helpers |
+| `delete_value(path)` | Generic DELETE helper |
+| `delete_value_query(path, query)` | Generic DELETE helper with query params |
+
+All generic helpers prepend `/proxy/network/integration/v1` internally.
 
 ## Action Catalog
 
 ### System
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `system.info` | `info()` | ✅ | Application version and runtime metadata |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `system.info` | `info()` | No | none |
 
 ### Sites
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `sites.list` | `sites_list()` | ✅ | Site inventory |
-
-### Devices
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `devices.list` | `devices_list()` | ✅ | Adopted devices for a site |
-| `devices.get` | `device_get()` | ✅ | One adopted device |
-| `devices.stats` | `device_stats_latest()` | ✅ | Latest device telemetry |
-| `devices.create` | `post_value()` | ⚠️ | Adopt a device |
-| `devices.port-action` | `post_value()` | ⚠️ | Port-level action, such as power cycle |
-| `devices.action` | `post_value()` | ⚠️ | Device action, such as restart |
-| `devices.delete` | `delete_value()` | ⚠️ | Unadopt/remove a device |
-
-### Pending Devices
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `pending-devices.list` | `pending_devices_list()` | ✅ | Devices waiting for adoption |
-
-### Clients
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `clients.list` | `clients_list()` | ✅ | Connected clients for a site |
-| `clients.get` | `client_get()` | ✅ | One connected client |
-| `clients.action` | `post_value()` | ⚠️ | Guest auth / client control actions |
-
-### Networks
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `networks.list` | `networks_list()` | ✅ | Network inventory |
-| `network.get` | `network_get()` | ✅ | One network |
-| `network.references` | `network_references()` | ✅ | References for a network |
-| `networks.create` | `post_value()` | ⚠️ | Create a network |
-| `networks.update` | `put_value()` | ⚠️ | Update a network |
-| `networks.delete` | `delete_value()` | ⚠️ | Delete a network |
-
-### WiFi Broadcasts
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `wifi.broadcasts.list` | `wifi_broadcasts_list()` | ✅ | Broadcast inventory |
-| `wifi.broadcasts.get` | `wifi_broadcast_get()` | ✅ | One broadcast |
-| `wifi.broadcasts.create` | `post_value()` | ⚠️ | Create an SSID/broadcast |
-| `wifi.broadcasts.update` | `put_value()` | ⚠️ | Update an SSID/broadcast |
-| `wifi.broadcasts.delete` | `delete_value()` | ⚠️ | Delete an SSID/broadcast |
-
-### Hotspot Vouchers
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `hotspot.vouchers.list` | `get_value_query()` | ✅ | Voucher inventory |
-| `hotspot.vouchers.create` | `post_value()` | ⚠️ | Generate vouchers |
-| `hotspot.vouchers.delete` | `delete_value_query()` | ⚠️ | Delete vouchers by filter |
-| `hotspot.vouchers.get` | `get_value()` | ✅ | One voucher |
-
-### Firewall Zones
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `firewall.zones.list` | `get_value()` | ✅ | Zone inventory |
-| `firewall.zones.get` | `get_value()` | ✅ | One zone |
-| `firewall.zones.create` | `post_value()` | ⚠️ | Create a zone |
-| `firewall.zones.update` | `put_value()` | ⚠️ | Update a zone |
-| `firewall.zones.delete` | `delete_value()` | ⚠️ | Delete a zone |
-
-### Firewall Policies
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `firewall.policies.list` | `get_value()` | ✅ | Policy inventory |
-| `firewall.policies.get` | `get_value()` | ✅ | One policy |
-| `firewall.policies.create` | `post_value()` | ⚠️ | Create a policy |
-| `firewall.policies.update` | `put_value()` | ⚠️ | Update a policy |
-| `firewall.policies.patch` | `patch_value()` | ⚠️ | Partial update |
-| `firewall.policies.ordering.get` | `get_value()` | ✅ | Policy order |
-| `firewall.policies.ordering.set` | `put_value()` | ⚠️ | Reorder policies |
-
-### ACL Rules
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `acl.rules.list` | `get_value()` | ✅ | ACL inventory |
-| `acl.rules.get` | `get_value()` | ✅ | One ACL rule |
-| `acl.rules.create` | `post_value()` | ⚠️ | Create an ACL rule |
-| `acl.rules.update` | `put_value()` | ⚠️ | Update an ACL rule |
-| `acl.rules.delete` | `delete_value()` | ⚠️ | Delete an ACL rule |
-| `acl.rules.ordering.get` | `get_value()` | ✅ | ACL order |
-| `acl.rules.ordering.set` | `put_value()` | ⚠️ | Reorder ACL rules |
-
-### Switching
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `switching.switch-stacks.list` | `get_value()` | ✅ | Switch stack inventory |
-| `switching.switch-stacks.get` | `get_value()` | ✅ | One switch stack |
-| `switching.mc-lag-domains.list` | `get_value()` | ✅ | MC-LAG domain inventory |
-| `switching.mc-lag-domains.get` | `get_value()` | ✅ | One MC-LAG domain |
-| `switching.lags.list` | `get_value()` | ✅ | Link aggregation inventory |
-| `switching.lags.get` | `get_value()` | ✅ | One LAG |
-
-### DNS Policies
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `dns.policies.list` | `get_value()` | ✅ | DNS policy inventory |
-| `dns.policies.get` | `get_value()` | ✅ | One DNS policy |
-| `dns.policies.create` | `post_value()` | ⚠️ | Create a DNS policy |
-| `dns.policies.update` | `put_value()` | ⚠️ | Update a DNS policy |
-| `dns.policies.delete` | `delete_value()` | ⚠️ | Delete a DNS policy |
-
-### Traffic Matching Lists
-
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `traffic-matching-lists.list` | `get_value()` | ✅ | Traffic matching list inventory |
-| `traffic-matching-lists.get` | `get_value()` | ✅ | One traffic matching list |
-| `traffic-matching-lists.create` | `post_value()` | ⚠️ | Create a list |
-| `traffic-matching-lists.update` | `put_value()` | ⚠️ | Update a list |
-| `traffic-matching-lists.delete` | `delete_value()` | ⚠️ | Delete a list |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `sites.list` | `sites_list()` | No | none |
 
 ### WANs
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `wans.list` | `get_value()` | ✅ | WAN inventory |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `wans.list` | `get_value()` | No | `site_id` (required) |
+| `wan.get` | `get_value()` | No | `site_id`, `wan_id` (both required) |
+
+### Devices
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `devices.list` | `devices_list()` | No | `site_id` (required) |
+| `devices.get` | `device_get()` | No | `site_id`, `device_id` (both required) |
+| `devices.stats` | `device_stats_latest()` | No | `site_id`, `device_id` (both required) |
+| `pending-devices.list` | `pending_devices_list()` | No | none |
+| `devices.create` | `post_value()` | ⚠️ | `site_id`, `mac_address` (required); `ignore_device_limit` (optional bool) |
+| `devices.port-action` | `post_value()` | ⚠️ | `site_id`, `device_id`, `port_idx` (integer), `action` (all required) |
+| `devices.action` | `post_value()` | ⚠️ | `site_id`, `device_id`, `action` (all required) |
+| `devices.delete` | `delete_value()` | ⚠️ | `site_id`, `device_id` (both required) |
+| `device.update` | `put_value()` | ⚠️ | `site_id`, `device_id` (required); body fields passed through |
+
+### Clients
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `clients.list` | `clients_list()` | No | `site_id` (required) |
+| `clients.get` | `client_get()` | No | `site_id`, `client_id` (both required) |
+| `clients.action` | `post_value()` | ⚠️ | `site_id`, `client_id`, `action` (all required) |
+| `client.history` | `get_value()` | No | `site_id`, `client_mac` (both required) |
+| `client.block` | `post_value()` | ⚠️ | `site_id`, `client_mac` (both required) |
+| `client.unblock` | `post_value()` | No | `site_id`, `client_mac` (both required) |
+
+### Networks
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `networks.list` | `networks_list()` | No | `site_id` (required); `offset`, `limit`, `filter` (optional query) |
+| `networks.get` | `network_get()` | No | `site_id`, `network_id` (both required) |
+| `networks.references` | `network_references()` | No | `site_id`, `network_id` (both required) |
+| `networks.create` | `post_value()` | ⚠️ | `site_id` (required); additional body fields passed through |
+| `networks.update` | `put_value()` | ⚠️ | `site_id`, `network_id` (required); body fields passed through |
+| `networks.delete` | `delete_value()` | ⚠️ | `site_id`, `network_id` (both required) |
+
+### Wi-Fi Broadcasts
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `wifi.broadcasts.list` | `get_value()` | No | `site_id` (required) |
+| `wifi.broadcasts.get` | `get_value()` | No | `site_id`, `wifi_broadcast_id` (both required) |
+| `wifi.broadcasts.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `wifi.broadcasts.update` | `put_value()` | ⚠️ | `site_id`, `wifi_broadcast_id` (required); body fields passed through |
+| `wifi.broadcasts.delete` | `delete_value()` | ⚠️ | `site_id`, `wifi_broadcast_id` (both required) |
+| `wifi.update` | `put_value()` | ⚠️ | `site_id`, `wifi_id` (required); body fields passed through |
+
+### Hotspot Vouchers
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `hotspot.vouchers.list` | `get_value_query()` | No | `site_id` (required); `offset`, `limit`, `filter` (optional query) |
+| `hotspot.vouchers.get` | `get_value()` | No | `site_id`, `voucher_id` (both required) |
+| `hotspot.vouchers.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `hotspot.vouchers.delete` | `delete_value_query()` | ⚠️ | `site_id` (required); `filter` (optional query) |
+
+### Firewall Zones
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `firewall.zones.list` | `get_value()` | No | `site_id` (required); `offset`, `limit`, `filter` (optional query) |
+| `firewall.zones.get` | `get_value()` | No | `site_id`, `firewall_zone_id` (both required) |
+| `firewall.zones.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `firewall.zones.update` | `put_value()` | ⚠️ | `site_id`, `firewall_zone_id` (required); body fields passed through |
+| `firewall.zones.delete` | `delete_value()` | ⚠️ | `site_id`, `firewall_zone_id` (both required) |
+
+### Firewall Policies
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `firewall.policies.list` | `get_value()` | No | `site_id` (required); `offset`, `limit`, `filter` (optional query) |
+| `firewall.policies.get` | `get_value()` | No | `site_id`, `firewall_policy_id` (both required) |
+| `firewall.policies.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `firewall.policies.update` | `put_value()` | ⚠️ | `site_id`, `firewall_policy_id` (required); body fields passed through |
+| `firewall.policies.patch` | `patch_value()` | ⚠️ | `site_id`, `firewall_policy_id` (required); body fields passed through |
+| `firewall.policies.ordering.get` | `get_value()` | No | `site_id` (required) |
+| `firewall.policies.ordering.set` | `put_value()` | ⚠️ | `site_id` (required); body fields passed through |
+
+### ACL Rules
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `acl.rules.list` | `get_value()` | No | `site_id` (required); `offset`, `limit`, `filter` (optional query) |
+| `acl.rules.get` | `get_value()` | No | `site_id`, `acl_rule_id` (both required) |
+| `acl.rules.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `acl.rules.update` | `put_value()` | ⚠️ | `site_id`, `acl_rule_id` (required); body fields passed through |
+| `acl.rules.delete` | `delete_value()` | ⚠️ | `site_id`, `acl_rule_id` (both required) |
+| `acl.rules.ordering.get` | `get_value()` | No | `site_id` (required) |
+| `acl.rules.ordering.set` | `put_value()` | ⚠️ | `site_id` (required); body fields passed through |
+
+### Switching
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `switching.switch-stacks.list` | `get_value()` | No | `site_id` (required) |
+| `switching.switch-stacks.get` | `get_value()` | No | `site_id`, `switch_stack_id` (both required) |
+| `switching.mc-lag-domains.list` | `get_value()` | No | `site_id` (required) |
+| `switching.mc-lag-domains.get` | `get_value()` | No | `site_id`, `mc_lag_domain_id` (both required) |
+| `switching.lags.list` | `get_value()` | No | `site_id` (required) |
+| `switching.lags.get` | `get_value()` | No | `site_id`, `lag_id` (both required) |
+
+### Port Profiles
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `port-profile.list` | `get_value()` | No | `site_id` (required) |
+| `port-profile.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `port-profile.update` | `put_value()` | ⚠️ | `site_id`, `port_profile_id` (required); body fields passed through |
+
+### DNS Policies
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `dns.policies.list` | `get_value()` | No | `site_id` (required); `offset`, `limit`, `filter` (optional query) |
+| `dns.policies.get` | `get_value()` | No | `site_id`, `dns_policy_id` (both required) |
+| `dns.policies.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `dns.policies.update` | `put_value()` | ⚠️ | `site_id`, `dns_policy_id` (required); body fields passed through |
+| `dns.policies.delete` | `delete_value()` | ⚠️ | `site_id`, `dns_policy_id` (both required) |
+
+### Traffic Matching Lists
+
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `traffic-matching-lists.list` | `get_value()` | No | `site_id` (required); `offset`, `limit`, `filter` (optional query) |
+| `traffic-matching-lists.get` | `get_value()` | No | `site_id`, `traffic_matching_list_id` (both required) |
+| `traffic-matching-lists.create` | `post_value()` | ⚠️ | `site_id` (required); body fields passed through |
+| `traffic-matching-lists.update` | `put_value()` | ⚠️ | `site_id`, `traffic_matching_list_id` (required); body fields passed through |
+| `traffic-matching-lists.delete` | `delete_value()` | ⚠️ | `site_id`, `traffic_matching_list_id` (both required) |
 
 ### VPN
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `vpn.site-to-site-tunnels.list` | `get_value()` | ✅ | Site-to-site tunnel inventory |
-| `vpn.servers.list` | `get_value()` | ✅ | VPN server inventory |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `vpn.site-to-site-tunnels.list` | `get_value()` | No | `site_id` (required) |
+| `vpn.servers.list` | `get_value()` | No | `site_id` (required) |
 
-### Radius Profiles
+### RADIUS Profiles
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `radius.profiles.list` | `get_value()` | ✅ | Radius profile inventory |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `radius.profiles.list` | `get_value()` | No | `site_id` (required) |
 
 ### Device Tags
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `device-tags.list` | `get_value()` | ✅ | Device tag inventory |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `device-tags.list` | `get_value()` | No | `site_id` (required) |
 
 ### DPI
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `dpi.categories.list` | `get_value()` | ✅ | DPI category inventory |
-| `dpi.applications.list` | `get_value()` | ✅ | DPI application inventory |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `dpi.categories.list` | `get_value()` | No | `offset`, `limit` (optional query) |
+| `dpi.applications.list` | `get_value()` | No | `offset`, `limit` (optional query) |
 
 ### Countries
 
-| Action | SDK helper | Status | Notes |
-|--------|------------|--------|-------|
-| `countries.list` | `get_value()` | ✅ | Country inventory |
+| Action | SDK helper | Destructive | Params |
+|--------|------------|-------------|--------|
+| `countries.list` | `get_value()` | No | `offset`, `limit` (optional query) |
 
-## Notes
+## Surface Notes
 
-- `UNIFI_URL` should point at the controller root, for example `https://10.1.0.1`.
-- `UNIFI_API_KEY` is sent as `X-API-KEY`.
-- The client appends `/proxy/network/integration/v1` internally, so callers do
-  not need to include that prefix in configuration.
-- Safe discovery and wiring checks were confirmed through the CLI and MCP `help`
-  path. Live controller calls are still pending because this workspace does not
-  have a configured UniFi controller.
+### CLI (`crates/lab/src/cli/unifi.rs`)
+
+Tier-2 shim. `lab unifi <action> [key=value ...]`. Supports `--instance <label>`,
+`-y`/`--yes` (skip destructive confirm), and `--dry-run`. The dry-run check runs
+twice in the current code (a minor implementation artifact, not a user-visible bug).
+
+### MCP
+
+No dedicated `mcp/services/unifi.rs` dispatch function — the MCP registry wires directly
+to `dispatch::unifi::dispatch`. The file `mcp/services/unifi.rs` exists but contains only
+tests; it does not export a `dispatch` function.
+
+### API (`crates/lab/src/api/services/unifi.rs`)
+
+`POST /v1/unifi` — single route. Calls `dispatch::unifi::dispatch` via the shared
+`handle_action` helper. Does not use a pre-built client from `AppState`; client resolution
+happens inside the dispatch layer (via `client_from_instance`).
+
+## Config
+
+| Env var | Required | Purpose |
+|---------|----------|---------|
+| `UNIFI_URL` | Yes | Controller root URL (e.g. `https://10.1.0.1`) |
+| `UNIFI_API_KEY` | Yes | API key sent as `X-API-KEY` header |
+
+The client appends `/proxy/network/integration/v1` internally. Multi-instance support: set
+`UNIFI_<LABEL>_URL` and `UNIFI_<LABEL>_API_KEY` for additional instances; select via
+`params.instance` (MCP/API) or `--instance` (CLI).

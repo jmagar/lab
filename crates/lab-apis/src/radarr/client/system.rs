@@ -75,4 +75,46 @@ impl RadarrClient {
             .await
             .map_err(RadarrError::from)
     }
+
+    /// Trigger a Radarr restart.
+    ///
+    /// Maps to `POST /api/v3/system/restart`. Destructive — the server will
+    /// become briefly unavailable after this call returns.
+    ///
+    /// # Errors
+    /// Returns `RadarrError::Api` on HTTP failure.
+    pub async fn system_restart(&self) -> Result<(), RadarrError> {
+        self.http
+            .post_void("/api/v3/system/restart", &serde_json::Value::Null)
+            .await
+            .map_err(RadarrError::from)
+    }
+
+    /// List available backup files.
+    ///
+    /// Maps to `GET /api/v3/system/backup`. Returns metadata about all
+    /// stored backups (name, path, type, size, creation time).
+    ///
+    /// # Errors
+    /// Returns `RadarrError::Api` on HTTP failure.
+    pub async fn system_backup(&self) -> Result<serde_json::Value, RadarrError> {
+        self.http
+            .get_json("/api/v3/system/backup")
+            .await
+            .map_err(RadarrError::from)
+    }
+
+    /// List all scheduled tasks (background jobs).
+    ///
+    /// Maps to `GET /api/v3/system/task`. Returns the task list showing each
+    /// job's name, interval, last/next execution time, and current status.
+    ///
+    /// # Errors
+    /// Returns `RadarrError::Api` on HTTP failure.
+    pub async fn system_tasks(&self) -> Result<serde_json::Value, RadarrError> {
+        self.http
+            .get_json("/api/v3/system/task")
+            .await
+            .map_err(RadarrError::from)
+    }
 }

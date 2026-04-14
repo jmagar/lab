@@ -109,3 +109,38 @@ pub struct Client {
 pub struct ClientParams {
     pub name: String,
 }
+
+/// Newtype wrapper around a Gotify plugin id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PluginId(pub u64);
+
+/// A Gotify server plugin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Plugin {
+    pub id: PluginId,
+    pub name: String,
+    pub module_path: Option<String>,
+    pub enabled: bool,
+    pub capabilities: Option<Vec<String>>,
+    pub license: Option<String>,
+    pub description: Option<String>,
+    pub website: Option<String>,
+}
+
+/// Request body for creating a Gotify user.
+#[derive(Debug, Clone, Serialize)]
+pub struct UserCreate {
+    pub name: String,
+    pub pass: String,
+    pub admin: bool,
+}
+
+/// Server version information from `GET /version`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerVersion {
+    pub version: String,
+    pub commit: String,
+    #[serde(rename = "buildDate")]
+    pub build_date: String,
+}

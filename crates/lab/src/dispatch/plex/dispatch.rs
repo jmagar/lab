@@ -2,7 +2,9 @@ use lab_apis::plex::PlexClient;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
+use crate::dispatch::helpers::{
+    action_schema, help_payload, optional_u32, require_i64, require_str, to_json,
+};
 
 use super::catalog::ACTIONS;
 use super::client::require_client;
@@ -77,6 +79,78 @@ pub async fn dispatch_with_client(
             client.playlist_delete(playlist_id).await?;
             Ok(Value::Null)
         }
+
+        // ── Library browse / trash ────────────────────────────────────────────
+        "library.browse" => {
+            let section_id = require_i64(&params, "section_id")?;
+            let type_filter = params::optional_string(&params, "type")?;
+            let sort = params::optional_string(&params, "sort")?;
+            to_json(
+                client
+                    .library_browse(section_id, type_filter.as_deref(), sort.as_deref())
+                    .await?,
+            )
+        }
+        "library.empty-trash" => {
+            let section_id = require_i64(&params, "section_id")?;
+            client.library_empty_trash(section_id).await?;
+            Ok(Value::Null)
+        }
+
+        // ── Metadata ──────────────────────────────────────────────────────────
+        "metadata.delete" => {
+            let rating_key = params::require_key(&params, "rating_key")?;
+            client.metadata_delete(rating_key).await?;
+            Ok(Value::Null)
+        }
+        "metadata.edit" => {
+            let rating_key = params::require_key(&params, "rating_key")?;
+            let fields = params
+                .get("fields")
+                .cloned()
+                .unwrap_or(Value::Object(Default::default()));
+            to_json(client.metadata_edit(rating_key, &fields).await?)
+        }
+        "metadata.refresh" => {
+            let rating_key = params::require_key(&params, "rating_key")?;
+            client.metadata_refresh(rating_key).await?;
+            Ok(Value::Null)
+        }
+
+        // ── Session history ───────────────────────────────────────────────────
+        "session.history" => {
+            let account_id = params
+                .get("account_id")
+                .and_then(|v| v.as_i64());
+            let limit = optional_u32(&params, "limit")?;
+            to_json(client.session_history(account_id, limit).await?)
+        }
+
+        // ── Hubs ──────────────────────────────────────────────────────────────
+        "hubs.continue-watching" => to_json(client.hubs_continue_watching().await?),
+
+        // ── Butler ────────────────────────────────────────────────────────────
+        "butler.list" => to_json(client.butler_list().await?),
+        "butler.run" => {
+            let task_name = params::require_key(&params, "task_name")?;
+            client.butler_run(task_name).await?;
+            Ok(Value::Null)
+        }
+
+        // ── Scrobble / Unscrobble ─────────────────────────────────────────────
+        "item.scrobble" => {
+            let rating_key = params::require_key(&params, "rating_key")?;
+            client.item_scrobble(rating_key).await?;
+            Ok(Value::Null)
+        }
+        "item.unscrobble" => {
+            let rating_key = params::require_key(&params, "rating_key")?;
+            client.item_unscrobble(rating_key).await?;
+            Ok(Value::Null)
+        }
+
+        // ── Updater ───────────────────────────────────────────────────────────
+        "updater.status" => to_json(client.updater_status().await?),
 
         // ── Health ────────────────────────────────────────────────────────────
         "health" => {

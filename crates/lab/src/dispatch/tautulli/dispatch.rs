@@ -2,7 +2,7 @@ use lab_apis::tautulli::TautulliClient;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
+use crate::dispatch::helpers::{action_schema, help_payload, optional_str, require_i64, require_str, to_json};
 use crate::dispatch::tautulli::{catalog::ACTIONS, client, params};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
@@ -60,6 +60,62 @@ pub async fn dispatch_with_client(
                     .await?,
             )
         }
+        // ── Media ─────────────────────────────────────────────────────────────
+        "media.recently-added" => {
+            let count = params::optional_count(&params_value)?;
+            let section_id = optional_str(&params_value, "section_id")?.map(str::to_owned);
+            to_json(
+                client
+                    .get_recently_added(count, section_id.as_deref())
+                    .await?,
+            )
+        }
+        "media.metadata" => {
+            let rating_key = params::require_rating_key(&params_value)?;
+            to_json(client.get_metadata(rating_key).await?)
+        }
+        "media.children" => {
+            let rating_key = params::require_rating_key(&params_value)?;
+            to_json(client.get_children_metadata(rating_key).await?)
+        }
+        "media.export-metadata" => {
+            let rating_key = params::require_rating_key(&params_value)?;
+            let media_type = require_str(&params_value, "media_type")?;
+            to_json(client.export_metadata(rating_key, media_type).await?)
+        }
+        // ── User stats ────────────────────────────────────────────────────────
+        "user.item-stats" => {
+            let rating_key = params::require_rating_key(&params_value)?;
+            let media_type = optional_str(&params_value, "media_type")?.map(str::to_owned);
+            to_json(
+                client
+                    .get_item_user_stats(rating_key, media_type.as_deref())
+                    .await?,
+            )
+        }
+        "user.delete-history" => {
+            let user_id = require_i64(&params_value, "user_id")?;
+            to_json(client.delete_all_user_history(user_id).await?)
+        }
+        // ── Play analytics ────────────────────────────────────────────────────
+        "plays.by-day" => {
+            let time_range = params::optional_time_range(&params_value)?;
+            to_json(client.get_plays_by_dayofweek(time_range).await?)
+        }
+        "plays.by-hour" => {
+            let time_range = params::optional_time_range(&params_value)?;
+            to_json(client.get_plays_by_hourofday(time_range).await?)
+        }
+        "plays.by-stream-type" => {
+            let time_range = params::optional_time_range(&params_value)?;
+            to_json(client.get_plays_by_stream_type(time_range).await?)
+        }
+        "plays.by-month" => {
+            let time_range = params::optional_time_range(&params_value)?;
+            to_json(client.get_plays_per_month(time_range).await?)
+        }
+        // ── Server ────────────────────────────────────────────────────────────
+        "server.pms-update" => to_json(client.get_pms_update().await?),
         // ── System ────────────────────────────────────────────────────────────
         "system.info" => to_json(client.get_server_info().await?),
         "system.settings" => to_json(client.get_settings().await?),

@@ -12,10 +12,56 @@
 
 | Symbol | Meaning |
 |--------|---------|
+| ✅ | Implemented (SDK + dispatch + MCP/CLI/API) |
 | ⬜ | Not implemented yet; rows are spec inventory only |
 | - | Not applicable / not represented in the spec |
 
 The source spec is the contract. This document is the implementation planning aid.
+
+## Implemented Actions
+
+The following actions are fully implemented across SDK (`lab-apis`), dispatch layer, CLI, MCP, and HTTP API.
+
+- CLI: thin dispatch shim (`lab plex <action> [--params <json>]`)
+- MCP: one tool `plex` with action dispatch
+- API: `POST /v1/plex`
+- Auth: `PLEX_URL` + `PLEX_TOKEN` env vars; token sent as `X-Plex-Token` header
+
+| Action | SDK Method | Destructive | Params | Returns |
+|--------|-----------|-------------|--------|---------|
+| `help` | built-in | no | — | Catalog |
+| `schema` | built-in | no | `action: string` | Schema |
+| `health` | `probe()` | no | — | `{ "status": "ok" }` |
+| `server.info` | `server_info()` | no | — | Value (`GET /`) |
+| `server.capabilities` | `server_capabilities()` | no | — | Value (`GET /media/providers`) |
+| `library.list` | `library_list()` | no | — | Value (`GET /library/sections`) |
+| `library.get` | `library_get(section_id)` | no | `section_id: string` | Value |
+| `library.scan` | `library_scan(section_id)` | no | `section_id: string` | Value |
+| `library.refresh` | `library_refresh(section_id)` | **yes** | `section_id: string` | Value |
+| `media.search` | `media_search(params)` | no | `query: string`, `limit?: integer`, `section_id?: string` | Value (`GET /hubs/search`) |
+| `media.get` | `media_get(rating_key)` | no | `rating_key: string` | Value (`GET /library/metadata/{id}`) |
+| `session.list` | `session_list()` | no | — | Value (`GET /status/sessions`) |
+| `session.terminate` | `session_terminate(session_id, reason)` | **yes** | `session_id: string`, `reason?: string` | Value |
+| `playlist.list` | `playlist_list()` | no | — | Value (`GET /playlists`) |
+| `playlist.get` | `playlist_get(playlist_id)` | no | `playlist_id: string` | Value |
+| `playlist.create` | `playlist_create(title, playlist_type, uri)` | **yes** | `title: string`, `playlist_type: string`, `uri?: string` | Value |
+| `playlist.delete` | `playlist_delete(playlist_id)` | **yes** | `playlist_id: string` | void |
+| `library.browse` | `library_browse(section_id, type_filter, sort)` | no | `section_id: integer`, `type?: string`, `sort?: string` | Value (`GET /library/sections/{id}/all`) |
+| `library.empty-trash` | `library_empty_trash(section_id)` | **yes** | `section_id: integer` | void (`PUT /library/sections/{id}/emptyTrash`) |
+| `metadata.delete` | `metadata_delete(rating_key)` | **yes** | `rating_key: string` | void (`DELETE /library/metadata/{id}`) |
+| `metadata.edit` | `metadata_edit(rating_key, fields)` | no | `rating_key: string`, `fields: object` | Value (`GET /library/metadata/{id}` with query params) |
+| `metadata.refresh` | `metadata_refresh(rating_key)` | no | `rating_key: string` | void (`PUT /library/metadata/{id}/refresh`) |
+| `session.history` | `session_history(account_id, limit)` | no | `account_id?: integer`, `limit?: integer` | Value (`GET /status/sessions/history/all`) |
+| `hubs.continue-watching` | `hubs_continue_watching()` | no | — | Value (`GET /hubs/continueWatching`) |
+| `butler.list` | `butler_list()` | no | — | Value (`GET /butler`) |
+| `butler.run` | `butler_run(task_name)` | no | `task_name: string` | void (`POST /butler/{task}`) |
+| `item.scrobble` | `item_scrobble(rating_key)` | no | `rating_key: string` | void (`GET /:/scrobble`) |
+| `item.unscrobble` | `item_unscrobble(rating_key)` | no | `rating_key: string` | void (`GET /:/unscrobble`) |
+| `updater.status` | `updater_status()` | no | — | Value (`GET /updater/status`) |
+
+## OpenAPI Endpoint Inventory
+
+The table below tracks the full OpenAPI spec surface. Rows updated to ✅ where the SDK method backing the implemented action above matches the endpoint.
 
 ## Activities
 
@@ -29,10 +75,10 @@ The source spec is the contract. This document is the implementation planning ai
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | DELETE | /butler | stopTasks | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /butler | getTasks | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /butler | getTasks / `butler_list` | ✅ | ✅ | ✅ | ✅ |
 | POST | /butler | startTasks | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /butler/{butlerTask} | stopTask | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /butler/{butlerTask} | startTask | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /butler/{butlerTask} | startTask / `butler_run` | ✅ | ✅ | ✅ | ✅ |
 
 ## Collections
 
@@ -46,9 +92,9 @@ The source spec is the contract. This document is the implementation planning ai
 |--------|----------|------------|------|-----|-----|-----|
 | GET | /library/collections/{collectionId}/composite/{updatedAt} | getCollectionImage | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/collections/{collectionId}/items | getCollectionItems | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /library/metadata/{ids} | getMetadataItem | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /library/metadata/{ids} | getMetadataItem / `media_get` | ✅ | ✅ | ✅ | ✅ |
 | GET | /library/sections/{sectionId}/albums | getAlbums | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /library/sections/{sectionId}/all | listContent | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /library/sections/{sectionId}/all | listContent / `library_browse` | ✅ | ✅ | ✅ | ✅ |
 | GET | /library/sections/{sectionId}/allLeaves | getAllLeaves | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/sections/{sectionId}/arts | getArts | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/sections/{sectionId}/categories | getCategories | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -132,7 +178,7 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | / | getServerInfo | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | / | getServerInfo / `server_info` | ✅ | ✅ | ✅ | ✅ |
 | GET | /identity | getIdentity | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /security/resources | getSourceConnectionInformation | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /security/token | getTransientToken | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -142,7 +188,7 @@ The source spec is the contract. This document is the implementation planning ai
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | GET | /hubs | getAllHubs | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /hubs/continueWatching | getContinueWatching | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /hubs/continueWatching | getContinueWatching / `hubs_continue_watching` | ✅ | ✅ | ✅ | ✅ |
 | GET | /hubs/items | getHubItems | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /hubs/metadata/{metadataId} | getMetadataHubs | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /hubs/metadata/{metadataId}/postplay | getPostplayHubs | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -167,8 +213,8 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /library/matches | getLibraryMatches | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/media/{mediaId}/chapterImages/{chapter} | getChapterImage | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/metadata/augmentations/{augmentationId} | getAugmentationStatus | ⬜ | ⬜ | ⬜ | ⬜ |
-| DELETE | /library/metadata/{ids} | deleteMetadataItem | ⬜ | ⬜ | ⬜ | ⬜ |
-| PUT | /library/metadata/{ids} | editMetadataItem | ⬜ | ⬜ | ⬜ | ⬜ |
+| DELETE | /library/metadata/{ids} | deleteMetadataItem / `metadata_delete` | ✅ | ✅ | ✅ | ✅ |
+| PUT | /library/metadata/{ids} | editMetadataItem / `metadata_edit` | ✅ | ✅ | ✅ | ✅ |
 | PUT | /library/metadata/{ids}/addetect | detectAds | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/metadata/{ids}/allLeaves | getAllItemLeaves | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /library/metadata/{ids}/analyze | analyzeMetadata | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -188,7 +234,7 @@ The source spec is the contract. This document is the implementation planning ai
 | PUT | /library/metadata/{ids}/merge | mergeItems | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/metadata/{ids}/nearest | listSonicallySimilar | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /library/metadata/{ids}/prefs | setItemPreferences | ⬜ | ⬜ | ⬜ | ⬜ |
-| PUT | /library/metadata/{ids}/refresh | refreshItemsMetadata | ⬜ | ⬜ | ⬜ | ⬜ |
+| PUT | /library/metadata/{ids}/refresh | refreshItemsMetadata / `metadata_refresh` | ✅ | ✅ | ✅ | ✅ |
 | GET | /library/metadata/{ids}/related | getRelatedItems | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/metadata/{ids}/similar | listSimilar | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /library/metadata/{ids}/split | splitItem | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -208,13 +254,13 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /library/people/{personId} | getPerson | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/people/{personId}/media | listPersonMedia | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/randomArtwork | getRandomArtwork | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /library/sections/all | getSections | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /library/sections/all | getSections / `library_list` (calls /library/sections) | ✅ | ✅ | ✅ | ✅ |
 | POST | /library/sections/all | addSection | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /library/sections/all/refresh | stopAllRefreshes | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/sections/prefs | getSectionsPrefs | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /library/sections/refresh | refreshSectionsMetadata | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /library/sections/{sectionId} | deleteLibrarySection | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /library/sections/{sectionId} | getLibraryDetails | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /library/sections/{sectionId} | getLibraryDetails / `library_get` | ✅ | ✅ | ✅ | ✅ |
 | PUT | /library/sections/{sectionId} | editSection | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /library/sections/{sectionId}/all | updateItems | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /library/sections/{sectionId}/analyze | startAnalysis | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -223,7 +269,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /library/sections/{sectionId}/collections | getCollections | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/sections/{sectionId}/common | getCommon | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/sections/{sectionId}/composite/{updatedAt} | getSectionImage | ⬜ | ⬜ | ⬜ | ⬜ |
-| PUT | /library/sections/{sectionId}/emptyTrash | emptyTrash | ⬜ | ⬜ | ⬜ | ⬜ |
+| PUT | /library/sections/{sectionId}/emptyTrash | emptyTrash / `library_empty_trash` | ✅ | ✅ | ✅ | ✅ |
 | GET | /library/sections/{sectionId}/filters | getSectionFilters | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/sections/{sectionId}/firstCharacters | getFirstCharacters | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /library/sections/{sectionId}/indexes | deleteIndexes | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -231,7 +277,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /library/sections/{sectionId}/prefs | getSectionPreferences | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /library/sections/{sectionId}/prefs | setSectionPreferences | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /library/sections/{sectionId}/refresh | cancelRefresh | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /library/sections/{sectionId}/refresh | refreshSection | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /library/sections/{sectionId}/refresh | refreshSection / `library_scan` (GET) / `library_refresh` (GET+force=1) | ✅ | ✅ | ✅ | ✅ |
 | GET | /library/sections/{sectionId}/sorts | getAvailableSorts | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /library/streams/{streamId}.{ext} | deleteStream | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /library/streams/{streamId}.{ext} | getStream | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -252,9 +298,9 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| POST | /playlists | createPlaylist | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /playlists | createPlaylist / `playlist_create` | ✅ | ✅ | ✅ | ✅ |
 | POST | /playlists/upload | uploadPlaylist | ⬜ | ⬜ | ⬜ | ⬜ |
-| DELETE | /playlists/{playlistId} | deletePlaylist | ⬜ | ⬜ | ⬜ | ⬜ |
+| DELETE | /playlists/{playlistId} | deletePlaylist / `playlist_delete` | ✅ | ✅ | ✅ | ✅ |
 | PUT | /playlists/{playlistId} | updatePlaylist | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /playlists/{playlistId}/generators | getPlaylistGenerators | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /playlists/{playlistId}/items | clearPlaylistItems | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -301,8 +347,8 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /playlists | listPlaylists | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /playlists/{playlistId} | getPlaylist | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /playlists | listPlaylists / `playlist_list` | ✅ | ✅ | ✅ | ✅ |
+| GET | /playlists/{playlistId} | getPlaylist / `playlist_get` | ✅ | ✅ | ✅ | ✅ |
 | GET | /playlists/{playlistId}/items | getPlaylistItems | ⬜ | ⬜ | ⬜ | ⬜ |
 
 ## Preferences
@@ -317,7 +363,7 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /media/providers | listProviders | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /media/providers | listProviders / `server_capabilities` | ✅ | ✅ | ✅ | ✅ |
 | POST | /media/providers | addProvider | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /media/providers/refresh | refreshProviders | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /media/providers/{provider} | deleteMediaProvider | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -332,19 +378,19 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /hubs/search | searchHubs | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /hubs/search | searchHubs / `media_search` | ✅ | ✅ | ✅ | ✅ |
 | GET | /hubs/search/voice | voiceSearchHubs | ⬜ | ⬜ | ⬜ | ⬜ |
 
 ## Status
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /status/sessions | listSessions | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /status/sessions | listSessions / `session_list` | ✅ | ✅ | ✅ | ✅ |
 | GET | /status/sessions/background | getBackgroundTasks | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /status/sessions/history/all | listPlaybackHistory | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /status/sessions/history/all | listPlaybackHistory / `session_history` | ✅ | ✅ | ✅ | ✅ |
 | DELETE | /status/sessions/history/{historyId} | deleteHistory | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /status/sessions/history/{historyId} | getHistoryItem | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /status/sessions/terminate | terminateSession | ⬜ | ⬜ | ⬜ | ⬜ |
+| POST | /status/sessions/terminate | terminateSession / `session_terminate` (GET) | ✅ | ✅ | ✅ | ✅ |
 
 ## Subscriptions
 
@@ -365,9 +411,9 @@ The source spec is the contract. This document is the implementation planning ai
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| PUT | /:/scrobble | markPlayed | ⬜ | ⬜ | ⬜ | ⬜ |
+| PUT | /:/scrobble | markPlayed / `item_scrobble` (GET quirk) | ✅ | ✅ | ✅ | ✅ |
 | POST | /:/timeline | report | ⬜ | ⬜ | ⬜ | ⬜ |
-| PUT | /:/unscrobble | unscrobble | ⬜ | ⬜ | ⬜ | ⬜ |
+| PUT | /:/unscrobble | unscrobble / `item_unscrobble` (GET quirk) | ✅ | ✅ | ✅ | ✅ |
 
 ## Transcoder
 
@@ -392,7 +438,7 @@ The source spec is the contract. This document is the implementation planning ai
 |--------|----------|------------|------|-----|-----|-----|
 | PUT | /updater/apply | applyUpdates | ⬜ | ⬜ | ⬜ | ⬜ |
 | PUT | /updater/check | checkUpdates | ⬜ | ⬜ | ⬜ | ⬜ |
-| GET | /updater/status | getUpdatesStatus | ⬜ | ⬜ | ⬜ | ⬜ |
+| GET | /updater/status | getUpdatesStatus / `updater_status` | ✅ | ✅ | ✅ | ✅ |
 
 ## Authentication
 

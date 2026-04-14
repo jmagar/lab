@@ -288,3 +288,17 @@ pub struct CreateIssueBody {
 pub struct IssueCommentBody {
     pub message: String,
 }
+
+// ── Request counts ─────────────────────────────────────────────────────────────
+
+/// Request counts by status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestCount {
+    pub pending: u32,
+    pub approved: u32,
+    pub declined: u32,
+    pub processing: u32,
+    pub available: u32,
+    pub total: u32,
+}

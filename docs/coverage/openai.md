@@ -1,23 +1,88 @@
 # OpenAI API Coverage
 
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-13
 **OpenAPI spec:** docs/api-specs/openai.openapi.yaml
 **OpenAPI version:** 3.0.0
 **API version:** 2.3.0
 **Paths:** 148
 **Servers:** https://api.openai.com/v1
-**Security schemes:** ApiKeyAuth
+**Security schemes:** ApiKeyAuth (Bearer token via `Authorization: Bearer <key>`)
+**Compatible with:** Any OpenAI-compatible server (Ollama, vLLM, LiteLLM, etc.) via `OPENAI_URL` override.
 
 ## Legend
 
 | Symbol | Meaning |
 |--------|---------|
-| ⬜ | Not implemented yet; rows are spec inventory only |
+| ✅ | Implemented across all surfaces (SDK client, MCP, CLI, HTTP API) |
+| ⬜ | Not implemented; row is spec inventory only |
 | - | Not applicable / not represented in the spec |
 
 The source spec is the contract. This document is the implementation planning aid.
 
-## Assistants
+## Implemented Actions
+
+These actions are fully wired: `lab-apis` client method → dispatch layer → MCP + CLI + HTTP API.
+
+| Action | HTTP Method | Endpoint | SDK Method | MCP | CLI | API |
+|--------|-------------|----------|------------|-----|-----|-----|
+| `server.health` | GET | /v1/models | `health()` | ✅ | ✅ | ✅ |
+| `model.list` | GET | /v1/models | `list_models()` | ✅ | ✅ | ✅ |
+| `chat.complete` | POST | /v1/chat/completions | `chat_completion()` | ✅ | ✅ | ✅ |
+| `embed.create` | POST | /v1/embeddings | `create_embeddings()` | ✅ | ✅ | ✅ |
+
+### `server.health`
+- **Params:** none
+- **Returns:** `{ "ok": true }`
+- **Notes:** Pings `GET /v1/models` as a cheap health probe. Succeeds if the server is
+  reachable and the API key has at least read scope.
+
+### `model.list`
+- **Params:** none
+- **Returns:** `ModelsResponse` — `{ "object": "list", "data": [{ "id", "object", "created", "owned_by" }, ...] }`
+
+### `chat.complete`
+- **Params:**
+  - `model` (string, required) — model identifier (e.g. `gpt-4o-mini`, `llama3`)
+  - `messages` (json array, required) — `[{"role":"user|system|assistant|tool","content":"..."}]`. Also accepted as a JSON-encoded string.
+  - `temperature` (number, optional) — sampling temperature (0.0–2.0)
+  - `max_tokens` (integer, optional) — maximum tokens to generate
+- **Returns:** `ChatCompletionResponse` — `{ "id", "object", "created", "model", "choices": [{ "index", "message": {"role","content"}, "finish_reason" }], "usage": {"prompt_tokens","completion_tokens","total_tokens"} }`
+- **Notes:** `stream` is never set (non-streaming only).
+
+### `embed.create`
+- **Params:**
+  - `model` (string, required) — embedding model (e.g. `text-embedding-3-small`)
+  - `input` (string, optional) — single input string shortcut
+  - `inputs` (json array, optional) — array of input strings (batch mode). Use `input` OR `inputs`, not both.
+  - `dimensions` (integer, optional) — output embedding dimension
+- **Returns:** `EmbeddingsResponse` — `{ "object", "data": [{ "index", "embedding": [f32,...], "object" }], "model", "usage" }`
+
+## Config / Auth
+
+| Env Var | Required | Description |
+|---------|----------|-------------|
+| `OPENAI_API_KEY` | yes | Bearer token sent as `Authorization: Bearer <key>` |
+| `OPENAI_URL` | no | Base URL (default: `https://api.openai.com`) |
+
+Setting `OPENAI_URL` to a local server (e.g. `http://localhost:11434`) enables OpenAI-compatible servers.
+
+## CLI Usage
+
+```bash
+lab openai help
+lab openai model.list
+lab openai chat.complete --params '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
+lab openai embed.create --params '{"model":"text-embedding-3-small","input":"Hello world"}'
+lab openai server.health
+```
+
+The CLI is a flat action+params shim (`OpenaiArgs { action, params }`). There are no typed subcommands.
+
+## Not Yet Implemented
+
+All other OpenAI API paths (148 total in spec). The following sections are spec inventory only — none have SDK client methods, dispatch actions, or surface wiring.
+
+### Assistants
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -49,7 +114,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /threads/{thread_id}/runs/{run_id}/steps/{step_id} | getRunStep | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /threads/{thread_id}/runs/{run_id}/submit_tool_outputs | submitToolOutputsToRun | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Audio
+### Audio
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -57,30 +122,23 @@ The source spec is the contract. This document is the implementation planning ai
 | POST | /audio/transcriptions | createTranscription | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /audio/translations | createTranslation | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Chat
+### Chat (stored completions — distinct from `chat.complete`)
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | GET | /chat/completions | listChatCompletions | ⬜ | ⬜ | ⬜ | ⬜ |
-| POST | /chat/completions | createChatCompletion | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /chat/completions/{completion_id} | deleteChatCompletion | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /chat/completions/{completion_id} | getChatCompletion | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /chat/completions/{completion_id} | updateChatCompletion | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /chat/completions/{completion_id}/messages | getChatCompletionMessages | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Completions
+### Completions (legacy)
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | POST | /completions | createCompletion | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Embeddings
-
-| Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
-|--------|----------|------------|------|-----|-----|-----|
-| POST | /embeddings | createEmbedding | ⬜ | ⬜ | ⬜ | ⬜ |
-
-## Evals
+### Evals
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -97,7 +155,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /evals/{eval_id}/runs/{run_id}/output_items | getEvalRunOutputItems | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /evals/{eval_id}/runs/{run_id}/output_items/{output_item_id} | getEvalRunOutputItem | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Fine-tuning
+### Fine-tuning
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -111,7 +169,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /fine_tuning/jobs/{fine_tuning_job_id}/checkpoints | listFineTuningJobCheckpoints | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /fine_tuning/jobs/{fine_tuning_job_id}/events | listFineTuningEvents | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Batch
+### Batch
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -120,7 +178,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /batches/{batch_id} | retrieveBatch | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /batches/{batch_id}/cancel | cancelBatch | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Files
+### Files
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -130,7 +188,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /files/{file_id} | retrieveFile | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /files/{file_id}/content | downloadFile | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Uploads
+### Uploads
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -139,7 +197,7 @@ The source spec is the contract. This document is the implementation planning ai
 | POST | /uploads/{upload_id}/complete | completeUpload | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /uploads/{upload_id}/parts | addUploadPart | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Images
+### Images
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -147,27 +205,26 @@ The source spec is the contract. This document is the implementation planning ai
 | POST | /images/generations | createImage | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /images/variations | createImageVariation | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Models
+### Models (management — delete/retrieve by id)
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
-| GET | /models | listModels | ⬜ | ⬜ | ⬜ | ⬜ |
 | DELETE | /models/{model} | deleteModel | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /models/{model} | retrieveModel | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Moderations
+### Moderations
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | POST | /moderations | createModeration | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Audit Logs
+### Audit Logs
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | GET | /organization/audit_logs | list-audit-logs | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Certificates
+### Certificates
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -182,7 +239,7 @@ The source spec is the contract. This document is the implementation planning ai
 | POST | /organization/projects/{project_id}/certificates/activate | activateProjectCertificates | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /organization/projects/{project_id}/certificates/deactivate | deactivateProjectCertificates | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Usage
+### Usage
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -196,7 +253,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /organization/usage/moderations | usage-moderations | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /organization/usage/vector_stores | usage-vector-stores | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Invites
+### Invites
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -205,7 +262,7 @@ The source spec is the contract. This document is the implementation planning ai
 | DELETE | /organization/invites/{invite_id} | delete-invite | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /organization/invites/{invite_id} | retrieve-invite | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Projects
+### Projects
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -229,7 +286,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /organization/projects/{project_id}/users/{user_id} | retrieve-project-user | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /organization/projects/{project_id}/users/{user_id} | modify-project-user | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Users
+### Users
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -238,14 +295,14 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /organization/users/{user_id} | retrieve-user | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /organization/users/{user_id} | modify-user | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Realtime
+### Realtime
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
 | POST | /realtime/sessions | create-realtime-session | ⬜ | ⬜ | ⬜ | ⬜ |
 | POST | /realtime/transcription_sessions | create-realtime-transcription-session | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Responses
+### Responses
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|
@@ -254,7 +311,7 @@ The source spec is the contract. This document is the implementation planning ai
 | GET | /responses/{response_id} | getResponse | ⬜ | ⬜ | ⬜ | ⬜ |
 | GET | /responses/{response_id}/input_items | listInputItems | ⬜ | ⬜ | ⬜ | ⬜ |
 
-## Vector stores
+### Vector stores
 
 | Method | Endpoint | SDK Method | Impl | MCP | CLI | API |
 |--------|----------|------------|------|-----|-----|-----|

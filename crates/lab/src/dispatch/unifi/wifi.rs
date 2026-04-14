@@ -93,6 +93,26 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    ActionSpec {
+        name: "wifi.update",
+        description: "Update Wi-Fi configuration for one site",
+        destructive: true,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "site_id",
+                ty: "string",
+                required: true,
+                description: "Site UUID",
+            },
+            ParamSpec {
+                name: "wifi_id",
+                ty: "string",
+                required: true,
+                description: "Wi-Fi configuration UUID",
+            },
+        ],
+    },
 ];
 
 pub async fn dispatch(
@@ -147,6 +167,15 @@ pub async fn dispatch(
                 ))
                 .await?;
             to_json(serde_json::json!({"deleted": true}))
+        }
+        "wifi.update" => {
+            let site_id = require_str(&params, "site_id")?;
+            let wifi_id = require_str(&params, "wifi_id")?;
+            let body = object_without(&params, &["site_id", "wifi_id"])?;
+            let result = client
+                .put_value(&format!("/sites/{site_id}/wifi/{wifi_id}"), &body)
+                .await?;
+            to_json(result)
         }
         _ => Err(ToolError::UnknownAction {
             message: format!("unknown action `{action}` for service `unifi`"),
