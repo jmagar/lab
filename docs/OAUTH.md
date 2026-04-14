@@ -1,50 +1,76 @@
-# OAuth 2.1 Resource Server
+# HTTP Auth Modes
 
-Lab acts as an OAuth 2.1 resource server (RFC 9728). It validates tokens issued by an external authorization server. It does not issue tokens.
+Lab supports two HTTP auth modes:
 
-This document covers configuration, startup behavior, runtime validation, JWKS caching, and failure modes.
+- `LAB_AUTH_MODE=bearer`
+  Preserve the existing static bearer-token flow with `LAB_MCP_HTTP_TOKEN`.
+- `LAB_AUTH_MODE=oauth`
+  Run an internal Google-backed OAuth authorization server that issues `lab` JWT access tokens and exposes JWKS plus RFC 9728 metadata.
+
+This document covers mode selection, startup behavior, registration and token flow, JWT validation, and operator-facing constraints.
 
 ## Configuration
 
-OAuth is configured through env vars and/or `config.toml`. Env vars take precedence over config file values.
+OAuth mode is configured through env vars and/or `config.toml`. Env vars take precedence over config file values.
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LAB_OAUTH_ISSUER` | yes | OIDC issuer URL. Must use HTTPS. |
-| `LAB_OAUTH_AUDIENCE` | yes | Expected `aud` claim (RFC 8707). |
-| `LAB_OAUTH_CLIENT_ID` | no | Optional `azp` claim validation. |
-| `LAB_RESOURCE_URL` | yes | Public URL of this lab instance. Required when OAuth is enabled. |
-
-### config.toml
-
-```toml
-[oauth]
-issuer = "https://auth.example.com"
-audience = "https://lab.example.com"
-client_id = "optional-client-id"
-resource_url = "https://lab.example.com"
-```
-
-Env vars override every field in the `[oauth]` section. If neither `LAB_OAUTH_ISSUER` nor `[oauth].issuer` is set, OAuth is not configured and lab falls back to static bearer auth only.
+| `LAB_AUTH_MODE` | no | `bearer` or `oauth`. Defaults to `bearer`. |
+| `LAB_MCP_HTTP_TOKEN` | bearer mode | Static bearer token for protected HTTP routes. |
+| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, callback construction, and JWT issuer/audience. |
+| `LAB_AUTH_BOOTSTRAP_SECRET` | oauth mode | Bearer secret required for client registration. |
+| `LAB_GOOGLE_CLIENT_ID` | oauth mode | Google OAuth client ID. |
+| `LAB_GOOGLE_CLIENT_SECRET` | oauth mode | Google OAuth client secret. |
+| `LAB_AUTH_SQLITE_PATH` | no | Override path for the SQLite auth database. |
+| `LAB_AUTH_KEY_PATH` | no | Override path for the persisted JWT signing key. |
+| `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
+| `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
 
 ## Startup Behavior
 
-When OAuth is configured, `lab serve --transport http` performs these steps at startup:
+When OAuth mode is configured, `lab serve --transport http` performs these steps at startup:
 
-1. Fetch `{issuer}/.well-known/openid-configuration` (OIDC discovery).
-2. Extract `jwks_uri` from the discovery response.
-3. Fetch the initial JWKS from `jwks_uri`.
+1. Validate that `LAB_PUBLIC_URL`, Google credentials, and `LAB_AUTH_BOOTSTRAP_SECRET` are present.
+2. Open the SQLite auth store in WAL mode with a non-zero busy timeout.
+3. Load or generate the persisted RSA signing key.
+4. Build the concrete Google provider callback URL from `LAB_PUBLIC_URL` and `LAB_GOOGLE_CALLBACK_PATH`.
 
-Startup **fails** if any of these steps fail. Lab never degrades to unauthenticated operation when OAuth is configured. The error message includes the issuer URL and the specific failure.
+Startup fails closed if any of those steps fail.
 
-Startup also **fails** if:
+Startup also fails if:
 
-- `LAB_OAUTH_ISSUER` is set but empty.
-- `LAB_OAUTH_AUDIENCE` is not set when `LAB_OAUTH_ISSUER` is present.
-- `LAB_OAUTH_ISSUER` does not use HTTPS.
-- `LAB_RESOURCE_URL` is not set when OAuth is configured.
+- `LAB_AUTH_MODE=oauth` is set without `LAB_PUBLIC_URL`
+- Google client credentials are missing
+- `LAB_AUTH_BOOTSTRAP_SECRET` is missing
+- the auth database or signing key has insecure file permissions
+
+## Registration and Authorize Flow
+
+OAuth mode exposes:
+
+- `POST /register`
+- `GET /authorize`
+- `GET /auth/google/callback`
+- `POST /token`
+
+Registration rules in the initial launch:
+
+- `/register` requires `Authorization: Bearer <LAB_AUTH_BOOTSTRAP_SECRET>`
+- only loopback redirect URIs are accepted
+- arbitrary public HTTPS redirect URIs are rejected in this batch
+
+Flow summary:
+
+1. A trusted client registers a loopback redirect URI.
+2. The client sends the user to `/authorize`.
+3. `lab` stores the request state, generates PKCE data, and redirects to Google.
+4. Google redirects back to `/auth/google/callback`.
+5. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its loopback URI with the local code.
+6. The client exchanges that local code at `/token` for a `lab` access token and refresh token.
+
+Google access and refresh tokens remain server-side only.
 
 ## Runtime JWT Validation
 
@@ -60,19 +86,13 @@ Validation steps:
 6. Validate the `aud` claim matches the configured audience.
 7. Extract scopes from the `scope` claim (space-separated string) or the `scp` claim (JSON array).
 
-### Supported Algorithms
+### Supported Algorithm
 
-- RS256, RS384, RS512
-- ES256, ES384
+- RS256
 
 ### Scopes
 
-Lab recognizes two scopes:
-
-- `lab:read` — read-only access
-- `lab:admin` — full access including destructive operations
-
-Scopes are read from the JWT `scope` claim (space-delimited string) or the `scp` claim (JSON string array). If both are present, `scope` takes precedence.
+Current `lab` tokens use the standard space-delimited `scope` claim.
 
 ### AuthContext
 
@@ -84,35 +104,18 @@ On successful validation, an `AuthContext` is injected into the request extensio
 
 Downstream handlers can read `AuthContext` from request extensions for audit trails and scope-gated access.
 
-## JWKS Caching
+## Token Exchange
 
-The JWKS cache uses a stale-while-revalidate strategy.
+`POST /token` supports:
 
-### TTL-Based Background Refresh
+- `grant_type=authorization_code`
+- `grant_type=refresh_token`
 
-- Cache TTL: 1 hour.
-- When `validate_jwt()` is called and the cache TTL has expired, a background refresh is attempted.
-- If the refresh fails, stale keys continue to be served. An error is returned only if the cache is completely empty.
+Current constraints:
 
-### Eager Refresh on Unknown `kid`
-
-- When a JWT presents a `kid` not in the cache, `ensure_kid()` triggers an immediate refresh.
-- A semaphore (capacity 1) prevents thundering herd — only one refresh runs at a time.
-- Double-checked locking: after acquiring the semaphore, the cache is re-checked before fetching.
-- If the eager refresh fails and stale keys exist, they are served with a warning logged.
-- If the cache is empty (no keys at all), the error propagates.
-
-### Failure Modes
-
-| Scenario | Behavior |
-|----------|----------|
-| OIDC discovery fails at startup | Startup aborted with error |
-| Initial JWKS fetch fails at startup | Startup aborted with error |
-| Background refresh fails (stale keys exist) | Stale keys served, warning logged |
-| Background refresh fails (no cached keys) | Error returned to caller |
-| Eager refresh fails (stale keys exist) | Stale keys served, warning logged |
-| Eager refresh fails (no cached keys) | `auth_failed` error |
-| JWT `kid` not found after refresh | `auth_failed` error |
+- authorization-code redemption is atomic and single-use
+- refresh tokens do not rotate in this batch
+- `/revoke` is not implemented in this batch
 
 ## RFC 9728 Protected Resource Metadata
 
@@ -129,7 +132,7 @@ Response:
 ```json
 {
   "resource": "https://lab.example.com",
-  "authorization_servers": ["https://auth.example.com"],
+  "authorization_servers": ["https://lab.example.com"],
   "scopes_supported": ["lab:read", "lab:admin"],
   "bearer_methods_supported": ["header"]
 }
@@ -143,7 +146,7 @@ When a request fails authentication (401), the response includes:
 WWW-Authenticate: Bearer resource_metadata="https://lab.example.com/.well-known/oauth-protected-resource"
 ```
 
-This header is only included when `LAB_RESOURCE_URL` is configured. If not, the header is omitted rather than advertising localhost.
+This header is only included when `LAB_PUBLIC_URL` is configured. If not, the header is omitted rather than advertising localhost.
 
 ## Auth Precedence
 
@@ -161,7 +164,7 @@ Lab refuses to bind on a non-localhost address without any auth configured:
 
 ```text
 refusing to bind HTTP on 0.0.0.0:8765 without authentication.
-Set LAB_MCP_HTTP_TOKEN or LAB_OAUTH_ISSUER, or bind to 127.0.0.1 for local-only access.
+Set LAB_MCP_HTTP_TOKEN or LAB_AUTH_MODE=oauth, or bind to 127.0.0.1 for local-only access.
 ```
 
 Loopback hosts exempt from this check: `127.0.0.1`, `::1`, `[::1]`, `localhost`.
@@ -173,9 +176,11 @@ Loopback hosts exempt from this check: `127.0.0.1`, `::1`, `[::1]`, `localhost`.
 LAB_MCP_TRANSPORT=http
 LAB_MCP_HTTP_HOST=0.0.0.0
 LAB_MCP_HTTP_PORT=8765
-LAB_OAUTH_ISSUER=https://auth.example.com
-LAB_OAUTH_AUDIENCE=https://lab.example.com
-LAB_RESOURCE_URL=https://lab.example.com
+LAB_AUTH_MODE=oauth
+LAB_PUBLIC_URL=https://lab.example.com
+LAB_AUTH_BOOTSTRAP_SECRET=replace-me
+LAB_GOOGLE_CLIENT_ID=google-client-id
+LAB_GOOGLE_CLIENT_SECRET=google-client-secret
 
 # Start
 lab serve --transport http
@@ -187,7 +192,7 @@ Verify the metadata endpoint:
 curl https://lab.example.com/.well-known/oauth-protected-resource
 ```
 
-Call a protected endpoint with a JWT:
+Call a protected endpoint with a `lab` access token:
 
 ```bash
 curl -H "Authorization: Bearer eyJhbG..." \

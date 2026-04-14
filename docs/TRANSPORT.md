@@ -40,7 +40,7 @@ lab serve --transport http
 | `LAB_MCP_SESSION_TTL_SECS` | `300` | Session keep-alive TTL in seconds. |
 | `LAB_MCP_STATEFUL` | `true` | Whether to use stateful MCP sessions. |
 | `LAB_MCP_ALLOWED_HOSTS` | — | Comma-separated hostnames for DNS rebinding protection. |
-| `LAB_RESOURCE_URL` | — | Public URL of this lab instance. Auto-extracted for allowed hosts. |
+| `LAB_PUBLIC_URL` | — | Public URL of this lab instance. Its host is added to the allowed-host list in OAuth mode. |
 | `LAB_CORS_ORIGINS` | — | Comma-separated CORS origin allowlist. |
 
 Config TOML equivalents (env vars take precedence):
@@ -74,18 +74,18 @@ Allowed hosts are assembled from:
 
 1. **Always included:** `localhost`, `127.0.0.1`, `::1`.
 2. **`LAB_MCP_ALLOWED_HOSTS`** — comma-separated additional hostnames.
-3. **`LAB_RESOURCE_URL`** — the hostname is automatically extracted and added.
+3. **`LAB_PUBLIC_URL`** — when OAuth mode is enabled, the hostname is automatically extracted and added.
 
 Wildcard (`*`) is rejected with a warning — it would disable Host header validation entirely.
 
 ### Authentication
 
-Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth/JWKS validation is configured. Unauthenticated routes (`/health`, `/ready`, `/.well-known/oauth-protected-resource`) are always accessible.
+Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth mode is configured. Unauthenticated routes (`/health`, `/ready`, and OAuth metadata endpoints) are always accessible.
 
 Auth methods (see [OAUTH.md](./OAUTH.md) for details):
 
 - **Static bearer token** via `LAB_MCP_HTTP_TOKEN` — constant-time comparison.
-- **OAuth 2.1 JWT** via `LAB_OAUTH_ISSUER` and related config.
+- **OAuth mode** via `LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, and Google client credentials.
 - Both can be active simultaneously. Static bearer is checked first.
 - If neither auth method is configured, the router permits local loopback requests only; non-loopback binds are rejected by the safety gate below.
 
@@ -95,7 +95,7 @@ Lab refuses to bind on a non-localhost address without auth:
 
 ```text
 refusing to bind HTTP on 0.0.0.0:8765 without authentication.
-Set LAB_MCP_HTTP_TOKEN or LAB_OAUTH_ISSUER, or bind to 127.0.0.1 for local-only access.
+Set LAB_MCP_HTTP_TOKEN or LAB_AUTH_MODE=oauth, or bind to 127.0.0.1 for local-only access.
 ```
 
 Loopback addresses (`127.0.0.1`, `::1`, `[::1]`, `localhost`) are exempt.
@@ -143,7 +143,13 @@ When HTTP transport is active, the server exposes:
 |------|------|-------------|
 | `/health` | no | Liveness probe |
 | `/ready` | no | Readiness probe |
-| `/.well-known/oauth-protected-resource` | no | RFC 9728 metadata |
+| `/.well-known/oauth-authorization-server` | no | Authorization-server metadata |
+| `/.well-known/oauth-protected-resource` | no | RFC 9728 protected-resource metadata |
+| `/jwks` | no | `lab` signing keys |
+| `/register` | no | Bootstrap-secret-guarded dynamic client registration |
+| `/authorize` | no | Authorization entrypoint |
+| `/auth/google/callback` | no | Google callback endpoint |
+| `/token` | no | Authorization-code and refresh-token exchange |
 | `/v1/{service}` | yes | REST API (POST with action+params) |
 | `/v1/{service}/actions` | yes | Action catalog (GET) |
 | `/mcp` | yes | MCP streamable HTTP transport |
@@ -167,7 +173,7 @@ LAB_MCP_TRANSPORT=http
 LAB_MCP_HTTP_HOST=0.0.0.0
 LAB_MCP_HTTP_PORT=8765
 LAB_MCP_HTTP_TOKEN=$(openssl rand -hex 32)
-LAB_RESOURCE_URL=https://lab.example.com
+LAB_PUBLIC_URL=https://lab.example.com
 
 lab serve --transport http
 ```
@@ -180,7 +186,7 @@ curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" \
 
 ## Related Docs
 
-- [OAUTH.md](./OAUTH.md) — OAuth 2.1 JWT validation
+- [OAUTH.md](./OAUTH.md) — bearer vs OAuth mode, registration flow, and JWT validation
 - [UPSTREAM.md](./UPSTREAM.md) — upstream MCP proxy
 - [CONFIG.md](./CONFIG.md) — env var and config.toml loading
 - [MCP.md](./MCP.md) — MCP protocol surface

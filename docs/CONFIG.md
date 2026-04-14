@@ -99,9 +99,12 @@ Resolution order:
 
 If env-based instance definitions become unwieldy, the project can later move instance metadata into TOML while still keeping secrets in env. The public CLI and MCP instance surface should remain stable across that migration.
 
-## OAuth Configuration
+## HTTP Auth Configuration
 
-OAuth 2.1 resource server configuration. Lab validates JWT tokens issued by an external authorization server.
+HTTP auth is mode-based.
+
+- `LAB_AUTH_MODE=bearer` preserves the existing static bearer flow and still uses `LAB_MCP_HTTP_TOKEN`.
+- `LAB_AUTH_MODE=oauth` enables the internal Google-backed authorization server and requires `LAB_PUBLIC_URL`.
 
 Full details in [OAUTH.md](./OAUTH.md).
 
@@ -109,28 +112,38 @@ Full details in [OAUTH.md](./OAUTH.md).
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LAB_OAUTH_ISSUER` | when OAuth enabled | OIDC issuer URL. Must use HTTPS. |
-| `LAB_OAUTH_AUDIENCE` | when OAuth enabled | Expected `aud` claim (RFC 8707). |
-| `LAB_OAUTH_CLIENT_ID` | no | Optional `azp` claim validation. |
-| `LAB_RESOURCE_URL` | when OAuth enabled | Public URL of this lab instance. |
+| `LAB_AUTH_MODE` | no | `bearer` or `oauth`. Defaults to `bearer`. |
+| `LAB_MCP_HTTP_TOKEN` | bearer mode only | Static bearer token for protected HTTP routes. |
+| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, JWT issuer/audience, callback construction, and allowed-host derivation. |
+| `LAB_AUTH_SQLITE_PATH` | no | Override path for the auth SQLite database. Defaults to `~/.lab/auth.db`. |
+| `LAB_AUTH_KEY_PATH` | no | Override path for the persisted JWT signing key. Defaults to `~/.lab/auth-jwt.pem`. |
+| `LAB_AUTH_BOOTSTRAP_SECRET` | oauth mode | Bootstrap bearer secret required for `/register`. |
+| `LAB_GOOGLE_CLIENT_ID` | oauth mode | Google OAuth client ID. |
+| `LAB_GOOGLE_CLIENT_SECRET` | oauth mode | Google OAuth client secret. |
+| `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
+| `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
 
 ### config.toml
 
 ```toml
-[oauth]
-issuer = "https://auth.example.com"
-audience = "https://lab.example.com"
-client_id = "optional-client-id"
-resource_url = "https://lab.example.com"
+[auth]
+mode = "oauth"
+public_url = "https://lab.example.com"
+bootstrap_secret = "set-via-env-in-real-deployments"
+google_client_id = "google-client-id"
+google_client_secret = "google-client-secret"
+google_callback_path = "/auth/google/callback"
+google_scopes = ["openid", "email", "profile"]
 ```
 
-Env vars override config.toml for every field.
+Environment variables override `[auth]` values field-by-field.
 
 ## Upstream MCP Servers
 
-Lab can proxy tool calls and resource reads to upstream MCP servers.
+Lab can proxy tool calls and resource reads to upstream MCP servers through its MCP surface.
 
 Full details in [UPSTREAM.md](./UPSTREAM.md).
+Gateway mutation workflows live in [GATEWAY.md](./GATEWAY.md).
 
 ### config.toml
 
@@ -147,6 +160,12 @@ command = "my-mcp-server"
 args = ["--port", "5000"]
 proxy_resources = false
 ```
+
+After these entries are configured, start `lab serve` as usual and point MCP clients at `lab`. The clients connect to `lab`; `lab` connects to the upstreams and merges their tools into its own MCP catalog.
+
+The `gateway` management surface edits this same `[[upstream]]` array in `~/.config/lab/config.toml`. It never stores bearer-token values in TOML; only `bearer_token_env` references are persisted and returned.
+
+If you change the env var named by `bearer_token_env`, call `gateway.reload` to rebuild the live pool and pick up the new token value.
 
 ### Environment Variables
 
