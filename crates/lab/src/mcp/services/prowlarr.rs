@@ -10,33 +10,24 @@ mod tests {
     #[test]
     fn catalog_has_expected_actions() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
-        assert!(names.contains(&"indexers.list"), "indexers.list missing");
-        assert!(names.contains(&"indexers.get"), "indexers.get missing");
+        assert!(names.contains(&"indexer.list"), "indexer.list missing");
+        assert!(names.contains(&"indexer.get"), "indexer.get missing");
+        assert!(names.contains(&"indexer.delete"), "indexer.delete missing");
+        assert!(names.contains(&"indexer.test"), "indexer.test missing");
+        assert!(names.contains(&"indexer.testall"), "indexer.testall missing");
         assert!(
-            names.contains(&"indexers.delete"),
-            "indexers.delete missing"
-        );
-        assert!(names.contains(&"indexers.test"), "indexers.test missing");
-        assert!(
-            names.contains(&"indexers.testall"),
-            "indexers.testall missing"
-        );
-        assert!(
-            names.contains(&"indexers.categories"),
-            "indexers.categories missing"
+            names.contains(&"indexer.categories"),
+            "indexer.categories missing"
         );
         assert!(names.contains(&"history.list"), "history.list missing");
         assert!(
-            names.contains(&"applications.list"),
-            "applications.list missing"
+            names.contains(&"application.list"),
+            "application.list missing"
         );
+        assert!(names.contains(&"application.get"), "application.get missing");
         assert!(
-            names.contains(&"applications.get"),
-            "applications.get missing"
-        );
-        assert!(
-            names.contains(&"applications.delete"),
-            "applications.delete missing"
+            names.contains(&"application.delete"),
+            "application.delete missing"
         );
         assert!(names.contains(&"system.status"), "system.status missing");
         assert!(names.contains(&"system.health"), "system.health missing");
@@ -46,19 +37,19 @@ mod tests {
     fn destructive_actions_are_marked() {
         let indexer_delete = ACTIONS
             .iter()
-            .find(|a| a.name == "indexers.delete")
+            .find(|a| a.name == "indexer.delete")
             .unwrap();
         assert!(
             indexer_delete.destructive,
-            "indexers.delete must be marked destructive"
+            "indexer.delete must be marked destructive"
         );
         let app_delete = ACTIONS
             .iter()
-            .find(|a| a.name == "applications.delete")
+            .find(|a| a.name == "application.delete")
             .unwrap();
         assert!(
             app_delete.destructive,
-            "applications.delete must be marked destructive"
+            "application.delete must be marked destructive"
         );
     }
 }

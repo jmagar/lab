@@ -87,7 +87,7 @@ pub fn patch_api_router_rs(name: &str, content: &str) -> Result<String> {
     )
 }
 
-pub fn patch_api_state_rs(name: &str, content: &str) -> Result<String> {
+pub fn patch_dispatch_clients_rs(name: &str, content: &str) -> Result<String> {
     let field = format!(
         "    #[cfg(feature = \"{name}\")]\n    pub {name}: Option<Arc<lab_apis::{name}::{service_type}Client>>,",
         service_type = pascal_case(name)

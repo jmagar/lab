@@ -21,16 +21,16 @@ mod tests {
     #[test]
     fn actions_catalog_includes_core_actions() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
-        assert!(names.contains(&"indexers.list"));
-        assert!(names.contains(&"indexers.get"));
-        assert!(names.contains(&"indexers.delete"));
-        assert!(names.contains(&"indexers.test"));
-        assert!(names.contains(&"indexers.testall"));
-        assert!(names.contains(&"indexers.categories"));
+        assert!(names.contains(&"indexer.list"));
+        assert!(names.contains(&"indexer.get"));
+        assert!(names.contains(&"indexer.delete"));
+        assert!(names.contains(&"indexer.test"));
+        assert!(names.contains(&"indexer.testall"));
+        assert!(names.contains(&"indexer.categories"));
         assert!(names.contains(&"history.list"));
-        assert!(names.contains(&"applications.list"));
-        assert!(names.contains(&"applications.get"));
-        assert!(names.contains(&"applications.delete"));
+        assert!(names.contains(&"application.list"));
+        assert!(names.contains(&"application.get"));
+        assert!(names.contains(&"application.delete"));
         assert!(names.contains(&"system.status"));
         assert!(names.contains(&"system.health"));
     }
@@ -39,26 +39,26 @@ mod tests {
     fn destructive_actions_are_marked() {
         let indexer_delete = ACTIONS
             .iter()
-            .find(|a| a.name == "indexers.delete")
+            .find(|a| a.name == "indexer.delete")
             .unwrap();
         assert!(
             indexer_delete.destructive,
-            "indexers.delete must be marked destructive"
+            "indexer.delete must be marked destructive"
         );
         let app_delete = ACTIONS
             .iter()
-            .find(|a| a.name == "applications.delete")
+            .find(|a| a.name == "application.delete")
             .unwrap();
         assert!(
             app_delete.destructive,
-            "applications.delete must be marked destructive"
+            "application.delete must be marked destructive"
         );
     }
 
     #[test]
     fn non_destructive_actions_are_not_marked() {
-        let list = ACTIONS.iter().find(|a| a.name == "indexers.list").unwrap();
-        assert!(!list.destructive, "indexers.list must not be destructive");
+        let list = ACTIONS.iter().find(|a| a.name == "indexer.list").unwrap();
+        assert!(!list.destructive, "indexer.list must not be destructive");
         let status = ACTIONS.iter().find(|a| a.name == "system.status").unwrap();
         assert!(!status.destructive, "system.status must not be destructive");
     }
@@ -80,7 +80,7 @@ mod tests {
         let actions = val["actions"].as_array().unwrap();
         assert!(!actions.is_empty());
         let names: Vec<&str> = actions.iter().filter_map(|a| a["name"].as_str()).collect();
-        assert!(names.contains(&"indexers.list"));
+        assert!(names.contains(&"indexer.list"));
         assert!(names.contains(&"system.status"));
     }
 

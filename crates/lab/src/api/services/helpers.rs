@@ -531,27 +531,26 @@ mod tests {
                     .with_ansi(false)
                     .without_time(),
             );
+        let _guard = tracing::subscriber::set_default(subscriber);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
 
-        tracing::subscriber::with_default(subscriber, || {
-            rt.block_on(async {
-                let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
-                drop(
-                    handle_action(
-                        "testsvc",
-                        test_surface(),
-                        Some("req-del-1"),
-                        req,
-                        ACTIONS,
-                        |a, p| ok_dispatch(a, p),
-                    )
-                    .await
-                    .unwrap(),
-                );
-            });
+        rt.block_on(async {
+            let req = make_req("danger.delete", json!({"id": "abc", "confirm": true}));
+            drop(
+                handle_action(
+                    "testsvc",
+                    test_surface(),
+                    Some("req-del-1"),
+                    req,
+                    ACTIONS,
+                    |a, p| ok_dispatch(a, p),
+                )
+                .await
+                .unwrap(),
+            );
         });
 
         let logs = captured_logs(&buf);

@@ -30,7 +30,10 @@ pub fn compute_patches(name: &str, repo_root: &Path) -> Result<Vec<FileOp>> {
             source::patch_api_services_rs,
         ),
         ("crates/lab/src/api/router.rs", source::patch_api_router_rs),
-        ("crates/lab/src/api/state.rs", source::patch_api_state_rs),
+        (
+            "crates/lab/src/dispatch/clients.rs",
+            source::patch_dispatch_clients_rs,
+        ),
         // Note: TUI service discovery is handled automatically via the MCP
         // registry (patch_mcp_registry_rs above). No separate tui/metadata.rs
         // patch is required — the TUI reads from build_default_registry().

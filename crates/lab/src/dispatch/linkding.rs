@@ -21,56 +21,50 @@ mod tests {
     #[test]
     fn actions_catalog_includes_core_actions() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
-        assert!(names.contains(&"bookmarks.list"));
-        assert!(names.contains(&"bookmarks.create"));
-        assert!(names.contains(&"bookmarks.delete"));
-        assert!(names.contains(&"tags.list"));
-        assert!(names.contains(&"tags.create"));
+        assert!(names.contains(&"bookmark.list"));
+        assert!(names.contains(&"bookmark.create"));
+        assert!(names.contains(&"bookmark.delete"));
+        assert!(names.contains(&"tag.list"));
+        assert!(names.contains(&"tag.create"));
         assert!(names.contains(&"user.profile"));
     }
 
     #[test]
     fn destructive_actions_are_marked() {
-        let archive = ACTIONS
-            .iter()
-            .find(|a| a.name == "bookmarks.archive")
-            .unwrap();
-        assert!(
-            archive.destructive,
-            "bookmarks.archive must be marked destructive"
-        );
-
         let delete = ACTIONS
             .iter()
-            .find(|a| a.name == "bookmarks.delete")
+            .find(|a| a.name == "bookmark.delete")
             .unwrap();
         assert!(
             delete.destructive,
-            "bookmarks.delete must be marked destructive"
-        );
-
-        let tags_create = ACTIONS.iter().find(|a| a.name == "tags.create").unwrap();
-        assert!(
-            tags_create.destructive,
-            "tags.create must be marked destructive"
+            "bookmark.delete must be marked destructive"
         );
     }
 
     #[test]
     fn non_destructive_actions_are_not_marked() {
-        let list = ACTIONS.iter().find(|a| a.name == "bookmarks.list").unwrap();
+        let list = ACTIONS.iter().find(|a| a.name == "bookmark.list").unwrap();
         assert!(
             !list.destructive,
-            "bookmarks.list must not be marked destructive"
+            "bookmark.list must not be marked destructive"
         );
 
         let create = ACTIONS
             .iter()
-            .find(|a| a.name == "bookmarks.create")
+            .find(|a| a.name == "bookmark.create")
             .unwrap();
         assert!(
             !create.destructive,
-            "bookmarks.create must not be marked destructive"
+            "bookmark.create must not be marked destructive"
+        );
+
+        let archive = ACTIONS
+            .iter()
+            .find(|a| a.name == "bookmark.archive")
+            .unwrap();
+        assert!(
+            !archive.destructive,
+            "bookmark.archive must not be marked destructive"
         );
     }
 
@@ -91,8 +85,8 @@ mod tests {
         let actions = val["actions"].as_array().unwrap();
         assert!(!actions.is_empty());
         let names: Vec<&str> = actions.iter().filter_map(|a| a["name"].as_str()).collect();
-        assert!(names.contains(&"bookmarks.list"));
-        assert!(names.contains(&"tags.list"));
+        assert!(names.contains(&"bookmark.list"));
+        assert!(names.contains(&"tag.list"));
         assert!(names.contains(&"user.profile"));
     }
 
