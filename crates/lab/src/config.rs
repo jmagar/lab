@@ -515,8 +515,12 @@ pub fn env_is_up_to_date(path: &Path, new_creds: &[ServiceCreds]) -> bool {
                 let unquoted = trimmed
                     .strip_prefix('"')
                     .and_then(|s| s.strip_suffix('"'))
-                    .unwrap_or(trimmed);
-                (k.trim().to_owned(), unquoted.to_owned())
+                    .map_or_else(
+                        || trimmed.to_owned(),
+                        // Unescape sequences that write_env() would have escaped.
+                        |inner| inner.replace(r#"\""#, "\"").replace(r"\\", r"\"),
+                    );
+                (k.trim().to_owned(), unquoted)
             })
         })
         .collect();
