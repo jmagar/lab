@@ -10,7 +10,6 @@ use axum::{
     extract::State,
     http::{HeaderName, Request, StatusCode, header},
     middleware::Next,
-    response::Response,
     routing::get,
 };
 use rmcp::transport::streamable_http_server::{
@@ -135,16 +134,13 @@ pub fn build_router_with_bearer(state: AppState, bearer_token: Option<String>) -
                         && tokens_equal(&token, expected.as_ref())
                     {
                         // Static tokens get implicit lab:admin
-                        request.extensions_mut().insert(
-                            crate::api::oauth::AuthContext {
+                        request
+                            .extensions_mut()
+                            .insert(crate::api::oauth::AuthContext {
                                 sub: "static-bearer".to_string(),
-                                scopes: vec![
-                                    "lab:read".to_string(),
-                                    "lab:admin".to_string(),
-                                ],
+                                scopes: vec!["lab:read".to_string(), "lab:admin".to_string()],
                                 issuer: "local".to_string(),
-                            },
-                        );
+                            });
                         return Ok::<_, ToolError>(next.run(request).await);
                     }
 
@@ -352,28 +348,6 @@ fn allowed_hosts_from_env() -> Vec<String> {
         }
     }
     hosts
-}
-
-#[allow(dead_code)]
-pub async fn require_bearer_auth(
-    State(expected_token): State<Arc<str>>,
-    request: Request<Body>,
-    next: Next,
-) -> Result<Response, ToolError> {
-    let provided_token = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "));
-
-    if provided_token == Some(expected_token.as_ref()) {
-        Ok(next.run(request).await)
-    } else {
-        Err(ToolError::Sdk {
-            sdk_kind: "auth_failed".into(),
-            message: "missing or invalid bearer token".into(),
-        })
-    }
 }
 
 async fn service_actions(

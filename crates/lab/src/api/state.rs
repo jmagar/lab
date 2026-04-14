@@ -183,7 +183,6 @@ impl AppState {
 
     /// Attach a pre-built `JwksManager` for OAuth JWT validation.
     #[must_use]
-    #[allow(dead_code)] // Called from serve.rs when LAB_OAUTH_ISSUER is configured
     pub fn with_jwks(mut self, jwks: Arc<crate::api::oauth::JwksManager>) -> Self {
         self.jwks = Some(jwks);
         self

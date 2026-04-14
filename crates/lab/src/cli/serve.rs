@@ -8,7 +8,7 @@ use clap::{Args, ValueEnum};
 use rmcp::ServiceExt;
 
 use crate::api::AppState;
-use crate::config::LabConfig;
+use crate::config::{LabConfig, resolve_oauth};
 use crate::mcp::registry::{ToolRegistry, build_default_registry};
 use crate::mcp::server::LabMcpServer;
 
@@ -71,11 +71,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         Transport::Stdio => run_stdio(Arc::new(registry)).await,
         Transport::Http => {
             let bearer_token = http_token();
-            let oauth_issuer_configured = std::env::var("LAB_OAUTH_ISSUER")
-                .ok()
-                .filter(|v| !v.is_empty())
-                .is_some();
-            let auth_configured = bearer_token.is_some() || oauth_issuer_configured;
+            let oauth_config = resolve_oauth(config.oauth.as_ref());
+            let auth_configured = bearer_token.is_some() || oauth_config.is_some();
 
             // Safety gate: refuse to bind on a non-localhost address without
             // any auth configured (lab-319g). This prevents accidental
@@ -88,7 +85,33 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 );
             }
 
-            let state = AppState::from_registry(registry);
+            let mut state = AppState::from_registry(registry);
+
+            // Wire OAuth JWT validation when configured.
+            if let Some(ref oauth_cfg) = oauth_config {
+                match crate::api::oauth::JwksManager::discover(
+                    &oauth_cfg.issuer,
+                    &oauth_cfg.audience,
+                )
+                .await
+                {
+                    Ok(jwks) => {
+                        tracing::info!(
+                            issuer = %oauth_cfg.issuer,
+                            "OAuth JWKS discovery succeeded"
+                        );
+                        state = state.with_jwks(Arc::new(jwks));
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            issuer = %oauth_cfg.issuer,
+                            error = %e,
+                            "OAuth JWKS discovery failed — JWT validation will be unavailable"
+                        );
+                    }
+                }
+            }
+
             run_http(&host, port, bearer_token, state).await
         }
     }

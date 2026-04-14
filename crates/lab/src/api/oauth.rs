@@ -9,7 +9,9 @@
 //!
 //! The JWKS/JWT types are compiled now but first used in Phase 1.4
 //! (JWT validation middleware).
-#![allow(dead_code, clippy::significant_drop_tightening)]
+// Narrow dead_code to items not yet wired at the call site.
+// JwksManager and AuthContext are used starting in Phase 1.4.
+#![allow(clippy::significant_drop_tightening)]
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -39,9 +41,7 @@ pub struct ProtectedResourceMetadata {
 /// Returns RFC 9728 metadata so MCP clients can discover which auth server
 /// to use. This endpoint is unauthenticated — clients need it before they
 /// have a token.
-pub async fn oauth_protected_resource(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn oauth_protected_resource(State(state): State<AppState>) -> impl IntoResponse {
     let resource_url = std::env::var("LAB_RESOURCE_URL")
         .ok()
         .filter(|v| !v.is_empty())
@@ -53,7 +53,7 @@ pub async fn oauth_protected_resource(
 
     let authorization_servers = issuer.into_iter().collect();
 
-    let _ = &state;
+    let _state = state;
 
     Json(ProtectedResourceMetadata {
         resource: resource_url,
@@ -94,6 +94,7 @@ pub enum AuthError {
 }
 
 /// Cached JWKS keys with TTL.
+#[allow(dead_code)]
 struct JwksCache {
     keys: JwkSet,
     fetched_at: Instant,
@@ -120,7 +121,12 @@ struct OidcDiscovery {
 }
 
 /// Authenticated caller context, injected as an axum extension.
+///
+/// Fields are constructed during JWT validation and available for
+/// downstream scope checks. Not yet consumed — future handlers will
+/// use `sub` for audit trails and `scopes` for scope-gated access.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AuthContext {
     /// JWT `sub` claim — the authenticated user/client identifier.
     pub sub: String,
@@ -236,6 +242,7 @@ impl JwksManager {
 
     /// Periodic refresh: if the cache TTL has expired, attempt a background
     /// refresh. Stale keys are kept on failure.
+    #[allow(dead_code)] // Public API for future periodic JWKS refresh task
     pub async fn refresh_if_stale(&self) {
         let is_expired = self.cache.read().await.is_expired();
         if !is_expired {
@@ -270,7 +277,9 @@ impl JwksManager {
         let kid = header.kid.ok_or(AuthError::MissingKid)?;
 
         // Ensure we have the key (may trigger eager refresh)
-        self.ensure_kid(&kid).await.ok();
+        if let Err(e) = self.ensure_kid(&kid).await {
+            tracing::debug!(kid, error = %e, "JWKS eager refresh for kid failed — will try cached keys");
+        }
 
         let cache = self.cache.read().await;
         let jwk = cache
@@ -295,7 +304,7 @@ impl JwksManager {
         ];
 
         let token_data = decode::<JwtClaims>(token, &decoding_key, &validation)
-            .map_err(|e| AuthError::ValidationFailed(format!("{e}")))?;
+            .map_err(|e| AuthError::ValidationFailed(e.to_string()))?;
 
         let claims = token_data.claims;
 
@@ -312,10 +321,7 @@ impl JwksManager {
         })
     }
 
-    async fn fetch_jwks_from(
-        http: &reqwest::Client,
-        jwks_uri: &str,
-    ) -> Result<JwkSet, AuthError> {
+    async fn fetch_jwks_from(http: &reqwest::Client, jwks_uri: &str) -> Result<JwkSet, AuthError> {
         http.get(jwks_uri)
             .send()
             .await
