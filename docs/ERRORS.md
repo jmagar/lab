@@ -82,6 +82,8 @@ The following kinds are emitted exclusively by the HTTP surface. MCP handles the
 
 **Implementation note:** Emitted as `ToolError::Sdk { sdk_kind: "confirmation_required" }` from `handle_action` in `crates/lab/src/api/services/helpers.rs`.
 
+### MCP-Only Dispatcher Kinds
+
 #### `upstream_error`
 
 **When:** A proxied upstream MCP server call fails — connection lost, timeout, response too large (`LAB_UPSTREAM_MAX_RESPONSE_BYTES`, default 10 MB), or the upstream returned an error.
@@ -90,7 +92,7 @@ The following kinds are emitted exclusively by the HTTP surface. MCP handles the
 
 **Resolution:** Check upstream server health. Review circuit breaker status via `lab.help` or logs. If the upstream is consistently failing, it will be excluded from tool listings after 3 consecutive failures.
 
-**Status code:** `502 Bad Gateway`
+**Status code:** `502 Bad Gateway` (when mapped to HTTP, e.g. in error.rs)
 
 **Envelope:**
 

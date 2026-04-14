@@ -22,10 +22,8 @@ impl IntoResponse for ToolError {
             "missing_param" | "invalid_param" | "validation_failed" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
-            "unknown_action"
-            | "unknown_subaction"
-            | "unknown_instance"
-            | "confirmation_required" => StatusCode::BAD_REQUEST,
+            "confirmation_required" => StatusCode::UNPROCESSABLE_ENTITY,
+            "unknown_action" | "unknown_subaction" | "unknown_instance" => StatusCode::BAD_REQUEST,
             "network_error" | "server_error" | "upstream_error" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -37,12 +35,23 @@ impl IntoResponse for ToolError {
         // RFC 9728: include WWW-Authenticate on 401 responses so MCP clients
         // can discover the authorization server via resource metadata.
         if status == StatusCode::UNAUTHORIZED {
-            let www_auth = crate::api::oauth::www_authenticate_value();
+            // IntoResponse has no access to AppState, so we fall back to the
+            // default resource URL. The auth middleware in router.rs has access
+            // to state and can set a more specific header when needed.
+            let www_auth = crate::api::oauth::www_authenticate_value(None);
             let mut response = (status, axum::Json(body)).into_response();
-            if let Ok(value) = axum::http::HeaderValue::from_str(&www_auth) {
-                response
-                    .headers_mut()
-                    .insert(axum::http::header::WWW_AUTHENTICATE, value);
+            match axum::http::HeaderValue::from_str(&www_auth) {
+                Ok(value) => {
+                    response
+                        .headers_mut()
+                        .insert(axum::http::header::WWW_AUTHENTICATE, value);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "failed to construct WWW-Authenticate header value"
+                    );
+                }
             }
             response
         } else {
