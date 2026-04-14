@@ -7,6 +7,7 @@ pub mod error;
 pub mod meta;
 pub mod registry;
 pub mod resources;
+pub mod server;
 pub mod services;
 
 #[allow(unused_imports)]
