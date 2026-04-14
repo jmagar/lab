@@ -10,7 +10,7 @@ use rmcp::model::{
     GetPromptResult, ListPromptsResult, Prompt, PromptArgument, PromptMessage, PromptMessageRole,
 };
 
-use crate::mcp::registry::{RegisteredService, ToolRegistry};
+use crate::registry::{RegisteredService, ToolRegistry};
 
 /// Return all registered prompt templates.
 pub fn list_all() -> ListPromptsResult {
@@ -215,7 +215,7 @@ fn render_params(params: &[lab_apis::core::action::ParamSpec]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{get, list_all};
-    use crate::mcp::registry::{RegisteredService, ToolRegistry};
+    use crate::registry::{RegisteredService, ToolRegistry};
     use lab_apis::core::action::{ActionSpec, ParamSpec};
     use serde_json::Value;
     use std::collections::HashMap;

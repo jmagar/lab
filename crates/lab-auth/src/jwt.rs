@@ -82,8 +82,9 @@ impl SigningKeys {
                 .map_err(|error| AuthError::Storage(format!("parse signing key PEM: {error}")))?
         } else {
             let mut rng = UnwrapErr(SystemRng);
-            let key = RsaPrivateKey::new(&mut rng, 2048)
-                .map_err(|error| AuthError::Storage(format!("generate RSA signing key: {error}")))?;
+            let key = RsaPrivateKey::new(&mut rng, 2048).map_err(|error| {
+                AuthError::Storage(format!("generate RSA signing key: {error}"))
+            })?;
             let pem = key
                 .to_pkcs8_pem(LineEnding::LF)
                 .map_err(|error| AuthError::Storage(format!("encode signing key PEM: {error}")))?;
@@ -239,7 +240,10 @@ mod tests {
         let signer = test_signer();
         let token = signer.issue_access_token(sample_claims()).unwrap();
         let result = signer.validate_access_token(&token, "https://other.example.com");
-        assert!(result.is_err(), "token with wrong audience must be rejected");
+        assert!(
+            result.is_err(),
+            "token with wrong audience must be rejected"
+        );
     }
 
     fn test_signer() -> SigningKeys {

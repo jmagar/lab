@@ -148,8 +148,8 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
     use clap::CommandFactory;
+    use clap::Parser;
 
     use crate::cli::Cli;
 

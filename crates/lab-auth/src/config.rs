@@ -24,7 +24,12 @@ pub enum AuthMode {
 
 impl AuthMode {
     fn parse(value: Option<&str>) -> Result<Self, AuthError> {
-        match value.unwrap_or("bearer").trim().to_ascii_lowercase().as_str() {
+        match value
+            .unwrap_or("bearer")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "bearer" => Ok(Self::Bearer),
             "oauth" => Ok(Self::OAuth),
             other => Err(AuthError::Config(format!(
@@ -234,7 +239,9 @@ fn read_u64(vars: &HashMap<String, String>, key: &str) -> Result<Option<u64>, Au
     read_string(vars, key)
         .map(|value| {
             value.parse::<u64>().map(Some).map_err(|error| {
-                AuthError::Config(format!("{key} must be an integer number of seconds: {error}"))
+                AuthError::Config(format!(
+                    "{key} must be an integer number of seconds: {error}"
+                ))
             })
         })
         .transpose()
@@ -280,7 +287,9 @@ mod tests {
         vec![(key.to_string(), value.to_string())]
     }
 
-    fn fake_env_with_many<const N: usize>(pairs: [(&'static str, &'static str); N]) -> Vec<(String, String)> {
+    fn fake_env_with_many<const N: usize>(
+        pairs: [(&'static str, &'static str); N],
+    ) -> Vec<(String, String)> {
         pairs
             .into_iter()
             .map(|(key, value)| (key.to_string(), value.to_string()))

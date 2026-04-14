@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::mcp::registry::ToolRegistry;
+use crate::registry::ToolRegistry;
 
 /// Top-level discovery document.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -139,9 +139,7 @@ fn wildcard_matches(pattern: &str, candidate: &str) -> bool {
         }
     }
 
-    if anchored_end
-        && let Some(last) = non_empty_parts.last()
-    {
+    if anchored_end && let Some(last) = non_empty_parts.last() {
         return candidate.ends_with(last);
     }
 

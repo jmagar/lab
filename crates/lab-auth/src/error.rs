@@ -22,7 +22,10 @@ pub enum AuthError {
     Validation(String),
 
     #[error("{message}")]
-    RateLimited { message: String, retry_after_ms: u64 },
+    RateLimited {
+        message: String,
+        retry_after_ms: u64,
+    },
 
     #[error("invalid access token")]
     InvalidAccessToken,
@@ -34,7 +37,9 @@ pub enum AuthError {
 impl AuthError {
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Config(_) | Self::Storage(_) | Self::InsecurePermissions { .. } => "internal_error",
+            Self::Config(_) | Self::Storage(_) | Self::InsecurePermissions { .. } => {
+                "internal_error"
+            }
             Self::InvalidGrant(_) => "invalid_grant",
             Self::AuthFailed(_) | Self::InvalidAccessToken => "auth_failed",
             Self::Validation(_) => "validation_failed",
@@ -48,9 +53,9 @@ impl AuthError {
             Self::AuthFailed(_) | Self::InvalidAccessToken => StatusCode::UNAUTHORIZED,
             Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
-            Self::Config(_)
-            | Self::Storage(_)
-            | Self::InsecurePermissions { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Config(_) | Self::Storage(_) | Self::InsecurePermissions { .. } => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 }

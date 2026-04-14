@@ -10,7 +10,7 @@ use crate::error::AuthError;
 use crate::google::AuthorizeUrlRequest;
 use crate::state::AuthState;
 use crate::types::{
-    AuthorizeQuery, AuthorizationCodeRow, AuthorizationRequestRow, CallbackQuery,
+    AuthorizationCodeRow, AuthorizationRequestRow, AuthorizeQuery, CallbackQuery,
     ClientRegistrationRequest, ClientRegistrationResponse, RegisteredClient,
 };
 use crate::util::{now_unix, random_token};
@@ -62,7 +62,11 @@ pub async fn authorize(
         .find_client(&query.client_id)
         .await?
         .ok_or_else(|| AuthError::InvalidGrant("unknown client_id".to_string()))?;
-    if !client.redirect_uris.iter().any(|uri| uri == &query.redirect_uri) {
+    if !client
+        .redirect_uris
+        .iter()
+        .any(|uri| uri == &query.redirect_uri)
+    {
         return Err(AuthError::Validation(
             "redirect_uri does not match the registered client".to_string(),
         ));
@@ -74,9 +78,8 @@ pub async fn authorize(
     }
 
     let provider_code_verifier = random_token(32)?;
-    let provider_code_challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(
-        provider_code_verifier.as_bytes(),
-    ));
+    let provider_code_challenge =
+        URL_SAFE_NO_PAD.encode(Sha256::digest(provider_code_verifier.as_bytes()));
     let request_state = random_token(24)?;
 
     state
@@ -102,7 +105,11 @@ pub async fn authorize(
         code_challenge_method: "S256".to_string(),
     })?;
 
-    Ok((StatusCode::FOUND, [(header::LOCATION, location.to_string())]).into_response())
+    Ok((
+        StatusCode::FOUND,
+        [(header::LOCATION, location.to_string())],
+    )
+        .into_response())
 }
 
 pub async fn callback(
@@ -113,7 +120,9 @@ pub async fn callback(
         .store
         .take_authorization_request(&query.state)
         .await
-        .map_err(|_| AuthError::InvalidGrant("authorization state is invalid or expired".to_string()))?;
+        .map_err(|_| {
+            AuthError::InvalidGrant("authorization state is invalid or expired".to_string())
+        })?;
     let google = state
         .google
         .exchange_code(&query.code, &request.provider_code_verifier)
@@ -136,7 +145,9 @@ pub async fn callback(
         .await?;
 
     let redirect_uri = reqwest::Url::parse(&request.redirect_uri).map_err(|error| {
-        AuthError::Storage(format!("registered redirect_uri is not a valid URL: {error}"))
+        AuthError::Storage(format!(
+            "registered redirect_uri is not a valid URL: {error}"
+        ))
     })?;
     let mut redirect_uri = redirect_uri;
     redirect_uri
@@ -148,21 +159,17 @@ pub async fn callback(
 }
 
 fn require_bootstrap_secret(state: &AuthState, headers: &HeaderMap) -> Result<(), AuthError> {
-    let expected = state
-        .config
-        .bootstrap_secret
-        .as_ref()
-        .ok_or_else(|| AuthError::AuthFailed("bootstrap registration is disabled".to_string()))?;
+    let expected =
+        state.config.bootstrap_secret.as_ref().ok_or_else(|| {
+            AuthError::AuthFailed("bootstrap registration is disabled".to_string())
+        })?;
     let provided = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(parse_bearer_token)
         .ok_or_else(|| AuthError::AuthFailed("missing bootstrap secret".to_string()))?;
-    let is_equal: bool = subtle::ConstantTimeEq::ct_eq(
-        provided.as_bytes(),
-        expected.as_bytes(),
-    )
-    .into();
+    let is_equal: bool =
+        subtle::ConstantTimeEq::ct_eq(provided.as_bytes(), expected.as_bytes()).into();
     if !is_equal {
         return Err(AuthError::AuthFailed(
             "invalid bootstrap secret".to_string(),
@@ -271,7 +278,12 @@ pub mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::FOUND);
-        let location = response.headers().get(header::LOCATION).unwrap().to_str().unwrap();
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(location.contains("accounts.google.com"));
     }
 
@@ -395,14 +407,12 @@ pub mod tests {
         let server = Box::leak(Box::new(MockServer::start().await));
         Mock::given(method("POST"))
             .and(path("/token"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "access_token": "google-access-token",
-                    "refresh_token": "refresh-token",
-                    "expires_in": 3600,
-                    "id_token": test_id_token(),
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "google-access-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 3600,
+                "id_token": test_id_token(),
+            })))
             .mount(server)
             .await;
         state

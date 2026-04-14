@@ -389,10 +389,8 @@ args = ["server.js"]
     #[test]
     fn expose_tools_patch_distinguishes_absent_null_empty_and_values() {
         let absent: GatewayUpdatePatch = serde_json::from_str(r#"{}"#).unwrap();
-        let null: GatewayUpdatePatch =
-            serde_json::from_str(r#"{"expose_tools": null}"#).unwrap();
-        let empty: GatewayUpdatePatch =
-            serde_json::from_str(r#"{"expose_tools": []}"#).unwrap();
+        let null: GatewayUpdatePatch = serde_json::from_str(r#"{"expose_tools": null}"#).unwrap();
+        let empty: GatewayUpdatePatch = serde_json::from_str(r#"{"expose_tools": []}"#).unwrap();
         let with_values: GatewayUpdatePatch =
             serde_json::from_str(r#"{"expose_tools": ["foo"]}"#).unwrap();
 

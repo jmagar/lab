@@ -73,7 +73,8 @@ impl GoogleProvider {
                 "profile".to_string(),
             ],
             http: reqwest::Client::new(),
-            authorize_endpoint: Url::parse(GOOGLE_AUTHORIZE_ENDPOINT).expect("valid google auth url"),
+            authorize_endpoint: Url::parse(GOOGLE_AUTHORIZE_ENDPOINT)
+                .expect("valid google auth url"),
             token_endpoint: Url::parse(GOOGLE_TOKEN_ENDPOINT).expect("valid google token url"),
         }
     }
@@ -123,10 +124,9 @@ impl GoogleProvider {
         let response = response
             .error_for_status()
             .map_err(|error| AuthError::Storage(format!("google token endpoint error: {error}")))?;
-        let payload: GoogleTokenResponse = response
-            .json()
-            .await
-            .map_err(|error| AuthError::Storage(format!("decode google token response: {error}")))?;
+        let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
+            AuthError::Storage(format!("decode google token response: {error}"))
+        })?;
         let subject = parse_subject_from_id_token(&payload.id_token)?;
         Ok(GoogleExchange {
             subject,
@@ -137,10 +137,7 @@ impl GoogleProvider {
         })
     }
 
-    pub async fn refresh(
-        &self,
-        refresh_token: &str,
-    ) -> Result<GoogleExchange, AuthError> {
+    pub async fn refresh(&self, refresh_token: &str) -> Result<GoogleExchange, AuthError> {
         let response = self
             .http
             .post(self.token_endpoint.clone())
@@ -153,13 +150,12 @@ impl GoogleProvider {
             .send()
             .await
             .map_err(|error| AuthError::Storage(format!("refresh google token: {error}")))?;
-        let response = response
-            .error_for_status()
-            .map_err(|error| AuthError::Storage(format!("google refresh endpoint error: {error}")))?;
-        let payload: GoogleTokenResponse = response
-            .json()
-            .await
-            .map_err(|error| AuthError::Storage(format!("decode google refresh response: {error}")))?;
+        let response = response.error_for_status().map_err(|error| {
+            AuthError::Storage(format!("google refresh endpoint error: {error}"))
+        })?;
+        let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
+            AuthError::Storage(format!("decode google refresh response: {error}"))
+        })?;
         let subject = parse_subject_from_id_token(&payload.id_token)?;
         Ok(GoogleExchange {
             subject,
@@ -183,9 +179,9 @@ impl GoogleProvider {
 /// endpoint must be added first.
 fn parse_subject_from_id_token(id_token: &str) -> Result<String, AuthError> {
     let mut parts = id_token.split('.');
-    let _header = parts.next().ok_or_else(|| {
-        AuthError::Storage("google id_token is missing a JWT header".to_string())
-    })?;
+    let _header = parts
+        .next()
+        .ok_or_else(|| AuthError::Storage("google id_token is missing a JWT header".to_string()))?;
     let payload = parts.next().ok_or_else(|| {
         AuthError::Storage("google id_token is missing a JWT payload".to_string())
     })?;
@@ -236,14 +232,12 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/token"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "access_token": "google-access-token",
-                    "refresh_token": "refresh-token",
-                    "expires_in": 3600,
-                    "id_token": test_id_token(),
-                })),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "google-access-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 3600,
+                "id_token": test_id_token(),
+            })))
             .mount(&server)
             .await;
 

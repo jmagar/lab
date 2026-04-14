@@ -4,7 +4,7 @@ mod config;
 mod dispatch;
 pub mod manager;
 mod params;
-pub mod types;
+pub(crate) mod types;
 
 pub use catalog::ACTIONS;
 pub use client::install_gateway_manager;

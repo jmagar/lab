@@ -55,19 +55,13 @@ fn app_auth_state(state: &AppState) -> Result<lab_auth::state::AuthState, LabAut
 async fn auth_authorization_server_metadata(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::metadata::authorization_server_metadata(State(app_auth_state(
-        &state,
-    )?))
-    .await)
+    Ok(lab_auth::metadata::authorization_server_metadata(State(app_auth_state(&state)?)).await)
 }
 
 async fn auth_protected_resource_metadata(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::metadata::protected_resource_metadata(State(app_auth_state(
-        &state,
-    )?))
-    .await)
+    Ok(lab_auth::metadata::protected_resource_metadata(State(app_auth_state(&state)?)).await)
 }
 
 async fn auth_jwks(State(state): State<AppState>) -> Result<impl IntoResponse, LabAuthError> {
@@ -79,12 +73,7 @@ async fn auth_register(
     headers: axum::http::HeaderMap,
     body: axum::Json<lab_auth::types::ClientRegistrationRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::authorize::register_client(
-        State(app_auth_state(&state)?),
-        headers,
-        body,
-    )
-    .await?)
+    Ok(lab_auth::authorize::register_client(State(app_auth_state(&state)?), headers, body).await?)
 }
 
 async fn auth_authorize(
@@ -229,8 +218,9 @@ pub fn build_router(
         })
         .map(Arc::from);
 
-    let protected = if needs_auth {
-        protected.layer(axum::middleware::from_fn(
+    let protected =
+        if needs_auth {
+            protected.layer(axum::middleware::from_fn(
             move |mut request: Request<Body>, next: Next| {
                 let static_token = static_token.clone();
                 let auth_state = auth_state_for_middleware.clone();
@@ -335,9 +325,9 @@ pub fn build_router(
                 }
             },
         ))
-    } else {
-        protected
-    };
+        } else {
+            protected
+        };
 
     // Build the outer router: health probes + discovery (no auth) + protected routes (auth).
     // Layers apply bottom-up: last .layer() call = outermost middleware.
@@ -721,7 +711,7 @@ mod tests {
     #[cfg(feature = "radarr")]
     #[tokio::test]
     async fn service_filtered_from_registry_has_no_http_route() {
-        use crate::mcp::registry::ToolRegistry;
+        use crate::registry::ToolRegistry;
 
         // An empty registry = no services enabled at runtime.
         let registry = ToolRegistry::new();

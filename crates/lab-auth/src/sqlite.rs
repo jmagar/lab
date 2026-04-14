@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use rusqlite::{Connection, OptionalExtension, params};
 use rusqlite::types::Value;
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::AuthError;
 use crate::types::{
@@ -45,13 +45,15 @@ impl SqliteStore {
         };
 
         self.with_conn(move |conn| {
-            conn.query_row(&format!("PRAGMA {pragma};"), [], |row| row.get::<_, Value>(0))
-                .map(|value| match value {
-                    Value::Text(text) => text,
-                    Value::Integer(int) => int.to_string(),
-                    other => format!("{other:?}"),
-                })
-                .map_err(sqlite_error)
+            conn.query_row(&format!("PRAGMA {pragma};"), [], |row| {
+                row.get::<_, Value>(0)
+            })
+            .map(|value| match value {
+                Value::Text(text) => text,
+                Value::Integer(int) => int.to_string(),
+                other => format!("{other:?}"),
+            })
+            .map_err(sqlite_error)
         })
         .await
     }
@@ -74,7 +76,10 @@ impl SqliteStore {
         .await
     }
 
-    pub async fn find_client(&self, client_id: &str) -> Result<Option<RegisteredClient>, AuthError> {
+    pub async fn find_client(
+        &self,
+        client_id: &str,
+    ) -> Result<Option<RegisteredClient>, AuthError> {
         let client_id = client_id.to_string();
         self.with_conn(move |conn| {
             conn.query_row(
@@ -275,7 +280,7 @@ impl SqliteStore {
             ] {
                 let deleted = conn
                     .execute(
-                        &format!("DELETE FROM {table} WHERE expires_at < ?1"),
+                        &format!("DELETE FROM {table} WHERE expires_at <= ?1"),
                         params![now],
                     )
                     .map_err(sqlite_error)?;
@@ -379,7 +384,9 @@ fn sqlite_error(error: rusqlite::Error) -> AuthError {
     AuthError::Storage(format!("sqlite error: {error}"))
 }
 
-fn row_to_authorization_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<AuthorizationRequestRow> {
+fn row_to_authorization_request(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<AuthorizationRequestRow> {
     Ok(AuthorizationRequestRow {
         state: row.get(0)?,
         client_id: row.get(1)?,
@@ -486,11 +493,13 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(store
-            .find_refresh_token("refresh-token")
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            store
+                .find_refresh_token("refresh-token")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -553,11 +562,13 @@ mod tests {
         assert_eq!(deleted, 3, "should delete exactly 3 expired rows");
 
         // The valid refresh token should still exist.
-        assert!(store
-            .find_refresh_token("valid-refresh")
-            .await
-            .unwrap()
-            .is_some());
+        assert!(
+            store
+                .find_refresh_token("valid-refresh")
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     async fn temp_store() -> SqliteStore {

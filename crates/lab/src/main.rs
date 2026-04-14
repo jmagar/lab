@@ -15,6 +15,7 @@ mod config;
 mod dispatch;
 mod mcp;
 mod output;
+mod registry;
 mod scaffold;
 #[cfg(test)]
 mod test_support;

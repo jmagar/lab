@@ -172,7 +172,7 @@ export function useGatewayMutations() {
     return result
   }, [])
 
-  const previewExposurePolicy = useCallback(async (id: string, patterns: string[]): Promise<ExposurePolicyPreview> => {
+  const previewExposurePolicy = useCallback(async (id: string, patterns: string[], signal?: AbortSignal): Promise<ExposurePolicyPreview> => {
     if (USE_MOCK_DATA) {
       await mockDelay(300)
       const gateway = mockGateways.find(g => g.id === id)
@@ -220,7 +220,7 @@ export function useGatewayMutations() {
         filtered_count: filteredTools.length,
       }
     }
-    return gatewayApi.previewExposurePolicy(id, patterns)
+    return gatewayApi.previewExposurePolicy(id, patterns, signal)
   }, [])
 
   return {

@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use lab_apis::core::ServiceClient;
 
-use crate::mcp::registry::{RegisteredService, ToolRegistry, build_default_registry};
+use crate::registry::{RegisteredService, ToolRegistry, build_default_registry};
 use crate::tui::events::ServiceHealth;
 
 /// Lazily-initialized default registry shared by the TUI.

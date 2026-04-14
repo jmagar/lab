@@ -54,7 +54,7 @@ pub struct GatewayManager {
     path: PathBuf,
     runtime: GatewayRuntimeHandle,
     config: Arc<RwLock<LabConfig>>,
-    notifier: Option<Arc<dyn CatalogChangeNotifier>>,
+    notifier: Option<CatalogChangeNotifier>,
 }
 
 impl GatewayManager {
@@ -71,7 +71,7 @@ impl GatewayManager {
     ///
     /// Must be called before any operations that trigger catalog changes
     /// (add, update, remove, reload) if the caller wants notifications.
-    pub fn set_notifier(&mut self, notifier: Arc<dyn CatalogChangeNotifier>) {
+    pub fn set_notifier(&mut self, notifier: CatalogChangeNotifier) {
         self.notifier = Some(notifier);
     }
 
@@ -116,8 +116,12 @@ impl GatewayManager {
 
         Ok(GatewayView {
             config: config_view(&upstream),
-            runtime: runtime_view(self.runtime.current_pool().await.as_deref(), &upstream.name, None)
-                .await,
+            runtime: runtime_view(
+                self.runtime.current_pool().await.as_deref(),
+                &upstream.name,
+                None,
+            )
+            .await,
         })
     }
 
@@ -247,7 +251,7 @@ impl GatewayManager {
         self.runtime.swap(fresh_pool).await;
         *self.config.write().await = cfg;
         let diff = diff_catalogs(&before, &after);
-        self.notify_catalog_changes(&diff).await;
+        self.notify_catalog_changes(&diff);
         Ok(diff)
     }
 
@@ -309,13 +313,13 @@ impl GatewayManager {
         .await;
     }
 
-    async fn notify_catalog_changes(&self, diff: &GatewayCatalogDiff) {
+    fn notify_catalog_changes(&self, diff: &GatewayCatalogDiff) {
         if !diff.tools_changed && !diff.resources_changed && !diff.prompts_changed {
             return;
         }
 
         if let Some(notifier) = &self.notifier {
-            notifier.notify_catalog_changes(diff).await;
+            notifier.notify_catalog_changes(diff);
         }
     }
 }

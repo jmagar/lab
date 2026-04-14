@@ -17,7 +17,7 @@ use utoipa::openapi::{
 };
 use utoipa::{Modify, OpenApi, ToSchema};
 
-use crate::mcp::registry::RegisteredService;
+use crate::registry::RegisteredService;
 
 // ── Documentation-only error schemas ────────────────────────────────────
 //
@@ -688,7 +688,7 @@ mod tests {
     /// and validate its top-level structure.
     #[test]
     fn full_spec_round_trip() {
-        use crate::mcp::registry::build_default_registry;
+        use crate::registry::build_default_registry;
 
         let registry = build_default_registry();
         let spec_json =

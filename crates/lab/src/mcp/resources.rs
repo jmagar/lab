@@ -6,7 +6,7 @@
 use anyhow::Result;
 use serde_json::Value;
 
-use crate::{catalog::build_catalog, mcp::registry::ToolRegistry};
+use crate::{catalog::build_catalog, registry::ToolRegistry};
 
 /// Render the `lab://catalog` resource as JSON.
 pub fn catalog_json(registry: &ToolRegistry) -> Result<Value> {

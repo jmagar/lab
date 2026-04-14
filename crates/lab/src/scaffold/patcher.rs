@@ -21,10 +21,7 @@ pub fn compute_patches(name: &str, repo_root: &Path) -> Result<Vec<FileOp>> {
             "crates/lab/src/mcp/services.rs",
             source::patch_mcp_services_rs,
         ),
-        (
-            "crates/lab/src/mcp/registry.rs",
-            source::patch_mcp_registry_rs,
-        ),
+        ("crates/lab/src/registry.rs", source::patch_mcp_registry_rs),
         (
             "crates/lab/src/api/services.rs",
             source::patch_api_services_rs,

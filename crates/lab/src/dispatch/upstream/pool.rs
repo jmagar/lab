@@ -382,15 +382,12 @@ impl UpstreamPool {
             .values()
             .filter(|entry| entry.tool_health.is_routable())
             .find_map(|entry| {
-                entry
-                    .tools
-                    .get(tool_name)
-                    .and_then(|tool| {
-                        entry
-                            .exposure_policy
-                            .matches(tool_name)
-                            .then(|| (entry.name.to_string(), tool.clone()))
-                    })
+                entry.tools.get(tool_name).and_then(|tool| {
+                    entry
+                        .exposure_policy
+                        .matches(tool_name)
+                        .then(|| (entry.name.to_string(), tool.clone()))
+                })
             })
     }
 
@@ -779,10 +776,7 @@ impl UpstreamPool {
     ///
     /// Makes M RPCs (one per healthy upstream), not M*N. Use this when you need
     /// to look up ownership for multiple prompts.
-    pub async fn prompt_ownership_map(
-        &self,
-        builtin_names: &[&str],
-    ) -> HashMap<String, String> {
+    pub async fn prompt_ownership_map(&self, builtin_names: &[&str]) -> HashMap<String, String> {
         let (_, owners) = self.collect_upstream_prompts(builtin_names).await;
         owners
     }
@@ -1171,7 +1165,10 @@ mod tests {
             resource_unhealthy_since: None,
         };
 
-        pool.catalog.write().await.insert("github".to_string(), entry);
+        pool.catalog
+            .write()
+            .await
+            .insert("github".to_string(), entry);
 
         let names: Vec<String> = pool
             .healthy_tools()
@@ -1214,7 +1211,10 @@ mod tests {
             resource_unhealthy_since: None,
         };
 
-        pool.catalog.write().await.insert("github".to_string(), entry);
+        pool.catalog
+            .write()
+            .await
+            .insert("github".to_string(), entry);
 
         assert!(pool.find_tool("search_repos").await.is_some());
         assert!(pool.find_tool("delete_repo").await.is_none());

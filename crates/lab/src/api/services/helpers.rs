@@ -232,10 +232,7 @@ mod tests {
 
     impl EventRecorder {
         fn snapshot(&self) -> String {
-            self.0
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .join("\n")
+            self.0.lock().unwrap_or_else(|e| e.into_inner()).join("\n")
         }
     }
 

@@ -23,9 +23,8 @@ pub(crate) fn random_token(bytes: usize) -> Result<String, AuthError> {
 pub(crate) fn ensure_restrictive_permissions(path: &Path) -> Result<(), AuthError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let metadata = std::fs::metadata(path).map_err(|error| {
-        AuthError::Storage(format!("stat `{}`: {error}", path.display()))
-    })?;
+    let metadata = std::fs::metadata(path)
+        .map_err(|error| AuthError::Storage(format!("stat `{}`: {error}", path.display())))?;
     let mode = metadata.permissions().mode() & 0o777;
     if mode & 0o077 != 0 {
         return Err(AuthError::InsecurePermissions {
@@ -44,9 +43,8 @@ pub(crate) fn ensure_restrictive_permissions(_path: &Path) -> Result<(), AuthErr
 pub(crate) fn set_restrictive_permissions(path: &Path) -> Result<(), AuthError> {
     use std::os::unix::fs::PermissionsExt;
 
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(|error| {
-        AuthError::Storage(format!("chmod 0600 `{}`: {error}", path.display()))
-    })
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|error| AuthError::Storage(format!("chmod 0600 `{}`: {error}", path.display())))
 }
 
 #[cfg(not(unix))]

@@ -4,8 +4,6 @@
 //! can share the same handler logic.
 
 use std::collections::BTreeSet;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use rmcp::model::{
@@ -19,15 +17,16 @@ use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::Value;
 use tokio::sync::RwLock;
+use tokio::sync::mpsc;
 
 use crate::dispatch::gateway::manager::GatewayManager;
-use crate::dispatch::gateway::types::{CatalogChangeNotifier, GatewayCatalogDiff};
+use crate::dispatch::gateway::types::GatewayCatalogDiff;
 use crate::dispatch::upstream::types::UpstreamCapability;
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
-use crate::mcp::registry::ToolRegistry;
+use crate::registry::ToolRegistry;
 
-/// MCP-specific [`CatalogChangeNotifier`] that forwards catalog-change
+/// MCP-specific peer fanout that forwards catalog-change
 /// notifications to all connected `rmcp::Peer<RoleServer>` instances.
 ///
 /// This keeps `rmcp` types out of the dispatch layer while allowing
@@ -37,25 +36,37 @@ pub struct PeerNotifier {
     pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
 }
 
-impl CatalogChangeNotifier for PeerNotifier {
-    fn notify_catalog_changes<'a>(
-        &'a self,
-        diff: &'a GatewayCatalogDiff,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
-        Box::pin(async move {
-            let peers = self.peers.read().await.clone();
-            for peer in peers {
-                if diff.tools_changed {
-                    drop(peer.notify_tool_list_changed().await);
-                }
-                if diff.resources_changed {
-                    drop(peer.notify_resource_list_changed().await);
-                }
-                if diff.prompts_changed {
-                    drop(peer.notify_prompt_list_changed().await);
-                }
+impl PeerNotifier {
+    pub async fn run(self, mut rx: mpsc::UnboundedReceiver<GatewayCatalogDiff>) {
+        while let Some(diff) = rx.recv().await {
+            self.notify_catalog_changes(&diff).await;
+        }
+    }
+
+    async fn notify_catalog_changes(&self, diff: &GatewayCatalogDiff) {
+        let peers = self.peers.read().await.clone();
+        let mut alive = Vec::with_capacity(peers.len());
+        for peer in &peers {
+            let peer = peer.clone();
+            let mut ok = true;
+            if diff.tools_changed {
+                ok = peer.notify_tool_list_changed().await.is_ok();
             }
-        })
+            if ok && diff.resources_changed {
+                ok = peer.notify_resource_list_changed().await.is_ok();
+            }
+            if ok && diff.prompts_changed {
+                ok = peer.notify_prompt_list_changed().await.is_ok();
+            }
+            if ok {
+                alive.push(peer);
+            }
+        }
+
+        let mut guard = self.peers.write().await;
+        let added_since_snapshot = guard.split_off(peers.len());
+        *guard = alive;
+        guard.extend(added_since_snapshot);
     }
 }
 
@@ -561,6 +572,7 @@ impl LabMcpServer {
         }
 
         let peers = self.peers.read().await.clone();
+        let peer_count = peers.len();
         let mut alive = Vec::with_capacity(peers.len());
         for peer in peers {
             let mut ok = true;
@@ -583,7 +595,10 @@ impl LabMcpServer {
                 alive.push(peer);
             }
         }
-        *self.peers.write().await = alive;
+        let mut guard = self.peers.write().await;
+        let added_since_snapshot = guard.split_off(peer_count);
+        *guard = alive;
+        guard.extend(added_since_snapshot);
     }
 }
 
@@ -946,7 +961,7 @@ mod tests {
     #[test]
     fn server_capabilities_advertise_list_changed_support() {
         let server = super::LabMcpServer {
-            registry: std::sync::Arc::new(crate::mcp::registry::ToolRegistry::new()),
+            registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
@@ -975,7 +990,7 @@ mod tests {
         ));
         let notifier = super::PeerNotifier::default();
         let server = super::LabMcpServer {
-            registry: std::sync::Arc::new(crate::mcp::registry::ToolRegistry::new()),
+            registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: Some(std::sync::Arc::clone(&manager)),
             peers: std::sync::Arc::clone(&notifier.peers),
         };

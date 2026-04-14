@@ -286,10 +286,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/token")
-                    .header(
-                        header::CONTENT_TYPE,
-                        "application/x-www-form-urlencoded",
-                    )
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(
                         "grant_type=refresh_token&refresh_token=refresh-token&client_id=client",
                     ))
@@ -340,10 +337,7 @@ mod tests {
         seed_authorization_code_with_expiry(state, 4_102_444_800).await;
     }
 
-    async fn seed_authorization_code_with_expiry(
-        state: &crate::state::AuthState,
-        expires_at: i64,
-    ) {
+    async fn seed_authorization_code_with_expiry(state: &crate::state::AuthState, expires_at: i64) {
         state
             .store
             .insert_auth_code(crate::types::AuthorizationCodeRow {

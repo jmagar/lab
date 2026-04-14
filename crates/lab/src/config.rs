@@ -21,8 +21,8 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use lab_auth::config as auth_config;
 use lab_apis::extract::types::ServiceCreds;
+use lab_auth::config as auth_config;
 use serde::{Deserialize, Serialize, Serializer};
 
 /// Fully-resolved `lab` configuration, assembled from env + TOML.
@@ -154,7 +154,10 @@ pub fn resolve_auth(config: Option<&AuthFileConfig>) -> Result<auth_config::Auth
         insert_if_some(
             &mut merged,
             "LAB_AUTH_KEY_PATH",
-            config.key_path.as_ref().map(|path| path.display().to_string()),
+            config
+                .key_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
         );
         insert_if_some(
             &mut merged,
@@ -341,9 +344,7 @@ pub fn config_toml_path() -> Option<PathBuf> {
     toml_candidates()
         .into_iter()
         .find(|path| path.exists())
-        .or_else(|| {
-            home_dir().map(|home| home.join(".config").join("lab").join("config.toml"))
-        })
+        .or_else(|| home_dir().map(|home| home.join(".config").join("lab").join("config.toml")))
 }
 
 /// A string value that redacts itself in `Debug` and `Display` output.

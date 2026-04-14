@@ -5,13 +5,7 @@ use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::dispatch::clients::ServiceClients;
-// NOTE: The API surface imports ToolRegistry for service metadata (names,
-// descriptions, categories) used in route mounting and OpenAPI generation.
-// It does NOT use the dispatch function pointers. `build_default_registry` is
-// called in `AppState::new()` to construct the registry. A future refactor
-// could extract ServiceMetadata into dispatch/ to eliminate this cross-surface
-// import.
-use crate::mcp::registry::{ToolRegistry, build_default_registry};
+use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Application state passed to every axum handler via `State<AppState>`.
 #[derive(Clone)]

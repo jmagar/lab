@@ -1,19 +1,26 @@
-use std::future::Future;
-use std::pin::Pin;
-
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
-/// Surface-neutral notification trait for catalog changes.
+/// Surface-neutral notification handle for catalog changes.
 ///
 /// The dispatch layer calls this after gateway reload/add/remove to inform
 /// connected transports (e.g. MCP peers) that tools, resources, or prompts
 /// have changed.  The concrete implementation lives in the MCP surface
 /// (`mcp/server.rs`) so that `rmcp::Peer` never leaks into dispatch.
-pub trait CatalogChangeNotifier: Send + Sync {
-    fn notify_catalog_changes<'a>(
-        &'a self,
-        diff: &'a GatewayCatalogDiff,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+#[derive(Clone, Debug)]
+pub struct CatalogChangeNotifier {
+    tx: mpsc::UnboundedSender<GatewayCatalogDiff>,
+}
+
+impl CatalogChangeNotifier {
+    #[must_use]
+    pub fn new(tx: mpsc::UnboundedSender<GatewayCatalogDiff>) -> Self {
+        Self { tx }
+    }
+
+    pub fn notify_catalog_changes(&self, diff: &GatewayCatalogDiff) {
+        let _ = self.tx.send(diff.clone());
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

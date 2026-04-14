@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   Plus, 
   X, 
@@ -15,6 +15,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { GatewayApiError } from '@/lib/api/gateway-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -45,6 +46,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const previewRequestId = useRef(0)
 
   // Initialize from policy — only when user has no pending edits
   useEffect(() => {
@@ -67,24 +69,31 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   useEffect(() => {
     if (mode !== 'allowlist' || patterns.length === 0) {
       setPreview(null)
+      setIsPreviewLoading(false)
       return
     }
 
-    let canceled = false
+    const requestId = previewRequestId.current + 1
+    previewRequestId.current = requestId
+    const controller = new AbortController()
     const timer = setTimeout(async () => {
       setIsPreviewLoading(true)
       try {
-        const result = await previewExposurePolicy(gateway.id, patterns)
-        if (!canceled) setPreview(result)
-      } catch {
-        // Silently fail preview
+        const result = await previewExposurePolicy(gateway.id, patterns, controller.signal)
+        setPreview(result)
+      } catch (error) {
+        if (!(error instanceof GatewayApiError || (error instanceof DOMException && error.name === 'AbortError'))) {
+          // Silently fail preview
+        }
       } finally {
-        if (!canceled) setIsPreviewLoading(false)
+        if (previewRequestId.current === requestId) {
+          setIsPreviewLoading(false)
+        }
       }
     }, 300)
 
     return () => {
-      canceled = true
+      controller.abort()
       clearTimeout(timer)
     }
   }, [gateway.id, mode, patterns, previewExposurePolicy])
