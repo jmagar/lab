@@ -9,9 +9,14 @@
 //! like `unraid` reads `UNRAID_URL` as the default instance and
 //! `UNRAID_NODE2_URL` as an additional instance labeled `node2`.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    io::Write as _,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
+use lab_apis::extract::types::ServiceCreds;
 use serde::{Deserialize, Serialize, Serializer};
 
 /// Fully-resolved `lab` configuration, assembled from env + TOML.
@@ -63,7 +68,7 @@ pub fn load() -> Result<LabConfig> {
 
     // Also load .env from the current working directory (dev convenience).
     // Does not override vars already set by the user-level file.
-    let cwd_env = std::path::Path::new(".env");
+    let cwd_env = Path::new(".env");
     if cwd_env.exists()
         && let Err(e) = dotenvy::from_path(cwd_env)
     {
@@ -233,6 +238,203 @@ fn scan_instances_from(
     out
 }
 
+// ─── .env writer (used by `lab extract --apply`) ─────────────────────────────
+
+/// Copy `path` to `path.bak.<unix-seconds>`. No-op if `path` does not exist.
+///
+/// Returns the backup path (useful for messaging the user).
+///
+/// # Errors
+/// Returns an error if the copy fails.
+pub fn backup_env(path: &Path) -> Result<PathBuf> {
+    if !path.exists() {
+        // Nothing to back up; return a synthetic path for display only.
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        return Ok(path.with_extension(format!("bak.{ts}")));
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let backup = PathBuf::from(format!("{}.bak.{ts}", path.display()));
+    std::fs::copy(path, &backup)
+        .with_context(|| format!("backup {} → {}", path.display(), backup.display()))?;
+    Ok(backup)
+}
+
+/// Merge `new_creds` into the `.env` file at `path` following the 8-rule algorithm.
+///
+/// Rule summary (full spec in `crates/lab-apis/src/extract/CLAUDE.md`):
+/// 1. Backup is the caller's responsibility — call [`backup_env`] before this.
+/// 2. Atomic write: `path.tmp` → rename.
+/// 3. Existing key order and comments are preserved.
+/// 4. Comments (`#`) and blank lines pass through unchanged.
+/// 5. Dedupe: one entry per key.
+/// 6. Conflicts (key exists, different value): skip-and-warn unless `force=true`.
+/// 7. Values containing whitespace or shell metacharacters are double-quoted.
+/// 8. Idempotence: caller must check before invoking (this fn always writes).
+///
+/// Returns a `Vec<String>` of warnings for skipped conflicts.
+///
+/// # Errors
+/// Returns an error if the tmp file cannot be written or renamed.
+pub fn write_env(
+    path: &Path,
+    new_creds: &[ServiceCreds],
+    force: bool,
+) -> Result<Vec<String>> {
+    // Read the existing file (empty if absent).
+    let existing_raw = if path.exists() {
+        std::fs::read_to_string(path)
+            .with_context(|| format!("read {}", path.display()))?
+    } else {
+        String::new()
+    };
+    let existing_lines: Vec<&str> = existing_raw.lines().collect();
+
+    // Build map of existing key → value from non-comment lines.
+    let mut existing: HashMap<String, String> = HashMap::new();
+    for line in &existing_lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = trimmed.split_once('=') {
+            existing.insert(k.trim().to_owned(), v.trim().to_owned());
+        }
+    }
+
+    // Collect all (key, value) pairs to write from new_creds.
+    let mut to_write: Vec<(String, String)> = Vec::new();
+    for cred in new_creds {
+        let svc_upper = cred.service.to_uppercase();
+        if let Some(url) = &cred.url {
+            to_write.push((format!("{svc_upper}_URL"), url.clone()));
+        }
+        if let Some(secret) = &cred.secret {
+            to_write.push((cred.env_field.clone(), secret.clone()));
+        }
+    }
+
+    // Process each pair: classify as NEW, SAME, or CONFLICT.
+    let mut conflicts: Vec<String> = Vec::new();
+    // Track keys that are overrides (force=true conflicts).
+    let mut override_keys: HashMap<String, String> = HashMap::new();
+    // Track keys that are genuinely new.
+    let mut new_keys: Vec<(String, String)> = Vec::new();
+
+    for (key, value) in &to_write {
+        match existing.get(key) {
+            None => new_keys.push((key.clone(), value.clone())),
+            Some(existing_val) if existing_val == value => {
+                // Idempotent — already present with same value, skip.
+            }
+            Some(existing_val) => {
+                if force {
+                    override_keys.insert(key.clone(), value.clone());
+                } else {
+                    conflicts.push(format!(
+                        "CONFLICT: {key} already set to {existing_val:?}; skipping (use --force to overwrite)"
+                    ));
+                }
+            }
+        }
+    }
+
+    // Build the new file: start with existing lines, applying overrides in-place.
+    let mut out_lines: Vec<String> = Vec::new();
+    for line in &existing_lines {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            if let Some((k, _)) = trimmed.split_once('=') {
+                let key = k.trim();
+                if let Some(new_val) = override_keys.get(key) {
+                    out_lines.push(format!("{}={}", key, quote_env_value(new_val)));
+                    continue;
+                }
+            }
+        }
+        out_lines.push((*line).to_owned());
+    }
+
+    // Append new keys at the end.
+    if !new_keys.is_empty() {
+        if !out_lines.last().map(|l| l.trim().is_empty()).unwrap_or(true) {
+            out_lines.push(String::new()); // blank separator
+        }
+        for (key, value) in &new_keys {
+            out_lines.push(format!("{}={}", key, quote_env_value(value)));
+        }
+    }
+
+    // Atomic write: write to .tmp, sync, rename.
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create dir {}", parent.display()))?;
+    }
+
+    let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+    {
+        let mut file = std::fs::File::create(&tmp_path)
+            .with_context(|| format!("create {}", tmp_path.display()))?;
+        for line in &out_lines {
+            writeln!(file, "{line}")
+                .with_context(|| format!("write {}", tmp_path.display()))?;
+        }
+        file.sync_all()
+            .with_context(|| format!("sync {}", tmp_path.display()))?;
+    }
+    std::fs::rename(&tmp_path, path)
+        .with_context(|| format!("rename {} → {}", tmp_path.display(), path.display()))?;
+
+    Ok(conflicts)
+}
+
+/// Returns true if all (key, value) pairs that would be written by `write_env`
+/// are already present in `path` with matching values. Used to implement
+/// idempotence: if this returns true, skip backup and write entirely.
+pub fn env_is_up_to_date(path: &Path, new_creds: &[ServiceCreds]) -> bool {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let existing: HashMap<String, String> = raw
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+        .filter_map(|l| {
+            l.split_once('=')
+                .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
+        })
+        .collect();
+
+    for cred in new_creds {
+        let svc_upper = cred.service.to_uppercase();
+        if let Some(url) = &cred.url {
+            let key = format!("{svc_upper}_URL");
+            if existing.get(&key).map(String::as_str) != Some(url.as_str()) {
+                return false;
+            }
+        }
+        if let Some(secret) = &cred.secret {
+            if existing.get(&cred.env_field).map(String::as_str) != Some(secret.as_str()) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Quote a value that contains shell-significant characters.
+fn quote_env_value(v: &str) -> String {
+    let needs_quotes = v.chars().any(|c| matches!(c, ' ' | '\t' | '#' | '$' | '\\' | '"' | '\'' | '`'));
+    if needs_quotes {
+        let escaped = v.replace('\\', r"\\").replace('"', r#"\""#);
+        format!("\"{escaped}\"")
+    } else {
+        v.to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,5 +523,97 @@ mod tests {
         let result = scan_instances_from("SVC", vars(&env));
         let def = result.get("default").expect("should find default");
         assert!(!format!("{:?}", def.get("USERNAME").unwrap()).contains("[REDACTED]"));
+    }
+
+    // ─── write_env / backup_env tests ───────────────────────────────────────
+
+    fn radarr_cred() -> ServiceCreds {
+        ServiceCreds {
+            service: "radarr".to_owned(),
+            url: Some("http://localhost:7878".to_owned()),
+            secret: Some("abc123".to_owned()),
+            env_field: "RADARR_API_KEY".to_owned(),
+        }
+    }
+
+    #[test]
+    fn write_env_adds_new_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        let warnings = write_env(&path, &[radarr_cred()], false).unwrap();
+        assert!(warnings.is_empty());
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("RADARR_URL=http://localhost:7878"));
+        assert!(content.contains("RADARR_API_KEY=abc123"));
+    }
+
+    #[test]
+    fn write_env_preserves_comments_and_blanks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "# my comment\nOTHER=val\n").unwrap();
+        write_env(&path, &[radarr_cred()], false).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("# my comment"));
+        assert!(content.contains("OTHER=val"));
+    }
+
+    #[test]
+    fn write_env_conflict_skip_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "RADARR_API_KEY=oldvalue\n").unwrap();
+        let warnings = write_env(&path, &[radarr_cred()], false).unwrap();
+        assert!(!warnings.is_empty());
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("oldvalue"));
+        assert!(!content.contains("abc123"));
+    }
+
+    #[test]
+    fn write_env_conflict_overwrite_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "RADARR_API_KEY=oldvalue\n").unwrap();
+        let warnings = write_env(&path, &[radarr_cred()], true).unwrap();
+        assert!(warnings.is_empty());
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("abc123"));
+        assert!(!content.contains("oldvalue"));
+    }
+
+    #[test]
+    fn env_is_up_to_date_returns_true_when_matching() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        std::fs::write(
+            &path,
+            "RADARR_URL=http://localhost:7878\nRADARR_API_KEY=abc123\n",
+        )
+        .unwrap();
+        assert!(env_is_up_to_date(&path, &[radarr_cred()]));
+    }
+
+    #[test]
+    fn env_is_up_to_date_returns_false_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "RADARR_URL=http://localhost:7878\n").unwrap();
+        assert!(!env_is_up_to_date(&path, &[radarr_cred()]));
+    }
+
+    #[test]
+    fn write_env_quotes_value_with_special_chars() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".env");
+        let cred = ServiceCreds {
+            service: "svc".to_owned(),
+            url: None,
+            secret: Some("has space".to_owned()),
+            env_field: "SVC_KEY".to_owned(),
+        };
+        write_env(&path, &[cred], false).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("SVC_KEY=\"has space\""));
     }
 }

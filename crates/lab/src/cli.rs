@@ -7,6 +7,7 @@
 pub mod audit;
 pub mod completions;
 pub mod doctor;
+pub mod extract;
 pub mod health;
 pub mod help;
 pub mod helpers;
@@ -114,6 +115,8 @@ pub enum Command {
     Scaffold(scaffold::ScaffoldArgs),
     /// Generate shell completions.
     Completions(completions::CompletionsArgs),
+    /// Scan appdata directories and extract service credentials.
+    Extract(extract::ExtractCmd),
     /// Radarr movie collection manager.
     #[cfg(feature = "radarr")]
     Radarr(radarr::RadarrArgs),
@@ -194,6 +197,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Help => help::run(format),
         Command::Scaffold(args) => scaffold::run(args, format),
         Command::Completions(args) => completions::run(&args),
+        Command::Extract(cmd) => cmd.run().await.map(|()| ExitCode::SUCCESS),
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,
         #[cfg(feature = "sonarr")]

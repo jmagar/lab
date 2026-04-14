@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use owo_colors::{OwoColorize, XtermColors};
 
+use crate::config::{backup_env, env_is_up_to_date, write_env};
 use crate::output::{OutputFormat, print};
 use lab_apis::extract::{ExtractClient, ExtractReport, Uri};
 
@@ -37,6 +38,10 @@ pub struct ExtractCmd {
     /// Don't actually write — just show what would happen with `--apply`.
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Overwrite conflicting keys instead of skipping them.
+    #[arg(long)]
+    pub force: bool,
 
     /// Render as JSON instead of a table.
     #[arg(long)]
@@ -74,10 +79,14 @@ impl ExtractCmd {
     }
 
     fn apply_report(&self, report: &ExtractReport) -> Result<()> {
-        // 1. Resolve target env file path
         let target = self.resolve_env_path()?;
 
-        // 2. Show what's about to change
+        // Rule 8: idempotence check — skip backup and write if nothing would change.
+        if env_is_up_to_date(&target, &report.creds) {
+            eprintln!("{}", "Already up to date — nothing to write.".dimmed());
+            return Ok(());
+        }
+
         self.print_report(report)?;
         eprintln!(
             "\n{} {} {} fields to {}",
@@ -87,7 +96,6 @@ impl ExtractCmd {
             target.display()
         );
 
-        // 3. Destructive confirmation (unless -y or --dry-run)
         if !self.yes && !self.dry_run && !confirm_destructive("extract.apply")? {
             anyhow::bail!("aborted by user");
         }
@@ -96,17 +104,68 @@ impl ExtractCmd {
             return Ok(());
         }
 
-        // 4. Backup + atomic write — implementation lives in lab/src/config.rs
-        //    backup_env(&target)?;
-        //    write_env(&target, &report.creds)?;
-        anyhow::bail!(
-            "apply not yet implemented (would patch {})",
+        // Rule 1: backup before any write.
+        let backup =
+            backup_env(&target).with_context(|| format!("backup {}", target.display()))?;
+        if backup.exists() {
+            eprintln!(
+                "  {} {}",
+                "backup →".dimmed(),
+                backup.display().to_string().dimmed()
+            );
+        }
+
+        // Rules 2–7: atomic merge write.
+        let warnings = write_env(&target, &report.creds, self.force)
+            .with_context(|| format!("write {}", target.display()))?;
+
+        for w in &warnings {
+            eprintln!("  {} {}", "⚠".color(XtermColors::FlushOrange), w);
+        }
+        eprintln!(
+            "  {} {}",
+            "✓".color(XtermColors::BrightGreen),
             target.display()
-        )
+        );
+        Ok(())
     }
 
-    fn diff_report(&self, _report: &ExtractReport) -> Result<()> {
-        anyhow::bail!("diff not yet implemented")
+    fn diff_report(&self, report: &ExtractReport) -> Result<()> {
+        let target = self.resolve_env_path()?;
+
+        let existing_raw = if target.exists() {
+            std::fs::read_to_string(&target)
+                .with_context(|| format!("read {}", target.display()))?
+        } else {
+            String::new()
+        };
+        let existing: std::collections::HashMap<String, String> = existing_raw
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+            .filter_map(|l| {
+                l.split_once('=')
+                    .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))
+            })
+            .collect();
+
+        let mut any = false;
+        for cred in &report.creds {
+            let svc_upper = cred.service.to_uppercase();
+            if let Some(url) = &cred.url {
+                let key = format!("{svc_upper}_URL");
+                print_diff_line(&key, url, &existing);
+                any = true;
+            }
+            if let Some(secret) = &cred.secret {
+                print_diff_line(&cred.env_field, secret, &existing);
+                any = true;
+            }
+        }
+
+        if !any {
+            eprintln!("{}", "No credentials found — nothing to diff.".dimmed());
+        }
+        Ok(())
     }
 
     fn print_report(&self, report: &ExtractReport) -> Result<()> {
@@ -123,14 +182,44 @@ impl ExtractCmd {
     }
 }
 
-/// Interactive `dialoguer` prompt for destructive actions. Returns `true` if
-/// the user confirmed. Lives here as a stub — real impl uses `dialoguer` and
-/// respects `LAB_CLI_CONFIRM` and `is_terminal::is_terminal(stdin)`.
+fn print_diff_line(
+    key: &str,
+    value: &str,
+    existing: &std::collections::HashMap<String, String>,
+) {
+    match existing.get(key) {
+        None => eprintln!(
+            "  {} {}={}",
+            "+".color(XtermColors::BrightGreen).bold(),
+            key.color(XtermColors::BrightGreen),
+            value
+        ),
+        Some(ev) if ev == value => {
+            // Same value already present — silent in diff output.
+        }
+        Some(ev) => eprintln!(
+            "  {} {} (was {ev:?})",
+            "~".color(XtermColors::FlushOrange).bold(),
+            format!("{key}={value}").color(XtermColors::FlushOrange)
+        ),
+    }
+}
+
+/// Interactive confirmation prompt for destructive actions.
+/// Returns `true` if the user confirmed, `false` otherwise.
 fn confirm_destructive(action: &str) -> Result<bool> {
+    use is_terminal::IsTerminal;
+    if !std::io::stdin().is_terminal() {
+        return Ok(false);
+    }
     eprintln!(
         "{} {} is destructive. Continue? [y/N]",
         "⚠".color(XtermColors::FlushOrange),
         action.color(XtermColors::LightAzureRadiance).bold(),
     );
-    Ok(false)
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_line(&mut buf)
+        .context("read confirmation")?;
+    Ok(buf.trim().eq_ignore_ascii_case("y"))
 }
