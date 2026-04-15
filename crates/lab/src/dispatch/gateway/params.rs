@@ -32,6 +32,12 @@ pub struct VirtualServerSurfaceParams {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VirtualServerMcpPolicyParams {
+    pub id: String,
+    pub allowed_actions: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayTestParams {
     #[serde(default)]

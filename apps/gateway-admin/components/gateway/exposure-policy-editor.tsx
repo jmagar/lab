@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner'
 import { GatewayApiError } from '@/lib/api/gateway-client'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -27,7 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useGatewayMutations, useExposurePolicy } from '@/lib/hooks/use-gateways'
+import { useGatewayMutations, useExposurePolicy, useServiceActions } from '@/lib/hooks/use-gateways'
 import type { Gateway, ExposurePolicyPreview } from '@/lib/types/gateway'
 import { cn } from '@/lib/utils'
 
@@ -37,7 +38,9 @@ interface ExposurePolicyEditorProps {
 
 export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const { data: policy, isLoading: policyLoading } = useExposurePolicy(gateway.id)
+  const { data: serviceActions } = useServiceActions(gateway.source === 'lab_service' ? gateway.id : null)
   const { setExposurePolicy, previewExposurePolicy } = useGatewayMutations()
+  const isLabGateway = gateway.source === 'lab_service'
 
   const [mode, setMode] = useState<'expose_all' | 'allowlist'>('expose_all')
   const [patterns, setPatterns] = useState<string[]>([])
@@ -112,6 +115,12 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const removePattern = useCallback((index: number) => {
     setPatterns(patterns.filter((_, i) => i !== index))
   }, [patterns])
+
+  const toggleAction = useCallback((actionName: string, checked: boolean) => {
+    setPatterns((current) =>
+      checked ? [...current, actionName].sort() : current.filter((pattern) => pattern !== actionName),
+    )
+  }, [])
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -188,7 +197,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
         </div>
 
         {/* Allowlist Editor */}
-        {mode === 'allowlist' && (
+        {mode === 'allowlist' && !isLabGateway && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <EyeOff className="size-4 text-muted-foreground" />
@@ -270,7 +279,45 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
       </div>
 
       {/* Preview Panel */}
-      {mode === 'allowlist' && patterns.length > 0 && (
+      {isLabGateway && mode === 'allowlist' && (
+        <div className="rounded-lg border bg-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Available Actions</h3>
+            <Badge variant="secondary">{serviceActions?.length ?? 0}</Badge>
+          </div>
+          <div className="space-y-3">
+            {(serviceActions ?? [])
+              .filter((action) => !['help', 'schema'].includes(action.name))
+              .map((action) => {
+                const checked = patterns.includes(action.name)
+                return (
+                  <label
+                    key={action.name}
+                    className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/30"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) => toggleAction(action.name, value === true)}
+                    />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono">{action.name}</code>
+                        {action.destructive && (
+                          <Badge variant="outline" className="text-[10px] uppercase">
+                            Destructive
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{action.description}</p>
+                    </div>
+                  </label>
+                )
+              })}
+          </div>
+        </div>
+      )}
+
+      {!isLabGateway && mode === 'allowlist' && patterns.length > 0 && (
         <div className="rounded-lg border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Preview</h3>

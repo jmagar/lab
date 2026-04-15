@@ -10,5 +10,5 @@ mod view_models;
 mod virtual_servers;
 
 pub use catalog::ACTIONS;
-pub use client::install_gateway_manager;
+pub use client::{current_gateway_manager, install_gateway_manager};
 pub use dispatch::{dispatch, dispatch_with_manager};

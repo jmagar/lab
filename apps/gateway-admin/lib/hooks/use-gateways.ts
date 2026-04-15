@@ -12,6 +12,7 @@ import type {
   ReloadGatewayResult,
   ExposurePolicyPreview,
   ServiceConfig,
+  ServiceAction,
   SupportedService,
 } from '@/lib/types/gateway'
 import { useCallback } from 'react'
@@ -74,12 +75,21 @@ const fetchServiceConfig = async (service: string): Promise<ServiceConfig> => {
   return gatewayApi.getServiceConfig(service)
 }
 
+const fetchServiceActions = async (service: string): Promise<ServiceAction[]> => {
+  if (USE_MOCK_DATA) {
+    await mockDelay()
+    return []
+  }
+  return gatewayApi.serviceActions(service)
+}
+
 // SWR Keys
 export const GATEWAYS_KEY = '/gateways'
 export const gatewayKey = (id: string) => `/gateways/${id}`
 export const exposurePolicyKey = (id: string) => `/gateways/${id}/exposure`
 export const SUPPORTED_SERVICES_KEY = '/gateway-supported-services'
 export const serviceConfigKey = (service: string) => `/gateway-service-config/${service}`
+export const serviceActionsKey = (service: string) => `/gateway-service-actions/${service}`
 
 async function refreshGatewayCache(id?: string, extraKeys: string[] = []) {
   const keys = [GATEWAYS_KEY, ...(id ? [gatewayKey(id)] : []), ...extraKeys]
@@ -123,6 +133,16 @@ export function useServiceConfig(service: string | null) {
   return useSWR<ServiceConfig>(
     service ? serviceConfigKey(service) : null,
     service ? () => fetchServiceConfig(service) : null,
+    {
+      revalidateOnFocus: false,
+    }
+  )
+}
+
+export function useServiceActions(service: string | null) {
+  return useSWR<ServiceAction[]>(
+    service ? serviceActionsKey(service) : null,
+    service ? () => fetchServiceActions(service) : null,
     {
       revalidateOnFocus: false,
     }

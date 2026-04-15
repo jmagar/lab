@@ -92,10 +92,54 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
+        name: "gateway.virtual_server.get_mcp_policy",
+        description: "Read the MCP action allowlist for a Lab-backed virtual server",
+        destructive: false,
+        returns: "VirtualServerMcpPolicyView",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Virtual server id",
+        }],
+    },
+    ActionSpec {
+        name: "gateway.virtual_server.set_mcp_policy",
+        description: "Replace the MCP action allowlist for a Lab-backed virtual server",
+        destructive: true,
+        returns: "VirtualServerMcpPolicyView",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "string",
+                required: true,
+                description: "Virtual server id",
+            },
+            ParamSpec {
+                name: "allowed_actions",
+                ty: "string[]",
+                required: true,
+                description: "Exact Lab action names to expose. Empty means expose all actions.",
+            },
+        ],
+    },
+    ActionSpec {
         name: "gateway.service_config.get",
         description: "Read canonical config for one Lab-backed service",
         destructive: false,
         returns: "ServiceConfigView",
+        params: &[ParamSpec {
+            name: "service",
+            ty: "string",
+            required: true,
+            description: "Service key",
+        }],
+    },
+    ActionSpec {
+        name: "gateway.service_actions",
+        description: "List compiled action metadata for one Lab-backed service",
+        destructive: false,
+        returns: "ServiceActionView[]",
         params: &[ParamSpec {
             name: "service",
             ty: "string",

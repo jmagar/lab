@@ -17,7 +17,7 @@ use super::params::GatewayUpdatePatch;
 use super::service_catalog::service_meta;
 use super::types::{
     CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView,
-    GatewayView, ServiceConfigFieldView, ServiceConfigView,
+    GatewayView, ServiceConfigFieldView, ServiceConfigView, VirtualServerMcpPolicyView,
 };
 use super::view_models::{
     ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
@@ -197,6 +197,72 @@ impl GatewayManager {
         })
     }
 
+    pub async fn surface_enabled_for_service(&self, service: &str, surface: &str) -> bool {
+        if service_meta(service).is_none() {
+            return true;
+        }
+
+        let cfg = self.config.read().await;
+        let Some(virtual_server) = find_virtual_server_for_service(&cfg, service) else {
+            return false;
+        };
+
+        if !virtual_server.enabled {
+            return false;
+        }
+
+        match surface {
+            "cli" => virtual_server.surfaces.cli,
+            "api" => virtual_server.surfaces.api,
+            "mcp" => virtual_server.surfaces.mcp,
+            "webui" => virtual_server.surfaces.webui,
+            _ => false,
+        }
+    }
+
+    pub async fn allowed_mcp_actions_for_service(&self, service: &str) -> Option<Vec<String>> {
+        if service_meta(service).is_none() {
+            return None;
+        }
+
+        let cfg = self.config.read().await;
+        let virtual_server = find_virtual_server_for_service(&cfg, service)?;
+        if !virtual_server.enabled || !virtual_server.surfaces.mcp {
+            return Some(Vec::new());
+        }
+
+        let mut allowed = vec!["help".to_string(), "schema".to_string()];
+        if let Some(policy) = &virtual_server.mcp_policy {
+            if !policy.allowed_actions.is_empty() {
+                allowed.extend(policy.allowed_actions.clone());
+            }
+        }
+
+        Some(allowed)
+    }
+
+    pub async fn mcp_action_allowed_for_service(&self, service: &str, action: &str) -> bool {
+        if !self.surface_enabled_for_service(service, "mcp").await {
+            return false;
+        }
+
+        if matches!(action, "help" | "schema") {
+            return true;
+        }
+
+        let cfg = self.config.read().await;
+        let Some(virtual_server) = find_virtual_server_for_service(&cfg, service) else {
+            return false;
+        };
+
+        match &virtual_server.mcp_policy {
+            Some(policy) if !policy.allowed_actions.is_empty() => {
+                policy.allowed_actions.iter().any(|allowed| allowed == action)
+            }
+            _ => true,
+        }
+    }
+
     pub async fn status(&self, name: Option<&str>) -> Result<Vec<GatewayRuntimeView>, ToolError> {
         let upstreams: Vec<UpstreamConfig> = self
             .config
@@ -285,6 +351,50 @@ impl GatewayManager {
         let cfg = self.config.read().await;
         let virtual_server = find_virtual_server(&cfg, id)?;
         Ok(server_view_from_virtual_server(virtual_server))
+    }
+
+    pub async fn get_virtual_server_mcp_policy(
+        &self,
+        id: &str,
+    ) -> Result<VirtualServerMcpPolicyView, ToolError> {
+        let cfg = self.config.read().await;
+        let virtual_server = find_virtual_server(&cfg, id)?;
+        Ok(VirtualServerMcpPolicyView {
+            allowed_actions: virtual_server
+                .mcp_policy
+                .as_ref()
+                .map(|policy| policy.allowed_actions.clone())
+                .unwrap_or_default(),
+        })
+    }
+
+    pub async fn set_virtual_server_mcp_policy(
+        &self,
+        id: &str,
+        allowed_actions: &[String],
+    ) -> Result<VirtualServerMcpPolicyView, ToolError> {
+        let mut cfg = self.config.read().await.clone();
+        let virtual_server = cfg
+            .virtual_servers
+            .iter_mut()
+            .find(|server| server.id == id)
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("virtual server `{id}` not found"),
+            })?;
+
+        virtual_server.mcp_policy = if allowed_actions.is_empty() {
+            None
+        } else {
+            Some(crate::config::VirtualServerMcpPolicyConfig {
+                allowed_actions: allowed_actions.to_vec(),
+            })
+        };
+
+        self.persist_config(cfg).await?;
+        Ok(VirtualServerMcpPolicyView {
+            allowed_actions: allowed_actions.to_vec(),
+        })
     }
 
     pub async fn add(&self, spec: UpstreamConfig) -> Result<GatewayView, ToolError> {
@@ -494,6 +604,15 @@ fn find_virtual_server<'a>(
             sdk_kind: "not_found".to_string(),
             message: format!("virtual server `{id}` not found"),
         })
+}
+
+fn find_virtual_server_for_service<'a>(
+    cfg: &'a LabConfig,
+    service: &str,
+) -> Option<&'a crate::config::VirtualServerConfig> {
+    cfg.virtual_servers
+        .iter()
+        .find(|server| server.service == service || server.id == service)
 }
 
 fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
@@ -842,6 +961,94 @@ mod tests {
         assert!(plex.configured);
         assert!(!plex.enabled);
         assert_eq!(plex.config_summary.target.as_deref(), Some("plex"));
+    }
+
+    #[tokio::test]
+    async fn managed_services_are_hidden_on_surfaces_until_enabled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
+        values.insert("PLEX_TOKEN".to_string(), "token".to_string());
+
+        manager
+            .set_service_config("plex", &values)
+            .await
+            .expect("set service config");
+
+        assert!(!manager.surface_enabled_for_service("plex", "mcp").await);
+        assert!(!manager.surface_enabled_for_service("plex", "api").await);
+        assert!(!manager.surface_enabled_for_service("plex", "cli").await);
+    }
+
+    #[tokio::test]
+    async fn enabled_virtual_server_only_exposes_enabled_surfaces() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: true,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        assert!(manager.surface_enabled_for_service("plex", "api").await);
+        assert!(manager.surface_enabled_for_service("plex", "mcp").await);
+        assert!(!manager.surface_enabled_for_service("plex", "cli").await);
+    }
+
+    #[tokio::test]
+    async fn mcp_action_policy_restricts_actions_to_allowlist() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: Some(crate::config::VirtualServerMcpPolicyConfig {
+                        allowed_actions: vec!["server.status".to_string()],
+                    }),
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        assert!(
+            manager
+                .mcp_action_allowed_for_service("plex", "server.status")
+                .await
+        );
+        assert!(manager.mcp_action_allowed_for_service("plex", "help").await);
+        assert!(
+            !manager
+                .mcp_action_allowed_for_service("plex", "sessions.list")
+                .await
+        );
     }
 
     #[tokio::test]

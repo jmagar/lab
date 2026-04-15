@@ -86,3 +86,17 @@ pub struct ServiceConfigView {
     #[serde(default)]
     pub fields: Vec<ServiceConfigFieldView>,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VirtualServerMcpPolicyView {
+    #[serde(default)]
+    pub allowed_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ServiceActionView {
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub destructive: bool,
+}

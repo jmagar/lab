@@ -9,9 +9,10 @@ use super::client::require_gateway_manager;
 use super::manager::GatewayManager;
 use super::params::{
     GatewayAddParams, GatewayNameParams, GatewayStatusParams, GatewayTestParams,
-    GatewayUpdateParams, ServiceConfigGetParams, ServiceConfigSetParams, VirtualServerNameParams,
-    VirtualServerSurfaceParams,
+    GatewayUpdateParams, ServiceConfigGetParams, ServiceConfigSetParams,
+    VirtualServerMcpPolicyParams, VirtualServerNameParams, VirtualServerSurfaceParams,
 };
+use super::types::ServiceActionView;
 
 fn parse_params<T: DeserializeOwned>(params_value: Value) -> Result<T, ToolError> {
     serde_json::from_value(params_value).map_err(|e| ToolError::InvalidParam {
@@ -49,6 +50,30 @@ pub async fn dispatch_with_manager(
                     .await?,
             )
         }
+        "gateway.virtual_server.get_mcp_policy" => {
+            let params: VirtualServerNameParams = parse_params(params_value)?;
+            to_json(manager.get_virtual_server_mcp_policy(&params.id).await?)
+        }
+        "gateway.virtual_server.set_mcp_policy" => {
+            let params: VirtualServerMcpPolicyParams = parse_params(params_value)?;
+            let valid_actions = compiled_service_actions(&params.id)?;
+            for action in &params.allowed_actions {
+                if !valid_actions.iter().any(|candidate| candidate.name == action.as_str()) {
+                    return Err(ToolError::InvalidParam {
+                        message: format!(
+                            "action `{action}` is not valid for service `{}`",
+                            params.id
+                        ),
+                        param: "allowed_actions".to_string(),
+                    });
+                }
+            }
+            to_json(
+                manager
+                    .set_virtual_server_mcp_policy(&params.id, &params.allowed_actions)
+                    .await?,
+            )
+        }
         "gateway.service_config.get" => {
             let params: ServiceConfigGetParams = parse_params(params_value)?;
             to_json(manager.get_service_config(&params.service).await?)
@@ -56,6 +81,10 @@ pub async fn dispatch_with_manager(
         "gateway.service_config.set" => {
             let params: ServiceConfigSetParams = parse_params(params_value)?;
             to_json(manager.set_service_config(&params.service, &params.values).await?)
+        }
+        "gateway.service_actions" => {
+            let params: ServiceConfigGetParams = parse_params(params_value)?;
+            to_json(compiled_service_actions(&params.service)?)
         }
         "gateway.get" => {
             let params: GatewayNameParams = parse_params(params_value)?;
@@ -113,6 +142,24 @@ pub async fn dispatch_with_manager(
     }
 }
 
+fn compiled_service_actions(service: &str) -> Result<Vec<ServiceActionView>, ToolError> {
+    let registry = crate::registry::build_default_registry();
+    let entry = registry.service(service).ok_or_else(|| ToolError::InvalidParam {
+        message: format!("unknown service `{service}`"),
+        param: "service".to_string(),
+    })?;
+
+    Ok(entry
+        .actions
+        .iter()
+        .map(|action| ServiceActionView {
+            name: action.name.to_string(),
+            description: action.description.to_string(),
+            destructive: action.destructive,
+        })
+        .collect())
+}
+
 pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolError> {
     let manager = require_gateway_manager()?;
     dispatch_with_manager(&manager, action, params_value).await
@@ -135,8 +182,11 @@ mod tests {
         assert!(names.contains(&"gateway.virtual_server.enable"));
         assert!(names.contains(&"gateway.virtual_server.disable"));
         assert!(names.contains(&"gateway.virtual_server.set_surface"));
+        assert!(names.contains(&"gateway.virtual_server.get_mcp_policy"));
+        assert!(names.contains(&"gateway.virtual_server.set_mcp_policy"));
         assert!(names.contains(&"gateway.service_config.get"));
         assert!(names.contains(&"gateway.service_config.set"));
+        assert!(names.contains(&"gateway.service_actions"));
         assert!(names.contains(&"gateway.get"));
         assert!(names.contains(&"gateway.test"));
         assert!(names.contains(&"gateway.add"));
@@ -406,6 +456,63 @@ mod tests {
 
         assert_eq!(value["id"], "plex");
         assert_eq!(value["surfaces"]["api"]["enabled"], true);
+    }
+
+    #[tokio::test]
+    async fn setting_virtual_server_mcp_policy_persists_allowed_actions() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.set_mcp_policy",
+            json!({"id": "plex", "allowed_actions": ["server.info"]}),
+        )
+        .await
+        .expect("set mcp policy");
+
+        assert_eq!(value["allowed_actions"], json!(["server.info"]));
+
+        let reloaded = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.get_mcp_policy",
+            json!({"id": "plex"}),
+        )
+        .await
+        .expect("get mcp policy");
+
+        assert_eq!(reloaded["allowed_actions"], json!(["server.info"]));
+    }
+
+    #[tokio::test]
+    async fn service_actions_returns_compiled_action_catalog() {
+        let manager = test_manager();
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.service_actions",
+            json!({"service": "plex"}),
+        )
+        .await
+        .expect("service actions");
+
+        let actions = value.as_array().expect("array");
+        assert!(actions.iter().any(|action| action["name"] == "server.info"));
     }
 
     #[tokio::test]

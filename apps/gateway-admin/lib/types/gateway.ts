@@ -143,6 +143,12 @@ export interface ServiceConfig {
   fields: ServiceConfigField[]
 }
 
+export interface ServiceAction {
+  name: string
+  description: string
+  destructive: boolean
+}
+
 // Exposure policy types
 export interface ExposurePolicy {
   mode: 'expose_all' | 'allowlist'

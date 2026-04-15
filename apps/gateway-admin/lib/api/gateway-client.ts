@@ -7,6 +7,7 @@ import type {
   ExposurePolicy,
   ExposurePolicyPreview,
   ServiceConfig,
+  ServiceAction,
   SupportedService,
 } from '@/lib/types/gateway'
 import {
@@ -220,11 +221,41 @@ export const gatewayApi = {
   },
 
   async getExposurePolicy(id: string, signal?: AbortSignal): Promise<ExposurePolicy> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const policy = await gatewayAction<{ allowed_actions: string[] }>(
+        'gateway.virtual_server.get_mcp_policy',
+        { id },
+        signal,
+      )
+      return {
+        mode: policy.allowed_actions.length === 0 ? 'expose_all' : 'allowlist',
+        patterns: policy.allowed_actions,
+      }
+    }
+
     const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
     return exposurePolicyFromConfig(view.config)
   },
 
   async setExposurePolicy(id: string, policy: ExposurePolicy, signal?: AbortSignal): Promise<ExposurePolicy> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const allowedActions = policy.mode === 'allowlist' ? policy.patterns : []
+      await gatewayAction<{ allowed_actions: string[] }>(
+        'gateway.virtual_server.set_mcp_policy',
+        {
+          id,
+          allowed_actions: allowedActions,
+        },
+        signal,
+      )
+      return {
+        mode: policy.mode,
+        patterns: allowedActions,
+      }
+    }
+
     const exposeTools = policy.mode === 'allowlist' ? policy.patterns : null
     await gatewayAction<BackendGatewayView>(
       'gateway.update',
@@ -246,7 +277,13 @@ export const gatewayApi = {
     patterns: string[],
     signal?: AbortSignal,
   ): Promise<ExposurePolicyPreview> {
-    const tools = await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)
+    const serverView = await findServerView(id, signal)
+    const tools =
+      serverView.source === 'lab_service'
+        ? (await gatewayAction<ServiceAction[]>('gateway.service_actions', { service: id }, signal)).map(
+            (action) => action.name,
+          )
+        : await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)
     return previewExposurePolicy(tools, patterns)
   },
 
@@ -256,6 +293,10 @@ export const gatewayApi = {
 
   async getServiceConfig(service: string, signal?: AbortSignal): Promise<ServiceConfig> {
     return gatewayAction<ServiceConfig>('gateway.service_config.get', { service }, signal)
+  },
+
+  async serviceActions(service: string, signal?: AbortSignal): Promise<ServiceAction[]> {
+    return gatewayAction<ServiceAction[]>('gateway.service_actions', { service }, signal)
   },
 
   async setServiceConfig(
