@@ -54,11 +54,45 @@ function normalizeArgs(args?: string[]): string[] {
 }
 
 function matchPattern(toolName: string, pattern: string): boolean {
-  if (pattern === '*') return true
-  if (pattern.endsWith('*')) {
-    return toolName.startsWith(pattern.slice(0, -1))
+  if (pattern === '*') {
+    return true
   }
-  return toolName === pattern
+
+  const parts = pattern.split('*')
+  if (parts.length === 1) {
+    return pattern === toolName
+  }
+
+  const anchoredStart = !pattern.startsWith('*')
+  const anchoredEnd = !pattern.endsWith('*')
+  const nonEmptyParts = parts.filter((part) => part.length > 0)
+
+  if (nonEmptyParts.length === 0) {
+    return true
+  }
+
+  let cursor = 0
+  for (const [index, part] of nonEmptyParts.entries()) {
+    if (index === 0 && anchoredStart) {
+      if (!toolName.slice(cursor).startsWith(part)) {
+        return false
+      }
+      cursor += part.length
+      continue
+    }
+
+    const found = toolName.slice(cursor).indexOf(part)
+    if (found === -1) {
+      return false
+    }
+    cursor += found + part.length
+  }
+
+  if (anchoredEnd) {
+    return toolName.endsWith(nonEmptyParts[nonEmptyParts.length - 1]!)
+  }
+
+  return true
 }
 
 function matchTool(toolName: string, patterns?: string[] | null): string | null {
@@ -296,6 +330,16 @@ export function previewExposurePolicy(
   toolNames: string[],
   patterns: string[],
 ): ExposurePolicyPreview {
+  if (patterns.length === 0) {
+    return {
+      matched_tools: toolNames.map((name) => ({ name, matched_by: '*' })),
+      unmatched_patterns: [],
+      filtered_tools: [],
+      exposed_count: toolNames.length,
+      filtered_count: 0,
+    }
+  }
+
   const matched_tools: ExposurePolicyPreview['matched_tools'] = []
   const filtered_tools: string[] = []
   const usedPatterns = new Set<string>()

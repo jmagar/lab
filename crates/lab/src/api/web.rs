@@ -56,6 +56,10 @@ async fn read_asset_file(path: &Path) -> std::io::Result<Vec<u8>> {
     tokio::fs::read(path).await
 }
 
+async fn canonicalize_if_exists(path: &Path) -> std::io::Result<PathBuf> {
+    tokio::fs::canonicalize(path).await
+}
+
 pub async fn serve_web_request(State(state): State<AppState>, request: Request) -> Response {
     if !matches!(*request.method(), Method::GET | Method::HEAD) {
         return StatusCode::NOT_FOUND.into_response();
@@ -80,10 +84,36 @@ pub async fn serve_web_request(State(state): State<AppState>, request: Request) 
         _ => base_dir.join("index.html"),
     };
 
-    match read_asset_file(&resolved).await {
+    let canonical_base = match canonicalize_if_exists(base_dir).await {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(path = %base_dir.display(), error = %error, "failed to canonicalize web assets root");
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    };
+
+    let canonical_resolved = match canonicalize_if_exists(&resolved).await {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(path = %resolved.display(), error = %error, "failed to canonicalize web asset");
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    };
+
+    if !canonical_resolved.starts_with(&canonical_base) {
+        tracing::warn!(
+            requested = %resolved.display(),
+            resolved = %canonical_resolved.display(),
+            base = %canonical_base.display(),
+            "rejected web asset request that escaped the asset root"
+        );
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    match read_asset_file(&canonical_resolved).await {
         Ok(bytes) => {
-            let content_type = guess_content_type(&resolved);
-            let cache_control = cache_control_for(&resolved);
+            let content_type = guess_content_type(&canonical_resolved);
+            let cache_control = cache_control_for(&canonical_resolved);
             let mut response = Response::new(if request.method() == Method::HEAD {
                 Body::empty()
             } else {

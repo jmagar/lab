@@ -21,7 +21,7 @@ impl SharedContext {
             "crates/lab-apis/src/lib.rs",
             "crates/lab/src/cli.rs",
             "crates/lab/src/mcp/services.rs",
-            "crates/lab/src/mcp/registry.rs",
+            "crates/lab/src/registry.rs",
             "crates/lab/src/api/services.rs",
             "crates/lab/src/api/router.rs",
             "crates/lab/src/api/state.rs",

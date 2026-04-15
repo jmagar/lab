@@ -7,17 +7,17 @@
   binary. That makes sense, and it lines up better with
   how users think about setup and permissions.
   
-    - Yes - they all ultimately route through one Lab binary. BUT - they dont have TO. If we ran the gateway binary with no services configured, it would just be a dumb proxy. Then I could spin up a binary for each service and have the gateway proxy each binary. So - THEN we have our gateway with all 21/22 services connected as invidual MCP servers. Then I get to filter their tools and permissions individually, control access, etc - but I dont want to have to run 22 copies of the binary. And I shouldnt have less control over the tools and permissions just because I have one binary running instead of 22.See what I mean? 
+    - Yes - they all ultimately route through one Lab binary. BUT - they don't have TO. If we ran the gateway binary with no services configured, it would just be a dumb proxy. Then I could spin up a binary for each service and have the gateway proxy each binary. So - THEN we have our gateway with all 21/22 services connected as individual MCP servers. Then I get to filter their tools and permissions individually, control access, etc - but I don't want to have to run 22 copies of the binary. And I shouldn't have less control over the tools and permissions just because I have one binary running instead of 22. See what I mean?
     
     So - yeah its a higher level control plane - currently its our MCP gateway, but this would be taking to the next level and really making it your whole lab gateway - you have a unified control plane that consists of a CLI with a TUI, API, MCP client+server+gateway, and Web Admin UI. But we dont have to complicate this right now - we need to input env vars like URLs and API keys to configure regular MCP servers right? We probably all have that code in place to accept these values for our MCP servers, right? 
     
-    So the vars we set to "connect" to the MCP server we take and pass through to oconnect to the API - which then unlocks the tools for the user. So we're really hiding configuring the control plane as configuring individual mcp servers I guess.  Each MCP server you configure, unlocks more tools, endpoints, cli commands, etc. 
+    So the vars we set to "connect" to the MCP server we take and pass through to connect to the API - which then unlocks the tools for the user. So we're really hiding configuring the control plane as configuring individual MCP servers I guess. Each MCP server you configure unlocks more tools, endpoints, CLI commands, etc.
     
     Now - in addition to this - the obvious next step for the gateway is everyones favorite... a DASHBOARD. you could pick any endpoint from any service you have configured and make a widget with it - shit like that. 
     
     Some other farther down the line ideas I was having were creating a small agent binary that you can run on your remote devices that help with certain things, collecting logs, running scripts, resource monitoring, etc. 
     
-    Which brings me to my next point.. so far - everything we're doing is related to the services you, managing them, interfacing with them and the sort. But nothing to do with the actual devices running these services. That's why I think an agent/daemon we deploy to our devices would come in handy.
+    Which brings me to my next point: so far, everything we're doing is related to the services, managing them, interfacing with them, and that sort of thing. But nothing has to do with the actual devices running these services. That's why I think an agent/daemon we deploy to our devices would come in handy.
     
     With the daemon - our MCP gateway turns into a full on homelab infrastructure remote control, well one surface of it anyways. Allowing you to quickly sling files from one device to the next, send commands to all devices to execute at once, backing up files, dashboard, all in one place.
     
@@ -62,4 +62,4 @@ All one UI.
 All one API. 
 All one control plane.
 
-I mean shit - we wouldnt even really have to create a seperate agent binary.. the user can just run the normal binary - we just update our binary to be able to connect to other binaries - maybe something like a peer-to-peer network of binaries - but only for devices on your tailnet.
+I mean, we wouldn't even really have to create a separate agent binary. The user can just run the normal binary - we just update our binary to be able to connect to other binaries, maybe something like a peer-to-peer network of binaries, but only for devices on your tailnet.

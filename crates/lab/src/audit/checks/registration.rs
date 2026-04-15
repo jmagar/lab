@@ -31,7 +31,7 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
         .get(repo_root, "crates/lab/src/mcp/services.rs")
         .unwrap_or("");
     let registry = shared
-        .get(repo_root, "crates/lab/src/mcp/registry.rs")
+        .get(repo_root, "crates/lab/src/registry.rs")
         .unwrap_or("");
     let api_services = shared
         .get(repo_root, "crates/lab/src/api/services.rs")
@@ -61,7 +61,7 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
         contains_check(mcp_services, &service_mod),
     ));
     out.push((
-        "mcp.registry.rs".into(),
+        "registry.rs".into(),
         contains_check(registry, &mcp_registry_token),
     ));
     out.push((

@@ -22,7 +22,7 @@ import {
 import { testResultFromProbe } from '@/lib/server/gateway-test-result'
 import { gatewayActionUrl } from './gateway-config'
 
-class GatewayApiError extends Error {
+export class GatewayApiError extends Error {
   constructor(
     message: string,
     public status: number,
@@ -31,6 +31,12 @@ class GatewayApiError extends Error {
     super(message)
     this.name = 'GatewayApiError'
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError'
 }
 
 async function parseActionResponse<T>(response: Response): Promise<T> {
@@ -68,6 +74,9 @@ async function gatewayAction<T>(action: string, params: object, signal?: AbortSi
       signal,
     })
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error
+    }
     const message = error instanceof Error ? error.message : 'unknown network error'
     throw new GatewayApiError(
       `Gateway backend action \`${action}\` failed before a response was received: ${message}`,

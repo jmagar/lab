@@ -12,6 +12,27 @@ const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
 // Simulate network delay for mock data
 const mockDelay = (ms: number = 500) => new Promise(resolve => setTimeout(resolve, ms))
 
+function abortableMockDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'))
+      return
+    }
+
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 // Fetcher functions that handle mock/real data
 const fetchGateways = async (): Promise<Gateway[]> => {
   if (USE_MOCK_DATA) {
@@ -174,9 +195,22 @@ export function useGatewayMutations() {
 
   const previewExposurePolicy = useCallback(async (id: string, patterns: string[], signal?: AbortSignal): Promise<ExposurePolicyPreview> => {
     if (USE_MOCK_DATA) {
-      await mockDelay(300)
+      await abortableMockDelay(300, signal)
       const gateway = mockGateways.find(g => g.id === id)
       if (!gateway) throw new Error('Gateway not found')
+
+      if (patterns.length === 0) {
+        return {
+          matched_tools: gateway.discovery.tools.map((tool) => ({
+            name: tool.name,
+            matched_by: '*',
+          })),
+          unmatched_patterns: [],
+          filtered_tools: [],
+          exposed_count: gateway.discovery.tools.length,
+          filtered_count: 0,
+        }
+      }
       
       const matchedTools: Array<{ name: string; matched_by: string }> = []
       const filteredTools: string[] = []

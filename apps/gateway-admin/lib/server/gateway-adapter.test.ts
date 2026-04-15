@@ -165,6 +165,42 @@ test('previewExposurePolicy reports matches filtered tools and unmatched pattern
   })
 })
 
+test('previewExposurePolicy treats an empty allowlist as expose-all', () => {
+  const preview = previewExposurePolicy(
+    ['alpha.read', 'beta.write'],
+    []
+  )
+
+  assert.deepEqual(preview, {
+    matched_tools: [
+      { name: 'alpha.read', matched_by: '*' },
+      { name: 'beta.write', matched_by: '*' },
+    ],
+    unmatched_patterns: [],
+    filtered_tools: [],
+    exposed_count: 2,
+    filtered_count: 0,
+  })
+})
+
+test('previewExposurePolicy supports leading wildcard patterns', () => {
+  const preview = previewExposurePolicy(
+    ['github.search_repos', 'gitlab.search_projects'],
+    ['*search_*']
+  )
+
+  assert.deepEqual(preview, {
+    matched_tools: [
+      { name: 'github.search_repos', matched_by: '*search_*' },
+      { name: 'gitlab.search_projects', matched_by: '*search_*' },
+    ],
+    unmatched_patterns: [],
+    filtered_tools: [],
+    exposed_count: 2,
+    filtered_count: 0,
+  })
+})
+
 test('probeStatusFromRuntime marks zero-capability gateways unhealthy', () => {
   assert.deepEqual(
     probeStatusFromRuntime({

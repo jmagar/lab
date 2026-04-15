@@ -66,7 +66,7 @@ Flow summary:
 2. The client sends the user to `/authorize` with `response_type=code`.
 3. `lab` stores the request state, generates PKCE data, and redirects to Google.
 4. Google redirects back to `/auth/google/callback`.
-5. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its loopback URI with the local code.
+5. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its registered redirect URI with the local code.
 6. The client exchanges that local code at `/token` for a `lab` access token and, when Google granted offline access, a `lab` refresh token.
 
 Google access and refresh tokens remain server-side only.

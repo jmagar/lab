@@ -604,7 +604,11 @@ impl LabMcpServer {
             }
         }
         let mut guard = self.peers.write().await;
-        let added_since_snapshot = guard.split_off(peer_count);
+        let added_since_snapshot = if guard.len() > peer_count {
+            guard.split_off(peer_count)
+        } else {
+            Vec::new()
+        };
         *guard = alive;
         guard.extend(added_since_snapshot);
     }

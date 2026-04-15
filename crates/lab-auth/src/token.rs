@@ -212,7 +212,7 @@ async fn refresh_token_grant(
         grant_type = "refresh_token",
         client_id = %stored.client_id,
         refresh_token_id = %refresh_token_id,
-        subject_id = %fingerprint(&stored.subject),
+        subject_id = %fingerprint(&google.subject),
         scope = %stored.scope,
         "oauth refresh_token grant issued new lab access token"
     );

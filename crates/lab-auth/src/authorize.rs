@@ -296,29 +296,36 @@ fn wildcard_matches(pattern: &str, value: &str) -> bool {
     if pattern == "*" {
         return true;
     }
-    let mut remainder = value;
-    let mut first = true;
-    for part in pattern.split('*') {
-        if part.is_empty() {
-            continue;
-        }
-        if first {
-            if !remainder.starts_with(part) {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == value;
+    }
+
+    let anchored_start = !pattern.starts_with('*');
+    let anchored_end = !pattern.ends_with('*');
+    let non_empty_parts: Vec<&str> = parts.into_iter().filter(|part| !part.is_empty()).collect();
+
+    if non_empty_parts.is_empty() {
+        return true;
+    }
+
+    let mut cursor = 0usize;
+    for (index, part) in non_empty_parts.iter().enumerate() {
+        if index == 0 && anchored_start {
+            if !value[cursor..].starts_with(part) {
                 return false;
             }
-            remainder = &remainder[part.len()..];
-            first = false;
+            cursor += part.len();
             continue;
         }
-        match remainder.find(part) {
-            Some(index) => remainder = &remainder[index + part.len()..],
+
+        match value[cursor..].find(part) {
+            Some(found) => cursor += found + part.len(),
             None => return false,
         }
     }
 
-    if !pattern.ends_with('*')
-        && let Some(last) = pattern.split('*').filter(|part| !part.is_empty()).next_back()
-    {
+    if anchored_end && let Some(last) = non_empty_parts.last() {
         return value.ends_with(last);
     }
 
@@ -336,6 +343,7 @@ pub mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    use crate::authorize::wildcard_matches;
     use crate::config::{AuthConfig, AuthMode, GoogleConfig};
     use crate::google::GoogleProvider;
     use crate::routes::router;
@@ -408,6 +416,22 @@ pub mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn wildcard_matches_accepts_leading_wildcards() {
+        assert!(wildcard_matches(
+            "https://callback.tootie.tv/callback/*",
+            "https://callback.tootie.tv/callback/dookie"
+        ));
+        assert!(wildcard_matches(
+            "*example.com/cb",
+            "https://foo.example.com/cb"
+        ));
+        assert!(!wildcard_matches(
+            "*example.com/cb",
+            "https://foo.example.com/callback"
+        ));
     }
 
     #[tokio::test]

@@ -47,14 +47,32 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const previewRequestId = useRef(0)
+  const previousGatewayId = useRef<string | null>(null)
 
-  // Initialize from policy — only when user has no pending edits
+  // Initialize from policy. Preserve local edits for the same gateway, but always
+  // reset when the selected gateway changes.
   useEffect(() => {
-    if (policy && !hasChanges) {
-      setMode(policy.mode)
-      setPatterns(policy.patterns)
+    if (policy) {
+      const gatewayChanged = previousGatewayId.current !== gateway.id
+      if (gatewayChanged || !hasChanges) {
+        previousGatewayId.current = gateway.id
+        setHasChanges(false)
+        setPreview(null)
+        setIsPreviewLoading(false)
+        previewRequestId.current += 1
+        setMode(policy.mode)
+        setPatterns(policy.patterns)
+      }
+    } else {
+      previousGatewayId.current = gateway.id
+      setPreview(null)
+      setIsPreviewLoading(false)
+      previewRequestId.current += 1
+      setMode('expose_all')
+      setPatterns([])
+      setHasChanges(false)
     }
-  }, [policy]) // eslint-disable-line react-hooks/exhaustive-deps -- intentionally excludes hasChanges to avoid loops
+  }, [gateway.id, policy, hasChanges])
 
   // Track changes
   useEffect(() => {
