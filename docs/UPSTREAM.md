@@ -38,6 +38,7 @@ name = "remote-lab"
 url = "https://lab2.example.com/mcp"
 bearer_token_env = "LAB_UPSTREAM_TOKEN"
 proxy_resources = true
+expose_tools = ["search_repos", "github_*"]
 ```
 
 ### Stdio Upstream
@@ -60,6 +61,7 @@ proxy_resources = false
 | `args` | string[] | no | Arguments for the stdio command. |
 | `bearer_token_env` | string | no | Name of an env var holding a bearer token. Not the token itself. |
 | `proxy_resources` | bool | no | Whether to proxy resources from this upstream. Default: `false`. |
+| `expose_tools` | string[] | no | Optional allowlist of tool names/patterns to expose from this upstream. Supports exact names and `*` wildcards. |
 
 Exactly one of `url` or `command` must be set.
 
@@ -86,6 +88,7 @@ name = "remote-lab"
 url = "https://lab2.example.com/mcp"
 bearer_token_env = "REMOTE_LAB_TOKEN"
 proxy_resources = true
+expose_tools = ["radarr", "search_*"]
 
 [[upstream]]
 name = "filesystem"
@@ -156,6 +159,20 @@ When upstream tools are merged into the lab tool catalog:
 2. **Cross-upstream duplicates: first discovered wins.** If two upstreams expose a tool named `my-tool`, the second is skipped with a warning.
 
 Upstream tools appear alongside built-in tools in `list_tools()`. Callers do not need to know whether a tool is built-in or proxied.
+
+## Tool Exposure Filtering
+
+Each upstream may optionally set `expose_tools` to restrict which discovered tools become visible downstream.
+
+- unset `expose_tools` means "expose all discovered tools"
+- exact entries match one tool name
+- entries containing `*` use simple wildcard matching
+- malformed exposure policies fail closed: the upstream stays connected, but no discovered tools from that upstream are exposed until the config is fixed
+
+The exposure policy applies in two places:
+
+1. merged tool discovery, so filtered tools are absent from `list_tools()`
+2. direct proxied tool calls, so filtered tools behave as if they were never exposed
 
 ## Circuit Breaker
 

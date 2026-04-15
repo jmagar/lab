@@ -71,6 +71,12 @@ Flow summary:
 
 Google access and refresh tokens remain server-side only.
 
+Google-specific notes:
+
+- `lab` sends `access_type=offline` when redirecting to Google so the provider can issue a refresh token
+- `lab` also sends `prompt=consent` so a fresh Google consent flow can return a new refresh token after the app was previously authorized without offline access
+- if Google still does not return an upstream refresh token, `lab` omits `refresh_token` from its token response and later refresh grants fail closed
+
 ## Runtime JWT Validation
 
 Every request to a protected route (`/v1/*`, `/mcp`) must include an `Authorization: Bearer <token>` header.

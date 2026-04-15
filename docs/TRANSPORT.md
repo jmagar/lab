@@ -157,7 +157,7 @@ When HTTP transport is active, the server exposes:
 | `/.well-known/oauth-authorization-server` | no | Authorization-server metadata |
 | `/.well-known/oauth-protected-resource` | no | RFC 9728 protected-resource metadata |
 | `/jwks` | no | `lab` signing keys |
-| `/register` | no | Bootstrap-secret-guarded dynamic client registration |
+| `/register` | no | Dynamic client registration for OAuth clients |
 | `/authorize` | no | Authorization entrypoint |
 | `/auth/google/callback` | no | Google callback endpoint |
 | `/token` | no | Authorization-code and refresh-token exchange |

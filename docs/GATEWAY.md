@@ -16,6 +16,7 @@ Secrets remain indirect:
 - token values are never returned
 - token values are never written into TOML
 - changing an env var alone does not hot-apply; call `gateway.reload`
+- tool exposure filters are stored as names/patterns only; the gateway never rewrites upstream tool payloads
 
 ## Actions
 
@@ -32,6 +33,36 @@ Secrets remain indirect:
 | `gateway.discovered_tools` | Return tool names discovered for one gateway. |
 | `gateway.discovered_resources` | Return proxied resource URIs discovered for one gateway. |
 | `gateway.discovered_prompts` | Return prompt names discovered for one gateway. |
+
+## Tool Exposure
+
+Gateway config can optionally restrict which discovered upstream tools are republished by `lab`.
+
+- when `expose_tools` is unset, all discovered upstream tools remain exposed
+- `expose_tools` accepts exact tool names and simple `*` wildcards
+- an empty allowlist is treated as "clear the filter" rather than "block everything"
+- filtered tools disappear from merged MCP `list_tools()` results and cannot be called directly through the proxy
+
+Example:
+
+```toml
+[[upstream]]
+name = "github"
+url = "https://github.example.com/mcp"
+bearer_token_env = "GITHUB_MCP_TOKEN"
+proxy_resources = false
+expose_tools = ["search_repos", "github_*"]
+```
+
+Typical patch payloads:
+
+```json
+{ "action": "gateway.update", "params": { "name": "github", "patch": { "expose_tools": ["search_repos", "github_*"] } } }
+```
+
+```json
+{ "action": "gateway.update", "params": { "name": "github", "patch": { "expose_tools": null } } }
+```
 
 ## Validation
 

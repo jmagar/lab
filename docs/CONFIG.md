@@ -232,6 +232,7 @@ name = "remote-lab"
 url = "https://lab2.example.com/mcp"
 bearer_token_env = "LAB_UPSTREAM_TOKEN"
 proxy_resources = true
+expose_tools = ["search_repos", "github_*"]
 
 [[upstream]]
 name = "local-server"
@@ -239,6 +240,8 @@ command = "my-mcp-server"
 args = ["--port", "5000"]
 proxy_resources = false
 ```
+
+`expose_tools` is optional. When present, it limits which discovered upstream tools are republished by the gateway. Entries support exact names and simple `*` wildcards.
 
 ### Environment Variables
 

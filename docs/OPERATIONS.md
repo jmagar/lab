@@ -37,7 +37,7 @@ Rules:
 - both files must use restrictive permissions; on Unix, `lab` requires they are not group- or world-readable
 - new files are created with `0600` permissions on Unix
 - the SQLite store is opened in WAL mode with a non-zero busy timeout
-- Google tokens stay server-side only; clients receive `lab` access tokens and refresh tokens
+- Google tokens stay server-side only; clients always receive `lab` access tokens and receive `lab` refresh tokens only when Google granted an upstream refresh token
 
 Recovery guidance:
 
