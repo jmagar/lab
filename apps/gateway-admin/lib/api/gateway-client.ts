@@ -21,15 +21,21 @@ import {
 } from '@/lib/server/gateway-adapter'
 import { testResultFromProbe } from '@/lib/server/gateway-test-result'
 import { gatewayActionUrl } from './gateway-config'
+import { gatewayRequestInit } from './gateway-request'
 
 class GatewayApiError extends Error {
+  status: number
+  code?: string
+
   constructor(
     message: string,
-    public status: number,
-    public code?: string
+    status: number,
+    code?: string
   ) {
     super(message)
     this.name = 'GatewayApiError'
+    this.status = status
+    this.code = code
   }
 }
 
@@ -45,28 +51,10 @@ async function parseActionResponse<T>(response: Response): Promise<T> {
   return response.json()
 }
 
-function gatewayHeaders(): HeadersInit {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  }
-  const token = process.env.NEXT_PUBLIC_API_TOKEN
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-  return headers
-}
-
 async function gatewayAction<T>(action: string, params: object, signal?: AbortSignal): Promise<T> {
   let response: Response
   try {
-    response = await fetch(gatewayActionUrl(), {
-      method: 'POST',
-      headers: gatewayHeaders(),
-      body: JSON.stringify({ action, params }),
-      cache: 'no-store',
-      credentials: 'include',
-      signal,
-    })
+    response = await fetch(gatewayActionUrl(), gatewayRequestInit(action, params, undefined, signal))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown network error'
     throw new GatewayApiError(
