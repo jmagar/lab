@@ -56,6 +56,31 @@ async fn read_asset_file(path: &Path) -> std::io::Result<Vec<u8>> {
     tokio::fs::read(path).await
 }
 
+async fn canonicalize_within_base(base_dir: &Path, path: &Path) -> Option<PathBuf> {
+    let canonical_base = tokio::fs::canonicalize(base_dir).await.ok()?;
+    let canonical_path = tokio::fs::canonicalize(path).await.ok()?;
+    canonical_path
+        .starts_with(&canonical_base)
+        .then_some(canonical_path)
+}
+
+async fn resolve_asset_path(base_dir: &Path, request_path: &str) -> Option<PathBuf> {
+    let relative = sanitize_relative_path(request_path);
+    let candidate = if relative.as_os_str().is_empty() {
+        base_dir.join("index.html")
+    } else {
+        base_dir.join(relative)
+    };
+
+    let logical_path = match tokio::fs::metadata(&candidate).await {
+        Ok(metadata) if metadata.is_file() => candidate,
+        Ok(metadata) if metadata.is_dir() => candidate.join("index.html"),
+        _ => base_dir.join("index.html"),
+    };
+
+    canonicalize_within_base(base_dir, &logical_path).await
+}
+
 pub async fn serve_web_request(State(state): State<AppState>, request: Request) -> Response {
     if !matches!(*request.method(), Method::GET | Method::HEAD) {
         return StatusCode::NOT_FOUND.into_response();
@@ -66,18 +91,16 @@ pub async fn serve_web_request(State(state): State<AppState>, request: Request) 
     };
 
     let request_path = request.uri().path();
-    let relative = sanitize_relative_path(request_path);
-
-    let candidate = if relative.as_os_str().is_empty() {
-        base_dir.join("index.html")
-    } else {
-        base_dir.join(&relative)
-    };
-
-    let resolved = match tokio::fs::metadata(&candidate).await {
-        Ok(metadata) if metadata.is_file() => candidate,
-        Ok(metadata) if metadata.is_dir() => candidate.join("index.html"),
-        _ => base_dir.join("index.html"),
+    let resolved = match resolve_asset_path(base_dir, request_path).await {
+        Some(path) => path,
+        None => {
+            tracing::warn!(
+                request_path,
+                base_dir = %base_dir.display(),
+                "rejected web asset request outside configured assets directory"
+            );
+            return StatusCode::NOT_FOUND.into_response();
+        }
     };
 
     match read_asset_file(&resolved).await {

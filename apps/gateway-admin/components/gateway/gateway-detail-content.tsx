@@ -313,7 +313,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </TabsContent>
 
           <TabsContent value="exposure">
-            <ExposurePolicyEditor gateway={gateway} />
+            <ExposurePolicyEditor key={gateway.id} gateway={gateway} />
           </TabsContent>
 
           <TabsContent value="config">
