@@ -25,6 +25,7 @@ The CLI includes:
 - `audit`
 - `scaffold`
 - `extract`
+- `oauth`
 - `help`
 - `completions`
 
@@ -44,6 +45,7 @@ lab
 ├── audit
 ├── scaffold
 ├── extract
+├── oauth
 ├── help
 └── completions
 ```
@@ -163,3 +165,23 @@ Expected `.mcp.json` behavior:
 ## Shell Completions
 
 The CLI must generate completions rather than hand-maintaining shell-specific assets.
+
+## `lab oauth relay-local`
+
+`lab oauth relay-local` is a browser-side transport helper for OAuth clients that redirect to a
+loopback callback but keep the real OAuth listener on another machine.
+
+Supported forms:
+
+```bash
+lab oauth relay-local --machine dookie --port 38935
+lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+```
+
+Rules:
+
+- exactly one of `--machine` or `--forward-base` is required
+- the listener binds only to `127.0.0.1:<port>`
+- `--machine` resolves the target from `[oauth.machines.*]` in `config.toml`
+- `--forward-base` is for ad hoc use when no named machine exists yet
+- the command only forwards the final callback request; it does not mint tokens or run PKCE logic

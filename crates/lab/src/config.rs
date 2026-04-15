@@ -15,6 +15,7 @@
 //! `UNRAID_NODE2_URL` as an additional instance labeled `node2`.
 
 use std::{
+    collections::BTreeMap,
     collections::HashMap,
     io::Write as _,
     path::{Path, PathBuf},
@@ -43,6 +44,9 @@ pub struct LabConfig {
     /// Web UI preferences.
     #[serde(default)]
     pub web: WebPreferences,
+    /// OAuth callback relay preferences.
+    #[serde(default)]
+    pub oauth: OauthPreferences,
     /// Admin tool settings.
     #[serde(default)]
     pub admin: AdminPreferences,
@@ -280,6 +284,27 @@ pub struct WebPreferences {
     /// Path to the exported Labby assets directory served by `lab serve`.
     #[serde(default)]
     pub assets_dir: Option<PathBuf>,
+}
+
+/// OAuth local relay preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OauthPreferences {
+    /// Named callback relay targets.
+    #[serde(default)]
+    pub machines: BTreeMap<String, OauthMachineConfig>,
+}
+
+/// A named OAuth callback relay target.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OauthMachineConfig {
+    /// Full callback target base URL.
+    pub target_url: String,
+    /// Optional operator-facing description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Optional preferred callback port for the browser-local listener.
+    #[serde(default)]
+    pub default_port: Option<u16>,
 }
 
 /// Admin tool settings.
@@ -773,6 +798,43 @@ mod tests {
             resolved.allowed_client_redirect_uris,
             vec!["https://callback.tootie.tv/callback/*".to_string()]
         );
+    }
+
+    #[test]
+    fn oauth_machine_config_deserializes() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[oauth.machines.dookie]
+target_url = "http://100.88.16.79:38935/callback/dookie"
+description = "Dookie Claude callback target"
+default_port = 38935
+"#,
+        )
+        .expect("oauth machine config should parse");
+
+        assert_eq!(
+            cfg.oauth.machines["dookie"].target_url,
+            "http://100.88.16.79:38935/callback/dookie"
+        );
+        assert_eq!(
+            cfg.oauth.machines["dookie"].description.as_deref(),
+            Some("Dookie Claude callback target")
+        );
+        assert_eq!(cfg.oauth.machines["dookie"].default_port, Some(38935));
+    }
+
+    #[test]
+    fn oauth_machine_defaults_keep_partial_configs_valid() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[web]
+assets_dir = "/tmp/labby"
+"#,
+        )
+        .expect("config without oauth section should still parse");
+
+        assert!(cfg.oauth.machines.is_empty());
+        assert_eq!(cfg.web.assets_dir, Some(PathBuf::from("/tmp/labby")));
     }
 
     #[test]

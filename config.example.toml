@@ -85,6 +85,14 @@
 # If unset, `lab serve` auto-detects the repo-local fallback at apps/gateway-admin/out.
 # assets_dir = "/srv/labby/out"
 
+# ── OAuth Relay Machines ─────────────────────────────────────────────────────
+
+# Full callback base URL for a named remote OAuth listener.
+# [oauth.machines.dookie]
+# target_url = "http://100.88.16.79:38935/callback/dookie"
+# description = "Dookie Claude callback target"
+# default_port = 38935
+
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 [auth]

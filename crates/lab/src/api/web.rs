@@ -60,6 +60,21 @@ async fn canonicalize_if_exists(path: &Path) -> std::io::Result<PathBuf> {
     tokio::fs::canonicalize(path).await
 }
 
+async fn resolve_asset_path(base_dir: &Path, request_path: &str) -> PathBuf {
+    let relative = sanitize_relative_path(request_path);
+    let candidate = if relative.as_os_str().is_empty() {
+        base_dir.join("index.html")
+    } else {
+        base_dir.join(relative)
+    };
+
+    match tokio::fs::metadata(&candidate).await {
+        Ok(metadata) if metadata.is_file() => candidate,
+        Ok(metadata) if metadata.is_dir() => candidate.join("index.html"),
+        _ => base_dir.join("index.html"),
+    }
+}
+
 pub async fn serve_web_request(State(state): State<AppState>, request: Request) -> Response {
     if !matches!(*request.method(), Method::GET | Method::HEAD) {
         return StatusCode::NOT_FOUND.into_response();
@@ -70,19 +85,7 @@ pub async fn serve_web_request(State(state): State<AppState>, request: Request) 
     };
 
     let request_path = request.uri().path();
-    let relative = sanitize_relative_path(request_path);
-
-    let candidate = if relative.as_os_str().is_empty() {
-        base_dir.join("index.html")
-    } else {
-        base_dir.join(&relative)
-    };
-
-    let resolved = match tokio::fs::metadata(&candidate).await {
-        Ok(metadata) if metadata.is_file() => candidate,
-        Ok(metadata) if metadata.is_dir() => candidate.join("index.html"),
-        _ => base_dir.join("index.html"),
-    };
+    let resolved = resolve_asset_path(base_dir, request_path).await;
 
     let canonical_base = match canonicalize_if_exists(base_dir).await {
         Ok(path) => path,

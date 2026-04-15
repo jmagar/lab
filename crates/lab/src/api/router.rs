@@ -828,6 +828,36 @@ mod tests {
         assert!(text.contains("Labby"));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rejects_symlinked_assets_outside_configured_web_root() {
+        use std::os::unix::fs as unix_fs;
+
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(outside.path().join("secret.txt"), "top-secret").unwrap();
+        unix_fs::symlink(
+            outside.path().join("secret.txt"),
+            dir.path().join("secret.txt"),
+        )
+        .unwrap();
+
+        let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/secret.txt")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
     #[tokio::test]
     async fn v1_routes_still_win_over_web_asset_fallback() {
         let dir = tempfile::tempdir().unwrap();

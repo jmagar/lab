@@ -80,6 +80,16 @@ Value precedence at point of use (highest wins):
 |-----|-------------|---------|-------------|
 | `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `lab serve --transport http` |
 
+### `[oauth.machines.<id>]`
+
+Named OAuth callback forwarding targets for `lab oauth relay-local`.
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `target_url` | — | required | Full callback base URL to forward to |
+| `description` | — | `null` | Optional operator-facing note |
+| `default_port` | — | `null` | Optional preferred local callback port |
+
 ### `[admin]`
 
 | Key | Env override | Default | Description |
@@ -206,6 +216,21 @@ auth_code_ttl_secs = 300
 ```
 
 Environment variables override `[auth]` values field-by-field.
+
+### OAuth Relay Machine Targets
+
+`target_url` is the full callback base URL, not just a host.
+
+```toml
+[oauth.machines.dookie]
+target_url = "http://100.88.16.79:38935/callback/dookie"
+description = "Dookie Claude callback target"
+default_port = 38935
+```
+
+Machine IDs are stable config keys. When `lab oauth relay-local --machine dookie --port 38935`
+runs, it resolves the forwarding target from this map and preserves the incoming suffix path and
+query string when proxying the callback.
 
 ## Web UI Hosting
 

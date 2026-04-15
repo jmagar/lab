@@ -304,7 +304,6 @@ fn wildcard_matches(pattern: &str, value: &str) -> bool {
     let anchored_start = !pattern.starts_with('*');
     let anchored_end = !pattern.ends_with('*');
     let non_empty_parts: Vec<&str> = parts.into_iter().filter(|part| !part.is_empty()).collect();
-
     if non_empty_parts.is_empty() {
         return true;
     }
@@ -343,7 +342,7 @@ pub mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use crate::authorize::wildcard_matches;
+    use super::wildcard_matches;
     use crate::config::{AuthConfig, AuthMode, GoogleConfig};
     use crate::google::GoogleProvider;
     use crate::routes::router;
@@ -419,18 +418,22 @@ pub mod tests {
     }
 
     #[test]
-    fn wildcard_matches_accepts_leading_wildcards() {
+    fn wildcard_redirect_patterns_support_leading_and_infix_matches() {
         assert!(wildcard_matches(
             "https://callback.tootie.tv/callback/*",
             "https://callback.tootie.tv/callback/dookie"
         ));
         assert!(wildcard_matches(
-            "*example.com/cb",
-            "https://foo.example.com/cb"
+            "*example.com/callback",
+            "https://callback.example.com/callback"
+        ));
+        assert!(wildcard_matches(
+            "https://callback.*.tv/callback/*",
+            "https://callback.tootie.tv/callback/dookie"
         ));
         assert!(!wildcard_matches(
-            "*example.com/cb",
-            "https://foo.example.com/callback"
+            "*example.com/callback",
+            "https://callback.example.com/callback/extra"
         ));
     }
 
