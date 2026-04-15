@@ -25,6 +25,13 @@ pub struct ServiceConfigSetParams {
     pub values: BTreeMap<String, String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VirtualServerSurfaceParams {
+    pub id: String,
+    pub surface: String,
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayTestParams {
     #[serde(default)]

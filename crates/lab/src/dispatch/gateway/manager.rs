@@ -252,6 +252,57 @@ impl GatewayManager {
         self.set_virtual_server_enabled(id, false).await
     }
 
+    pub async fn set_virtual_server_surface(
+        &self,
+        id: &str,
+        surface: &str,
+        enabled: bool,
+    ) -> Result<ServerView, ToolError> {
+        let mut cfg = self.config.read().await.clone();
+        let virtual_server = cfg
+            .virtual_servers
+            .iter_mut()
+            .find(|server| server.id == id)
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("virtual server `{id}` not found"),
+            })?;
+
+        match surface {
+            "cli" => virtual_server.surfaces.cli = enabled,
+            "api" => virtual_server.surfaces.api = enabled,
+            "mcp" => virtual_server.surfaces.mcp = enabled,
+            "webui" => virtual_server.surfaces.webui = enabled,
+            _ => {
+                return Err(ToolError::InvalidParam {
+                    message: format!("unknown surface `{surface}`"),
+                    param: "surface".to_string(),
+                });
+            }
+        }
+
+        let path = self.path.clone();
+        let cfg_clone = cfg.clone();
+        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("config write task failed: {e}"),
+            })??;
+        *self.config.write().await = cfg;
+
+        let cfg = self.config.read().await;
+        let virtual_server = cfg
+            .virtual_servers
+            .iter()
+            .find(|server| server.id == id)
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("virtual server `{id}` not found"),
+            })?;
+        Ok(server_view_from_virtual_server(virtual_server))
+    }
+
     pub async fn add(&self, spec: UpstreamConfig) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
         insert_upstream(&mut cfg, spec.clone())?;

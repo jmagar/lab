@@ -66,6 +66,32 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
+        name: "gateway.virtual_server.set_surface",
+        description: "Enable or disable one surface on a Lab-backed virtual server",
+        destructive: true,
+        returns: "ServerView",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "string",
+                required: true,
+                description: "Virtual server id",
+            },
+            ParamSpec {
+                name: "surface",
+                ty: "string",
+                required: true,
+                description: "Surface name: cli, api, mcp, or webui",
+            },
+            ParamSpec {
+                name: "enabled",
+                ty: "boolean",
+                required: true,
+                description: "Whether the surface should be enabled",
+            },
+        ],
+    },
+    ActionSpec {
         name: "gateway.service_config.get",
         description: "Read canonical config for one Lab-backed service",
         destructive: false,

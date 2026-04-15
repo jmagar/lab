@@ -10,6 +10,7 @@ use super::manager::GatewayManager;
 use super::params::{
     GatewayAddParams, GatewayNameParams, GatewayStatusParams, GatewayTestParams,
     GatewayUpdateParams, ServiceConfigGetParams, ServiceConfigSetParams, VirtualServerNameParams,
+    VirtualServerSurfaceParams,
 };
 
 fn parse_params<T: DeserializeOwned>(params_value: Value) -> Result<T, ToolError> {
@@ -39,6 +40,14 @@ pub async fn dispatch_with_manager(
         "gateway.virtual_server.disable" => {
             let params: VirtualServerNameParams = parse_params(params_value)?;
             to_json(manager.disable_virtual_server(&params.id).await?)
+        }
+        "gateway.virtual_server.set_surface" => {
+            let params: VirtualServerSurfaceParams = parse_params(params_value)?;
+            to_json(
+                manager
+                    .set_virtual_server_surface(&params.id, &params.surface, params.enabled)
+                    .await?,
+            )
         }
         "gateway.service_config.get" => {
             let params: ServiceConfigGetParams = parse_params(params_value)?;
@@ -125,6 +134,7 @@ mod tests {
         assert!(names.contains(&"gateway.supported_services"));
         assert!(names.contains(&"gateway.virtual_server.enable"));
         assert!(names.contains(&"gateway.virtual_server.disable"));
+        assert!(names.contains(&"gateway.virtual_server.set_surface"));
         assert!(names.contains(&"gateway.service_config.get"));
         assert!(names.contains(&"gateway.service_config.set"));
         assert!(names.contains(&"gateway.get"));
@@ -333,6 +343,37 @@ mod tests {
             .expect("fields")
             .iter()
             .any(|field| field["name"] == "PLEX_TOKEN" && field["secret"] == true));
+    }
+
+    #[tokio::test]
+    async fn setting_virtual_server_surface_updates_visible_server_row() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig {
+                        mcp: true,
+                        ..crate::config::VirtualServerSurfacesConfig::default()
+                    },
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.set_surface",
+            json!({"id": "plex", "surface": "api", "enabled": true}),
+        )
+        .await
+        .expect("set surface");
+
+        assert_eq!(value["id"], "plex");
+        assert_eq!(value["surfaces"]["api"]["enabled"], true);
     }
 
     #[tokio::test]
