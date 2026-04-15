@@ -4,16 +4,19 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use crate::config::{LabConfig, UpstreamConfig};
+use crate::config::{backup_env, env_is_up_to_date, write_env, LabConfig, UpstreamConfig};
 use crate::dispatch::error::ToolError;
 use crate::dispatch::upstream::pool::UpstreamPool;
+use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
     insert_upstream, load_gateway_config, remove_upstream, update_upstream, write_gateway_config,
 };
 use super::params::GatewayUpdatePatch;
+use super::service_catalog::service_meta;
 use super::types::{
-    CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView, GatewayView,
+    CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView,
+    GatewayView, ServiceConfigFieldView, ServiceConfigView,
 };
 use super::view_models::{
     ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
@@ -85,6 +88,52 @@ impl GatewayManager {
 
     pub async fn current_pool(&self) -> Option<Arc<UpstreamPool>> {
         self.runtime.current_pool().await
+    }
+
+    pub async fn get_service_config(&self, service: &str) -> Result<ServiceConfigView, ToolError> {
+        let meta = service_meta(service).ok_or_else(|| ToolError::InvalidParam {
+            message: format!("unknown service `{service}`"),
+            param: "service".to_string(),
+        })?;
+        let values = read_env_values(&self.env_path())?;
+        Ok(service_config_view(meta, &values))
+    }
+
+    pub async fn set_service_config(
+        &self,
+        service: &str,
+        values: &std::collections::BTreeMap<String, String>,
+    ) -> Result<ServiceConfigView, ToolError> {
+        let meta = service_meta(service).ok_or_else(|| ToolError::InvalidParam {
+            message: format!("unknown service `{service}`"),
+            param: "service".to_string(),
+        })?;
+
+        for field in values.keys() {
+            let valid = meta.required_env.iter().chain(meta.optional_env.iter()).any(|env| env.name == field);
+            if !valid {
+                return Err(ToolError::InvalidParam {
+                    message: format!("field `{field}` is not valid for service `{service}`"),
+                    param: "values".to_string(),
+                });
+            }
+        }
+
+        let creds = values_to_service_creds(service, values);
+        let env_path = self.env_path();
+        if !creds.is_empty() && !env_is_up_to_date(&env_path, &creds) {
+            drop(backup_env(&env_path).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to back up env file: {e}"),
+            })?);
+            write_env(&env_path, &creds, true).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to write env file: {e}"),
+            })?;
+        }
+
+        let values = read_env_values(&env_path)?;
+        Ok(service_config_view(meta, &values))
     }
 
     pub async fn list(&self) -> Result<Vec<ServerView>, ToolError> {
@@ -376,6 +425,13 @@ impl GatewayManager {
             })?;
         Ok(server_view_from_virtual_server(virtual_server))
     }
+
+    fn env_path(&self) -> PathBuf {
+        self.path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join(".env")
+    }
 }
 
 fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
@@ -468,6 +524,64 @@ fn server_view_from_virtual_server(config: &crate::config::VirtualServerConfig) 
             transport: Some("lab_service".to_string()),
             target: Some(service),
         },
+    }
+}
+
+fn read_env_values(path: &std::path::Path) -> Result<std::collections::HashMap<String, String>, ToolError> {
+    Ok(dotenvy::from_path_iter(path)
+        .ok()
+        .map(|iter| iter.filter_map(Result::ok).collect())
+        .unwrap_or_default())
+}
+
+fn values_to_service_creds(
+    service: &str,
+    values: &std::collections::BTreeMap<String, String>,
+) -> Vec<ServiceCreds> {
+    values
+        .iter()
+        .map(|(field, value)| {
+            let url = if field == &format!("{}_URL", service.to_uppercase()) {
+                Some(value.clone())
+            } else {
+                None
+            };
+            let secret = if url.is_some() { None } else { Some(value.clone()) };
+            ServiceCreds {
+                service: service.to_string(),
+                url,
+                secret,
+                env_field: field.clone(),
+            }
+        })
+        .collect()
+}
+
+fn service_config_view(
+    meta: &lab_apis::core::PluginMeta,
+    values: &std::collections::HashMap<String, String>,
+) -> ServiceConfigView {
+    let mut fields = Vec::new();
+    for env in meta.required_env.iter().chain(meta.optional_env.iter()) {
+        let value = values.get(env.name);
+        fields.push(ServiceConfigFieldView {
+            name: env.name.to_string(),
+            present: value.is_some(),
+            secret: env.secret,
+            value_preview: value.and_then(|value| {
+                if env.secret {
+                    Some("configured".to_string())
+                } else {
+                    Some(value.clone())
+                }
+            }),
+        });
+    }
+
+    ServiceConfigView {
+        service: meta.name.to_string(),
+        configured: fields.iter().any(|field| field.present),
+        fields,
     }
 }
 

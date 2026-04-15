@@ -66,6 +66,30 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
+        name: "gateway.service_config.get",
+        description: "Read canonical config for one Lab-backed service",
+        destructive: false,
+        returns: "ServiceConfigView",
+        params: &[ParamSpec {
+            name: "service",
+            ty: "string",
+            required: true,
+            description: "Service key",
+        }],
+    },
+    ActionSpec {
+        name: "gateway.service_config.set",
+        description: "Write canonical config for one Lab-backed service",
+        destructive: true,
+        returns: "ServiceConfigView",
+        params: &[ParamSpec {
+            name: "service",
+            ty: "string",
+            required: true,
+            description: "Service key",
+        }],
+    },
+    ActionSpec {
         name: "gateway.get",
         description: "Get one configured gateway",
         destructive: false,

@@ -9,7 +9,7 @@ use super::client::require_gateway_manager;
 use super::manager::GatewayManager;
 use super::params::{
     GatewayAddParams, GatewayNameParams, GatewayStatusParams, GatewayTestParams,
-    GatewayUpdateParams, VirtualServerNameParams,
+    GatewayUpdateParams, ServiceConfigGetParams, ServiceConfigSetParams, VirtualServerNameParams,
 };
 
 fn parse_params<T: DeserializeOwned>(params_value: Value) -> Result<T, ToolError> {
@@ -39,6 +39,14 @@ pub async fn dispatch_with_manager(
         "gateway.virtual_server.disable" => {
             let params: VirtualServerNameParams = parse_params(params_value)?;
             to_json(manager.disable_virtual_server(&params.id).await?)
+        }
+        "gateway.service_config.get" => {
+            let params: ServiceConfigGetParams = parse_params(params_value)?;
+            to_json(manager.get_service_config(&params.service).await?)
+        }
+        "gateway.service_config.set" => {
+            let params: ServiceConfigSetParams = parse_params(params_value)?;
+            to_json(manager.set_service_config(&params.service, &params.values).await?)
         }
         "gateway.get" => {
             let params: GatewayNameParams = parse_params(params_value)?;
@@ -117,6 +125,8 @@ mod tests {
         assert!(names.contains(&"gateway.supported_services"));
         assert!(names.contains(&"gateway.virtual_server.enable"));
         assert!(names.contains(&"gateway.virtual_server.disable"));
+        assert!(names.contains(&"gateway.service_config.get"));
+        assert!(names.contains(&"gateway.service_config.set"));
         assert!(names.contains(&"gateway.get"));
         assert!(names.contains(&"gateway.test"));
         assert!(names.contains(&"gateway.add"));
@@ -239,6 +249,90 @@ mod tests {
             .expect("array")
             .iter()
             .any(|server| server["id"] == "plex" && server["enabled"] == false));
+    }
+
+    #[tokio::test]
+    async fn setting_service_config_writes_canonical_env_backed_fields() {
+        let manager = test_manager();
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.service_config.set",
+            json!({
+                "service": "plex",
+                "values": {
+                    "PLEX_URL": "http://127.0.0.1:32400",
+                    "PLEX_TOKEN": "token"
+                }
+            }),
+        )
+        .await
+        .expect("set service config");
+
+        assert_eq!(value["service"], "plex");
+        assert_eq!(value["configured"], true);
+        assert!(value["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .any(|field| field["name"] == "PLEX_URL" && field["present"] == true));
+        assert!(value["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .any(|field| field["name"] == "PLEX_TOKEN" && field["present"] == true));
+    }
+
+    #[tokio::test]
+    async fn configured_but_disabled_service_can_be_read_back_for_editing() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: false,
+                    surfaces: crate::config::VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        dispatch_with_manager(
+            &manager,
+            "gateway.service_config.set",
+            json!({
+                "service": "plex",
+                "values": {
+                    "PLEX_URL": "http://127.0.0.1:32400",
+                    "PLEX_TOKEN": "token"
+                }
+            }),
+        )
+        .await
+        .expect("set service config");
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.service_config.get",
+            json!({"service": "plex"}),
+        )
+        .await
+        .expect("get service config");
+
+        assert_eq!(value["service"], "plex");
+        assert_eq!(value["configured"], true);
+        assert!(value["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .any(|field| field["name"] == "PLEX_URL" && field["value_preview"] == "http://127.0.0.1:32400"));
+        assert!(value["fields"]
+            .as_array()
+            .expect("fields")
+            .iter()
+            .any(|field| field["name"] == "PLEX_TOKEN" && field["secret"] == true));
     }
 
     #[tokio::test]

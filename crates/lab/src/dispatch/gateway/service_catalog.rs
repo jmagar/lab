@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use lab_apis::core::PluginMeta;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceFieldView {
@@ -36,6 +37,12 @@ pub fn supported_services() -> Vec<SupportedServiceView> {
             default_port: meta.default_port,
         })
         .collect()
+}
+
+pub fn service_meta(service: &str) -> Option<&'static PluginMeta> {
+    crate::registry::compiled_service_metas()
+        .into_iter()
+        .find(|meta| meta.name == service)
 }
 
 fn field_view(field: &lab_apis::core::EnvVar) -> ServiceFieldView {

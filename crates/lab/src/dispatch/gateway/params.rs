@@ -1,5 +1,6 @@
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::config::UpstreamConfig;
 
@@ -11,6 +12,17 @@ pub struct GatewayNameParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VirtualServerNameParams {
     pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceConfigGetParams {
+    pub service: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceConfigSetParams {
+    pub service: String,
+    pub values: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
