@@ -8,6 +8,13 @@ export function gatewayHeaders(token = process.env.NEXT_PUBLIC_API_TOKEN): Heade
   return headers
 }
 
+export function confirmGatewayParams<T extends object>(params: T): T & { confirm: true } {
+  return {
+    ...params,
+    confirm: true,
+  }
+}
+
 export function gatewayRequestInit(
   action: string,
   params: object,

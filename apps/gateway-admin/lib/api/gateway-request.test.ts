@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { gatewayHeaders, gatewayRequestInit } from './gateway-request.ts'
+import { confirmGatewayParams, gatewayHeaders, gatewayRequestInit } from './gateway-request.ts'
 
 test('gatewayRequestInit omits credentialed requests when bearer auth is configured', () => {
   const init = gatewayRequestInit('gateway.list', {}, 'dev-token')
@@ -23,4 +23,11 @@ test('gatewayRequestInit keeps credentialed requests for session-auth setups', (
 
   assert.equal(init.credentials, 'include')
   assert.equal((init.headers as Record<string, string>)['Content-Type'], 'application/json')
+})
+
+test('confirmGatewayParams marks destructive gateway mutations for explicit confirmation', () => {
+  assert.deepEqual(confirmGatewayParams({ id: 'plex' }), {
+    confirm: true,
+    id: 'plex',
+  })
 })

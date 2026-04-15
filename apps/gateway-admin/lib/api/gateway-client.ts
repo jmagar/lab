@@ -26,7 +26,7 @@ import {
 } from '@/lib/server/gateway-adapter'
 import { testResultFromProbe } from '@/lib/server/gateway-test-result'
 import { gatewayActionUrl } from './gateway-config'
-import { gatewayRequestInit } from './gateway-request'
+import { confirmGatewayParams, gatewayRequestInit } from './gateway-request'
 
 class GatewayApiError extends Error {
   status: number
@@ -137,7 +137,7 @@ async function mutateVirtualServer(
   id: string,
   signal?: AbortSignal,
 ): Promise<Gateway> {
-  const view = await gatewayAction<BackendServerView>(action, { id }, signal)
+  const view = await gatewayAction<BackendServerView>(action, confirmGatewayParams({ id }), signal)
   return normalizeServerView(view)
 }
 
@@ -244,10 +244,10 @@ export const gatewayApi = {
       const allowedActions = policy.mode === 'allowlist' ? policy.patterns : []
       await gatewayAction<{ allowed_actions: string[] }>(
         'gateway.virtual_server.set_mcp_policy',
-        {
+        confirmGatewayParams({
           id,
           allowed_actions: allowedActions,
-        },
+        }),
         signal,
       )
       return {
@@ -304,7 +304,11 @@ export const gatewayApi = {
     values: Record<string, string>,
     signal?: AbortSignal,
   ): Promise<ServiceConfig> {
-    return gatewayAction<ServiceConfig>('gateway.service_config.set', { service, values }, signal)
+    return gatewayAction<ServiceConfig>(
+      'gateway.service_config.set',
+      confirmGatewayParams({ service, values }),
+      signal,
+    )
   },
 
   async enableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
@@ -323,7 +327,7 @@ export const gatewayApi = {
   ): Promise<Gateway> {
     const view = await gatewayAction<BackendServerView>(
       'gateway.virtual_server.set_surface',
-      { id, surface, enabled },
+      confirmGatewayParams({ id, surface, enabled }),
       signal,
     )
     return normalizeServerView(view)
