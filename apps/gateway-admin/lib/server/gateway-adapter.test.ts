@@ -5,6 +5,7 @@ import {
   buildGatewayPatch,
   gatewayInputToSpec,
   normalizeGateway,
+  normalizeServerView,
   previewExposurePolicy,
   probeStatusFromRuntime,
 } from './gateway-adapter.ts'
@@ -40,6 +41,8 @@ test('normalizeGateway maps backend views into UI gateway shape', () => {
   assert.equal(gateway.transport, 'http')
   assert.equal(gateway.status.connected, true)
   assert.equal(gateway.status.healthy, true)
+  assert.equal(gateway.source, 'custom_gateway')
+  assert.equal(gateway.surfaces?.mcp.enabled, true)
   assert.equal(gateway.status.discovered_tool_count, 3)
   assert.equal(gateway.status.exposed_tool_count, 3)
   assert.deepEqual(
@@ -100,6 +103,31 @@ test('normalizeGateway applies allowlist exposure patterns', () => {
       { name: 'gamma.run', exposed: true, matched_by: 'gamma.run' },
     ]
   )
+})
+
+test('normalizeServerView maps unified server rows into list-friendly gateway cards', () => {
+  const gateway = normalizeServerView({
+    id: 'plex',
+    name: 'plex',
+    source: 'lab_service',
+    configured: true,
+    enabled: false,
+    connected: false,
+    warnings: [],
+    config_summary: {
+      transport: 'lab_service',
+      target: 'plex',
+    },
+  })
+
+  assert.equal(gateway.id, 'plex')
+  assert.equal(gateway.transport, 'lab_service')
+  assert.equal(gateway.source, 'lab_service')
+  assert.equal(gateway.enabled, false)
+  assert.equal(gateway.surfaces?.mcp.enabled, false)
+  assert.equal(gateway.status.connected, false)
+  assert.equal(gateway.config.url, undefined)
+  assert.equal(gateway.config.command, undefined)
 })
 
 test('gatewayInputToSpec converts UI input into backend spec payload', () => {

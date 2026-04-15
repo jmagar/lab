@@ -281,40 +281,16 @@ impl GatewayManager {
             }
         }
 
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
-
+        self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
-        let virtual_server = cfg
-            .virtual_servers
-            .iter()
-            .find(|server| server.id == id)
-            .ok_or_else(|| ToolError::Sdk {
-                sdk_kind: "not_found".to_string(),
-                message: format!("virtual server `{id}` not found"),
-            })?;
+        let virtual_server = find_virtual_server(&cfg, id)?;
         Ok(server_view_from_virtual_server(virtual_server))
     }
 
     pub async fn add(&self, spec: UpstreamConfig) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
         insert_upstream(&mut cfg, spec.clone())?;
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
+        self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&spec.name).await
     }
@@ -327,15 +303,7 @@ impl GatewayManager {
         let mut cfg = self.config.read().await.clone();
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
         update_upstream(&mut cfg, name, patch)?;
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
+        self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&updated_name).await
     }
@@ -343,15 +311,7 @@ impl GatewayManager {
     pub async fn remove(&self, name: &str) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
         let removed = remove_upstream(&mut cfg, name)?;
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
+        self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         Ok(GatewayView {
             config: config_view(&removed),
@@ -460,38 +420,45 @@ impl GatewayManager {
         enabled: bool,
     ) -> Result<ServerView, ToolError> {
         let mut cfg = self.config.read().await.clone();
-        let virtual_server = cfg
-            .virtual_servers
-            .iter_mut()
-            .find(|server| server.id == id)
-            .ok_or_else(|| ToolError::Sdk {
+        let existing_index = cfg.virtual_servers.iter().position(|server| server.id == id);
+        let index = if let Some(index) = existing_index {
+            index
+        } else {
+            let meta = service_meta(id).ok_or_else(|| ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
                 message: format!("virtual server `{id}` not found"),
             })?;
+            let values = read_env_values(&self.env_path())?;
+            let configured = service_config_view(meta, &values).configured;
+            if !configured {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: format!("virtual server `{id}` not found"),
+                });
+            }
+
+            cfg.virtual_servers.push(crate::config::VirtualServerConfig {
+                id: id.to_string(),
+                service: id.to_string(),
+                enabled: false,
+                surfaces: crate::config::VirtualServerSurfacesConfig::default(),
+                mcp_policy: None,
+            });
+            cfg.virtual_servers.len() - 1
+        };
+
+        let virtual_server = cfg
+            .virtual_servers
+            .get_mut(index)
+            .expect("virtual server index should exist");
         virtual_server.enabled = enabled;
         if enabled {
             virtual_server.surfaces.mcp = true;
         }
 
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
-
+        self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
-        let virtual_server = cfg
-            .virtual_servers
-            .iter()
-            .find(|server| server.id == id)
-            .ok_or_else(|| ToolError::Sdk {
-                sdk_kind: "not_found".to_string(),
-                message: format!("virtual server `{id}` not found"),
-            })?;
+        let virtual_server = find_virtual_server(&cfg, id)?;
         Ok(server_view_from_virtual_server(virtual_server))
     }
 
@@ -501,6 +468,32 @@ impl GatewayManager {
             .unwrap_or_else(|| std::path::Path::new("."))
             .join(".env")
     }
+
+    async fn persist_config(&self, cfg: LabConfig) -> Result<(), ToolError> {
+        let path = self.path.clone();
+        let cfg_clone = cfg.clone();
+        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("config write task failed: {e}"),
+            })??;
+        *self.config.write().await = cfg;
+        Ok(())
+    }
+}
+
+fn find_virtual_server<'a>(
+    cfg: &'a LabConfig,
+    id: &str,
+) -> Result<&'a crate::config::VirtualServerConfig, ToolError> {
+    cfg.virtual_servers
+        .iter()
+        .find(|server| server.id == id)
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message: format!("virtual server `{id}` not found"),
+        })
 }
 
 fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {

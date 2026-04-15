@@ -1,6 +1,6 @@
 // Gateway data model types
 
-export type TransportType = 'http' | 'stdio'
+export type TransportType = 'http' | 'stdio' | 'lab_service'
 
 export interface GatewayConfig {
   url?: string
@@ -17,6 +17,18 @@ export interface GatewayStatus {
   last_error?: string
   discovered_tool_count: number
   exposed_tool_count: number
+}
+
+export interface SurfaceState {
+  enabled: boolean
+  connected: boolean
+}
+
+export interface SurfaceStates {
+  cli: SurfaceState
+  api: SurfaceState
+  mcp: SurfaceState
+  webui: SurfaceState
 }
 
 export interface DiscoveredTool {
@@ -58,6 +70,10 @@ export interface Gateway {
   id: string
   name: string
   transport: TransportType
+  source?: string
+  configured?: boolean
+  enabled?: boolean
+  surfaces?: SurfaceStates
   config: GatewayConfig
   status: GatewayStatus
   discovery: GatewayDiscovery
@@ -95,6 +111,36 @@ export interface ReloadGatewayResult {
   message: string
   previous_tool_count: number
   new_tool_count: number
+}
+
+export interface SupportedServiceField {
+  name: string
+  description: string
+  example: string
+  secret: boolean
+}
+
+export interface SupportedService {
+  key: string
+  display_name: string
+  category: string
+  description: string
+  required_env: SupportedServiceField[]
+  optional_env: SupportedServiceField[]
+  default_port?: number | null
+}
+
+export interface ServiceConfigField {
+  name: string
+  present: boolean
+  secret: boolean
+  value_preview?: string | null
+}
+
+export interface ServiceConfig {
+  service: string
+  configured: boolean
+  fields: ServiceConfigField[]
 }
 
 // Exposure policy types

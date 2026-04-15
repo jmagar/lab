@@ -6,9 +6,12 @@ import type {
   ReloadGatewayResult,
   ExposurePolicy,
   ExposurePolicyPreview,
+  ServiceConfig,
+  SupportedService,
 } from '@/lib/types/gateway'
 import {
   type BackendGatewayRuntimeView,
+  type BackendServerView,
   type BackendGatewayView,
   type GatewayDiscoverySnapshot,
   buildGatewayPatch,
@@ -16,6 +19,7 @@ import {
   gatewayInputToSpec,
   humanizeProbeError,
   normalizeGateway,
+  normalizeServerView,
   previewExposurePolicy,
   probeStatusFromRuntime,
 } from '@/lib/server/gateway-adapter'
@@ -118,13 +122,51 @@ async function normalizeGatewayView(
   return normalizeGateway(view, probe, discovery)
 }
 
+async function findServerView(id: string, signal?: AbortSignal): Promise<BackendServerView> {
+  const views = await gatewayAction<BackendServerView[]>('gateway.list', {}, signal)
+  const view = views.find((candidate) => candidate.id === id)
+  if (!view) {
+    throw new GatewayApiError(`gateway \`${id}\` not found`, 404, 'not_found')
+  }
+  return view
+}
+
+async function mutateVirtualServer(
+  action: 'gateway.virtual_server.enable' | 'gateway.virtual_server.disable',
+  id: string,
+  signal?: AbortSignal,
+): Promise<Gateway> {
+  const view = await gatewayAction<BackendServerView>(action, { id }, signal)
+  return normalizeServerView(view)
+}
+
+function fieldPreview(config: ServiceConfig, suffix: string): string | undefined {
+  return config.fields.find((field) => field.name.endsWith(suffix))?.value_preview ?? undefined
+}
+
 export const gatewayApi = {
   async list(signal?: AbortSignal): Promise<Gateway[]> {
-    const views = await gatewayAction<BackendGatewayView[]>('gateway.list', {}, signal)
-    return Promise.all(views.map((view) => normalizeGatewayView(view, false, signal)))
+    const views = await gatewayAction<BackendServerView[]>('gateway.list', {}, signal)
+    return views.map((view) => normalizeServerView(view))
   },
 
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const [serviceConfig, serviceView] = await Promise.all([
+        gatewayAction<ServiceConfig>('gateway.service_config.get', { service: serverView.name }, signal),
+        Promise.resolve(normalizeServerView(serverView)),
+      ])
+
+      return {
+        ...serviceView,
+        config: {
+          ...serviceView.config,
+          url: fieldPreview(serviceConfig, '_URL'),
+        },
+      }
+    }
+
     const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
     return normalizeGatewayView(view, true, signal)
   },
@@ -206,6 +248,44 @@ export const gatewayApi = {
   ): Promise<ExposurePolicyPreview> {
     const tools = await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)
     return previewExposurePolicy(tools, patterns)
+  },
+
+  async supportedServices(signal?: AbortSignal): Promise<SupportedService[]> {
+    return gatewayAction<SupportedService[]>('gateway.supported_services', {}, signal)
+  },
+
+  async getServiceConfig(service: string, signal?: AbortSignal): Promise<ServiceConfig> {
+    return gatewayAction<ServiceConfig>('gateway.service_config.get', { service }, signal)
+  },
+
+  async setServiceConfig(
+    service: string,
+    values: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<ServiceConfig> {
+    return gatewayAction<ServiceConfig>('gateway.service_config.set', { service, values }, signal)
+  },
+
+  async enableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
+    return mutateVirtualServer('gateway.virtual_server.enable', id, signal)
+  },
+
+  async disableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
+    return mutateVirtualServer('gateway.virtual_server.disable', id, signal)
+  },
+
+  async setVirtualServerSurface(
+    id: string,
+    surface: 'cli' | 'api' | 'mcp' | 'webui',
+    enabled: boolean,
+    signal?: AbortSignal,
+  ): Promise<Gateway> {
+    const view = await gatewayAction<BackendServerView>(
+      'gateway.virtual_server.set_surface',
+      { id, surface, enabled },
+      signal,
+    )
+    return normalizeServerView(view)
   },
 }
 

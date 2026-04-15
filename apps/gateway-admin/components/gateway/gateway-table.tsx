@@ -93,7 +93,9 @@ export function GatewayTable({
                 <p className="truncate text-xs text-muted-foreground">
                   {gateway.transport === 'http'
                     ? gateway.config.url
-                    : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
+                    : gateway.transport === 'lab_service'
+                      ? gateway.config.url ?? `${gateway.name} virtual server`
+                      : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
                 </p>
                 {gateway.status.last_error && (
                   <p className="line-clamp-2 text-xs text-warning">{gateway.status.last_error}</p>
@@ -174,7 +176,7 @@ export function GatewayTable({
                       className="text-destructive focus:text-destructive"
                     >
                       <Trash2 className="size-4 mr-2" />
-                      Remove gateway
+                      {gateway.source === 'lab_service' ? 'Disable gateway' : 'Remove gateway'}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

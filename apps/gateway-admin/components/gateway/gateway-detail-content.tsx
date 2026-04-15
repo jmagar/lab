@@ -20,6 +20,8 @@ import { toast } from 'sonner'
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from './status-badge'
@@ -41,7 +43,15 @@ interface GatewayDetailContentProps {
 export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const router = useRouter()
   const { data: gateway, isLoading, error } = useGateway(gatewayId)
-  const { testGateway, reloadGateway, updateGateway, removeGateway } = useGatewayMutations()
+  const {
+    testGateway,
+    reloadGateway,
+    updateGateway,
+    removeGateway,
+    disableVirtualServer,
+    enableVirtualServer,
+    setVirtualServerSurface,
+  } = useGatewayMutations()
 
   const [isTesting, setIsTesting] = useState(false)
   const [isReloading, setIsReloading] = useState(false)
@@ -95,7 +105,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }
 
   const handleReload = async () => {
-    if (!gateway) return
+    if (!gateway || gateway.source === 'lab_service') return
     setIsReloading(true)
     try {
       const result = await reloadGateway(gateway.id)
@@ -125,11 +135,41 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const handleDelete = async () => {
     if (!gateway) return
     try {
-      await removeGateway(gateway.id)
-      toast.success('Gateway removed successfully')
+      if (gateway.source === 'lab_service') {
+        await disableVirtualServer(gateway.id)
+        toast.success('Lab gateway disabled successfully')
+      } else {
+        await removeGateway(gateway.id)
+        toast.success('Gateway removed successfully')
+      }
       router.push('/gateways')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to remove gateway'))
+    }
+  }
+
+  const handleEnabledToggle = async (enabled: boolean) => {
+    if (!gateway || gateway.source !== 'lab_service') return
+    try {
+      if (enabled) {
+        await enableVirtualServer(gateway.id)
+        toast.success('Lab gateway enabled successfully')
+      } else {
+        await disableVirtualServer(gateway.id)
+        toast.success('Lab gateway disabled successfully')
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to update server state'))
+    }
+  }
+
+  const handleSurfaceToggle = async (surface: 'cli' | 'api' | 'mcp' | 'webui', enabled: boolean) => {
+    if (!gateway || gateway.source !== 'lab_service') return
+    try {
+      await setVirtualServerSurface(gateway.id, surface, enabled)
+      toast.success(`Updated ${surface.toUpperCase()} surface`)
+    } catch (error) {
+      toast.error(getErrorMessage(error, `Failed to update ${surface} surface`))
     }
   }
 
@@ -186,6 +226,16 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     )
   }
 
+  const isLabGateway = gateway.source === 'lab_service'
+  const surfaceEntries = gateway.surfaces
+    ? ([
+        ['cli', gateway.surfaces.cli],
+        ['api', gateway.surfaces.api],
+        ['mcp', gateway.surfaces.mcp],
+        ['webui', gateway.surfaces.webui],
+      ] as const)
+    : []
+
   return (
     <>
       <AppHeader
@@ -195,25 +245,29 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
-              {isTesting ? (
-                <Loader2 className="size-4 mr-2 animate-spin" />
-              ) : (
-                <Play className="size-4 mr-2" />
-              )}
-              Test
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleReload} disabled={isReloading}>
-              <RefreshCw className={`size-4 mr-2 ${isReloading ? 'animate-spin' : ''}`} />
-              Reload
-            </Button>
+            {!isLabGateway && (
+              <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
+                {isTesting ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="size-4 mr-2" />
+                )}
+                Test
+              </Button>
+            )}
+            {!isLabGateway && (
+              <Button variant="outline" size="sm" onClick={handleReload} disabled={isReloading}>
+                <RefreshCw className={`size-4 mr-2 ${isReloading ? 'animate-spin' : ''}`} />
+                Reload
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               <Pencil className="size-4 mr-2" />
               Edit
             </Button>
             <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)}>
               <Trash2 className="size-4 mr-2" />
-              Remove
+              {isLabGateway ? 'Disable' : 'Remove'}
             </Button>
           </div>
         }
@@ -328,6 +382,45 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       <code className="text-sm text-muted-foreground">{gateway.config.url}</code>
                     </div>
                   </div>
+                ) : isLabGateway ? (
+                  <>
+                    <div className="flex items-start gap-4 rounded-lg border p-4">
+                      <Globe className="size-5 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium">Service URL</p>
+                        <code className="text-sm text-muted-foreground">
+                          {gateway.config.url ?? 'Not configured'}
+                        </code>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="virtual-enabled" className="font-medium">Virtual server enabled</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Controls whether this Lab service is exposed as a visible gateway server.
+                        </p>
+                      </div>
+                      <Switch
+                        id="virtual-enabled"
+                        checked={gateway.enabled ?? false}
+                        onCheckedChange={handleEnabledToggle}
+                      />
+                    </div>
+                    {surfaceEntries.map(([surface, state]) => (
+                        <div key={surface} className="flex items-center justify-between rounded-lg border p-4">
+                          <div className="space-y-0.5">
+                            <p className="text-sm font-medium uppercase">{surface}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {state.connected ? 'Connected' : 'Not connected'}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={state.enabled}
+                            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
+                          />
+                        </div>
+                      ))}
+                  </>
                 ) : (
                   <>
                     <div className="flex items-start gap-4 rounded-lg border p-4">

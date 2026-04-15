@@ -8,6 +8,40 @@ import type {
   UpdateGatewayInput,
 } from '../types/gateway'
 
+export interface BackendSurfaceStateView {
+  enabled?: boolean
+  connected?: boolean
+}
+
+export interface BackendSurfaceStatesView {
+  cli?: BackendSurfaceStateView
+  api?: BackendSurfaceStateView
+  mcp?: BackendSurfaceStateView
+  webui?: BackendSurfaceStateView
+}
+
+export interface BackendServerWarningView {
+  code: string
+  message: string
+}
+
+export interface BackendServerConfigSummaryView {
+  transport?: string | null
+  target?: string | null
+}
+
+export interface BackendServerView {
+  id: string
+  name: string
+  source: string
+  configured?: boolean
+  enabled?: boolean
+  connected?: boolean
+  surfaces?: BackendSurfaceStatesView
+  warnings?: BackendServerWarningView[]
+  config_summary?: BackendServerConfigSummaryView
+}
+
 export interface BackendGatewayConfigView {
   name: string
   url?: string | null
@@ -159,6 +193,64 @@ function buildWarnings(probe: GatewayProbeStatus): GatewayWarning[] {
   ]
 }
 
+export function normalizeServerView(view: BackendServerView): Gateway {
+  const transport = (view.config_summary?.transport ?? 'http') as Gateway['transport']
+  const target = view.config_summary?.target ?? undefined
+  const warnings = (view.warnings ?? []).map((warning) => ({
+    code: warning.code,
+    message: warning.message,
+    timestamp: NOW(),
+  }))
+  const lastError = warnings[0]?.message
+
+  return {
+    id: view.id,
+    name: view.name,
+    source: view.source,
+    configured: view.configured ?? true,
+    enabled: view.enabled ?? true,
+    surfaces: {
+      cli: {
+        enabled: view.surfaces?.cli?.enabled ?? false,
+        connected: view.surfaces?.cli?.connected ?? false,
+      },
+      api: {
+        enabled: view.surfaces?.api?.enabled ?? false,
+        connected: view.surfaces?.api?.connected ?? false,
+      },
+      mcp: {
+        enabled: view.surfaces?.mcp?.enabled ?? false,
+        connected: view.surfaces?.mcp?.connected ?? false,
+      },
+      webui: {
+        enabled: view.surfaces?.webui?.enabled ?? false,
+        connected: view.surfaces?.webui?.connected ?? false,
+      },
+    },
+    transport,
+    config: {
+      ...(transport === 'http' ? { url: target } : {}),
+      ...(transport === 'stdio' ? { command: target } : {}),
+      proxy_resources: false,
+    },
+    status: {
+      healthy: (view.connected ?? false) && warnings.length === 0,
+      connected: view.connected ?? false,
+      ...(lastError ? { last_error: lastError } : {}),
+      discovered_tool_count: 0,
+      exposed_tool_count: 0,
+    },
+    discovery: {
+      tools: [],
+      resources: [],
+      prompts: [],
+    },
+    warnings,
+    created_at: NOW(),
+    updated_at: NOW(),
+  }
+}
+
 export function normalizeGateway(
   view: BackendGatewayView,
   probe: GatewayProbeStatus,
@@ -181,6 +273,15 @@ export function normalizeGateway(
     id: config.name,
     name: config.name,
     transport: inferTransport(config),
+    source: 'custom_gateway',
+    configured: true,
+    enabled: true,
+    surfaces: {
+      cli: { enabled: false, connected: false },
+      api: { enabled: false, connected: false },
+      mcp: { enabled: true, connected: probe.connected },
+      webui: { enabled: false, connected: false },
+    },
     config: {
       url: config.url ?? undefined,
       command: config.command ?? undefined,

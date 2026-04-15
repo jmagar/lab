@@ -225,6 +225,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn enabling_virtual_server_creates_missing_service_row() {
+        let manager = test_manager();
+
+        dispatch_with_manager(
+            &manager,
+            "gateway.service_config.set",
+            json!({
+                "service": "plex",
+                "values": {
+                    "PLEX_URL": "http://127.0.0.1:32400",
+                    "PLEX_TOKEN": "token"
+                }
+            }),
+        )
+        .await
+        .expect("set service config");
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.enable",
+            json!({"id": "plex"}),
+        )
+        .await
+        .expect("enable missing virtual server");
+
+        assert_eq!(value["id"], "plex");
+        assert_eq!(value["source"], "lab_service");
+        assert_eq!(value["enabled"], true);
+        assert_eq!(value["surfaces"]["mcp"]["enabled"], true);
+    }
+
+    #[tokio::test]
     async fn disabling_virtual_server_keeps_server_row_visible_but_disabled() {
         let manager = test_manager();
         manager
