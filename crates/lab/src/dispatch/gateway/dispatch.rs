@@ -33,6 +33,10 @@ pub async fn dispatch_with_manager(
             action_schema(ACTIONS, action_name)
         }
         "gateway.list" => to_json(manager.list().await?),
+        "gateway.server.get" => {
+            let params: VirtualServerNameParams = parse_params(params_value)?;
+            to_json(manager.get_server(&params.id).await?)
+        }
         "gateway.supported_services" => to_json(super::service_catalog::supported_services()),
         "gateway.virtual_server.enable" => {
             let params: VirtualServerNameParams = parse_params(params_value)?;
@@ -178,6 +182,7 @@ mod tests {
     fn gateway_actions_include_management_surface() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
         assert!(names.contains(&"gateway.list"));
+        assert!(names.contains(&"gateway.server.get"));
         assert!(names.contains(&"gateway.supported_services"));
         assert!(names.contains(&"gateway.virtual_server.enable"));
         assert!(names.contains(&"gateway.virtual_server.disable"));
@@ -226,6 +231,33 @@ mod tests {
 
         assert!(value.is_array());
         assert_eq!(value.as_array().expect("array").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn gateway_server_get_returns_custom_gateway_row() {
+        let manager = test_manager();
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                name: "fixture-http".to_string(),
+                url: Some("http://127.0.0.1:9001".to_string()),
+                bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
+                command: None,
+                args: Vec::new(),
+                proxy_resources: false,
+                expose_tools: None,
+            }])
+            .await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.server.get",
+            json!({"id":"fixture-http"}),
+        )
+        .await
+        .expect("server get");
+
+        assert_eq!(value["id"], "fixture-http");
+        assert_eq!(value["source"], "custom_gateway");
     }
 
     #[test]

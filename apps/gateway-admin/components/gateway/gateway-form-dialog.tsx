@@ -129,6 +129,12 @@ export function GatewayFormDialog({
   }, [open, gateway])
 
   useEffect(() => {
+    if (!selectedService) {
+      setServiceValues({})
+    }
+  }, [selectedService])
+
+  useEffect(() => {
     if (!serviceMeta || !serviceConfig) return
 
     const nextValues: Record<string, string> = {}
@@ -172,7 +178,9 @@ export function GatewayFormDialog({
       newErrors.service = 'Choose a Lab service'
     }
     for (const field of serviceMeta?.required_env ?? []) {
-      if (!serviceValues[field.name]?.trim()) {
+      const configField = serviceConfig?.fields.find((item) => item.name === field.name)
+      const keepExistingSecret = field.secret && configField?.present && !serviceValues[field.name]?.trim()
+      if (!keepExistingSecret && !serviceValues[field.name]?.trim()) {
         newErrors[field.name] = `${field.name} is required`
       }
     }
@@ -224,7 +232,13 @@ export function GatewayFormDialog({
     if (!validateLab() || !selectedService) return
 
     const values = Object.fromEntries(
-      Object.entries(serviceValues).filter(([, value]) => value.trim().length > 0),
+      Object.entries(serviceValues).filter(([field, value]) => {
+        const configField = serviceConfig?.fields.find((item) => item.name === field)
+        if (!value.trim()) {
+          return false
+        }
+        return !(configField?.secret && configField.present && configField.value_preview == null)
+      }),
     )
 
     await saveServiceConfig(selectedService, values)
@@ -292,8 +306,12 @@ export function GatewayFormDialog({
 
             {serviceMeta && (
               <FieldGroup>
-                {serviceEnvFields.map((field) => (
-                  <Field key={field.name}>
+                {serviceEnvFields.map((field) => {
+                  const configField = serviceConfig?.fields.find((item) => item.name === field.name)
+                  const hasStoredSecret = field.secret && configField?.present
+
+                  return (
+                    <Field key={field.name}>
                     <FieldLabel htmlFor={field.name}>{field.name}</FieldLabel>
                     <Input
                       id={field.name}
@@ -305,16 +323,20 @@ export function GatewayFormDialog({
                           [field.name]: event.target.value,
                         }))
                       }
-                      placeholder={field.example}
+                      placeholder={hasStoredSecret ? 'Leave blank to keep current value' : field.example}
                       className={errors[field.name] ? 'border-destructive' : ''}
                     />
                     {errors[field.name] ? (
                       <p className="text-sm text-destructive">{errors[field.name]}</p>
                     ) : (
-                      <FieldDescription>{field.description}</FieldDescription>
+                      <FieldDescription>
+                        {field.description}
+                        {hasStoredSecret ? ' Current secret is already configured.' : ''}
+                      </FieldDescription>
                     )}
-                  </Field>
-                ))}
+                    </Field>
+                  )
+                })}
               </FieldGroup>
             )}
 

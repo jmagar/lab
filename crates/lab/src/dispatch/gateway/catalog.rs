@@ -35,6 +35,18 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[],
     },
     ActionSpec {
+        name: "gateway.server.get",
+        description: "Get one unified server row by id",
+        destructive: false,
+        returns: "ServerView",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Unified server id",
+        }],
+    },
+    ActionSpec {
         name: "gateway.supported_services",
         description: "List metadata-backed Lab services that can be added as virtual servers",
         destructive: false,

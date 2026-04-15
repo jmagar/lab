@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 
@@ -18,6 +19,7 @@ use super::service_catalog::service_meta;
 use super::types::{
     CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView,
     GatewayView, ServiceConfigFieldView, ServiceConfigView, VirtualServerMcpPolicyView,
+    VirtualServiceHealthCache,
 };
 use super::view_models::{
     ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
@@ -65,6 +67,7 @@ pub struct GatewayManager {
     config: Arc<RwLock<LabConfig>>,
     service_clients: Option<SharedServiceClients>,
     notifier: Option<CatalogChangeNotifier>,
+    virtual_health_cache: Arc<RwLock<Option<VirtualServiceHealthCache>>>,
 }
 
 impl GatewayManager {
@@ -75,6 +78,7 @@ impl GatewayManager {
             config: Arc::new(RwLock::new(LabConfig::default())),
             service_clients: None,
             notifier: None,
+            virtual_health_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -149,6 +153,7 @@ impl GatewayManager {
                         message: format!("failed to refresh service clients: {e}"),
                     })?;
             }
+            self.invalidate_virtual_service_health_cache().await;
         }
 
         let values = read_env_values(&env_path)?;
@@ -176,6 +181,31 @@ impl GatewayManager {
             ));
         }
         Ok(views)
+    }
+
+    pub async fn get_server(&self, id: &str) -> Result<ServerView, ToolError> {
+        let cfg = self.config.read().await.clone();
+        let pool = self.runtime.current_pool().await;
+
+        if let Some(upstream) = cfg.upstream.iter().find(|upstream| upstream.name == id) {
+            let prompt_owners = match pool.as_deref() {
+                Some(p) => Some(p.prompt_ownership_map(&[]).await),
+                None => None,
+            };
+            return Ok(server_view_from_upstream(
+                pool.as_deref(),
+                upstream,
+                prompt_owners.as_ref(),
+            )
+            .await);
+        }
+
+        let virtual_server = find_virtual_server(&cfg, id)?;
+        let virtual_health = self.virtual_service_health_map().await;
+        Ok(server_view_from_virtual_server(
+            virtual_server,
+            virtual_health.get(&virtual_server.service),
+        ))
     }
 
     pub async fn get(&self, name: &str) -> Result<GatewayView, ToolError> {
@@ -316,11 +346,15 @@ impl GatewayManager {
     }
 
     pub async fn enable_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
-        self.set_virtual_server_enabled(id, true).await
+        let view = self.set_virtual_server_enabled(id, true).await?;
+        self.invalidate_virtual_service_health_cache().await;
+        Ok(view)
     }
 
     pub async fn disable_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
-        self.set_virtual_server_enabled(id, false).await
+        let view = self.set_virtual_server_enabled(id, false).await?;
+        self.invalidate_virtual_service_health_cache().await;
+        Ok(view)
     }
 
     pub async fn set_virtual_server_surface(
@@ -578,11 +612,30 @@ impl GatewayManager {
     }
 
     async fn virtual_service_health_map(&self) -> HashMap<String, ServiceHealth> {
-        crate::tui::metadata::check_all_services(&self.env_path())
+        const HEALTH_CACHE_TTL: Duration = Duration::from_secs(30);
+
+        if let Some(cache) = self.virtual_health_cache.read().await.clone()
+            && cache.fetched_at.elapsed() < HEALTH_CACHE_TTL
+        {
+            return cache.values;
+        }
+
+        let values = crate::tui::metadata::check_all_services(&self.env_path())
             .await
             .into_iter()
             .map(|status| (status.service.clone(), status))
-            .collect()
+            .collect::<HashMap<_, _>>();
+
+        *self.virtual_health_cache.write().await = Some(VirtualServiceHealthCache {
+            fetched_at: tokio::time::Instant::now(),
+            values: values.clone(),
+        });
+
+        values
+    }
+
+    async fn invalidate_virtual_service_health_cache(&self) {
+        *self.virtual_health_cache.write().await = None;
     }
 
     fn env_path(&self) -> PathBuf {
@@ -690,7 +743,7 @@ fn server_view_from_virtual_server(
     let service = match &record.source {
         VirtualServerSource::LabService { service } => service.clone(),
     };
-    let connected = health.is_some_and(|status| status.reachable && status.auth_ok);
+    let connected = record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
     let warnings = health
         .and_then(|status| {
             status.message.as_ref().map(|message| {
@@ -780,13 +833,7 @@ fn service_config_view(
             name: env.name.to_string(),
             present: value.is_some(),
             secret: env.secret,
-            value_preview: value.and_then(|value| {
-                if env.secret {
-                    Some("configured".to_string())
-                } else {
-                    Some(value.clone())
-                }
-            }),
+            value_preview: value.and_then(|value| (!env.secret).then(|| value.clone())),
         });
     }
 
@@ -962,6 +1009,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn service_config_get_redacts_secret_values() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
+        values.insert("PLEX_TOKEN".to_string(), "super-secret".to_string());
+
+        let config = manager
+            .set_service_config("plex", &values)
+            .await
+            .expect("set service config");
+
+        let token = config
+            .fields
+            .iter()
+            .find(|field| field.name == "PLEX_TOKEN")
+            .expect("token field");
+        assert!(token.present);
+        assert!(token.secret);
+        assert_eq!(token.value_preview, None);
+    }
+
+    #[tokio::test]
     async fn disabling_virtual_server_preserves_configured_service_listing() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.toml");
@@ -992,6 +1064,29 @@ mod tests {
         assert!(plex.configured);
         assert!(!plex.enabled);
         assert_eq!(plex.config_summary.target.as_deref(), Some("plex"));
+    }
+
+    #[test]
+    fn disabled_virtual_server_reports_disconnected_even_when_health_is_ok() {
+        let view = server_view_from_virtual_server(
+            &VirtualServerConfig {
+                id: "plex".to_string(),
+                service: "plex".to_string(),
+                enabled: false,
+                surfaces: VirtualServerSurfacesConfig::default(),
+                mcp_policy: None,
+            },
+            Some(&ServiceHealth {
+                service: "plex".to_string(),
+                reachable: true,
+                auth_ok: true,
+                latency_ms: Some(12),
+                message: None,
+            }),
+        );
+
+        assert!(!view.connected);
+        assert!(!view.surfaces.mcp.connected);
     }
 
     #[tokio::test]

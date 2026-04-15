@@ -124,12 +124,7 @@ async function normalizeGatewayView(
 }
 
 async function findServerView(id: string, signal?: AbortSignal): Promise<BackendServerView> {
-  const views = await gatewayAction<BackendServerView[]>('gateway.list', {}, signal)
-  const view = views.find((candidate) => candidate.id === id)
-  if (!view) {
-    throw new GatewayApiError(`gateway \`${id}\` not found`, 404, 'not_found')
-  }
-  return view
+  return gatewayAction<BackendServerView>('gateway.server.get', { id }, signal)
 }
 
 async function mutateVirtualServer(
