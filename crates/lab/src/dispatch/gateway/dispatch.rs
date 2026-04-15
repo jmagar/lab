@@ -31,6 +31,7 @@ pub async fn dispatch_with_manager(
             action_schema(ACTIONS, action_name)
         }
         "gateway.list" => to_json(manager.list().await?),
+        "gateway.supported_services" => to_json(super::service_catalog::supported_services()),
         "gateway.get" => {
             let params: GatewayNameParams = parse_params(params_value)?;
             to_json(manager.get(&params.name).await?)
@@ -105,6 +106,7 @@ mod tests {
     fn gateway_actions_include_management_surface() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
         assert!(names.contains(&"gateway.list"));
+        assert!(names.contains(&"gateway.supported_services"));
         assert!(names.contains(&"gateway.get"));
         assert!(names.contains(&"gateway.test"));
         assert!(names.contains(&"gateway.add"));
@@ -144,6 +146,24 @@ mod tests {
 
         assert!(value.is_array());
         assert_eq!(value.as_array().expect("array").len(), 1);
+    }
+
+    #[test]
+    fn supported_services_lists_metadata_backed_lab_gateways() {
+        let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
+        assert!(names.contains(&"gateway.supported_services"));
+    }
+
+    #[tokio::test]
+    async fn supported_services_payload_includes_plex_when_feature_enabled() {
+        let manager = test_manager();
+        let value = dispatch_with_manager(&manager, "gateway.supported_services", json!({}))
+            .await
+            .expect("supported services");
+
+        let services = value.as_array().expect("array");
+        #[cfg(feature = "plex")]
+        assert!(services.iter().any(|service| service["key"] == "plex"));
     }
 
     #[tokio::test]

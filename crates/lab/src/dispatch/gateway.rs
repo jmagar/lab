@@ -4,6 +4,7 @@ mod config;
 mod dispatch;
 pub mod manager;
 mod params;
+mod service_catalog;
 pub(crate) mod types;
 mod view_models;
 mod virtual_servers;

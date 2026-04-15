@@ -3,6 +3,7 @@
 //! catalog module walks it to produce discovery docs.
 
 use lab_apis::core::action::ActionSpec;
+use lab_apis::core::PluginMeta;
 use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
@@ -302,6 +303,57 @@ pub fn build_default_registry() -> ToolRegistry {
     reg
 }
 
+#[must_use]
+#[allow(clippy::too_many_lines)]
+pub fn compiled_service_metas() -> Vec<&'static PluginMeta> {
+    let mut metas = Vec::new();
+
+    #[cfg(feature = "radarr")]
+    metas.push(&lab_apis::radarr::META);
+    #[cfg(feature = "sonarr")]
+    metas.push(&lab_apis::sonarr::META);
+    #[cfg(feature = "prowlarr")]
+    metas.push(&lab_apis::prowlarr::META);
+    #[cfg(feature = "plex")]
+    metas.push(&lab_apis::plex::META);
+    #[cfg(feature = "tautulli")]
+    metas.push(&lab_apis::tautulli::META);
+    #[cfg(feature = "sabnzbd")]
+    metas.push(&lab_apis::sabnzbd::META);
+    #[cfg(feature = "qbittorrent")]
+    metas.push(&lab_apis::qbittorrent::META);
+    #[cfg(feature = "tailscale")]
+    metas.push(&lab_apis::tailscale::META);
+    #[cfg(feature = "linkding")]
+    metas.push(&lab_apis::linkding::META);
+    #[cfg(feature = "memos")]
+    metas.push(&lab_apis::memos::META);
+    #[cfg(feature = "bytestash")]
+    metas.push(&lab_apis::bytestash::META);
+    #[cfg(feature = "paperless")]
+    metas.push(&lab_apis::paperless::META);
+    #[cfg(feature = "arcane")]
+    metas.push(&lab_apis::arcane::META);
+    #[cfg(feature = "unraid")]
+    metas.push(&lab_apis::unraid::META);
+    #[cfg(feature = "unifi")]
+    metas.push(&lab_apis::unifi::META);
+    #[cfg(feature = "overseerr")]
+    metas.push(&lab_apis::overseerr::META);
+    #[cfg(feature = "gotify")]
+    metas.push(&lab_apis::gotify::META);
+    #[cfg(feature = "openai")]
+    metas.push(&lab_apis::openai::META);
+    #[cfg(feature = "qdrant")]
+    metas.push(&lab_apis::qdrant::META);
+    #[cfg(feature = "tei")]
+    metas.push(&lab_apis::tei::META);
+    #[cfg(feature = "apprise")]
+    metas.push(&lab_apis::apprise::META);
+
+    metas
+}
+
 /// Returns `true` when admin is enabled via `LAB_ADMIN_ENABLED=1` env var
 /// or `admin.enabled = true` in config.toml (env var takes precedence).
 #[cfg(feature = "lab-admin")]
@@ -335,7 +387,7 @@ const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::build_default_registry;
+    use super::{build_default_registry, compiled_service_metas};
 
     #[test]
     fn extract_is_always_registered() {
@@ -395,6 +447,15 @@ mod tests {
         assert!(names.contains(&"tei"), "tei missing");
         #[cfg(feature = "apprise")]
         assert!(names.contains(&"apprise"), "apprise missing");
+    }
+
+    #[test]
+    fn compiled_service_metas_tracks_feature_enabled_services() {
+        let names: Vec<&str> = compiled_service_metas().into_iter().map(|meta| meta.name).collect();
+        #[cfg(feature = "plex")]
+        assert!(names.contains(&"plex"));
+        assert!(!names.contains(&"extract"));
+        assert!(!names.contains(&"gateway"));
     }
 
     /// Guard that the MCP registry and the HTTP router mount identical service sets.

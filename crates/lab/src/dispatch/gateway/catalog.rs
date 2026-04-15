@@ -35,6 +35,13 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[],
     },
     ActionSpec {
+        name: "gateway.supported_services",
+        description: "List metadata-backed Lab services that can be added as virtual servers",
+        destructive: false,
+        returns: "SupportedServiceView[]",
+        params: &[],
+    },
+    ActionSpec {
         name: "gateway.get",
         description: "Get one configured gateway",
         destructive: false,
