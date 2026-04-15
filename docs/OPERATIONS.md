@@ -45,6 +45,35 @@ Recovery guidance:
 - deleting `auth.db` removes registered clients, pending authorization requests, authorization codes, and refresh tokens
 - if you back up either file, back up both together to preserve a coherent auth state snapshot
 
+## Browser-Local OAuth Callback Forwarding
+
+Some MCP clients can pin the OAuth callback port but still redirect the browser to
+`http://127.0.0.1:<port>/...`. When the real callback listener lives on another machine, run
+`lab oauth relay-local` on the browser machine to accept that loopback redirect and forward it to
+the actual listener.
+
+Named-machine workflow:
+
+```bash
+lab oauth relay-local --machine dookie --port 38935
+```
+
+Ad hoc workflow:
+
+```bash
+lab oauth relay-local \
+  --forward-base http://100.88.16.79:38935/callback/dookie \
+  --port 38935
+```
+
+Operational rules:
+
+- the remote callback listener must already be running
+- the helper is transport-only; it does not exchange codes or mint tokens
+- the listener is loopback-only and normally run on demand for the active login flow
+- startup output shows the resolved forwarding target before the first callback arrives
+- failures map to HTTP responses on the local callback port: unreachable target -> `502`, timeout -> `504`
+
 ## Product-Level Health Tooling
 
 ### `lab doctor`

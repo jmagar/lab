@@ -156,7 +156,12 @@ The separate Next dev server on `3000` is now a frontend development workflow on
 lab doctor       # Comprehensive health audit for all configured services
 lab health       # Quick reachability check
 lab plugins      # Launch the TUI plugin manager
+lab oauth relay-local --machine dookie --port 38935
 ```
+
+When a browser machine needs to catch a localhost OAuth redirect and forward it to a remote MCP
+client, `lab oauth relay-local` can proxy the callback to a named target or an explicit Tailscale
+URL without reimplementing the OAuth flow.
 
 ---
 
