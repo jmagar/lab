@@ -70,6 +70,11 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
 
   // Preview debounce — canceled flag prevents stale responses from overwriting fresh ones
   useEffect(() => {
+    if (isLabGateway) {
+      setPreview(null)
+      setIsPreviewLoading(false)
+      return
+    }
     if (mode !== 'allowlist' || patterns.length === 0) {
       setPreview(null)
       setIsPreviewLoading(false)
@@ -99,7 +104,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [gateway.id, mode, patterns, previewExposurePolicy])
+  }, [gateway.id, isLabGateway, mode, patterns, previewExposurePolicy])
 
   const addPattern = useCallback(() => {
     const trimmed = newPattern.trim()
@@ -283,7 +288,9 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
         <div className="rounded-lg border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Available Actions</h3>
-            <Badge variant="secondary">{serviceActions?.length ?? 0}</Badge>
+            <Badge variant="secondary">
+              {(serviceActions ?? []).filter((action) => !['help', 'schema'].includes(action.name)).length}
+            </Badge>
           </div>
           <div className="space-y-3">
             {(serviceActions ?? [])

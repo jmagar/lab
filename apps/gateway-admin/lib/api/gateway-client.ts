@@ -149,10 +149,12 @@ export const gatewayApi = {
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
     const serverView = await findServerView(id, signal)
     if (serverView.source === 'lab_service') {
-      const [serviceConfig, serviceView] = await Promise.all([
-        gatewayAction<ServiceConfig>('gateway.service_config.get', { service: serverView.name }, signal),
-        Promise.resolve(normalizeServerView(serverView)),
-      ])
+      const serviceConfig = await gatewayAction<ServiceConfig>(
+        'gateway.service_config.get',
+        { service: serverView.name },
+        signal,
+      )
+      const serviceView = normalizeServerView(serverView)
 
       return {
         ...serviceView,
@@ -275,7 +277,11 @@ export const gatewayApi = {
     const serverView = await findServerView(id, signal)
     const tools =
       serverView.source === 'lab_service'
-        ? (await gatewayAction<ServiceAction[]>('gateway.service_actions', { service: id }, signal)).map(
+        ? (await gatewayAction<ServiceAction[]>(
+            'gateway.service_actions',
+            { service: serverView.name },
+            signal,
+          )).map(
             (action) => action.name,
           )
         : await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)

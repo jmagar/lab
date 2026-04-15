@@ -100,9 +100,3 @@ pub struct ServiceActionView {
     #[serde(default)]
     pub destructive: bool,
 }
-
-#[derive(Debug, Clone)]
-pub struct VirtualServiceHealthCache {
-    pub fetched_at: tokio::time::Instant,
-    pub values: std::collections::HashMap<String, crate::tui::events::ServiceHealth>,
-}

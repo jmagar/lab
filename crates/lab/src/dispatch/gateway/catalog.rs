@@ -164,12 +164,20 @@ pub const ACTIONS: &[ActionSpec] = &[
         description: "Write canonical config for one Lab-backed service",
         destructive: true,
         returns: "ServiceConfigView",
-        params: &[ParamSpec {
-            name: "service",
-            ty: "string",
-            required: true,
-            description: "Service key",
-        }],
+        params: &[
+            ParamSpec {
+                name: "service",
+                ty: "string",
+                required: true,
+                description: "Service key",
+            },
+            ParamSpec {
+                name: "values",
+                ty: "json",
+                required: true,
+                description: "Env-field map to persist for this service",
+            },
+        ],
     },
     ActionSpec {
         name: "gateway.get",

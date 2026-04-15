@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 use tokio::sync::RwLock;
 
@@ -113,6 +114,11 @@ impl ServiceClients {
             qbittorrent: crate::dispatch::qbittorrent::client_from_env().map(Arc::new),
         }
     }
+
+    #[must_use]
+    pub fn from_env_map(values: HashMap<String, String>) -> Self {
+        crate::dispatch::helpers::with_env_override(values, Self::from_env)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -144,8 +150,11 @@ impl SharedServiceClients {
     }
 
     pub async fn refresh_from_env_path(&self, path: &Path) -> anyhow::Result<()> {
-        dotenvy::from_path_override(path)?;
-        *self.inner.write().await = ServiceClients::from_env();
+        let values = dotenvy::from_path_iter(path)
+            .ok()
+            .map(|iter| iter.filter_map(Result::ok).collect())
+            .unwrap_or_default();
+        *self.inner.write().await = ServiceClients::from_env_map(values);
         #[cfg(test)]
         self.refresh_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);

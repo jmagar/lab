@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 
 import { confirmGatewayParams, gatewayHeaders, gatewayRequestInit } from './gateway-request.ts'
 
-test('gatewayRequestInit omits credentialed requests when bearer auth is configured', () => {
+test('gatewayRequestInit omits cookies when bearer auth is configured', () => {
   const init = gatewayRequestInit('gateway.list', {}, 'dev-token')
 
-  assert.equal(init.credentials, undefined)
+  assert.equal(init.credentials, 'omit')
   assert.equal((init.headers as Record<string, string>).Authorization, 'Bearer dev-token')
   assert.equal(init.method, 'POST')
 })

@@ -87,6 +87,19 @@ where
     F: FnOnce(String, Value) -> Fut,
     Fut: Future<Output = Result<Value, ToolError>>,
 {
+    if let Some(manager) = current_gateway_manager() {
+        if !manager.surface_enabled_for_service(service, "cli").await {
+            let error = ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("service `{service}` is not enabled on the cli surface"),
+            };
+            return Err(anyhow::anyhow!(
+                "{}",
+                serde_json::to_string(&error).unwrap_or_else(|_| error.to_string())
+            ));
+        }
+    }
+
     if !yes
         && actions
             .iter()
@@ -118,7 +131,6 @@ where
             anyhow::bail!("aborted by user");
         }
     }
-
     run_action_command(service, action, params, format, dispatch).await
 }
 

@@ -60,13 +60,14 @@ pub async fn dispatch_with_manager(
         }
         "gateway.virtual_server.set_mcp_policy" => {
             let params: VirtualServerMcpPolicyParams = parse_params(params_value)?;
-            let valid_actions = compiled_service_actions(&params.id)?;
+            let service = manager.service_for_virtual_server_id(&params.id).await?;
+            let valid_actions = compiled_service_actions(&service)?;
             for action in &params.allowed_actions {
                 if !valid_actions.iter().any(|candidate| candidate.name == action.as_str()) {
                     return Err(ToolError::InvalidParam {
                         message: format!(
                             "action `{action}` is not valid for service `{}`",
-                            params.id
+                            service
                         ),
                         param: "allowed_actions".to_string(),
                     });
@@ -258,6 +259,33 @@ mod tests {
 
         assert_eq!(value["id"], "fixture-http");
         assert_eq!(value["source"], "custom_gateway");
+    }
+
+    #[tokio::test]
+    async fn virtual_server_policy_validation_uses_service_name() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex-primary".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.set_mcp_policy",
+            json!({"id":"plex-primary","allowed_actions":["server.info"]}),
+        )
+        .await
+        .expect("set policy");
+
+        assert_eq!(value["allowed_actions"][0], "server.info");
     }
 
     #[test]

@@ -409,12 +409,15 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     {surfaceEntries.map(([surface, state]) => (
                         <div key={surface} className="flex items-center justify-between rounded-lg border p-4">
                           <div className="space-y-0.5">
-                            <p className="text-sm font-medium uppercase">{surface}</p>
+                            <Label htmlFor={`surface-${surface}`} className="text-sm font-medium uppercase">
+                              {surface}
+                            </Label>
                             <p className="text-sm text-muted-foreground">
                               {state.connected ? 'Connected' : 'Not connected'}
                             </p>
                           </div>
                           <Switch
+                            id={`surface-${surface}`}
                             checked={state.enabled}
                             onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
                           />

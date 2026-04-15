@@ -21,7 +21,7 @@ export function gatewayRequestInit(
   token = process.env.NEXT_PUBLIC_API_TOKEN,
   signal?: AbortSignal,
 ): RequestInit {
-  const credentials = token ? undefined : 'include'
+  const credentials: RequestCredentials = token ? 'omit' : 'include'
 
   return {
     method: 'POST',

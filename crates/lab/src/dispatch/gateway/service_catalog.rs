@@ -25,24 +25,28 @@ pub struct SupportedServiceView {
 }
 
 pub fn supported_services() -> Vec<SupportedServiceView> {
-    crate::registry::compiled_service_metas()
-        .into_iter()
-        .map(|meta| SupportedServiceView {
-            key: meta.name.to_string(),
-            display_name: meta.display_name.to_string(),
-            category: meta.category.as_str().to_string(),
-            description: meta.description.to_string(),
-            required_env: meta.required_env.iter().map(field_view).collect(),
-            optional_env: meta.optional_env.iter().map(field_view).collect(),
-            default_port: meta.default_port,
-        })
+    crate::registry::build_default_registry()
+        .services()
+        .iter()
+        .filter_map(|service| crate::registry::service_meta(service.name))
+        .map(meta_to_view)
         .collect()
 }
 
 pub fn service_meta(service: &str) -> Option<&'static PluginMeta> {
-    crate::registry::compiled_service_metas()
-        .into_iter()
-        .find(|meta| meta.name == service)
+    crate::registry::service_meta(service)
+}
+
+fn meta_to_view(meta: &'static PluginMeta) -> SupportedServiceView {
+    SupportedServiceView {
+        key: meta.name.to_string(),
+        display_name: meta.display_name.to_string(),
+        category: meta.category.as_str().to_string(),
+        description: meta.description.to_string(),
+        required_env: meta.required_env.iter().map(field_view).collect(),
+        optional_env: meta.optional_env.iter().map(field_view).collect(),
+        default_port: meta.default_port,
+    }
 }
 
 fn field_view(field: &lab_apis::core::EnvVar) -> ServiceFieldView {

@@ -19,13 +19,18 @@ use super::service_catalog::service_meta;
 use super::types::{
     CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView,
     GatewayView, ServiceConfigFieldView, ServiceConfigView, VirtualServerMcpPolicyView,
-    VirtualServiceHealthCache,
 };
 use super::view_models::{
     ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
 };
 use super::virtual_servers::{VirtualServerRecord, VirtualServerSource};
 use crate::tui::events::ServiceHealth;
+
+#[derive(Debug, Clone)]
+struct VirtualServiceHealthCache {
+    fetched_at: tokio::time::Instant,
+    values: HashMap<String, ServiceHealth>,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCatalogSnapshot {
@@ -239,7 +244,7 @@ impl GatewayManager {
 
         let cfg = self.config.read().await;
         let Some(virtual_server) = find_virtual_server_for_service(&cfg, service) else {
-            return false;
+            return surface != "mcp";
         };
 
         if !virtual_server.enabled {
@@ -266,14 +271,15 @@ impl GatewayManager {
             return Some(Vec::new());
         }
 
-        let mut allowed = vec!["help".to_string(), "schema".to_string()];
-        if let Some(policy) = &virtual_server.mcp_policy {
-            if !policy.allowed_actions.is_empty() {
-                allowed.extend(policy.allowed_actions.clone());
-            }
+        if let Some(policy) = &virtual_server.mcp_policy
+            && !policy.allowed_actions.is_empty()
+        {
+            let mut allowed = vec!["help".to_string(), "schema".to_string()];
+            allowed.extend(policy.allowed_actions.clone());
+            return Some(allowed);
         }
 
-        Some(allowed)
+        None
     }
 
     pub async fn mcp_action_allowed_for_service(&self, service: &str, action: &str) -> bool {
@@ -318,6 +324,11 @@ impl GatewayManager {
             items.push(runtime_view(pool.as_deref(), &upstream.name, prompt_owners.as_ref()).await);
         }
         Ok(items)
+    }
+
+    pub async fn service_for_virtual_server_id(&self, id: &str) -> Result<String, ToolError> {
+        let cfg = self.config.read().await;
+        Ok(find_virtual_server(&cfg, id)?.service.clone())
     }
 
     pub async fn test(
@@ -639,10 +650,13 @@ impl GatewayManager {
     }
 
     fn env_path(&self) -> PathBuf {
-        self.path
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join(".env")
+        #[cfg(test)]
+        if let Some(parent) = self.path.parent() {
+            // Tests isolate canonical service-config writes beside the temp
+            // gateway config instead of touching the developer's ~/.lab/.env.
+            return parent.join(".env");
+        }
+        crate::tui::services::lab_env_path()
     }
 
     async fn persist_config(&self, cfg: LabConfig) -> Result<(), ToolError> {
@@ -1105,8 +1119,8 @@ mod tests {
             .expect("set service config");
 
         assert!(!manager.surface_enabled_for_service("plex", "mcp").await);
-        assert!(!manager.surface_enabled_for_service("plex", "api").await);
-        assert!(!manager.surface_enabled_for_service("plex", "cli").await);
+        assert!(manager.surface_enabled_for_service("plex", "api").await);
+        assert!(manager.surface_enabled_for_service("plex", "cli").await);
     }
 
     #[tokio::test]
@@ -1195,6 +1209,33 @@ mod tests {
             .expect("set service config");
 
         assert_eq!(shared_clients.refresh_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn unrestricted_mcp_actions_return_none_when_no_policy_is_set() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        assert_eq!(manager.allowed_mcp_actions_for_service("plex").await, None);
     }
 
     #[tokio::test]

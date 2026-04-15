@@ -129,9 +129,7 @@ export function GatewayFormDialog({
   }, [open, gateway])
 
   useEffect(() => {
-    if (!selectedService) {
-      setServiceValues({})
-    }
+    setServiceValues({})
   }, [selectedService])
 
   useEffect(() => {
@@ -228,16 +226,16 @@ export function GatewayFormDialog({
     }
   }
 
-  const handleSaveLab = async () => {
-    if (!validateLab() || !selectedService) return
+  const handleSaveLab = async (): Promise<boolean> => {
+    if (!validateLab() || !selectedService) return false
 
     const values = Object.fromEntries(
       Object.entries(serviceValues).filter(([field, value]) => {
         const configField = serviceConfig?.fields.find((item) => item.name === field)
-        if (!value.trim()) {
+        if (configField?.secret && configField.present && !value.trim()) {
           return false
         }
-        return !(configField?.secret && configField.present && configField.value_preview == null)
+        return true
       }),
     )
 
@@ -247,13 +245,17 @@ export function GatewayFormDialog({
     } else {
       await disableVirtualServer(selectedService)
     }
+    return true
   }
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
       if (mode === 'lab') {
-        await handleSaveLab()
+        const saved = await handleSaveLab()
+        if (!saved) {
+          return
+        }
         toast.success(isEditing ? 'Lab gateway updated successfully' : 'Lab gateway configured successfully')
         onOpenChange(false)
         return
@@ -261,6 +263,19 @@ export function GatewayFormDialog({
 
       if (!validateCustom()) return
       await onSave(buildInput())
+      toast.success(isEditing ? 'Gateway updated successfully' : 'Gateway created successfully')
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(
+        getErrorMessage(
+          error,
+          mode === 'lab'
+            ? 'Failed to save Lab gateway'
+            : isEditing
+              ? 'Failed to update gateway'
+              : 'Failed to create gateway',
+        ),
+      )
     } finally {
       setIsSaving(false)
     }
@@ -473,9 +488,9 @@ export function GatewayFormDialog({
               Test
             </Button>
           )}
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
           <Button onClick={handleSave} disabled={isSaving}>
             {isSaving && <Loader2 className="size-4 mr-2 animate-spin" />}
             {mode === 'lab'

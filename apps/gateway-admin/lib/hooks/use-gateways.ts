@@ -294,18 +294,48 @@ export function useGatewayMutations() {
   }, [])
 
   const saveServiceConfig = useCallback(async (service: string, values: Record<string, string>): Promise<ServiceConfig> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const fields = Object.entries(values).map(([name, value]) => ({
+        name,
+        present: value.length > 0,
+        secret: name.includes('TOKEN') || name.includes('KEY') || name.includes('PASSWORD'),
+        value_preview: name.includes('TOKEN') || name.includes('KEY') || name.includes('PASSWORD') ? null : value,
+      }))
+      const result = { service, configured: fields.length > 0, fields }
+      await mutate(serviceConfigKey(service), result, false)
+      return result
+    }
     const result = await gatewayApi.setServiceConfig(service, values)
-    await refreshGatewayCache(service, [serviceConfigKey(service)])
+    await refreshGatewayCache(undefined, [serviceConfigKey(service)])
     return result
   }, [])
 
   const enableVirtualServer = useCallback(async (id: string): Promise<Gateway> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const gateway = mockGateways.find((item) => item.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      const result = { ...gateway, enabled: true }
+      await mutate(gatewayKey(id), result, false)
+      await mutate(GATEWAYS_KEY)
+      return result
+    }
     const result = await gatewayApi.enableVirtualServer(id)
     await refreshGatewayCache(id)
     return result
   }, [])
 
   const disableVirtualServer = useCallback(async (id: string): Promise<Gateway> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const gateway = mockGateways.find((item) => item.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      const result = { ...gateway, enabled: false }
+      await mutate(gatewayKey(id), result, false)
+      await mutate(GATEWAYS_KEY)
+      return result
+    }
     const result = await gatewayApi.disableVirtualServer(id)
     await refreshGatewayCache(id)
     return result
@@ -313,6 +343,23 @@ export function useGatewayMutations() {
 
   const setVirtualServerSurface = useCallback(
     async (id: string, surface: 'cli' | 'api' | 'mcp' | 'webui', enabled: boolean): Promise<Gateway> => {
+      if (USE_MOCK_DATA) {
+        await mockDelay()
+        const gateway = mockGateways.find((item) => item.id === id)
+        if (!gateway) throw new Error('Gateway not found')
+        const result = {
+          ...gateway,
+          surfaces: gateway.surfaces
+            ? {
+                ...gateway.surfaces,
+                [surface]: { ...gateway.surfaces[surface], enabled },
+              }
+            : gateway.surfaces,
+        }
+        await mutate(gatewayKey(id), result, false)
+        await mutate(GATEWAYS_KEY)
+        return result
+      }
       const result = await gatewayApi.setVirtualServerSurface(id, surface, enabled)
       await refreshGatewayCache(id)
       return result

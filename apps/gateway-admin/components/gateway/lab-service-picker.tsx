@@ -110,6 +110,7 @@ export function LabServicePicker({
               key={service.key}
               type="button"
               onClick={() => onSelect(service.key)}
+              aria-pressed={active}
               className={cn(
                 'group rounded-xl border p-4 text-left transition',
                 active
