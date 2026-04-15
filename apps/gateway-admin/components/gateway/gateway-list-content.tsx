@@ -14,6 +14,7 @@ import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { TestResultPanel } from './test-result-panel'
 import { useGateways, useGatewayMutations } from '@/lib/hooks/use-gateways'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
+import { getErrorMessage } from '@/lib/utils'
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
@@ -29,6 +30,16 @@ export function GatewayListContent() {
   const [editingGateway, setEditingGateway] = useState<Gateway | null>(null)
   const [deleteGateway, setDeleteGateway] = useState<Gateway | null>(null)
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
+
+  const summary = useMemo(() => {
+    const items = gateways ?? []
+    const healthy = items.filter((gateway) => gateway.status.healthy && gateway.status.connected).length
+    const disconnected = items.filter((gateway) => !gateway.status.connected).length
+    const warnings = items.reduce((count, gateway) => count + gateway.warnings.length, 0)
+    const tools = items.reduce((count, gateway) => count + gateway.status.discovered_tool_count, 0)
+
+    return { total: items.length, healthy, disconnected, warnings, tools }
+  }, [gateways])
 
   // Filter gateways
   const filteredGateways = useMemo(() => {
@@ -73,13 +84,15 @@ export function GatewayListContent() {
     try {
       const result = await testGateway(gateway.id)
       setTestResult({ gateway, result })
-      if (result.success) {
+      if (result.severity === 'warning') {
+        toast.warning(result.detail || result.message)
+      } else if (result.success) {
         toast.success('Connection test passed')
       } else {
-        toast.error('Connection test failed')
+        toast.error(result.error || result.message)
       }
-    } catch {
-      toast.error('Failed to test gateway')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to test gateway'))
     }
   }
 
@@ -89,10 +102,10 @@ export function GatewayListContent() {
       if (result.success) {
         toast.success(`Gateway reloaded: ${result.new_tool_count} tools discovered`)
       } else {
-        toast.error('Failed to reload gateway')
+        toast.error(result.message)
       }
-    } catch {
-      toast.error('Failed to reload gateway')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to reload gateway'))
     }
   }
 
@@ -102,8 +115,8 @@ export function GatewayListContent() {
       await removeGateway(deleteGateway.id)
       toast.success('Gateway removed successfully')
       setDeleteGateway(null)
-    } catch {
-      toast.error('Failed to remove gateway')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to remove gateway'))
     }
   }
 
@@ -118,8 +131,13 @@ export function GatewayListContent() {
       }
       setFormOpen(false)
       setEditingGateway(null)
-    } catch {
-      toast.error(editingGateway ? 'Failed to update gateway' : 'Failed to create gateway')
+    } catch (error) {
+      toast.error(
+        getErrorMessage(
+          error,
+          editingGateway ? 'Failed to update gateway' : 'Failed to create gateway'
+        )
+      )
     }
   }
 
@@ -138,6 +156,31 @@ export function GatewayListContent() {
       />
 
       <div className="flex-1 p-6 space-y-6">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Configured</p>
+            <p className="mt-2 text-3xl font-semibold">{summary.total}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Gateway connections tracked by this admin.</p>
+          </div>
+          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Healthy</p>
+            <p className="mt-2 text-3xl font-semibold text-success">{summary.healthy}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Connected and returning tools right now.</p>
+          </div>
+          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Disconnected</p>
+            <p className="mt-2 text-3xl font-semibold text-warning">{summary.disconnected}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Known gateways that are not usable yet.</p>
+          </div>
+          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Discovered Tools</p>
+            <p className="mt-2 text-3xl font-semibold text-primary">{summary.tools}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {summary.warnings} warning{summary.warnings === 1 ? '' : 's'} across all gateways.
+            </p>
+          </div>
+        </div>
+
         {/* Filters */}
         <GatewayFilters
           search={search}

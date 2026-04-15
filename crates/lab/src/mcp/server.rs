@@ -417,7 +417,11 @@ impl ServerHandler for LabMcpServer {
                     let (result, kind, counts_as_failure) =
                         normalize_upstream_result(&service, upstream_action, result);
                     if counts_as_failure {
-                        pool.record_failure(&upstream_name).await;
+                        pool.record_failure(
+                            &upstream_name,
+                            format!("upstream `{upstream_name}` returned `{kind}`"),
+                        )
+                        .await;
                         tracing::warn!(
                             surface = "mcp",
                             service,
@@ -443,7 +447,7 @@ impl ServerHandler for LabMcpServer {
                     return Ok(result);
                 }
                 Some(Err(e)) => {
-                    pool.record_failure(&upstream_name).await;
+                    pool.record_failure(&upstream_name, e.clone()).await;
                     let after = self.snapshot_catalog().await;
                     self.notify_catalog_changes(&before, &after).await;
                     let elapsed_ms = start.elapsed().as_millis();
@@ -469,7 +473,11 @@ impl ServerHandler for LabMcpServer {
                 None => {
                     // Connection is gone — record failure so the circuit
                     // breaker can eventually exclude this upstream.
-                    pool.record_failure(&upstream_name).await;
+                    pool.record_failure(
+                        &upstream_name,
+                        format!("upstream `{upstream_name}` is not connected"),
+                    )
+                    .await;
                     let after = self.snapshot_catalog().await;
                     self.notify_catalog_changes(&before, &after).await;
                     let elapsed_ms = start.elapsed().as_millis();

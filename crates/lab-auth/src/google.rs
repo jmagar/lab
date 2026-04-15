@@ -2,8 +2,10 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, info, warn};
 
 use crate::error::AuthError;
+use crate::util::fingerprint;
 
 const GOOGLE_AUTHORIZE_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
@@ -95,10 +97,18 @@ impl GoogleProvider {
             .append_pair("response_type", "code")
             .append_pair("scope", &scope)
             .append_pair("access_type", "offline")
+            .append_pair("prompt", "consent")
             .append_pair("include_granted_scopes", "true")
             .append_pair("state", &request.state)
             .append_pair("code_challenge", &request.code_challenge)
             .append_pair("code_challenge_method", &request.code_challenge_method);
+        debug!(
+            provider = "google",
+            oauth_state_id = %fingerprint(&request.state),
+            scope = %scope,
+            redirect_uri = %self.redirect_uri,
+            "oauth upstream authorize URL constructed"
+        );
         Ok(url)
     }
 
@@ -107,6 +117,12 @@ impl GoogleProvider {
         code: &str,
         code_verifier: &str,
     ) -> Result<GoogleExchange, AuthError> {
+        info!(
+            provider = "google",
+            oauth_code_id = %fingerprint(code),
+            redirect_uri = %self.redirect_uri,
+            "oauth upstream code exchange started"
+        );
         let response = self
             .http
             .post(self.token_endpoint.clone())
@@ -120,14 +136,28 @@ impl GoogleProvider {
             ])
             .send()
             .await
-            .map_err(|error| AuthError::Storage(format!("exchange google auth code: {error}")))?;
+            .map_err(|error| {
+                warn!(provider = "google", error = %error, "oauth upstream code exchange request failed");
+                AuthError::Storage(format!("exchange google auth code: {error}"))
+            })?;
         let response = response
             .error_for_status()
-            .map_err(|error| AuthError::Storage(format!("google token endpoint error: {error}")))?;
+            .map_err(|error| {
+                warn!(provider = "google", error = %error, "oauth upstream code exchange returned error status");
+                AuthError::Storage(format!("google token endpoint error: {error}"))
+            })?;
         let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
+            warn!(provider = "google", error = %error, "oauth upstream code exchange returned an unreadable payload");
             AuthError::Storage(format!("decode google token response: {error}"))
         })?;
         let subject = parse_subject_from_id_token(&payload.id_token)?;
+        info!(
+            provider = "google",
+            subject_id = %fingerprint(&subject),
+            has_refresh_token = payload.refresh_token.is_some(),
+            expires_in_secs = payload.expires_in,
+            "oauth upstream code exchange succeeded"
+        );
         Ok(GoogleExchange {
             subject,
             access_token: payload.access_token,
@@ -138,6 +168,11 @@ impl GoogleProvider {
     }
 
     pub async fn refresh(&self, refresh_token: &str) -> Result<GoogleExchange, AuthError> {
+        info!(
+            provider = "google",
+            refresh_token_id = %fingerprint(refresh_token),
+            "oauth upstream refresh started"
+        );
         let response = self
             .http
             .post(self.token_endpoint.clone())
@@ -149,14 +184,26 @@ impl GoogleProvider {
             ])
             .send()
             .await
-            .map_err(|error| AuthError::Storage(format!("refresh google token: {error}")))?;
+            .map_err(|error| {
+                warn!(provider = "google", error = %error, "oauth upstream refresh request failed");
+                AuthError::Storage(format!("refresh google token: {error}"))
+            })?;
         let response = response.error_for_status().map_err(|error| {
+            warn!(provider = "google", error = %error, "oauth upstream refresh returned error status");
             AuthError::Storage(format!("google refresh endpoint error: {error}"))
         })?;
         let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
+            warn!(provider = "google", error = %error, "oauth upstream refresh returned an unreadable payload");
             AuthError::Storage(format!("decode google refresh response: {error}"))
         })?;
         let subject = parse_subject_from_id_token(&payload.id_token)?;
+        info!(
+            provider = "google",
+            subject_id = %fingerprint(&subject),
+            has_refresh_token = payload.refresh_token.is_some(),
+            expires_in_secs = payload.expires_in,
+            "oauth upstream refresh succeeded"
+        );
         Ok(GoogleExchange {
             subject,
             access_token: payload.access_token,
@@ -205,10 +252,11 @@ mod tests {
     use super::{AuthorizeUrlRequest, GoogleProvider};
 
     #[test]
-    fn google_authorize_url_includes_offline_access_and_pkce() {
+    fn google_authorize_url_includes_offline_access_prompt_and_pkce() {
         let provider = test_google_provider();
         let url = provider.authorize_url(sample_request()).unwrap();
         assert!(url.as_str().contains("access_type=offline"));
+        assert!(url.as_str().contains("prompt=consent"));
         assert!(url.as_str().contains("code_challenge="));
     }
 

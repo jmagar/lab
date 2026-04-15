@@ -47,6 +47,8 @@ pub struct GatewayRuntimeView {
     pub resource_count: usize,
     #[serde(default)]
     pub prompt_count: usize,
+    #[serde(default)]
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

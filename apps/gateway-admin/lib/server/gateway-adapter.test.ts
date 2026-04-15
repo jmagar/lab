@@ -6,7 +6,8 @@ import {
   gatewayInputToSpec,
   normalizeGateway,
   previewExposurePolicy,
-} from './gateway-adapter'
+  probeStatusFromRuntime,
+} from './gateway-adapter.ts'
 
 test('normalizeGateway maps backend views into UI gateway shape', () => {
   const gateway = normalizeGateway(
@@ -162,4 +163,106 @@ test('previewExposurePolicy reports matches filtered tools and unmatched pattern
     exposed_count: 2,
     filtered_count: 1,
   })
+})
+
+test('probeStatusFromRuntime marks zero-capability gateways unhealthy', () => {
+  assert.deepEqual(
+    probeStatusFromRuntime({
+      name: 'swag',
+      tool_count: 0,
+      resource_count: 0,
+      prompt_count: 0,
+      last_error: 'stdio handshake failed: unexpected HTTP response on stdout',
+    }),
+    {
+      connected: false,
+      healthy: false,
+      last_error: 'stdio handshake failed: unexpected HTTP response on stdout',
+    }
+  )
+
+  assert.deepEqual(
+    probeStatusFromRuntime({
+      name: 'fixture-stdio',
+      tool_count: 3,
+      resource_count: 0,
+      prompt_count: 0,
+    }),
+    {
+      connected: true,
+      healthy: true,
+    }
+  )
+})
+
+test('normalizeGateway turns specific probe failures into actionable warnings', () => {
+  const gateway = normalizeGateway(
+    {
+      config: {
+        name: 'syslog-http',
+        url: 'http://127.0.0.1:3100/mcp',
+        proxy_resources: true,
+      },
+      runtime: {
+        name: 'syslog-http',
+        tool_count: 0,
+        resource_count: 0,
+        prompt_count: 0,
+      },
+    },
+    {
+      connected: false,
+      healthy: false,
+      last_error: 'Connection refused while probing http://127.0.0.1:3100/mcp',
+    },
+    {
+      tools: [],
+      resources: [],
+      prompts: [],
+    }
+  )
+
+  assert.equal(gateway.status.last_error, 'Connection refused while probing http://127.0.0.1:3100/mcp')
+  assert.deepEqual(gateway.warnings, [
+    {
+      code: 'connection_error',
+      message: 'Connection refused while probing http://127.0.0.1:3100/mcp',
+      timestamp: gateway.warnings[0]?.timestamp,
+    },
+  ])
+})
+
+test('normalizeGateway humanizes auth failures for operator-facing UI', () => {
+  const gateway = normalizeGateway(
+    {
+      config: {
+        name: 'swag',
+        url: 'https://swag.tootie.tv/mcp',
+        proxy_resources: true,
+      },
+      runtime: {
+        name: 'swag',
+        tool_count: 0,
+        resource_count: 0,
+        prompt_count: 0,
+      },
+    },
+    {
+      connected: false,
+      healthy: false,
+      last_error:
+        'Send message error Transport [rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<reqwest::async_impl::client::Client>>] error: Auth required, when send initialize request',
+    },
+    {
+      tools: [],
+      resources: [],
+      prompts: [],
+    }
+  )
+
+  assert.equal(
+    gateway.status.last_error,
+    'Authentication is required by https://swag.tootie.tv/mcp. Configure `bearer_token_env` with a valid upstream token, then reload this gateway.'
+  )
+  assert.equal(gateway.warnings[0]?.code, 'auth_required')
 })

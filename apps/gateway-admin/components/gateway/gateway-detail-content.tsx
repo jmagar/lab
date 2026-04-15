@@ -32,9 +32,10 @@ import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { TestResultPanel } from './test-result-panel'
 import { useGateway, useGatewayMutations } from '@/lib/hooks/use-gateways'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
+import { getErrorMessage } from '@/lib/utils'
 
 interface GatewayDetailContentProps {
-  gatewayId: string
+  gatewayId: string | null
 }
 
 export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
@@ -48,19 +49,46 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
 
+  if (!gatewayId) {
+    return (
+      <>
+        <AppHeader
+          breadcrumbs={[
+            { label: 'Gateways', href: '/gateways' },
+            { label: 'Missing Gateway' }
+          ]}
+        />
+        <div className="flex-1 p-6">
+          <div className="rounded-lg border bg-card p-8 text-center">
+            <AlertTriangle className="size-8 mx-auto text-destructive mb-3" />
+            <p className="font-medium">No gateway selected</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Open this page from the gateway list or provide a gateway id in the URL query string.
+            </p>
+            <Button variant="outline" className="mt-4" onClick={() => router.push('/gateways')}>
+              Back to Gateways
+            </Button>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   const handleTest = async () => {
     if (!gateway) return
     setIsTesting(true)
     try {
       const result = await testGateway(gateway.id)
       setTestResult({ gateway, result })
-      if (result.success) {
+      if (result.severity === 'warning') {
+        toast.warning(result.detail || result.message)
+      } else if (result.success) {
         toast.success('Connection test passed')
       } else {
-        toast.error('Connection test failed')
+        toast.error(result.error || result.message)
       }
-    } catch {
-      toast.error('Failed to test gateway')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to test gateway'))
     } finally {
       setIsTesting(false)
     }
@@ -74,10 +102,10 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       if (result.success) {
         toast.success(`Gateway reloaded: ${result.new_tool_count} tools discovered`)
       } else {
-        toast.error('Failed to reload gateway')
+        toast.error(result.message)
       }
-    } catch {
-      toast.error('Failed to reload gateway')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to reload gateway'))
     } finally {
       setIsReloading(false)
     }
@@ -89,8 +117,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       await updateGateway(gateway.id, input as UpdateGatewayInput)
       toast.success('Gateway updated successfully')
       setEditOpen(false)
-    } catch {
-      toast.error('Failed to update gateway')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to update gateway'))
     }
   }
 
@@ -100,8 +128,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       await removeGateway(gateway.id)
       toast.success('Gateway removed successfully')
       router.push('/gateways')
-    } catch {
-      toast.error('Failed to remove gateway')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to remove gateway'))
     }
   }
 
@@ -210,9 +238,27 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               </div>
 
               {gateway.status.last_error && (
-                <div className="flex items-start gap-2 rounded-md bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400">
+                <div className="flex items-start gap-2 rounded-md border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
                   <AlertTriangle className="size-4 mt-0.5 shrink-0" />
-                  <span>{gateway.status.last_error}</span>
+                  <div className="space-y-1">
+                    <p className="font-medium">Most recent probe result</p>
+                    <p>{gateway.status.last_error}</p>
+                  </div>
+                </div>
+              )}
+
+              {!gateway.status.last_error && gateway.status.connected && (
+                <div className="flex items-start gap-2 rounded-md border border-success/20 bg-success/10 p-3 text-sm text-success">
+                  <FileText className="size-4 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-medium">Gateway reachable</p>
+                    <p>
+                      The latest probe discovered {gateway.status.discovered_tool_count} tool
+                      {gateway.status.discovered_tool_count === 1 ? '' : 's'}, {gateway.discovery.resources.length} resource
+                      {gateway.discovery.resources.length === 1 ? '' : 's'}, and {gateway.discovery.prompts.length} prompt
+                      {gateway.discovery.prompts.length === 1 ? '' : 's'}.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -220,7 +266,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
             <div className="text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Clock className="size-4" />
-                <span>Updated {new Date(gateway.updated_at).toLocaleDateString()}</span>
+                <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
               </div>
             </div>
           </div>

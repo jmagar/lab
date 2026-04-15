@@ -19,7 +19,7 @@ export default function DocsPage() {
               <HelpCircle className="size-6 text-muted-foreground" />
             </div>
             
-            <h1 className="text-2xl font-semibold mb-2">MCP Gateway Documentation</h1>
+            <h1 className="text-2xl font-semibold mb-2">Labby Documentation</h1>
             <p className="text-muted-foreground mb-8">
               Learn how to configure and manage your MCP gateway connections.
             </p>

@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::path::PathBuf;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::dispatch::clients::ServiceClients;
@@ -39,6 +40,8 @@ pub struct AppState {
     ///
     /// `None` when gateway management is not wired for this process.
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
+    /// Optional directory containing exported Labby web assets.
+    pub web_assets_dir: Option<Arc<PathBuf>>,
 }
 
 impl AppState {
@@ -74,6 +77,7 @@ impl AppState {
             auth_config: None,
             oauth_state: None,
             gateway_manager: None,
+            web_assets_dir: None,
         }
     }
 
@@ -98,6 +102,13 @@ impl AppState {
         manager: Arc<crate::dispatch::gateway::manager::GatewayManager>,
     ) -> Self {
         self.gateway_manager = Some(manager);
+        self
+    }
+
+    /// Attach an exported Labby assets directory for static web serving.
+    #[must_use]
+    pub fn with_web_assets_dir(mut self, dir: PathBuf) -> Self {
+        self.web_assets_dir = Some(Arc::new(dir));
         self
     }
 }

@@ -2,6 +2,7 @@ use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use sha2::{Digest, Sha256};
 
 use crate::error::AuthError;
 
@@ -17,6 +18,14 @@ pub(crate) fn random_token(bytes: usize) -> Result<String, AuthError> {
     getrandom::fill(&mut buf)
         .map_err(|error| AuthError::Storage(format!("generate random token: {error}")))?;
     Ok(URL_SAFE_NO_PAD.encode(buf))
+}
+
+pub(crate) fn fingerprint(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
+    digest[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(unix)]

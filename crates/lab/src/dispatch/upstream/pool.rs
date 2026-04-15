@@ -39,6 +39,18 @@ fn max_response_bytes() -> usize {
         .unwrap_or(DEFAULT_MAX_RESPONSE_BYTES)
 }
 
+fn upstream_transport(config: &UpstreamConfig) -> &'static str {
+    if config.url.is_some() { "http" } else { "stdio" }
+}
+
+fn upstream_target(config: &UpstreamConfig) -> String {
+    config
+        .url
+        .clone()
+        .or_else(|| config.command.clone())
+        .unwrap_or_else(|| "<missing>".to_string())
+}
+
 /// Collect upstream peers for a capability in deterministic name order.
 async fn routable_upstream_peers(
     pool: &UpstreamPool,
@@ -228,26 +240,37 @@ impl UpstreamPool {
                     Ok(Ok((conn, tools))) => {
                         tracing::info!(
                             upstream = %name,
+                            transport = upstream_transport(&config),
+                            target = %upstream_target(&config),
                             tool_count = tools.len(),
                             "upstream discovery succeeded"
                         );
                         Ok((name, config.expose_tools.clone(), conn, tools))
                     }
                     Ok(Err(e)) => {
+                        let error = e.to_string();
                         tracing::warn!(
                             upstream = %name,
-                            error = %e,
+                            transport = upstream_transport(&config),
+                            target = %upstream_target(&config),
+                            error = %error,
                             "upstream discovery failed"
                         );
-                        Err(name)
+                        Err((name, error))
                     }
                     Err(_) => {
+                        let error = format!(
+                            "upstream discovery timed out after {}s",
+                            DISCOVERY_TIMEOUT.as_secs()
+                        );
                         tracing::warn!(
                             upstream = %name,
+                            transport = upstream_transport(&config),
+                            target = %upstream_target(&config),
                             timeout_secs = DISCOVERY_TIMEOUT.as_secs(),
                             "upstream discovery timed out"
                         );
-                        Err(name)
+                        Err((name, error))
                     }
                 }
             });
@@ -301,12 +324,15 @@ impl UpstreamPool {
                         tool_unhealthy_since: None,
                         prompt_unhealthy_since: None,
                         resource_unhealthy_since: None,
+                        tool_last_error: None,
+                        prompt_last_error: None,
+                        resource_last_error: None,
                     };
 
                     self.catalog.write().await.insert(name.clone(), entry);
                     self.connections.write().await.insert(name, conn);
                 }
-                Err(name) => {
+                Err((name, error_message)) => {
                     let entry = UpstreamEntry {
                         name: Arc::from(name.as_str()),
                         tools: HashMap::new(),
@@ -323,6 +349,9 @@ impl UpstreamPool {
                         tool_unhealthy_since: Some(std::time::Instant::now()),
                         prompt_unhealthy_since: Some(std::time::Instant::now()),
                         resource_unhealthy_since: Some(std::time::Instant::now()),
+                        tool_last_error: Some(error_message.clone()),
+                        prompt_last_error: Some(error_message.clone()),
+                        resource_last_error: Some(error_message),
                     };
                     self.catalog.write().await.insert(name, entry);
                 }
@@ -482,8 +511,8 @@ impl UpstreamPool {
     ///
     /// After [`CIRCUIT_BREAKER_THRESHOLD`] consecutive failures, the upstream
     /// is excluded from `list_tools` until a successful re-probe.
-    pub async fn record_failure(&self, upstream_name: &str) {
-        self.record_failure_for(upstream_name, UpstreamCapability::Tools)
+    pub async fn record_failure(&self, upstream_name: &str, error: impl Into<String>) {
+        self.record_failure_for(upstream_name, UpstreamCapability::Tools, error)
             .await;
     }
 
@@ -491,9 +520,15 @@ impl UpstreamPool {
     ///
     /// After [`CIRCUIT_BREAKER_THRESHOLD`] consecutive failures, the upstream
     /// is excluded from the matching capability listing until a successful re-probe.
-    pub async fn record_failure_for(&self, upstream_name: &str, capability: UpstreamCapability) {
+    pub async fn record_failure_for(
+        &self,
+        upstream_name: &str,
+        capability: UpstreamCapability,
+        error: impl Into<String>,
+    ) {
         let mut catalog = self.catalog.write().await;
         if let Some(entry) = catalog.get_mut(upstream_name) {
+            let error = error.into();
             let new_count = match entry.health_for(capability) {
                 UpstreamHealth::Healthy => 1,
                 UpstreamHealth::Unhealthy {
@@ -509,11 +544,13 @@ impl UpstreamPool {
             if entry.unhealthy_since_for(capability).is_none() {
                 entry.set_unhealthy_since_for(capability, Some(std::time::Instant::now()));
             }
+            entry.set_last_error_for(capability, Some(error.clone()));
             if new_count >= types::CIRCUIT_BREAKER_THRESHOLD {
                 tracing::warn!(
                     upstream = %upstream_name,
                     capability = ?capability,
                     consecutive_failures = new_count,
+                    error = %error,
                     "circuit breaker open — upstream excluded from capability listing"
                 );
             }
@@ -539,7 +576,24 @@ impl UpstreamPool {
             }
             entry.set_health_for(capability, UpstreamHealth::Healthy);
             entry.set_unhealthy_since_for(capability, None);
+            entry.set_last_error_for(capability, None);
         }
+    }
+
+    /// Return the most relevant last error for an upstream, if any capability has one.
+    pub async fn upstream_last_error(&self, upstream_name: &str) -> Option<String> {
+        let catalog = self.catalog.read().await;
+        let entry = catalog.get(upstream_name)?;
+        entry
+            .last_error_for(UpstreamCapability::Tools)
+            .or_else(|| entry.last_error_for(UpstreamCapability::Resources))
+            .or_else(|| entry.last_error_for(UpstreamCapability::Prompts))
+            .map(ToOwned::to_owned)
+    }
+
+    #[cfg(test)]
+    pub async fn insert_entry_for_tests(&self, name: &str, entry: UpstreamEntry) {
+        self.catalog.write().await.insert(name.to_string(), entry);
     }
 
     /// Check if an upstream capability is due for a re-probe.
@@ -641,8 +695,12 @@ impl UpstreamPool {
                     }
                 }
                 Err(e) => {
-                    self.record_failure_for(&name, UpstreamCapability::Resources)
-                        .await;
+                    self.record_failure_for(
+                        &name,
+                        UpstreamCapability::Resources,
+                        format!("failed to list resources from upstream: {e}"),
+                    )
+                    .await;
                     tracing::warn!(
                         upstream = %name,
                         error = %e,
@@ -703,8 +761,12 @@ impl UpstreamPool {
                 Ok(normalize_resource_result_uri(result, uri))
             }
             Err(e) => {
-                self.record_failure_for(upstream_name, UpstreamCapability::Resources)
-                    .await;
+                self.record_failure_for(
+                    upstream_name,
+                    UpstreamCapability::Resources,
+                    format!("upstream resource read failed: {e}"),
+                )
+                .await;
                 Err(format!("upstream resource read failed: {e}"))
             }
         };
@@ -752,8 +814,12 @@ impl UpstreamPool {
                     upstream_prompts.push((name, result.prompts));
                 }
                 Err(e) => {
-                    self.record_failure_for(&name, UpstreamCapability::Prompts)
-                        .await;
+                    self.record_failure_for(
+                        &name,
+                        UpstreamCapability::Prompts,
+                        format!("failed to list prompts from upstream: {e}"),
+                    )
+                    .await;
                     tracing::warn!(
                         upstream = %name,
                         error = %e,
@@ -808,8 +874,12 @@ impl UpstreamPool {
                 Some(Ok(result))
             }
             Err(e) => {
-                self.record_failure_for(upstream_name, UpstreamCapability::Prompts)
-                    .await;
+                self.record_failure_for(
+                    upstream_name,
+                    UpstreamCapability::Prompts,
+                    format!("upstream prompt get failed: {e}"),
+                )
+                .await;
                 Some(Err(format!("upstream prompt get failed: {e}")))
             }
         }
@@ -1163,6 +1233,9 @@ mod tests {
             tool_unhealthy_since: None,
             prompt_unhealthy_since: None,
             resource_unhealthy_since: None,
+            tool_last_error: None,
+            prompt_last_error: None,
+            resource_last_error: None,
         };
 
         pool.catalog
@@ -1209,6 +1282,9 @@ mod tests {
             tool_unhealthy_since: None,
             prompt_unhealthy_since: None,
             resource_unhealthy_since: None,
+            tool_last_error: None,
+            prompt_last_error: None,
+            resource_last_error: None,
         };
 
         pool.catalog
@@ -1218,6 +1294,47 @@ mod tests {
 
         assert!(pool.find_tool("search_repos").await.is_some());
         assert!(pool.find_tool("delete_repo").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn upstream_last_error_tracks_capability_failure_details() {
+        let pool = UpstreamPool::new();
+        let upstream_name: Arc<str> = Arc::from("github");
+        let entry = UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: ToolExposurePolicy::All,
+            tool_health: UpstreamHealth::Healthy,
+            prompt_health: UpstreamHealth::Healthy,
+            resource_health: UpstreamHealth::Healthy,
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: None,
+            resource_unhealthy_since: None,
+            tool_last_error: None,
+            prompt_last_error: None,
+            resource_last_error: None,
+        };
+
+        pool.catalog
+            .write()
+            .await
+            .insert("github".to_string(), entry);
+
+        pool.record_failure_for(
+            "github",
+            UpstreamCapability::Resources,
+            "resource listing returned 401 unauthorized",
+        )
+        .await;
+
+        assert_eq!(
+            pool.upstream_last_error("github").await.as_deref(),
+            Some("resource listing returned 401 unauthorized")
+        );
+
+        pool.record_success_for("github", UpstreamCapability::Resources)
+            .await;
+        assert_eq!(pool.upstream_last_error("github").await, None);
     }
 
     #[test]

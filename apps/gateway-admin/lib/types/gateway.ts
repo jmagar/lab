@@ -80,12 +80,14 @@ export interface UpdateGatewayInput {
 
 export interface TestGatewayResult {
   success: boolean
+  severity?: 'success' | 'warning' | 'failure'
   message: string
   latency_ms?: number
   discovered_tools?: number
   discovered_resources?: number
   discovered_prompts?: number
   error?: string
+  detail?: string
 }
 
 export interface ReloadGatewayResult {

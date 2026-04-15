@@ -23,7 +23,9 @@ No network listener is opened. No host, port, or auth configuration is needed.
 
 ## Streamable HTTP
 
-The HTTP transport mounts the MCP protocol at `/mcp` inside the axum HTTP server, alongside the REST API at `/v1/*`.
+The HTTP transport mounts the MCP protocol at `/mcp` inside the axum HTTP server, alongside the
+REST API at `/v1/*`. When exported Labby assets are available, the same server also hosts the web UI
+from `/`.
 
 ```bash
 lab serve --transport http
@@ -42,6 +44,7 @@ lab serve --transport http
 | `LAB_MCP_ALLOWED_HOSTS` | — | Comma-separated hostnames for DNS rebinding protection. |
 | `LAB_PUBLIC_URL` | — | Public URL of this lab instance. Its host is added to the allowed-host list in OAuth mode. |
 | `LAB_CORS_ORIGINS` | — | Comma-separated CORS origin allowlist. |
+| `LAB_WEB_ASSETS_DIR` | auto-detect | Optional path to exported Labby assets served by `lab serve`. |
 
 Config TOML equivalents (env vars take precedence):
 
@@ -50,6 +53,9 @@ Config TOML equivalents (env vars take precedence):
 transport = "http"
 host = "127.0.0.1"
 port = 8765
+
+[web]
+assets_dir = "/path/to/labby/out"
 ```
 
 CLI flags take precedence over env vars, which take precedence over config.toml:
@@ -81,6 +87,9 @@ Wildcard (`*`) is rejected with a warning — it would disable Host header valid
 ### Authentication
 
 Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth mode is configured. Unauthenticated routes (`/health`, `/ready`, and OAuth metadata endpoints) are always accessible.
+
+The Labby web UI shell is served publicly when web assets are enabled. The UI then calls the same-origin
+API and MCP routes on the same port.
 
 Auth methods (see [OAUTH.md](./OAUTH.md) for details):
 
@@ -141,6 +150,8 @@ When HTTP transport is active, the server exposes:
 
 | Path | Auth | Description |
 |------|------|-------------|
+| `/` | no | Labby web UI shell (when exported assets are available) |
+| `/gateways/`, `/gateway/`, `/activity/`, `/settings/`, `/docs/` | no | Labby SPA routes (when exported assets are available) |
 | `/health` | no | Liveness probe |
 | `/ready` | no | Readiness probe |
 | `/.well-known/oauth-authorization-server` | no | Authorization-server metadata |
@@ -163,6 +174,8 @@ LAB_MCP_TRANSPORT=http lab serve
 
 curl http://localhost:8765/health
 curl http://localhost:8765/v1/radarr -d '{"action":"help"}'
+# if exported Labby assets exist:
+open http://localhost:8765/
 ```
 
 ## Example: Network Deployment

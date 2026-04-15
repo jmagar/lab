@@ -70,10 +70,9 @@ async fn auth_jwks(State(state): State<AppState>) -> Result<impl IntoResponse, L
 
 async fn auth_register(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
     body: axum::Json<lab_auth::types::ClientRegistrationRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::authorize::register_client(State(app_auth_state(&state)?), headers, body).await?)
+    Ok(lab_auth::authorize::register_client(State(app_auth_state(&state)?), body).await?)
 }
 
 async fn auth_authorize(
@@ -355,6 +354,10 @@ pub fn build_router(
             .route("/token", axum::routing::post(auth_token));
     }
 
+    if state.web_assets_dir.is_some() {
+        router = router.fallback(crate::api::web::serve_web_request);
+    }
+
     router
         .with_state(state)
         .layer(build_cors_layer(config_cors_origins))
@@ -484,6 +487,8 @@ async fn service_actions(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use axum::body::Body;
     use axum::http::{Request, StatusCode, header};
     use tower::ServiceExt;
@@ -796,6 +801,57 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(header.contains("resource_metadata="));
+    }
+
+    #[tokio::test]
+    async fn serves_web_assets_for_browser_routes_when_configured() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+
+        let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/gateways/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("Labby"));
+    }
+
+    #[tokio::test]
+    async fn v1_routes_still_win_over_web_asset_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+
+        let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(content_type.contains("application/json"));
     }
 
     async fn test_lab_auth_state() -> lab_auth::state::AuthState {

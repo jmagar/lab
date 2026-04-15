@@ -212,6 +212,12 @@ pub struct UpstreamEntry {
     pub prompt_unhealthy_since: Option<std::time::Instant>,
     /// When the resources capability last became unhealthy.
     pub resource_unhealthy_since: Option<std::time::Instant>,
+    /// Most recent tools-capability failure detail.
+    pub tool_last_error: Option<String>,
+    /// Most recent prompts-capability failure detail.
+    pub prompt_last_error: Option<String>,
+    /// Most recent resources-capability failure detail.
+    pub resource_last_error: Option<String>,
 }
 
 #[cfg(test)]
@@ -289,6 +295,29 @@ impl UpstreamEntry {
             UpstreamCapability::Tools => self.tool_unhealthy_since = unhealthy_since,
             UpstreamCapability::Prompts => self.prompt_unhealthy_since = unhealthy_since,
             UpstreamCapability::Resources => self.resource_unhealthy_since = unhealthy_since,
+        }
+    }
+
+    /// Read the last failure detail for a specific upstream capability.
+    #[must_use]
+    pub fn last_error_for(&self, capability: UpstreamCapability) -> Option<&str> {
+        match capability {
+            UpstreamCapability::Tools => self.tool_last_error.as_deref(),
+            UpstreamCapability::Prompts => self.prompt_last_error.as_deref(),
+            UpstreamCapability::Resources => self.resource_last_error.as_deref(),
+        }
+    }
+
+    /// Update the last failure detail for a specific upstream capability.
+    pub fn set_last_error_for(
+        &mut self,
+        capability: UpstreamCapability,
+        last_error: Option<String>,
+    ) {
+        match capability {
+            UpstreamCapability::Tools => self.tool_last_error = last_error,
+            UpstreamCapability::Prompts => self.prompt_last_error = last_error,
+            UpstreamCapability::Resources => self.resource_last_error = last_error,
         }
     }
 }

@@ -51,6 +51,18 @@
 # Override with --port or LAB_MCP_HTTP_PORT.
 # port = 8765                             # default: 8765
 
+# HTTP MCP session keep-alive TTL in seconds.
+# Override with LAB_MCP_SESSION_TTL_SECS.
+# session_ttl_secs = 300                  # default: 300
+
+# Whether HTTP MCP uses stateful sessions.
+# Override with LAB_MCP_STATEFUL.
+# stateful = true                         # default: true
+
+# Additional allowed hosts for DNS rebinding protection.
+# Override with LAB_MCP_ALLOWED_HOSTS env var (comma-separated).
+# allowed_hosts = []                      # default: []
+
 # ── HTTP API ─────────────────────────────────────────────────────────────────
 
 [api]
@@ -62,8 +74,58 @@
 # Example:
 # cors_origins = [
 #   "https://lab.example.com",
-#   "http://192.168.1.100:3000",
+#   "http://192.168.1.100:3000",        # standalone Next dev server (development only)
 # ]
+
+# ── Web UI ───────────────────────────────────────────────────────────────────
+
+[web]
+# Path to the exported Labby assets directory served by `lab serve --transport http`.
+# Override with LAB_WEB_ASSETS_DIR.
+# If unset, `lab serve` auto-detects the repo-local fallback at apps/gateway-admin/out.
+# assets_dir = "/srv/labby/out"
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+
+[auth]
+# HTTP auth mode: "bearer" or "oauth".
+# Override with LAB_AUTH_MODE.
+# mode = "bearer"                         # default: "bearer"
+
+# Public URL used for OAuth metadata, callbacks, and JWT issuer/audience.
+# Often kept in ~/.lab/.env alongside other URLs.
+# Override with LAB_PUBLIC_URL.
+# public_url = "https://lab.example.com"
+
+# Optional path override for the auth SQLite database.
+# Override with LAB_AUTH_SQLITE_PATH.
+# sqlite_path = "/var/lib/lab/auth.db"    # default: ~/.lab/auth.db
+
+# Optional path override for the JWT signing key.
+# Override with LAB_AUTH_KEY_PATH.
+# key_path = "/var/lib/lab/auth-jwt.pem"  # default: ~/.lab/auth-jwt.pem
+
+# Google credentials are usually kept in ~/.lab/.env:
+#   LAB_GOOGLE_CLIENT_ID
+#   LAB_GOOGLE_CLIENT_SECRET
+
+# Optional Google callback path override.
+# Override with LAB_GOOGLE_CALLBACK_PATH.
+# google_callback_path = "/auth/google/callback"
+
+# Optional redirect URI patterns for non-loopback MCP OAuth callbacks.
+# Override with LAB_AUTH_ALLOWED_REDIRECT_URIS.
+# allowed_client_redirect_uris = ["https://callback.tootie.tv/callback/*"]
+
+# Optional Google scopes override.
+# Override with LAB_GOOGLE_SCOPES.
+# google_scopes = ["openid", "email", "profile"]
+
+# Optional token/code lifetime overrides (seconds).
+# Override with LAB_AUTH_ACCESS_TOKEN_TTL_SECS / LAB_AUTH_REFRESH_TOKEN_TTL_SECS / LAB_AUTH_CODE_TTL_SECS.
+# access_token_ttl_secs = 3600
+# refresh_token_ttl_secs = 2592000
+# auth_code_ttl_secs = 300
 
 # ── Admin ────────────────────────────────────────────────────────────────────
 
@@ -86,7 +148,7 @@
 #
 # These MUST be set via environment variables (in ~/.lab/.env), not here:
 #
-#   LAB_MCP_HTTP_TOKEN — bearer token for HTTP transport (required for http)
+#   LAB_MCP_HTTP_TOKEN — bearer token for HTTP transport (required in bearer mode)
 #   *_URL              — service base URLs
 #   *_API_KEY          — service API keys
 #   *_TOKEN            — service auth tokens

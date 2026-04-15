@@ -64,12 +64,21 @@ Value precedence at point of use (highest wins):
 | `transport` | `LAB_MCP_TRANSPORT` | `"stdio"` | MCP transport: `"stdio"` or `"http"` |
 | `host` | `LAB_MCP_HTTP_HOST` | `"127.0.0.1"` | HTTP bind address |
 | `port` | `LAB_MCP_HTTP_PORT` | `8765` | HTTP bind port |
+| `session_ttl_secs` | `LAB_MCP_SESSION_TTL_SECS` | `300` | HTTP MCP session keep-alive TTL (seconds) |
+| `stateful` | `LAB_MCP_STATEFUL` | `true` | Whether HTTP MCP uses stateful sessions |
+| `allowed_hosts` | `LAB_MCP_ALLOWED_HOSTS` | `[]` | Additional allowed hosts for DNS rebinding protection |
 
 ### `[api]`
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
 | `cors_origins` | `LAB_CORS_ORIGINS` | `[]` | Additional CORS origins (loopback always included) |
+
+### `[web]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `lab serve --transport http` |
 
 ### `[admin]`
 
@@ -173,11 +182,13 @@ Full details in [OAUTH.md](./OAUTH.md).
 | `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, JWT issuer/audience, callback construction, and allowed-host derivation. |
 | `LAB_AUTH_SQLITE_PATH` | no | Override path for the auth SQLite database. Defaults to `~/.lab/auth.db`. |
 | `LAB_AUTH_KEY_PATH` | no | Override path for the persisted JWT signing key. Defaults to `~/.lab/auth-jwt.pem`. |
-| `LAB_AUTH_BOOTSTRAP_SECRET` | oauth mode | Bootstrap bearer secret required for `/register`. |
 | `LAB_GOOGLE_CLIENT_ID` | oauth mode | Google OAuth client ID. |
 | `LAB_GOOGLE_CLIENT_SECRET` | oauth mode | Google OAuth client secret. |
 | `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
 | `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
+| `LAB_AUTH_ACCESS_TOKEN_TTL_SECS` | no | Override lab-issued JWT access token lifetime. Defaults to `3600`. |
+| `LAB_AUTH_REFRESH_TOKEN_TTL_SECS` | no | Override refresh token lifetime. Defaults to `2592000` (30 days). |
+| `LAB_AUTH_CODE_TTL_SECS` | no | Override authorization code lifetime. Defaults to `300`. |
 
 ### config.toml
 
@@ -185,14 +196,27 @@ Full details in [OAUTH.md](./OAUTH.md).
 [auth]
 mode = "oauth"
 public_url = "https://lab.example.com"
-bootstrap_secret = "set-via-env-in-real-deployments"
 google_client_id = "google-client-id"
 google_client_secret = "google-client-secret"
 google_callback_path = "/auth/google/callback"
 google_scopes = ["openid", "email", "profile"]
+access_token_ttl_secs = 3600
+refresh_token_ttl_secs = 2592000
+auth_code_ttl_secs = 300
 ```
 
 Environment variables override `[auth]` values field-by-field.
+
+## Web UI Hosting
+
+When `lab serve --transport http` can find exported Labby assets, it serves the web UI from the
+same origin as the API and MCP server. Asset directory resolution is:
+
+1. `LAB_WEB_ASSETS_DIR`
+2. `[web].assets_dir` in `config.toml`
+3. repo-local fallback: `apps/gateway-admin/out`
+
+The web shell is public; the UI then talks to same-origin `/v1/*` and `/mcp`.
 
 ## Upstream MCP Servers
 
@@ -235,6 +259,7 @@ proxy_resources = false
 | `LAB_MCP_STATEFUL` | `true` | Whether to use stateful MCP sessions. |
 | `LAB_MCP_ALLOWED_HOSTS` | — | Comma-separated hostnames for DNS rebinding protection. |
 | `LAB_CORS_ORIGINS` | — | Comma-separated CORS origin allowlist. |
+| `LAB_WEB_ASSETS_DIR` | — | Override path to exported Labby assets for `lab serve`. |
 
 Full details in [TRANSPORT.md](./TRANSPORT.md).
 

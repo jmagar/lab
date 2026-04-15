@@ -22,6 +22,9 @@ pub mod health;
 /// HTTP auth helpers for bearer-or-OAuth mode (metadata, WWW-Authenticate).
 pub mod oauth;
 
+/// Static Labby web asset serving helpers.
+pub mod web;
+
 /// Per-service HTTP route handlers (one module per service).
 pub mod services;
 

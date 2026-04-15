@@ -7,8 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'MCP Gateway Admin',
-  description: 'Admin console for managing MCP gateway connections',
+  title: 'Labby',
+  description: 'Admin console for managing MCP server connections',
   icons: {
     icon: [
       {

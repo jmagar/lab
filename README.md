@@ -136,9 +136,19 @@ lab help --json
 ```bash
 lab serve
 LAB_MCP_HTTP_TOKEN=... lab serve --transport http
+LAB_AUTH_MODE=oauth LAB_PUBLIC_URL=https://lab.example.com LAB_GOOGLE_CLIENT_ID=... LAB_GOOGLE_CLIENT_SECRET=... lab serve --transport http
 lab serve --transport http --host 127.0.0.1 --port 8765
 lab serve --services radarr,sonarr,plex
 ```
+
+When the exported Labby bundle exists at `apps/gateway-admin/out`, `lab serve --transport http`
+also serves the web UI from the same origin. In that mode:
+
+- Labby UI is available at `http://127.0.0.1:8765/`
+- product API stays at `http://127.0.0.1:8765/v1/...`
+- MCP over HTTP stays at `http://127.0.0.1:8765/mcp`
+
+The separate Next dev server on `3000` is now a frontend development workflow only.
 
 ### 5. Use the operator commands
 
@@ -182,7 +192,7 @@ Global flag: `--json` — emit JSON instead of human-readable tables.
 
 Config precedence: CLI args > env vars (`LAB_MCP_TRANSPORT`, `LAB_MCP_HTTP_HOST`, `LAB_MCP_HTTP_PORT`) > `config.toml` (first found from search order) > defaults.
 
-HTTP transport requires `LAB_MCP_HTTP_TOKEN` to be set.
+HTTP transport requires either `LAB_MCP_HTTP_TOKEN` in bearer mode or the OAuth settings (`LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, and Google client credentials) in OAuth mode.
 
 ### `lab extract`
 
@@ -229,7 +239,9 @@ Destructive CLI commands require `-y`/`--yes` to run non-interactively. `--no-co
 
 ### One tool per service
 
-`lab serve` starts the MCP server. Every service is exposed as **one MCP tool** accepting a shared input shape:
+`lab serve` starts the MCP server. When HTTP transport is enabled, it can also host the Labby
+web UI from the same port as the API and MCP endpoints. Every service is exposed as **one MCP tool**
+accepting a shared input shape:
 
 ```json
 {
@@ -320,11 +332,14 @@ Every MCP tool failure returns a JSON envelope with a stable `kind` tag:
 ## HTTP API
 
 When `lab serve --transport http` is running, an axum HTTP API is mounted alongside the MCP server.
+If exported Labby assets are available, the same server also hosts the web UI at `/`.
 
 ### Global endpoints (no auth required)
 
 | Method | Path | Description |
 | --- | --- | --- |
+| `GET` | `/` | Labby web UI shell (when exported assets are available) |
+| `GET` | `/gateways/`, `/gateway/`, `/docs/`, etc. | Labby SPA routes (when exported assets are available) |
 | `GET` | `/health` | Liveness probe |
 | `GET` | `/ready` | Readiness probe |
 

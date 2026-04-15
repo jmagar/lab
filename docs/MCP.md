@@ -40,7 +40,7 @@ When `lab serve --transport http` is active, `lab` exposes two auth modes:
 - `LAB_AUTH_MODE=bearer`
   `LAB_MCP_HTTP_TOKEN` remains the only credential. This preserves existing HTTP deployments.
 - `LAB_AUTH_MODE=oauth`
-  `lab` runs its own authorization server, brokers Google sign-in server-side, and issues `lab` access tokens plus non-rotating refresh tokens to clients.
+  `lab` runs its own authorization server, brokers Google sign-in server-side, and issues `lab` access tokens plus refresh tokens only when upstream Google auth granted offline refresh capability.
 
 OAuth mode keeps Google access and refresh tokens inside the server. MCP clients only receive `lab` tokens.
 
@@ -56,7 +56,6 @@ OAuth mode adds these unauthenticated discovery and auth endpoints alongside `/m
 
 Dynamic client registration is intentionally restricted in this first launch:
 
-- registration requires `Authorization: Bearer <LAB_AUTH_BOOTSTRAP_SECRET>`
 - redirect URIs must use loopback hosts only (`127.0.0.1`, `localhost`, `::1`)
 - `/revoke` is not implemented in this batch
 - refresh-token rotation is not implemented in this batch

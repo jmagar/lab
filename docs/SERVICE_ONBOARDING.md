@@ -789,7 +789,7 @@ Start the lab API server (`lab serve --transport http`) and hit each service end
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>
-curl -s -X POST http://127.0.0.1:8400/v1/<service> \
+curl -s -X POST http://127.0.0.1:8765/v1/<service> \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"<action>","params":{}}'
@@ -845,7 +845,7 @@ Start the lab API server (`lab serve --transport http`) and hit each service end
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>
-curl -s -X POST http://127.0.0.1:8400/v1/<service> \
+curl -s -X POST http://127.0.0.1:8765/v1/<service> \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"<action>","params":{}}'

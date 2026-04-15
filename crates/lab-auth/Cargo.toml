@@ -27,6 +27,7 @@ subtle                 = "2"
 thiserror.workspace    = true
 tokio.workspace        = true
 tower.workspace        = true
+tracing.workspace      = true
 url.workspace          = true
 
 [dev-dependencies]

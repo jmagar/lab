@@ -19,6 +19,7 @@ import { FieldGroup, Field, FieldLabel, FieldDescription } from '@/components/ui
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput, TransportType } from '@/lib/types/gateway'
 import { useGatewayMutations } from '@/lib/hooks/use-gateways'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/utils'
 
 interface GatewayFormDialogProps {
   open: boolean
@@ -133,13 +134,15 @@ export function GatewayFormDialog({
       }
       
       const result = await testGateway(gateway.id)
-      if (result.success) {
+      if (result.severity === 'warning') {
+        toast.warning(result.detail || result.message)
+      } else if (result.success) {
         toast.success(`Connection successful: ${result.latency_ms}ms latency`)
       } else {
         toast.error(`Connection failed: ${result.error || result.message}`)
       }
-    } catch {
-      toast.error('Failed to test connection')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to test connection'))
     } finally {
       setIsTesting(false)
     }

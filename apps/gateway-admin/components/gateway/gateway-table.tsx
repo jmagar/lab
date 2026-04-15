@@ -32,6 +32,7 @@ import { TransportBadge } from './transport-badge'
 import { WarningsPill } from './warnings-pill'
 import { MetricsStrip } from './metrics-strip'
 import type { Gateway } from '@/lib/types/gateway'
+import { gatewayDetailHref } from '@/lib/api/gateway-config'
 
 interface GatewayTableProps {
   gateways: Gateway[]
@@ -82,12 +83,22 @@ export function GatewayTable({
         {gateways.map((gateway) => (
           <TableRow key={gateway.id} className="group">
             <TableCell>
-              <Link 
-                href={`/gateways/${gateway.id}`}
-                className="font-medium hover:underline underline-offset-4"
-              >
-                {gateway.name}
-              </Link>
+              <div className="space-y-1">
+                <Link 
+                  href={gatewayDetailHref(gateway.id)}
+                  className="font-medium hover:underline underline-offset-4"
+                >
+                  {gateway.name}
+                </Link>
+                <p className="truncate text-xs text-muted-foreground">
+                  {gateway.transport === 'http'
+                    ? gateway.config.url
+                    : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
+                </p>
+                {gateway.status.last_error && (
+                  <p className="line-clamp-2 text-xs text-warning">{gateway.status.last_error}</p>
+                )}
+              </div>
             </TableCell>
             <TableCell>
               <TransportBadge transport={gateway.transport} />
@@ -113,7 +124,7 @@ export function GatewayTable({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="size-8 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
                   onClick={() => handleAction(gateway, 'test', onTest)}
                   disabled={isLoading(gateway.id, 'test')}
                 >
@@ -123,7 +134,7 @@ export function GatewayTable({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="size-8 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
                   onClick={() => handleAction(gateway, 'reload', onReload)}
                   disabled={isLoading(gateway.id, 'reload')}
                 >
@@ -139,7 +150,7 @@ export function GatewayTable({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem asChild>
-                      <Link href={`/gateways/${gateway.id}`}>
+                      <Link href={gatewayDetailHref(gateway.id)}>
                         <Eye className="size-4 mr-2" />
                         View details
                       </Link>

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tracing::info;
+
 use crate::config::{AuthConfig, AuthMode};
 use crate::error::AuthError;
 use crate::google::GoogleProvider;
@@ -46,6 +48,15 @@ impl AuthState {
             redirect_uri,
         );
         google.scopes = config.google.scopes.clone();
+        info!(
+            auth_mode = "oauth",
+            public_url = %public_url,
+            google_redirect_uri = %google.redirect_uri,
+            sqlite_path = %config.sqlite_path.display(),
+            key_path = %config.key_path.display(),
+            google_scopes = ?config.google.scopes,
+            "lab-auth state initialized"
+        );
 
         Ok(Self {
             config: Arc::new(config),

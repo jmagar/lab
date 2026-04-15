@@ -400,6 +400,7 @@ async fn runtime_view(
         tool_count,
         resource_count,
         prompt_count,
+        last_error: pool.upstream_last_error(name).await,
     }
 }
 
@@ -467,5 +468,36 @@ mod tests {
             gateway.config.bearer_token_env.as_deref(),
             Some("FIXTURE_HTTP_TOKEN")
         );
+    }
+
+    #[tokio::test]
+    async fn runtime_view_includes_last_upstream_error() {
+        let pool = UpstreamPool::new();
+        let upstream_name: Arc<str> = Arc::from("broken-upstream");
+        let entry = crate::dispatch::upstream::types::UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: std::collections::HashMap::new(),
+            exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            tool_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            resource_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            tool_unhealthy_since: Some(std::time::Instant::now()),
+            prompt_unhealthy_since: Some(std::time::Instant::now()),
+            resource_unhealthy_since: Some(std::time::Instant::now()),
+            tool_last_error: Some("stdio handshake failed".to_string()),
+            prompt_last_error: None,
+            resource_last_error: None,
+        };
+
+        pool.insert_entry_for_tests("broken-upstream", entry).await;
+
+        let runtime = runtime_view(Some(&pool), "broken-upstream", None).await;
+        assert_eq!(runtime.last_error.as_deref(), Some("stdio handshake failed"));
     }
 }

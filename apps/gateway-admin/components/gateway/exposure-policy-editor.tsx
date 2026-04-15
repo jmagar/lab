@@ -342,7 +342,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                       </Badge>
                     ))}
                     {preview.matched_tools.length > 10 && (
-                      <Badge variant="outline" className="text-xs bg-[#651fff]/10 text-[#651fff] border-[#651fff]/50">
+                      <Badge variant="outline" className="border-info/40 bg-info/10 text-xs text-info">
                         +{preview.matched_tools.length - 10} more
                       </Badge>
                     )}

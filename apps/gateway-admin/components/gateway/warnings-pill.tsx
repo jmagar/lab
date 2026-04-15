@@ -16,22 +16,27 @@ interface WarningsPillProps {
 export function WarningsPill({ warnings, className }: WarningsPillProps) {
   if (warnings.length === 0) return null
 
+  const leadWarning = warnings[0]
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <span
             className={cn(
-              'inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400',
+              'inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning',
               className
             )}
           >
             <AlertTriangle className="size-3" />
-            {warnings.length}
+            {warnings.length} issue{warnings.length === 1 ? '' : 's'}
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
           <div className="space-y-1">
+            {leadWarning && (
+              <p className="text-xs font-medium text-foreground">{leadWarning.code}</p>
+            )}
             {warnings.slice(0, 3).map((warning, index) => (
               <p key={index} className="text-xs">
                 {warning.message}

@@ -3,6 +3,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
@@ -130,6 +131,10 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             let mut state = AppState::from_registry(registry);
             state = state.with_gateway_manager(Arc::clone(&gateway_manager));
             state = state.with_auth_config(auth_config);
+            if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
+                tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
+                state = state.with_web_assets_dir(web_assets_dir);
+            }
 
             run_http(
                 &host,
@@ -137,12 +142,28 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 bearer_token,
                 state,
                 oauth_state,
+                &config.mcp,
                 &config.api.cors_origins,
                 notifier,
             )
             .await
         }
     }
+}
+
+fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf> {
+    let from_env = std::env::var("LAB_WEB_ASSETS_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from);
+    let from_config = web.assets_dir.clone();
+    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/gateway-admin/out");
+
+    [from_env, from_config, Some(fallback)]
+        .into_iter()
+        .flatten()
+        .find(|path| path.join("index.html").is_file())
 }
 
 fn resolve_transport(
@@ -231,12 +252,13 @@ async fn run_http(
     bearer_token: Option<String>,
     state: AppState,
     auth_state: Option<lab_auth::state::AuthState>,
+    mcp_config: &crate::config::McpPreferences,
     config_cors_origins: &[String],
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     // Build the MCP streamable HTTP service in the serve path (not in the
     // router module) to avoid an api->mcp dependency.
-    let mcp_service = build_mcp_service(&state, notifier);
+    let mcp_service = build_mcp_service(&state, mcp_config, notifier)?;
     let mcp_router = axum::Router::new().nest_service("/mcp", mcp_service);
     let router = crate::api::router::build_router(
         state,
@@ -280,15 +302,16 @@ async fn run_stdio(
 /// a new `LabMcpServer` per session. Construction cost: two Arc increments.
 fn build_mcp_service(
     state: &AppState,
+    mcp_config: &crate::config::McpPreferences,
     notifier: PeerNotifier,
-) -> StreamableHttpService<LabMcpServer, LocalSessionManager> {
+) -> Result<StreamableHttpService<LabMcpServer, LocalSessionManager>> {
     let registry = Arc::clone(&state.registry);
     let gateway_manager = state.gateway_manager.clone();
 
-    let session_ttl_secs: u64 = std::env::var("LAB_MCP_SESSION_TTL_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300);
+    let session_ttl_secs = resolve_session_ttl_secs(
+        std::env::var("LAB_MCP_SESSION_TTL_SECS").ok(),
+        mcp_config.session_ttl_secs,
+    )?;
 
     let mut session_config = SessionConfig::default();
     session_config.keep_alive = Some(Duration::from_secs(session_ttl_secs));
@@ -297,13 +320,11 @@ fn build_mcp_service(
     session_manager.session_config = session_config;
     let session_manager = Arc::new(session_manager);
 
-    let stateful = std::env::var("LAB_MCP_STATEFUL")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(true);
+    let stateful = resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
 
     let config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(allowed_hosts(
+            mcp_config.allowed_hosts.as_deref().unwrap_or(&[]),
             state
                 .auth_config
                 .as_ref()
@@ -315,7 +336,7 @@ fn build_mcp_service(
     // vec) so that gateway reload notifications reach every connected session.
     let shared_peers = Arc::clone(&notifier.peers);
 
-    StreamableHttpService::new(
+    Ok(StreamableHttpService::new(
         move || {
             let reg = Arc::clone(&registry);
             let manager = gateway_manager.clone();
@@ -328,19 +349,46 @@ fn build_mcp_service(
         },
         session_manager,
         config,
-    )
+    ))
 }
 
 /// Build the allowed hosts list for DNS rebinding protection.
 ///
 /// Reads `LAB_MCP_ALLOWED_HOSTS` (comma-separated) and the resolved resource
 /// URL. Always includes loopback defaults. Rejects wildcard.
-fn allowed_hosts(resource_url: Option<&str>) -> Vec<String> {
+fn resolve_session_ttl_secs(env: Option<String>, config: Option<u64>) -> Result<u64> {
+    if let Some(value) = env {
+        return value
+            .parse::<u64>()
+            .with_context(|| format!("invalid LAB_MCP_SESSION_TTL_SECS value `{value}`"));
+    }
+    Ok(config.unwrap_or(300))
+}
+
+fn resolve_stateful_mode(env: Option<String>, config: Option<bool>) -> Result<bool> {
+    if let Some(value) = env {
+        return value
+            .parse::<bool>()
+            .with_context(|| format!("invalid LAB_MCP_STATEFUL value `{value}`"));
+    }
+    Ok(config.unwrap_or(true))
+}
+
+fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) -> Vec<String> {
     let mut hosts = vec![
         "localhost".to_string(),
         "127.0.0.1".to_string(),
         "::1".to_string(),
     ];
+    for h in config_allowed_hosts.iter().map(String::as_str) {
+        let h = h.trim();
+        if h.is_empty() || h == "*" {
+            continue;
+        }
+        if !hosts.contains(&h.to_string()) {
+            hosts.push(h.to_string());
+        }
+    }
     if let Ok(extra) = std::env::var("LAB_MCP_ALLOWED_HOSTS") {
         for h in extra.split(',').map(str::trim).filter(|s| !s.is_empty()) {
             // Reject wildcard — would disable Host header validation entirely
@@ -372,6 +420,7 @@ fn allowed_hosts(resource_url: Option<&str>) -> Vec<String> {
 mod tests {
     use super::{
         Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port, resolve_transport,
+        resolve_session_ttl_secs, resolve_stateful_mode,
     };
     use crate::config::{LabConfig, McpPreferences};
 
@@ -412,10 +461,15 @@ mod tests {
                 transport: Some("http".into()),
                 host: Some("0.0.0.0".into()),
                 port: Some(9000),
+                session_ttl_secs: Some(120),
+                stateful: Some(false),
+                allowed_hosts: Some(vec!["lab.internal".into()]),
             },
             ..LabConfig::default()
         };
         assert_eq!(cfg.mcp.host.as_deref(), Some("0.0.0.0"));
+        assert_eq!(cfg.mcp.session_ttl_secs, Some(120));
+        assert_eq!(cfg.mcp.stateful, Some(false));
     }
 
     #[test]
@@ -438,7 +492,27 @@ mod tests {
 
     #[test]
     fn allowed_hosts_include_resource_url_host() {
-        let hosts = allowed_hosts(Some("https://lab.example.com/mcp"));
+        let hosts = allowed_hosts(&[], Some("https://lab.example.com/mcp"));
         assert!(hosts.contains(&"lab.example.com".to_string()));
+    }
+
+    #[test]
+    fn session_ttl_resolution_prefers_env_then_config_then_default() {
+        assert_eq!(resolve_session_ttl_secs(Some("120".into()), Some(90)).unwrap(), 120);
+        assert_eq!(resolve_session_ttl_secs(None, Some(90)).unwrap(), 90);
+        assert_eq!(resolve_session_ttl_secs(None, None).unwrap(), 300);
+    }
+
+    #[test]
+    fn stateful_resolution_prefers_env_then_config_then_default() {
+        assert!(!resolve_stateful_mode(Some("false".into()), Some(true)).unwrap());
+        assert!(!resolve_stateful_mode(None, Some(false)).unwrap());
+        assert!(resolve_stateful_mode(None, None).unwrap());
+    }
+
+    #[test]
+    fn allowed_hosts_include_configured_hosts() {
+        let hosts = allowed_hosts(&["lab.internal".to_string()], None);
+        assert!(hosts.contains(&"lab.internal".to_string()));
     }
 }
