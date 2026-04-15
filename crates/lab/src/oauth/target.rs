@@ -1,6 +1,6 @@
 //! Target resolution and forwarding helpers for the local OAuth relay.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use url::Url;
@@ -110,9 +110,12 @@ pub fn filter_hop_by_hop_response_headers(headers: &HeaderMap) -> HeaderMap {
 }
 
 fn filter_headers(headers: &HeaderMap) -> HeaderMap {
+    let connection_header_names = connection_header_names(headers);
     headers
         .iter()
-        .filter(|(name, _)| !is_hop_by_hop_header(name))
+        .filter(|(name, _)| {
+            !is_hop_by_hop_header(name) && !connection_header_names.contains(name.as_str())
+        })
         .fold(HeaderMap::new(), |mut filtered, (name, value)| {
             filtered.append(name.clone(), copy_header_value(value));
             filtered
@@ -120,7 +123,19 @@ fn filter_headers(headers: &HeaderMap) -> HeaderMap {
 }
 
 fn copy_header_value(value: &HeaderValue) -> HeaderValue {
-    HeaderValue::from_bytes(value.as_bytes()).expect("header value clone should stay valid")
+    value.clone()
+}
+
+fn connection_header_names(headers: &HeaderMap) -> BTreeSet<String> {
+    headers
+        .get_all("connection")
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .collect()
 }
 
 fn is_hop_by_hop_header(name: &HeaderName) -> bool {
@@ -246,6 +261,20 @@ mod tests {
 
         assert!(!filtered.contains_key(CONNECTION));
         assert!(!filtered.contains_key(CONTENT_LENGTH));
+        assert!(filtered.contains_key(CONTENT_TYPE));
+    }
+
+    #[test]
+    fn headers_nominated_by_connection_are_filtered() {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONNECTION, HeaderValue::from_static("x-lab-session, keep-alive"));
+        headers.insert("x-lab-session", HeaderValue::from_static("secret"));
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+
+        let filtered = filter_hop_by_hop_request_headers(&headers);
+
+        assert!(!filtered.contains_key(CONNECTION));
+        assert!(!filtered.contains_key("x-lab-session"));
         assert!(filtered.contains_key(CONTENT_TYPE));
     }
 }

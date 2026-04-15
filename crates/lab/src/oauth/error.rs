@@ -18,11 +18,6 @@ pub enum OauthRelayError {
         bind_addr: String,
         source: std::io::Error,
     },
-    #[error("failed to reach oauth relay target `{target}`: {source}")]
-    Upstream {
-        target: String,
-        source: reqwest::Error,
-    },
     #[error("oauth relay target `{target}` timed out after {timeout_ms}ms")]
     UpstreamTimeout { target: String, timeout_ms: u64 },
 }

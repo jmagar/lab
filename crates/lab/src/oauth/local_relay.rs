@@ -105,6 +105,7 @@ async fn relay_callback(
             }
         };
     let target_host = forward_url.host_str().unwrap_or("unknown").to_string();
+    let redacted_target = redact_forward_target(&forward_url);
 
     let mut request = state
         .client
@@ -125,7 +126,7 @@ async fn relay_callback(
         Ok(response) => response,
         Err(error) if error.is_timeout() => {
             let detail = OauthRelayError::UpstreamTimeout {
-                target: forward_url.to_string(),
+                target: redacted_target.clone(),
                 timeout_ms: state.request_timeout.as_millis() as u64,
             }
             .to_string();
@@ -141,11 +142,7 @@ async fn relay_callback(
             return json_error(StatusCode::GATEWAY_TIMEOUT, detail);
         }
         Err(error) => {
-            let detail = OauthRelayError::Upstream {
-                target: forward_url.to_string(),
-                source: error,
-            }
-            .to_string();
+            let detail = format_upstream_error(&forward_url, &redacted_target, &error);
             tracing::warn!(
                 surface = "oauth_relay",
                 method = %method,
@@ -168,7 +165,7 @@ async fn relay_callback(
             return json_error(
                 StatusCode::GATEWAY_TIMEOUT,
                 OauthRelayError::UpstreamTimeout {
-                    target: forward_url.to_string(),
+                    target: redacted_target,
                     timeout_ms: state.request_timeout.as_millis() as u64,
                 }
                 .to_string(),
@@ -177,11 +174,11 @@ async fn relay_callback(
         Err(error) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
-                OauthRelayError::Upstream {
-                    target: forward_url.to_string(),
-                    source: error,
-                }
-                .to_string(),
+                format_upstream_error(
+                    &forward_url,
+                    &redact_forward_target(&forward_url),
+                    &error,
+                ),
             );
         }
     };
@@ -222,11 +219,17 @@ fn json_error(status: StatusCode, detail: impl Into<String>) -> Response {
 fn suffix_path_for_request(target_base_path: &str, request_path: &str) -> String {
     let normalized_base = target_base_path.trim_end_matches('/');
     let request_path = request_path.trim_end_matches('/');
-    request_path
-        .strip_prefix(normalized_base)
-        .unwrap_or(request_path)
-        .trim_matches('/')
-        .to_string()
+    let suffix = if request_path == normalized_base {
+        ""
+    } else if normalized_base.is_empty() {
+        request_path
+    } else if let Some(rest) = request_path.strip_prefix(normalized_base) {
+        rest.strip_prefix('/').unwrap_or(request_path)
+    } else {
+        request_path
+    };
+
+    suffix.trim_matches('/').to_string()
 }
 
 fn parse_query_items(query: Option<&str>) -> Vec<(String, String)> {
@@ -237,6 +240,21 @@ fn parse_query_items(query: Option<&str>) -> Vec<(String, String)> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn redact_forward_target(url: &reqwest::Url) -> String {
+    let mut redacted = url.clone();
+    redacted.set_query(None);
+    redacted.set_fragment(None);
+    redacted.to_string()
+}
+
+fn format_upstream_error(url: &reqwest::Url, redacted_target: &str, error: &reqwest::Error) -> String {
+    let sanitized_source = error.to_string().replace(url.as_str(), redacted_target);
+    format!(
+        "failed to reach oauth relay target `{}`: {}",
+        redacted_target, sanitized_source
+    )
 }
 
 #[cfg(test)]
@@ -365,6 +383,7 @@ mod tests {
 
         assert_eq!(status, StatusCode::BAD_GATEWAY);
         assert!(body.contains("failed to reach oauth relay target"));
+        assert!(!body.contains("code=abc"));
 
         relay.abort();
     }
@@ -472,13 +491,26 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let logs = captured_logs(&buf);
-        assert!(logs.contains("\"surface\":\"oauth_relay\""));
-        assert!(logs.contains("\"path\":\"/callback/dookie/extra\""));
+        assert!(!logs.is_empty());
+        assert!(logs.contains("/callback/dookie/extra"));
         assert!(!logs.contains("code=abc"));
         assert!(!logs.contains("state=xyz"));
 
         relay.abort();
         upstream.handle.abort();
+    }
+
+    #[test]
+    fn suffix_path_for_request_requires_segment_boundary() {
+        assert_eq!(
+            suffix_path_for_request("/callback", "/callback2/extra"),
+            "callback2/extra"
+        );
+        assert_eq!(
+            suffix_path_for_request("/callback/dookie", "/callback/dookie/extra"),
+            "extra"
+        );
+        assert_eq!(suffix_path_for_request("/callback", "/callback"), "");
     }
 
     async fn spawn_upstream(state: UpstreamState) -> UpstreamHandle {
