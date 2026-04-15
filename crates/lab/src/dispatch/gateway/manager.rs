@@ -15,6 +15,10 @@ use super::params::GatewayUpdatePatch;
 use super::types::{
     CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView, GatewayView,
 };
+use super::view_models::{
+    ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
+};
+use super::virtual_servers::{VirtualServerRecord, VirtualServerSource};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCatalogSnapshot {
@@ -83,20 +87,21 @@ impl GatewayManager {
         self.runtime.current_pool().await
     }
 
-    pub async fn list(&self) -> Result<Vec<GatewayView>, ToolError> {
+    pub async fn list(&self) -> Result<Vec<ServerView>, ToolError> {
         let cfg = self.config.read().await.clone();
         let pool = self.runtime.current_pool().await;
         let prompt_owners = match pool.as_deref() {
             Some(p) => Some(p.prompt_ownership_map(&[]).await),
             None => None,
         };
-        let mut views = Vec::with_capacity(cfg.upstream.len());
+        let mut views = Vec::with_capacity(cfg.upstream.len() + cfg.virtual_servers.len());
         for upstream in &cfg.upstream {
-            views.push(GatewayView {
-                config: config_view(upstream),
-                runtime: runtime_view(pool.as_deref(), &upstream.name, prompt_owners.as_ref())
-                    .await,
-            });
+            views.push(
+                server_view_from_upstream(pool.as_deref(), upstream, prompt_owners.as_ref()).await,
+            );
+        }
+        for virtual_server in &cfg.virtual_servers {
+            views.push(server_view_from_virtual_server(virtual_server));
         }
         Ok(views)
     }
@@ -335,6 +340,88 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
     }
 }
 
+async fn server_view_from_upstream(
+    pool: Option<&UpstreamPool>,
+    upstream: &UpstreamConfig,
+    prompt_owners: Option<&std::collections::HashMap<String, String>>,
+) -> ServerView {
+    let runtime = runtime_view(pool, &upstream.name, prompt_owners).await;
+    let connected = runtime.tool_count + runtime.resource_count + runtime.prompt_count > 0;
+
+    ServerView {
+        id: upstream.name.clone(),
+        name: upstream.name.clone(),
+        source: "custom_gateway".to_string(),
+        configured: true,
+        enabled: true,
+        connected,
+        surfaces: SurfaceStatesView {
+            mcp: SurfaceStateView {
+                enabled: true,
+                connected,
+            },
+            ..SurfaceStatesView::default()
+        },
+        warnings: runtime
+            .last_error
+            .as_ref()
+            .map(|message| {
+                vec![super::view_models::ServerWarningView {
+                    code: "connection_error".to_string(),
+                    message: message.clone(),
+                }]
+            })
+            .unwrap_or_default(),
+        config_summary: ServerConfigSummaryView {
+            transport: Some(if upstream.command.is_some() {
+                "stdio".to_string()
+            } else {
+                "http".to_string()
+            }),
+            target: upstream.url.clone().or_else(|| upstream.command.clone()),
+        },
+    }
+}
+
+fn server_view_from_virtual_server(config: &crate::config::VirtualServerConfig) -> ServerView {
+    let record = VirtualServerRecord::from(config);
+    let service = match &record.source {
+        VirtualServerSource::LabService { service } => service.clone(),
+    };
+
+    ServerView {
+        id: record.id.clone(),
+        name: service.clone(),
+        source: "lab_service".to_string(),
+        configured: true,
+        enabled: record.enabled,
+        connected: false,
+        surfaces: SurfaceStatesView {
+            cli: SurfaceStateView {
+                enabled: record.surfaces.cli,
+                connected: false,
+            },
+            api: SurfaceStateView {
+                enabled: record.surfaces.api,
+                connected: false,
+            },
+            mcp: SurfaceStateView {
+                enabled: record.surfaces.mcp,
+                connected: false,
+            },
+            webui: SurfaceStateView {
+                enabled: record.surfaces.webui,
+                connected: false,
+            },
+        },
+        warnings: Vec::new(),
+        config_summary: ServerConfigSummaryView {
+            transport: Some("lab_service".to_string()),
+            target: Some(service),
+        },
+    }
+}
+
 async fn snapshot_from_pool(pool: Option<Arc<UpstreamPool>>) -> GatewayCatalogSnapshot {
     let Some(pool) = pool else {
         return GatewayCatalogSnapshot::default();
@@ -409,7 +496,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    use crate::config::UpstreamConfig;
+    use crate::config::{UpstreamConfig, VirtualServerConfig, VirtualServerSurfacesConfig};
 
     use super::*;
 
@@ -468,6 +555,68 @@ mod tests {
             gateway.config.bearer_token_env.as_deref(),
             Some("FIXTURE_HTTP_TOKEN")
         );
+    }
+
+    #[tokio::test]
+    async fn configured_service_appears_in_list_before_virtual_server_enablement() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: false,
+                    surfaces: VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        let servers = manager.list().await.expect("list");
+        let plex = servers
+            .iter()
+            .find(|server| server.id == "plex")
+            .expect("plex server");
+        assert!(plex.configured);
+        assert!(!plex.enabled);
+        assert_eq!(plex.source, "lab_service");
+    }
+
+    #[tokio::test]
+    async fn disabling_virtual_server_preserves_configured_service_listing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        let mut cfg = manager.config.read().await.clone();
+        cfg.virtual_servers[0].enabled = false;
+        manager.seed_config(cfg).await;
+
+        let servers = manager.list().await.expect("list");
+        let plex = servers
+            .iter()
+            .find(|server| server.id == "plex")
+            .expect("plex server");
+        assert!(plex.configured);
+        assert!(!plex.enabled);
+        assert_eq!(plex.config_summary.target.as_deref(), Some("plex"));
     }
 
     #[tokio::test]

@@ -5,6 +5,8 @@ mod dispatch;
 pub mod manager;
 mod params;
 pub(crate) mod types;
+mod view_models;
+mod virtual_servers;
 
 pub use catalog::ACTIONS;
 pub use client::install_gateway_manager;

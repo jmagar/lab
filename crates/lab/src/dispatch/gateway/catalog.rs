@@ -31,7 +31,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "gateway.list",
         description: "List configured gateways",
         destructive: false,
-        returns: "GatewayView[]",
+        returns: "ServerView[]",
         params: &[],
     },
     ActionSpec {

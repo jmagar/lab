@@ -55,6 +55,9 @@ pub struct LabConfig {
     /// Upstream MCP servers to proxy through the gateway.
     #[serde(default)]
     pub upstream: Vec<UpstreamConfig>,
+    /// Virtual MCP servers backed by canonically configured Lab services.
+    #[serde(default)]
+    pub virtual_servers: Vec<VirtualServerConfig>,
 }
 
 /// Configuration for a single upstream MCP server.
@@ -81,6 +84,39 @@ pub struct UpstreamConfig {
     /// Optional allowlist of tool names/patterns to expose from this upstream.
     #[serde(default)]
     pub expose_tools: Option<Vec<String>>,
+}
+
+/// Persisted state for a Lab-backed virtual server shown in the gateway.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualServerConfig {
+    pub id: String,
+    pub service: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub surfaces: VirtualServerSurfacesConfig,
+    #[serde(default)]
+    pub mcp_policy: Option<VirtualServerMcpPolicyConfig>,
+}
+
+/// Per-surface exposure flags for a virtual server.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualServerSurfacesConfig {
+    #[serde(default)]
+    pub cli: bool,
+    #[serde(default)]
+    pub api: bool,
+    #[serde(default)]
+    pub mcp: bool,
+    #[serde(default)]
+    pub webui: bool,
+}
+
+/// Action-level policy for Lab-backed single-tool MCP services.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualServerMcpPolicyConfig {
+    #[serde(default)]
+    pub allowed_actions: Vec<String>,
 }
 
 /// Table/json formatting defaults.
