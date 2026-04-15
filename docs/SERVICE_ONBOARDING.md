@@ -90,13 +90,13 @@ Surface code lives in:
 Registry and metadata wiring live in:
 
 - `crates/lab/src/cli.rs` — `pub mod <service>;` declaration and subcommand registration
-- `crates/lab/src/mcp/registry.rs` — runtime registration via `build_default_registry()`
+- `crates/lab/src/registry.rs` — runtime registration via `build_default_registry()`
 - `crates/lab/src/mcp/services.rs` — `pub mod <service>;` module declaration (distinct from `registry.rs`)
 - `crates/lab/src/api/services.rs` — `pub mod <service>;` module declaration
 - `crates/lab/src/api/router.rs` — feature-gated `.nest("/v1/<service>", services::<service>::routes(state.clone()))` block
 - `crates/lab/src/tui/metadata.rs`
 
-The catalog (`lab.help` meta-tool, `lab://catalog` resource, `lab help` CLI) is built automatically from `ToolRegistry` via `build_catalog()` — no separate catalog registration step is needed beyond `mcp/registry.rs`.
+The catalog (`lab.help` meta-tool, `lab://catalog` resource, `lab help` CLI) is built automatically from `ToolRegistry` via `build_catalog()` — no separate catalog registration step is needed beyond `registry.rs`.
 
 Feature gating and re-exports live in:
 
@@ -414,7 +414,7 @@ When migrating a stub to a full implementation:
 3. Create the new `dispatch/<service>.rs` entry-point with submodule declarations, re-exports, and unit tests
 4. Do **not** attempt to split from a single large file after the fact — build directory-first from the start
 
-The stub registration in `mcp/registry.rs` and `api/services.rs` may already exist. Check before adding duplicate entries.
+The stub registration in `registry.rs` and `api/services.rs` may already exist. Check before adding duplicate entries.
 
 ## Recommended Order
 
@@ -558,7 +558,7 @@ The MCP dispatcher is a thin shim. All action routing, param validation, client 
 
 The canonical error and envelope behavior lives in [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
 
-Register the service in `crates/lab/src/mcp/registry.rs`.
+Register the service in `crates/lab/src/registry.rs`.
 
 Important rules:
 
@@ -568,7 +568,7 @@ Important rules:
 - the MCP file must not contain business logic, param coercion, or its own action catalog — it projects from `dispatch/<service>/catalog.rs` only
 - MCP elicitation for destructive ops is **not yet implemented** — MCP currently dispatches destructive actions without a confirmation gate; the `ActionSpec.destructive` flag is the single source of truth for dangerous operations across all surfaces: the HTTP surface enforces it via `handle_action` in `api/services/helpers.rs`, and the CLI enforces it via `-y/--yes` gating; both must be honored consistently
 
-Additionally, add `pub mod <service>;` to `crates/lab/src/mcp/services.rs` — this module declaration is required alongside the `mcp/registry.rs` registration.
+Additionally, add `pub mod <service>;` to `crates/lab/src/mcp/services.rs` — this module declaration is required alongside the `registry.rs` registration.
 
 MCP verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
 
@@ -642,7 +642,7 @@ API verification is not complete unless request IDs and dispatch context are obs
 
 Four locations must all be touched — missing any one causes silent disappearance from a surface:
 
-1. **`crates/lab/src/mcp/registry.rs`** — runtime registration in `build_default_registry()`
+1. **`crates/lab/src/registry.rs`** — runtime registration in `build_default_registry()`
 2. **`crates/lab/src/mcp/services.rs`** — `pub mod <service>;` module declaration
 3. **`crates/lab/src/api/services.rs`** — `pub mod <service>;` module declaration
 4. **`crates/lab/src/api/router.rs`** — `mount_if_enabled!(v1, state, "<feat>", "<name>", <mod>)` call (see Step 8)
@@ -789,7 +789,7 @@ Start the lab API server (`lab serve --transport http`) and hit each service end
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>
-curl -s -X POST http://127.0.0.1:8400/v1/<service> \
+curl -s -X POST http://127.0.0.1:8765/v1/<service> \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"<action>","params":{}}'
@@ -845,7 +845,7 @@ Start the lab API server (`lab serve --transport http`) and hit each service end
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>
-curl -s -X POST http://127.0.0.1:8400/v1/<service> \
+curl -s -X POST http://127.0.0.1:8765/v1/<service> \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action":"<action>","params":{}}'

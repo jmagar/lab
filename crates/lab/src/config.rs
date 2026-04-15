@@ -15,14 +15,15 @@
 //! `UNRAID_NODE2_URL` as an additional instance labeled `node2`.
 
 use std::{
+    collections::BTreeMap,
     collections::HashMap,
     io::Write as _,
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
-use lab_auth::config as auth_config;
 use lab_apis::extract::types::ServiceCreds;
+use lab_auth::config as auth_config;
 use serde::{Deserialize, Serialize, Serializer};
 
 /// Fully-resolved `lab` configuration, assembled from env + TOML.
@@ -40,6 +41,12 @@ pub struct LabConfig {
     /// HTTP API preferences.
     #[serde(default)]
     pub api: ApiPreferences,
+    /// Web UI preferences.
+    #[serde(default)]
+    pub web: WebPreferences,
+    /// OAuth callback relay preferences.
+    #[serde(default)]
+    pub oauth: OauthPreferences,
     /// Admin tool settings.
     #[serde(default)]
     pub admin: AdminPreferences,
@@ -52,6 +59,9 @@ pub struct LabConfig {
     /// Upstream MCP servers to proxy through the gateway.
     #[serde(default)]
     pub upstream: Vec<UpstreamConfig>,
+    /// Virtual MCP servers backed by canonically configured Lab services.
+    #[serde(default)]
+    pub virtual_servers: Vec<VirtualServerConfig>,
 }
 
 /// Configuration for a single upstream MCP server.
@@ -80,6 +90,39 @@ pub struct UpstreamConfig {
     pub expose_tools: Option<Vec<String>>,
 }
 
+/// Persisted state for a Lab-backed virtual server shown in the gateway.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualServerConfig {
+    pub id: String,
+    pub service: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub surfaces: VirtualServerSurfacesConfig,
+    #[serde(default)]
+    pub mcp_policy: Option<VirtualServerMcpPolicyConfig>,
+}
+
+/// Per-surface exposure flags for a virtual server.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualServerSurfacesConfig {
+    #[serde(default)]
+    pub cli: bool,
+    #[serde(default)]
+    pub api: bool,
+    #[serde(default)]
+    pub mcp: bool,
+    #[serde(default)]
+    pub webui: bool,
+}
+
+/// Action-level policy for Lab-backed single-tool MCP services.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualServerMcpPolicyConfig {
+    #[serde(default)]
+    pub allowed_actions: Vec<String>,
+}
+
 /// Table/json formatting defaults.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OutputPreferences {
@@ -100,6 +143,15 @@ pub struct McpPreferences {
     /// Default port for the HTTP transport.
     #[serde(default)]
     pub port: Option<u16>,
+    /// Default session keep-alive TTL in seconds for HTTP MCP sessions.
+    #[serde(default)]
+    pub session_ttl_secs: Option<u64>,
+    /// Whether HTTP MCP should use stateful sessions by default.
+    #[serde(default)]
+    pub stateful: Option<bool>,
+    /// Additional allowed hosts for DNS rebinding protection.
+    #[serde(default)]
+    pub allowed_hosts: Option<Vec<String>>,
 }
 
 /// File-backed auth preferences merged with environment variables at startup.
@@ -120,6 +172,9 @@ pub struct AuthFileConfig {
     /// Bootstrap secret required for dynamic client registration.
     #[serde(default)]
     pub bootstrap_secret: Option<String>,
+    /// Additional redirect URI patterns allowed for dynamic client registration.
+    #[serde(default)]
+    pub allowed_client_redirect_uris: Option<Vec<String>>,
     /// Google OAuth client ID.
     #[serde(default)]
     pub google_client_id: Option<String>,
@@ -132,6 +187,15 @@ pub struct AuthFileConfig {
     /// Optional comma-separated scope list.
     #[serde(default)]
     pub google_scopes: Option<Vec<String>>,
+    /// Optional access-token lifetime override in seconds.
+    #[serde(default)]
+    pub access_token_ttl_secs: Option<u64>,
+    /// Optional refresh-token lifetime override in seconds.
+    #[serde(default)]
+    pub refresh_token_ttl_secs: Option<u64>,
+    /// Optional authorization-code lifetime override in seconds.
+    #[serde(default)]
+    pub auth_code_ttl_secs: Option<u64>,
 }
 
 /// Resolve auth configuration from config file + environment variables.
@@ -154,13 +218,23 @@ pub fn resolve_auth(config: Option<&AuthFileConfig>) -> Result<auth_config::Auth
         insert_if_some(
             &mut merged,
             "LAB_AUTH_KEY_PATH",
-            config.key_path.as_ref().map(|path| path.display().to_string()),
+            config
+                .key_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
         );
         insert_if_some(
             &mut merged,
             "LAB_AUTH_BOOTSTRAP_SECRET",
             config.bootstrap_secret.clone(),
         );
+        if let Some(patterns) = config.allowed_client_redirect_uris.as_ref() {
+            insert_if_some(
+                &mut merged,
+                "LAB_AUTH_ALLOWED_REDIRECT_URIS",
+                Some(patterns.join(",")),
+            );
+        }
         insert_if_some(
             &mut merged,
             "LAB_GOOGLE_CLIENT_ID",
@@ -179,6 +253,21 @@ pub fn resolve_auth(config: Option<&AuthFileConfig>) -> Result<auth_config::Auth
         if let Some(scopes) = config.google_scopes.as_ref() {
             insert_if_some(&mut merged, "LAB_GOOGLE_SCOPES", Some(scopes.join(",")));
         }
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_ACCESS_TOKEN_TTL_SECS",
+            config.access_token_ttl_secs.map(|value| value.to_string()),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_REFRESH_TOKEN_TTL_SECS",
+            config.refresh_token_ttl_secs.map(|value| value.to_string()),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_CODE_TTL_SECS",
+            config.auth_code_ttl_secs.map(|value| value.to_string()),
+        );
     }
 
     for (key, value) in std::env::vars() {
@@ -223,6 +312,35 @@ pub struct ApiPreferences {
     /// Overridden by `LAB_CORS_ORIGINS` env var.
     #[serde(default)]
     pub cors_origins: Vec<String>,
+}
+
+/// Web UI preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WebPreferences {
+    /// Path to the exported Labby assets directory served by `lab serve`.
+    #[serde(default)]
+    pub assets_dir: Option<PathBuf>,
+}
+
+/// OAuth local relay preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OauthPreferences {
+    /// Named callback relay targets.
+    #[serde(default)]
+    pub machines: BTreeMap<String, OauthMachineConfig>,
+}
+
+/// A named OAuth callback relay target.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OauthMachineConfig {
+    /// Full callback target base URL.
+    pub target_url: String,
+    /// Optional operator-facing description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Optional preferred callback port for the browser-local listener.
+    #[serde(default)]
+    pub default_port: Option<u16>,
 }
 
 /// Admin tool settings.
@@ -341,9 +459,7 @@ pub fn config_toml_path() -> Option<PathBuf> {
     toml_candidates()
         .into_iter()
         .find(|path| path.exists())
-        .or_else(|| {
-            home_dir().map(|home| home.join(".config").join("lab").join("config.toml"))
-        })
+        .or_else(|| home_dir().map(|home| home.join(".config").join("lab").join("config.toml")))
 }
 
 /// A string value that redacts itself in `Debug` and `Display` output.
@@ -688,6 +804,73 @@ mod tests {
         pairs
             .iter()
             .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+    }
+
+    #[test]
+    fn resolve_auth_reads_ttls_from_config_toml_fields() {
+        let cfg = AuthFileConfig {
+            mode: Some("oauth".to_string()),
+            public_url: Some("https://lab.example.com".to_string()),
+            sqlite_path: None,
+            key_path: None,
+            bootstrap_secret: Some("bootstrap".to_string()),
+            allowed_client_redirect_uris: Some(vec![
+                "https://callback.tootie.tv/callback/*".to_string(),
+            ]),
+            google_client_id: Some("client-id".to_string()),
+            google_client_secret: Some("client-secret".to_string()),
+            google_callback_path: Some("/auth/google/callback".to_string()),
+            google_scopes: Some(vec!["openid".to_string(), "email".to_string()]),
+            access_token_ttl_secs: Some(120),
+            refresh_token_ttl_secs: Some(3600),
+            auth_code_ttl_secs: Some(45),
+        };
+
+        let resolved = resolve_auth(Some(&cfg)).expect("auth config should resolve");
+        assert_eq!(resolved.access_token_ttl.as_secs(), 120);
+        assert_eq!(resolved.refresh_token_ttl.as_secs(), 3600);
+        assert_eq!(resolved.auth_code_ttl.as_secs(), 45);
+        assert_eq!(
+            resolved.allowed_client_redirect_uris,
+            vec!["https://callback.tootie.tv/callback/*".to_string()]
+        );
+    }
+
+    #[test]
+    fn oauth_machine_config_deserializes() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[oauth.machines.dookie]
+target_url = "http://100.88.16.79:38935/callback/dookie"
+description = "Dookie Claude callback target"
+default_port = 38935
+"#,
+        )
+        .expect("oauth machine config should parse");
+
+        assert_eq!(
+            cfg.oauth.machines["dookie"].target_url,
+            "http://100.88.16.79:38935/callback/dookie"
+        );
+        assert_eq!(
+            cfg.oauth.machines["dookie"].description.as_deref(),
+            Some("Dookie Claude callback target")
+        );
+        assert_eq!(cfg.oauth.machines["dookie"].default_port, Some(38935));
+    }
+
+    #[test]
+    fn oauth_machine_defaults_keep_partial_configs_valid() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[web]
+assets_dir = "/tmp/labby"
+"#,
+        )
+        .expect("config without oauth section should still parse");
+
+        assert!(cfg.oauth.machines.is_empty());
+        assert_eq!(cfg.web.assets_dir, Some(PathBuf::from("/tmp/labby")));
     }
 
     #[test]

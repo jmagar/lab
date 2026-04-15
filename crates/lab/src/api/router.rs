@@ -55,19 +55,13 @@ fn app_auth_state(state: &AppState) -> Result<lab_auth::state::AuthState, LabAut
 async fn auth_authorization_server_metadata(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::metadata::authorization_server_metadata(State(app_auth_state(
-        &state,
-    )?))
-    .await)
+    Ok(lab_auth::metadata::authorization_server_metadata(State(app_auth_state(&state)?)).await)
 }
 
 async fn auth_protected_resource_metadata(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::metadata::protected_resource_metadata(State(app_auth_state(
-        &state,
-    )?))
-    .await)
+    Ok(lab_auth::metadata::protected_resource_metadata(State(app_auth_state(&state)?)).await)
 }
 
 async fn auth_jwks(State(state): State<AppState>) -> Result<impl IntoResponse, LabAuthError> {
@@ -76,15 +70,9 @@ async fn auth_jwks(State(state): State<AppState>) -> Result<impl IntoResponse, L
 
 async fn auth_register(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
     body: axum::Json<lab_auth::types::ClientRegistrationRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
-    Ok(lab_auth::authorize::register_client(
-        State(app_auth_state(&state)?),
-        headers,
-        body,
-    )
-    .await?)
+    Ok(lab_auth::authorize::register_client(State(app_auth_state(&state)?), body).await?)
 }
 
 async fn auth_authorize(
@@ -229,8 +217,9 @@ pub fn build_router(
         })
         .map(Arc::from);
 
-    let protected = if needs_auth {
-        protected.layer(axum::middleware::from_fn(
+    let protected =
+        if needs_auth {
+            protected.layer(axum::middleware::from_fn(
             move |mut request: Request<Body>, next: Next| {
                 let static_token = static_token.clone();
                 let auth_state = auth_state_for_middleware.clone();
@@ -288,16 +277,22 @@ pub fn build_router(
 
                     // 2. Try lab-auth JWT
                     if let Some(ref auth_state) = auth_state {
-                        match auth_state.signing_keys.validate_access_token(&token) {
+                        let expected_aud = auth_state
+                            .config
+                            .public_url
+                            .as_ref()
+                            .map(|url| url.as_str().trim_end_matches('/').to_string());
+                        // public_url must be configured for JWT validation; if
+                        // absent we cannot verify the audience so reject.
+                        let Some(ref expected_aud) = expected_aud else {
+                            return Ok(auth_error_response(
+                                "server misconfigured: LAB_PUBLIC_URL required for JWT validation",
+                                resource_url.as_deref(),
+                            ));
+                        };
+                        match auth_state.signing_keys.validate_access_token(&token, expected_aud) {
                             Ok(claims) => {
-                                let expected = auth_state
-                                    .config
-                                    .public_url
-                                    .as_ref()
-                                    .map(|url| url.as_str().trim_end_matches('/').to_string());
-                                if let Some(expected) = expected
-                                    && (claims.iss != expected || claims.aud != expected)
-                                {
+                                if claims.iss != *expected_aud {
                                     return Ok(auth_error_response(
                                         "invalid bearer token",
                                         resource_url.as_deref(),
@@ -329,9 +324,9 @@ pub fn build_router(
                 }
             },
         ))
-    } else {
-        protected
-    };
+        } else {
+            protected
+        };
 
     // Build the outer router: health probes + discovery (no auth) + protected routes (auth).
     // Layers apply bottom-up: last .layer() call = outermost middleware.
@@ -357,6 +352,10 @@ pub fn build_router(
             .route("/authorize", get(auth_authorize))
             .route("/auth/google/callback", get(auth_callback))
             .route("/token", axum::routing::post(auth_token));
+    }
+
+    if state.web_assets_dir.is_some() {
+        router = router.fallback(crate::api::web::serve_web_request);
     }
 
     router
@@ -488,6 +487,8 @@ async fn service_actions(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use axum::body::Body;
     use axum::http::{Request, StatusCode, header};
     use tower::ServiceExt;
@@ -715,7 +716,7 @@ mod tests {
     #[cfg(feature = "radarr")]
     #[tokio::test]
     async fn service_filtered_from_registry_has_no_http_route() {
-        use crate::mcp::registry::ToolRegistry;
+        use crate::registry::ToolRegistry;
 
         // An empty registry = no services enabled at runtime.
         let registry = ToolRegistry::new();
@@ -800,6 +801,87 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(header.contains("resource_metadata="));
+    }
+
+    #[tokio::test]
+    async fn serves_web_assets_for_browser_routes_when_configured() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+
+        let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/gateways/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("Labby"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rejects_symlinked_assets_outside_configured_web_root() {
+        use std::os::unix::fs as unix_fs;
+
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(outside.path().join("secret.txt"), "top-secret").unwrap();
+        unix_fs::symlink(
+            outside.path().join("secret.txt"),
+            dir.path().join("secret.txt"),
+        )
+        .unwrap();
+
+        let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/secret.txt")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn v1_routes_still_win_over_web_asset_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+
+        let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(content_type.contains("application/json"));
     }
 
     async fn test_lab_auth_state() -> lab_auth::state::AuthState {

@@ -6,8 +6,8 @@ use anyhow::Result;
 
 use crate::{
     catalog::build_catalog,
-    mcp::registry::build_default_registry,
     output::{OutputFormat, print},
+    registry::build_default_registry,
 };
 
 /// Run the help subcommand.

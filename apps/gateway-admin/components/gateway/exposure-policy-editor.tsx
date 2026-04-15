@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   Plus, 
   X, 
@@ -15,7 +15,9 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { GatewayApiError } from '@/lib/api/gateway-client'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -26,7 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useGatewayMutations, useExposurePolicy } from '@/lib/hooks/use-gateways'
+import { useGatewayMutations, useExposurePolicy, useServiceActions } from '@/lib/hooks/use-gateways'
 import type { Gateway, ExposurePolicyPreview } from '@/lib/types/gateway'
 import { cn } from '@/lib/utils'
 
@@ -36,7 +38,9 @@ interface ExposurePolicyEditorProps {
 
 export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const { data: policy, isLoading: policyLoading } = useExposurePolicy(gateway.id)
+  const { data: serviceActions } = useServiceActions(gateway.source === 'lab_service' ? gateway.id : null)
   const { setExposurePolicy, previewExposurePolicy } = useGatewayMutations()
+  const isLabGateway = gateway.source === 'lab_service'
 
   const [mode, setMode] = useState<'expose_all' | 'allowlist'>('expose_all')
   const [patterns, setPatterns] = useState<string[]>([])
@@ -45,14 +49,33 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
+  const previewRequestId = useRef(0)
+  const previousGatewayId = useRef<string | null>(null)
 
-  // Initialize from policy
+  // Initialize from policy. Preserve local edits for the same gateway, but always
+  // reset when the selected gateway changes.
   useEffect(() => {
     if (policy) {
-      setMode(policy.mode)
-      setPatterns(policy.patterns)
+      const gatewayChanged = previousGatewayId.current !== gateway.id
+      if (gatewayChanged || !hasChanges) {
+        previousGatewayId.current = gateway.id
+        setHasChanges(false)
+        setPreview(null)
+        setIsPreviewLoading(false)
+        previewRequestId.current += 1
+        setMode(policy.mode)
+        setPatterns(policy.patterns)
+      }
+    } else {
+      previousGatewayId.current = gateway.id
+      setPreview(null)
+      setIsPreviewLoading(false)
+      previewRequestId.current += 1
+      setMode('expose_all')
+      setPatterns([])
+      setHasChanges(false)
     }
-  }, [policy])
+  }, [gateway.id, policy, hasChanges])
 
   // Track changes
   useEffect(() => {
@@ -63,27 +86,43 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
     }
   }, [mode, patterns, policy])
 
-  // Preview debounce
+  // Preview debounce — canceled flag prevents stale responses from overwriting fresh ones
   useEffect(() => {
+    if (isLabGateway) {
+      setPreview(null)
+      setIsPreviewLoading(false)
+      return
+    }
     if (mode !== 'allowlist' || patterns.length === 0) {
       setPreview(null)
+      setIsPreviewLoading(false)
       return
     }
 
+    const requestId = previewRequestId.current + 1
+    previewRequestId.current = requestId
+    const controller = new AbortController()
     const timer = setTimeout(async () => {
       setIsPreviewLoading(true)
       try {
-        const result = await previewExposurePolicy(gateway.id, patterns)
+        const result = await previewExposurePolicy(gateway.id, patterns, controller.signal)
         setPreview(result)
-      } catch {
-        // Silently fail preview
+      } catch (error) {
+        if (!(error instanceof GatewayApiError || (error instanceof DOMException && error.name === 'AbortError'))) {
+          // Silently fail preview
+        }
       } finally {
-        setIsPreviewLoading(false)
+        if (previewRequestId.current === requestId) {
+          setIsPreviewLoading(false)
+        }
       }
     }, 300)
 
-    return () => clearTimeout(timer)
-  }, [gateway.id, mode, patterns, previewExposurePolicy])
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+    }
+  }, [gateway.id, isLabGateway, mode, patterns, previewExposurePolicy])
 
   const addPattern = useCallback(() => {
     const trimmed = newPattern.trim()
@@ -99,6 +138,12 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const removePattern = useCallback((index: number) => {
     setPatterns(patterns.filter((_, i) => i !== index))
   }, [patterns])
+
+  const toggleAction = useCallback((actionName: string, checked: boolean) => {
+    setPatterns((current) =>
+      checked ? [...current, actionName].sort() : current.filter((pattern) => pattern !== actionName),
+    )
+  }, [])
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -175,7 +220,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
         </div>
 
         {/* Allowlist Editor */}
-        {mode === 'allowlist' && (
+        {mode === 'allowlist' && !isLabGateway && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <EyeOff className="size-4 text-muted-foreground" />
@@ -257,7 +302,47 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
       </div>
 
       {/* Preview Panel */}
-      {mode === 'allowlist' && patterns.length > 0 && (
+      {isLabGateway && mode === 'allowlist' && (
+        <div className="rounded-lg border bg-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Available Actions</h3>
+            <Badge variant="secondary">
+              {(serviceActions ?? []).filter((action) => !['help', 'schema'].includes(action.name)).length}
+            </Badge>
+          </div>
+          <div className="space-y-3">
+            {(serviceActions ?? [])
+              .filter((action) => !['help', 'schema'].includes(action.name))
+              .map((action) => {
+                const checked = patterns.includes(action.name)
+                return (
+                  <label
+                    key={action.name}
+                    className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/30"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) => toggleAction(action.name, value === true)}
+                    />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <code className="text-sm font-mono">{action.name}</code>
+                        {action.destructive && (
+                          <Badge variant="outline" className="text-[10px] uppercase">
+                            Destructive
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{action.description}</p>
+                    </div>
+                  </label>
+                )
+              })}
+          </div>
+        </div>
+      )}
+
+      {!isLabGateway && mode === 'allowlist' && patterns.length > 0 && (
         <div className="rounded-lg border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Preview</h3>
@@ -329,7 +414,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                       </Badge>
                     ))}
                     {preview.matched_tools.length > 10 && (
-                      <Badge variant="outline" className="text-xs bg-[#651fff]/10 text-[#651fff] border-[#651fff]/50">
+                      <Badge variant="outline" className="border-info/40 bg-info/10 text-xs text-info">
                         +{preview.matched_tools.length - 10} more
                       </Badge>
                     )}

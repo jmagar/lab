@@ -6,125 +6,339 @@ import type {
   ReloadGatewayResult,
   ExposurePolicy,
   ExposurePolicyPreview,
+  ServiceConfig,
+  ServiceAction,
+  SupportedService,
 } from '@/lib/types/gateway'
+import {
+  type BackendGatewayRuntimeView,
+  type BackendServerView,
+  type BackendGatewayView,
+  type GatewayDiscoverySnapshot,
+  buildGatewayPatch,
+  exposurePolicyFromConfig,
+  gatewayInputToSpec,
+  humanizeProbeError,
+  normalizeGateway,
+  normalizeServerView,
+  previewExposurePolicy,
+  probeStatusFromRuntime,
+} from '@/lib/server/gateway-adapter'
+import { testResultFromProbe } from '@/lib/server/gateway-test-result'
+import { gatewayActionUrl } from './gateway-config'
+import { confirmGatewayParams, gatewayRequestInit } from './gateway-request'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api'
-
-class GatewayApiError extends Error {
+export class GatewayApiError extends Error {
+  status: number
+  code?: string
   constructor(
     message: string,
-    public status: number,
-    public code?: string
+    status: number,
+    code?: string
   ) {
     super(message)
     this.name = 'GatewayApiError'
+    this.status = status
+    this.code = code
   }
 }
 
-async function handleResponse<T>(response: Response): Promise<T> {
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError'
+}
+
+async function parseActionResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'An error occurred' }))
     throw new GatewayApiError(
       error.message || 'An error occurred',
       response.status,
-      error.code
+      error.kind || error.code
     )
   }
   return response.json()
 }
 
-function gatewayPath(id: string, suffix = ''): string {
-  return `${API_BASE}/gateways/${encodeURIComponent(id)}${suffix}`
+async function gatewayAction<T>(action: string, params: object, signal?: AbortSignal): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(gatewayActionUrl(), gatewayRequestInit(action, params, undefined, signal))
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error
+    }
+    const message = error instanceof Error ? error.message : 'unknown network error'
+    throw new GatewayApiError(
+      `Gateway backend action \`${action}\` failed before a response was received: ${message}`,
+      502,
+      'backend_unreachable'
+    )
+  }
+
+  return parseActionResponse<T>(response)
+}
+
+async function fetchDiscovery(name: string, signal?: AbortSignal): Promise<GatewayDiscoverySnapshot> {
+  const [tools, resources, prompts] = await Promise.all([
+    gatewayAction<string[]>('gateway.discovered_tools', { name }, signal),
+    gatewayAction<string[]>('gateway.discovered_resources', { name }, signal),
+    gatewayAction<string[]>('gateway.discovered_prompts', { name }, signal),
+  ])
+
+  return {
+    tools,
+    resources: resources.map((resource) =>
+      resource.includes('://') ? resource : `lab://upstream/${name}/${resource}`,
+    ),
+    prompts,
+  }
+}
+
+async function probeGateway(name: string, signal?: AbortSignal) {
+  try {
+    const runtime = await gatewayAction<BackendGatewayRuntimeView>('gateway.test', { name }, signal)
+    return probeStatusFromRuntime(runtime)
+  } catch (error) {
+    if (error instanceof GatewayApiError) {
+      return {
+        connected: false,
+        healthy: false,
+        last_error: error.message,
+      }
+    }
+    throw error
+  }
+}
+
+async function normalizeGatewayView(
+  view: BackendGatewayView,
+  includeDiscovery: boolean,
+  signal?: AbortSignal,
+): Promise<Gateway> {
+  const [probe, discovery] = await Promise.all([
+    probeGateway(view.config.name, signal),
+    includeDiscovery
+      ? fetchDiscovery(view.config.name, signal)
+      : Promise.resolve({
+          tools: [],
+          resources: [],
+          prompts: [],
+        }),
+  ])
+
+  return normalizeGateway(view, probe, discovery)
+}
+
+async function findServerView(id: string, signal?: AbortSignal): Promise<BackendServerView> {
+  return gatewayAction<BackendServerView>('gateway.server.get', { id }, signal)
+}
+
+async function mutateVirtualServer(
+  action: 'gateway.virtual_server.enable' | 'gateway.virtual_server.disable',
+  id: string,
+  signal?: AbortSignal,
+): Promise<Gateway> {
+  const view = await gatewayAction<BackendServerView>(action, confirmGatewayParams({ id }), signal)
+  return normalizeServerView(view)
+}
+
+function fieldPreview(config: ServiceConfig, suffix: string): string | undefined {
+  return config.fields.find((field) => field.name.endsWith(suffix))?.value_preview ?? undefined
 }
 
 export const gatewayApi = {
-  // List all gateways
-  async list(): Promise<Gateway[]> {
-    const response = await fetch(`${API_BASE}/gateways`)
-    return handleResponse<Gateway[]>(response)
+  async list(signal?: AbortSignal): Promise<Gateway[]> {
+    const views = await gatewayAction<BackendServerView[]>('gateway.list', {}, signal)
+    return views.map((view) => normalizeServerView(view))
   },
 
-  // Get a single gateway by ID
-  async get(id: string): Promise<Gateway> {
-    const response = await fetch(gatewayPath(id))
-    return handleResponse<Gateway>(response)
+  async get(id: string, signal?: AbortSignal): Promise<Gateway> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const serviceConfig = await gatewayAction<ServiceConfig>(
+        'gateway.service_config.get',
+        { service: serverView.name },
+        signal,
+      )
+      const serviceView = normalizeServerView(serverView)
+
+      return {
+        ...serviceView,
+        config: {
+          ...serviceView.config,
+          url: fieldPreview(serviceConfig, '_URL'),
+        },
+      }
+    }
+
+    const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
+    return normalizeGatewayView(view, true, signal)
   },
 
-  // Create a new gateway
-  async create(input: CreateGatewayInput): Promise<Gateway> {
-    const response = await fetch(`${API_BASE}/gateways`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    })
-    return handleResponse<Gateway>(response)
+  async create(input: CreateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
+    const view = await gatewayAction<BackendGatewayView>(
+      'gateway.add',
+      { spec: gatewayInputToSpec(input) },
+      signal,
+    )
+    return normalizeGatewayView(view, true, signal)
   },
 
-  // Update an existing gateway
-  async update(id: string, input: UpdateGatewayInput): Promise<Gateway> {
-    const response = await fetch(gatewayPath(id), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    })
-    return handleResponse<Gateway>(response)
+  async update(id: string, input: UpdateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
+    const view = await gatewayAction<BackendGatewayView>(
+      'gateway.update',
+      {
+        name: id,
+        patch: buildGatewayPatch(input),
+      },
+      signal,
+    )
+    return normalizeGatewayView(view, true, signal)
   },
 
-  // Remove a gateway
-  async remove(id: string): Promise<void> {
-    const response = await fetch(gatewayPath(id), {
-      method: 'DELETE',
-    })
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Failed to delete gateway' }))
-      throw new GatewayApiError(error.message, response.status, error.code)
+  async remove(id: string, signal?: AbortSignal): Promise<void> {
+    await gatewayAction<BackendGatewayView>('gateway.remove', { name: id }, signal)
+  },
+
+  async test(id: string, signal?: AbortSignal): Promise<TestGatewayResult> {
+    const [runtime, view] = await Promise.all([
+      gatewayAction<BackendGatewayRuntimeView>('gateway.test', { name: id }, signal),
+      gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal),
+    ])
+    const probe = probeStatusFromRuntime(runtime)
+    const detail = humanizeProbeError(probe.last_error, view.config)
+    return testResultFromProbe(runtime, probe, detail)
+  },
+
+  async reload(id: string, signal?: AbortSignal): Promise<ReloadGatewayResult> {
+    const before = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
+    await gatewayAction('gateway.reload', {}, signal)
+    const after = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
+
+    return {
+      success: true,
+      message: 'Gateway reloaded successfully',
+      previous_tool_count: before.runtime.tool_count,
+      new_tool_count: after.runtime.tool_count,
     }
   },
 
-  // Test gateway connection
-  async test(id: string): Promise<TestGatewayResult> {
-    const response = await fetch(gatewayPath(id, '/test'), {
-      method: 'POST',
-    })
-    return handleResponse<TestGatewayResult>(response)
+  async getExposurePolicy(id: string, signal?: AbortSignal): Promise<ExposurePolicy> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const policy = await gatewayAction<{ allowed_actions: string[] }>(
+        'gateway.virtual_server.get_mcp_policy',
+        { id },
+        signal,
+      )
+      return {
+        mode: policy.allowed_actions.length === 0 ? 'expose_all' : 'allowlist',
+        patterns: policy.allowed_actions,
+      }
+    }
+
+    const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
+    return exposurePolicyFromConfig(view.config)
   },
 
-  // Reload gateway (re-discover tools/resources/prompts)
-  async reload(id: string): Promise<ReloadGatewayResult> {
-    const response = await fetch(gatewayPath(id, '/reload'), {
-      method: 'POST',
-    })
-    return handleResponse<ReloadGatewayResult>(response)
+  async setExposurePolicy(id: string, policy: ExposurePolicy, signal?: AbortSignal): Promise<ExposurePolicy> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const allowedActions = policy.mode === 'allowlist' ? policy.patterns : []
+      await gatewayAction<{ allowed_actions: string[] }>(
+        'gateway.virtual_server.set_mcp_policy',
+        confirmGatewayParams({
+          id,
+          allowed_actions: allowedActions,
+        }),
+        signal,
+      )
+      return {
+        mode: policy.mode,
+        patterns: allowedActions,
+      }
+    }
+
+    const exposeTools = policy.mode === 'allowlist' ? policy.patterns : null
+    await gatewayAction<BackendGatewayView>(
+      'gateway.update',
+      {
+        name: id,
+        patch: {
+          expose_tools: exposeTools,
+        },
+      },
+      signal,
+    )
+    return policy.mode === 'allowlist'
+      ? { mode: 'allowlist', patterns: policy.patterns }
+      : { mode: 'expose_all', patterns: [] }
   },
 
-  // Get exposure policy for a gateway
-  async getExposurePolicy(id: string): Promise<ExposurePolicy> {
-    const response = await fetch(gatewayPath(id, '/exposure'))
-    return handleResponse<ExposurePolicy>(response)
-  },
-
-  // Update exposure policy
-  async setExposurePolicy(id: string, policy: ExposurePolicy): Promise<ExposurePolicy> {
-    const response = await fetch(gatewayPath(id, '/exposure'), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(policy),
-    })
-    return handleResponse<ExposurePolicy>(response)
-  },
-
-  // Preview exposure policy (dry run)
   async previewExposurePolicy(
     id: string,
-    patterns: string[]
+    patterns: string[],
+    signal?: AbortSignal,
   ): Promise<ExposurePolicyPreview> {
-    const response = await fetch(gatewayPath(id, '/exposure/preview'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ patterns }),
-    })
-    return handleResponse<ExposurePolicyPreview>(response)
+    const serverView = await findServerView(id, signal)
+    const tools =
+      serverView.source === 'lab_service'
+        ? (await gatewayAction<ServiceAction[]>(
+            'gateway.service_actions',
+            { service: serverView.name },
+            signal,
+          )).map(
+            (action) => action.name,
+          )
+        : await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)
+    return previewExposurePolicy(tools, patterns)
+  },
+
+  async supportedServices(signal?: AbortSignal): Promise<SupportedService[]> {
+    return gatewayAction<SupportedService[]>('gateway.supported_services', {}, signal)
+  },
+
+  async getServiceConfig(service: string, signal?: AbortSignal): Promise<ServiceConfig> {
+    return gatewayAction<ServiceConfig>('gateway.service_config.get', { service }, signal)
+  },
+
+  async serviceActions(service: string, signal?: AbortSignal): Promise<ServiceAction[]> {
+    return gatewayAction<ServiceAction[]>('gateway.service_actions', { service }, signal)
+  },
+
+  async setServiceConfig(
+    service: string,
+    values: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<ServiceConfig> {
+    return gatewayAction<ServiceConfig>(
+      'gateway.service_config.set',
+      confirmGatewayParams({ service, values }),
+      signal,
+    )
+  },
+
+  async enableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
+    return mutateVirtualServer('gateway.virtual_server.enable', id, signal)
+  },
+
+  async disableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
+    return mutateVirtualServer('gateway.virtual_server.disable', id, signal)
+  },
+
+  async setVirtualServerSurface(
+    id: string,
+    surface: 'cli' | 'api' | 'mcp' | 'webui',
+    enabled: boolean,
+    signal?: AbortSignal,
+  ): Promise<Gateway> {
+    const view = await gatewayAction<BackendServerView>(
+      'gateway.virtual_server.set_surface',
+      confirmGatewayParams({ id, surface, enabled }),
+      signal,
+    )
+    return normalizeServerView(view)
   },
 }
-
-export { GatewayApiError }

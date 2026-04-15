@@ -5,7 +5,7 @@
 ## Core Shape
 
 - One workspace
-- Two crates
+- Three crates
 - One binary
 - Many feature-gated services
 - One MCP tool per service
@@ -27,6 +27,17 @@
 
 It does not own CLI parsing, MCP transport, TUI rendering, `.env` file loading, or shell-facing UX.
 
+### `crates/lab-auth`
+
+`lab-auth` is the auth middleware crate. It owns:
+
+- OAuth 2.0 authorization server (Google OIDC provider)
+- JWT signing and validation (RS256)
+- SQLite-backed token and session storage
+- axum middleware and route handlers
+
+It is separated from `lab-apis` because it depends on `axum`, which is forbidden in the pure SDK crate. It does not own CLI parsing, MCP transport, or TUI rendering.
+
 ### `crates/lab`
 
 `lab` is the product binary. It owns:
@@ -47,8 +58,9 @@ If behavior is shared across product surfaces, it belongs in one shared executio
 
 That rule is structural, not aspirational:
 
-- `lab-apis` has no `clap`, `rmcp`, or `ratatui`
-- `lab` depends on `lab-apis` rather than duplicating service logic
+- `lab-apis` has no `clap`, `rmcp`, `ratatui`, or `axum`
+- `lab-auth` has no `clap`, `rmcp`, or `ratatui`
+- `lab` depends on `lab-apis` and `lab-auth` rather than duplicating service logic
 
 ## Module Layout
 

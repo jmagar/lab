@@ -56,7 +56,7 @@ mod tests {
 
     use crate::api::{router::build_router_with_bearer, state::AppState};
     use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
-    use crate::mcp::registry::build_default_registry;
+    use crate::registry::build_default_registry;
 
     fn test_app() -> Router {
         static NEXT_ID: AtomicUsize = AtomicUsize::new(1);

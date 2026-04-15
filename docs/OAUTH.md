@@ -20,11 +20,11 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 | `LAB_AUTH_MODE` | no | `bearer` or `oauth`. Defaults to `bearer`. |
 | `LAB_MCP_HTTP_TOKEN` | bearer mode | Static bearer token for protected HTTP routes. |
 | `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, callback construction, and JWT issuer/audience. |
-| `LAB_AUTH_BOOTSTRAP_SECRET` | oauth mode | Bearer secret required for client registration. |
 | `LAB_GOOGLE_CLIENT_ID` | oauth mode | Google OAuth client ID. |
 | `LAB_GOOGLE_CLIENT_SECRET` | oauth mode | Google OAuth client secret. |
 | `LAB_AUTH_SQLITE_PATH` | no | Override path for the SQLite auth database. |
 | `LAB_AUTH_KEY_PATH` | no | Override path for the persisted JWT signing key. |
+| `LAB_AUTH_ALLOWED_REDIRECT_URIS` | no | Comma-separated redirect URI patterns allowed for dynamic client registration in addition to loopback callbacks. |
 | `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
 | `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
 
@@ -32,7 +32,7 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 
 When OAuth mode is configured, `lab serve --transport http` performs these steps at startup:
 
-1. Validate that `LAB_PUBLIC_URL`, Google credentials, and `LAB_AUTH_BOOTSTRAP_SECRET` are present.
+1. Validate that `LAB_PUBLIC_URL` and Google credentials are present.
 2. Open the SQLite auth store in WAL mode with a non-zero busy timeout.
 3. Load or generate the persisted RSA signing key.
 4. Build the concrete Google provider callback URL from `LAB_PUBLIC_URL` and `LAB_GOOGLE_CALLBACK_PATH`.
@@ -43,7 +43,6 @@ Startup also fails if:
 
 - `LAB_AUTH_MODE=oauth` is set without `LAB_PUBLIC_URL`
 - Google client credentials are missing
-- `LAB_AUTH_BOOTSTRAP_SECRET` is missing
 - the auth database or signing key has insecure file permissions
 
 ## Registration and Authorize Flow
@@ -57,20 +56,72 @@ OAuth mode exposes:
 
 Registration rules in the initial launch:
 
-- `/register` requires `Authorization: Bearer <LAB_AUTH_BOOTSTRAP_SECRET>`
-- only loopback redirect URIs are accepted
-- arbitrary public HTTPS redirect URIs are rejected in this batch
+- loopback redirect URIs are always accepted
+- optional non-loopback redirect URI patterns can be allowed with `LAB_AUTH_ALLOWED_REDIRECT_URIS` or `[auth].allowed_client_redirect_uris`
+- unlisted public HTTPS redirect URIs are rejected
 
 Flow summary:
 
-1. A trusted client registers a loopback redirect URI.
+1. A client registers a loopback redirect URI or one that matches the configured allowlist.
 2. The client sends the user to `/authorize` with `response_type=code`.
 3. `lab` stores the request state, generates PKCE data, and redirects to Google.
 4. Google redirects back to `/auth/google/callback`.
-5. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its loopback URI with the local code.
-6. The client exchanges that local code at `/token` for a `lab` access token and refresh token.
+5. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its registered redirect URI with the local code.
+6. The client exchanges that local code at `/token` for a `lab` access token and, when Google granted offline access, a `lab` refresh token.
 
 Google access and refresh tokens remain server-side only.
+
+Google-specific notes:
+
+- `lab` sends `access_type=offline` when redirecting to Google so the provider can issue a refresh token
+- `lab` also sends `prompt=consent` so a fresh Google consent flow can return a new refresh token after the app was previously authorized without offline access
+- if Google still does not return an upstream refresh token, `lab` omits `refresh_token` from its token response and later refresh grants fail closed
+
+## Browser-Local Callback Forwarding
+
+`lab` also ships a local OAuth callback forwarder for browser-side machines:
+
+```bash
+lab oauth relay-local --machine dookie --port 38935
+lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+```
+
+This helper exists for cases where:
+
+- the browser receives a loopback redirect on one machine
+- the actual OAuth client callback listener is running on another machine
+- you need to forward the final callback request without reimplementing the OAuth flow
+
+Important constraints:
+
+- `relay-local` binds only to `127.0.0.1:<port>` on the browser machine
+- it forwards only the final callback request
+- it does not mint tokens, store PKCE state, or complete the OAuth exchange itself
+- the real client listener must already be running and reachable before the callback arrives
+
+### Using non-loopback redirect URIs
+
+Loopback redirect URIs are always accepted by `lab-auth`. Public or non-loopback redirect URIs are
+rejected unless they match an allowlisted pattern.
+
+Configure extra allowed redirect URI patterns with either:
+
+- `LAB_AUTH_ALLOWED_REDIRECT_URIS`
+- `[auth].allowed_client_redirect_uris`
+
+Example:
+
+```env
+LAB_AUTH_ALLOWED_REDIRECT_URIS=https://callback.tootie.tv/callback/*
+```
+
+```toml
+[auth]
+allowed_client_redirect_uris = ["https://callback.tootie.tv/callback/*"]
+```
+
+Patterns support simple `*` wildcards. Use this only for redirect URIs you explicitly operate or
+trust.
 
 ## Runtime JWT Validation
 
@@ -114,6 +165,8 @@ Downstream handlers can read `AuthContext` from request extensions for audit tra
 Current constraints:
 
 - authorization-code redemption is atomic and single-use
+- `refresh_token` is only issued when Google returned an upstream refresh token
+- refresh grants are rejected if the local token is not backed by an upstream refresh token
 - refresh tokens do not rotate in this batch
 - `/revoke` is not implemented in this batch
 
@@ -178,7 +231,6 @@ LAB_MCP_HTTP_HOST=0.0.0.0
 LAB_MCP_HTTP_PORT=8765
 LAB_AUTH_MODE=oauth
 LAB_PUBLIC_URL=https://lab.example.com
-LAB_AUTH_BOOTSTRAP_SECRET=replace-me
 LAB_GOOGLE_CLIENT_ID=google-client-id
 LAB_GOOGLE_CLIENT_SECRET=google-client-secret
 

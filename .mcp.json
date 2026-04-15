@@ -2,7 +2,12 @@
   "mcpServers": {
     "lab": {
       "command": "cargo",
-      "args": ["run", "--all-features", "--", "serve"],
+      "args": [
+        "run",
+        "--all-features",
+        "--",
+        "serve"
+      ],
       "env": {}
     }
   }

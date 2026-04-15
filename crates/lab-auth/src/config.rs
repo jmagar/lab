@@ -24,7 +24,12 @@ pub enum AuthMode {
 
 impl AuthMode {
     fn parse(value: Option<&str>) -> Result<Self, AuthError> {
-        match value.unwrap_or("bearer").trim().to_ascii_lowercase().as_str() {
+        match value
+            .unwrap_or("bearer")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "bearer" => Ok(Self::Bearer),
             "oauth" => Ok(Self::OAuth),
             other => Err(AuthError::Config(format!(
@@ -69,6 +74,7 @@ pub struct AuthConfig {
     pub sqlite_path: PathBuf,
     pub key_path: PathBuf,
     pub bootstrap_secret: Option<String>,
+    pub allowed_client_redirect_uris: Vec<String>,
     pub google: GoogleConfig,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
@@ -84,6 +90,7 @@ impl Default for AuthConfig {
             sqlite_path: base_dir.join(DEFAULT_AUTH_DB_NAME),
             key_path: base_dir.join(DEFAULT_KEY_NAME),
             bootstrap_secret: None,
+            allowed_client_redirect_uris: Vec::new(),
             google: GoogleConfig::default(),
             access_token_ttl: Duration::from_secs(DEFAULT_ACCESS_TOKEN_TTL_SECS),
             refresh_token_ttl: Duration::from_secs(DEFAULT_REFRESH_TOKEN_TTL_SECS),
@@ -106,6 +113,8 @@ impl AuthConfig {
             key_path: read_path(&vars, "LAB_AUTH_KEY_PATH")
                 .unwrap_or_else(|| default_auth_dir().join(DEFAULT_KEY_NAME)),
             bootstrap_secret: read_string(&vars, "LAB_AUTH_BOOTSTRAP_SECRET"),
+            allowed_client_redirect_uris: read_csv(&vars, "LAB_AUTH_ALLOWED_REDIRECT_URIS")
+                .unwrap_or_default(),
             google: GoogleConfig {
                 client_id: read_string(&vars, "LAB_GOOGLE_CLIENT_ID").unwrap_or_default(),
                 client_secret: read_string(&vars, "LAB_GOOGLE_CLIENT_SECRET").unwrap_or_default(),
@@ -152,11 +161,6 @@ impl AuthConfig {
             if self.google.client_secret.is_empty() {
                 return Err(AuthError::Config(
                     "LAB_GOOGLE_CLIENT_SECRET is required when LAB_AUTH_MODE=oauth".to_string(),
-                ));
-            }
-            if self.bootstrap_secret.is_none() {
-                return Err(AuthError::Config(
-                    "LAB_AUTH_BOOTSTRAP_SECRET is required when LAB_AUTH_MODE=oauth".to_string(),
                 ));
             }
         }
@@ -234,7 +238,9 @@ fn read_u64(vars: &HashMap<String, String>, key: &str) -> Result<Option<u64>, Au
     read_string(vars, key)
         .map(|value| {
             value.parse::<u64>().map(Some).map_err(|error| {
-                AuthError::Config(format!("{key} must be an integer number of seconds: {error}"))
+                AuthError::Config(format!(
+                    "{key} must be an integer number of seconds: {error}"
+                ))
             })
         })
         .transpose()
@@ -268,7 +274,6 @@ mod tests {
             ("LAB_PUBLIC_URL", "https://lab.example.com"),
             ("LAB_GOOGLE_CLIENT_ID", "id"),
             ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
-            ("LAB_AUTH_BOOTSTRAP_SECRET", "bootstrap"),
         ]))
         .unwrap();
         assert_eq!(cfg.sqlite_path.file_name().unwrap(), "auth.db");
@@ -276,11 +281,35 @@ mod tests {
         assert_eq!(cfg.google.callback_path, "/auth/google/callback");
     }
 
+    #[test]
+    fn oauth_mode_parses_allowed_client_redirect_uris() {
+        let cfg = AuthConfig::from_sources(fake_env_with_many([
+            ("LAB_AUTH_MODE", "oauth"),
+            ("LAB_PUBLIC_URL", "https://lab.example.com"),
+            ("LAB_GOOGLE_CLIENT_ID", "id"),
+            ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            (
+                "LAB_AUTH_ALLOWED_REDIRECT_URIS",
+                "https://callback.tootie.tv/callback/*,https://claude.ai/api/mcp/auth_callback",
+            ),
+        ]))
+        .unwrap();
+        assert_eq!(
+            cfg.allowed_client_redirect_uris,
+            vec![
+                "https://callback.tootie.tv/callback/*".to_string(),
+                "https://claude.ai/api/mcp/auth_callback".to_string()
+            ]
+        );
+    }
+
     fn fake_env_with(key: &'static str, value: &'static str) -> Vec<(String, String)> {
         vec![(key.to_string(), value.to_string())]
     }
 
-    fn fake_env_with_many<const N: usize>(pairs: [(&'static str, &'static str); N]) -> Vec<(String, String)> {
+    fn fake_env_with_many<const N: usize>(
+        pairs: [(&'static str, &'static str); N],
+    ) -> Vec<(String, String)> {
         pairs
             .into_iter()
             .map(|(key, value)| (key.to_string(), value.to_string()))

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tracing::info;
+
 use crate::config::{AuthConfig, AuthMode};
 use crate::error::AuthError;
 use crate::google::GoogleProvider;
@@ -26,9 +28,17 @@ impl AuthState {
             AuthError::Config("LAB_PUBLIC_URL is required when LAB_AUTH_MODE=oauth".to_string())
         })?;
         let redirect_uri = public_url
-            .join(&config.google.callback_path.trim_start_matches('/').to_string())
+            .join(
+                &config
+                    .google
+                    .callback_path
+                    .trim_start_matches('/')
+                    .to_string(),
+            )
             .map_err(|error| {
-                AuthError::Config(format!("build google redirect URI from LAB_PUBLIC_URL: {error}"))
+                AuthError::Config(format!(
+                    "build google redirect URI from LAB_PUBLIC_URL: {error}"
+                ))
             })?;
         let store = SqliteStore::open(config.sqlite_path.clone()).await?;
         let signing_keys = SigningKeys::load_or_create(config.key_path.clone())?;
@@ -38,6 +48,15 @@ impl AuthState {
             redirect_uri,
         );
         google.scopes = config.google.scopes.clone();
+        info!(
+            auth_mode = "oauth",
+            public_url = %public_url,
+            google_redirect_uri = %google.redirect_uri,
+            sqlite_path = %config.sqlite_path.display(),
+            key_path = %config.key_path.display(),
+            google_scopes = ?config.google.scopes,
+            "lab-auth state initialized"
+        );
 
         Ok(Self {
             config: Arc::new(config),

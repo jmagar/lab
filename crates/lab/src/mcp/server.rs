@@ -17,12 +17,58 @@ use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::Value;
 use tokio::sync::RwLock;
+use tokio::sync::mpsc;
 
 use crate::dispatch::gateway::manager::GatewayManager;
+use crate::dispatch::gateway::types::GatewayCatalogDiff;
 use crate::dispatch::upstream::types::UpstreamCapability;
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
-use crate::mcp::registry::ToolRegistry;
+use crate::registry::ToolRegistry;
+
+/// MCP-specific peer fanout that forwards catalog-change
+/// notifications to all connected `rmcp::Peer<RoleServer>` instances.
+///
+/// This keeps `rmcp` types out of the dispatch layer while allowing
+/// `GatewayManager` to notify peers when the upstream pool changes.
+#[derive(Clone, Default)]
+pub struct PeerNotifier {
+    pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
+}
+
+impl PeerNotifier {
+    pub async fn run(self, mut rx: mpsc::UnboundedReceiver<GatewayCatalogDiff>) {
+        while let Some(diff) = rx.recv().await {
+            self.notify_catalog_changes(&diff).await;
+        }
+    }
+
+    async fn notify_catalog_changes(&self, diff: &GatewayCatalogDiff) {
+        let peers = self.peers.read().await.clone();
+        let mut alive = Vec::with_capacity(peers.len());
+        for peer in &peers {
+            let peer = peer.clone();
+            let mut ok = true;
+            if diff.tools_changed {
+                ok = peer.notify_tool_list_changed().await.is_ok();
+            }
+            if ok && diff.resources_changed {
+                ok = peer.notify_resource_list_changed().await.is_ok();
+            }
+            if ok && diff.prompts_changed {
+                ok = peer.notify_prompt_list_changed().await.is_ok();
+            }
+            if ok {
+                alive.push(peer);
+            }
+        }
+
+        let mut guard = self.peers.write().await;
+        let added_since_snapshot = guard.split_off(peers.len());
+        *guard = alive;
+        guard.extend(added_since_snapshot);
+    }
+}
 
 /// JSON Schema for every service tool's input: `action` (required) + `params` (optional object).
 #[allow(clippy::expect_used)]
@@ -200,12 +246,12 @@ impl ServerHandler for LabMcpServer {
         }
 
         let json = if uri == "lab://catalog" {
-            crate::mcp::resources::catalog_json(&self.registry)
+            self.catalog_json().await
         } else if let Some(service) = uri
             .strip_prefix("lab://")
             .and_then(|value| value.strip_suffix("/actions"))
         {
-            crate::mcp::resources::service_actions_json(&self.registry, service)
+            self.service_actions_json(service).await
         } else {
             return Err(ErrorData::resource_not_found(
                 format!("unknown resource: {uri}"),
@@ -230,17 +276,21 @@ impl ServerHandler for LabMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let schema = Arc::new(action_schema());
-        let mut tools: Vec<Tool> = self
-            .registry
-            .services()
-            .iter()
-            .map(|svc| Tool::new(svc.name, svc.description, Arc::clone(&schema)))
-            .collect();
+        let mut tools = Vec::new();
+        for svc in self.registry.services() {
+            if self.service_visible_on_mcp(svc.name).await {
+                tools.push(Tool::new(svc.name, svc.description, Arc::clone(&schema)));
+            }
+        }
 
         // Merge upstream tools (healthy only, filtered for collisions with built-in services).
         if let Some(pool) = self.current_upstream_pool().await {
-            let builtin_names: Vec<&str> =
-                self.registry.services().iter().map(|s| s.name).collect();
+            let mut builtin_names = Vec::new();
+            for service in self.registry.services() {
+                if self.service_visible_on_mcp(service.name).await {
+                    builtin_names.push(service.name);
+                }
+            }
             let upstream_tools = pool.healthy_tools().await;
             for ut in upstream_tools {
                 let tool_name = ut.tool.name.as_ref();
@@ -275,6 +325,34 @@ impl ServerHandler for LabMcpServer {
         let params = args.get("params").cloned().unwrap_or(Value::Null);
 
         let svc = self.registry.services().iter().find(|s| s.name == service);
+        if svc.is_some() && !self.service_visible_on_mcp(&service).await {
+            let envelope = build_error(
+                &service,
+                &action,
+                "not_found",
+                &format!("service `{service}` is not enabled on the mcp surface"),
+            );
+            return Ok(CallToolResult::error(vec![Content::text(
+                envelope.to_string(),
+            )]));
+        }
+
+        if svc.is_some() && !self.action_allowed_on_mcp(&service, &action).await {
+            let mut extra = serde_json::Map::new();
+            if let Some(valid) = self.allowed_mcp_actions(&service).await {
+                extra.insert("valid".to_string(), serde_json::to_value(valid).unwrap_or(Value::Array(Vec::new())));
+            }
+            let envelope = build_error_extra(
+                &service,
+                &action,
+                "unknown_action",
+                &format!("action `{action}` is not exposed for service `{service}`"),
+                &Value::Object(extra),
+            );
+            return Ok(CallToolResult::error(vec![Content::text(
+                envelope.to_string(),
+            )]));
+        }
 
         // Elicitation gate: if the action is destructive and the client supports
         // elicitation, ask for confirmation before dispatching.
@@ -371,7 +449,11 @@ impl ServerHandler for LabMcpServer {
                     let (result, kind, counts_as_failure) =
                         normalize_upstream_result(&service, upstream_action, result);
                     if counts_as_failure {
-                        pool.record_failure(&upstream_name).await;
+                        pool.record_failure(
+                            &upstream_name,
+                            format!("upstream `{upstream_name}` returned `{kind}`"),
+                        )
+                        .await;
                         tracing::warn!(
                             surface = "mcp",
                             service,
@@ -397,7 +479,7 @@ impl ServerHandler for LabMcpServer {
                     return Ok(result);
                 }
                 Some(Err(e)) => {
-                    pool.record_failure(&upstream_name).await;
+                    pool.record_failure(&upstream_name, e.clone()).await;
                     let after = self.snapshot_catalog().await;
                     self.notify_catalog_changes(&before, &after).await;
                     let elapsed_ms = start.elapsed().as_millis();
@@ -423,7 +505,11 @@ impl ServerHandler for LabMcpServer {
                 None => {
                     // Connection is gone — record failure so the circuit
                     // breaker can eventually exclude this upstream.
-                    pool.record_failure(&upstream_name).await;
+                    pool.record_failure(
+                        &upstream_name,
+                        format!("upstream `{upstream_name}` is not connected"),
+                    )
+                    .await;
                     let after = self.snapshot_catalog().await;
                     self.notify_catalog_changes(&before, &after).await;
                     let elapsed_ms = start.elapsed().as_millis();
@@ -478,13 +564,74 @@ impl LabMcpServer {
         }
     }
 
+    async fn service_visible_on_mcp(&self, service: &str) -> bool {
+        match &self.gateway_manager {
+            Some(manager) => manager.surface_enabled_for_service(service, "mcp").await,
+            None => true,
+        }
+    }
+
+    async fn action_allowed_on_mcp(&self, service: &str, action: &str) -> bool {
+        match &self.gateway_manager {
+            Some(manager) => manager.mcp_action_allowed_for_service(service, action).await,
+            None => true,
+        }
+    }
+
+    async fn allowed_mcp_actions(&self, service: &str) -> Option<Vec<String>> {
+        match &self.gateway_manager {
+            Some(manager) => manager.allowed_mcp_actions_for_service(service).await,
+            None => None,
+        }
+    }
+
+    async fn catalog_json(&self) -> anyhow::Result<Value> {
+        let mut catalog = crate::catalog::build_catalog(&self.registry);
+        let mut services = Vec::new();
+        for mut service in catalog.services {
+            if !self.service_visible_on_mcp(&service.name).await {
+                continue;
+            }
+            if let Some(allowed_actions) = self.allowed_mcp_actions(&service.name).await
+                && !allowed_actions.is_empty()
+            {
+                service.actions.retain(|action| allowed_actions.contains(&action.name));
+            }
+            services.push(service);
+        }
+        catalog.services = services;
+        Ok(serde_json::to_value(catalog)?)
+    }
+
+    async fn service_actions_json(&self, service: &str) -> anyhow::Result<Value> {
+        if !self.service_visible_on_mcp(service).await {
+            anyhow::bail!("unknown service: {service}");
+        }
+
+        let catalog = crate::catalog::build_catalog(&self.registry);
+        let mut entry = catalog
+            .services
+            .into_iter()
+            .find(|entry| entry.name == service)
+            .ok_or_else(|| anyhow::anyhow!("unknown service: {service}"))?;
+
+        if let Some(allowed_actions) = self.allowed_mcp_actions(service).await
+            && !allowed_actions.is_empty()
+        {
+            entry.actions
+                .retain(|action| allowed_actions.contains(&action.name));
+        }
+
+        Ok(serde_json::to_value(entry.actions)?)
+    }
+
     async fn snapshot_catalog(&self) -> CatalogSnapshot {
-        let mut tools: BTreeSet<String> = self
-            .registry
-            .services()
-            .iter()
-            .map(|svc| svc.name.to_string())
-            .collect();
+        let mut tools = BTreeSet::new();
+        for svc in self.registry.services() {
+            if self.service_visible_on_mcp(svc.name).await {
+                tools.insert(svc.name.to_string());
+            }
+        }
 
         if let Some(pool) = self.current_upstream_pool().await {
             for tool in pool.healthy_tools().await {
@@ -526,17 +673,37 @@ impl LabMcpServer {
         }
 
         let peers = self.peers.read().await.clone();
+        let peer_count = peers.len();
+        let mut alive = Vec::with_capacity(peers.len());
         for peer in peers {
+            let mut ok = true;
             if before.tools != after.tools {
-                drop(peer.notify_tool_list_changed().await);
+                if peer.notify_tool_list_changed().await.is_err() {
+                    ok = false;
+                }
             }
-            if before.resources != after.resources {
-                drop(peer.notify_resource_list_changed().await);
+            if ok && before.resources != after.resources {
+                if peer.notify_resource_list_changed().await.is_err() {
+                    ok = false;
+                }
             }
-            if before.prompts != after.prompts {
-                drop(peer.notify_prompt_list_changed().await);
+            if ok && before.prompts != after.prompts {
+                if peer.notify_prompt_list_changed().await.is_err() {
+                    ok = false;
+                }
+            }
+            if ok {
+                alive.push(peer);
             }
         }
+        let mut guard = self.peers.write().await;
+        let added_since_snapshot = if guard.len() > peer_count {
+            guard.split_off(peer_count)
+        } else {
+            Vec::new()
+        };
+        *guard = alive;
+        guard.extend(added_since_snapshot);
     }
 }
 
@@ -899,7 +1066,7 @@ mod tests {
     #[test]
     fn server_capabilities_advertise_list_changed_support() {
         let server = super::LabMcpServer {
-            registry: std::sync::Arc::new(crate::mcp::registry::ToolRegistry::new()),
+            registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
@@ -926,10 +1093,11 @@ mod tests {
             std::path::PathBuf::from("config.toml"),
             runtime.clone(),
         ));
+        let notifier = super::PeerNotifier::default();
         let server = super::LabMcpServer {
-            registry: std::sync::Arc::new(crate::mcp::registry::ToolRegistry::new()),
+            registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: Some(std::sync::Arc::clone(&manager)),
-            peers: manager.peer_sink(),
+            peers: std::sync::Arc::clone(&notifier.peers),
         };
 
         assert!(server.current_upstream_pool().await.is_none());
@@ -939,5 +1107,88 @@ mod tests {
 
         let current = server.current_upstream_pool().await.expect("pool");
         assert!(std::sync::Arc::ptr_eq(&current, &pool));
+    }
+
+    #[tokio::test]
+    async fn snapshot_catalog_hides_mcp_disabled_virtual_services() {
+        let runtime = crate::dispatch::gateway::manager::GatewayRuntimeHandle::default();
+        let manager = std::sync::Arc::new(crate::dispatch::gateway::manager::GatewayManager::new(
+            std::path::PathBuf::from("config.toml"),
+            runtime,
+        ));
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: false,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let server = super::LabMcpServer {
+            registry: std::sync::Arc::new(crate::registry::build_default_registry()),
+            gateway_manager: Some(manager),
+            peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+
+        let snapshot = server.snapshot_catalog().await;
+        assert!(!snapshot.tools.contains("plex"));
+    }
+
+    #[tokio::test]
+    async fn service_actions_json_filters_to_allowed_mcp_actions() {
+        let runtime = crate::dispatch::gateway::manager::GatewayRuntimeHandle::default();
+        let manager = std::sync::Arc::new(crate::dispatch::gateway::manager::GatewayManager::new(
+            std::path::PathBuf::from("config.toml"),
+            runtime,
+        ));
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: Some(crate::config::VirtualServerMcpPolicyConfig {
+                        allowed_actions: vec!["server.info".to_string()],
+                    }),
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let server = super::LabMcpServer {
+            registry: std::sync::Arc::new(crate::registry::build_default_registry()),
+            gateway_manager: Some(manager),
+            peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
+        };
+
+        let value = server
+            .service_actions_json("plex")
+            .await
+            .expect("service actions");
+        let actions = value.as_array().expect("array");
+        assert!(actions.iter().any(|action| action["name"] == "help"));
+        assert!(actions.iter().any(|action| action["name"] == "schema"));
+        assert!(actions
+            .iter()
+            .any(|action| action["name"] == "server.info"));
+        assert!(!actions
+            .iter()
+            .any(|action| action["name"] == "session.list"));
     }
 }

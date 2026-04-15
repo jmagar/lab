@@ -25,6 +25,7 @@ The CLI includes:
 - `audit`
 - `scaffold`
 - `extract`
+- `oauth`
 - `help`
 - `completions`
 
@@ -44,6 +45,7 @@ lab
 ├── audit
 ├── scaffold
 ├── extract
+├── oauth
 ├── help
 └── completions
 ```
@@ -163,3 +165,53 @@ Expected `.mcp.json` behavior:
 ## Shell Completions
 
 The CLI must generate completions rather than hand-maintaining shell-specific assets.
+
+## `lab oauth relay-local`
+
+`lab oauth relay-local` is a browser-side transport helper for OAuth clients that redirect to a
+loopback callback but keep the real OAuth listener on another machine.
+
+Supported forms:
+
+```bash
+lab oauth relay-local --machine dookie --port 38935
+lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+```
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--machine <id>` | Resolve the forwarding target from `[oauth.machines.<id>]` in `config.toml`. |
+| `--forward-base <url>` | Forward to an explicit callback base URL without a named machine config. |
+| `--port <port>` | Loopback port to bind on the browser machine. Required. |
+| `--json` | Global flag; emit JSON instead of human-readable tables where applicable. |
+
+Rules:
+
+- exactly one of `--machine` or `--forward-base` is required
+- the listener binds only to `127.0.0.1:<port>`
+- `--machine` resolves the target from `[oauth.machines.*]` in `config.toml`
+- `--forward-base` is for ad hoc use when no named machine exists yet
+- the command only forwards the final callback request; it does not mint tokens or run PKCE logic
+- the remote callback listener must already be active before the browser callback arrives
+
+Example named-machine config:
+
+```toml
+[oauth.machines.dookie]
+target_url = "http://100.88.16.79:38935/callback/dookie"
+description = "dookie Codex callback listener"
+default_port = 38935
+```
+
+Runtime behavior:
+
+- incoming callback requests are accepted only on loopback
+- the helper forwards the original method, query string, request body, and most headers
+- hop-by-hop headers are stripped before forwarding
+- successful forwarding returns the upstream response as-is
+- failures return transport-oriented HTTP errors on the local loopback callback:
+  - unreachable upstream target -> `502`
+  - upstream timeout -> `504`
+  - unsupported method -> `405`

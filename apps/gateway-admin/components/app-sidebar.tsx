@@ -72,11 +72,11 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/">
-                <div className="bg-gradient-to-br from-[#ea80fc] via-[#651fff] to-[#00e5ff] flex aspect-square size-8 items-center justify-center rounded-lg shadow-lg shadow-[#ea80fc]/40 ring-2 ring-white/20">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary via-info to-accent shadow-lg shadow-primary/25 ring-2 ring-white/10">
                   <Cable className="size-4 text-white drop-shadow-md" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-bold bg-gradient-to-r from-[#ea80fc] to-[#00e5ff] bg-clip-text text-transparent">MCP Gateway</span>
+                  <span className="truncate font-bold text-sidebar-foreground">Labby</span>
                   <span className="truncate text-xs text-sidebar-foreground/70">Admin Console</span>
                 </div>
               </Link>

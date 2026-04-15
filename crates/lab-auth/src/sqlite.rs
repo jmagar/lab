@@ -1,13 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use rusqlite::{Connection, OptionalExtension, params};
 use rusqlite::types::Value;
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::AuthError;
 use crate::types::{
     AuthorizationCodeRow, AuthorizationRequestRow, RefreshTokenRow, RegisteredClient,
 };
+use crate::util::{ensure_restrictive_permissions, now_unix, set_restrictive_permissions};
 
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
 
@@ -19,7 +20,7 @@ pub struct SqliteStore {
 impl SqliteStore {
     pub async fn open(path: PathBuf) -> Result<Self, AuthError> {
         let conn = tokio::task::spawn_blocking(move || open_connection(path)).await;
-        match conn {
+        let store = match conn {
             Ok(result) => result,
             Err(error) => Err(AuthError::Storage(format!(
                 "sqlite open task failed: {error}"
@@ -27,7 +28,10 @@ impl SqliteStore {
         }
         .map(|conn| Self {
             conn: Arc::new(Mutex::new(conn)),
-        })
+        })?;
+
+        store.cleanup_expired().await?;
+        Ok(store)
     }
 
     pub async fn pragma(&self, name: &str) -> Result<String, AuthError> {
@@ -41,13 +45,15 @@ impl SqliteStore {
         };
 
         self.with_conn(move |conn| {
-            conn.query_row(&format!("PRAGMA {pragma};"), [], |row| row.get::<_, Value>(0))
-                .map(|value| match value {
-                    Value::Text(text) => text,
-                    Value::Integer(int) => int.to_string(),
-                    other => format!("{other:?}"),
-                })
-                .map_err(sqlite_error)
+            conn.query_row(&format!("PRAGMA {pragma};"), [], |row| {
+                row.get::<_, Value>(0)
+            })
+            .map(|value| match value {
+                Value::Text(text) => text,
+                Value::Integer(int) => int.to_string(),
+                other => format!("{other:?}"),
+            })
+            .map_err(sqlite_error)
         })
         .await
     }
@@ -70,7 +76,10 @@ impl SqliteStore {
         .await
     }
 
-    pub async fn find_client(&self, client_id: &str) -> Result<Option<RegisteredClient>, AuthError> {
+    pub async fn find_client(
+        &self,
+        client_id: &str,
+    ) -> Result<Option<RegisteredClient>, AuthError> {
         let client_id = client_id.to_string();
         self.with_conn(move |conn| {
             conn.query_row(
@@ -258,6 +267,30 @@ impl SqliteStore {
         .await
     }
 
+    /// Delete expired rows from `authorization_requests`, `authorization_codes`, and
+    /// `refresh_tokens`. Returns the total number of deleted rows.
+    pub async fn cleanup_expired(&self) -> Result<u64, AuthError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let mut total: u64 = 0;
+            for table in [
+                "authorization_requests",
+                "authorization_codes",
+                "refresh_tokens",
+            ] {
+                let deleted = conn
+                    .execute(
+                        &format!("DELETE FROM {table} WHERE expires_at <= ?1"),
+                        params![now],
+                    )
+                    .map_err(sqlite_error)?;
+                total += deleted as u64;
+            }
+            Ok(total)
+        })
+        .await
+    }
+
     async fn with_conn<T, F>(&self, op: F) -> Result<T, AuthError>
     where
         T: Send + 'static,
@@ -351,49 +384,9 @@ fn sqlite_error(error: rusqlite::Error) -> AuthError {
     AuthError::Storage(format!("sqlite error: {error}"))
 }
 
-fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-}
-
-#[cfg(unix)]
-fn ensure_restrictive_permissions(path: &Path) -> Result<(), AuthError> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let metadata = std::fs::metadata(path).map_err(|error| {
-        AuthError::Storage(format!("stat `{}`: {error}", path.display()))
-    })?;
-    let mode = metadata.permissions().mode() & 0o777;
-    if mode & 0o077 != 0 {
-        return Err(AuthError::InsecurePermissions {
-            path: path.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn ensure_restrictive_permissions(_path: &Path) -> Result<(), AuthError> {
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_restrictive_permissions(path: &Path) -> Result<(), AuthError> {
-    use std::os::unix::fs::PermissionsExt;
-
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(|error| {
-        AuthError::Storage(format!("chmod 0600 `{}`: {error}", path.display()))
-    })
-}
-
-#[cfg(not(unix))]
-fn set_restrictive_permissions(_path: &Path) -> Result<(), AuthError> {
-    Ok(())
-}
-
-fn row_to_authorization_request(row: &rusqlite::Row<'_>) -> rusqlite::Result<AuthorizationRequestRow> {
+fn row_to_authorization_request(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<AuthorizationRequestRow> {
     Ok(AuthorizationRequestRow {
         state: row.get(0)?,
         client_id: row.get(1)?,
@@ -441,7 +434,9 @@ mod tests {
 
     use crate::types::{AuthorizationCodeRow, RefreshTokenRow};
 
-    use super::{SqliteStore, now_unix};
+    use crate::util::now_unix;
+
+    use super::SqliteStore;
 
     #[tokio::test]
     async fn sqlite_store_enables_wal_and_busy_timeout() {
@@ -498,11 +493,82 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(store
-            .find_refresh_token("refresh-token")
+        assert!(
+            store
+                .find_refresh_token("refresh-token")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_cleanup_expired_removes_stale_rows() {
+        let store = temp_store().await;
+        let now = now_unix();
+
+        // Insert an expired auth code.
+        let mut code = sample_code();
+        code.expires_at = now - 10;
+        store.insert_auth_code(code).await.unwrap();
+
+        // Insert an expired refresh token.
+        store
+            .upsert_refresh_token(RefreshTokenRow {
+                refresh_token: "expired-refresh".to_string(),
+                client_id: "client".to_string(),
+                subject: "google-user".to_string(),
+                scope: "lab".to_string(),
+                provider_refresh_token: None,
+                created_at: now - 600,
+                expires_at: now - 10,
+            })
             .await
-            .unwrap()
-            .is_none());
+            .unwrap();
+
+        // Insert an expired authorization request.
+        use crate::types::AuthorizationRequestRow;
+        store
+            .insert_authorization_request(AuthorizationRequestRow {
+                state: "expired-state".to_string(),
+                client_id: "client".to_string(),
+                redirect_uri: "http://127.0.0.1:7777/callback".to_string(),
+                client_state: "cs".to_string(),
+                scope: "lab".to_string(),
+                provider_code_verifier: "verifier".to_string(),
+                code_challenge: "challenge".to_string(),
+                code_challenge_method: "S256".to_string(),
+                created_at: now - 600,
+                expires_at: now - 10,
+            })
+            .await
+            .unwrap();
+
+        // Insert a valid (non-expired) refresh token.
+        store
+            .upsert_refresh_token(RefreshTokenRow {
+                refresh_token: "valid-refresh".to_string(),
+                client_id: "client".to_string(),
+                subject: "google-user".to_string(),
+                scope: "lab".to_string(),
+                provider_refresh_token: None,
+                created_at: now,
+                expires_at: now + 3600,
+            })
+            .await
+            .unwrap();
+
+        let deleted = store.cleanup_expired().await.unwrap();
+        assert_eq!(deleted, 3, "should delete exactly 3 expired rows");
+
+        // The valid refresh token should still exist.
+        assert!(
+            store
+                .find_refresh_token("valid-refresh")
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     async fn temp_store() -> SqliteStore {

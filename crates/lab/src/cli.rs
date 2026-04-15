@@ -13,6 +13,7 @@ pub mod health;
 pub mod help;
 pub mod helpers;
 pub mod install;
+pub mod oauth;
 pub mod params;
 pub mod plugins;
 pub mod scaffold;
@@ -120,6 +121,8 @@ pub enum Command {
     Extract(extract::ExtractCmd),
     /// Manage proxied upstream MCP gateways.
     Gateway(gateway::GatewayArgs),
+    /// Run local OAuth callback relay helpers.
+    Oauth(oauth::OauthArgs),
     /// Radarr movie collection manager.
     #[cfg(feature = "radarr")]
     Radarr(radarr::RadarrArgs),
@@ -202,6 +205,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Completions(args) => completions::run(&args),
         Command::Extract(cmd) => cmd.run().await.map(|()| ExitCode::SUCCESS),
         Command::Gateway(args) => gateway::run(args, format, &config).await,
+        Command::Oauth(args) => oauth::run(args, &config).await,
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,
         #[cfg(feature = "sonarr")]

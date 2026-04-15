@@ -10,7 +10,8 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Read [CONVENTIONS.md](./CONVENTIONS.md) before changing implementation patterns or core APIs.
 - Use [SERVICES.md](./SERVICES.md), [CLI.md](./CLI.md), [MCP.md](./MCP.md), and [TUI.md](./TUI.md) for surface-specific behavior.
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
-- Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, and lab-issued JWT behavior.
+- Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, lab-issued JWT behavior, and callback-forwarding constraints.
+- Use [GATEWAY.md](./GATEWAY.md) when managing upstream MCP gateways over CLI, MCP, or `/v1/gateway`.
 - See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP gateway setup, configuration, tool merging, circuit breaker behavior, and resource proxying.
 - Consult [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
 - Use [OBSERVABILITY.md](./OBSERVABILITY.md) for the mandatory logging, correlation, redaction, and verification contract.
@@ -60,10 +61,11 @@ The docs are split by topic so contributors do not have to recover architecture,
 1. [CONFIG.md](./CONFIG.md)
 2. [TRANSPORT.md](./TRANSPORT.md)
 3. [OAUTH.md](./OAUTH.md) (if deploying with OAuth)
-4. [UPSTREAM.md](./UPSTREAM.md) (if proxying upstream MCP servers)
-5. [EXTRACT.md](./EXTRACT.md)
-6. [OPERATIONS.md](./OPERATIONS.md)
-7. [CLI.md](./CLI.md)
+4. [GATEWAY.md](./GATEWAY.md) (if managing upstream MCP gateways)
+5. [UPSTREAM.md](./UPSTREAM.md) (if proxying upstream MCP servers)
+6. [EXTRACT.md](./EXTRACT.md)
+7. [OPERATIONS.md](./OPERATIONS.md)
+8. [CLI.md](./CLI.md)
 
 ## Topic Map
 
@@ -76,17 +78,21 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [RMCP.md](./RMCP.md)
   RMCP SDK integration contract: transports, feature posture, handler patterns, auth ownership, and capability rules.
 - [OAUTH.md](./OAUTH.md)
-  HTTP auth modes: static bearer compatibility, internal Google-backed OAuth, lab-issued JWTs, JWKS, and RFC 9728 metadata.
+  HTTP auth modes: static bearer compatibility, internal Google-backed OAuth, lab-issued JWTs, JWKS, RFC 9728 metadata, and redirect/callback forwarding rules.
+- [GATEWAY.md](./GATEWAY.md)
+  Gateway control plane: CRUD, reload/test flows, runtime views, and tool exposure policy.
 - [UPSTREAM.md](./UPSTREAM.md)
   Upstream MCP proxy gateway: config, discovery, tool collision handling, circuit breaker, resource proxying.
 - [TRANSPORT.md](./TRANSPORT.md)
   Stdio and streamable HTTP transport: middleware stack, session management, DNS rebinding protection, CORS.
+- `apps/gateway-admin/README.md`
+  Labby admin UI: local frontend workflow, static export, and same-origin deployment model.
 - [SERVICES.md](./SERVICES.md)
   Service inventory, feature gates, plugin metadata, multi-instance support, coverage docs, and add-a-service workflow.
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
   End-to-end checklist for adding a new service, from upstream spec to verification.
 - [CLI.md](./CLI.md)
-  Command structure, output rules, confirmation rules, install/uninstall, and operator commands.
+  Command structure, output rules, confirmation rules, install/uninstall, operator commands, and `lab oauth relay-local`.
 - [TUI.md](./TUI.md)
   Plugin manager scope, interaction model, `.mcp.json` behavior, and TUI state rules.
 - [CONFIG.md](./CONFIG.md)
@@ -129,6 +135,7 @@ Use the smallest correct doc:
 - MCP tool, discovery, or envelope behavior: [MCP.md](./MCP.md)
 - RMCP SDK integration, feature posture, and server-shape rules: [RMCP.md](./RMCP.md)
 - HTTP auth modes, JWKS, and JWT validation: [OAUTH.md](./OAUTH.md)
+- gateway control plane and exposure policy: [GATEWAY.md](./GATEWAY.md)
 - upstream MCP proxy, circuit breaker, resource proxying: [UPSTREAM.md](./UPSTREAM.md)
 - transport configuration, middleware, sessions: [TRANSPORT.md](./TRANSPORT.md)
 - TUI behavior: [TUI.md](./TUI.md)

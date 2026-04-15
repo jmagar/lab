@@ -242,7 +242,7 @@ Scaffolding one service produces **24 file operations**: 13 new files plus 11 re
 | `crates/lab/src/dispatch.rs` | `patch_dispatch_rs` | `#[cfg(feature = "<svc>")] pub mod <svc>;` |
 | `crates/lab/src/cli.rs` | `patch_cli_rs` | Module decl + enum variant + dispatch arm |
 | `crates/lab/src/mcp/services.rs` | `patch_mcp_services_rs` | `#[cfg(feature = "<svc>")] pub mod <svc>;` |
-| `crates/lab/src/mcp/registry.rs` | `patch_mcp_registry_rs` | `register_service!(reg, "<svc>", <svc>);` |
+| `crates/lab/src/registry.rs` | `patch_mcp_registry_rs` | `register_service!(reg, "<svc>", <svc>);` |
 | `crates/lab/src/api/services.rs` | `patch_api_services_rs` | `#[cfg(feature = "<svc>")] pub mod <svc>;` |
 | `crates/lab/src/api/router.rs` | `patch_api_router_rs` | Feature-gated + registry-checked route mount |
 | `crates/lab/src/api/state.rs` | `patch_api_state_rs` | AppState field + `from_env()` load arm |
@@ -536,7 +536,7 @@ crates/lab/Cargo.toml
 crates/lab-apis/src/lib.rs
 crates/lab/src/cli.rs
 crates/lab/src/mcp/services.rs
-crates/lab/src/mcp/registry.rs
+crates/lab/src/registry.rs
 crates/lab/src/api/services.rs
 crates/lab/src/api/router.rs
 crates/lab/src/api/state.rs
@@ -680,7 +680,7 @@ Token-based: `contains_check(file_content, token)` — case-sensitive substring 
 | `lib.rs` | `crates/lab-apis/src/lib.rs` | `#[cfg(feature = "<svc>")]\npub mod <svc>;` |
 | `cli.rs` | `crates/lab/src/cli.rs` | `pub mod <svc>;` |
 | `mcp.services.rs` | `crates/lab/src/mcp/services.rs` | `#[cfg(feature = "<svc>")]\npub mod <svc>;` |
-| `mcp.registry.rs` | `crates/lab/src/mcp/registry.rs` | `register_service!(reg, "<svc>"` |
+| `mcp.registry.rs` | `crates/lab/src/registry.rs` | `register_service!(reg, "<svc>"` |
 | `api.services.rs` | `crates/lab/src/api/services.rs` | `#[cfg(feature = "<svc>")]\npub mod <svc>;` |
 | `api.router.rs` | `crates/lab/src/api/router.rs` | `nest("/<svc>"` |
 | `api.state.rs` | `crates/lab/src/api/state.rs` | `pub <svc>: Option<` |
@@ -944,7 +944,7 @@ causes `insert_once` to fail with a `ScaffoldError::Toml { message: "patch ancho
 | `crates/lab/src/cli.rs` | `#[cfg(feature = "apprise")]\n    Apprise(apprise::AppriseArgs),\n` | `patch_cli_rs` (enum variant) |
 | `crates/lab/src/cli.rs` | `#[cfg(feature = "apprise")]\n        Command::Apprise(args) => apprise::run(args, format).await,\n` | `patch_cli_rs` (dispatch arm) |
 | `crates/lab/src/dispatch.rs` | `pub mod helpers;\n` | `patch_dispatch_rs` |
-| `crates/lab/src/mcp/registry.rs` | `    reg\n}` | `patch_mcp_registry_rs` |
+| `crates/lab/src/registry.rs` | `    reg\n}` | `patch_mcp_registry_rs` |
 | `crates/lab/src/api/router.rs` | `    let x_request_id = HeaderName::from_static("x-request-id");` | `patch_api_router_rs` |
 | `crates/lab/src/api/state.rs` | `#[cfg(feature = "prowlarr")]\n    pub prowlarr: ...` | `patch_api_state_rs` (field) |
 | `crates/lab/src/api/state.rs` | `#[cfg(feature = "prowlarr")]\n            prowlarr: crate::dispatch::prowlarr::...` | `patch_api_state_rs` (load) |
@@ -957,7 +957,7 @@ causes `insert_once` to fail with a `ScaffoldError::Toml { message: "patch ancho
 | Feature in lab | `<svc> = ["lab-apis/<svc>"]` in `crates/lab/Cargo.toml` |
 | lib.rs gated mod | `#[cfg(feature = "<svc>")]\npub mod <svc>;` in `lib.rs` |
 | MCP services mod | `#[cfg(feature = "<svc>")]\npub mod <svc>;` in `mcp/services.rs` |
-| MCP registry | `register_service!(reg, "<svc>"` in `mcp/registry.rs` |
+| MCP registry | `register_service!(reg, "<svc>"` in `registry.rs` |
 | API services mod | `#[cfg(feature = "<svc>")]\npub mod <svc>;` in `api/services.rs` |
 | API router mount | `nest("/<svc>"` in `api/router.rs` |
 | AppState field | `pub <svc>: Option<` in `api/state.rs` |

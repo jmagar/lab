@@ -18,6 +18,7 @@ use tracing::Instrument;
 use lab_apis::core::action::ActionSpec;
 
 use crate::api::ActionRequest;
+use crate::dispatch::gateway::current_gateway_manager;
 use crate::dispatch::error::ToolError;
 
 /// Dispatch a service action request with unknown-action gate, confirmation gate, and logging.
@@ -57,6 +58,23 @@ where
 {
     let action = req.action;
     let mut params = req.params;
+
+    if let Some(manager) = current_gateway_manager() {
+        if !manager.surface_enabled_for_service(service, surface).await {
+            tracing::warn!(
+                surface = surface,
+                service,
+                action,
+                request_id,
+                kind = "not_found",
+                "service rejected by gateway surface policy"
+            );
+            return Err(ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("service `{service}` is not enabled on the {surface} surface"),
+            });
+        }
+    }
 
     // Gate: unknown actions are rejected here, not silently forwarded.
     // "help" and "schema" are built-in actions intercepted inside dispatch(); they bypass
@@ -232,10 +250,7 @@ mod tests {
 
     impl EventRecorder {
         fn snapshot(&self) -> String {
-            self.0
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .join("\n")
+            self.0.lock().unwrap_or_else(|e| e.into_inner()).join("\n")
         }
     }
 

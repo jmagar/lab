@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Cable, Wrench, Eye, AlertTriangle, ArrowRight, Activity } from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
+import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { useGateways } from '@/lib/hooks/use-gateways'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -21,7 +22,7 @@ function StatCard({
   loading?: boolean
 }) {
   const colorMap = {
-    default: 'bg-[#651fff]/20 text-[#651fff] shadow-md shadow-[#651fff]/20',
+    default: 'bg-primary/15 text-primary shadow-md shadow-primary/15',
     success: 'bg-[#00e676]/20 text-[#00e676] shadow-md shadow-[#00e676]/20',
     warning: 'bg-[#ff9100]/20 text-[#ff9100] shadow-md shadow-[#ff9100]/20',
     info: 'bg-[#00b0ff]/20 text-[#00b0ff] shadow-md shadow-[#00b0ff]/20',
@@ -156,15 +157,15 @@ export default function OverviewPage() {
               ))}
             </div>
           ) : recentGateways.length === 0 ? (
-            <div className="rounded-lg border-2 border-dashed border-[#651fff]/30 bg-gradient-to-br from-[#651fff]/5 to-[#00e5ff]/5 p-8 text-center">
-              <div className="mx-auto size-14 rounded-full bg-gradient-to-br from-[#ea80fc] to-[#651fff] flex items-center justify-center mb-4 shadow-lg shadow-[#651fff]/30">
+            <div className="rounded-lg border-2 border-dashed border-primary/20 bg-gradient-to-br from-primary/5 to-info/5 p-8 text-center">
+              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-info shadow-lg shadow-primary/20">
                 <Cable className="size-7 text-white" />
               </div>
               <p className="font-semibold text-lg">No gateways configured</p>
               <p className="text-sm text-muted-foreground mt-1">
                 Add your first MCP gateway to get started
               </p>
-              <Button className="mt-4 bg-gradient-to-r from-[#651fff] to-[#00e5ff] hover:from-[#7c4dff] hover:to-[#18ffff] text-white shadow-lg shadow-[#651fff]/30" asChild>
+              <Button className="mt-4 bg-gradient-to-r from-primary to-info text-white shadow-lg shadow-primary/20 hover:from-primary/90 hover:to-info/90" asChild>
                 <Link href="/gateways">Add Gateway</Link>
               </Button>
             </div>
@@ -173,8 +174,8 @@ export default function OverviewPage() {
               {recentGateways.map((gateway) => (
                 <Link
                   key={gateway.id}
-                  href={`/gateways/${gateway.id}`}
-                  className="flex items-center gap-4 rounded-lg border bg-card p-4 hover:border-[#651fff]/50 hover:shadow-lg hover:shadow-[#651fff]/10 transition-all duration-200 group"
+                  href={gatewayDetailHref(gateway.id)}
+                  className="group flex items-center gap-4 rounded-lg border bg-card p-4 transition-all duration-200 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/10"
                 >
                   <div className={`flex size-10 items-center justify-center rounded-lg transition-colors ${
                     gateway.status.healthy && gateway.status.connected 
@@ -184,7 +185,7 @@ export default function OverviewPage() {
                     <Cable className="size-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate group-hover:text-[#651fff] transition-colors">{gateway.name}</p>
+                    <p className="truncate font-semibold transition-colors group-hover:text-primary">{gateway.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {gateway.transport.toUpperCase()} &middot; {gateway.status.discovered_tool_count} tools
                     </p>
