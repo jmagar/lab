@@ -3,7 +3,18 @@
 import useSWR, { mutate } from 'swr'
 import { gatewayApi } from '@/lib/api/gateway-client'
 import { mockGateways, mockExposurePolicy, mockTestResult, mockReloadResult, mockExposurePolicyPreview } from '@/lib/api/mock-data'
-import type { Gateway, CreateGatewayInput, UpdateGatewayInput, ExposurePolicy, TestGatewayResult, ReloadGatewayResult, ExposurePolicyPreview } from '@/lib/types/gateway'
+import type {
+  Gateway,
+  CreateGatewayInput,
+  UpdateGatewayInput,
+  ExposurePolicy,
+  TestGatewayResult,
+  ReloadGatewayResult,
+  ExposurePolicyPreview,
+  ServiceConfig,
+  ServiceAction,
+  SupportedService,
+} from '@/lib/types/gateway'
 import { useCallback } from 'react'
 
 // Set NEXT_PUBLIC_MOCK_DATA=true to use mock data for development
@@ -65,10 +76,46 @@ const fetchExposurePolicy = async (id: string): Promise<ExposurePolicy> => {
   return gatewayApi.getExposurePolicy(id)
 }
 
+const fetchSupportedServices = async (): Promise<SupportedService[]> => {
+  if (USE_MOCK_DATA) {
+    await mockDelay()
+    return []
+  }
+  return gatewayApi.supportedServices()
+}
+
+const fetchServiceConfig = async (service: string): Promise<ServiceConfig> => {
+  if (USE_MOCK_DATA) {
+    await mockDelay()
+    return {
+      service,
+      configured: false,
+      fields: [],
+    }
+  }
+  return gatewayApi.getServiceConfig(service)
+}
+
+const fetchServiceActions = async (service: string): Promise<ServiceAction[]> => {
+  if (USE_MOCK_DATA) {
+    await mockDelay()
+    return []
+  }
+  return gatewayApi.serviceActions(service)
+}
+
 // SWR Keys
 export const GATEWAYS_KEY = '/gateways'
 export const gatewayKey = (id: string) => `/gateways/${id}`
 export const exposurePolicyKey = (id: string) => `/gateways/${id}/exposure`
+export const SUPPORTED_SERVICES_KEY = '/gateway-supported-services'
+export const serviceConfigKey = (service: string) => `/gateway-service-config/${service}`
+export const serviceActionsKey = (service: string) => `/gateway-service-actions/${service}`
+
+async function refreshGatewayCache(id?: string, extraKeys: string[] = []) {
+  const keys = [GATEWAYS_KEY, ...(id ? [gatewayKey(id)] : []), ...extraKeys]
+  await Promise.all(keys.map((key) => mutate(key)))
+}
 
 // Hooks
 export function useGateways() {
@@ -91,6 +138,32 @@ export function useExposurePolicy(id: string | null) {
   return useSWR<ExposurePolicy>(
     id ? exposurePolicyKey(id) : null,
     id ? () => fetchExposurePolicy(id) : null,
+    {
+      revalidateOnFocus: false,
+    }
+  )
+}
+
+export function useSupportedServices() {
+  return useSWR<SupportedService[]>(SUPPORTED_SERVICES_KEY, fetchSupportedServices, {
+    revalidateOnFocus: false,
+  })
+}
+
+export function useServiceConfig(service: string | null) {
+  return useSWR<ServiceConfig>(
+    service ? serviceConfigKey(service) : null,
+    service ? () => fetchServiceConfig(service) : null,
+    {
+      revalidateOnFocus: false,
+    }
+  )
+}
+
+export function useServiceActions(service: string | null) {
+  return useSWR<ServiceAction[]>(
+    service ? serviceActionsKey(service) : null,
+    service ? () => fetchServiceActions(service) : null,
     {
       revalidateOnFocus: false,
     }
@@ -122,7 +195,7 @@ export function useGatewayMutations() {
       return newGateway
     }
     const gateway = await gatewayApi.create(input)
-    await mutate(GATEWAYS_KEY)
+    await refreshGatewayCache(gateway.id)
     return gateway
   }, [])
 
@@ -137,8 +210,7 @@ export function useGatewayMutations() {
       return updated
     }
     const gateway = await gatewayApi.update(id, input)
-    await mutate(gatewayKey(id))
-    await mutate(GATEWAYS_KEY)
+    await refreshGatewayCache(id)
     return gateway
   }, [])
 
@@ -149,7 +221,7 @@ export function useGatewayMutations() {
       return
     }
     await gatewayApi.remove(id)
-    await mutate(GATEWAYS_KEY)
+    await refreshGatewayCache()
   }, [])
 
   const testGateway = useCallback(async (id: string): Promise<TestGatewayResult> => {
@@ -175,8 +247,7 @@ export function useGatewayMutations() {
       return mockReloadResult
     }
     const result = await gatewayApi.reload(id)
-    await mutate(gatewayKey(id))
-    await mutate(GATEWAYS_KEY)
+    await refreshGatewayCache(id)
     return result
   }, [])
 
@@ -188,8 +259,7 @@ export function useGatewayMutations() {
       return policy
     }
     const result = await gatewayApi.setExposurePolicy(id, policy)
-    await mutate(exposurePolicyKey(id))
-    await mutate(gatewayKey(id))
+    await refreshGatewayCache(id, [exposurePolicyKey(id)])
     return result
   }, [])
 
@@ -257,6 +327,80 @@ export function useGatewayMutations() {
     return gatewayApi.previewExposurePolicy(id, patterns, signal)
   }, [])
 
+  const saveServiceConfig = useCallback(async (service: string, values: Record<string, string>): Promise<ServiceConfig> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const fields = Object.entries(values).map(([name, value]) => ({
+        name,
+        present: value.length > 0,
+        secret: name.includes('TOKEN') || name.includes('KEY') || name.includes('PASSWORD'),
+        value_preview: name.includes('TOKEN') || name.includes('KEY') || name.includes('PASSWORD') ? null : value,
+      }))
+      const result = { service, configured: fields.length > 0, fields }
+      await mutate(serviceConfigKey(service), result, false)
+      return result
+    }
+    const result = await gatewayApi.setServiceConfig(service, values)
+    await refreshGatewayCache(undefined, [serviceConfigKey(service)])
+    return result
+  }, [])
+
+  const enableVirtualServer = useCallback(async (id: string): Promise<Gateway> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const gateway = mockGateways.find((item) => item.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      const result = { ...gateway, enabled: true }
+      await mutate(gatewayKey(id), result, false)
+      await mutate(GATEWAYS_KEY)
+      return result
+    }
+    const result = await gatewayApi.enableVirtualServer(id)
+    await refreshGatewayCache(id)
+    return result
+  }, [])
+
+  const disableVirtualServer = useCallback(async (id: string): Promise<Gateway> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const gateway = mockGateways.find((item) => item.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      const result = { ...gateway, enabled: false }
+      await mutate(gatewayKey(id), result, false)
+      await mutate(GATEWAYS_KEY)
+      return result
+    }
+    const result = await gatewayApi.disableVirtualServer(id)
+    await refreshGatewayCache(id)
+    return result
+  }, [])
+
+  const setVirtualServerSurface = useCallback(
+    async (id: string, surface: 'cli' | 'api' | 'mcp' | 'webui', enabled: boolean): Promise<Gateway> => {
+      if (USE_MOCK_DATA) {
+        await mockDelay()
+        const gateway = mockGateways.find((item) => item.id === id)
+        if (!gateway) throw new Error('Gateway not found')
+        const result = {
+          ...gateway,
+          surfaces: gateway.surfaces
+            ? {
+                ...gateway.surfaces,
+                [surface]: { ...gateway.surfaces[surface], enabled },
+              }
+            : gateway.surfaces,
+        }
+        await mutate(gatewayKey(id), result, false)
+        await mutate(GATEWAYS_KEY)
+        return result
+      }
+      const result = await gatewayApi.setVirtualServerSurface(id, surface, enabled)
+      await refreshGatewayCache(id)
+      return result
+    },
+    [],
+  )
+
   return {
     createGateway,
     updateGateway,
@@ -265,5 +409,9 @@ export function useGatewayMutations() {
     reloadGateway,
     setExposurePolicy,
     previewExposurePolicy,
+    saveServiceConfig,
+    enableVirtualServer,
+    disableVirtualServer,
+    setVirtualServerSurface,
   }
 }

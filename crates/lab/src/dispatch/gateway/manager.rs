@@ -1,20 +1,36 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use crate::config::{LabConfig, UpstreamConfig};
+use crate::config::{backup_env, env_is_up_to_date, write_env, LabConfig, UpstreamConfig};
+use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::upstream::pool::UpstreamPool;
+use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
     insert_upstream, load_gateway_config, remove_upstream, update_upstream, write_gateway_config,
 };
 use super::params::GatewayUpdatePatch;
+use super::service_catalog::service_meta;
 use super::types::{
-    CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView, GatewayView,
+    CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView,
+    GatewayView, ServiceConfigFieldView, ServiceConfigView, VirtualServerMcpPolicyView,
 };
+use super::view_models::{
+    ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
+};
+use super::virtual_servers::{VirtualServerRecord, VirtualServerSource};
+use crate::tui::events::ServiceHealth;
+
+#[derive(Debug, Clone)]
+struct VirtualServiceHealthCache {
+    fetched_at: tokio::time::Instant,
+    values: HashMap<String, ServiceHealth>,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCatalogSnapshot {
@@ -54,7 +70,9 @@ pub struct GatewayManager {
     path: PathBuf,
     runtime: GatewayRuntimeHandle,
     config: Arc<RwLock<LabConfig>>,
+    service_clients: Option<SharedServiceClients>,
     notifier: Option<CatalogChangeNotifier>,
+    virtual_health_cache: Arc<RwLock<Option<VirtualServiceHealthCache>>>,
 }
 
 impl GatewayManager {
@@ -63,8 +81,16 @@ impl GatewayManager {
             path,
             runtime,
             config: Arc::new(RwLock::new(LabConfig::default())),
+            service_clients: None,
             notifier: None,
+            virtual_health_cache: Arc::new(RwLock::new(None)),
         }
+    }
+
+    #[must_use]
+    pub fn with_service_clients(mut self, service_clients: SharedServiceClients) -> Self {
+        self.service_clients = Some(service_clients);
+        self
     }
 
     /// Attach a catalog-change notifier (e.g. the MCP peer notifier).
@@ -83,22 +109,108 @@ impl GatewayManager {
         self.runtime.current_pool().await
     }
 
-    pub async fn list(&self) -> Result<Vec<GatewayView>, ToolError> {
+    pub async fn get_service_config(&self, service: &str) -> Result<ServiceConfigView, ToolError> {
+        let meta = service_meta(service).ok_or_else(|| ToolError::InvalidParam {
+            message: format!("unknown service `{service}`"),
+            param: "service".to_string(),
+        })?;
+        let values = read_env_values(&self.env_path())?;
+        Ok(service_config_view(meta, &values))
+    }
+
+    pub async fn set_service_config(
+        &self,
+        service: &str,
+        values: &std::collections::BTreeMap<String, String>,
+    ) -> Result<ServiceConfigView, ToolError> {
+        let meta = service_meta(service).ok_or_else(|| ToolError::InvalidParam {
+            message: format!("unknown service `{service}`"),
+            param: "service".to_string(),
+        })?;
+
+        for field in values.keys() {
+            let valid = meta.required_env.iter().chain(meta.optional_env.iter()).any(|env| env.name == field);
+            if !valid {
+                return Err(ToolError::InvalidParam {
+                    message: format!("field `{field}` is not valid for service `{service}`"),
+                    param: "values".to_string(),
+                });
+            }
+        }
+
+        let creds = values_to_service_creds(service, values);
+        let env_path = self.env_path();
+        if !creds.is_empty() && !env_is_up_to_date(&env_path, &creds) {
+            drop(backup_env(&env_path).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to back up env file: {e}"),
+            })?);
+            write_env(&env_path, &creds, true).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to write env file: {e}"),
+            })?;
+            if let Some(service_clients) = &self.service_clients {
+                service_clients
+                    .refresh_from_env_path(&env_path)
+                    .await
+                    .map_err(|e| ToolError::Sdk {
+                        sdk_kind: "internal_error".to_string(),
+                        message: format!("failed to refresh service clients: {e}"),
+                    })?;
+            }
+            self.invalidate_virtual_service_health_cache().await;
+        }
+
+        let values = read_env_values(&env_path)?;
+        Ok(service_config_view(meta, &values))
+    }
+
+    pub async fn list(&self) -> Result<Vec<ServerView>, ToolError> {
         let cfg = self.config.read().await.clone();
         let pool = self.runtime.current_pool().await;
         let prompt_owners = match pool.as_deref() {
             Some(p) => Some(p.prompt_ownership_map(&[]).await),
             None => None,
         };
-        let mut views = Vec::with_capacity(cfg.upstream.len());
+        let virtual_health = self.virtual_service_health_map().await;
+        let mut views = Vec::with_capacity(cfg.upstream.len() + cfg.virtual_servers.len());
         for upstream in &cfg.upstream {
-            views.push(GatewayView {
-                config: config_view(upstream),
-                runtime: runtime_view(pool.as_deref(), &upstream.name, prompt_owners.as_ref())
-                    .await,
-            });
+            views.push(
+                server_view_from_upstream(pool.as_deref(), upstream, prompt_owners.as_ref()).await,
+            );
+        }
+        for virtual_server in &cfg.virtual_servers {
+            views.push(server_view_from_virtual_server(
+                virtual_server,
+                virtual_health.get(&virtual_server.service),
+            ));
         }
         Ok(views)
+    }
+
+    pub async fn get_server(&self, id: &str) -> Result<ServerView, ToolError> {
+        let cfg = self.config.read().await.clone();
+        let pool = self.runtime.current_pool().await;
+
+        if let Some(upstream) = cfg.upstream.iter().find(|upstream| upstream.name == id) {
+            let prompt_owners = match pool.as_deref() {
+                Some(p) => Some(p.prompt_ownership_map(&[]).await),
+                None => None,
+            };
+            return Ok(server_view_from_upstream(
+                pool.as_deref(),
+                upstream,
+                prompt_owners.as_ref(),
+            )
+            .await);
+        }
+
+        let virtual_server = find_virtual_server(&cfg, id)?;
+        let virtual_health = self.virtual_service_health_map().await;
+        Ok(server_view_from_virtual_server(
+            virtual_server,
+            virtual_health.get(&virtual_server.service),
+        ))
     }
 
     pub async fn get(&self, name: &str) -> Result<GatewayView, ToolError> {
@@ -125,6 +237,73 @@ impl GatewayManager {
         })
     }
 
+    pub async fn surface_enabled_for_service(&self, service: &str, surface: &str) -> bool {
+        if service_meta(service).is_none() {
+            return true;
+        }
+
+        let cfg = self.config.read().await;
+        let Some(virtual_server) = find_virtual_server_for_service(&cfg, service) else {
+            return surface != "mcp";
+        };
+
+        if !virtual_server.enabled {
+            return false;
+        }
+
+        match surface {
+            "cli" => virtual_server.surfaces.cli,
+            "api" => virtual_server.surfaces.api,
+            "mcp" => virtual_server.surfaces.mcp,
+            "webui" => virtual_server.surfaces.webui,
+            _ => false,
+        }
+    }
+
+    pub async fn allowed_mcp_actions_for_service(&self, service: &str) -> Option<Vec<String>> {
+        if service_meta(service).is_none() {
+            return None;
+        }
+
+        let cfg = self.config.read().await;
+        let virtual_server = find_virtual_server_for_service(&cfg, service)?;
+        if !virtual_server.enabled || !virtual_server.surfaces.mcp {
+            return Some(Vec::new());
+        }
+
+        if let Some(policy) = &virtual_server.mcp_policy
+            && !policy.allowed_actions.is_empty()
+        {
+            let mut allowed = vec!["help".to_string(), "schema".to_string()];
+            allowed.extend(policy.allowed_actions.clone());
+            return Some(allowed);
+        }
+
+        None
+    }
+
+    pub async fn mcp_action_allowed_for_service(&self, service: &str, action: &str) -> bool {
+        if !self.surface_enabled_for_service(service, "mcp").await {
+            return false;
+        }
+
+        if matches!(action, "help" | "schema") {
+            return true;
+        }
+
+        let cfg = self.config.read().await;
+        let Some(virtual_server) = find_virtual_server_for_service(&cfg, service) else {
+            return false;
+        };
+
+        match &virtual_server.mcp_policy {
+            Some(policy) if !policy.allowed_actions.is_empty() => {
+                policy.allowed_actions.iter().any(|allowed| allowed == action)
+            }
+            _ => true,
+        }
+    }
+
     pub async fn status(&self, name: Option<&str>) -> Result<Vec<GatewayRuntimeView>, ToolError> {
         let upstreams: Vec<UpstreamConfig> = self
             .config
@@ -145,6 +324,11 @@ impl GatewayManager {
             items.push(runtime_view(pool.as_deref(), &upstream.name, prompt_owners.as_ref()).await);
         }
         Ok(items)
+    }
+
+    pub async fn service_for_virtual_server_id(&self, id: &str) -> Result<String, ToolError> {
+        let cfg = self.config.read().await;
+        Ok(find_virtual_server(&cfg, id)?.service.clone())
     }
 
     pub async fn test(
@@ -172,18 +356,101 @@ impl GatewayManager {
         Ok(runtime_view(Some(&pool), &upstream.name, None).await)
     }
 
+    pub async fn enable_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
+        let view = self.set_virtual_server_enabled(id, true).await?;
+        self.invalidate_virtual_service_health_cache().await;
+        Ok(view)
+    }
+
+    pub async fn disable_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
+        let view = self.set_virtual_server_enabled(id, false).await?;
+        self.invalidate_virtual_service_health_cache().await;
+        Ok(view)
+    }
+
+    pub async fn set_virtual_server_surface(
+        &self,
+        id: &str,
+        surface: &str,
+        enabled: bool,
+    ) -> Result<ServerView, ToolError> {
+        let mut cfg = self.config.read().await.clone();
+        let virtual_server = cfg
+            .virtual_servers
+            .iter_mut()
+            .find(|server| server.id == id)
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("virtual server `{id}` not found"),
+            })?;
+
+        match surface {
+            "cli" => virtual_server.surfaces.cli = enabled,
+            "api" => virtual_server.surfaces.api = enabled,
+            "mcp" => virtual_server.surfaces.mcp = enabled,
+            "webui" => virtual_server.surfaces.webui = enabled,
+            _ => {
+                return Err(ToolError::InvalidParam {
+                    message: format!("unknown surface `{surface}`"),
+                    param: "surface".to_string(),
+                });
+            }
+        }
+
+        self.persist_config(cfg).await?;
+        let cfg = self.config.read().await;
+        let virtual_server = find_virtual_server(&cfg, id)?;
+        Ok(server_view_from_virtual_server(virtual_server, None))
+    }
+
+    pub async fn get_virtual_server_mcp_policy(
+        &self,
+        id: &str,
+    ) -> Result<VirtualServerMcpPolicyView, ToolError> {
+        let cfg = self.config.read().await;
+        let virtual_server = find_virtual_server(&cfg, id)?;
+        Ok(VirtualServerMcpPolicyView {
+            allowed_actions: virtual_server
+                .mcp_policy
+                .as_ref()
+                .map(|policy| policy.allowed_actions.clone())
+                .unwrap_or_default(),
+        })
+    }
+
+    pub async fn set_virtual_server_mcp_policy(
+        &self,
+        id: &str,
+        allowed_actions: &[String],
+    ) -> Result<VirtualServerMcpPolicyView, ToolError> {
+        let mut cfg = self.config.read().await.clone();
+        let virtual_server = cfg
+            .virtual_servers
+            .iter_mut()
+            .find(|server| server.id == id)
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("virtual server `{id}` not found"),
+            })?;
+
+        virtual_server.mcp_policy = if allowed_actions.is_empty() {
+            None
+        } else {
+            Some(crate::config::VirtualServerMcpPolicyConfig {
+                allowed_actions: allowed_actions.to_vec(),
+            })
+        };
+
+        self.persist_config(cfg).await?;
+        Ok(VirtualServerMcpPolicyView {
+            allowed_actions: allowed_actions.to_vec(),
+        })
+    }
+
     pub async fn add(&self, spec: UpstreamConfig) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
         insert_upstream(&mut cfg, spec.clone())?;
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
+        self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&spec.name).await
     }
@@ -196,15 +463,7 @@ impl GatewayManager {
         let mut cfg = self.config.read().await.clone();
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
         update_upstream(&mut cfg, name, patch)?;
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
+        self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&updated_name).await
     }
@@ -212,15 +471,7 @@ impl GatewayManager {
     pub async fn remove(&self, name: &str) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
         let removed = remove_upstream(&mut cfg, name)?;
-        let path = self.path.clone();
-        let cfg_clone = cfg.clone();
-        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
-            .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
-            })??;
-        *self.config.write().await = cfg;
+        self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         Ok(GatewayView {
             config: config_view(&removed),
@@ -322,6 +573,126 @@ impl GatewayManager {
             notifier.notify_catalog_changes(diff);
         }
     }
+
+    async fn set_virtual_server_enabled(
+        &self,
+        id: &str,
+        enabled: bool,
+    ) -> Result<ServerView, ToolError> {
+        let mut cfg = self.config.read().await.clone();
+        let existing_index = cfg.virtual_servers.iter().position(|server| server.id == id);
+        let index = if let Some(index) = existing_index {
+            index
+        } else {
+            let meta = service_meta(id).ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("virtual server `{id}` not found"),
+            })?;
+            let values = read_env_values(&self.env_path())?;
+            let configured = service_config_view(meta, &values).configured;
+            if !configured {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: format!("virtual server `{id}` not found"),
+                });
+            }
+
+            cfg.virtual_servers.push(crate::config::VirtualServerConfig {
+                id: id.to_string(),
+                service: id.to_string(),
+                enabled: false,
+                surfaces: crate::config::VirtualServerSurfacesConfig::default(),
+                mcp_policy: None,
+            });
+            cfg.virtual_servers.len() - 1
+        };
+
+        let virtual_server = cfg
+            .virtual_servers
+            .get_mut(index)
+            .expect("virtual server index should exist");
+        virtual_server.enabled = enabled;
+        if enabled {
+            virtual_server.surfaces.mcp = true;
+        }
+
+        self.persist_config(cfg).await?;
+        let cfg = self.config.read().await;
+        let virtual_server = find_virtual_server(&cfg, id)?;
+        Ok(server_view_from_virtual_server(virtual_server, None))
+    }
+
+    async fn virtual_service_health_map(&self) -> HashMap<String, ServiceHealth> {
+        const HEALTH_CACHE_TTL: Duration = Duration::from_secs(30);
+
+        if let Some(cache) = self.virtual_health_cache.read().await.clone()
+            && cache.fetched_at.elapsed() < HEALTH_CACHE_TTL
+        {
+            return cache.values;
+        }
+
+        let values = crate::tui::metadata::check_all_services(&self.env_path())
+            .await
+            .into_iter()
+            .map(|status| (status.service.clone(), status))
+            .collect::<HashMap<_, _>>();
+
+        *self.virtual_health_cache.write().await = Some(VirtualServiceHealthCache {
+            fetched_at: tokio::time::Instant::now(),
+            values: values.clone(),
+        });
+
+        values
+    }
+
+    async fn invalidate_virtual_service_health_cache(&self) {
+        *self.virtual_health_cache.write().await = None;
+    }
+
+    fn env_path(&self) -> PathBuf {
+        #[cfg(test)]
+        if let Some(parent) = self.path.parent() {
+            // Tests isolate canonical service-config writes beside the temp
+            // gateway config instead of touching the developer's ~/.lab/.env.
+            return parent.join(".env");
+        }
+        crate::tui::services::lab_env_path()
+    }
+
+    async fn persist_config(&self, cfg: LabConfig) -> Result<(), ToolError> {
+        let path = self.path.clone();
+        let cfg_clone = cfg.clone();
+        tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("config write task failed: {e}"),
+            })??;
+        *self.config.write().await = cfg;
+        Ok(())
+    }
+}
+
+fn find_virtual_server<'a>(
+    cfg: &'a LabConfig,
+    id: &str,
+) -> Result<&'a crate::config::VirtualServerConfig, ToolError> {
+    cfg.virtual_servers
+        .iter()
+        .find(|server| server.id == id)
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message: format!("virtual server `{id}` not found"),
+        })
+}
+
+fn find_virtual_server_for_service<'a>(
+    cfg: &'a LabConfig,
+    service: &str,
+) -> Option<&'a crate::config::VirtualServerConfig> {
+    cfg.virtual_servers
+        .iter()
+        .find(|server| server.service == service || server.id == service)
 }
 
 fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
@@ -332,6 +703,158 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
         args: upstream.args.clone(),
         bearer_token_env: upstream.bearer_token_env.clone(),
         proxy_resources: upstream.proxy_resources,
+    }
+}
+
+async fn server_view_from_upstream(
+    pool: Option<&UpstreamPool>,
+    upstream: &UpstreamConfig,
+    prompt_owners: Option<&HashMap<String, String>>,
+) -> ServerView {
+    let runtime = runtime_view(pool, &upstream.name, prompt_owners).await;
+    let connected = runtime.tool_count + runtime.resource_count + runtime.prompt_count > 0;
+
+    ServerView {
+        id: upstream.name.clone(),
+        name: upstream.name.clone(),
+        source: "custom_gateway".to_string(),
+        configured: true,
+        enabled: true,
+        connected,
+        surfaces: SurfaceStatesView {
+            mcp: SurfaceStateView {
+                enabled: true,
+                connected,
+            },
+            ..SurfaceStatesView::default()
+        },
+        warnings: runtime
+            .last_error
+            .as_ref()
+            .map(|message| {
+                vec![super::view_models::ServerWarningView {
+                    code: "connection_error".to_string(),
+                    message: message.clone(),
+                }]
+            })
+            .unwrap_or_default(),
+        config_summary: ServerConfigSummaryView {
+            transport: Some(if upstream.command.is_some() {
+                "stdio".to_string()
+            } else {
+                "http".to_string()
+            }),
+            target: upstream.url.clone().or_else(|| upstream.command.clone()),
+        },
+    }
+}
+
+fn server_view_from_virtual_server(
+    config: &crate::config::VirtualServerConfig,
+    health: Option<&ServiceHealth>,
+) -> ServerView {
+    let record = VirtualServerRecord::from(config);
+    let service = match &record.source {
+        VirtualServerSource::LabService { service } => service.clone(),
+    };
+    let connected = record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
+    let warnings = health
+        .and_then(|status| {
+            status.message.as_ref().map(|message| {
+                vec![super::view_models::ServerWarningView {
+                    code: if status.reachable {
+                        "health_warning".to_string()
+                    } else {
+                        "connection_error".to_string()
+                    },
+                    message: message.clone(),
+                }]
+            })
+        })
+        .unwrap_or_default();
+
+    ServerView {
+        id: record.id.clone(),
+        name: service.clone(),
+        source: "lab_service".to_string(),
+        configured: true,
+        enabled: record.enabled,
+        connected,
+        surfaces: SurfaceStatesView {
+            cli: SurfaceStateView {
+                enabled: record.surfaces.cli,
+                connected: record.surfaces.cli && connected,
+            },
+            api: SurfaceStateView {
+                enabled: record.surfaces.api,
+                connected: record.surfaces.api && connected,
+            },
+            mcp: SurfaceStateView {
+                enabled: record.surfaces.mcp,
+                connected: record.surfaces.mcp && connected,
+            },
+            webui: SurfaceStateView {
+                enabled: record.surfaces.webui,
+                connected: record.surfaces.webui && connected,
+            },
+        },
+        warnings,
+        config_summary: ServerConfigSummaryView {
+            transport: Some("lab_service".to_string()),
+            target: Some(service),
+        },
+    }
+}
+
+fn read_env_values(path: &std::path::Path) -> Result<HashMap<String, String>, ToolError> {
+    Ok(dotenvy::from_path_iter(path)
+        .ok()
+        .map(|iter| iter.filter_map(Result::ok).collect())
+        .unwrap_or_default())
+}
+
+fn values_to_service_creds(
+    service: &str,
+    values: &std::collections::BTreeMap<String, String>,
+) -> Vec<ServiceCreds> {
+    values
+        .iter()
+        .map(|(field, value)| {
+            let url = if field == &format!("{}_URL", service.to_uppercase()) {
+                Some(value.clone())
+            } else {
+                None
+            };
+            let secret = if url.is_some() { None } else { Some(value.clone()) };
+            ServiceCreds {
+                service: service.to_string(),
+                url,
+                secret,
+                env_field: field.clone(),
+            }
+        })
+        .collect()
+}
+
+fn service_config_view(
+    meta: &lab_apis::core::PluginMeta,
+    values: &HashMap<String, String>,
+) -> ServiceConfigView {
+    let mut fields = Vec::new();
+    for env in meta.required_env.iter().chain(meta.optional_env.iter()) {
+        let value = values.get(env.name);
+        fields.push(ServiceConfigFieldView {
+            name: env.name.to_string(),
+            present: value.is_some(),
+            secret: env.secret,
+            value_preview: value.and_then(|value| (!env.secret).then(|| value.clone())),
+        });
+    }
+
+    ServiceConfigView {
+        service: meta.name.to_string(),
+        configured: fields.iter().any(|field| field.present),
+        fields,
     }
 }
 
@@ -365,7 +888,7 @@ async fn snapshot_from_pool(pool: Option<Arc<UpstreamPool>>) -> GatewayCatalogSn
 async fn runtime_view(
     pool: Option<&UpstreamPool>,
     name: &str,
-    prompt_owners: Option<&std::collections::HashMap<String, String>>,
+    prompt_owners: Option<&HashMap<String, String>>,
 ) -> GatewayRuntimeView {
     let Some(pool) = pool else {
         return GatewayRuntimeView {
@@ -409,7 +932,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    use crate::config::UpstreamConfig;
+    use crate::config::{UpstreamConfig, VirtualServerConfig, VirtualServerSurfacesConfig};
 
     use super::*;
 
@@ -471,12 +994,257 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn configured_service_appears_in_list_before_virtual_server_enablement() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: false,
+                    surfaces: VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        let servers = manager.list().await.expect("list");
+        let plex = servers
+            .iter()
+            .find(|server| server.id == "plex")
+            .expect("plex server");
+        assert!(plex.configured);
+        assert!(!plex.enabled);
+        assert_eq!(plex.source, "lab_service");
+    }
+
+    #[tokio::test]
+    async fn service_config_get_redacts_secret_values() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
+        values.insert("PLEX_TOKEN".to_string(), "super-secret".to_string());
+
+        let config = manager
+            .set_service_config("plex", &values)
+            .await
+            .expect("set service config");
+
+        let token = config
+            .fields
+            .iter()
+            .find(|field| field.name == "PLEX_TOKEN")
+            .expect("token field");
+        assert!(token.present);
+        assert!(token.secret);
+        assert_eq!(token.value_preview, None);
+    }
+
+    #[tokio::test]
+    async fn disabling_virtual_server_preserves_configured_service_listing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        let mut cfg = manager.config.read().await.clone();
+        cfg.virtual_servers[0].enabled = false;
+        manager.seed_config(cfg).await;
+
+        let servers = manager.list().await.expect("list");
+        let plex = servers
+            .iter()
+            .find(|server| server.id == "plex")
+            .expect("plex server");
+        assert!(plex.configured);
+        assert!(!plex.enabled);
+        assert_eq!(plex.config_summary.target.as_deref(), Some("plex"));
+    }
+
+    #[test]
+    fn disabled_virtual_server_reports_disconnected_even_when_health_is_ok() {
+        let view = server_view_from_virtual_server(
+            &VirtualServerConfig {
+                id: "plex".to_string(),
+                service: "plex".to_string(),
+                enabled: false,
+                surfaces: VirtualServerSurfacesConfig::default(),
+                mcp_policy: None,
+            },
+            Some(&ServiceHealth {
+                service: "plex".to_string(),
+                reachable: true,
+                auth_ok: true,
+                latency_ms: Some(12),
+                message: None,
+            }),
+        );
+
+        assert!(!view.connected);
+        assert!(!view.surfaces.mcp.connected);
+    }
+
+    #[tokio::test]
+    async fn managed_services_are_hidden_on_surfaces_until_enabled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
+        values.insert("PLEX_TOKEN".to_string(), "token".to_string());
+
+        manager
+            .set_service_config("plex", &values)
+            .await
+            .expect("set service config");
+
+        assert!(!manager.surface_enabled_for_service("plex", "mcp").await);
+        assert!(manager.surface_enabled_for_service("plex", "api").await);
+        assert!(manager.surface_enabled_for_service("plex", "cli").await);
+    }
+
+    #[tokio::test]
+    async fn enabled_virtual_server_only_exposes_enabled_surfaces() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: true,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        assert!(manager.surface_enabled_for_service("plex", "api").await);
+        assert!(manager.surface_enabled_for_service("plex", "mcp").await);
+        assert!(!manager.surface_enabled_for_service("plex", "cli").await);
+    }
+
+    #[tokio::test]
+    async fn mcp_action_policy_restricts_actions_to_allowlist() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: Some(crate::config::VirtualServerMcpPolicyConfig {
+                        allowed_actions: vec!["server.status".to_string()],
+                    }),
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        assert!(
+            manager
+                .mcp_action_allowed_for_service("plex", "server.status")
+                .await
+        );
+        assert!(manager.mcp_action_allowed_for_service("plex", "help").await);
+        assert!(
+            !manager
+                .mcp_action_allowed_for_service("plex", "sessions.list")
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn service_clients_refresh_after_service_config_update() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let shared_clients = SharedServiceClients::from_clients(crate::dispatch::clients::ServiceClients::default());
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default())
+            .with_service_clients(shared_clients.clone());
+
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
+        values.insert("PLEX_TOKEN".to_string(), "token".to_string());
+
+        manager
+            .set_service_config("plex", &values)
+            .await
+            .expect("set service config");
+
+        assert_eq!(shared_clients.refresh_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn unrestricted_mcp_actions_return_none_when_no_policy_is_set() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        assert_eq!(manager.allowed_mcp_actions_for_service("plex").await, None);
+    }
+
+    #[tokio::test]
     async fn runtime_view_includes_last_upstream_error() {
         let pool = UpstreamPool::new();
         let upstream_name: Arc<str> = Arc::from("broken-upstream");
         let entry = crate::dispatch::upstream::types::UpstreamEntry {
             name: Arc::clone(&upstream_name),
-            tools: std::collections::HashMap::new(),
+            tools: HashMap::new(),
             exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
             tool_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
                 consecutive_failures: 1,

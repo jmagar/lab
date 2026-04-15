@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! MCP resource handlers.
 //!
 //! Exposes `lab://catalog` (the full discovery document) and

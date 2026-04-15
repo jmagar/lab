@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
+use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::dispatch::gateway::types::CatalogChangeNotifier;
@@ -87,10 +88,12 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let notifier = PeerNotifier::default();
     let (notify_tx, notify_rx) = mpsc::unbounded_channel();
     let _catalog_notifier_task = tokio::spawn(notifier.clone().run(notify_rx));
+    let service_clients = SharedServiceClients::from_env();
     let mut gateway_manager = GatewayManager::new(
         config_toml_path().unwrap_or_else(|| "config.toml".into()),
         gateway_runtime.clone(),
-    );
+    )
+    .with_service_clients(service_clients);
     gateway_manager.set_notifier(CatalogChangeNotifier::new(notify_tx));
     let gateway_manager = Arc::new(gateway_manager);
     gateway_manager.seed_config(config.clone()).await;

@@ -6,9 +6,13 @@ import type {
   ReloadGatewayResult,
   ExposurePolicy,
   ExposurePolicyPreview,
+  ServiceConfig,
+  ServiceAction,
+  SupportedService,
 } from '@/lib/types/gateway'
 import {
   type BackendGatewayRuntimeView,
+  type BackendServerView,
   type BackendGatewayView,
   type GatewayDiscoverySnapshot,
   buildGatewayPatch,
@@ -16,20 +20,26 @@ import {
   gatewayInputToSpec,
   humanizeProbeError,
   normalizeGateway,
+  normalizeServerView,
   previewExposurePolicy,
   probeStatusFromRuntime,
 } from '@/lib/server/gateway-adapter'
 import { testResultFromProbe } from '@/lib/server/gateway-test-result'
 import { gatewayActionUrl } from './gateway-config'
+import { confirmGatewayParams, gatewayRequestInit } from './gateway-request'
 
 export class GatewayApiError extends Error {
+  status: number
+  code?: string
   constructor(
     message: string,
-    public status: number,
-    public code?: string
+    status: number,
+    code?: string
   ) {
     super(message)
     this.name = 'GatewayApiError'
+    this.status = status
+    this.code = code
   }
 }
 
@@ -51,28 +61,10 @@ async function parseActionResponse<T>(response: Response): Promise<T> {
   return response.json()
 }
 
-function gatewayHeaders(): HeadersInit {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  }
-  const token = process.env.NEXT_PUBLIC_API_TOKEN
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-  return headers
-}
-
 async function gatewayAction<T>(action: string, params: object, signal?: AbortSignal): Promise<T> {
   let response: Response
   try {
-    response = await fetch(gatewayActionUrl(), {
-      method: 'POST',
-      headers: gatewayHeaders(),
-      body: JSON.stringify({ action, params }),
-      cache: 'no-store',
-      credentials: 'include',
-      signal,
-    })
+    response = await fetch(gatewayActionUrl(), gatewayRequestInit(action, params, undefined, signal))
   } catch (error) {
     if (isAbortError(error)) {
       throw error
@@ -139,13 +131,48 @@ async function normalizeGatewayView(
   return normalizeGateway(view, probe, discovery)
 }
 
+async function findServerView(id: string, signal?: AbortSignal): Promise<BackendServerView> {
+  return gatewayAction<BackendServerView>('gateway.server.get', { id }, signal)
+}
+
+async function mutateVirtualServer(
+  action: 'gateway.virtual_server.enable' | 'gateway.virtual_server.disable',
+  id: string,
+  signal?: AbortSignal,
+): Promise<Gateway> {
+  const view = await gatewayAction<BackendServerView>(action, confirmGatewayParams({ id }), signal)
+  return normalizeServerView(view)
+}
+
+function fieldPreview(config: ServiceConfig, suffix: string): string | undefined {
+  return config.fields.find((field) => field.name.endsWith(suffix))?.value_preview ?? undefined
+}
+
 export const gatewayApi = {
   async list(signal?: AbortSignal): Promise<Gateway[]> {
-    const views = await gatewayAction<BackendGatewayView[]>('gateway.list', {}, signal)
-    return Promise.all(views.map((view) => normalizeGatewayView(view, false, signal)))
+    const views = await gatewayAction<BackendServerView[]>('gateway.list', {}, signal)
+    return views.map((view) => normalizeServerView(view))
   },
 
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const serviceConfig = await gatewayAction<ServiceConfig>(
+        'gateway.service_config.get',
+        { service: serverView.name },
+        signal,
+      )
+      const serviceView = normalizeServerView(serverView)
+
+      return {
+        ...serviceView,
+        config: {
+          ...serviceView.config,
+          url: fieldPreview(serviceConfig, '_URL'),
+        },
+      }
+    }
+
     const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
     return normalizeGatewayView(view, true, signal)
   },
@@ -199,11 +226,41 @@ export const gatewayApi = {
   },
 
   async getExposurePolicy(id: string, signal?: AbortSignal): Promise<ExposurePolicy> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const policy = await gatewayAction<{ allowed_actions: string[] }>(
+        'gateway.virtual_server.get_mcp_policy',
+        { id },
+        signal,
+      )
+      return {
+        mode: policy.allowed_actions.length === 0 ? 'expose_all' : 'allowlist',
+        patterns: policy.allowed_actions,
+      }
+    }
+
     const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
     return exposurePolicyFromConfig(view.config)
   },
 
   async setExposurePolicy(id: string, policy: ExposurePolicy, signal?: AbortSignal): Promise<ExposurePolicy> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'lab_service') {
+      const allowedActions = policy.mode === 'allowlist' ? policy.patterns : []
+      await gatewayAction<{ allowed_actions: string[] }>(
+        'gateway.virtual_server.set_mcp_policy',
+        confirmGatewayParams({
+          id,
+          allowed_actions: allowedActions,
+        }),
+        signal,
+      )
+      return {
+        mode: policy.mode,
+        patterns: allowedActions,
+      }
+    }
+
     const exposeTools = policy.mode === 'allowlist' ? policy.patterns : null
     await gatewayAction<BackendGatewayView>(
       'gateway.update',
@@ -225,9 +282,63 @@ export const gatewayApi = {
     patterns: string[],
     signal?: AbortSignal,
   ): Promise<ExposurePolicyPreview> {
-    const tools = await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)
+    const serverView = await findServerView(id, signal)
+    const tools =
+      serverView.source === 'lab_service'
+        ? (await gatewayAction<ServiceAction[]>(
+            'gateway.service_actions',
+            { service: serverView.name },
+            signal,
+          )).map(
+            (action) => action.name,
+          )
+        : await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)
     return previewExposurePolicy(tools, patterns)
   },
-}
 
-export { GatewayApiError }
+  async supportedServices(signal?: AbortSignal): Promise<SupportedService[]> {
+    return gatewayAction<SupportedService[]>('gateway.supported_services', {}, signal)
+  },
+
+  async getServiceConfig(service: string, signal?: AbortSignal): Promise<ServiceConfig> {
+    return gatewayAction<ServiceConfig>('gateway.service_config.get', { service }, signal)
+  },
+
+  async serviceActions(service: string, signal?: AbortSignal): Promise<ServiceAction[]> {
+    return gatewayAction<ServiceAction[]>('gateway.service_actions', { service }, signal)
+  },
+
+  async setServiceConfig(
+    service: string,
+    values: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<ServiceConfig> {
+    return gatewayAction<ServiceConfig>(
+      'gateway.service_config.set',
+      confirmGatewayParams({ service, values }),
+      signal,
+    )
+  },
+
+  async enableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
+    return mutateVirtualServer('gateway.virtual_server.enable', id, signal)
+  },
+
+  async disableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
+    return mutateVirtualServer('gateway.virtual_server.disable', id, signal)
+  },
+
+  async setVirtualServerSurface(
+    id: string,
+    surface: 'cli' | 'api' | 'mcp' | 'webui',
+    enabled: boolean,
+    signal?: AbortSignal,
+  ): Promise<Gateway> {
+    const view = await gatewayAction<BackendServerView>(
+      'gateway.virtual_server.set_surface',
+      confirmGatewayParams({ id, surface, enabled }),
+      signal,
+    )
+    return normalizeServerView(view)
+  },
+}

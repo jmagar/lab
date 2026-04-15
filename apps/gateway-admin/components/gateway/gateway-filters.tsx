@@ -11,8 +11,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-export type HealthFilter = 'all' | 'healthy' | 'unhealthy' | 'disconnected'
-export type TransportFilter = 'all' | 'http' | 'stdio'
+export type HealthFilter =
+  | 'all'
+  | 'active'
+  | 'configured'
+  | 'enabled'
+  | 'disabled'
+  | 'connected'
+  | 'disconnected'
+export type TransportFilter = 'all' | 'http' | 'stdio' | 'lab_service'
 
 interface GatewayFiltersProps {
   search: string
@@ -57,8 +64,11 @@ export function GatewayFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All status</SelectItem>
-          <SelectItem value="healthy">Healthy</SelectItem>
-          <SelectItem value="unhealthy">Unhealthy</SelectItem>
+          <SelectItem value="active">Active</SelectItem>
+          <SelectItem value="configured">Configured</SelectItem>
+          <SelectItem value="enabled">Enabled</SelectItem>
+          <SelectItem value="disabled">Disabled</SelectItem>
+          <SelectItem value="connected">Connected</SelectItem>
           <SelectItem value="disconnected">Disconnected</SelectItem>
         </SelectContent>
       </Select>
@@ -71,6 +81,7 @@ export function GatewayFilters({
           <SelectItem value="all">All types</SelectItem>
           <SelectItem value="http">HTTP</SelectItem>
           <SelectItem value="stdio">stdio</SelectItem>
+          <SelectItem value="lab_service">Lab</SelectItem>
         </SelectContent>
       </Select>
 

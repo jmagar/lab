@@ -18,7 +18,8 @@ import { getErrorMessage } from '@/lib/utils'
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
-  const { testGateway, reloadGateway, removeGateway, createGateway, updateGateway } = useGatewayMutations()
+  const { testGateway, reloadGateway, removeGateway, createGateway, updateGateway, disableVirtualServer } =
+    useGatewayMutations()
 
   // Filters
   const [search, setSearch] = useState('')
@@ -53,12 +54,16 @@ export function GatewayListContent() {
 
       // Health filter
       if (healthFilter !== 'all') {
-        const isHealthy = gateway.status.healthy && gateway.status.connected
-        const isDisconnected = !gateway.status.connected
-        
-        if (healthFilter === 'healthy' && !isHealthy) return false
-        if (healthFilter === 'unhealthy' && (isHealthy || isDisconnected)) return false
-        if (healthFilter === 'disconnected' && !isDisconnected) return false
+        const isConfigured = gateway.configured ?? true
+        const isEnabled = gateway.enabled ?? true
+        const isConnected = gateway.status.connected
+
+        if (healthFilter === 'active' && !(isConfigured && isEnabled)) return false
+        if (healthFilter === 'configured' && !isConfigured) return false
+        if (healthFilter === 'enabled' && !isEnabled) return false
+        if (healthFilter === 'disabled' && isEnabled) return false
+        if (healthFilter === 'connected' && !isConnected) return false
+        if (healthFilter === 'disconnected' && isConnected) return false
       }
 
       // Transport filter
@@ -112,8 +117,13 @@ export function GatewayListContent() {
   const handleDelete = async () => {
     if (!deleteGateway) return
     try {
-      await removeGateway(deleteGateway.id)
-      toast.success('Gateway removed successfully')
+      if (deleteGateway.source === 'lab_service') {
+        await disableVirtualServer(deleteGateway.id)
+        toast.success('Lab gateway disabled successfully')
+      } else {
+        await removeGateway(deleteGateway.id)
+        toast.success('Gateway removed successfully')
+      }
       setDeleteGateway(null)
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to remove gateway'))

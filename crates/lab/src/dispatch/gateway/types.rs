@@ -66,3 +66,37 @@ pub struct GatewayCatalogDiff {
     #[serde(default)]
     pub prompts_changed: bool,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ServiceConfigFieldView {
+    pub name: String,
+    #[serde(default)]
+    pub present: bool,
+    #[serde(default)]
+    pub secret: bool,
+    #[serde(default)]
+    pub value_preview: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ServiceConfigView {
+    pub service: String,
+    #[serde(default)]
+    pub configured: bool,
+    #[serde(default)]
+    pub fields: Vec<ServiceConfigFieldView>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VirtualServerMcpPolicyView {
+    #[serde(default)]
+    pub allowed_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ServiceActionView {
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub destructive: bool,
+}
