@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::config::{backup_env, env_is_up_to_date, write_env, LabConfig, UpstreamConfig};
+use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::upstream::pool::UpstreamPool;
 use lab_apis::extract::types::ServiceCreds;
@@ -61,6 +62,7 @@ pub struct GatewayManager {
     path: PathBuf,
     runtime: GatewayRuntimeHandle,
     config: Arc<RwLock<LabConfig>>,
+    service_clients: Option<SharedServiceClients>,
     notifier: Option<CatalogChangeNotifier>,
 }
 
@@ -70,8 +72,15 @@ impl GatewayManager {
             path,
             runtime,
             config: Arc::new(RwLock::new(LabConfig::default())),
+            service_clients: None,
             notifier: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_service_clients(mut self, service_clients: SharedServiceClients) -> Self {
+        self.service_clients = Some(service_clients);
+        self
     }
 
     /// Attach a catalog-change notifier (e.g. the MCP peer notifier).
@@ -130,6 +139,15 @@ impl GatewayManager {
                 sdk_kind: "internal_error".to_string(),
                 message: format!("failed to write env file: {e}"),
             })?;
+            if let Some(service_clients) = &self.service_clients {
+                service_clients
+                    .refresh_from_env_path(&env_path)
+                    .await
+                    .map_err(|e| ToolError::Sdk {
+                        sdk_kind: "internal_error".to_string(),
+                        message: format!("failed to refresh service clients: {e}"),
+                    })?;
+            }
         }
 
         let values = read_env_values(&env_path)?;
@@ -780,6 +798,26 @@ mod tests {
         assert!(plex.configured);
         assert!(!plex.enabled);
         assert_eq!(plex.config_summary.target.as_deref(), Some("plex"));
+    }
+
+    #[tokio::test]
+    async fn service_clients_refresh_after_service_config_update() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let shared_clients = SharedServiceClients::from_clients(crate::dispatch::clients::ServiceClients::default());
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default())
+            .with_service_clients(shared_clients.clone());
+
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
+        values.insert("PLEX_TOKEN".to_string(), "token".to_string());
+
+        manager
+            .set_service_config("plex", &values)
+            .await
+            .expect("set service config");
+
+        assert_eq!(shared_clients.refresh_count(), 1);
     }
 
     #[tokio::test]

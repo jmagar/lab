@@ -1,4 +1,7 @@
+use std::path::Path;
 use std::sync::Arc;
+
+use tokio::sync::RwLock;
 
 /// Pre-built service clients, constructed once at startup from environment variables.
 ///
@@ -109,5 +112,49 @@ impl ServiceClients {
             #[cfg(feature = "qbittorrent")]
             qbittorrent: crate::dispatch::qbittorrent::client_from_env().map(Arc::new),
         }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct SharedServiceClients {
+    inner: Arc<RwLock<ServiceClients>>,
+    #[cfg(test)]
+    refresh_count: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl SharedServiceClients {
+    #[must_use]
+    pub fn from_clients(clients: ServiceClients) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(clients)),
+            #[cfg(test)]
+            refresh_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }
+    }
+
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn from_env() -> Self {
+        Self::from_clients(ServiceClients::from_env())
+    }
+
+    #[allow(dead_code)]
+    pub async fn snapshot(&self) -> ServiceClients {
+        self.inner.read().await.clone()
+    }
+
+    pub async fn refresh_from_env_path(&self, path: &Path) -> anyhow::Result<()> {
+        dotenvy::from_path_override(path)?;
+        *self.inner.write().await = ServiceClients::from_env();
+        #[cfg(test)]
+        self.refresh_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn refresh_count(&self) -> usize {
+        self.refresh_count
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 }
