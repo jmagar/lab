@@ -90,6 +90,23 @@ Named OAuth callback forwarding targets for `lab oauth relay-local`.
 | `description` | — | `null` | Optional operator-facing note |
 | `default_port` | — | `null` | Optional preferred local callback port |
 
+Example:
+
+```toml
+[oauth.machines.dookie]
+target_url = "http://100.88.16.79:38935/callback/dookie"
+description = "dookie Codex callback listener"
+default_port = 38935
+```
+
+This is used by:
+
+```bash
+lab oauth relay-local --machine dookie --port 38935
+```
+
+`oauth.machines` config is TOML-only. There is no env-var override for the named machine map.
+
 ### `[admin]`
 
 | Key | Env override | Default | Description |

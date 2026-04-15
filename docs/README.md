@@ -10,7 +10,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Read [CONVENTIONS.md](./CONVENTIONS.md) before changing implementation patterns or core APIs.
 - Use [SERVICES.md](./SERVICES.md), [CLI.md](./CLI.md), [MCP.md](./MCP.md), and [TUI.md](./TUI.md) for surface-specific behavior.
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
-- Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, and lab-issued JWT behavior.
+- Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, lab-issued JWT behavior, and callback-forwarding constraints.
 - Use [GATEWAY.md](./GATEWAY.md) when managing upstream MCP gateways over CLI, MCP, or `/v1/gateway`.
 - See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP gateway setup, configuration, tool merging, circuit breaker behavior, and resource proxying.
 - Consult [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
@@ -78,7 +78,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [RMCP.md](./RMCP.md)
   RMCP SDK integration contract: transports, feature posture, handler patterns, auth ownership, and capability rules.
 - [OAUTH.md](./OAUTH.md)
-  HTTP auth modes: static bearer compatibility, internal Google-backed OAuth, lab-issued JWTs, JWKS, and RFC 9728 metadata.
+  HTTP auth modes: static bearer compatibility, internal Google-backed OAuth, lab-issued JWTs, JWKS, RFC 9728 metadata, and redirect/callback forwarding rules.
 - [GATEWAY.md](./GATEWAY.md)
   Gateway control plane: CRUD, reload/test flows, runtime views, and tool exposure policy.
 - [UPSTREAM.md](./UPSTREAM.md)
@@ -92,7 +92,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
   End-to-end checklist for adding a new service, from upstream spec to verification.
 - [CLI.md](./CLI.md)
-  Command structure, output rules, confirmation rules, install/uninstall, and operator commands.
+  Command structure, output rules, confirmation rules, install/uninstall, operator commands, and `lab oauth relay-local`.
 - [TUI.md](./TUI.md)
   Plugin manager scope, interaction model, `.mcp.json` behavior, and TUI state rules.
 - [CONFIG.md](./CONFIG.md)

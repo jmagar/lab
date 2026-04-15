@@ -74,6 +74,25 @@ Operational rules:
 - startup output shows the resolved forwarding target before the first callback arrives
 - failures map to HTTP responses on the local callback port: unreachable target -> `502`, timeout -> `504`
 
+Recommended setup checklist:
+
+1. Configure the browser-side machine target in `~/.lab/config.toml`:
+
+```toml
+[oauth.machines.dookie]
+target_url = "http://100.88.16.79:38935/callback/dookie"
+description = "dookie Codex callback listener"
+default_port = 38935
+```
+
+2. Start the real OAuth client listener on the remote machine.
+3. Start `lab oauth relay-local` on the browser machine.
+4. Complete the OAuth login flow in the browser before either listener exits.
+
+If you need public redirect URIs for a relay or browser-facing callback domain, remember to
+allowlist them in `lab-auth` with `LAB_AUTH_ALLOWED_REDIRECT_URIS` or
+`[auth].allowed_client_redirect_uris`.
+
 ## Product-Level Health Tooling
 
 ### `lab doctor`

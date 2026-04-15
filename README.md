@@ -163,6 +163,24 @@ When a browser machine needs to catch a localhost OAuth redirect and forward it 
 client, `lab oauth relay-local` can proxy the callback to a named target or an explicit Tailscale
 URL without reimplementing the OAuth flow.
 
+Minimal named-machine setup:
+
+```toml
+# ~/.lab/config.toml
+[oauth.machines.dookie]
+target_url = "http://100.88.16.79:38935/callback/dookie"
+description = "dookie Codex callback listener"
+default_port = 38935
+```
+
+```bash
+# Run on the browser-side machine during login
+lab oauth relay-local --machine dookie --port 38935
+```
+
+`relay-local` only forwards the final callback request. It does not exchange codes, mint tokens,
+or replace the normal OAuth listener on the real MCP client machine.
+
 ---
 
 ## CLI

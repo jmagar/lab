@@ -77,6 +77,52 @@ Google-specific notes:
 - `lab` also sends `prompt=consent` so a fresh Google consent flow can return a new refresh token after the app was previously authorized without offline access
 - if Google still does not return an upstream refresh token, `lab` omits `refresh_token` from its token response and later refresh grants fail closed
 
+## Browser-Local Callback Forwarding
+
+`lab` also ships a local OAuth callback forwarder for browser-side machines:
+
+```bash
+lab oauth relay-local --machine dookie --port 38935
+lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+```
+
+This helper exists for cases where:
+
+- the browser receives a loopback redirect on one machine
+- the actual OAuth client callback listener is running on another machine
+- you need to forward the final callback request without reimplementing the OAuth flow
+
+Important constraints:
+
+- `relay-local` binds only to `127.0.0.1:<port>` on the browser machine
+- it forwards only the final callback request
+- it does not mint tokens, store PKCE state, or complete the OAuth exchange itself
+- the real client listener must already be running and reachable before the callback arrives
+
+### Using non-loopback redirect URIs
+
+Loopback redirect URIs are always accepted by `lab-auth`. Public or non-loopback redirect URIs are
+rejected unless they match an allowlisted pattern.
+
+Configure extra allowed redirect URI patterns with either:
+
+- `LAB_AUTH_ALLOWED_REDIRECT_URIS`
+- `[auth].allowed_client_redirect_uris`
+
+Example:
+
+```env
+LAB_AUTH_ALLOWED_REDIRECT_URIS=https://callback.tootie.tv/callback/*
+```
+
+```toml
+[auth]
+allowed_client_redirect_uris = ["https://callback.tootie.tv/callback/*"]
+```
+
+Patterns support simple `*` wildcards. Use this only for redirect URIs you explicitly operate or
+trust.
+
 ## Runtime JWT Validation
 
 Every request to a protected route (`/v1/*`, `/mcp`) must include an `Authorization: Bearer <token>` header.
