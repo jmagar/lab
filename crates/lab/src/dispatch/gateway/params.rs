@@ -8,6 +8,11 @@ pub struct GatewayNameParams {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VirtualServerNameParams {
+    pub id: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayTestParams {
     #[serde(default)]

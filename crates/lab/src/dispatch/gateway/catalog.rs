@@ -42,6 +42,30 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[],
     },
     ActionSpec {
+        name: "gateway.virtual_server.enable",
+        description: "Enable a configured Lab-backed service as a virtual server",
+        destructive: true,
+        returns: "ServerView",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Virtual server id",
+        }],
+    },
+    ActionSpec {
+        name: "gateway.virtual_server.disable",
+        description: "Disable a Lab-backed virtual server without removing its config",
+        destructive: true,
+        returns: "ServerView",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Virtual server id",
+        }],
+    },
+    ActionSpec {
         name: "gateway.get",
         description: "Get one configured gateway",
         destructive: false,

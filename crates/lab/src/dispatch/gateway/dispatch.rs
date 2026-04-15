@@ -9,7 +9,7 @@ use super::client::require_gateway_manager;
 use super::manager::GatewayManager;
 use super::params::{
     GatewayAddParams, GatewayNameParams, GatewayStatusParams, GatewayTestParams,
-    GatewayUpdateParams,
+    GatewayUpdateParams, VirtualServerNameParams,
 };
 
 fn parse_params<T: DeserializeOwned>(params_value: Value) -> Result<T, ToolError> {
@@ -32,6 +32,14 @@ pub async fn dispatch_with_manager(
         }
         "gateway.list" => to_json(manager.list().await?),
         "gateway.supported_services" => to_json(super::service_catalog::supported_services()),
+        "gateway.virtual_server.enable" => {
+            let params: VirtualServerNameParams = parse_params(params_value)?;
+            to_json(manager.enable_virtual_server(&params.id).await?)
+        }
+        "gateway.virtual_server.disable" => {
+            let params: VirtualServerNameParams = parse_params(params_value)?;
+            to_json(manager.disable_virtual_server(&params.id).await?)
+        }
         "gateway.get" => {
             let params: GatewayNameParams = parse_params(params_value)?;
             to_json(manager.get(&params.name).await?)
@@ -107,6 +115,8 @@ mod tests {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
         assert!(names.contains(&"gateway.list"));
         assert!(names.contains(&"gateway.supported_services"));
+        assert!(names.contains(&"gateway.virtual_server.enable"));
+        assert!(names.contains(&"gateway.virtual_server.disable"));
         assert!(names.contains(&"gateway.get"));
         assert!(names.contains(&"gateway.test"));
         assert!(names.contains(&"gateway.add"));
@@ -164,6 +174,71 @@ mod tests {
         let services = value.as_array().expect("array");
         #[cfg(feature = "plex")]
         assert!(services.iter().any(|service| service["key"] == "plex"));
+    }
+
+    #[tokio::test]
+    async fn enabling_virtual_server_marks_existing_server_row_enabled() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: false,
+                    surfaces: crate::config::VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.enable",
+            json!({"id": "plex"}),
+        )
+        .await
+        .expect("enable");
+
+        assert_eq!(value["id"], "plex");
+        assert_eq!(value["enabled"], true);
+    }
+
+    #[tokio::test]
+    async fn disabling_virtual_server_keeps_server_row_visible_but_disabled() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.disable",
+            json!({"id": "plex"}),
+        )
+        .await
+        .expect("disable");
+
+        assert_eq!(value["id"], "plex");
+        assert_eq!(value["enabled"], false);
+
+        let list = dispatch_with_manager(&manager, "gateway.list", json!({}))
+            .await
+            .expect("list after disable");
+        assert!(list
+            .as_array()
+            .expect("array")
+            .iter()
+            .any(|server| server["id"] == "plex" && server["enabled"] == false));
     }
 
     #[tokio::test]
