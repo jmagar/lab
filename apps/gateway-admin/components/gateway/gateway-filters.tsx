@@ -13,6 +13,7 @@ import {
 
 export type HealthFilter =
   | 'all'
+  | 'active'
   | 'configured'
   | 'enabled'
   | 'disabled'
@@ -63,6 +64,7 @@ export function GatewayFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All status</SelectItem>
+          <SelectItem value="active">Active</SelectItem>
           <SelectItem value="configured">Configured</SelectItem>
           <SelectItem value="enabled">Enabled</SelectItem>
           <SelectItem value="disabled">Disabled</SelectItem>

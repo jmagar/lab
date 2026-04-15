@@ -7,6 +7,7 @@ use serde_json::json;
 
 use crate::cli::helpers::run_action_command;
 use crate::config::{LabConfig, config_toml_path};
+use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::dispatch::upstream::pool::UpstreamPool;
@@ -89,7 +90,8 @@ async fn build_manager(config: &LabConfig) -> Arc<GatewayManager> {
     let manager = Arc::new(GatewayManager::new(
         config_toml_path().unwrap_or_else(|| "config.toml".into()),
         runtime,
-    ));
+    )
+    .with_service_clients(SharedServiceClients::from_env()));
     manager.seed_config(config.clone()).await;
     install_gateway_manager(Arc::clone(&manager));
     manager

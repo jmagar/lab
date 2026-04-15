@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,6 +23,7 @@ use super::view_models::{
     ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
 };
 use super::virtual_servers::{VirtualServerRecord, VirtualServerSource};
+use crate::tui::events::ServiceHealth;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCatalogSnapshot {
@@ -161,6 +162,7 @@ impl GatewayManager {
             Some(p) => Some(p.prompt_ownership_map(&[]).await),
             None => None,
         };
+        let virtual_health = self.virtual_service_health_map().await;
         let mut views = Vec::with_capacity(cfg.upstream.len() + cfg.virtual_servers.len());
         for upstream in &cfg.upstream {
             views.push(
@@ -168,7 +170,10 @@ impl GatewayManager {
             );
         }
         for virtual_server in &cfg.virtual_servers {
-            views.push(server_view_from_virtual_server(virtual_server));
+            views.push(server_view_from_virtual_server(
+                virtual_server,
+                virtual_health.get(&virtual_server.service),
+            ));
         }
         Ok(views)
     }
@@ -350,7 +355,7 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
         let virtual_server = find_virtual_server(&cfg, id)?;
-        Ok(server_view_from_virtual_server(virtual_server))
+        Ok(server_view_from_virtual_server(virtual_server, None))
     }
 
     pub async fn get_virtual_server_mcp_policy(
@@ -569,7 +574,15 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
         let virtual_server = find_virtual_server(&cfg, id)?;
-        Ok(server_view_from_virtual_server(virtual_server))
+        Ok(server_view_from_virtual_server(virtual_server, None))
+    }
+
+    async fn virtual_service_health_map(&self) -> HashMap<String, ServiceHealth> {
+        crate::tui::metadata::check_all_services(&self.env_path())
+            .await
+            .into_iter()
+            .map(|status| (status.service.clone(), status))
+            .collect()
     }
 
     fn env_path(&self) -> PathBuf {
@@ -629,7 +642,7 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
 async fn server_view_from_upstream(
     pool: Option<&UpstreamPool>,
     upstream: &UpstreamConfig,
-    prompt_owners: Option<&std::collections::HashMap<String, String>>,
+    prompt_owners: Option<&HashMap<String, String>>,
 ) -> ServerView {
     let runtime = runtime_view(pool, &upstream.name, prompt_owners).await;
     let connected = runtime.tool_count + runtime.resource_count + runtime.prompt_count > 0;
@@ -669,11 +682,29 @@ async fn server_view_from_upstream(
     }
 }
 
-fn server_view_from_virtual_server(config: &crate::config::VirtualServerConfig) -> ServerView {
+fn server_view_from_virtual_server(
+    config: &crate::config::VirtualServerConfig,
+    health: Option<&ServiceHealth>,
+) -> ServerView {
     let record = VirtualServerRecord::from(config);
     let service = match &record.source {
         VirtualServerSource::LabService { service } => service.clone(),
     };
+    let connected = health.is_some_and(|status| status.reachable && status.auth_ok);
+    let warnings = health
+        .and_then(|status| {
+            status.message.as_ref().map(|message| {
+                vec![super::view_models::ServerWarningView {
+                    code: if status.reachable {
+                        "health_warning".to_string()
+                    } else {
+                        "connection_error".to_string()
+                    },
+                    message: message.clone(),
+                }]
+            })
+        })
+        .unwrap_or_default();
 
     ServerView {
         id: record.id.clone(),
@@ -681,26 +712,26 @@ fn server_view_from_virtual_server(config: &crate::config::VirtualServerConfig) 
         source: "lab_service".to_string(),
         configured: true,
         enabled: record.enabled,
-        connected: false,
+        connected,
         surfaces: SurfaceStatesView {
             cli: SurfaceStateView {
                 enabled: record.surfaces.cli,
-                connected: false,
+                connected: record.surfaces.cli && connected,
             },
             api: SurfaceStateView {
                 enabled: record.surfaces.api,
-                connected: false,
+                connected: record.surfaces.api && connected,
             },
             mcp: SurfaceStateView {
                 enabled: record.surfaces.mcp,
-                connected: false,
+                connected: record.surfaces.mcp && connected,
             },
             webui: SurfaceStateView {
                 enabled: record.surfaces.webui,
-                connected: false,
+                connected: record.surfaces.webui && connected,
             },
         },
-        warnings: Vec::new(),
+        warnings,
         config_summary: ServerConfigSummaryView {
             transport: Some("lab_service".to_string()),
             target: Some(service),
@@ -708,7 +739,7 @@ fn server_view_from_virtual_server(config: &crate::config::VirtualServerConfig) 
     }
 }
 
-fn read_env_values(path: &std::path::Path) -> Result<std::collections::HashMap<String, String>, ToolError> {
+fn read_env_values(path: &std::path::Path) -> Result<HashMap<String, String>, ToolError> {
     Ok(dotenvy::from_path_iter(path)
         .ok()
         .map(|iter| iter.filter_map(Result::ok).collect())
@@ -740,7 +771,7 @@ fn values_to_service_creds(
 
 fn service_config_view(
     meta: &lab_apis::core::PluginMeta,
-    values: &std::collections::HashMap<String, String>,
+    values: &HashMap<String, String>,
 ) -> ServiceConfigView {
     let mut fields = Vec::new();
     for env in meta.required_env.iter().chain(meta.optional_env.iter()) {
@@ -796,7 +827,7 @@ async fn snapshot_from_pool(pool: Option<Arc<UpstreamPool>>) -> GatewayCatalogSn
 async fn runtime_view(
     pool: Option<&UpstreamPool>,
     name: &str,
-    prompt_owners: Option<&std::collections::HashMap<String, String>>,
+    prompt_owners: Option<&HashMap<String, String>>,
 ) -> GatewayRuntimeView {
     let Some(pool) = pool else {
         return GatewayRuntimeView {
@@ -1077,7 +1108,7 @@ mod tests {
         let upstream_name: Arc<str> = Arc::from("broken-upstream");
         let entry = crate::dispatch::upstream::types::UpstreamEntry {
             name: Arc::clone(&upstream_name),
-            tools: std::collections::HashMap::new(),
+            tools: HashMap::new(),
             exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
             tool_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
                 consecutive_failures: 1,

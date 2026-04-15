@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Layers, Loader2, Play } from 'lucide-react'
+import { Loader2, Play } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FieldGroup, Field, FieldLabel, FieldDescription } from '@/components/ui/field'
 import { useGatewayMutations, useServiceConfig, useSupportedServices } from '@/lib/hooks/use-gateways'
+import { LabServicePicker } from './lab-service-picker'
 import type {
   Gateway,
   CreateGatewayInput,
@@ -67,7 +68,7 @@ export function GatewayFormDialog({
   const { testGateway, saveServiceConfig, enableVirtualServer, disableVirtualServer } =
     useGatewayMutations()
 
-  const [mode, setMode] = useState<FormMode>('custom')
+  const [mode, setMode] = useState<FormMode>('lab')
   const [transport, setTransport] = useState<TransportType>('http')
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
@@ -111,11 +112,11 @@ export function GatewayFormDialog({
         setBearerTokenEnv(gateway.config.bearer_token_env || '')
         setProxyResources(gateway.config.proxy_resources ?? true)
       }
-    } else {
-      setMode('custom')
-      setTransport(emptyCustomState.transport)
-      setName(emptyCustomState.name)
-      setUrl(emptyCustomState.url)
+      } else {
+        setMode('lab')
+        setTransport(emptyCustomState.transport)
+        setName(emptyCustomState.name)
+        setUrl(emptyCustomState.url)
       setCommand(emptyCustomState.command)
       setArgs(emptyCustomState.args)
       setBearerTokenEnv(emptyCustomState.bearerTokenEnv)
@@ -229,7 +230,7 @@ export function GatewayFormDialog({
     await saveServiceConfig(selectedService, values)
     if (enableServer) {
       await enableVirtualServer(selectedService)
-    } else if (isEditing) {
+    } else {
       await disableVirtualServer(selectedService)
     }
   }
@@ -280,32 +281,11 @@ export function GatewayFormDialog({
           <TabsContent value="lab" className="space-y-6">
             <FieldGroup>
               <Field>
-                <FieldLabel>Supported services</FieldLabel>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {(supportedServices ?? []).map((service) => {
-                    const active = service.key === selectedService
-                    return (
-                      <button
-                        key={service.key}
-                        type="button"
-                        onClick={() => setSelectedService(service.key)}
-                        className={`rounded-lg border p-3 text-left transition ${
-                          active
-                            ? 'border-primary bg-primary/10 shadow-sm'
-                            : 'border-border hover:border-primary/40 hover:bg-muted/40'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Layers className="size-4 text-primary" />
-                          <span className="font-medium">{service.display_name}</span>
-                        </div>
-                        <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                          {service.description}
-                        </p>
-                      </button>
-                    )
-                  })}
-                </div>
+                <LabServicePicker
+                  selectedService={selectedService}
+                  services={supportedServices ?? []}
+                  onSelect={setSelectedService}
+                />
                 {errors.service && <p className="text-sm text-destructive">{errors.service}</p>}
               </Field>
             </FieldGroup>

@@ -58,6 +58,7 @@ export function GatewayListContent() {
         const isEnabled = gateway.enabled ?? true
         const isConnected = gateway.status.connected
 
+        if (healthFilter === 'active' && !(isConfigured && isEnabled)) return false
         if (healthFilter === 'configured' && !isConfigured) return false
         if (healthFilter === 'enabled' && !isEnabled) return false
         if (healthFilter === 'disabled' && isEnabled) return false
