@@ -328,7 +328,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
 
         {/* Tabs */}
         <Tabs defaultValue="tools" className="space-y-6">
-          <TabsList>
+          <TabsList className="-mx-1 px-1">
             <TabsTrigger value="tools">
               Tools
               <Badge variant="secondary" className="ml-2 text-xs">
@@ -377,23 +377,23 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 {gateway.transport === 'http' ? (
                   <div className="flex items-start gap-4 rounded-lg border p-4">
                     <Globe className="size-5 text-muted-foreground mt-0.5" />
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium">URL</p>
-                      <code className="text-sm text-muted-foreground">{gateway.config.url}</code>
+                      <code className="break-all text-sm text-muted-foreground">{gateway.config.url}</code>
                     </div>
                   </div>
                 ) : isLabGateway ? (
                   <>
                     <div className="flex items-start gap-4 rounded-lg border p-4">
                       <Globe className="size-5 text-muted-foreground mt-0.5" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium">Service URL</p>
-                        <code className="text-sm text-muted-foreground">
+                        <code className="break-all text-sm text-muted-foreground">
                           {gateway.config.url ?? 'Not configured'}
                         </code>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="space-y-0.5">
                         <Label htmlFor="virtual-enabled" className="font-medium">Virtual server enabled</Label>
                         <p className="text-sm text-muted-foreground">
@@ -407,7 +407,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       />
                     </div>
                     {surfaceEntries.map(([surface, state]) => (
-                        <div key={surface} className="flex items-center justify-between rounded-lg border p-4">
+                        <div key={surface} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="space-y-0.5">
                             <Label htmlFor={`surface-${surface}`} className="text-sm font-medium uppercase">
                               {surface}
@@ -428,17 +428,17 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   <>
                     <div className="flex items-start gap-4 rounded-lg border p-4">
                       <Terminal className="size-5 text-muted-foreground mt-0.5" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium">Command</p>
-                        <code className="text-sm text-muted-foreground">{gateway.config.command}</code>
+                        <code className="break-all text-sm text-muted-foreground">{gateway.config.command}</code>
                       </div>
                     </div>
                     {gateway.config.args && gateway.config.args.length > 0 && (
                       <div className="flex items-start gap-4 rounded-lg border p-4">
                         <Terminal className="size-5 text-muted-foreground mt-0.5" />
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-sm font-medium">Arguments</p>
-                          <code className="text-sm text-muted-foreground">{gateway.config.args.join(' ')}</code>
+                          <code className="break-all text-sm text-muted-foreground">{gateway.config.args.join(' ')}</code>
                         </div>
                       </div>
                     )}
@@ -448,14 +448,14 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 {gateway.config.bearer_token_env && (
                   <div className="flex items-start gap-4 rounded-lg border p-4">
                     <Key className="size-5 text-muted-foreground mt-0.5" />
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium">Bearer Token Env</p>
-                      <code className="text-sm text-muted-foreground">{gateway.config.bearer_token_env}</code>
+                      <code className="break-all text-sm text-muted-foreground">{gateway.config.bearer_token_env}</code>
                     </div>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-4">
                     <FileText className="size-5 text-muted-foreground" />
                     <div>
@@ -482,14 +482,14 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               ) : (
                 <div className="space-y-2">
                   {gateway.discovery.resources.map((resource) => (
-                    <div key={resource.name} className="flex items-start justify-between rounded-lg border p-4">
-                      <div>
+                    <div key={resource.name} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
                         <code className="text-sm font-mono font-medium">{resource.name}</code>
                         {resource.description && (
                           <p className="text-sm text-muted-foreground mt-1">{resource.description}</p>
                         )}
                       </div>
-                      <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                      <code className="break-all text-xs text-muted-foreground bg-muted px-2 py-1 rounded sm:max-w-[18rem]">
                         {resource.uri}
                       </code>
                     </div>
@@ -511,8 +511,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 <div className="space-y-2">
                   {gateway.discovery.prompts.map((prompt) => (
                     <div key={prompt.name} className="rounded-lg border p-4">
-                      <div className="flex items-center justify-between">
-                        <code className="text-sm font-mono font-medium">{prompt.name}</code>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <code className="break-all text-sm font-mono font-medium">{prompt.name}</code>
                         {prompt.arguments && prompt.arguments.length > 0 && (
                           <Badge variant="secondary" className="text-xs">
                             {prompt.arguments.length} arg{prompt.arguments.length !== 1 ? 's' : ''}

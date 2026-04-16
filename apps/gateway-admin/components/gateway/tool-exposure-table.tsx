@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import type { DiscoveredTool } from '@/lib/types/gateway'
+import { filterGatewayTools, summarizeGatewayTools } from '@/lib/api/gateway-mobile'
 
 interface ToolExposureTableProps {
   tools: DiscoveredTool[]
@@ -27,18 +28,13 @@ interface ToolExposureTableProps {
 export function ToolExposureTable({ tools }: ToolExposureTableProps) {
   const [search, setSearch] = useState('')
 
-  const filteredTools = tools.filter(tool => 
-    tool.name.toLowerCase().includes(search.toLowerCase()) ||
-    tool.description?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const exposedCount = tools.filter(t => t.exposed).length
-  const filteredCount = tools.length - exposedCount
+  const filteredTools = filterGatewayTools(tools, search)
+  const { exposedCount, filteredCount } = summarizeGatewayTools(tools)
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="relative max-w-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search tools..."
@@ -47,7 +43,7 @@ export function ToolExposureTable({ tools }: ToolExposureTableProps) {
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="grid grid-cols-2 gap-3 text-sm sm:flex sm:items-center sm:gap-4">
           <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
             <Eye className="size-4" />
             {exposedCount} exposed
@@ -59,7 +55,58 @@ export function ToolExposureTable({ tools }: ToolExposureTableProps) {
         </div>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="space-y-3 md:hidden">
+        {filteredTools.length === 0 ? (
+          <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
+            {tools.length === 0 ? 'No tools discovered' : 'No tools match your search'}
+          </div>
+        ) : (
+          filteredTools.map((tool) => (
+            <article
+              key={tool.name}
+              className={tool.exposed ? 'rounded-lg border p-3' : 'rounded-lg border bg-muted/20 p-3 opacity-80'}
+            >
+              <div className="flex items-start gap-3">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${
+                        tool.exposed
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {tool.exposed ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {tool.exposed ? 'Exposed downstream' : 'Filtered by allowlist'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <code className="break-all text-sm font-mono font-medium">{tool.name}</code>
+                    {tool.matched_by ? (
+                      <Badge variant="secondary" className="max-w-full gap-1 font-mono text-[11px]">
+                        {tool.matched_by.includes('*') && <Asterisk className="size-3" />}
+                        <span className="break-all">{tool.matched_by}</span>
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No match</span>
+                    )}
+                  </div>
+                  {tool.description && (
+                    <p className="text-sm text-muted-foreground">{tool.description}</p>
+                  )}
+                </div>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="hidden rounded-lg border md:block">
         <Table>
           <TableHeader>
             <TableRow>
