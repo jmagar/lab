@@ -277,18 +277,44 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         {/* Header Summary */}
         <div className="rounded-lg border bg-card p-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
+            <div className="space-y-5">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <TransportBadge transport={gateway.transport} />
+                  <StatusBadge healthy={gateway.status.healthy} connected={gateway.status.connected} />
+                </div>
                 <h1 className="text-2xl font-semibold">{gateway.name}</h1>
-                <StatusBadge healthy={gateway.status.healthy} connected={gateway.status.connected} />
+                <p className="max-w-2xl text-sm text-muted-foreground">
+                  {gateway.transport === 'http'
+                    ? gateway.config.url
+                    : isLabGateway
+                      ? gateway.config.url ?? 'Lab-managed gateway configuration'
+                      : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
+                </p>
               </div>
               
-              <div className="flex flex-wrap items-center gap-4 text-sm">
-                <TransportBadge transport={gateway.transport} />
-                <MetricsStrip
-                  discoveredCount={gateway.status.discovered_tool_count}
-                  exposedCount={gateway.status.exposed_tool_count}
-                />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Tool Surface</p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">{gateway.status.exposed_tool_count}</p>
+                  <p className="text-sm text-muted-foreground">
+                    of {gateway.status.discovered_tool_count} discovered tools currently exposed
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Resources</p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">{gateway.discovery.resources.length}</p>
+                  <p className="text-sm text-muted-foreground">
+                    resource{gateway.discovery.resources.length === 1 ? '' : 's'} available to downstream clients
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Prompts</p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">{gateway.discovery.prompts.length}</p>
+                  <p className="text-sm text-muted-foreground">
+                    prompt{gateway.discovery.prompts.length === 1 ? '' : 's'} discovered in the latest probe
+                  </p>
+                </div>
               </div>
 
               {gateway.status.last_error && (
@@ -307,21 +333,23 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   <div className="space-y-1">
                     <p className="font-medium">Gateway reachable</p>
                     <p>
-                      The latest probe discovered {gateway.status.discovered_tool_count} tool
-                      {gateway.status.discovered_tool_count === 1 ? '' : 's'}, {gateway.discovery.resources.length} resource
-                      {gateway.discovery.resources.length === 1 ? '' : 's'}, and {gateway.discovery.prompts.length} prompt
-                      {gateway.discovery.prompts.length === 1 ? '' : 's'}.
+                      The latest probe confirmed a healthy upstream and a ready downstream surface.
                     </p>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
+            <div className="space-y-4 text-sm text-muted-foreground lg:text-right">
+              <div className="flex items-center gap-2 lg:justify-end">
                 <Clock className="size-4" />
                 <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
               </div>
+              <MetricsStrip
+                discoveredCount={gateway.status.discovered_tool_count}
+                exposedCount={gateway.status.exposed_tool_count}
+                className="lg:justify-end"
+              />
             </div>
           </div>
         </div>
