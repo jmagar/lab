@@ -160,19 +160,24 @@ async fn authenticate_request(
         }
 
         if let Some(ref auth_state) = auth_state {
-            let expected_aud = Some(lab_auth::metadata::canonical_resource_url(auth_state));
-            let Some(ref expected_aud) = expected_aud else {
+            let Some(expected_issuer) = auth_state
+                .config
+                .public_url
+                .as_ref()
+                .map(|url| url.as_str().trim_end_matches('/').to_string())
+            else {
                 return Ok(auth_error_response(
                     "server misconfigured: LAB_PUBLIC_URL required for JWT validation",
                     resource_url.as_deref(),
                 ));
             };
+            let expected_aud = lab_auth::metadata::canonical_resource_url(auth_state);
             match auth_state
                 .signing_keys
-                .validate_access_token(&token, expected_aud)
+                .validate_access_token(&token, &expected_aud)
             {
                 Ok(claims) => {
-                    if claims.iss != *expected_aud {
+                    if claims.iss != expected_issuer {
                         return Ok(auth_error_response(
                             "invalid bearer token",
                             resource_url.as_deref(),
@@ -1029,6 +1034,27 @@ mod tests {
         assert_eq!(json["authenticated"], true);
         assert_eq!(json["user"]["sub"], "browser-user");
         assert_eq!(json["csrf_token"], "csrf-123");
+    }
+
+    #[tokio::test]
+    async fn auth_layer_accepts_valid_oauth_bearer_token() {
+        let auth_state = test_lab_auth_state().await;
+        let token = issue_test_lab_token(&auth_state);
+        let app = build_router(AppState::new(), None, Some(auth_state), None, &[]);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]

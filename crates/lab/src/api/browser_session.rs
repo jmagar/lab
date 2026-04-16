@@ -111,6 +111,10 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
         match auth_state.store.find_browser_session(&session_id).await {
             Ok(Some(session)) => {
                 if csrf != Some(session.csrf_token.as_str()) {
+                    tracing::warn!(
+                        has_csrf_header = csrf.is_some(),
+                        "auth logout rejected: missing or invalid csrf token"
+                    );
                     return invalid_csrf_response();
                 }
                 if let Err(error) = auth_state.store.revoke_browser_session(&session_id).await {

@@ -1,9 +1,12 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use jsonwebtoken::{Algorithm, DecodingKey, Header, Validation, decode, decode_header};
 use reqwest::Url;
+use reqwest::header;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 use crate::error::AuthError;
@@ -14,6 +17,7 @@ const GOOGLE_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_JWKS_ENDPOINT: &str = "https://www.googleapis.com/oauth2/v3/certs";
 const GOOGLE_ISSUER: &str = "https://accounts.google.com";
 const GOOGLE_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+const GOOGLE_DEFAULT_JWKS_TTL: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuthorizeUrlRequest {
@@ -33,6 +37,7 @@ pub struct GoogleProvider {
     authorize_endpoint: Url,
     token_endpoint: Url,
     jwks_endpoint: Url,
+    jwks_cache: Arc<RwLock<Option<CachedGoogleJwks>>>,
 }
 
 impl std::fmt::Debug for GoogleProvider {
@@ -73,18 +78,24 @@ struct GoogleIdTokenClaims {
     email: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct GoogleJwks {
     keys: Vec<GoogleJwk>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct GoogleJwk {
     kid: String,
     #[serde(default)]
     alg: Option<String>,
     n: String,
     e: String,
+}
+
+#[derive(Clone, Debug)]
+struct CachedGoogleJwks {
+    jwks: GoogleJwks,
+    expires_at: Instant,
 }
 
 struct GoogleRequestTrace<'a> {
@@ -203,6 +214,7 @@ impl GoogleProvider {
                 .expect("valid google auth url"),
             token_endpoint: Url::parse(GOOGLE_TOKEN_ENDPOINT).expect("valid google token url"),
             jwks_endpoint: Url::parse(GOOGLE_JWKS_ENDPOINT).expect("valid google jwks url"),
+            jwks_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -383,20 +395,78 @@ impl GoogleProvider {
     }
 
     async fn fetch_jwks(&self) -> Result<GoogleJwks, AuthError> {
-        read_json_response(
-            GoogleRequestTrace::start("fetch_jwks", "GET", &self.jwks_endpoint),
-            self.http.get(self.jwks_endpoint.clone()),
-            GoogleRequestErrors {
-                transport_context: "fetch google jwks",
-                transport_log: "google jwks request failed",
-                status_context: "google jwks endpoint error",
-                status_log: "google jwks request returned error status",
-                decode_context: "decode google jwks response",
-                decode_log: "google jwks payload unreadable",
-            },
-        )
-        .await
+        if let Some(jwks) = self.cached_jwks().await {
+            debug!(provider = "google", "google jwks cache hit");
+            return Ok(jwks);
+        }
+
+        let mut cache = self.jwks_cache.write().await;
+        if let Some(cached) = cache.as_ref()
+            && cached.expires_at > Instant::now()
+        {
+            debug!(
+                provider = "google",
+                "google jwks cache hit after refresh lock"
+            );
+            return Ok(cached.jwks.clone());
+        }
+
+        let trace = GoogleRequestTrace::start("fetch_jwks", "GET", &self.jwks_endpoint);
+        let response = self
+            .http
+            .get(self.jwks_endpoint.clone())
+            .send()
+            .await
+            .map_err(|error| {
+                trace.error(None, &error);
+                warn!(provider = "google", error = %error, "google jwks request failed");
+                AuthError::Storage(format!("fetch google jwks: {error}"))
+            })?;
+        let status = response.status();
+        let ttl = google_jwks_ttl(response.headers());
+        let response = response.error_for_status().map_err(|error| {
+            trace.error(Some(status), &error);
+            warn!(provider = "google", error = %error, "google jwks request returned error status");
+            AuthError::Storage(format!("google jwks endpoint error: {error}"))
+        })?;
+        trace.finish(status);
+        let jwks = response.json::<GoogleJwks>().await.map_err(|error| {
+            warn!(provider = "google", error = %error, "google jwks payload unreadable");
+            AuthError::Storage(format!("decode google jwks response: {error}"))
+        })?;
+
+        *cache = Some(CachedGoogleJwks {
+            jwks: jwks.clone(),
+            expires_at: Instant::now() + ttl,
+        });
+
+        Ok(jwks)
     }
+
+    async fn cached_jwks(&self) -> Option<GoogleJwks> {
+        let cache = self.jwks_cache.read().await;
+        cache
+            .as_ref()
+            .filter(|cached| cached.expires_at > Instant::now())
+            .map(|cached| cached.jwks.clone())
+    }
+}
+
+fn google_jwks_ttl(headers: &header::HeaderMap) -> Duration {
+    headers
+        .get(header::CACHE_CONTROL)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_max_age)
+        .map(Duration::from_secs)
+        .unwrap_or(GOOGLE_DEFAULT_JWKS_TTL)
+}
+
+fn parse_max_age(cache_control: &str) -> Option<u64> {
+    cache_control.split(',').find_map(|directive| {
+        let directive = directive.trim();
+        let value = directive.strip_prefix("max-age=")?;
+        value.parse::<u64>().ok()
+    })
 }
 
 fn validate_id_token_header(header: &Header) -> Result<(), AuthError> {
@@ -498,6 +568,53 @@ mod tests {
             error.to_string().contains("issuer"),
             "unexpected error: {error}"
         );
+    }
+
+    #[tokio::test]
+    async fn google_exchange_reuses_cached_jwks() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "google-access-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 3600,
+                "id_token": signed_test_id_token("client-id", false, true),
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/certs"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("Cache-Control", "public, max-age=3600")
+                    .set_body_json(test_jwks()),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = test_google_provider()
+            .with_endpoints(
+                server.uri().parse::<Url>().unwrap(),
+                server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
+            )
+            .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap());
+
+        provider.exchange_code("code-1", "verifier").await.unwrap();
+        provider.exchange_code("code-2", "verifier").await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let jwks_requests = requests
+            .iter()
+            .filter(|request| request.url.path() == "/certs")
+            .count();
+        assert_eq!(jwks_requests, 1);
+    }
+
+    #[test]
+    fn parse_max_age_reads_cache_control_max_age() {
+        assert_eq!(super::parse_max_age("public, max-age=3600"), Some(3600));
+        assert_eq!(super::parse_max_age("no-cache"), None);
     }
 
     fn test_google_provider() -> GoogleProvider {

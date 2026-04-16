@@ -19,12 +19,15 @@ const SQLITE_POOL_SIZE: usize = 4;
 pub struct SqliteStore {
     conns: Arc<Vec<Mutex<Connection>>>,
     next_conn: Arc<AtomicUsize>,
+    path: Arc<PathBuf>,
 }
 
 impl SqliteStore {
     pub async fn open(path: PathBuf) -> Result<Self, AuthError> {
+        let path_for_open = path.clone();
         let conns =
-            tokio::task::spawn_blocking(move || open_connections(path, SQLITE_POOL_SIZE)).await;
+            tokio::task::spawn_blocking(move || open_connections(path_for_open, SQLITE_POOL_SIZE))
+                .await;
         let store = match conns {
             Ok(result) => result,
             Err(error) => Err(AuthError::Storage(format!(
@@ -34,6 +37,7 @@ impl SqliteStore {
         .map(|conns| Self {
             conns: Arc::new(conns.into_iter().map(Mutex::new).collect()),
             next_conn: Arc::new(AtomicUsize::new(0)),
+            path: Arc::new(path),
         })?;
 
         store.cleanup_expired().await?;
@@ -419,12 +423,14 @@ impl SqliteStore {
         F: FnOnce(&Connection) -> Result<T, AuthError> + Send + 'static,
     {
         let conns = Arc::clone(&self.conns);
+        let path = Arc::clone(&self.path);
         let len = conns.len();
         let idx = self.next_conn.fetch_add(1, Ordering::Relaxed) % len;
         tokio::task::spawn_blocking(move || {
-            let guard = conns[idx]
+            let mut guard = conns[idx]
                 .lock()
                 .map_err(|_| AuthError::Storage("sqlite mutex poisoned".to_string()))?;
+            validate_or_reopen_connection(&mut guard, path.as_ref())?;
             op(&guard)
         })
         .await
@@ -526,6 +532,20 @@ fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
     ensure_restrictive_permissions(&path)?;
 
     Ok(conn)
+}
+
+fn validate_or_reopen_connection(conn: &mut Connection, path: &PathBuf) -> Result<(), AuthError> {
+    if conn
+        .query_row("SELECT 1", [], |row| row.get::<_, i64>(0))
+        .is_ok()
+    {
+        return Ok(());
+    }
+
+    *conn = open_connection(path.clone())?;
+    conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0))
+        .map(|_| ())
+        .map_err(sqlite_error)
 }
 
 fn sqlite_error(error: rusqlite::Error) -> AuthError {
