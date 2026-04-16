@@ -137,20 +137,28 @@ export function ToolExposureTable({
                 Unsaved changes
               </Badge>
             )}
-            <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
-              <span className="text-sm font-medium">Expose all tools</span>
-              <Switch checked={exposeAll} onCheckedChange={onExposeAllChange} />
-            </div>
             {!manageMode ? (
-              <Button variant="outline" onClick={() => onManageModeChange(true)}>
-                <SlidersHorizontal className="mr-2 size-4" />
-                Manage Tools
-              </Button>
+              <>
+                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm text-muted-foreground">
+                  <span className="font-medium">Expose all tools</span>
+                  <Switch checked={exposeAll} disabled />
+                </div>
+                <Button variant="outline" onClick={() => onManageModeChange(true)}>
+                  <SlidersHorizontal className="mr-2 size-4" />
+                  Manage Tools
+                </Button>
+              </>
             ) : (
-              <Button variant="outline" onClick={onCancelChanges}>
-                <X className="mr-2 size-4" />
-                Cancel
-              </Button>
+              <>
+                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                  <span className="text-sm font-medium">Expose all tools</span>
+                  <Switch checked={exposeAll} onCheckedChange={onExposeAllChange} />
+                </div>
+                <Button variant="outline" onClick={onCancelChanges}>
+                  <X className="mr-2 size-4" />
+                  Cancel
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -180,8 +188,9 @@ export function ToolExposureTable({
           <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-3">
-                <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                <label htmlFor="select-all-visible" className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <Checkbox
+                    id="select-all-visible"
                     checked={allVisibleSelected ? true : partiallyVisibleSelected ? 'indeterminate' : false}
                     onCheckedChange={(value) => handleSelectAllVisible(value === true)}
                   />

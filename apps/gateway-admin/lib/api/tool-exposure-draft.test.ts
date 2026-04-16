@@ -45,6 +45,18 @@ test('buildExposurePolicyFromDraft maps no selected tools to expose none sentine
   )
 })
 
+test('buildExposurePolicyFromDraft preserves partial allowlists and ignores stale names', () => {
+  assert.deepEqual(
+    buildExposurePolicyFromDraft(['alpha', 'beta', 'gamma'], ['beta', 'gamma']),
+    { mode: 'allowlist', patterns: ['beta', 'gamma'] },
+  )
+
+  assert.deepEqual(
+    buildExposurePolicyFromDraft(['alpha', 'beta'], ['alpha', 'beta', 'stale-tool']),
+    { mode: 'allowlist', patterns: ['alpha', 'beta', 'stale-tool'] },
+  )
+})
+
 test('getDraftExposureSummary reports exposed over total counts', () => {
   assert.equal(getDraftExposureSummary(['alpha', 'beta', 'gamma'], ['beta']).label, '1/3')
 })

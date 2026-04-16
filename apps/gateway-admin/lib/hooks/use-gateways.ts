@@ -10,7 +10,7 @@ import {
   getMockSupportedServicesFallback,
 } from '@/lib/api/mock-fallback'
 import { EXPOSE_NONE_PATTERN } from '@/lib/api/tool-exposure-draft'
-import { setMockGatewayOverride } from '@/lib/api/mock-gateway-overrides'
+import { getMockGatewayOverride, setMockGatewayOverride } from '@/lib/api/mock-gateway-overrides'
 import {
   mockGateways,
   mockReloadResult,
@@ -136,13 +136,15 @@ export function useGateways() {
 }
 
 export function useGateway(id: string | null) {
+  const fallbackGateway = USE_MOCK_DATA && id ? getMockGatewayFallback(id) : undefined
+
   return useSWR<Gateway>(
     id ? gatewayKey(id) : null,
     id ? () => fetchGateway(id) : null,
     {
       revalidateOnFocus: false,
-      fallbackData: USE_MOCK_DATA && id ? getMockGatewayFallback(id) : undefined,
-      revalidateOnMount: !USE_MOCK_DATA,
+      fallbackData: fallbackGateway,
+      revalidateOnMount: !USE_MOCK_DATA || fallbackGateway === undefined,
     }
   )
 }
@@ -288,50 +290,24 @@ export function useGatewayMutations() {
   const setExposurePolicy = useCallback(async (id: string, policy: ExposurePolicy): Promise<ExposurePolicy> => {
     if (USE_MOCK_DATA) {
       await mockDelay()
-      const mutateGatewayExposure = (gateway: Gateway): Gateway => {
-        const exposePatterns = policy.mode === 'allowlist' ? policy.patterns : []
-        const exposeAll = policy.mode === 'expose_all'
-        const exposeNone = exposePatterns.includes(EXPOSE_NONE_PATTERN)
-
-        const tools = gateway.discovery.tools.map((tool) => {
-          const exposed = exposeAll ? true : exposeNone ? false : exposePatterns.includes(tool.name)
-          return {
-            ...tool,
-            exposed,
-            matched_by: exposed ? (exposeAll ? '*' : tool.name) : null,
-          }
-        })
-
-        return {
-          ...gateway,
-          config: {
-            ...gateway.config,
-            expose_tools: policy.mode === 'expose_all' ? undefined : policy.patterns,
-          },
-          status: {
-            ...gateway.status,
-            exposed_tool_count: tools.filter((tool) => tool.exposed).length,
-          },
-          discovery: {
-            ...gateway.discovery,
-            tools,
-          },
-          updated_at: new Date().toISOString(),
-        }
+      setMockGatewayOverride(id, { exposurePolicy: policy })
+      const updatedGateway = getMockGatewayFallback(id)
+      if (!updatedGateway) {
+        throw new Error('Gateway not found')
       }
 
       await mutate(
         gatewayKey(id),
-        (current?: Gateway) => (current ? mutateGatewayExposure(current) : current),
+        updatedGateway,
         false,
       )
       await mutate(
         GATEWAYS_KEY,
-        (current: Gateway[] = []) => current.map((gateway) => (gateway.id === id ? mutateGatewayExposure(gateway) : gateway)),
+        (current: Gateway[] = []) =>
+          current.map((gateway) => (gateway.id === id ? updatedGateway : gateway)),
         false,
       )
       await mutate(exposurePolicyKey(id), policy, false)
-      setMockGatewayOverride(id, { exposurePolicy: policy })
       return policy
     }
     const result = await gatewayApi.setExposurePolicy(id, policy)

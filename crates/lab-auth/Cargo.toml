@@ -31,6 +31,7 @@ url.workspace          = true
 
 [dev-dependencies]
 rand.workspace = true
+rand_core = { version = "0.9", features = ["os_rng", "std"] }
 tempfile = "3.10"
 wiremock.workspace = true
 

@@ -83,3 +83,21 @@ test('applyMockGatewayOverride treats the expose none sentinel as hiding every t
     [false, false, false],
   )
 })
+
+test('applyMockGatewayOverride honors wildcard allowlist patterns', () => {
+  const overridden = applyMockGatewayOverride(gateway, {
+    exposurePolicy: {
+      mode: 'allowlist',
+      patterns: ['a*', 'gamma'],
+    },
+  })
+
+  assert.deepEqual(
+    overridden.discovery.tools.map((tool) => [tool.name, tool.exposed, tool.matched_by]),
+    [
+      ['alpha', true, 'a*'],
+      ['beta', false, null],
+      ['gamma', true, 'gamma'],
+    ],
+  )
+})

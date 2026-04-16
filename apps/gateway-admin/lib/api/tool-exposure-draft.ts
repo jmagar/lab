@@ -35,8 +35,13 @@ export function buildExposurePolicyFromDraft(
 ): ExposurePolicy {
   const totalTools = sortUnique(allToolNames)
   const selectedTools = sortUnique(draftSelectedToolNames)
+  const totalToolSet = new Set(totalTools)
+  const allToolsSelected =
+    totalTools.length > 0 &&
+    totalTools.every((toolName) => selectedTools.includes(toolName)) &&
+    selectedTools.every((toolName) => totalToolSet.has(toolName))
 
-  if (selectedTools.length >= totalTools.length && totalTools.length > 0) {
+  if (allToolsSelected) {
     return { mode: 'expose_all', patterns: [] }
   }
 

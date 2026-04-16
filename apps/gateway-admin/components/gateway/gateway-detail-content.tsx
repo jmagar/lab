@@ -90,7 +90,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     setDraftSelectedToolNames(currentExposedToolNames)
     setSelectedRowToolNames([])
     setManageToolsMode(false)
-  }, [gateway?.id, toolExposureSignature])
+  }, [currentExposedToolNames, gateway?.id, toolExposureSignature])
 
   if (!gatewayId) {
     return (
@@ -269,7 +269,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       ] as const)
     : []
   const hasDraftChanges =
-    JSON.stringify(draftSelectedToolNames) !== JSON.stringify(currentExposedToolNames)
+    draftSelectedToolNames.length !== currentExposedToolNames.length ||
+    draftSelectedToolNames.some((toolName) => !currentExposedToolNames.includes(toolName))
   const exposureSummary = getDraftExposureSummary(allToolNames, draftSelectedToolNames)
   const exposeAllTools =
     allToolNames.length > 0 && draftSelectedToolNames.length === allToolNames.length
@@ -297,6 +298,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   )
 
   const handleExposeAllChange = (checked: boolean) => {
+    if (!manageToolsMode) {
+      return
+    }
     setDraftSelectedToolNames(checked ? [...allToolNames].sort((left, right) => left.localeCompare(right)) : [])
     setSelectedRowToolNames([])
     setExposureSaveError(null)
@@ -454,7 +458,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                         <code className="break-all text-xs text-muted-foreground">
                           {gateway.transport === 'http'
                             ? gateway.config.url
-                            : `${gateway.config.command ?? 'Not configured'}${gateway.config.args?.length ? ` ${gateway.config.args.join(' ')}` : ''}`}
+                            : isLabGateway
+                              ? gateway.config.url ?? 'Lab-managed gateway configuration'
+                              : `${gateway.config.command ?? 'Not configured'}${gateway.config.args?.length ? ` ${gateway.config.args.join(' ')}` : ''}`}
                         </code>
                       </dd>
                     </div>

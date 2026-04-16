@@ -33,6 +33,18 @@ function writeOverridesRecord(record: Record<string, MockGatewayOverride>) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(record))
 }
 
+function patternMatchesTool(pattern: string, toolName: string): boolean {
+  if (pattern === '*') {
+    return true
+  }
+
+  if (pattern.endsWith('*')) {
+    return toolName.startsWith(pattern.slice(0, -1))
+  }
+
+  return pattern === toolName
+}
+
 export function getMockGatewayOverride(id: string): MockGatewayOverride | null {
   return readOverridesRecord()[id] ?? null
 }
@@ -63,12 +75,13 @@ export function applyMockGatewayOverride(
 
   const tools = override.exposurePolicy
     ? gateway.discovery.tools.map((tool) => {
-        const exposed = exposeAll ? true : exposeNone ? false : exposePatterns.includes(tool.name)
+        const matchingPattern = exposePatterns.find((pattern) => patternMatchesTool(pattern, tool.name))
+        const exposed = exposeAll ? true : exposeNone ? false : Boolean(matchingPattern)
 
         return {
           ...tool,
           exposed,
-          matched_by: exposed ? (exposeAll ? '*' : tool.name) : null,
+          matched_by: exposed ? (exposeAll ? '*' : matchingPattern ?? tool.name) : null,
         }
       })
     : gateway.discovery.tools
