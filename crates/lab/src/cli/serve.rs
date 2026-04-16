@@ -1,9 +1,9 @@
 //! `lab serve` — start the MCP server.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
@@ -160,8 +160,7 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
     let from_config = web.assets_dir.clone();
-    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../apps/gateway-admin/out");
+    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/gateway-admin/out");
 
     [from_env, from_config, Some(fallback)]
         .into_iter()
@@ -323,7 +322,8 @@ fn build_mcp_service(
     session_manager.session_config = session_config;
     let session_manager = Arc::new(session_manager);
 
-    let stateful = resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
+    let stateful =
+        resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
 
     let config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(allowed_hosts(
@@ -422,8 +422,8 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 #[cfg(test)]
 mod tests {
     use super::{
-        Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port, resolve_transport,
-        resolve_session_ttl_secs, resolve_stateful_mode,
+        Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port,
+        resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
     };
     use crate::config::{LabConfig, McpPreferences};
 
@@ -501,7 +501,10 @@ mod tests {
 
     #[test]
     fn session_ttl_resolution_prefers_env_then_config_then_default() {
-        assert_eq!(resolve_session_ttl_secs(Some("120".into()), Some(90)).unwrap(), 120);
+        assert_eq!(
+            resolve_session_ttl_secs(Some("120".into()), Some(90)).unwrap(),
+            120
+        );
         assert_eq!(resolve_session_ttl_secs(None, Some(90)).unwrap(), 90);
         assert_eq!(resolve_session_ttl_secs(None, None).unwrap(), 300);
     }

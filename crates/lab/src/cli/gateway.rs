@@ -87,11 +87,13 @@ async fn build_manager(config: &LabConfig) -> Arc<GatewayManager> {
         runtime.swap(Some(pool)).await;
     }
 
-    let manager = Arc::new(GatewayManager::new(
-        config_toml_path().unwrap_or_else(|| "config.toml".into()),
-        runtime,
-    )
-    .with_service_clients(SharedServiceClients::from_env()));
+    let manager = Arc::new(
+        GatewayManager::new(
+            config_toml_path().unwrap_or_else(|| "config.toml".into()),
+            runtime,
+        )
+        .with_service_clients(SharedServiceClients::from_env()),
+    );
     manager.seed_config(config.clone()).await;
     install_gateway_manager(Arc::clone(&manager));
     manager

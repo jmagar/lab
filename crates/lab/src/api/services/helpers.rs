@@ -18,8 +18,8 @@ use tracing::Instrument;
 use lab_apis::core::action::ActionSpec;
 
 use crate::api::ActionRequest;
-use crate::dispatch::gateway::current_gateway_manager;
 use crate::dispatch::error::ToolError;
+use crate::dispatch::gateway::current_gateway_manager;
 
 /// Dispatch a service action request with unknown-action gate, confirmation gate, and logging.
 ///

@@ -114,15 +114,36 @@ async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> impl
     };
 
     let cookie_name = lab_auth::session::BROWSER_SESSION_COOKIE_NAME;
-    let maybe_session =
-        lab_auth::session::read_cookie(&headers, cookie_name).map(|session_id| async move {
-            auth_state
-                .store
-                .find_browser_session(&session_id)
-                .await
-                .ok()
-                .flatten()
-        });
+    let has_cookie_header = headers.contains_key(header::COOKIE);
+    let browser_session_cookie = lab_auth::session::read_cookie(&headers, cookie_name);
+    let has_browser_session_cookie = browser_session_cookie.is_some();
+    tracing::info!(
+        has_cookie_header,
+        has_browser_session_cookie,
+        "auth session request received"
+    );
+    let maybe_session = browser_session_cookie.map(|session_id| async move {
+        match auth_state.store.find_browser_session(&session_id).await {
+            Ok(session) => {
+                tracing::info!(
+                    has_cookie_header,
+                    has_browser_session_cookie,
+                    session_found = session.is_some(),
+                    "auth session lookup completed"
+                );
+                session
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    has_cookie_header,
+                    has_browser_session_cookie,
+                    "auth session lookup failed"
+                );
+                None
+            }
+        }
+    });
     let session = match maybe_session {
         Some(fut) => fut.await,
         None => None,

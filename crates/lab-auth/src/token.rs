@@ -201,9 +201,7 @@ async fn refresh_token_grant(
             client_id: stored.client_id.clone(),
             subject: google.subject.clone(),
             scope: stored.scope.clone(),
-            provider_refresh_token: google
-                .refresh_token
-                .or(Some(provider_refresh_token)),
+            provider_refresh_token: google.refresh_token.or(Some(provider_refresh_token)),
             created_at: stored.created_at,
             expires_at: now_unix() + state.config.refresh_token_ttl.as_secs() as i64,
         })
@@ -483,10 +481,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/token")
-                    .header(
-                        header::CONTENT_TYPE,
-                        "application/x-www-form-urlencoded",
-                    )
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(
                         "grant_type=refresh_token&refresh_token=refresh-token&client_id=client",
                     ))

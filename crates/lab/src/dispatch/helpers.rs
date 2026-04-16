@@ -1,7 +1,7 @@
 //! Shared dispatch helpers used across all service modules.
 
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use lab_apis::core::action::ActionSpec;
@@ -13,7 +13,12 @@ use crate::dispatch::error::ToolError;
 /// Read an environment variable, returning `None` if absent or empty.
 pub fn env_non_empty(name: &str) -> Option<String> {
     ENV_OVERRIDE
-        .with(|override_map| override_map.borrow().as_ref().and_then(|values| values.get(name).cloned()))
+        .with(|override_map| {
+            override_map
+                .borrow()
+                .as_ref()
+                .and_then(|values| values.get(name).cloned())
+        })
         .or_else(|| std::env::var(name).ok())
         .filter(|v| !v.is_empty())
 }
@@ -22,10 +27,7 @@ thread_local! {
     static ENV_OVERRIDE: RefCell<Option<HashMap<String, String>>> = const { RefCell::new(None) };
 }
 
-pub fn with_env_override<T>(
-    values: HashMap<String, String>,
-    f: impl FnOnce() -> T,
-) -> T {
+pub fn with_env_override<T>(values: HashMap<String, String>, f: impl FnOnce() -> T) -> T {
     ENV_OVERRIDE.with(|slot| {
         let previous = slot.replace(Some(values));
         let result = f();

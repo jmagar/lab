@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use lab_apis::core::PluginMeta;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceFieldView {

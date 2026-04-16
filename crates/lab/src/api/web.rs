@@ -16,9 +16,9 @@ fn sanitize_relative_path(path: &str) -> PathBuf {
         match component {
             Component::Normal(part) => out.push(part),
             Component::CurDir => {}
-            Component::ParentDir
-            | Component::Prefix(_)
-            | Component::RootDir => return PathBuf::new(),
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir => {
+                return PathBuf::new();
+            }
         }
     }
     out

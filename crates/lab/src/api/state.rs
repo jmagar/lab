@@ -1,8 +1,8 @@
 //! Shared application state for axum handlers.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::dispatch::clients::ServiceClients;
