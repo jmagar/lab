@@ -34,7 +34,21 @@ async fn syslog_batch_endpoint_accepts_normalized_events() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(store.logs_for_device("dookie").await.len(), 1);
+    let snapshot = store.device("dookie").await.unwrap();
+    assert_eq!(snapshot.logs.len(), 1);
+}
+
+#[tokio::test]
+async fn syslog_batch_endpoint_rejects_invalid_device_id() {
+    let (app, _store) = test_device_router();
+    let response = app
+        .oneshot(syslog_request(
+            r#"{"device_id":"   ","events":[{"device_id":"dookie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -48,6 +62,19 @@ async fn device_oauth_route_calls_runtime_wrapper() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn device_oauth_route_rejects_non_loopback_bind_addr() {
+    let (app, _store) = test_device_router();
+    let response = app
+        .oneshot(oauth_relay_start_request(
+            r#"{"bind_addr":"10.0.0.5:9876","target_url":"http://127.0.0.1:9/callback","request_timeout_ms":100}"#,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 fn test_device_router() -> (axum::Router, Arc<DeviceFleetStore>) {

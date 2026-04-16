@@ -1,10 +1,15 @@
-use axum::{Json, extract::{Path, State}};
+use axum::{
+    Json,
+    extract::{Path, State},
+};
 use serde_json::json;
 
 use crate::api::{ToolError, state::AppState};
 use crate::config::DeviceRole;
 
-pub async fn list_devices(State(state): State<AppState>) -> Result<Json<serde_json::Value>, ToolError> {
+pub async fn list_devices(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ToolError> {
     let store = require_master_store(&state)?;
     let devices = store.list_devices().await;
     Ok(Json(serde_json::Value::Array(
@@ -32,10 +37,13 @@ pub async fn get_device(
     Path(device_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ToolError> {
     let store = require_master_store(&state)?;
-    let snapshot = store.device(&device_id).await.ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "not_found".to_string(),
-        message: format!("unknown device `{device_id}`"),
-    })?;
+    let snapshot = store
+        .device(&device_id)
+        .await
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message: format!("unknown device `{device_id}`"),
+        })?;
     Ok(Json(json!({
         "device_id": snapshot.device_id,
         "connected": snapshot.connected,
@@ -46,7 +54,9 @@ pub async fn get_device(
     })))
 }
 
-fn require_master_store(state: &AppState) -> Result<std::sync::Arc<crate::device::store::DeviceFleetStore>, ToolError> {
+pub(crate) fn require_master_store(
+    state: &AppState,
+) -> Result<std::sync::Arc<crate::device::store::DeviceFleetStore>, ToolError> {
     if matches!(state.device_role, Some(DeviceRole::NonMaster)) {
         return Err(ToolError::Sdk {
             sdk_kind: "not_found".to_string(),

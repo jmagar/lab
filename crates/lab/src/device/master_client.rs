@@ -4,6 +4,8 @@ use crate::config::LabConfig;
 use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 use crate::device::identity::resolve_local_hostname;
 
+const DEFAULT_MASTER_CLIENT_TIMEOUT_SECS: u64 = 5;
+
 #[derive(Debug, Clone)]
 pub struct MasterClient {
     http: reqwest::Client,
@@ -21,7 +23,12 @@ impl MasterClient {
     #[must_use]
     pub fn with_bearer_token(base_url: impl Into<String>, bearer_token: Option<String>) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(
+                    DEFAULT_MASTER_CLIENT_TIMEOUT_SECS,
+                ))
+                .build()
+                .expect("master client builder should be valid"),
             base_url: base_url.into(),
             bearer_token,
         }

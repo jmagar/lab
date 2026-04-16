@@ -204,14 +204,16 @@ impl ServerHandler for LabMcpServer {
         ];
 
         for svc in self.registry.services() {
-            let uri = format!("lab://{}/actions", svc.name);
-            let name = format!("{}/actions", svc.name);
-            resources.push(
-                RawResource::new(uri, name)
-                    .with_description(format!("Action list for {}", svc.name))
-                    .with_mime_type("application/json")
-                    .no_annotation(),
-            );
+            if self.service_visible_on_mcp(svc.name).await {
+                let uri = format!("lab://{}/actions", svc.name);
+                let name = format!("{}/actions", svc.name);
+                resources.push(
+                    RawResource::new(uri, name)
+                        .with_description(format!("Action list for {}", svc.name))
+                        .with_mime_type("application/json")
+                        .no_annotation(),
+                );
+            }
         }
 
         if let Some(pool) = self.current_upstream_pool().await {

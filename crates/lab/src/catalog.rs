@@ -45,7 +45,7 @@ pub struct ActionEntry {
 /// Build a [`Catalog`] from the current tool registry.
 #[must_use]
 pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
-    let mut services = registry
+    let services = registry
         .services()
         .iter()
         .map(|svc| ServiceCatalog {
@@ -64,36 +64,6 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
                 .collect(),
         })
         .collect::<Vec<_>>();
-
-    services.push(ServiceCatalog {
-        name: "device".to_string(),
-        description: "Fleet device commands routed to the configured master".to_string(),
-        category: "bootstrap".to_string(),
-        status: "available".to_string(),
-        actions: vec![
-            ActionEntry {
-                name: "list".to_string(),
-                description: "List devices known to the master".to_string(),
-                destructive: false,
-            },
-            ActionEntry {
-                name: "get".to_string(),
-                description: "Get one device from the master".to_string(),
-                destructive: false,
-            },
-        ],
-    });
-    services.push(ServiceCatalog {
-        name: "logs".to_string(),
-        description: "Fleet log commands routed to the configured master".to_string(),
-        category: "bootstrap".to_string(),
-        status: "available".to_string(),
-        actions: vec![ActionEntry {
-            name: "search".to_string(),
-            description: "Search ingested device logs on the master".to_string(),
-            destructive: false,
-        }],
-    });
 
     Catalog { services }
 }

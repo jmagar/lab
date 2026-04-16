@@ -7,6 +7,8 @@ use tokio::sync::RwLock;
 use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 use crate::device::log_event::DeviceLogEvent;
 
+const MAX_LOG_EVENTS_PER_DEVICE: usize = 10_000;
+
 #[derive(Debug, Clone, Default)]
 pub struct DeviceFleetStore {
     inner: Arc<RwLock<BTreeMap<String, DeviceSnapshot>>>,
@@ -30,7 +32,7 @@ impl DeviceFleetStore {
             .entry(hello.device_id.clone())
             .or_insert_with(|| DeviceSnapshot {
                 device_id: hello.device_id.clone(),
-                connected: false,
+                connected: true,
                 last_seen: SystemTime::now(),
                 role: None,
                 status: None,
@@ -38,6 +40,7 @@ impl DeviceFleetStore {
                 logs: Vec::new(),
             });
         snapshot.device_id = hello.device_id;
+        snapshot.connected = true;
         snapshot.last_seen = SystemTime::now();
         snapshot.role = Some(hello.role);
     }
@@ -104,13 +107,41 @@ impl DeviceFleetStore {
             });
         snapshot.last_seen = SystemTime::now();
         snapshot.logs.extend(events);
+        let excess = snapshot
+            .logs
+            .len()
+            .saturating_sub(MAX_LOG_EVENTS_PER_DEVICE);
+        if excess > 0 {
+            snapshot.logs.drain(0..excess);
+        }
     }
 
-    pub async fn logs_for_device(&self, device_id: &str) -> Vec<DeviceLogEvent> {
+    pub async fn search_logs_for_device(
+        &self,
+        device_id: &str,
+        needle: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Vec<DeviceLogEvent> {
         let inner = self.inner.read().await;
-        inner
-            .get(device_id)
-            .map(|snapshot| snapshot.logs.clone())
-            .unwrap_or_default()
+        let Some(snapshot) = inner.get(device_id) else {
+            return Vec::new();
+        };
+
+        let normalized_needle = needle.to_ascii_lowercase();
+        let effective_limit = limit.max(1).min(1_000);
+        snapshot
+            .logs
+            .iter()
+            .filter(|event| {
+                event
+                    .message
+                    .to_ascii_lowercase()
+                    .contains(&normalized_needle)
+            })
+            .skip(offset)
+            .take(effective_limit)
+            .cloned()
+            .collect()
     }
 }

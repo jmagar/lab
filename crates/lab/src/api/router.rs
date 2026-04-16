@@ -346,7 +346,7 @@ pub fn build_router(
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
         .merge(protected);
-    if let Some(auth_state) = auth_state.as_ref() {
+    if is_master && let Some(auth_state) = auth_state.as_ref() {
         let _ = auth_state;
         router = router
             .route(
@@ -816,7 +816,11 @@ mod tests {
     #[tokio::test]
     async fn serves_web_assets_for_browser_routes_when_configured() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(
+            dir.path().join("index.html"),
+            "<html><body>Labby</body></html>",
+        )
+        .unwrap();
 
         let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
         let app = build_router_with_bearer(state, None, None);
@@ -845,7 +849,11 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(
+            dir.path().join("index.html"),
+            "<html><body>Labby</body></html>",
+        )
+        .unwrap();
         fs::write(outside.path().join("secret.txt"), "top-secret").unwrap();
         unix_fs::symlink(
             outside.path().join("secret.txt"),
@@ -871,7 +879,11 @@ mod tests {
     #[tokio::test]
     async fn v1_routes_still_win_over_web_asset_fallback() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(
+            dir.path().join("index.html"),
+            "<html><body>Labby</body></html>",
+        )
+        .unwrap();
 
         let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
         let app = build_router_with_bearer(state, None, None);

@@ -156,7 +156,7 @@ When HTTP transport is active, the server exposes:
 
 | Path | Auth | Description |
 |------|------|-------------|
-| `/` | no | Labby web UI shell on the master. Non-master devices return `403`. |
+| `/` | no | Labby web UI shell on the master. On non-master devices this returns `403` only when exported web assets are configured; otherwise it falls through as `404`. |
 | `/gateways/`, `/gateway/`, `/activity/`, `/settings/`, `/docs/` | no | Labby SPA routes on the master. |
 | `/health` | no | Liveness probe |
 | `/ready` | no | Readiness probe |

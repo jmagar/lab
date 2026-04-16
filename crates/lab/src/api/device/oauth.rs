@@ -16,10 +16,22 @@ pub struct StartOauthRelayRequest {
     pub request_timeout_ms: Option<u64>,
 }
 
+fn validate_bind_addr(bind_addr: SocketAddr) -> Result<(), ToolError> {
+    if !bind_addr.ip().is_loopback() {
+        return Err(ToolError::InvalidParam {
+            message: "bind_addr must be a loopback address".to_string(),
+            param: "bind_addr".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
 pub async fn handle_start(
     State(_state): State<AppState>,
     Json(payload): Json<StartOauthRelayRequest>,
 ) -> Result<Json<DeviceAck>, ToolError> {
+    validate_bind_addr(payload.bind_addr)?;
     let resolved_target =
         crate::oauth::target::resolve_explicit_target(&payload.target_url, payload.default_port)
             .map_err(|error| ToolError::InvalidParam {
@@ -28,17 +40,12 @@ pub async fn handle_start(
             })?;
     let timeout = Duration::from_millis(payload.request_timeout_ms.unwrap_or(30_000));
 
-    tokio::spawn(async move {
-        if let Err(error) = crate::device::oauth::start_local_oauth_relay(
-            payload.bind_addr,
-            resolved_target,
-            timeout,
-        )
+    crate::device::oauth::start_local_oauth_relay(payload.bind_addr, resolved_target, timeout)
         .await
-        {
-            tracing::warn!(error = %error, "device oauth relay exited");
-        }
-    });
+        .map_err(|error| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: error.to_string(),
+        })?;
 
     Ok(super::ok())
 }

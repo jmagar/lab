@@ -1,9 +1,9 @@
 //! `lab serve` — start the MCP server.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
@@ -17,13 +17,13 @@ use tokio::sync::mpsc;
 
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
+use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::device::runtime::DeviceRuntime;
+use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::dispatch::gateway::types::CatalogChangeNotifier;
-use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
-use crate::device::runtime::DeviceRuntime;
-use crate::device::store::DeviceFleetStore;
 use crate::mcp::server::{LabMcpServer, PeerNotifier};
 use crate::registry::{ToolRegistry, build_default_registry};
 
@@ -84,7 +84,10 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let local_host = resolve_local_hostname().context("resolve local hostname")?;
     let resolved_runtime = resolve_runtime_role(
         &local_host,
-        config.device.as_ref().and_then(|prefs| prefs.master.as_deref()),
+        config
+            .device
+            .as_ref()
+            .and_then(|prefs| prefs.master.as_deref()),
     )
     .context("resolve device runtime role")?;
     let device_store = Arc::new(DeviceFleetStore::default());
@@ -159,15 +162,18 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 state = state.with_web_assets_dir(web_assets_dir);
             }
 
-            if let Err(error) = device_runtime.send_initial_hello().await {
-                tracing::warn!(error = %error, "initial device hello failed");
-            }
-            if let Err(error) = device_runtime.upload_initial_metadata().await {
-                tracing::warn!(error = %error, "initial device metadata upload failed");
-            }
-            if let Err(error) = device_runtime.collect_and_flush_bootstrap_logs().await {
-                tracing::warn!(error = %error, "initial device log flush failed");
-            }
+            let startup_runtime = device_runtime.clone();
+            tokio::spawn(async move {
+                if let Err(error) = startup_runtime.send_initial_hello().await {
+                    tracing::warn!(error = %error, "initial device hello failed");
+                }
+                if let Err(error) = startup_runtime.upload_initial_metadata().await {
+                    tracing::warn!(error = %error, "initial device metadata upload failed");
+                }
+                if let Err(error) = startup_runtime.collect_and_flush_bootstrap_logs().await {
+                    tracing::warn!(error = %error, "initial device log flush failed");
+                }
+            });
 
             run_http(
                 &host,
@@ -190,8 +196,7 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
     let from_config = web.assets_dir.clone();
-    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../apps/gateway-admin/out");
+    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/gateway-admin/out");
 
     [from_env, from_config, Some(fallback)]
         .into_iter()
@@ -355,7 +360,8 @@ fn build_mcp_service(
     session_manager.session_config = session_config;
     let session_manager = Arc::new(session_manager);
 
-    let stateful = resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
+    let stateful =
+        resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
 
     let config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(allowed_hosts(
@@ -456,8 +462,8 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 #[cfg(test)]
 mod tests {
     use super::{
-        Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port, resolve_transport,
-        resolve_session_ttl_secs, resolve_stateful_mode,
+        Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port,
+        resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
     };
     use crate::config::{LabConfig, McpPreferences};
 
@@ -535,7 +541,10 @@ mod tests {
 
     #[test]
     fn session_ttl_resolution_prefers_env_then_config_then_default() {
-        assert_eq!(resolve_session_ttl_secs(Some("120".into()), Some(90)).unwrap(), 120);
+        assert_eq!(
+            resolve_session_ttl_secs(Some("120".into()), Some(90)).unwrap(),
+            120
+        );
         assert_eq!(resolve_session_ttl_secs(None, Some(90)).unwrap(), 90);
         assert_eq!(resolve_session_ttl_secs(None, None).unwrap(), 300);
     }

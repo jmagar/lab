@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow};
 
 use crate::config::{DeviceRole, ResolvedDeviceRuntime};
-use crate::device::checkin::{DeviceHello, DeviceMetadataUpload};
+use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 use crate::device::config_scan::discover_ai_cli_configs;
 use crate::device::identity::resolve_runtime_role;
 use crate::device::log_collect::collect_bootstrap_logs;
@@ -127,28 +127,36 @@ impl DeviceRuntime {
         let mut ack_count = 0usize;
 
         for envelope in drained {
-            match envelope.kind.as_str() {
-                "syslog_batch" => {
-                    client.post_syslog_batch(&envelope.payload).await?;
-                    ack_count += 1;
-                }
+            let delivery = match envelope.kind.as_str() {
+                "syslog_batch" => client.post_syslog_batch(&envelope.payload).await,
                 "status" => {
-                    let status = serde_json::from_value(envelope.payload)
+                    let status = serde_json::from_value::<DeviceStatus>(envelope.payload)
                         .context("decode queued status envelope")?;
-                    client.post_status(&status).await?;
+                    client.post_status(&status).await
+                }
+                other => Err(anyhow!("unsupported queued envelope kind `{other}`")),
+            };
+
+            match delivery {
+                Ok(()) => {
                     ack_count += 1;
                 }
-                _ => break,
+                Err(error) => {
+                    ack_processed_prefix(&queue, ack_count).await?;
+                    return Err(error);
+                }
             }
         }
 
-        if ack_count > 0 {
-            queue.ack_drained(ack_count).await?;
-        }
+        ack_processed_prefix(&queue, ack_count).await?;
         Ok(())
     }
 
     pub async fn collect_and_flush_bootstrap_logs(&self) -> Result<()> {
+        if matches!(self.resolved.role, DeviceRole::Master) {
+            return Ok(());
+        }
+
         let events = collect_bootstrap_logs(&self.resolved.local_host)?;
         self.queue_syslog_batch(events).await?;
         self.flush_queue_once().await
@@ -170,4 +178,15 @@ impl DeviceRuntime {
     fn queue_path(&self) -> PathBuf {
         self.home_dir.join(".lab/device-runtime-queue.jsonl")
     }
+}
+
+async fn ack_processed_prefix(queue: &DeviceOutboundQueue, ack_count: usize) -> Result<()> {
+    if ack_count == 0 {
+        return Ok(());
+    }
+
+    queue
+        .ack_drained(ack_count)
+        .await
+        .context("ack delivered device outbound queue entries")
 }

@@ -37,12 +37,26 @@ struct RelayState {
 
 pub async fn run_local_relay(config: LocalRelayConfig) -> Result<(), OauthRelayError> {
     let bind_addr = config.bind_addr;
-    let listener = TcpListener::bind(bind_addr)
+    let listener = bind_local_relay_listener(bind_addr).await?;
+    serve_local_relay(listener, config).await
+}
+
+pub async fn bind_local_relay_listener(
+    bind_addr: SocketAddr,
+) -> Result<TcpListener, OauthRelayError> {
+    TcpListener::bind(bind_addr)
         .await
         .map_err(|source| OauthRelayError::Bind {
             bind_addr: bind_addr.to_string(),
             source,
-        })?;
+        })
+}
+
+pub async fn serve_local_relay(
+    listener: TcpListener,
+    config: LocalRelayConfig,
+) -> Result<(), OauthRelayError> {
+    let bind_addr = config.bind_addr;
 
     tracing::info!(
         surface = "oauth_relay",
@@ -174,11 +188,7 @@ async fn relay_callback(
         Err(error) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
-                format_upstream_error(
-                    &forward_url,
-                    &redact_forward_target(&forward_url),
-                    &error,
-                ),
+                format_upstream_error(&forward_url, &redact_forward_target(&forward_url), &error),
             );
         }
     };
@@ -249,7 +259,11 @@ fn redact_forward_target(url: &reqwest::Url) -> String {
     redacted.to_string()
 }
 
-fn format_upstream_error(url: &reqwest::Url, redacted_target: &str, error: &reqwest::Error) -> String {
+fn format_upstream_error(
+    url: &reqwest::Url,
+    redacted_target: &str,
+    error: &reqwest::Error,
+) -> String {
     let sanitized_source = error.to_string().replace(url.as_str(), redacted_target);
     format!(
         "failed to reach oauth relay target `{}`: {}",
