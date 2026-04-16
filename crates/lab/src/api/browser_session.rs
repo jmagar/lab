@@ -1,7 +1,9 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use std::time::Instant;
 
+use crate::api::ToolError;
 use crate::api::state::AppState;
 
 use lab_auth::session::{BROWSER_CSRF_HEADER_NAME, BROWSER_SESSION_COOKIE_NAME};
@@ -19,8 +21,11 @@ fn no_store_json(body: serde_json::Value) -> Response {
         .into_response()
 }
 
-fn unauthenticated_session_response() -> Response {
-    no_store_json(serde_json::json!({ "authenticated": false }))
+fn unauthenticated_session_response(login_available: bool) -> Response {
+    no_store_json(serde_json::json!({
+        "authenticated": false,
+        "login_available": login_available,
+    }))
 }
 
 fn session_cookie(headers: &HeaderMap) -> Option<String> {
@@ -66,25 +71,84 @@ async fn load_browser_session(
     }
 }
 
+fn request_id(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+}
+
+fn log_dispatch(action: &str, request_id: Option<&str>, start: Instant, kind: Option<&str>) {
+    let elapsed_ms = start.elapsed().as_millis();
+    match kind {
+        None => tracing::info!(
+            surface = "api",
+            service = "auth",
+            action,
+            request_id,
+            elapsed_ms,
+            "auth browser session dispatch complete"
+        ),
+        Some("internal_error") => tracing::error!(
+            surface = "api",
+            service = "auth",
+            action,
+            request_id,
+            elapsed_ms,
+            kind = "internal_error",
+            "auth browser session dispatch failed"
+        ),
+        Some(kind) => tracing::warn!(
+            surface = "api",
+            service = "auth",
+            action,
+            request_id,
+            elapsed_ms,
+            kind,
+            "auth browser session dispatch failed"
+        ),
+    }
+}
+
+fn internal_error_response(message: &'static str) -> Response {
+    let mut response = ToolError::internal_message(message).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("private, no-store"),
+    );
+    response
+}
+
 fn invalid_csrf_response() -> Response {
-    (
+    let mut response = (
         StatusCode::UNPROCESSABLE_ENTITY,
         axum::Json(serde_json::json!({
             "kind": "validation_failed",
             "message": "missing or invalid csrf token",
         })),
     )
-        .into_response()
+        .into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("private, no-store"),
+    );
+    response
 }
 
 pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let start = Instant::now();
+    let request_id = request_id(&headers).map(ToOwned::to_owned);
+    let login_available = state.oauth_state.is_some();
     let Some(auth_state) = oauth_state(&state) else {
-        return unauthenticated_session_response();
+        let response = unauthenticated_session_response(false);
+        log_dispatch("session.get", request_id.as_deref(), start, None);
+        return response;
     };
 
     let body = match load_browser_session(&auth_state, &headers).await {
         Ok(Some(session)) => serde_json::json!({
             "authenticated": true,
+            "login_available": login_available,
             "user": {
                 "sub": session.subject,
                 "email": session.email,
@@ -92,18 +156,32 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
             "expires_at": session.expires_at,
             "csrf_token": session.csrf_token,
         }),
-        Ok(None) => return unauthenticated_session_response(),
+        Ok(None) => {
+            let response = unauthenticated_session_response(login_available);
+            log_dispatch("session.get", request_id.as_deref(), start, None);
+            return response;
+        }
         Err(error) => {
             tracing::error!(error = %error, "failed to load browser session for auth session");
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            log_dispatch(
+                "session.get",
+                request_id.as_deref(),
+                start,
+                Some("internal_error"),
+            );
+            return internal_error_response("failed to load browser session");
         }
     };
 
+    log_dispatch("session.get", request_id.as_deref(), start, None);
     no_store_json(body)
 }
 
 pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let start = Instant::now();
+    let request_id = request_id(&headers).map(ToOwned::to_owned);
     let Some(auth_state) = oauth_state(&state) else {
+        log_dispatch("session.logout", request_id.as_deref(), start, None);
         return StatusCode::NO_CONTENT.into_response();
     };
 
@@ -119,17 +197,35 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
                         has_csrf_header = csrf.is_some(),
                         "auth logout rejected: missing or invalid csrf token"
                     );
+                    log_dispatch(
+                        "session.logout",
+                        request_id.as_deref(),
+                        start,
+                        Some("validation_failed"),
+                    );
                     return invalid_csrf_response();
                 }
                 if let Err(error) = auth_state.store.revoke_browser_session(&session_id).await {
                     tracing::error!(error = %error, "failed to revoke browser session");
-                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                    log_dispatch(
+                        "session.logout",
+                        request_id.as_deref(),
+                        start,
+                        Some("internal_error"),
+                    );
+                    return internal_error_response("failed to revoke browser session");
                 }
             }
             Ok(None) => {}
             Err(error) => {
                 tracing::error!(error = %error, "failed to load browser session for logout");
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                log_dispatch(
+                    "session.logout",
+                    request_id.as_deref(),
+                    start,
+                    Some("internal_error"),
+                );
+                return internal_error_response("failed to load browser session");
             }
         }
     }
@@ -137,5 +233,6 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
         &mut response,
         &lab_auth::session::clear_browser_session_cookie(&auth_state),
     );
+    log_dispatch("session.logout", request_id.as_deref(), start, None);
     response
 }

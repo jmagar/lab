@@ -216,6 +216,19 @@ mod tests {
         assert!(names.contains(&"gateway.discovered_tools"));
         assert!(names.contains(&"gateway.discovered_resources"));
         assert!(names.contains(&"gateway.discovered_prompts"));
+
+        for name in [
+            "gateway.add",
+            "gateway.update",
+            "gateway.remove",
+            "gateway.reload",
+        ] {
+            let spec = ACTIONS
+                .iter()
+                .find(|spec| spec.name == name)
+                .expect("action");
+            assert!(spec.destructive, "{name} must be destructive");
+        }
     }
 
     fn test_manager() -> GatewayManager {

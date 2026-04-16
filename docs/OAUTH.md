@@ -222,6 +222,16 @@ Rules:
 - provider-facing logs must preserve stable `kind` classification when transport,
   status, decode, or grant failures happen
 
+Browser-session introspection semantics:
+
+- `GET /auth/session` returns `200` with `authenticated: false` only for a true
+  logged-out outcome
+- the same payload includes `login_available` so browser clients can suppress
+  the hosted-login CTA when OAuth browser login is not configured
+- internal failures from session lookup, persistence, signing, or provider
+  coordination remain structured 5xx responses instead of collapsing into
+  `authenticated: false`
+
 ### Frontend Expectations
 
 The web UI and server-side frontend adapter must treat auth state as a three-way
@@ -237,6 +247,17 @@ They must also:
 - avoid showing a hosted-login CTA unless hosted login is actually available
 - invalidate or refresh cached session state when later requests fail with
   `auth_failed` or CSRF-style auth errors
+
+### OAuth Error Kinds
+
+Most auth-route failures use the canonical error envelope described in
+`docs/ERRORS.md`.
+
+Documented auth-specific exception:
+
+- `invalid_grant` remains a stable OAuth token/authorization error for
+  authorization-code and refresh-token redemption failures such as expired,
+  unknown, or mismatched grants
 
 ## RFC 9728 Protected Resource Metadata
 

@@ -32,12 +32,24 @@ export function AuthBootstrap({ children }: AuthBootstrapProps) {
     )
   }
 
+  const returnTo =
+    typeof window === 'undefined'
+      ? '/'
+      : `${window.location.pathname}${window.location.search}${window.location.hash}`
+
   if (session.status === 'unauthenticated') {
-    const returnTo =
-      typeof window === 'undefined'
-        ? '/'
-        : `${window.location.pathname}${window.location.search}${window.location.hash}`
-    return <LoginScreen returnTo={returnTo || '/'} />
+    return <LoginScreen loginAvailable={session.loginAvailable} returnTo={returnTo || '/'} />
+  }
+
+  if (session.status === 'auth_error') {
+    return (
+      <LoginScreen
+        errorMessage={session.message}
+        loginAvailable={session.loginAvailable}
+        requestId={session.requestId}
+        returnTo={returnTo || '/'}
+      />
+    )
   }
 
   if (session.status === 'auth_error') {

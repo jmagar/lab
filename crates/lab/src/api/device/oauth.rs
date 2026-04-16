@@ -1,8 +1,9 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use axum::{Json, extract::State};
+use axum::{Json, extract::State, http::HeaderMap};
 use serde::Deserialize;
+use std::time::Instant;
 
 use crate::api::{ToolError, state::AppState};
 
@@ -35,8 +36,15 @@ fn validate_bind_addr(bind_addr: SocketAddr) -> Result<(), ToolError> {
 
 pub async fn handle_start(
     State(_state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<StartOauthRelayRequest>,
 ) -> Result<Json<StartOauthRelayResponse>, ToolError> {
+    let start = Instant::now();
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     validate_bind_addr(payload.bind_addr)?;
     let resolved_target =
         crate::oauth::target::resolve_explicit_target(&payload.target_url, payload.default_port)
@@ -49,10 +57,31 @@ pub async fn handle_start(
     let bound_addr =
         crate::device::oauth::start_local_oauth_relay(payload.bind_addr, resolved_target, timeout)
             .await
-            .map_err(|error| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: error.to_string(),
+            .map_err(|error| {
+                tracing::error!(
+                    surface = "api",
+                    service = "device",
+                    action = "oauth.relay.start",
+                    request_id = request_id.as_deref(),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "internal_error",
+                    error = %error,
+                    "device oauth relay start failed"
+                );
+                ToolError::Sdk {
+                    sdk_kind: "internal_error".to_string(),
+                    message: error.to_string(),
+                }
             })?;
+
+    tracing::info!(
+        surface = "api",
+        service = "device",
+        action = "oauth.relay.start",
+        request_id = request_id.as_deref(),
+        elapsed_ms = start.elapsed().as_millis(),
+        "device oauth relay start complete"
+    );
 
     Ok(Json(StartOauthRelayResponse {
         ok: true,

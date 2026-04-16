@@ -4,6 +4,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::RwLock;
+use url::Url;
 
 use crate::config::{LabConfig, UpstreamConfig, backup_env, env_is_up_to_date, write_env};
 use crate::dispatch::clients::SharedServiceClients;
@@ -606,6 +607,13 @@ impl GatewayManager {
         mut spec: UpstreamConfig,
         bearer_token_value: Option<String>,
     ) -> Result<GatewayView, ToolError> {
+        tracing::info!(
+            action = "gateway.add",
+            phase = "start",
+            gateway = %spec.name,
+            target = ?redacted_gateway_target(&spec),
+            "gateway reconcile"
+        );
         let mut cfg = self.config.read().await.clone();
 
         // Trim and validate bearer_token_env unconditionally so whitespace typos
@@ -629,7 +637,17 @@ impl GatewayManager {
             insert_upstream(&mut cfg, spec.clone())?;
         }
         self.persist_config(cfg).await?;
-        let _ = self.reload().await?;
+        let diff = self.reload().await?;
+        tracing::info!(
+            action = "gateway.add",
+            phase = "finish",
+            gateway = %spec.name,
+            target = ?redacted_gateway_target(&spec),
+            tools_changed = diff.tools_changed,
+            resources_changed = diff.resources_changed,
+            prompts_changed = diff.prompts_changed,
+            "gateway reconcile"
+        );
         self.get(&spec.name).await
     }
 
@@ -640,8 +658,15 @@ impl GatewayManager {
         bearer_token_value: Option<String>,
     ) -> Result<GatewayView, ToolError> {
         let mut patch = patch;
-        let mut cfg = self.config.read().await.clone();
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
+        tracing::info!(
+            action = "gateway.update",
+            phase = "start",
+            gateway = %name,
+            new_gateway = %updated_name,
+            "gateway reconcile"
+        );
+        let mut cfg = self.config.read().await.clone();
 
         // Trim and validate bearer_token_env unconditionally so whitespace typos
         // are caught before they silently fail env-var lookup later.
@@ -687,15 +712,41 @@ impl GatewayManager {
             update_upstream(&mut cfg, name, patch)?;
         }
         self.persist_config(cfg).await?;
-        let _ = self.reload().await?;
+        let diff = self.reload().await?;
+        tracing::info!(
+            action = "gateway.update",
+            phase = "finish",
+            gateway = %name,
+            new_gateway = %updated_name,
+            tools_changed = diff.tools_changed,
+            resources_changed = diff.resources_changed,
+            prompts_changed = diff.prompts_changed,
+            "gateway reconcile"
+        );
         self.get(&updated_name).await
     }
 
     pub async fn remove(&self, name: &str) -> Result<GatewayView, ToolError> {
+        tracing::info!(
+            action = "gateway.remove",
+            phase = "start",
+            gateway = %name,
+            "gateway reconcile"
+        );
         let mut cfg = self.config.read().await.clone();
         let removed = remove_upstream(&mut cfg, name)?;
         self.persist_config(cfg).await?;
-        let _ = self.reload().await?;
+        let diff = self.reload().await?;
+        tracing::info!(
+            action = "gateway.remove",
+            phase = "finish",
+            gateway = %name,
+            target = ?redacted_gateway_target(&removed),
+            tools_changed = diff.tools_changed,
+            resources_changed = diff.resources_changed,
+            prompts_changed = diff.prompts_changed,
+            "gateway reconcile"
+        );
         Ok(GatewayView {
             config: config_view(&removed),
             runtime: GatewayRuntimeView {
@@ -706,6 +757,11 @@ impl GatewayManager {
     }
 
     pub async fn reload(&self) -> Result<GatewayCatalogDiff, ToolError> {
+        tracing::info!(
+            action = "gateway.reload",
+            phase = "config.load.start",
+            "gateway reconcile"
+        );
         let path = self.path.clone();
         let cfg = tokio::task::spawn_blocking(move || load_gateway_config(&path))
             .await
@@ -713,6 +769,12 @@ impl GatewayManager {
                 sdk_kind: "internal_error".to_string(),
                 message: format!("config read task failed: {e}"),
             })??;
+        tracing::info!(
+            action = "gateway.reload",
+            phase = "config.load.finish",
+            upstream_count = cfg.upstream.len(),
+            "gateway reconcile"
+        );
         if let Some(cache) = &self.oauth_client_cache {
             let existing = self.config.read().await.clone();
             for upstream in existing
@@ -744,6 +806,11 @@ impl GatewayManager {
             }
         }
         let before = snapshot_from_pool(self.runtime.current_pool().await).await;
+        tracing::info!(
+            action = "gateway.reload",
+            phase = "pool.build.start",
+            "gateway reconcile"
+        );
         let fresh_pool = if cfg.upstream.is_empty() {
             None
         } else {
@@ -754,11 +821,39 @@ impl GatewayManager {
             pool.discover_all(&cfg.upstream).await;
             Some(pool)
         };
+        tracing::info!(
+            action = "gateway.reload",
+            phase = "pool.build.finish",
+            "gateway reconcile"
+        );
         let after = snapshot_from_pool(fresh_pool.clone()).await;
+        tracing::info!(
+            action = "gateway.reload",
+            phase = "pool.swap",
+            "gateway reconcile"
+        );
         self.runtime.swap(fresh_pool).await;
         *self.config.write().await = cfg;
         let diff = diff_catalogs(&before, &after);
+        if self.notifier.is_some() {
+            tracing::info!(
+                action = "gateway.reload",
+                phase = "catalog.notify",
+                tools_changed = diff.tools_changed,
+                resources_changed = diff.resources_changed,
+                prompts_changed = diff.prompts_changed,
+                "gateway reconcile"
+            );
+        }
         self.notify_catalog_changes(&diff);
+        tracing::info!(
+            action = "gateway.reload",
+            phase = "finish",
+            tools_changed = diff.tools_changed,
+            resources_changed = diff.resources_changed,
+            prompts_changed = diff.prompts_changed,
+            "gateway reconcile"
+        );
         Ok(diff)
     }
 
@@ -984,6 +1079,13 @@ impl GatewayManager {
     async fn persist_config(&self, cfg: LabConfig) -> Result<(), ToolError> {
         let path = self.path.clone();
         let cfg_clone = cfg.clone();
+        tracing::info!(
+            action = "gateway.config.write",
+            phase = "start",
+            upstream_count = cfg.upstream.len(),
+            virtual_server_count = cfg.virtual_servers.len(),
+            "gateway reconcile"
+        );
         tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
             .await
             .map_err(|e| ToolError::Sdk {
@@ -991,6 +1093,11 @@ impl GatewayManager {
                 message: format!("config write task failed: {e}"),
             })??;
         *self.config.write().await = cfg;
+        tracing::info!(
+            action = "gateway.config.write",
+            phase = "finish",
+            "gateway reconcile"
+        );
         Ok(())
     }
 }
@@ -1051,6 +1158,51 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
         bearer_token_env: upstream.bearer_token_env.clone(),
         proxy_resources: upstream.proxy_resources,
     }
+}
+
+fn redacted_gateway_target(upstream: &UpstreamConfig) -> Option<String> {
+    upstream
+        .url
+        .as_deref()
+        .map(redact_gateway_url)
+        .or_else(|| upstream.command.clone())
+}
+
+fn redact_gateway_url(url: &str) -> String {
+    let Ok(mut parsed) = Url::parse(url) else {
+        return url.to_string();
+    };
+
+    let _ = parsed.set_username("");
+    let _ = parsed.set_password(None);
+
+    let query = parsed.query().map(|query| {
+        query
+            .split('&')
+            .filter(|pair| !pair.is_empty())
+            .map(|pair| {
+                let (key, value) = pair.split_once('=').map_or((pair, ""), |(k, v)| (k, v));
+                if is_sensitive_query_key(key) {
+                    format!("{key}=[redacted]")
+                } else if value.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{key}={value}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("&")
+    });
+    parsed.set_query(query.as_deref());
+
+    parsed.to_string()
+}
+
+fn is_sensitive_query_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "token" | "access_token" | "apikey" | "api_key" | "password" | "secret" | "bearer"
+    )
 }
 
 fn empty_upstream_summary() -> UpstreamCachedSummary {
@@ -1132,7 +1284,7 @@ async fn server_view_from_upstream(
             } else {
                 "http".to_string()
             }),
-            target: upstream.url.clone().or_else(|| upstream.command.clone()),
+            target: redacted_gateway_target(upstream),
         },
     }
 }
@@ -1475,6 +1627,26 @@ mod tests {
         assert_eq!(
             gateway.config.bearer_token_env.as_deref(),
             Some("FIXTURE_HTTP_TOKEN")
+        );
+    }
+
+    #[tokio::test]
+    async fn server_view_redacts_sensitive_target_url_components() {
+        let upstream = UpstreamConfig {
+            name: "fixture-http".to_string(),
+            url: Some("http://user:pass@127.0.0.1:9001/callback?token=secret&mode=1".to_string()),
+            bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
+            command: None,
+            args: Vec::new(),
+            proxy_resources: false,
+            expose_tools: None,
+        };
+
+        let view = server_view_from_upstream(None, &upstream).await;
+
+        assert_eq!(
+            view.config_summary.target.as_deref(),
+            Some("http://127.0.0.1:9001/callback?token=[redacted]&mode=1")
         );
     }
 
