@@ -59,6 +59,10 @@ impl Parser for QbittorrentParser {
             // SID is dynamic — cannot be extracted from config.
             secret: None,
             env_field: "QBITTORRENT_SID".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         })
     }
 }

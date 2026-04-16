@@ -1012,6 +1012,10 @@ assets_dir = "/tmp/labby"
             url: Some("http://localhost:7878".to_owned()),
             secret: Some("abc123".to_owned()),
             env_field: "RADARR_API_KEY".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         }
     }
 
@@ -1090,6 +1094,10 @@ assets_dir = "/tmp/labby"
             url: None,
             secret: Some("has space".to_owned()),
             env_field: "SVC_KEY".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         };
         write_env(&path, &[cred], false).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
@@ -1105,6 +1113,10 @@ assets_dir = "/tmp/labby"
             url: None,
             secret: Some("has space".to_owned()),
             env_field: "SVC_KEY".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         };
         // write_env quotes values with spaces
         write_env(&path, &[cred.clone()], false).unwrap();

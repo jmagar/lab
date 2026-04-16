@@ -2457,6 +2457,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml",
  "reqwest",
+ "rusqlite",
  "russh",
  "russh-config",
  "russh-sftp",

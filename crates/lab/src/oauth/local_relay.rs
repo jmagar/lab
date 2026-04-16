@@ -497,7 +497,17 @@ mod tests {
             .expect("relay request should succeed");
         assert_eq!(response.status(), StatusCode::OK);
 
-        let logs = captured_logs(&buf);
+        let logs = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let logs = captured_logs(&buf);
+                if logs.contains("/callback/dookie/extra") {
+                    break logs;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("relay logs should be captured");
         assert!(!logs.is_empty());
         assert!(logs.contains("/callback/dookie/extra"));
         assert!(!logs.contains("code=abc"));

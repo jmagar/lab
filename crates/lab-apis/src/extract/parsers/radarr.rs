@@ -150,6 +150,10 @@ pub fn parse_servarr_config_xml(
         url: Some(format!("{scheme}://{host}:{port_num}{base}")),
         secret: Some(key),
         env_field: env_field.to_owned(),
+        source_host: None,
+        probe_host: None,
+        runtime: None,
+        url_verified: false,
     })
 }
 

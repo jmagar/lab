@@ -86,6 +86,10 @@ impl Parser for PlexParser {
             url: Some(url),
             secret: Some(tok),
             env_field: "PLEX_TOKEN".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         })
     }
 }

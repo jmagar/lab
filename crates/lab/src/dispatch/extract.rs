@@ -4,7 +4,7 @@
 //! All real work is delegated to `lab_apis::extract::ExtractClient`.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
-use lab_apis::extract::{ExtractClient, Uri};
+use lab_apis::extract::{ExtractClient, ScanTarget, Uri};
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
@@ -39,8 +39,8 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[ParamSpec {
             name: "uri",
             ty: "string",
-            required: true,
-            description: "Local path or 'host:/abs/path' for SSH",
+            required: false,
+            description: "Local path or 'host:/abs/path' for SSH; omit for fleet scan",
         }],
         returns: "DiscoveredService[]",
     },
@@ -96,9 +96,9 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             action_schema(ACTIONS, a)
         }
         "scan" => {
-            let uri = parse_uri(&params)?;
+            let target = parse_scan_target(&params)?;
             let client = ExtractClient::new();
-            let report = client.scan(uri).await.map_err(|e| ToolError::Sdk {
+            let report = client.scan(target).await.map_err(|e| ToolError::Sdk {
                 sdk_kind: "internal_error".into(),
                 message: e.to_string(),
             })?;
@@ -140,4 +140,35 @@ fn parse_uri(params: &Value) -> Result<Uri, ToolError> {
             sdk_kind: "invalid_param".into(),
             message: e.to_string(),
         })
+}
+
+fn parse_scan_target(params: &Value) -> Result<ScanTarget, ToolError> {
+    match params.get("uri").and_then(Value::as_str) {
+        Some(_uri) => Ok(ScanTarget::Targeted(parse_uri(params)?)),
+        None => Ok(ScanTarget::Fleet),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lab_apis::extract::ScanTarget;
+    use serde_json::json;
+
+    #[test]
+    fn scan_without_uri_maps_to_fleet() {
+        let target = parse_scan_target(&json!({})).expect("scan target");
+        assert!(matches!(target, ScanTarget::Fleet));
+    }
+
+    #[test]
+    fn scan_with_uri_maps_to_targeted() {
+        let target = parse_scan_target(&json!({"uri": "/tmp/appdata"})).expect("scan target");
+        assert!(matches!(target, ScanTarget::Targeted(_)));
+    }
+
+    #[test]
+    fn apply_and_diff_still_require_uri() {
+        assert!(parse_uri(&json!({})).is_err());
+    }
 }

@@ -17,6 +17,10 @@ use super::types::ServiceCreds;
 
 /// Shared minimal INI parser (no external dep).
 pub(super) mod ini;
+/// Linkding config parser.
+pub mod linkding;
+/// Overseerr config parser.
+pub mod overseerr;
 /// Plex Media Server config parser.
 pub mod plex;
 /// Prowlarr parser (same XML shape as Radarr).
@@ -61,5 +65,7 @@ pub fn all() -> Vec<Box<dyn Parser>> {
         Box::new(qbittorrent::QbittorrentParser),
         Box::new(plex::PlexParser),
         Box::new(tautulli::TautulliParser),
+        Box::new(overseerr::OverseerrParser),
+        Box::new(linkding::LinkdingParser),
     ]
 }
