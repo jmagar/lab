@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { mockGateways } from '../api/mock-data.ts'
 import {
   buildGatewayActivityFeed,
+  buildGatewayDocsSnapshot,
   buildGatewaySettingsSnapshot,
 } from './admin-insights.ts'
 
@@ -32,4 +33,16 @@ test('buildGatewaySettingsSnapshot summarizes gateway fleet posture and auth mod
   assert.equal(snapshot.warningCount, 3)
   assert.equal(snapshot.proxyResourceGateways, 4)
   assert.equal(snapshot.bearerTokenGateways, 2)
+})
+
+test('buildGatewayDocsSnapshot derives operator-facing guidance from the current fleet', () => {
+  const docs = buildGatewayDocsSnapshot(mockGateways, 4)
+
+  assert.equal(docs.totalGateways, 5)
+  assert.equal(docs.connectedGateways, 4)
+  assert.equal(docs.warningCount, 3)
+  assert.equal(docs.httpGateways, 2)
+  assert.equal(docs.stdioGateways, 3)
+  assert.equal(docs.supportedServices, 4)
+  assert.equal(docs.exposedTools, 24)
 })
