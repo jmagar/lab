@@ -4108,6 +4108,8 @@ snapshots:
 
   server-only@0.0.1: {}
 
+  server-only@0.0.1: {}
+
   sharp@0.34.5:
     dependencies:
       '@img/colour': 1.0.0

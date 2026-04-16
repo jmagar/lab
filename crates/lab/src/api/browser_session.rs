@@ -4,6 +4,7 @@ use axum::response::{IntoResponse, Response};
 use std::time::Instant;
 
 use crate::api::ToolError;
+use crate::api::router::{log_auth_dispatch, request_id};
 use crate::api::state::AppState;
 
 use lab_auth::session::{BROWSER_CSRF_HEADER_NAME, BROWSER_SESSION_COOKIE_NAME};
@@ -71,45 +72,6 @@ async fn load_browser_session(
     }
 }
 
-fn request_id(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get("x-request-id")
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| !value.is_empty())
-}
-
-fn log_dispatch(action: &str, request_id: Option<&str>, start: Instant, kind: Option<&str>) {
-    let elapsed_ms = start.elapsed().as_millis();
-    match kind {
-        None => tracing::info!(
-            surface = "api",
-            service = "auth",
-            action,
-            request_id,
-            elapsed_ms,
-            "auth browser session dispatch complete"
-        ),
-        Some("internal_error") => tracing::error!(
-            surface = "api",
-            service = "auth",
-            action,
-            request_id,
-            elapsed_ms,
-            kind = "internal_error",
-            "auth browser session dispatch failed"
-        ),
-        Some(kind) => tracing::warn!(
-            surface = "api",
-            service = "auth",
-            action,
-            request_id,
-            elapsed_ms,
-            kind,
-            "auth browser session dispatch failed"
-        ),
-    }
-}
-
 fn internal_error_response(message: &'static str) -> Response {
     let mut response = ToolError::internal_message(message).into_response();
     response.headers_mut().insert(
@@ -141,7 +103,7 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
     let login_available = state.oauth_state.is_some();
     let Some(auth_state) = oauth_state(&state) else {
         let response = unauthenticated_session_response(false);
-        log_dispatch("session.get", request_id.as_deref(), start, None);
+        log_auth_dispatch("session.get", request_id.as_deref(), start, None);
         return response;
     };
 
@@ -158,12 +120,12 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
         }),
         Ok(None) => {
             let response = unauthenticated_session_response(login_available);
-            log_dispatch("session.get", request_id.as_deref(), start, None);
+            log_auth_dispatch("session.get", request_id.as_deref(), start, None);
             return response;
         }
         Err(error) => {
             tracing::error!(error = %error, "failed to load browser session for auth session");
-            log_dispatch(
+            log_auth_dispatch(
                 "session.get",
                 request_id.as_deref(),
                 start,
@@ -173,7 +135,7 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
         }
     };
 
-    log_dispatch("session.get", request_id.as_deref(), start, None);
+    log_auth_dispatch("session.get", request_id.as_deref(), start, None);
     no_store_json(body)
 }
 
@@ -181,7 +143,7 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
     let start = Instant::now();
     let request_id = request_id(&headers).map(ToOwned::to_owned);
     let Some(auth_state) = oauth_state(&state) else {
-        log_dispatch("session.logout", request_id.as_deref(), start, None);
+        log_auth_dispatch("session.logout", request_id.as_deref(), start, None);
         return StatusCode::NO_CONTENT.into_response();
     };
 
@@ -197,7 +159,7 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
                         has_csrf_header = csrf.is_some(),
                         "auth logout rejected: missing or invalid csrf token"
                     );
-                    log_dispatch(
+                    log_auth_dispatch(
                         "session.logout",
                         request_id.as_deref(),
                         start,
@@ -207,7 +169,7 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
                 }
                 if let Err(error) = auth_state.store.revoke_browser_session(&session_id).await {
                     tracing::error!(error = %error, "failed to revoke browser session");
-                    log_dispatch(
+                    log_auth_dispatch(
                         "session.logout",
                         request_id.as_deref(),
                         start,
@@ -219,7 +181,7 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
             Ok(None) => {}
             Err(error) => {
                 tracing::error!(error = %error, "failed to load browser session for logout");
-                log_dispatch(
+                log_auth_dispatch(
                     "session.logout",
                     request_id.as_deref(),
                     start,
@@ -233,6 +195,6 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
         &mut response,
         &lab_auth::session::clear_browser_session_cookie(&auth_state),
     );
-    log_dispatch("session.logout", request_id.as_deref(), start, None);
+    log_auth_dispatch("session.logout", request_id.as_deref(), start, None);
     response
 }

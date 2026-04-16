@@ -78,7 +78,8 @@ Notes:
 Rules:
 
 - both transports expose the same server behavior
-- stdio remains the default local transport
+- `lab serve` defaults to HTTP unless CLI, env, or config selects stdio
+- stdio remains available for explicit local child-process sessions via `lab serve mcp --stdio`
 - HTTP MCP is mounted inside the Axum application under a dedicated MCP path such as `/mcp`
 - the Axum API continues to own non-MCP HTTP routes such as `/health`, `/ready`, and `/v1/...`
 - HTTP transport configuration must not fork the catalog or discovery model

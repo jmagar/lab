@@ -835,16 +835,6 @@ impl GatewayManager {
         self.runtime.swap(fresh_pool).await;
         *self.config.write().await = cfg;
         let diff = diff_catalogs(&before, &after);
-        if self.notifier.is_some() {
-            tracing::info!(
-                action = "gateway.reload",
-                phase = "catalog.notify",
-                tools_changed = diff.tools_changed,
-                resources_changed = diff.resources_changed,
-                prompts_changed = diff.prompts_changed,
-                "gateway reconcile"
-            );
-        }
         self.notify_catalog_changes(&diff);
         tracing::info!(
             action = "gateway.reload",
@@ -1152,20 +1142,29 @@ fn find_virtual_server_for_service<'a>(
 fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
     GatewayConfigView {
         name: upstream.name.clone(),
-        url: upstream.url.clone(),
-        command: upstream.command.clone(),
-        args: upstream.args.clone(),
+        url: upstream.url.as_deref().map(redact_gateway_url),
+        command: upstream.command.as_deref().map(redact_gateway_stdio_value),
+        args: upstream
+            .args
+            .iter()
+            .map(|arg| redact_gateway_stdio_value(arg))
+            .collect(),
         bearer_token_env: upstream.bearer_token_env.clone(),
         proxy_resources: upstream.proxy_resources,
     }
 }
 
 fn redacted_gateway_target(upstream: &UpstreamConfig) -> Option<String> {
-    upstream
-        .url
-        .as_deref()
-        .map(redact_gateway_url)
-        .or_else(|| upstream.command.clone())
+    upstream.url.as_deref().map(redact_gateway_url).or_else(|| {
+        upstream.command.as_deref().map(|command| {
+            let args = upstream
+                .args
+                .iter()
+                .map(|arg| redact_gateway_stdio_value(arg))
+                .collect::<Vec<_>>();
+            format_redacted_gateway_command(command, &args)
+        })
+    })
 }
 
 fn redact_gateway_url(url: &str) -> String {
@@ -1199,10 +1198,57 @@ fn redact_gateway_url(url: &str) -> String {
 }
 
 fn is_sensitive_query_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase();
     matches!(
-        key.to_ascii_lowercase().as_str(),
-        "token" | "access_token" | "apikey" | "api_key" | "password" | "secret" | "bearer"
-    )
+        normalized.as_str(),
+        "token"
+            | "access_token"
+            | "id_token"
+            | "refresh_token"
+            | "apikey"
+            | "api_key"
+            | "password"
+            | "passwd"
+            | "secret"
+            | "client_secret"
+            | "authorization"
+            | "bearer"
+            | "session"
+            | "session_id"
+            | "cookie"
+            | "code"
+    ) || normalized.ends_with("_token")
+        || normalized.ends_with("_secret")
+        || normalized.ends_with("_password")
+        || normalized.ends_with("_key")
+}
+
+fn redact_gateway_stdio_value(value: &str) -> String {
+    if let Some((key, _)) = value.split_once('=')
+        && is_sensitive_query_key(key)
+    {
+        return format!("{key}=[redacted]");
+    }
+
+    if let Some(flag) = value.strip_prefix("--") {
+        let (key, maybe_value) = flag.split_once('=').map_or((flag, ""), |(k, v)| (k, v));
+        if is_sensitive_query_key(key) {
+            let _ = maybe_value;
+            return format!("--{key}=[redacted]");
+        }
+    }
+
+    value.to_string()
+}
+
+fn format_redacted_gateway_command(command: &str, args: &[String]) -> String {
+    if command == "env"
+        && let Some(actual_command) = args.iter().find(|arg| !arg.contains('='))
+    {
+        return actual_command.clone();
+    }
+
+    redact_gateway_stdio_value(command)
 }
 
 fn empty_upstream_summary() -> UpstreamCachedSummary {
@@ -1631,6 +1677,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn manager_get_redacts_sensitive_stdio_arguments() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                name: "fixture-stdio".to_string(),
+                url: None,
+                bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
+                command: Some("env".to_string()),
+                args: vec![
+                    "OPENAI_API_KEY=super-secret".to_string(),
+                    "npx".to_string(),
+                    "--access_token=abc123".to_string(),
+                ],
+                proxy_resources: false,
+                expose_tools: None,
+            }])
+            .await;
+
+        let gateway = manager.get("fixture-stdio").await.expect("gateway");
+        assert_eq!(gateway.config.command.as_deref(), Some("env"));
+        assert_eq!(
+            gateway.config.args,
+            vec![
+                "OPENAI_API_KEY=[redacted]".to_string(),
+                "npx".to_string(),
+                "--access_token=[redacted]".to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn server_view_redacts_sensitive_target_url_components() {
         let upstream = UpstreamConfig {
             name: "fixture-http".to_string(),
@@ -1668,6 +1748,27 @@ mod tests {
             view.config_summary.target.as_deref(),
             Some("[invalid-url-redacted]")
         );
+    }
+
+    #[tokio::test]
+    async fn server_view_redacts_stdio_env_targets() {
+        let upstream = UpstreamConfig {
+            name: "fixture-stdio".to_string(),
+            url: None,
+            bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
+            command: Some("env".to_string()),
+            args: vec![
+                "OPENAI_API_KEY=super-secret".to_string(),
+                "npx".to_string(),
+                "--access_token=abc123".to_string(),
+            ],
+            proxy_resources: false,
+            expose_tools: None,
+        };
+
+        let view = server_view_from_upstream(None, &upstream).await;
+
+        assert_eq!(view.config_summary.target.as_deref(), Some("npx"));
     }
 
     #[tokio::test]

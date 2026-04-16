@@ -5,6 +5,7 @@ use axum::{Json, extract::State, http::HeaderMap};
 use serde::Deserialize;
 use std::time::Instant;
 
+use crate::api::router::request_id;
 use crate::api::{ToolError, state::AppState};
 
 #[derive(Debug, Deserialize)]
@@ -40,11 +41,7 @@ pub async fn handle_start(
     Json(payload): Json<StartOauthRelayRequest>,
 ) -> Result<Json<StartOauthRelayResponse>, ToolError> {
     let start = Instant::now();
-    let request_id = headers
-        .get("x-request-id")
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned);
+    let request_id = request_id(&headers).map(ToOwned::to_owned);
     validate_bind_addr(payload.bind_addr)?;
     let resolved_target =
         crate::oauth::target::resolve_explicit_target(&payload.target_url, payload.default_port)
