@@ -7,7 +7,7 @@ import {
   loadBrowserSession,
   logoutBrowserSession,
 } from '../auth/session-store.ts'
-import { hasApiTokenAuth } from '../auth/auth-mode.ts'
+import { hasApiTokenAuth, shouldBypassBrowserSessionAuth } from '../auth/auth-mode.ts'
 
 type FetchMock = typeof globalThis.fetch
 
@@ -121,4 +121,11 @@ test('hasApiTokenAuth only enables bearer mode for non-empty tokens', () => {
   assert.equal(hasApiTokenAuth(''), false)
   assert.equal(hasApiTokenAuth('   '), false)
   assert.equal(hasApiTokenAuth('dev-token'), true)
+})
+
+test('shouldBypassBrowserSessionAuth enables standalone mock builds without session fetches', () => {
+  assert.equal(shouldBypassBrowserSessionAuth(undefined, false), false)
+  assert.equal(shouldBypassBrowserSessionAuth('dev-token', false), true)
+  assert.equal(shouldBypassBrowserSessionAuth(undefined, true), true)
+  assert.equal(shouldBypassBrowserSessionAuth('dev-token', true), true)
 })

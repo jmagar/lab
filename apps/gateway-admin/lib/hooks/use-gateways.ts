@@ -2,7 +2,14 @@
 
 import useSWR, { mutate } from 'swr'
 import { gatewayApi } from '@/lib/api/gateway-client'
-import { mockGateways, mockTestResult, mockReloadResult } from '@/lib/api/mock-data'
+import {
+  mockGateways,
+  mockReloadResult,
+  mockServiceActions,
+  mockServiceConfigs,
+  mockSupportedServices,
+  mockTestResult,
+} from '@/lib/api/mock-data'
 import type {
   Gateway,
   CreateGatewayInput,
@@ -79,7 +86,7 @@ const fetchExposurePolicy = async (id: string): Promise<ExposurePolicy> => {
 const fetchSupportedServices = async (): Promise<SupportedService[]> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    return []
+    return mockSupportedServices
   }
   return gatewayApi.supportedServices()
 }
@@ -87,11 +94,7 @@ const fetchSupportedServices = async (): Promise<SupportedService[]> => {
 const fetchServiceConfig = async (service: string): Promise<ServiceConfig> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    return {
-      service,
-      configured: false,
-      fields: [],
-    }
+    return mockServiceConfigs[service] ?? { service, configured: false, fields: [] }
   }
   return gatewayApi.getServiceConfig(service)
 }
@@ -99,7 +102,7 @@ const fetchServiceConfig = async (service: string): Promise<ServiceConfig> => {
 const fetchServiceActions = async (service: string): Promise<ServiceAction[]> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    return []
+    return mockServiceActions[service] ?? []
   }
   return gatewayApi.serviceActions(service)
 }

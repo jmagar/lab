@@ -397,7 +397,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       <div className="space-y-0.5">
                         <Label htmlFor="virtual-enabled" className="font-medium">Virtual server enabled</Label>
                         <p className="text-sm text-muted-foreground">
-                          Controls whether this Lab service is exposed as a visible gateway server.
+                          Controls whether this Lab service is exposed as a visible gateway.
                         </p>
                       </div>
                       <Switch

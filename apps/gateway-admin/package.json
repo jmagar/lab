@@ -9,7 +9,7 @@
     "start": "python3 -m http.server 3000 -d out",
     "preview": "python3 -m http.server 3000 -d out",
     "lint": "eslint .",
-    "test": "node --test --experimental-strip-types lib/server/**/*.test.ts lib/api/**/*.test.ts"
+    "test": "node --test --experimental-strip-types lib/server/**/*.test.ts lib/api/**/*.test.ts lib/dashboard/**/*.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

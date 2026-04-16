@@ -107,7 +107,7 @@ export function GatewayTable({
                   {gateway.transport === 'http'
                     ? gateway.config.url
                     : gateway.transport === 'lab_service'
-                      ? gateway.config.url ?? `${gateway.name} virtual server`
+                      ? gateway.config.url ?? `${gateway.name} gateway`
                       : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
                 </p>
                 {gateway.status.last_error && (

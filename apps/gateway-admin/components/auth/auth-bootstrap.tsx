@@ -3,7 +3,7 @@
 import * as React from 'react'
 
 import { LoginScreen } from '@/components/auth/login-screen'
-import { hasApiTokenAuth } from '@/lib/auth/auth-mode'
+import { shouldBypassBrowserSessionAuth } from '@/lib/auth/auth-mode'
 import { loadBrowserSession, useBrowserSession } from '@/lib/auth/session'
 
 type AuthBootstrapProps = {
@@ -12,19 +12,19 @@ type AuthBootstrapProps = {
 
 export function AuthBootstrap({ children }: AuthBootstrapProps) {
   const session = useBrowserSession()
-  const hasBearerAuth = hasApiTokenAuth()
+  const bypassBrowserSessionAuth = shouldBypassBrowserSessionAuth()
 
   const handleRetry = React.useCallback(() => {
     void loadBrowserSession()
   }, [])
 
   React.useEffect(() => {
-    if (!hasBearerAuth && session.status === 'loading') {
+    if (!bypassBrowserSessionAuth && session.status === 'loading') {
       void loadBrowserSession()
     }
-  }, [hasBearerAuth, session.status])
+  }, [bypassBrowserSessionAuth, session.status])
 
-  if (hasBearerAuth) {
+  if (bypassBrowserSessionAuth) {
     return <>{children}</>
   }
 

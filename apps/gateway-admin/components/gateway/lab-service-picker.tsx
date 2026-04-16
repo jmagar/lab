@@ -93,7 +93,7 @@ export function LabServicePicker({
         <div>
           <p className="text-sm font-medium">Supported services</p>
           <p className="text-sm text-muted-foreground">
-            Configure any supported Lab service as its own virtual gateway server.
+            Configure any supported Lab service as its own gateway.
           </p>
         </div>
         <Badge variant="secondary">{services.length} services</Badge>

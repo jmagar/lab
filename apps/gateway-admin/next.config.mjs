@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-const allowedDevOrigins = ['127.0.0.1', 'localhost']
+const allowedDevOrigins = ['127.0.0.1', 'localhost', 'dookie']
 
 if (process.env.LAB_ALLOWED_DEV_ORIGINS) {
   for (const origin of process.env.LAB_ALLOWED_DEV_ORIGINS.split(',')) {

@@ -283,12 +283,12 @@ export function GatewayFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[680px]">
+        <DialogContent className="sm:max-w-[680px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Server' : 'Add Server'}</DialogTitle>
+          <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
           <DialogDescription>
             {mode === 'lab'
-              ? 'Configure a Lab-backed virtual server and decide whether to expose it in the gateway.'
+              ? 'Configure a Lab-backed gateway and decide whether to expose it in the control plane.'
               : 'Configure a custom upstream MCP server connection.'}
           </DialogDescription>
         </DialogHeader>
@@ -358,10 +358,10 @@ export function GatewayFormDialog({
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">
                 <Label htmlFor="enable-virtual-server" className="font-medium">
-                  Enable as gateway server
+                  Enable gateway
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Save canonical service config and expose this service as a visible virtual server.
+                  Save canonical service config and expose this Lab service as a visible gateway.
                 </p>
               </div>
               <Switch
