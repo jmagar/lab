@@ -5,11 +5,25 @@ import { __setBrowserSessionStateForTests } from '../auth/session-store.ts'
 import { confirmGatewayParams, gatewayHeaders, gatewayRequestInit } from './gateway-request.ts'
 
 test('gatewayRequestInit omits cookies when bearer auth is configured', () => {
-  const init = gatewayRequestInit('gateway.list', {}, 'dev-token')
+  const init = gatewayRequestInit('gateway.list', {}, 'dev-token', undefined, true)
 
   assert.equal(init.credentials, 'omit')
   assert.equal((init.headers as Record<string, string>).Authorization, 'Bearer dev-token')
   assert.equal(init.method, 'POST')
+})
+
+test('gatewayRequestInit keeps credentialed requests when a token is present without standalone bearer mode', () => {
+  __setBrowserSessionStateForTests({
+    status: 'authenticated',
+    user: { sub: 'browser-user', email: 'browser@example.com' },
+    expiresAt: 42,
+    csrfToken: 'csrf-123',
+  })
+  const init = gatewayRequestInit('gateway.list', {}, 'dev-token', undefined, false)
+
+  assert.equal(init.credentials, 'include')
+  assert.equal((init.headers as Record<string, string>).Authorization, undefined)
+  assert.equal((init.headers as Record<string, string>)['x-csrf-token'], 'csrf-123')
 })
 
 test('gatewayHeaders omits authorization when no token is provided', () => {

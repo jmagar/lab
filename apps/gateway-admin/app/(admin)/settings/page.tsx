@@ -3,14 +3,14 @@
 import { KeyRound, LifeBuoy, PlugZap, ShieldCheck } from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
 import { Badge } from '@/components/ui/badge'
-import { hasApiTokenAuth, hasMockDataAuthMode } from '@/lib/auth/auth-mode'
+import { hasMockDataAuthMode, isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
 import { buildGatewaySettingsSnapshot } from '@/lib/dashboard/admin-insights'
 import { useGateways } from '@/lib/hooks/use-gateways'
 
 export default function SettingsPage() {
   const { data: gateways, isLoading, error } = useGateways()
   const snapshot = gateways ? buildGatewaySettingsSnapshot(gateways, {
-    hasApiToken: hasApiTokenAuth(),
+    hasStandaloneBearerAuth: isStandaloneBearerAuthMode(),
     hasMockData: hasMockDataAuthMode(),
   }) : null
 

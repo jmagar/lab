@@ -32,10 +32,11 @@ In hosted mode, the UI expects Rust-owned browser session auth:
 - `POST /auth/logout` clears the browser session
 - `/v1/*` uses same-origin requests with `credentials: 'include'`
 
-If the backend is protected by a static bearer token and you need a standalone browser build to talk to it directly, set `NEXT_PUBLIC_API_TOKEN` as an explicit dev override. This is suitable for local development and smoke testing only because the token is embedded into the browser bundle.
+If the backend is protected by a static bearer token and you need a standalone browser build to talk to it directly, set both `NEXT_PUBLIC_API_TOKEN` and `NEXT_PUBLIC_STANDALONE_BEARER_AUTH=true`. This is suitable for local development and smoke testing only because the token is embedded into the browser bundle. Hosted same-origin deployments should leave the standalone flag unset so the UI uses Rust-owned browser session auth.
 
 ```bash
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8765/v1 \
+NEXT_PUBLIC_STANDALONE_BEARER_AUTH=true \
 NEXT_PUBLIC_API_TOKEN=your-local-dev-token \
 pnpm dev
 ```
