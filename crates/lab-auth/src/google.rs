@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use jsonwebtoken::{Algorithm, DecodingKey, Header, Validation, decode, decode_header};
 use reqwest::Url;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
@@ -64,7 +65,6 @@ struct GoogleTokenResponse {
     id_token: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct GoogleIdTokenClaims {
     iss: String,
@@ -85,6 +85,103 @@ struct GoogleJwk {
     alg: Option<String>,
     n: String,
     e: String,
+}
+
+struct GoogleRequestTrace<'a> {
+    operation: &'static str,
+    method: &'static str,
+    endpoint: &'a Url,
+    started: Instant,
+}
+
+impl<'a> GoogleRequestTrace<'a> {
+    fn start(operation: &'static str, method: &'static str, endpoint: &'a Url) -> Self {
+        info!(
+            provider = "google",
+            operation,
+            method,
+            host = endpoint.host_str().unwrap_or_default(),
+            path = endpoint.path(),
+            "request.start"
+        );
+        Self {
+            operation,
+            method,
+            endpoint,
+            started: Instant::now(),
+        }
+    }
+
+    fn finish(&self, status: reqwest::StatusCode) {
+        info!(
+            provider = "google",
+            operation = self.operation,
+            method = self.method,
+            host = self.endpoint.host_str().unwrap_or_default(),
+            path = self.endpoint.path(),
+            status = status.as_u16(),
+            elapsed_ms = self.started.elapsed().as_millis(),
+            "request.finish"
+        );
+    }
+
+    fn error(&self, status: Option<reqwest::StatusCode>, error: &reqwest::Error) {
+        match status {
+            Some(status) => warn!(
+                provider = "google",
+                operation = self.operation,
+                method = self.method,
+                host = self.endpoint.host_str().unwrap_or_default(),
+                path = self.endpoint.path(),
+                status = status.as_u16(),
+                elapsed_ms = self.started.elapsed().as_millis(),
+                error = %error,
+                "request.error"
+            ),
+            None => warn!(
+                provider = "google",
+                operation = self.operation,
+                method = self.method,
+                host = self.endpoint.host_str().unwrap_or_default(),
+                path = self.endpoint.path(),
+                elapsed_ms = self.started.elapsed().as_millis(),
+                error = %error,
+                "request.error"
+            ),
+        }
+    }
+}
+
+struct GoogleRequestErrors {
+    transport_context: &'static str,
+    transport_log: &'static str,
+    status_context: &'static str,
+    status_log: &'static str,
+    decode_context: &'static str,
+    decode_log: &'static str,
+}
+
+async fn read_json_response<T: DeserializeOwned>(
+    trace: GoogleRequestTrace<'_>,
+    request: reqwest::RequestBuilder,
+    errors: GoogleRequestErrors,
+) -> Result<T, AuthError> {
+    let response = request.send().await.map_err(|error| {
+        trace.error(None, &error);
+        warn!(provider = "google", error = %error, "{}", errors.transport_log);
+        AuthError::Storage(format!("{}: {error}", errors.transport_context))
+    })?;
+    let status = response.status();
+    let response = response.error_for_status().map_err(|error| {
+        trace.error(Some(status), &error);
+        warn!(provider = "google", error = %error, "{}", errors.status_log);
+        AuthError::Storage(format!("{}: {error}", errors.status_context))
+    })?;
+    trace.finish(status);
+    response.json::<T>().await.map_err(|error| {
+        warn!(provider = "google", error = %error, "{}", errors.decode_log);
+        AuthError::Storage(format!("{}: {error}", errors.decode_context))
+    })
 }
 
 impl GoogleProvider {
@@ -151,80 +248,33 @@ impl GoogleProvider {
         code: &str,
         code_verifier: &str,
     ) -> Result<GoogleExchange, AuthError> {
-        let request_started = Instant::now();
-        info!(
-            provider = "google",
-            operation = "code_exchange",
-            method = "POST",
-            host = self.token_endpoint.host_str().unwrap_or_default(),
-            path = self.token_endpoint.path(),
-            "request.start"
-        );
+        let trace = GoogleRequestTrace::start("code_exchange", "POST", &self.token_endpoint);
         info!(
             provider = "google",
             oauth_code_id = %fingerprint(code),
             redirect_uri = %self.redirect_uri,
             "oauth upstream code exchange started"
         );
-        let response = self
-            .http
-            .post(self.token_endpoint.clone())
-            .form(&[
+        let payload: GoogleTokenResponse = read_json_response(
+            trace,
+            self.http.post(self.token_endpoint.clone()).form(&[
                 ("grant_type", "authorization_code"),
                 ("code", code),
                 ("client_id", self.client_id.as_str()),
                 ("client_secret", self.client_secret.as_str()),
                 ("redirect_uri", self.redirect_uri.as_str()),
                 ("code_verifier", code_verifier),
-            ])
-            .send()
-            .await
-            .map_err(|error| {
-                warn!(
-                    provider = "google",
-                    operation = "code_exchange",
-                    method = "POST",
-                    host = self.token_endpoint.host_str().unwrap_or_default(),
-                    path = self.token_endpoint.path(),
-                    elapsed_ms = request_started.elapsed().as_millis(),
-                    error = %error,
-                    "request.error"
-                );
-                warn!(provider = "google", error = %error, "oauth upstream code exchange request failed");
-                AuthError::Storage(format!("exchange google auth code: {error}"))
-            })?;
-        let status = response.status();
-        let response = response
-            .error_for_status()
-            .map_err(|error| {
-                warn!(
-                    provider = "google",
-                    operation = "code_exchange",
-                    method = "POST",
-                    host = self.token_endpoint.host_str().unwrap_or_default(),
-                    path = self.token_endpoint.path(),
-                    status = status.as_u16(),
-                    elapsed_ms = request_started.elapsed().as_millis(),
-                    error = %error,
-                    "request.error"
-                );
-                warn!(provider = "google", error = %error, "oauth upstream code exchange returned error status");
-                AuthError::Storage(format!("google token endpoint error: {error}"))
-            })?;
-        info!(
-            provider = "google",
-            operation = "code_exchange",
-            method = "POST",
-            host = self.token_endpoint.host_str().unwrap_or_default(),
-            path = self.token_endpoint.path(),
-            status = status.as_u16(),
-            elapsed_ms = request_started.elapsed().as_millis(),
-            "request.finish"
-        );
-        let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
-            warn!(provider = "google", error = %error, "oauth upstream code exchange returned an unreadable payload");
-            AuthError::Storage(format!("decode google token response: {error}"))
-        })?;
+            ]),
+            GoogleRequestErrors {
+                transport_context: "exchange google auth code",
+                transport_log: "oauth upstream code exchange request failed",
+                status_context: "google token endpoint error",
+                status_log: "oauth upstream code exchange returned error status",
+                decode_context: "decode google token response",
+                decode_log: "oauth upstream code exchange returned an unreadable payload",
+            },
+        )
+        .await?;
         let claims = self.verify_id_token(&payload.id_token).await?;
         info!(
             provider = "google",
@@ -244,75 +294,30 @@ impl GoogleProvider {
     }
 
     pub async fn refresh(&self, refresh_token: &str) -> Result<GoogleExchange, AuthError> {
-        let request_started = Instant::now();
-        info!(
-            provider = "google",
-            operation = "refresh",
-            method = "POST",
-            host = self.token_endpoint.host_str().unwrap_or_default(),
-            path = self.token_endpoint.path(),
-            "request.start"
-        );
+        let trace = GoogleRequestTrace::start("refresh", "POST", &self.token_endpoint);
         info!(
             provider = "google",
             refresh_token_id = %fingerprint(refresh_token),
             "oauth upstream refresh started"
         );
-        let response = self
-            .http
-            .post(self.token_endpoint.clone())
-            .form(&[
+        let payload: GoogleTokenResponse = read_json_response(
+            trace,
+            self.http.post(self.token_endpoint.clone()).form(&[
                 ("grant_type", "refresh_token"),
                 ("refresh_token", refresh_token),
                 ("client_id", self.client_id.as_str()),
                 ("client_secret", self.client_secret.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|error| {
-                warn!(
-                    provider = "google",
-                    operation = "refresh",
-                    method = "POST",
-                    host = self.token_endpoint.host_str().unwrap_or_default(),
-                    path = self.token_endpoint.path(),
-                    elapsed_ms = request_started.elapsed().as_millis(),
-                    error = %error,
-                    "request.error"
-                );
-                warn!(provider = "google", error = %error, "oauth upstream refresh request failed");
-                AuthError::Storage(format!("refresh google token: {error}"))
-            })?;
-        let status = response.status();
-        let response = response.error_for_status().map_err(|error| {
-            warn!(
-                provider = "google",
-                operation = "refresh",
-                method = "POST",
-                host = self.token_endpoint.host_str().unwrap_or_default(),
-                path = self.token_endpoint.path(),
-                status = status.as_u16(),
-                elapsed_ms = request_started.elapsed().as_millis(),
-                error = %error,
-                "request.error"
-            );
-            warn!(provider = "google", error = %error, "oauth upstream refresh returned error status");
-            AuthError::Storage(format!("google refresh endpoint error: {error}"))
-        })?;
-        info!(
-            provider = "google",
-            operation = "refresh",
-            method = "POST",
-            host = self.token_endpoint.host_str().unwrap_or_default(),
-            path = self.token_endpoint.path(),
-            status = status.as_u16(),
-            elapsed_ms = request_started.elapsed().as_millis(),
-            "request.finish"
-        );
-        let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
-            warn!(provider = "google", error = %error, "oauth upstream refresh returned an unreadable payload");
-            AuthError::Storage(format!("decode google refresh response: {error}"))
-        })?;
+            ]),
+            GoogleRequestErrors {
+                transport_context: "refresh google token",
+                transport_log: "oauth upstream refresh request failed",
+                status_context: "google refresh endpoint error",
+                status_log: "oauth upstream refresh returned error status",
+                decode_context: "decode google refresh response",
+                decode_log: "oauth upstream refresh returned an unreadable payload",
+            },
+        )
+        .await?;
         let claims = self.verify_id_token(&payload.id_token).await?;
         info!(
             provider = "google",
@@ -343,16 +348,21 @@ impl GoogleProvider {
             .keys
             .into_iter()
             .find(|key| key.kid == kid)
-            .ok_or_else(|| AuthError::Storage("google id_token key id was not found in JWKS".to_string()))?;
-        if let Some(alg) = key.alg.as_deref() && alg != "RS256" {
+            .ok_or_else(|| {
+                AuthError::Storage("google id_token key id was not found in JWKS".to_string())
+            })?;
+        if let Some(alg) = key.alg.as_deref()
+            && alg != "RS256"
+        {
             return Err(AuthError::Storage(format!(
                 "google JWKS key `{}` uses unsupported algorithm `{alg}`",
                 key.kid
             )));
         }
 
-        let decoding_key = DecodingKey::from_rsa_components(&key.n, &key.e)
-            .map_err(|error| AuthError::Storage(format!("build google id_token decoding key: {error}")))?;
+        let decoding_key = DecodingKey::from_rsa_components(&key.n, &key.e).map_err(|error| {
+            AuthError::Storage(format!("build google id_token decoding key: {error}"))
+        })?;
         let mut validation = Validation::new(Algorithm::RS256);
         validation.validate_exp = true;
         validation.leeway = 0;
@@ -373,64 +383,19 @@ impl GoogleProvider {
     }
 
     async fn fetch_jwks(&self) -> Result<GoogleJwks, AuthError> {
-        let request_started = Instant::now();
-        info!(
-            provider = "google",
-            operation = "fetch_jwks",
-            method = "GET",
-            host = self.jwks_endpoint.host_str().unwrap_or_default(),
-            path = self.jwks_endpoint.path(),
-            "request.start"
-        );
-        let response = self
-            .http
-            .get(self.jwks_endpoint.clone())
-            .send()
-            .await
-            .map_err(|error| {
-                warn!(
-                    provider = "google",
-                    operation = "fetch_jwks",
-                    method = "GET",
-                    host = self.jwks_endpoint.host_str().unwrap_or_default(),
-                    path = self.jwks_endpoint.path(),
-                    elapsed_ms = request_started.elapsed().as_millis(),
-                    error = %error,
-                    "request.error"
-                );
-                warn!(provider = "google", error = %error, "google jwks request failed");
-                AuthError::Storage(format!("fetch google jwks: {error}"))
-            })?;
-        let status = response.status();
-        let response = response.error_for_status().map_err(|error| {
-            warn!(
-                provider = "google",
-                operation = "fetch_jwks",
-                method = "GET",
-                host = self.jwks_endpoint.host_str().unwrap_or_default(),
-                path = self.jwks_endpoint.path(),
-                status = status.as_u16(),
-                elapsed_ms = request_started.elapsed().as_millis(),
-                error = %error,
-                "request.error"
-            );
-            warn!(provider = "google", error = %error, "google jwks request returned error status");
-            AuthError::Storage(format!("google jwks endpoint error: {error}"))
-        })?;
-        info!(
-            provider = "google",
-            operation = "fetch_jwks",
-            method = "GET",
-            host = self.jwks_endpoint.host_str().unwrap_or_default(),
-            path = self.jwks_endpoint.path(),
-            status = status.as_u16(),
-            elapsed_ms = request_started.elapsed().as_millis(),
-            "request.finish"
-        );
-        response.json::<GoogleJwks>().await.map_err(|error| {
-            warn!(provider = "google", error = %error, "google jwks payload unreadable");
-            AuthError::Storage(format!("decode google jwks response: {error}"))
-        })
+        read_json_response(
+            GoogleRequestTrace::start("fetch_jwks", "GET", &self.jwks_endpoint),
+            self.http.get(self.jwks_endpoint.clone()),
+            GoogleRequestErrors {
+                transport_context: "fetch google jwks",
+                transport_log: "google jwks request failed",
+                status_context: "google jwks endpoint error",
+                status_log: "google jwks request returned error status",
+                decode_context: "decode google jwks response",
+                decode_log: "google jwks payload unreadable",
+            },
+        )
+        .await
     }
 }
 
@@ -480,7 +445,10 @@ mod tests {
     #[tokio::test]
     async fn google_exchange_rejects_unsigned_id_tokens() {
         let provider = mocked_google_provider_with_id_token(test_id_token()).await;
-        let error = provider.exchange_code("code", "verifier").await.unwrap_err();
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
         assert!(
             error.to_string().contains("verify google id_token"),
             "unexpected error: {error}"
@@ -492,7 +460,10 @@ mod tests {
         let provider =
             mocked_google_provider_with_id_token(signed_test_id_token("other-client", false, true))
                 .await;
-        let error = provider.exchange_code("code", "verifier").await.unwrap_err();
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
         assert!(
             error.to_string().contains("invalid google id_token"),
             "unexpected error: {error}"
@@ -504,7 +475,10 @@ mod tests {
         let provider =
             mocked_google_provider_with_id_token(signed_test_id_token("client-id", true, true))
                 .await;
-        let error = provider.exchange_code("code", "verifier").await.unwrap_err();
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
         assert!(
             error.to_string().contains("invalid google id_token"),
             "unexpected error: {error}"
@@ -516,7 +490,10 @@ mod tests {
         let provider =
             mocked_google_provider_with_id_token(signed_test_id_token("client-id", false, false))
                 .await;
-        let error = provider.exchange_code("code", "verifier").await.unwrap_err();
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
         assert!(
             error.to_string().contains("issuer"),
             "unexpected error: {error}"

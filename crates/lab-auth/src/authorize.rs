@@ -499,7 +499,9 @@ fn host_pattern_matches(pattern_host: &str, candidate_host: &str) -> bool {
     pattern_labels
         .iter()
         .zip(candidate_labels.iter())
-        .all(|(pattern, candidate)| *pattern == "*" || (!pattern.contains('*') && pattern.eq_ignore_ascii_case(candidate)))
+        .all(|(pattern, candidate)| {
+            *pattern == "*" || (!pattern.contains('*') && pattern.eq_ignore_ascii_case(candidate))
+        })
 }
 
 #[cfg(test)]
@@ -608,9 +610,18 @@ pub mod tests {
     #[test]
     fn host_patterns_support_full_label_wildcards_only() {
         assert!(host_pattern_matches("callback.*.tv", "callback.tootie.tv"));
-        assert!(host_pattern_matches("*.example.com", "callback.example.com"));
-        assert!(!host_pattern_matches("callback.example.com*", "callback.example.com"));
-        assert!(!host_pattern_matches("*.example.com", "callback.nested.example.com"));
+        assert!(host_pattern_matches(
+            "*.example.com",
+            "callback.example.com"
+        ));
+        assert!(!host_pattern_matches(
+            "callback.example.com*",
+            "callback.example.com"
+        ));
+        assert!(!host_pattern_matches(
+            "*.example.com",
+            "callback.nested.example.com"
+        ));
     }
 
     #[test]

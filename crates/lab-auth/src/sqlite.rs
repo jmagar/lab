@@ -23,7 +23,8 @@ pub struct SqliteStore {
 
 impl SqliteStore {
     pub async fn open(path: PathBuf) -> Result<Self, AuthError> {
-        let conns = tokio::task::spawn_blocking(move || open_connections(path, SQLITE_POOL_SIZE)).await;
+        let conns =
+            tokio::task::spawn_blocking(move || open_connections(path, SQLITE_POOL_SIZE)).await;
         let store = match conns {
             Ok(result) => result,
             Err(error) => Err(AuthError::Storage(format!(
@@ -437,9 +438,7 @@ impl SqliteStore {
 }
 
 fn open_connections(path: PathBuf, count: usize) -> Result<Vec<Connection>, AuthError> {
-    (0..count)
-        .map(|_| open_connection(path.clone()))
-        .collect()
+    (0..count).map(|_| open_connection(path.clone())).collect()
 }
 
 fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {

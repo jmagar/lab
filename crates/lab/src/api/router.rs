@@ -439,8 +439,14 @@ pub fn build_router(
             .route("/register", post(auth_register))
             .route("/authorize", get(auth_authorize))
             .route("/auth/login", get(auth_browser_login))
-            .route("/auth/session", get(crate::api::browser_session::auth_session))
-            .route("/auth/logout", post(crate::api::browser_session::auth_logout))
+            .route(
+                "/auth/session",
+                get(crate::api::browser_session::auth_session),
+            )
+            .route(
+                "/auth/logout",
+                post(crate::api::browser_session::auth_logout),
+            )
             .route("/auth/google/callback", get(auth_callback))
             .route("/token", post(auth_token));
     }

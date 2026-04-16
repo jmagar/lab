@@ -499,13 +499,13 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 #[cfg(test)]
 mod tests {
     use super::{
-        McpArgs, ServeCommand, Transport, allowed_hosts, bind_addr, is_loopback_host,
-        resolve_port, resolve_transport, resolve_session_ttl_secs, resolve_stateful_mode,
+        McpArgs, ServeCommand, Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port,
+        resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
         resolve_web_ui_auth_disabled,
     };
-    use clap::Parser;
-    use crate::config::{LabConfig, McpPreferences, WebPreferences};
     use crate::cli::Cli;
+    use crate::config::{LabConfig, McpPreferences, WebPreferences};
+    use clap::Parser;
 
     #[test]
     fn transport_resolution_prefers_explicit_stdio_then_cli_then_http_default() {
@@ -574,11 +574,13 @@ mod tests {
 
     #[test]
     fn web_ui_auth_disabled_resolution_prefers_config_then_default() {
-        assert!(resolve_web_ui_auth_disabled(&WebPreferences {
-            assets_dir: None,
-            disable_auth: Some(true),
-        })
-        .unwrap());
+        assert!(
+            resolve_web_ui_auth_disabled(&WebPreferences {
+                assets_dir: None,
+                disable_auth: Some(true),
+            })
+            .unwrap()
+        );
         assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default()).unwrap());
     }
 
