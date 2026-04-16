@@ -84,7 +84,7 @@ The default conflict policy is preserve-existing, not overwrite.
 
 ## CLI Surface
 
-Typical usage:
+Typical targeted usage:
 
 ```bash
 lab extract /path/to/appdata
@@ -92,11 +92,34 @@ lab extract host:/path/to/appdata --diff
 lab extract host:/path/to/appdata --apply
 ```
 
+Fleet discovery usage:
+
+```bash
+lab extract
+```
+
+Bare `lab extract` reads `~/.ssh/config`, inspects reachable hosts for running
+supported Docker containers, prefers Tailscale IPs when available, probes
+candidate endpoints, and only attempts credential extraction for services with
+verified working URLs.
+
+`apply` and `diff` remain targeted-only in this iteration. Fleet results are
+discovery-oriented and are not written directly into `~/.lab/.env` because the
+flat env key model is ambiguous when multiple hosts expose the same service.
+
 The CLI remains a thin shim over the client.
 
 ## MCP Surface
 
 The MCP tool exposes the same operations as dotted or flat actions within the normal one-tool-per-service model.
+
+For `extract.scan`, omitting `params.uri` requests fleet discovery. Supplying
+`params.uri` keeps the existing targeted behavior. `extract.apply` and
+`extract.diff` still require `params.uri`.
+
+Targeted scan responses now include both the new `target` metadata and the
+legacy top-level `uri` field for compatibility. Fleet responses include
+`target.mode = "fleet"` and omit the legacy `uri` field.
 
 It must also participate in the normal discovery surfaces:
 

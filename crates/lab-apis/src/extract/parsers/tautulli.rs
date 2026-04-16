@@ -59,6 +59,10 @@ impl Parser for TautulliParser {
             url: Some(url),
             secret: Some(api_key),
             env_field: "TAUTULLI_API_KEY".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         })
     }
 }

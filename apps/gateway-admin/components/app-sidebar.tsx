@@ -10,6 +10,7 @@ import {
   Activity,
   ScrollText,
   HelpCircle,
+  WandSparkles,
 } from 'lucide-react'
 
 import {
@@ -43,6 +44,11 @@ const navigation = [
     title: 'Gateways',
     url: '/gateways',
     icon: Cable,
+  },
+  {
+    title: 'Setup',
+    url: '/setup',
+    icon: WandSparkles,
   },
   {
     title: 'Activity',

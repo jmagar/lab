@@ -27,6 +27,7 @@ russh.workspace        = true
 russh-sftp.workspace   = true
 russh-config.workspace = true
 quick-xml.workspace    = true
+rusqlite.workspace     = true
 
 [dev-dependencies]
 tokio       = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }

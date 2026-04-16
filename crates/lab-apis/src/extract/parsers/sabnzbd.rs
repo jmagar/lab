@@ -54,6 +54,10 @@ impl Parser for SabnzbdParser {
             url: Some(url),
             secret: Some(api_key),
             env_field: "SABNZBD_API_KEY".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         })
     }
 }

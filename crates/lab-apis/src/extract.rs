@@ -27,7 +27,16 @@ pub mod parsers;
 /// File-reading abstraction over local fs and ssh.
 pub mod transport;
 
-/// Public types: `Uri`, `ExtractedCreds`, `ServiceCreds`, `ExtractReport`.
+/// SSH inventory parsing for fleet scans.
+pub mod ssh_config;
+
+/// Typed remote runtime inspection for fleet scans.
+pub mod runtime;
+
+/// Endpoint selection and reachability probing for fleet scans.
+pub mod probe;
+
+/// Public types: `Uri`, `ScanTarget`, `ExtractedCreds`, `ServiceCreds`, `ExtractReport`.
 pub mod types;
 
 /// `ExtractError` (thiserror).
@@ -38,7 +47,7 @@ pub mod client;
 
 pub use client::ExtractClient;
 pub use error::ExtractError;
-pub use types::{ExtractReport, ExtractWarning, ServiceCreds, Uri};
+pub use types::{ExtractReport, ExtractWarning, RuntimeProvenance, ScanTarget, ServiceCreds, Uri};
 
 use crate::core::plugin::{Category, PluginMeta};
 
