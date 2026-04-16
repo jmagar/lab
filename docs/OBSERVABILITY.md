@@ -103,6 +103,17 @@ Optional when applicable:
 - `operation = "health"`
 - `kind` on failure
 
+This same contract applies to auth-adjacent HTTP handlers that are part of the
+product surface, including:
+
+- `/auth/session`
+- `/auth/logout`
+- `/v1/device/oauth/relay/start`
+- OAuth authorize/callback/token handlers where `lab` itself is the actor
+
+Those routes must not silently bypass the normal dispatch schema just because
+they are not mounted under `/v1/{service}`.
+
 ### Local Log Ingest Boundary
 
 The local-master `logs` subsystem is a shared observability consumer, not a replacement for dispatch logging.
@@ -152,6 +163,29 @@ This applies to all shared request helpers, including:
 
 `HttpClient` logs must inherit the caller span from CLI, MCP, or HTTP dispatch.
 
+### Outbound RMCP Client Requests
+
+Outbound RMCP client operations are part of the same observability contract as
+shared HTTP requests.
+
+Every proxied upstream RMCP operation must emit:
+
+- one start event before the outbound RPC
+- one finish event on success
+- one error event on failure or timeout
+
+Required fields:
+
+- `upstream`
+- `capability`
+- `operation`
+- `elapsed_ms` on finish/error
+
+When the call originates from API or HTTP MCP, the RMCP events must inherit the
+surrounding caller context, including `request_id` when present. Timeouts must
+be logged as explicit failures rather than disappearing into generic disconnect
+noise.
+
 ### Health Probes
 
 Health probes are not normal business actions and must be distinguishable in logs.
@@ -170,6 +204,17 @@ Destructive actions must log:
 - outcome after execution
 
 Intent logs must make it clear which action is about to mutate state. Outcome logs must indicate success or failure.
+
+Gateway reconcile actions are destructive in this contract:
+
+- `gateway.add`
+- `gateway.update`
+- `gateway.remove`
+- `gateway.reload`
+
+Those actions must also log reconcile phase transitions and outcome details
+without exposing credential-bearing URLs, commands, tokens, or secret env
+values.
 
 ## Required Fields
 
@@ -191,6 +236,8 @@ Additional fields when applicable:
 - `instance`
 - `request_id`
 - `operation`
+- `upstream`
+- `capability`
 
 ### Request Events
 
@@ -229,6 +276,8 @@ The practical result must be:
 - outbound request logs can be tied back to the invoking surface
 - HTTP-originated requests can be tied back to a `request_id`
 - multi-instance requests can be tied back to an `instance`
+- outbound RMCP proxy activity can be tied back to the invoking surface and
+  request when one exists
 
 For device-runtime uploads, operators must be able to correlate:
 

@@ -60,6 +60,7 @@ The baseline posture is:
 | `client` | required in practice | `lab` must be able to act as an outbound MCP client and gateway |
 | `auth` | required | needed for outbound OAuth MCP clients and protected HTTP MCP deployments |
 | `transport-streamable-http-client` | required in practice | required for outbound MCP gateway/client work over HTTP |
+| logging capability | required in practice | `lab` emits sanitized RMCP log notifications when the client negotiates logging |
 
 Notes:
 
@@ -115,6 +116,13 @@ Rules:
 - continue to dispatch service operations through `action` + `params`
 - do not explode the tool list into one tool per endpoint or one tool per action
 - prompts and resources may be richer than tools, but they must still derive from the same shared catalog and dispatch ownership model
+
+Prompt and resource operations must carry the same observability posture as tool
+dispatch:
+
+- structured dispatch logs for list/read/get operations
+- stable error-kind handling where applicable
+- request correlation preserved through the surrounding caller context
 
 ## Handler and Macro Contract
 
@@ -187,6 +195,21 @@ Rules:
 
 - outbound RMCP client and auth support are first-class capabilities because `lab` must connect to and proxy other MCP servers
 - if outbound MCP clients are added, their credentials and token lifecycle must still follow `lab`'s own config and secret-handling rules
+
+## Logging Capability Contract
+
+`lab` implements RMCP logging capability as a first-class server feature.
+
+Rules:
+
+- advertise logging capability in server info when available
+- honor negotiated log level handling where RMCP supports it
+- emit sanitized log notifications only; never send tokens, cookies, auth
+  headers, raw credential-bearing URLs, or secret env values
+- reuse the same action/service/upstream context and redaction rules that apply
+  to local structured logs
+- logging notifications supplement local tracing; they do not replace required
+  server-side observability
 
 ## Resource and Prompt Ownership
 

@@ -97,6 +97,11 @@ Important constraints:
 
 - `relay-local` binds only to `127.0.0.1:<port>` on the browser machine
 - it forwards only the final callback request
+- it forwards only a callback-safe header allowlist; `Cookie`,
+  `Authorization`, and similar ambient credentials are stripped
+- it mirrors only a callback-safe response header allowlist; `Set-Cookie` and
+  other credential-bearing response headers are not relayed back through the
+  localhost helper
 - it does not mint tokens, store PKCE state, or complete the OAuth exchange itself
 - the real client listener must already be running and reachable before the callback arrives
 
@@ -199,6 +204,39 @@ Current constraints:
 - refresh grants are rejected if the local token is not backed by an upstream refresh token
 - refresh tokens do not rotate in this batch
 - `/revoke` is not implemented in this batch
+- successful and failed `/token` responses must send `Cache-Control: no-store`
+  and `Pragma: no-cache`
+
+### Auth Failure Semantics
+
+`lab` distinguishes unauthenticated callers from internal auth outages.
+
+Rules:
+
+- `/auth/session` returns an unauthenticated result only when the request truly
+  lacks a valid session
+- auth store, signing-key, provider, or persistence failures stay 5xx-class and
+  use canonical error envelopes
+- `/auth/logout` failures are surfaced as structured errors rather than being
+  treated as best-effort success
+- provider-facing logs must preserve stable `kind` classification when transport,
+  status, decode, or grant failures happen
+
+### Frontend Expectations
+
+The web UI and server-side frontend adapter must treat auth state as a three-way
+ distinction:
+
+- `loading`
+- `unauthenticated`
+- `auth_error`
+
+They must also:
+
+- capture response `x-request-id` values on failures
+- avoid showing a hosted-login CTA unless hosted login is actually available
+- invalidate or refresh cached session state when later requests fail with
+  `auth_failed` or CSRF-style auth errors
 
 ## RFC 9728 Protected Resource Metadata
 

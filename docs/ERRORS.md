@@ -239,6 +239,15 @@ Rules:
 - HTTP and MCP must agree on the semantic kind
 - HTTP may use transport-appropriate status codes, but the JSON body remains structured
 - HTTP must not invent a second vocabulary for the same failure class
+- auth/session/logout/token routes must either use this envelope directly or
+  document a protocol-required exception in the owning auth docs
+
+Auth-specific rule:
+
+- session-store, database, provider, and signing-key failures are internal
+  failures, not "logged out" outcomes
+- handlers must not downgrade store/provider outages into successful
+  unauthenticated responses
 
 ## HTTP Status Mapping
 

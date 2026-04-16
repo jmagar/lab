@@ -264,6 +264,11 @@ At startup, lab connects to all configured upstreams in parallel. Each upstream 
 
 Failed upstreams are marked unhealthy. Healthy upstreams continue operating. A single failed upstream does not prevent others from connecting.
 
+After startup, proxied RMCP operations continue to use explicit per-RPC
+timeouts. Tool calls, prompt reads, resource reads, and discovery/listing
+operations must fail closed with logged timeout/error events rather than
+blocking indefinitely behind one hung upstream.
+
 ```text
 upstream discovery succeeded  upstream=remote-lab tool_count=12
 upstream discovery failed     upstream=broken-server error="connection refused"
@@ -325,7 +330,9 @@ Each upstream has independent health tracking.
 
 - Connection errors
 - Tool call errors (`is_error` responses)
+- Prompt and resource proxy errors
 - Dropped connections
+- Timeouts
 - Response size cap exceeded
 
 ### Recovery
@@ -370,6 +377,10 @@ lab://upstream/remote-lab/lab://radarr/actions
 - `read_resource()` strips the prefix, identifies the upstream by name, and forwards the read.
 
 Failed resource listings from individual upstreams are logged as warnings. Other upstreams continue to serve.
+
+The same graceful-degradation rule applies to prompt/resource discovery and
+reads: one upstream failure must not prevent healthy upstreams from serving
+partial results.
 
 ## What Is Exposed Where
 
