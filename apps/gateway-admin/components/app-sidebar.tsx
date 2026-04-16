@@ -24,7 +24,12 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from '@/components/ui/sidebar'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ThemeToggle } from '@/components/theme-toggle'
+import {
+  sessionAvatarFallback,
+  sessionPrimaryEmail,
+} from '@/lib/auth/session-presenter'
 import { logoutBrowserSession, useBrowserSession } from '@/lib/auth/session'
 
 const navigation = [
@@ -129,12 +134,24 @@ export function AppSidebar() {
         <SidebarMenu>
           {session.status === 'authenticated' ? (
             <SidebarMenuItem>
-              <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
-                <p className="truncate text-xs font-medium text-sidebar-foreground">
-                  {session.user.email || session.user.sub}
-                </p>
+              <div className="rounded-lg border border-sidebar-border/70 bg-sidebar-accent/40 px-2 py-2 group-data-[collapsible=icon]:hidden">
+                <div className="flex items-center gap-3">
+                  <Avatar className="size-9 border border-sidebar-border/60">
+                    <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-semibold">
+                      {sessionAvatarFallback(session.user)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium uppercase tracking-[0.18em] text-sidebar-foreground/55">
+                      Signed In
+                    </p>
+                    <p className="truncate text-sm font-medium text-sidebar-foreground">
+                      {sessionPrimaryEmail(session.user)}
+                    </p>
+                  </div>
+                </div>
                 <button
-                  className="mt-2 text-xs text-muted-foreground transition hover:text-foreground"
+                  className="mt-3 text-xs text-muted-foreground transition hover:text-foreground"
                   onClick={() => {
                     void logoutBrowserSession()
                   }}
