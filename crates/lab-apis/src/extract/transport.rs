@@ -322,7 +322,7 @@ impl SshFs {
             exit_status,
         };
 
-        if output.exit_status.unwrap_or(0) != 0 {
+        if output.exit_status != Some(0) {
             return Err(remote_command_failed(&self.host, action, command, output));
         }
 
@@ -341,7 +341,10 @@ fn remote_command_failed(
         .trim()
         .to_owned()
         .or_else_if_empty(|| output.stdout.trim().to_owned())
-        .unwrap_or_else(|| "remote command returned a non-zero exit status".to_owned());
+        .unwrap_or_else(|| match output.exit_status {
+            Some(_) => "remote command returned a non-zero exit status".to_owned(),
+            None => "remote command did not report an exit status".to_owned(),
+        });
 
     ExtractError::RemoteCommand {
         host: host.to_owned(),
@@ -392,5 +395,31 @@ mod tests {
         assert!(rendered.contains("docker.inspect"));
         assert!(!rendered.contains("SECRET=abc123"));
         assert!(!rendered.contains("docker inspect radarr"));
+    }
+
+    #[test]
+    fn missing_exit_status_is_reported_as_failure() {
+        let err = remote_command_failed(
+            "media-node",
+            "docker.ps",
+            "docker ps",
+            RemoteCommandOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_status: None,
+            },
+        );
+
+        let ExtractError::RemoteCommand {
+            exit_status,
+            message,
+            ..
+        } = err
+        else {
+            panic!("expected remote command error");
+        };
+
+        assert_eq!(exit_status, None);
+        assert_eq!(message, "remote command did not report an exit status");
     }
 }

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::net::Ipv4Addr;
 use std::time::Instant;
 
 use serde::Deserialize;
@@ -286,12 +287,7 @@ pub fn parse_tailscale_ipv4(contents: &str) -> Option<String> {
     contents
         .lines()
         .map(str::trim)
-        .find(|line| {
-            !line.is_empty()
-                && line
-                    .split('.')
-                    .all(|segment| !segment.is_empty() && segment.parse::<u8>().is_ok())
-        })
+        .find(|line| !line.is_empty() && line.parse::<Ipv4Addr>().is_ok())
         .map(ToOwned::to_owned)
 }
 
@@ -305,6 +301,9 @@ fn supported_service(name: &str, image: Option<&str>) -> Option<&'static str> {
 fn service_from_image(image: &str) -> Option<&'static str> {
     let image_name = image
         .rsplit('/')
+        .next()
+        .unwrap_or(image)
+        .split('@')
         .next()
         .unwrap_or(image)
         .split(':')
@@ -443,6 +442,37 @@ mod tests {
                     service: "linkding".to_owned(),
                     container_name: "linkding".to_owned(),
                     image: Some("sissbruecker/linkding:latest".to_owned()),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tailscale_lookup_rejects_malformed_ipv4_values() {
+        assert_eq!(parse_tailscale_ipv4("1.2.3\n"), None);
+        assert_eq!(parse_tailscale_ipv4("100.75.111.118\n"), Some("100.75.111.118".to_owned()));
+    }
+
+    #[test]
+    fn docker_ps_matches_digest_pinned_supported_images() {
+        let containers = parse_docker_ps_lines(
+            r#"{"Names":"radarr","Image":"ghcr.io/hotio/radarr@sha256:abcdef"}
+{"Names":"overseerr","Image":"ghcr.io/hotio/overseerr@sha256:123456"}"#,
+        )
+        .expect("parse docker ps");
+
+        assert_eq!(
+            containers,
+            vec![
+                RuntimeContainerSummary {
+                    service: "radarr".to_owned(),
+                    container_name: "radarr".to_owned(),
+                    image: Some("ghcr.io/hotio/radarr@sha256:abcdef".to_owned()),
+                },
+                RuntimeContainerSummary {
+                    service: "overseerr".to_owned(),
+                    container_name: "overseerr".to_owned(),
+                    image: Some("ghcr.io/hotio/overseerr@sha256:123456".to_owned()),
                 },
             ]
         );

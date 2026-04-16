@@ -27,6 +27,7 @@ import {
 import {
   type ExtractCredential,
   type ExtractReport,
+  type ExtractSshUri,
   type ExtractWarning,
   extractApi,
 } from '@/lib/api/extract-client'
@@ -61,6 +62,26 @@ function StatCard({
   )
 }
 
+function formatTargetUri(uri: string | ExtractSshUri | undefined) {
+  if (!uri) {
+    return 'the requested path'
+  }
+
+  return typeof uri === 'string' ? uri : `${uri.host}:${uri.path}`
+}
+
+function SecretCell({ secret }: { secret: string | null }) {
+  if (!secret) {
+    return <span className="text-muted-foreground">No secret</span>
+  }
+
+  return (
+    <Badge variant="secondary" className="font-normal">
+      Present
+    </Badge>
+  )
+}
+
 function ResultTable({ creds }: { creds: ExtractCredential[] }) {
   return (
     <Table>
@@ -89,13 +110,7 @@ function ResultTable({ creds }: { creds: ExtractCredential[] }) {
               <code className="rounded bg-muted px-2 py-1 text-xs">{cred.env_field}</code>
             </TableCell>
             <TableCell className="max-w-[18rem]">
-              {cred.secret ? (
-                <code className="block truncate rounded bg-muted px-2 py-1 text-xs" title={cred.secret}>
-                  {cred.secret}
-                </code>
-              ) : (
-                <span className="text-muted-foreground">No secret</span>
-              )}
+              <SecretCell secret={cred.secret} />
             </TableCell>
           </TableRow>
         ))}
@@ -239,7 +254,7 @@ export function SetupPageContent() {
               {report
                 ? report.target.mode === 'fleet'
                   ? 'Fleet scan across all actionable SSH config hosts.'
-                  : `Targeted scan for ${report.target.uri ?? 'the requested path'}.`
+                  : `Targeted scan for ${formatTargetUri(report.target.uri)}.`
                 : 'Run a scan to populate results here.'}
             </CardDescription>
           </CardHeader>

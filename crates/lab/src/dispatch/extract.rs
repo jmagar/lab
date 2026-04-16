@@ -143,8 +143,12 @@ fn parse_uri(params: &Value) -> Result<Uri, ToolError> {
 }
 
 fn parse_scan_target(params: &Value) -> Result<ScanTarget, ToolError> {
-    match params.get("uri").and_then(Value::as_str) {
-        Some(_uri) => Ok(ScanTarget::Targeted(parse_uri(params)?)),
+    match params.get("uri") {
+        Some(Value::String(_)) => Ok(ScanTarget::Targeted(parse_uri(params)?)),
+        Some(_) => Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".into(),
+            message: "param 'uri' must be a string".into(),
+        }),
         None => Ok(ScanTarget::Fleet),
     }
 }
@@ -170,5 +174,18 @@ mod tests {
     #[test]
     fn apply_and_diff_still_require_uri() {
         assert!(parse_uri(&json!({})).is_err());
+    }
+
+    #[test]
+    fn scan_rejects_non_string_uri() {
+        let error = parse_scan_target(&json!({"uri": {"host": "squirts"}}))
+            .expect_err("non-string uri should be rejected");
+        assert!(matches!(
+            error,
+            ToolError::Sdk {
+                sdk_kind,
+                message
+            } if sdk_kind == "invalid_param" && message == "param 'uri' must be a string"
+        ));
     }
 }

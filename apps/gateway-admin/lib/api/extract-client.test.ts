@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { __setBrowserSessionStateForTests } from '../auth/session-store.ts'
-import { ExtractApiError, extractApi } from './extract-client.ts'
+import { ExtractApiError, extractApi, type ExtractReport } from './extract-client.ts'
 
 test('extractApi.scan performs a fleet scan when uri is omitted', async () => {
   __setBrowserSessionStateForTests({ status: 'unauthenticated' })
@@ -42,7 +42,7 @@ test('extractApi.scan performs a targeted scan when uri is provided', async () =
     requestInit = init
     return new Response(
       JSON.stringify({
-        target: { mode: 'targeted', uri: 'squirts:/mnt/appdata' },
+        target: { mode: 'targeted', uri: { host: 'squirts', path: '/mnt/appdata' } },
         found: ['overseerr'],
         creds: [],
         warnings: [],
@@ -56,6 +56,29 @@ test('extractApi.scan performs a targeted scan when uri is provided', async () =
   assert.deepEqual(JSON.parse(String(requestInit?.body)), {
     action: 'scan',
     params: { uri: 'squirts:/mnt/appdata' },
+  })
+})
+
+test('extractApi.scan preserves empty strings so the backend can reject them', async () => {
+  __setBrowserSessionStateForTests({ status: 'unauthenticated' })
+
+  let requestInit: RequestInit | undefined
+  globalThis.fetch = async (_input, init) => {
+    requestInit = init
+    return new Response(
+      JSON.stringify({
+        kind: 'invalid_param',
+        message: 'invalid uri',
+      }),
+      { status: 400 },
+    )
+  }
+
+  await assert.rejects(() => extractApi.scan(''))
+
+  assert.deepEqual(JSON.parse(String(requestInit?.body)), {
+    action: 'scan',
+    params: { uri: '' },
   })
 })
 
@@ -78,4 +101,18 @@ test('extractApi.scan surfaces backend errors with status and kind', async () =>
       && error.status === 400
       && error.code === 'invalid_param',
   )
+})
+
+test('extract target supports structured ssh uri payloads', async () => {
+  const report: ExtractReport = {
+    target: {
+      mode: 'targeted',
+      uri: { host: 'squirts', path: '/mnt/appdata' },
+    },
+    found: [],
+    creds: [],
+    warnings: [],
+  }
+
+  assert.deepEqual(report.target.uri, { host: 'squirts', path: '/mnt/appdata' })
 })
