@@ -130,7 +130,7 @@ Typical checks include:
 
 ## Device Runtime Operations
 
-Every Linux `x86_64` fleet member runs `lab serve` as a device runtime.
+In the current Linux `x86_64` v1 target, every supported fleet member runs `lab serve` as a device runtime.
 
 Operationally:
 

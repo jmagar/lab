@@ -37,7 +37,7 @@ fn ok() -> Json<DeviceAck> {
     Json(DeviceAck { ok: true })
 }
 
-pub(crate) fn validate_device_id_value(device_id: &str, param: &str) -> Result<(), ToolError> {
+pub(crate) fn normalize_device_id_value(device_id: &str, param: &str) -> Result<String, ToolError> {
     let trimmed = device_id.trim();
     if trimmed.is_empty() || trimmed.len() > 256 {
         return Err(ToolError::InvalidParam {
@@ -46,5 +46,9 @@ pub(crate) fn validate_device_id_value(device_id: &str, param: &str) -> Result<(
         });
     }
 
-    Ok(())
+    Ok(trimmed.to_string())
+}
+
+pub(crate) fn validate_device_id_value(device_id: &str, param: &str) -> Result<(), ToolError> {
+    normalize_device_id_value(device_id, param).map(|_| ())
 }

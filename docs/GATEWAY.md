@@ -11,7 +11,7 @@ Use it when you want to inspect, test, add, update, remove, or reload `[[upstrea
 - `[[upstream]]` in `~/.config/lab/config.toml` remains the persisted source of truth.
 - `gateway.*` actions mutate that config, reconcile runtime state, and trigger MCP list-changed notifications when the merged catalog changes.
 - In-flight MCP requests keep using the pool they already captured. New requests observe the swapped pool after reconcile completes.
-- gateway management is exposed on the `master` only; non-master devices do not mount `/v1/gateway` or MCP
+- gateway management is exposed on the `master` only; non-master devices do not mount `/v1/gateway` or the `/mcp` transport
 
 Secrets remain indirect:
 

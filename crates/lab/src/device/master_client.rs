@@ -1,4 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
+use lab_apis::core::Auth;
+use lab_apis::device_runtime::client::DeviceRuntimeClient;
 
 use crate::config::LabConfig;
 use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
@@ -8,9 +10,7 @@ const DEFAULT_MASTER_CLIENT_TIMEOUT_SECS: u64 = 5;
 
 #[derive(Debug, Clone)]
 pub struct MasterClient {
-    http: reqwest::Client,
-    base_url: String,
-    bearer_token: Option<String>,
+    inner: DeviceRuntimeClient,
 }
 
 impl MasterClient {
@@ -22,52 +22,44 @@ impl MasterClient {
 
     #[must_use]
     pub fn with_bearer_token(base_url: impl Into<String>, bearer_token: Option<String>) -> Self {
-        Self {
-            http: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(
-                    DEFAULT_MASTER_CLIENT_TIMEOUT_SECS,
-                ))
-                .build()
-                .expect("master client builder should be valid"),
-            base_url: base_url.into(),
-            bearer_token,
-        }
+        let auth = bearer_token.map_or(Auth::None, |token| Auth::Bearer { token });
+        let inner = DeviceRuntimeClient::new(
+            base_url,
+            auth,
+            Some(std::time::Duration::from_secs(
+                DEFAULT_MASTER_CLIENT_TIMEOUT_SECS,
+            )),
+        )
+        .expect("device runtime client builder should be valid");
+        Self { inner }
     }
 
     pub async fn post_hello(&self, payload: &DeviceHello) -> Result<()> {
-        self.post_json("/v1/device/hello", payload).await
+        self.inner.post_hello(payload).await.map_err(Into::into)
     }
 
     pub async fn post_status(&self, payload: &DeviceStatus) -> Result<()> {
-        self.post_json("/v1/device/status", payload).await
+        self.inner.post_status(payload).await.map_err(Into::into)
     }
 
     pub async fn post_metadata(&self, payload: &DeviceMetadataUpload) -> Result<()> {
-        self.post_json("/v1/device/metadata", payload).await
+        self.inner.post_metadata(payload).await.map_err(Into::into)
     }
 
     pub async fn post_syslog_batch(&self, payload: &serde_json::Value) -> Result<()> {
-        self.post_json("/v1/device/syslog/batch", payload).await
+        self.inner.post_syslog_batch(payload).await.map_err(Into::into)
     }
 
     pub async fn fetch_devices(&self) -> Result<serde_json::Value> {
-        self.get_json("/v1/device/devices").await
+        self.inner.fetch_devices().await.map_err(Into::into)
     }
 
     pub async fn fetch_device(&self, device_id: &str) -> Result<serde_json::Value> {
-        self.get_json(&format!("/v1/device/devices/{device_id}"))
-            .await
+        self.inner.fetch_device(device_id).await.map_err(Into::into)
     }
 
     pub async fn search_logs(&self, device_id: &str, query: &str) -> Result<serde_json::Value> {
-        self.post_json_value(
-            "/v1/device/logs/search",
-            &serde_json::json!({
-                "device_id": device_id,
-                "query": query,
-            }),
-        )
-        .await
+        self.inner.search_logs(device_id, query).await.map_err(Into::into)
     }
 
     pub fn from_config(config: &LabConfig) -> Result<Self> {
@@ -84,60 +76,6 @@ impl MasterClient {
             format!("http://{host}:{port}"),
             master_bearer_token(),
         ))
-    }
-
-    async fn post_json<T: serde::Serialize + ?Sized>(&self, path: &str, payload: &T) -> Result<()> {
-        let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
-        self.request(self.http.post(&url))
-            .json(payload)
-            .send()
-            .await
-            .with_context(|| format!("POST {url}"))?
-            .error_for_status()
-            .with_context(|| format!("POST {url} failed"))?;
-        Ok(())
-    }
-
-    async fn get_json(&self, path: &str) -> Result<serde_json::Value> {
-        let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
-        let response = self
-            .request(self.http.get(&url))
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?
-            .error_for_status()
-            .with_context(|| format!("GET {url} failed"))?;
-        response
-            .json()
-            .await
-            .with_context(|| format!("decode {url}"))
-    }
-
-    async fn post_json_value<T: serde::Serialize + ?Sized>(
-        &self,
-        path: &str,
-        payload: &T,
-    ) -> Result<serde_json::Value> {
-        let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
-        let response = self
-            .request(self.http.post(&url))
-            .json(payload)
-            .send()
-            .await
-            .with_context(|| format!("POST {url}"))?
-            .error_for_status()
-            .with_context(|| format!("POST {url} failed"))?;
-        response
-            .json()
-            .await
-            .with_context(|| format!("decode {url}"))
-    }
-
-    fn request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match self.bearer_token.as_deref() {
-            Some(token) => builder.bearer_auth(token),
-            None => builder,
-        }
     }
 }
 

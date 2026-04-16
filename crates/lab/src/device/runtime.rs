@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
+use tokio::sync::OnceCell;
 
-use crate::config::{DeviceRole, ResolvedDeviceRuntime};
+use crate::config::{DeviceRole, LabConfig, ResolvedDeviceRuntime};
 use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 use crate::device::config_scan::discover_ai_cli_configs;
 use crate::device::identity::resolve_runtime_role;
@@ -16,6 +17,7 @@ pub struct DeviceRuntime {
     resolved: ResolvedDeviceRuntime,
     master_client: Option<MasterClient>,
     home_dir: PathBuf,
+    outbound_queue: std::sync::Arc<OnceCell<DeviceOutboundQueue>>,
 }
 
 impl DeviceRuntime {
@@ -25,21 +27,16 @@ impl DeviceRuntime {
             resolved,
             master_client,
             home_dir: current_home_dir(),
+            outbound_queue: std::sync::Arc::new(OnceCell::new()),
         }
     }
 
-    #[must_use]
-    pub fn for_http_master(resolved: ResolvedDeviceRuntime, master_port: u16) -> Self {
+    pub fn from_config(resolved: ResolvedDeviceRuntime, config: &LabConfig) -> Result<Self> {
         let master_client = match resolved.role {
             DeviceRole::Master => None,
-            DeviceRole::NonMaster => Some(MasterClient::with_bearer_token(
-                format!("http://{}:{}", resolved.master_host, master_port),
-                std::env::var("LAB_MCP_HTTP_TOKEN")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty()),
-            )),
+            DeviceRole::NonMaster => Some(MasterClient::from_config(config)?),
         };
-        Self::new(resolved, master_client)
+        Ok(Self::new(resolved, master_client))
     }
 
     #[must_use]
@@ -101,9 +98,7 @@ impl DeviceRuntime {
             return Ok(());
         }
 
-        let queue = DeviceOutboundQueue::open(self.queue_path())
-            .await
-            .context("open device outbound queue")?;
+        let queue = self.outbound_queue().await?;
         let payload = serde_json::json!({
             "device_id": self.resolved.local_host.clone(),
             "events": events,
@@ -120,9 +115,7 @@ impl DeviceRuntime {
             .master_client
             .as_ref()
             .ok_or_else(|| anyhow!("master client is not configured"))?;
-        let queue = DeviceOutboundQueue::open(self.queue_path())
-            .await
-            .context("open device outbound queue")?;
+        let queue = self.outbound_queue().await?;
         let drained = queue.drain_batch(100).await?;
         let mut ack_count = 0usize;
 
@@ -170,13 +163,32 @@ impl DeviceRuntime {
 
 fn current_home_dir() -> PathBuf {
     std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .or_else(|| {
+            let home_drive = std::env::var_os("HOMEDRIVE")?;
+            let home_path = std::env::var_os("HOMEPATH")?;
+            let mut path = PathBuf::from(home_drive);
+            path.push(home_path);
+            Some(path.into_os_string())
+        })
         .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
 impl DeviceRuntime {
     fn queue_path(&self) -> PathBuf {
         self.home_dir.join(".lab/device-runtime-queue.jsonl")
+    }
+
+    async fn outbound_queue(&self) -> Result<&DeviceOutboundQueue> {
+        self.outbound_queue
+            .get_or_try_init(|| async {
+                DeviceOutboundQueue::open(self.queue_path())
+                    .await
+                    .context("open device outbound queue")
+            })
+            .await
     }
 }
 

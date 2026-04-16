@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -34,35 +35,54 @@ impl QueuedEnvelope {
 #[derive(Debug, Clone)]
 pub struct DeviceOutboundQueue {
     path: PathBuf,
-    entries: Arc<Mutex<Vec<QueuedEnvelope>>>,
+    io_lock: Arc<Mutex<()>>,
 }
 
 impl DeviceOutboundQueue {
     pub async fn open(path: PathBuf) -> Result<Self> {
-        let entries = read_entries(&path).await?;
-        Ok(Self {
-            path,
-            entries: Arc::new(Mutex::new(entries)),
-        })
+        let io_lock = shared_queue_lock(&path);
+        {
+            let _guard = io_lock.lock().await;
+            read_entries(&path).await?;
+        }
+        Ok(Self { path, io_lock })
     }
 
     pub async fn push(&self, envelope: QueuedEnvelope) -> Result<()> {
-        let mut entries = self.entries.lock().await;
-        entries.push(envelope.clone());
+        let _guard = self.io_lock.lock().await;
         append_entry(&self.path, &envelope).await
     }
 
     pub async fn drain_batch(&self, limit: usize) -> Result<Vec<QueuedEnvelope>> {
-        let entries = self.entries.lock().await;
-        Ok(entries.iter().take(limit).cloned().collect())
+        let _guard = self.io_lock.lock().await;
+        Ok(read_entries(&self.path)
+            .await?
+            .into_iter()
+            .take(limit)
+            .collect())
     }
 
     pub async fn ack_drained(&self, count: usize) -> Result<()> {
-        let mut entries = self.entries.lock().await;
+        let _guard = self.io_lock.lock().await;
+        let mut entries = read_entries(&self.path).await?;
         let drained = count.min(entries.len());
         entries.drain(..drained);
         rewrite_entries(&self.path, &entries).await
     }
+}
+
+fn shared_queue_lock(path: &Path) -> Arc<Mutex<()>> {
+    static QUEUE_LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+
+    let locks = QUEUE_LOCKS.get_or_init(|| StdMutex::new(HashMap::new()));
+    let mut locks = locks
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Arc::clone(
+        locks
+            .entry(path.to_path_buf())
+            .or_insert_with(|| Arc::new(Mutex::new(()))),
+    )
 }
 
 async fn read_entries(path: &Path) -> Result<Vec<QueuedEnvelope>> {

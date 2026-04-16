@@ -1,13 +1,13 @@
 //! Shared application state for axum handlers.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::config::DeviceRole;
-use crate::dispatch::clients::ServiceClients;
 use crate::device::store::DeviceFleetStore;
+use crate::dispatch::clients::ServiceClients;
 use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Application state passed to every axum handler via `State<AppState>`.
@@ -130,6 +130,11 @@ impl AppState {
     pub fn with_web_assets_dir(mut self, dir: PathBuf) -> Self {
         self.web_assets_dir = Some(Arc::new(dir));
         self
+    }
+
+    #[must_use]
+    pub fn is_master(&self) -> bool {
+        !matches!(self.device_role, Some(DeviceRole::NonMaster))
     }
 }
 

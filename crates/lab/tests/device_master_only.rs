@@ -14,14 +14,16 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn non_master_router_rejects_gateway_api_surface() {
-    let app = test_non_master_router();
+    let fixture = test_non_master_router();
+    let app = fixture.router;
     let response = app.oneshot(gateway_request()).await.unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn non_master_router_rejects_web_ui_surface() {
-    let app = test_non_master_router();
+    let fixture = test_non_master_router();
+    let app = fixture.router;
     let response = app.oneshot(web_request()).await.unwrap();
     assert!(matches!(
         response.status(),
@@ -60,7 +62,13 @@ async fn non_master_router_does_not_mount_oauth_metadata_surface() {
     ));
 }
 
-fn test_non_master_router() -> axum::Router {
+struct NonMasterRouterFixture {
+    #[allow(dead_code)]
+    dir: tempfile::TempDir,
+    router: axum::Router,
+}
+
+fn test_non_master_router() -> NonMasterRouterFixture {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("index.html"),
@@ -72,7 +80,10 @@ fn test_non_master_router() -> axum::Router {
         .with_device_store(Arc::new(DeviceFleetStore::default()))
         .with_device_role(DeviceRole::NonMaster)
         .with_web_assets_dir(dir.path().to_path_buf());
-    build_router_with_bearer(state, None, None)
+    NonMasterRouterFixture {
+        dir,
+        router: build_router_with_bearer(state, None, None),
+    }
 }
 
 fn gateway_request() -> Request<Body> {

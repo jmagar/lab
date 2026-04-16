@@ -17,9 +17,9 @@ fn sanitize_relative_path(path: &str) -> PathBuf {
         match component {
             Component::Normal(part) => out.push(part),
             Component::CurDir => {}
-            Component::ParentDir
-            | Component::Prefix(_)
-            | Component::RootDir => return PathBuf::new(),
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir => {
+                return PathBuf::new();
+            }
         }
     }
     out
@@ -82,6 +82,10 @@ pub async fn serve_web_request(State(state): State<AppState>, request: Request) 
     }
 
     if matches!(state.device_role, Some(DeviceRole::NonMaster)) {
+        tracing::warn!(
+            path = %request.uri().path(),
+            "rejected web ui request on non-master device"
+        );
         return (
             StatusCode::FORBIDDEN,
             "web ui is disabled on non-master devices",

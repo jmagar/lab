@@ -52,6 +52,19 @@ async fn syslog_batch_endpoint_rejects_invalid_device_id() {
 }
 
 #[tokio::test]
+async fn syslog_batch_endpoint_rejects_mismatched_event_device_id() {
+    let (app, _store) = test_device_router();
+    let response = app
+        .oneshot(syslog_request(
+            r#"{"device_id":"dookie","events":[{"device_id":"tootie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
 async fn device_oauth_route_calls_runtime_wrapper() {
     let (app, _store) = test_device_router();
     let response = app

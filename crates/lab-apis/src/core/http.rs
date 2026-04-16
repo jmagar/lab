@@ -81,10 +81,30 @@ impl HttpClient {
         auth: Auth,
         headers: reqwest::header::HeaderMap,
     ) -> Result<Self, ApiError> {
+        Self::with_default_headers_and_timeouts(
+            base_url,
+            auth,
+            headers,
+            Duration::from_secs(5),
+            Duration::from_secs(30),
+        )
+    }
+
+    /// Construct a client with additional default headers and explicit timeouts.
+    ///
+    /// # Errors
+    /// Returns [`ApiError::Internal`] if the TLS backend fails to initialise.
+    pub fn with_default_headers_and_timeouts(
+        base_url: impl Into<String>,
+        auth: Auth,
+        headers: reqwest::header::HeaderMap,
+        connect_timeout: Duration,
+        timeout: Duration,
+    ) -> Result<Self, ApiError> {
         let inner = Client::builder()
             .user_agent(concat!("lab-apis/", env!("CARGO_PKG_VERSION")))
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(30))
+            .connect_timeout(connect_timeout)
+            .timeout(timeout)
             .default_headers(headers)
             .build()
             .map_err(|e| ApiError::Internal(format!("reqwest::Client::build: {e}")))?;

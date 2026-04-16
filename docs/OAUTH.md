@@ -120,6 +120,8 @@ Example body:
 
 This reuses the existing local relay implementation. It does not change OAuth token issuance or PKCE handling.
 
+In the current v1 trust model, this endpoint is intended for master-orchestrated device runtime traffic on the tailnet. It is not exposed as a public operator surface on non-master devices; the master invokes it after authenticating to the target device with the same shared bearer/OAuth controls that protect the rest of `/v1/*`.
+
 ### Using non-loopback redirect URIs
 
 Loopback redirect URIs are always accepted by `lab-auth`. Public or non-loopback redirect URIs are

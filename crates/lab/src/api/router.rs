@@ -25,7 +25,6 @@ use tracing::Level;
 
 use lab_auth::error::AuthError as LabAuthError;
 
-use crate::config::DeviceRole;
 
 /// Constant-time byte comparison using `subtle::ConstantTimeEq` to prevent
 /// timing-based token prefix leakage (lab-63jc).
@@ -100,7 +99,7 @@ async fn auth_token(
 
 /// Build the `/v1` sub-router with all feature-gated service routes.
 fn build_v1_router(state: &AppState) -> Router<AppState> {
-    let is_master = !matches!(state.device_role, Some(DeviceRole::NonMaster));
+    let is_master = state.is_master();
     let openapi_spec: Arc<String> = super::openapi::build_openapi_spec(state.registry.services())
         .unwrap_or_else(|e| {
             tracing::error!(error = %e, "failed to serialize OpenAPI spec");
@@ -197,7 +196,7 @@ pub fn build_router(
     // Bearer auth is applied to this sub-router so both surfaces get the same
     // auth treatment while health probes remain exempt (lab-3qn.5).
     let mut protected = Router::new().nest("/v1", v1);
-    let is_master = !matches!(state.device_role, Some(DeviceRole::NonMaster));
+    let is_master = state.is_master();
     if is_master && let Some(mcp) = mcp_router {
         protected = protected.merge(mcp);
     }
