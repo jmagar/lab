@@ -20,7 +20,13 @@ pub fn collect_bootstrap_logs(device_id: &str) -> Result<Vec<DeviceLogEvent>> {
             continue;
         }
 
-        let raw = fs::read(path)?;
+        let raw = match fs::read(path) {
+            Ok(raw) => raw,
+            Err(error) => {
+                tracing::debug!(path = %path.display(), error = %error, "skipping unreadable bootstrap log candidate");
+                continue;
+            }
+        };
         let slice = tail_bytes(&raw, BOOTSTRAP_LOG_BYTE_LIMIT as usize);
         let timestamp_unix_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)

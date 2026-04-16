@@ -31,7 +31,7 @@ pub async fn search_logs(
     device_id: &str,
     query: &str,
 ) -> Result<serde_json::Value> {
-    MasterClient::from_config(config)?
+    MasterClient::from_config(config, None)?
         .search_logs(device_id, query)
         .await
 }

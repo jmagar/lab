@@ -31,10 +31,14 @@ impl DeviceRuntime {
         }
     }
 
-    pub fn from_config(resolved: ResolvedDeviceRuntime, config: &LabConfig) -> Result<Self> {
+    pub fn from_config(
+        resolved: ResolvedDeviceRuntime,
+        config: &LabConfig,
+        master_port_override: Option<u16>,
+    ) -> Result<Self> {
         let master_client = match resolved.role {
             DeviceRole::Master => None,
-            DeviceRole::NonMaster => Some(MasterClient::from_config(config)?),
+            DeviceRole::NonMaster => Some(MasterClient::from_config(config, master_port_override)?),
         };
         Ok(Self::new(resolved, master_client))
     }

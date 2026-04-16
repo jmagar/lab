@@ -29,9 +29,11 @@ pub async fn run(args: DeviceArgs, format: OutputFormat, config: &LabConfig) -> 
 }
 
 pub async fn fetch_devices(config: &LabConfig) -> Result<serde_json::Value> {
-    MasterClient::from_config(config)?.fetch_devices().await
+    MasterClient::from_config(config, None)?.fetch_devices().await
 }
 
 pub async fn fetch_device(config: &LabConfig, device_id: &str) -> Result<serde_json::Value> {
-    MasterClient::from_config(config)?.fetch_device(device_id).await
+    MasterClient::from_config(config, None)?
+        .fetch_device(device_id)
+        .await
 }

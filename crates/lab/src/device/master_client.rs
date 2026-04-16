@@ -62,7 +62,7 @@ impl MasterClient {
         self.inner.search_logs(device_id, query).await.map_err(Into::into)
     }
 
-    pub fn from_config(config: &LabConfig) -> Result<Self> {
+    pub fn from_config(config: &LabConfig, port_override: Option<u16>) -> Result<Self> {
         let host = match config
             .device
             .as_ref()
@@ -71,7 +71,9 @@ impl MasterClient {
             Some(host) => host.to_string(),
             None => resolve_local_hostname()?,
         };
-        let port = config.mcp.port.unwrap_or(8765);
+        let port = port_override
+            .or(config.mcp.port)
+            .unwrap_or(8765);
         Ok(Self::with_bearer_token(
             format!("http://{host}:{port}"),
             master_bearer_token(),

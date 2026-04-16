@@ -91,7 +91,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     )
     .context("resolve device runtime role")?;
     let device_store = Arc::new(DeviceFleetStore::default());
-    let device_runtime = DeviceRuntime::from_config(resolved_runtime, config)?;
+    let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
     let device_role = device_runtime.role();
 
     let gateway_runtime = GatewayRuntimeHandle::default();
