@@ -34,8 +34,10 @@ export function buildExposurePolicyFromDraft(
   draftSelectedToolNames: string[],
 ): ExposurePolicy {
   const totalTools = sortUnique(allToolNames)
-  const selectedTools = sortUnique(draftSelectedToolNames)
   const totalToolSet = new Set(totalTools)
+  const selectedTools = sortUnique(draftSelectedToolNames).filter((toolName) =>
+    totalToolSet.has(toolName),
+  )
   const allToolsSelected =
     totalTools.length > 0 &&
     totalTools.every((toolName) => selectedTools.includes(toolName)) &&
@@ -60,7 +62,10 @@ export function getDraftExposureSummary(
   draftSelectedToolNames: string[],
 ): { exposedCount: number; totalCount: number; label: string } {
   const totalCount = sortUnique(allToolNames).length
-  const exposedCount = sortUnique(draftSelectedToolNames).length
+  const totalToolSet = new Set(sortUnique(allToolNames))
+  const exposedCount = sortUnique(draftSelectedToolNames).filter((toolName) =>
+    totalToolSet.has(toolName),
+  ).length
 
   return {
     exposedCount,

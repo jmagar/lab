@@ -53,12 +53,19 @@ test('buildExposurePolicyFromDraft preserves partial allowlists and ignores stal
 
   assert.deepEqual(
     buildExposurePolicyFromDraft(['alpha', 'beta'], ['alpha', 'beta', 'stale-tool']),
-    { mode: 'allowlist', patterns: ['alpha', 'beta', 'stale-tool'] },
+    { mode: 'expose_all', patterns: [] },
   )
 })
 
 test('getDraftExposureSummary reports exposed over total counts', () => {
-  assert.equal(getDraftExposureSummary(['alpha', 'beta', 'gamma'], ['beta']).label, '1/3')
+  assert.deepEqual(
+    getDraftExposureSummary(['alpha', 'beta', 'gamma'], ['beta', 'stale-tool']),
+    {
+      exposedCount: 1,
+      totalCount: 3,
+      label: '1/3',
+    },
+  )
 })
 
 test('getExposureFilterCounts reports all, enabled, and hidden buckets', () => {
