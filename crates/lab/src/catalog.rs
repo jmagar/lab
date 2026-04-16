@@ -63,7 +63,7 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
                 })
                 .collect(),
         })
-        .collect::<Vec<_>>();
+        .collect();
 
     Catalog { services }
 }

@@ -37,6 +37,7 @@ pub async fn get_device(
     Path(device_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ToolError> {
     let store = require_master_store(&state)?;
+    let device_id = super::normalize_device_id_value(&device_id, "device_id")?;
     let snapshot = store
         .device(&device_id)
         .await

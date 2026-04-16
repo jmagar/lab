@@ -122,11 +122,12 @@ impl DeviceRuntime {
         for envelope in drained {
             let delivery = match envelope.kind.as_str() {
                 "syslog_batch" => client.post_syslog_batch(&envelope.payload).await,
-                "status" => {
-                    let status = serde_json::from_value::<DeviceStatus>(envelope.payload)
-                        .context("decode queued status envelope")?;
-                    client.post_status(&status).await
-                }
+                "status" => match serde_json::from_value::<DeviceStatus>(envelope.payload)
+                    .context("decode queued status envelope")
+                {
+                    Ok(status) => client.post_status(&status).await,
+                    Err(error) => Err(error),
+                },
                 other => Err(anyhow!("unsupported queued envelope kind `{other}`")),
             };
 

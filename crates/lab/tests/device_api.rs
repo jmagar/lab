@@ -24,6 +24,20 @@ async fn hello_endpoint_updates_master_store() {
 }
 
 #[tokio::test]
+async fn hello_endpoint_normalizes_device_id_before_storage() {
+    let (app, store) = test_device_router();
+    let response = app
+        .oneshot(hello_request(
+            r#"{"device_id":"  dookie  ","role":"non-master","version":"1.0.0"}"#,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(store.device("dookie").await.is_some());
+}
+
+#[tokio::test]
 async fn syslog_batch_endpoint_accepts_normalized_events() {
     let (app, store) = test_device_router();
     let response = app
@@ -36,6 +50,23 @@ async fn syslog_batch_endpoint_accepts_normalized_events() {
     assert_eq!(response.status(), StatusCode::OK);
     let snapshot = store.device("dookie").await.unwrap();
     assert_eq!(snapshot.logs.len(), 1);
+}
+
+#[tokio::test]
+async fn get_device_rejects_invalid_device_id() {
+    let (app, _store) = test_device_router();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/device/devices/%20%20%20")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -75,6 +106,12 @@ async fn device_oauth_route_calls_runtime_wrapper() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(payload["ok"], true);
+    assert_ne!(payload["bind_addr"], "127.0.0.1:0");
 }
 
 #[tokio::test]

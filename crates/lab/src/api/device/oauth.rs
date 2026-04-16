@@ -4,7 +4,7 @@ use std::time::Duration;
 use axum::{Json, extract::State};
 use serde::Deserialize;
 
-use crate::api::{ToolError, device::DeviceAck, state::AppState};
+use crate::api::{ToolError, state::AppState};
 
 #[derive(Debug, Deserialize)]
 pub struct StartOauthRelayRequest {
@@ -14,6 +14,12 @@ pub struct StartOauthRelayRequest {
     pub default_port: Option<u16>,
     #[serde(default)]
     pub request_timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct StartOauthRelayResponse {
+    pub ok: bool,
+    pub bind_addr: SocketAddr,
 }
 
 fn validate_bind_addr(bind_addr: SocketAddr) -> Result<(), ToolError> {
@@ -30,7 +36,7 @@ fn validate_bind_addr(bind_addr: SocketAddr) -> Result<(), ToolError> {
 pub async fn handle_start(
     State(_state): State<AppState>,
     Json(payload): Json<StartOauthRelayRequest>,
-) -> Result<Json<DeviceAck>, ToolError> {
+) -> Result<Json<StartOauthRelayResponse>, ToolError> {
     validate_bind_addr(payload.bind_addr)?;
     let resolved_target =
         crate::oauth::target::resolve_explicit_target(&payload.target_url, payload.default_port)
@@ -40,12 +46,16 @@ pub async fn handle_start(
             })?;
     let timeout = Duration::from_millis(payload.request_timeout_ms.unwrap_or(30_000));
 
-    crate::device::oauth::start_local_oauth_relay(payload.bind_addr, resolved_target, timeout)
+    let bound_addr =
+        crate::device::oauth::start_local_oauth_relay(payload.bind_addr, resolved_target, timeout)
         .await
         .map_err(|error| ToolError::Sdk {
             sdk_kind: "internal_error".to_string(),
             message: error.to_string(),
         })?;
 
-    Ok(super::ok())
+    Ok(Json(StartOauthRelayResponse {
+        ok: true,
+        bind_addr: bound_addr,
+    }))
 }

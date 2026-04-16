@@ -48,7 +48,3 @@ pub(crate) fn normalize_device_id_value(device_id: &str, param: &str) -> Result<
 
     Ok(trimmed.to_string())
 }
-
-pub(crate) fn validate_device_id_value(device_id: &str, param: &str) -> Result<(), ToolError> {
-    normalize_device_id_value(device_id, param).map(|_| ())
-}

@@ -5,8 +5,9 @@ use crate::device::checkin::DeviceMetadataUpload;
 
 pub async fn handle(
     State(state): State<AppState>,
-    Json(payload): Json<DeviceMetadataUpload>,
+    Json(mut payload): Json<DeviceMetadataUpload>,
 ) -> Result<Json<DeviceAck>, ToolError> {
+    payload.device_id = super::normalize_device_id_value(&payload.device_id, "device_id")?;
     let store = state
         .device_store
         .clone()

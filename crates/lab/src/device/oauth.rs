@@ -9,10 +9,11 @@ pub async fn start_local_oauth_relay(
     bind_addr: SocketAddr,
     resolved_target: crate::oauth::target::ResolvedTarget,
     request_timeout: Duration,
-) -> Result<()> {
+) -> Result<SocketAddr> {
     let listener = bind_local_relay_listener(bind_addr).await?;
+    let bound_addr = listener.local_addr()?;
     let config = LocalRelayConfig {
-        bind_addr,
+        bind_addr: bound_addr,
         resolved_target,
         request_timeout,
     };
@@ -22,5 +23,5 @@ pub async fn start_local_oauth_relay(
             tracing::warn!(error = %error, "device oauth relay exited");
         }
     });
-    Ok(())
+    Ok(bound_addr)
 }
