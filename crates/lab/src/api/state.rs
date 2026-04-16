@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::dispatch::clients::ServiceClients;
+use crate::device::store::DeviceFleetStore;
 use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Application state passed to every axum handler via `State<AppState>`.
@@ -40,6 +41,8 @@ pub struct AppState {
     ///
     /// `None` when gateway management is not wired for this process.
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
+    /// Shared fleet state store for device runtime ingestion.
+    pub device_store: Option<Arc<DeviceFleetStore>>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
 }
@@ -77,6 +80,7 @@ impl AppState {
             auth_config: None,
             oauth_state: None,
             gateway_manager: None,
+            device_store: None,
             web_assets_dir: None,
         }
     }
@@ -102,6 +106,12 @@ impl AppState {
         manager: Arc<crate::dispatch::gateway::manager::GatewayManager>,
     ) -> Self {
         self.gateway_manager = Some(manager);
+        self
+    }
+
+    #[must_use]
+    pub fn with_device_store(mut self, store: Arc<DeviceFleetStore>) -> Self {
+        self.device_store = Some(store);
         self
     }
 
