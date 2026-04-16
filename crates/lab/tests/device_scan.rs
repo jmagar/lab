@@ -1,0 +1,27 @@
+#[test]
+fn scans_claude_codex_and_gemini_configs_when_present() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(temp.path().join(".codex")).unwrap();
+    std::fs::write(
+        temp.path().join(".claude.json"),
+        r#"{"mcpServers":{"lab":{"command":"lab","args":["serve"]}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        temp.path().join(".codex/config.toml"),
+        r#"[mcp_servers.lab]
+command = "lab"
+"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(temp.path().join(".gemini")).unwrap();
+    std::fs::write(
+        temp.path().join(".gemini/settings.json"),
+        r#"{"mcpServers":{"lab":{"url":"http://127.0.0.1:8765/mcp"}}}"#,
+    )
+    .unwrap();
+
+    let inventory = lab::device::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
+    assert_eq!(inventory.len(), 3);
+    assert!(inventory.iter().all(|entry| !entry.content_hash.is_empty()));
+}
