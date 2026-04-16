@@ -417,8 +417,7 @@ mod tests {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
-    use rand::rand_core::UnwrapMut;
-    use rand::rngs::OsRng;
+    use rand_core::{OsRng, UnwrapMut};
     use rsa::RsaPrivateKey;
     use rsa::pkcs8::EncodePrivateKey;
     use rsa::traits::PublicKeyParts;
