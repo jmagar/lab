@@ -1,0 +1,30 @@
+'use client'
+
+type LoginScreenProps = {
+  returnTo: string
+}
+
+export function LoginScreen({ returnTo }: LoginScreenProps) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-muted/40 px-6">
+      <div className="w-full max-w-md rounded-2xl border border-border/60 bg-card/90 p-8 shadow-2xl shadow-black/10 backdrop-blur">
+        <p className="text-sm font-medium uppercase tracking-[0.24em] text-muted-foreground">
+          Authentication Required
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">Sign in to Labby</h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          Continue with the Rust-owned login flow to access the hosted admin console.
+        </p>
+        <button
+          className="mt-8 inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition hover:opacity-95"
+          onClick={() => {
+            window.location.assign(`/auth/login?return_to=${encodeURIComponent(returnTo)}`)
+          }}
+          type="button"
+        >
+          Sign in
+        </button>
+      </div>
+    </div>
+  )
+}

@@ -25,6 +25,7 @@ import {
   SidebarRail,
 } from '@/components/ui/sidebar'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { logoutBrowserSession, useBrowserSession } from '@/lib/auth/session'
 
 const navigation = [
   {
@@ -59,6 +60,7 @@ const secondaryNavigation = [
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const session = useBrowserSession()
 
   const isActive = (url: string) => {
     if (url === '/') return pathname === '/'
@@ -125,6 +127,24 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
+          {session.status === 'authenticated' ? (
+            <SidebarMenuItem>
+              <div className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
+                <p className="truncate text-xs font-medium text-sidebar-foreground">
+                  {session.user.email || session.user.sub}
+                </p>
+                <button
+                  className="mt-2 text-xs text-muted-foreground transition hover:text-foreground"
+                  onClick={() => {
+                    void logoutBrowserSession()
+                  }}
+                  type="button"
+                >
+                  Sign out
+                </button>
+              </div>
+            </SidebarMenuItem>
+          ) : null}
           <SidebarMenuItem>
             <div className="flex items-center justify-between px-2 py-1">
               <span className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">

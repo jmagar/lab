@@ -52,6 +52,12 @@ pub struct CallbackQuery {
     pub code: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserLoginQuery {
+    #[serde(default)]
+    pub return_to: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenRequest {
     pub grant_type: String,
@@ -119,6 +125,25 @@ pub struct RefreshTokenRow {
     pub subject: String,
     pub scope: String,
     pub provider_refresh_token: Option<String>,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserSessionRow {
+    pub session_id: String,
+    pub subject: String,
+    pub email: Option<String>,
+    pub csrf_token: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserLoginStateRow {
+    pub state: String,
+    pub return_to: String,
+    pub provider_code_verifier: String,
     pub created_at: i64,
     pub expires_at: i64,
 }

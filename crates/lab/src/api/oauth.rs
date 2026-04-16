@@ -8,6 +8,9 @@ pub struct AuthContext {
     pub sub: String,
     pub scopes: Vec<String>,
     pub issuer: String,
+    pub via_session: bool,
+    pub csrf_token: Option<String>,
+    pub email: Option<String>,
 }
 
 pub fn www_authenticate_value(resource_url: &str) -> String {

@@ -42,6 +42,7 @@ impl std::fmt::Debug for GoogleProvider {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoogleExchange {
     pub subject: String,
+    pub email: Option<String>,
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub expires_in: Option<u64>,
@@ -61,6 +62,8 @@ struct GoogleTokenResponse {
 #[derive(Debug, Deserialize)]
 struct GoogleIdTokenClaims {
     sub: String,
+    #[serde(default)]
+    email: Option<String>,
 }
 
 impl GoogleProvider {
@@ -150,16 +153,17 @@ impl GoogleProvider {
             warn!(provider = "google", error = %error, "oauth upstream code exchange returned an unreadable payload");
             AuthError::Storage(format!("decode google token response: {error}"))
         })?;
-        let subject = parse_subject_from_id_token(&payload.id_token)?;
+        let claims = parse_id_token_claims(&payload.id_token)?;
         info!(
             provider = "google",
-            subject_id = %fingerprint(&subject),
+            subject_id = %fingerprint(&claims.sub),
             has_refresh_token = payload.refresh_token.is_some(),
             expires_in_secs = payload.expires_in,
             "oauth upstream code exchange succeeded"
         );
         Ok(GoogleExchange {
-            subject,
+            subject: claims.sub,
+            email: claims.email,
             access_token: payload.access_token,
             refresh_token: payload.refresh_token,
             expires_in: payload.expires_in,
@@ -196,16 +200,17 @@ impl GoogleProvider {
             warn!(provider = "google", error = %error, "oauth upstream refresh returned an unreadable payload");
             AuthError::Storage(format!("decode google refresh response: {error}"))
         })?;
-        let subject = parse_subject_from_id_token(&payload.id_token)?;
+        let claims = parse_id_token_claims(&payload.id_token)?;
         info!(
             provider = "google",
-            subject_id = %fingerprint(&subject),
+            subject_id = %fingerprint(&claims.sub),
             has_refresh_token = payload.refresh_token.is_some(),
             expires_in_secs = payload.expires_in,
             "oauth upstream refresh succeeded"
         );
         Ok(GoogleExchange {
-            subject,
+            subject: claims.sub,
+            email: claims.email,
             access_token: payload.access_token,
             refresh_token: payload.refresh_token,
             expires_in: payload.expires_in,
@@ -224,7 +229,7 @@ impl GoogleProvider {
 /// If this function is ever called with tokens received from untrusted sources (e.g.
 /// passed in by a browser client), full signature verification against Google's JWKS
 /// endpoint must be added first.
-fn parse_subject_from_id_token(id_token: &str) -> Result<String, AuthError> {
+fn parse_id_token_claims(id_token: &str) -> Result<GoogleIdTokenClaims, AuthError> {
     let mut parts = id_token.split('.');
     let _header = parts
         .next()
@@ -235,9 +240,8 @@ fn parse_subject_from_id_token(id_token: &str) -> Result<String, AuthError> {
     let decoded = URL_SAFE_NO_PAD
         .decode(payload.as_bytes())
         .map_err(|error| AuthError::Storage(format!("decode google id_token payload: {error}")))?;
-    let claims: GoogleIdTokenClaims = serde_json::from_slice(&decoded)
-        .map_err(|error| AuthError::Storage(format!("parse google id_token claims: {error}")))?;
-    Ok(claims.sub)
+    serde_json::from_slice(&decoded)
+        .map_err(|error| AuthError::Storage(format!("parse google id_token claims: {error}")))
 }
 
 #[cfg(test)]

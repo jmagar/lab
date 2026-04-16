@@ -5,6 +5,7 @@ pub mod google;
 pub mod jwt;
 pub mod metadata;
 pub mod routes;
+pub mod session;
 pub mod sqlite;
 pub mod state;
 pub mod token;
