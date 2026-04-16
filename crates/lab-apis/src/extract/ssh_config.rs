@@ -16,6 +16,7 @@ pub fn parse_ssh_config(contents: &str) -> Vec<SshHostTarget> {
     let mut seen = HashSet::new();
     let mut aliases = Vec::new();
     let mut hostname = None;
+    let mut in_match_block = false;
 
     let flush = |hosts: &mut Vec<SshHostTarget>,
                  seen: &mut HashSet<String>,
@@ -45,11 +46,26 @@ pub fn parse_ssh_config(contents: &str) -> Vec<SshHostTarget> {
 
         if keyword.eq_ignore_ascii_case("host") {
             flush(&mut hosts, &mut seen, &mut aliases, &mut hostname);
+            in_match_block = false;
             aliases.extend(
                 parts
-                    .filter(|alias| !alias.contains('*') && !alias.contains('?'))
+                    .filter(|alias| {
+                        !alias.starts_with('!')
+                            && !alias.contains('*')
+                            && !alias.contains('?')
+                    })
                     .map(ToOwned::to_owned),
             );
+            continue;
+        }
+
+        if keyword.eq_ignore_ascii_case("match") {
+            flush(&mut hosts, &mut seen, &mut aliases, &mut hostname);
+            in_match_block = true;
+            continue;
+        }
+
+        if in_match_block {
             continue;
         }
 
@@ -115,6 +131,54 @@ Host media
                 alias: "media".to_owned(),
                 hostname: Some("media.example.ts.net".to_owned()),
             }]
+        );
+    }
+
+    #[test]
+    fn skips_negated_host_patterns() {
+        let hosts = parse_ssh_config(
+            r#"
+Host !github.com media
+    HostName media.example.ts.net
+"#,
+        );
+
+        assert_eq!(
+            hosts,
+            vec![SshHostTarget {
+                alias: "media".to_owned(),
+                hostname: Some("media.example.ts.net".to_owned()),
+            }]
+        );
+    }
+
+    #[test]
+    fn match_blocks_do_not_attach_hostname_to_previous_host() {
+        let hosts = parse_ssh_config(
+            r#"
+Host media
+    User root
+
+Match host media
+    HostName should-not-attach.example.ts.net
+
+Host backup
+    HostName backup.example.ts.net
+"#,
+        );
+
+        assert_eq!(
+            hosts,
+            vec![
+                SshHostTarget {
+                    alias: "media".to_owned(),
+                    hostname: None,
+                },
+                SshHostTarget {
+                    alias: "backup".to_owned(),
+                    hostname: Some("backup.example.ts.net".to_owned()),
+                },
+            ]
         );
     }
 

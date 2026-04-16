@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -6,6 +7,14 @@ use tracing::debug;
 use url::Url;
 
 use super::error::ExtractError;
+
+static PROBE_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+    Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(2))
+        .build()
+        .expect("extract probe client should be constructible")
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedEndpoint {
@@ -46,11 +55,7 @@ pub fn refine_base_path(url: &str, base_path: Option<&str>) -> Option<String> {
 
 pub async fn probe_endpoint(url: &str) -> Result<Option<VerifiedEndpoint>, ExtractError> {
     let started = Instant::now();
-    let client = Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(2))
-        .build()
-        .map_err(probe_error)?;
+    let client = probe_client();
 
     let mut current = Url::parse(url).map_err(probe_error)?;
 
@@ -70,13 +75,7 @@ pub async fn probe_endpoint(url: &str) -> Result<Option<VerifiedEndpoint>, Extra
 
         let status = response.status();
         if is_reachable_status(status) {
-            if matches!(
-                status,
-                StatusCode::MOVED_PERMANENTLY
-                    | StatusCode::FOUND
-                    | StatusCode::TEMPORARY_REDIRECT
-                    | StatusCode::PERMANENT_REDIRECT
-            ) {
+            if is_followable_redirect(status) {
                 if let Some(next) = response
                     .headers()
                     .get(LOCATION)
@@ -109,10 +108,11 @@ pub async fn probe_endpoint(url: &str) -> Result<Option<VerifiedEndpoint>, Extra
         return Ok(None);
     }
 
-    Ok(Some(VerifiedEndpoint {
-        url: current.to_string().trim_end_matches('/').to_owned(),
-        status: StatusCode::FOUND.as_u16(),
-    }))
+    Ok(None)
+}
+
+fn probe_client() -> &'static Client {
+    &PROBE_CLIENT
 }
 
 fn is_reachable_status(status: StatusCode) -> bool {
@@ -126,6 +126,17 @@ fn is_reachable_status(status: StatusCode) -> bool {
             | StatusCode::PERMANENT_REDIRECT
             | StatusCode::UNAUTHORIZED
             | StatusCode::FORBIDDEN
+    )
+}
+
+fn is_followable_redirect(status: StatusCode) -> bool {
+    matches!(
+        status,
+        StatusCode::MOVED_PERMANENTLY
+            | StatusCode::FOUND
+            | StatusCode::SEE_OTHER
+            | StatusCode::TEMPORARY_REDIRECT
+            | StatusCode::PERMANENT_REDIRECT
     )
 }
 
@@ -271,6 +282,54 @@ mod tests {
 
         assert_eq!(endpoint.url, format!("{}/login", server.uri()));
         assert_eq!(endpoint.status, 200);
+    }
+
+    #[tokio::test]
+    async fn probe_follows_see_other_redirects() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .respond_with(
+                ResponseTemplate::new(303)
+                    .insert_header("Location", format!("{}/login", server.uri())),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/login"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let endpoint = probe_endpoint(&server.uri())
+            .await
+            .expect("probe request")
+            .expect("reachable endpoint");
+
+        assert_eq!(endpoint.url, format!("{}/login", server.uri()));
+        assert_eq!(endpoint.status, 200);
+    }
+
+    #[tokio::test]
+    async fn probe_returns_none_after_redirect_hop_limit() {
+        let server = MockServer::start().await;
+        for index in 0..6 {
+            let current = if index == 0 {
+                "/".to_owned()
+            } else {
+                format!("/hop-{index}")
+            };
+            let next = format!("{}/hop-{}", server.uri(), index + 1);
+            Mock::given(method("GET"))
+                .and(path(current))
+                .respond_with(ResponseTemplate::new(302).insert_header("Location", next))
+                .mount(&server)
+                .await;
+        }
+
+        let endpoint = probe_endpoint(&server.uri()).await.expect("probe request");
+
+        assert_eq!(endpoint, None);
     }
 
     #[test]

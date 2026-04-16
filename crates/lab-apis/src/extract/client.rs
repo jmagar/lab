@@ -728,9 +728,8 @@ fn probe_candidates(
         && parsed_port == selected_port.container_port
     {
         candidates.push(format!("http://{probe_host}:{}", selected_port.host_port));
-    } else {
-        candidates.push(format!("http://{probe_host}:{}", selected_port.host_port));
     }
+    candidates.push(format!("http://{probe_host}:{}", selected_port.host_port));
     candidates.dedup();
     candidates
 }

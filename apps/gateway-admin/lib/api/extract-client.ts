@@ -24,9 +24,14 @@ export interface ExtractWarning {
   message: string
 }
 
+export interface ExtractSshUri {
+  host: string
+  path: string
+}
+
 export interface ExtractTarget {
   mode: 'fleet' | 'targeted'
-  uri?: string
+  uri?: string | ExtractSshUri
 }
 
 export interface ExtractReport {
@@ -95,7 +100,7 @@ async function extractAction<T>(
 
 export const extractApi = {
   async scan(uri?: string, signal?: AbortSignal): Promise<ExtractReport> {
-    const params = uri ? { uri } : {}
+    const params = uri === undefined ? {} : { uri }
     return extractAction<ExtractReport>('scan', params, signal)
   },
 }

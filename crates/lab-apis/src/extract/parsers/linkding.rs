@@ -1,6 +1,8 @@
 //! Linkding parser. Reads `linkding/db.sqlite3`, extracts `LINKDING_URL` + `LINKDING_TOKEN`.
 
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -39,11 +41,28 @@ fn write_temp_sqlite(contents: &[u8]) -> Result<PathBuf, ExtractError> {
             message: format!("system time error: {error}"),
         })?
         .as_nanos();
+
     let path = std::env::temp_dir().join(format!(
         "lab-extract-linkding-{}-{unique}.sqlite3",
         std::process::id()
     ));
-    fs::write(&path, contents).map_err(|source| ExtractError::Io {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(&path).map_err(|source| ExtractError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    file.write_all(contents).map_err(|source| ExtractError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    file.flush().map_err(|source| ExtractError::Io {
         path: path.clone(),
         source,
     })?;
