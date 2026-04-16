@@ -59,4 +59,9 @@ impl DeviceRuntime {
             })
             .await
     }
+
+    #[must_use]
+    pub const fn role(&self) -> DeviceRole {
+        self.resolved.role
+    }
 }

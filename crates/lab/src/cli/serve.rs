@@ -89,6 +89,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     .context("resolve device runtime role")?;
     let device_store = Arc::new(DeviceFleetStore::default());
     let device_runtime = DeviceRuntime::for_http_master(resolved_runtime, port);
+    let device_role = device_runtime.role();
 
     let gateway_runtime = GatewayRuntimeHandle::default();
     if !config.upstream.is_empty() {
@@ -112,7 +113,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
 
     match transport {
         Transport::Stdio => {
-            run_stdio(Arc::new(registry), Arc::clone(&gateway_manager), notifier).await
+            run_stdio(
+                Arc::new(registry),
+                Arc::clone(&gateway_manager),
+                device_role,
+                notifier,
+            )
+            .await
         }
         Transport::Http => {
             let bearer_token = http_token();
@@ -146,6 +153,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             state = state.with_gateway_manager(Arc::clone(&gateway_manager));
             state = state.with_auth_config(auth_config);
             state = state.with_device_store(Arc::clone(&device_store));
+            state = state.with_device_role(device_role);
             if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
                 tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
                 state = state.with_web_assets_dir(web_assets_dir);
@@ -299,6 +307,7 @@ async fn run_http(
 async fn run_stdio(
     registry: Arc<ToolRegistry>,
     gateway_manager: Arc<GatewayManager>,
+    device_role: crate::config::DeviceRole,
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     tracing::info!(
@@ -308,6 +317,7 @@ async fn run_stdio(
     let server = LabMcpServer {
         registry,
         gateway_manager: Some(Arc::clone(&gateway_manager)),
+        device_role: Some(device_role),
         peers: Arc::clone(&notifier.peers),
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
@@ -354,6 +364,7 @@ fn build_mcp_service(
     // All HTTP sessions share the same PeerNotifier (and thus the same peers
     // vec) so that gateway reload notifications reach every connected session.
     let shared_peers = Arc::clone(&notifier.peers);
+    let device_role = state.device_role;
 
     Ok(StreamableHttpService::new(
         move || {
@@ -363,6 +374,7 @@ fn build_mcp_service(
             Ok(LabMcpServer {
                 registry: reg,
                 gateway_manager: manager,
+                device_role,
                 peers,
             })
         },

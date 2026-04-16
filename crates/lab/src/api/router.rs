@@ -25,6 +25,8 @@ use tracing::Level;
 
 use lab_auth::error::AuthError as LabAuthError;
 
+use crate::config::DeviceRole;
+
 /// Constant-time byte comparison using `subtle::ConstantTimeEq` to prevent
 /// timing-based token prefix leakage (lab-63jc).
 fn tokens_equal(a: &str, b: &str) -> bool {
@@ -98,6 +100,7 @@ async fn auth_token(
 
 /// Build the `/v1` sub-router with all feature-gated service routes.
 fn build_v1_router(state: &AppState) -> Router<AppState> {
+    let is_master = !matches!(state.device_role, Some(DeviceRole::NonMaster));
     let openapi_spec: Arc<String> = super::openapi::build_openapi_spec(state.registry.services())
         .unwrap_or_else(|e| {
             tracing::error!(error = %e, "failed to serialize OpenAPI spec");
@@ -105,30 +108,33 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         });
     let spec_for_route = openapi_spec;
 
-    let mut v1 = Router::new()
-        .route("/{service}/actions", get(service_actions))
-        .nest("/device", super::device::routes(state.clone()))
-        .nest("/gateway", services::gateway::routes(state.clone()))
-        .route(
-            "/openapi.json",
-            get(move || {
-                let spec = spec_for_route.clone();
-                async move {
-                    (
-                        [
-                            (header::CONTENT_TYPE, "application/json"),
-                            (header::CACHE_CONTROL, "private, no-store"),
-                        ],
-                        (*spec).clone(),
-                    )
-                }
-            }),
-        )
-        .route(
-            "/docs",
-            get(|| async { Html(include_str!("openapi_docs.html")) }),
-        )
-        .nest("/extract", services::extract::routes(state.clone()));
+    let mut v1 = Router::new().nest("/device", super::device::routes(state.clone()));
+
+    if is_master {
+        v1 = v1
+            .route("/{service}/actions", get(service_actions))
+            .nest("/gateway", services::gateway::routes(state.clone()))
+            .route(
+                "/openapi.json",
+                get(move || {
+                    let spec = spec_for_route.clone();
+                    async move {
+                        (
+                            [
+                                (header::CONTENT_TYPE, "application/json"),
+                                (header::CACHE_CONTROL, "private, no-store"),
+                            ],
+                            (*spec).clone(),
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/docs",
+                get(|| async { Html(include_str!("openapi_docs.html")) }),
+            )
+            .nest("/extract", services::extract::routes(state.clone()));
+    }
 
     macro_rules! mount_if_enabled {
         ($v1:ident, $state:ident, $feat:literal, $name:literal, $mod:ident) => {
@@ -139,27 +145,29 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         };
     }
 
-    mount_if_enabled!(v1, state, "radarr", "radarr", radarr);
-    mount_if_enabled!(v1, state, "sonarr", "sonarr", sonarr);
-    mount_if_enabled!(v1, state, "prowlarr", "prowlarr", prowlarr);
-    mount_if_enabled!(v1, state, "plex", "plex", plex);
-    mount_if_enabled!(v1, state, "tautulli", "tautulli", tautulli);
-    mount_if_enabled!(v1, state, "sabnzbd", "sabnzbd", sabnzbd);
-    mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
-    mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
-    mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
-    mount_if_enabled!(v1, state, "memos", "memos", memos);
-    mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
-    mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
-    mount_if_enabled!(v1, state, "arcane", "arcane", arcane);
-    mount_if_enabled!(v1, state, "unraid", "unraid", unraid);
-    mount_if_enabled!(v1, state, "unifi", "unifi", unifi);
-    mount_if_enabled!(v1, state, "overseerr", "overseerr", overseerr);
-    mount_if_enabled!(v1, state, "gotify", "gotify", gotify);
-    mount_if_enabled!(v1, state, "openai", "openai", openai);
-    mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
-    mount_if_enabled!(v1, state, "tei", "tei", tei);
-    mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
+    if is_master {
+        mount_if_enabled!(v1, state, "radarr", "radarr", radarr);
+        mount_if_enabled!(v1, state, "sonarr", "sonarr", sonarr);
+        mount_if_enabled!(v1, state, "prowlarr", "prowlarr", prowlarr);
+        mount_if_enabled!(v1, state, "plex", "plex", plex);
+        mount_if_enabled!(v1, state, "tautulli", "tautulli", tautulli);
+        mount_if_enabled!(v1, state, "sabnzbd", "sabnzbd", sabnzbd);
+        mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
+        mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
+        mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
+        mount_if_enabled!(v1, state, "memos", "memos", memos);
+        mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
+        mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
+        mount_if_enabled!(v1, state, "arcane", "arcane", arcane);
+        mount_if_enabled!(v1, state, "unraid", "unraid", unraid);
+        mount_if_enabled!(v1, state, "unifi", "unifi", unifi);
+        mount_if_enabled!(v1, state, "overseerr", "overseerr", overseerr);
+        mount_if_enabled!(v1, state, "gotify", "gotify", gotify);
+        mount_if_enabled!(v1, state, "openai", "openai", openai);
+        mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
+        mount_if_enabled!(v1, state, "tei", "tei", tei);
+        mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
+    }
 
     v1
 }
@@ -189,7 +197,8 @@ pub fn build_router(
     // Bearer auth is applied to this sub-router so both surfaces get the same
     // auth treatment while health probes remain exempt (lab-3qn.5).
     let mut protected = Router::new().nest("/v1", v1);
-    if let Some(mcp) = mcp_router {
+    let is_master = !matches!(state.device_role, Some(DeviceRole::NonMaster));
+    if is_master && let Some(mcp) = mcp_router {
         protected = protected.merge(mcp);
     }
 

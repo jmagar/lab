@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::path::PathBuf;
 
 use crate::catalog::{Catalog, build_catalog};
+use crate::config::DeviceRole;
 use crate::dispatch::clients::ServiceClients;
 use crate::device::store::DeviceFleetStore;
 use crate::registry::{ToolRegistry, build_default_registry};
@@ -43,6 +44,8 @@ pub struct AppState {
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
     /// Shared fleet state store for device runtime ingestion.
     pub device_store: Option<Arc<DeviceFleetStore>>,
+    /// Resolved device role for the current process.
+    pub device_role: Option<DeviceRole>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
 }
@@ -81,6 +84,7 @@ impl AppState {
             oauth_state: None,
             gateway_manager: None,
             device_store: None,
+            device_role: None,
             web_assets_dir: None,
         }
     }
@@ -112,6 +116,12 @@ impl AppState {
     #[must_use]
     pub fn with_device_store(mut self, store: Arc<DeviceFleetStore>) -> Self {
         self.device_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_device_role(mut self, role: DeviceRole) -> Self {
+        self.device_role = Some(role);
         self
     }
 

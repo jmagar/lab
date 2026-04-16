@@ -19,6 +19,7 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 
+use crate::config::DeviceRole;
 use crate::dispatch::gateway::manager::GatewayManager;
 use crate::dispatch::gateway::types::GatewayCatalogDiff;
 use crate::dispatch::upstream::types::UpstreamCapability;
@@ -97,6 +98,8 @@ pub struct LabMcpServer {
     pub registry: Arc<ToolRegistry>,
     /// Shared gateway manager used to resolve the current live upstream pool.
     pub gateway_manager: Option<Arc<GatewayManager>>,
+    /// Resolved role for the current device.
+    pub device_role: Option<DeviceRole>,
     /// Connected peers for list-changed notifications.
     pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
 }
@@ -565,6 +568,9 @@ impl LabMcpServer {
     }
 
     async fn service_visible_on_mcp(&self, service: &str) -> bool {
+        if matches!(self.device_role, Some(DeviceRole::NonMaster)) {
+            return false;
+        }
         match &self.gateway_manager {
             Some(manager) => manager.surface_enabled_for_service(service, "mcp").await,
             None => true,
