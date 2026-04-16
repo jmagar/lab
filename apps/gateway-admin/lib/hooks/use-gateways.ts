@@ -10,6 +10,7 @@ import {
   getMockSupportedServicesFallback,
 } from '@/lib/api/mock-fallback'
 import { EXPOSE_NONE_PATTERN } from '@/lib/api/tool-exposure-draft'
+import { setMockGatewayOverride } from '@/lib/api/mock-gateway-overrides'
 import {
   mockGateways,
   mockReloadResult,
@@ -226,7 +227,18 @@ export function useGatewayMutations() {
       await mockDelay()
       const gateway = mockGateways.find(g => g.id === id)
       if (!gateway) throw new Error('Gateway not found')
-      const updated = { ...gateway, ...input, updated_at: new Date().toISOString() }
+      const updated = {
+        ...gateway,
+        ...input,
+        config: {
+          ...gateway.config,
+          ...input.config,
+        },
+        updated_at: new Date().toISOString(),
+      }
+      if (input.config?.proxy_resources !== undefined) {
+        setMockGatewayOverride(id, { proxyResources: input.config.proxy_resources })
+      }
       await mutate(gatewayKey(id), updated, false)
       await mutate(GATEWAYS_KEY)
       return updated
@@ -319,6 +331,7 @@ export function useGatewayMutations() {
         false,
       )
       await mutate(exposurePolicyKey(id), policy, false)
+      setMockGatewayOverride(id, { exposurePolicy: policy })
       return policy
     }
     const result = await gatewayApi.setExposurePolicy(id, policy)

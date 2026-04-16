@@ -1,6 +1,7 @@
 import type { DiscoveredTool, ExposurePolicy } from '../types/gateway.ts'
 
 export const EXPOSE_NONE_PATTERN = '__labby_expose_none__'
+export type ExposureViewFilter = 'all' | 'enabled' | 'hidden'
 
 function sortUnique(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right))
@@ -65,4 +66,65 @@ export function getDraftExposureSummary(
 
 export function stripExposeNonePattern(patterns: string[]): string[] {
   return patterns.filter((pattern) => pattern !== EXPOSE_NONE_PATTERN)
+}
+
+export function getExposureFilterCounts(
+  tools: DiscoveredTool[],
+): Record<ExposureViewFilter, number> {
+  const enabled = tools.filter((tool) => tool.exposed).length
+
+  return {
+    all: tools.length,
+    enabled,
+    hidden: tools.length - enabled,
+  }
+}
+
+export function filterToolsForExposureView(
+  tools: DiscoveredTool[],
+  filter: ExposureViewFilter,
+  search: string,
+): DiscoveredTool[] {
+  const normalizedSearch = search.trim().toLowerCase()
+
+  return tools.filter((tool) => {
+    const matchesFilter =
+      filter === 'all'
+        ? true
+        : filter === 'enabled'
+          ? tool.exposed
+          : !tool.exposed
+
+    const matchesSearch =
+      normalizedSearch.length === 0 ||
+      tool.name.toLowerCase().includes(normalizedSearch) ||
+      tool.description?.toLowerCase().includes(normalizedSearch)
+
+    return matchesFilter && matchesSearch
+  })
+}
+
+export function getDraftChangeDescription(
+  currentExposedToolNames: string[],
+  draftSelectedToolNames: string[],
+): string {
+  const current = new Set(currentExposedToolNames)
+  const draft = new Set(draftSelectedToolNames)
+
+  const enabled = draftSelectedToolNames.filter((toolName) => !current.has(toolName)).length
+  const hidden = currentExposedToolNames.filter((toolName) => !draft.has(toolName)).length
+
+  if (enabled === 0 && hidden === 0) {
+    return 'No unsaved exposure changes.'
+  }
+
+  const parts: string[] = []
+  if (enabled > 0) {
+    parts.push(`${enabled} tool${enabled === 1 ? '' : 's'} will be enabled`)
+  }
+  if (hidden > 0) {
+    parts.push(`${hidden} tool${hidden === 1 ? '' : 's'} will be hidden`)
+  }
+
+  return `${parts.join(', ')}.`
 }

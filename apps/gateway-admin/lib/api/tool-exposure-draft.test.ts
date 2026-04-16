@@ -7,7 +7,10 @@ import {
   applyBulkExposureToDraft,
   buildExposurePolicyFromDraft,
   createExposureDraftFromTools,
+  getDraftChangeDescription,
   getDraftExposureSummary,
+  getExposureFilterCounts,
+  filterToolsForExposureView,
 } from './tool-exposure-draft.ts'
 
 const tools: DiscoveredTool[] = [
@@ -44,4 +47,36 @@ test('buildExposurePolicyFromDraft maps no selected tools to expose none sentine
 
 test('getDraftExposureSummary reports exposed over total counts', () => {
   assert.equal(getDraftExposureSummary(['alpha', 'beta', 'gamma'], ['beta']).label, '1/3')
+})
+
+test('getExposureFilterCounts reports all, enabled, and hidden buckets', () => {
+  assert.deepEqual(getExposureFilterCounts(tools), {
+    all: 3,
+    enabled: 2,
+    hidden: 1,
+  })
+})
+
+test('filterToolsForExposureView narrows tools by exposure state and search query', () => {
+  assert.deepEqual(
+    filterToolsForExposureView(tools, 'hidden', ''),
+    [tools[1]],
+  )
+
+  assert.deepEqual(
+    filterToolsForExposureView(tools, 'all', 'gam'),
+    [tools[2]],
+  )
+})
+
+test('getDraftChangeDescription describes pending changes against the current exposure set', () => {
+  assert.equal(
+    getDraftChangeDescription(['alpha', 'gamma'], ['gamma', 'beta']),
+    '1 tool will be enabled, 1 tool will be hidden.',
+  )
+
+  assert.equal(
+    getDraftChangeDescription(['alpha', 'beta'], ['alpha', 'beta']),
+    'No unsaved exposure changes.',
+  )
 })

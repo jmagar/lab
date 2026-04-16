@@ -15,6 +15,7 @@ import {
   FileText,
   MessageSquare,
   Loader2,
+  Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppHeader } from '@/components/app-header'
@@ -65,6 +66,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [draftSelectedToolNames, setDraftSelectedToolNames] = useState<string[]>([])
   const [selectedRowToolNames, setSelectedRowToolNames] = useState<string[]>([])
   const [isSavingExposure, setIsSavingExposure] = useState(false)
+  const [exposureSaveError, setExposureSaveError] = useState<string | null>(null)
+  const [resourceSearch, setResourceSearch] = useState('')
+  const [promptSearch, setPromptSearch] = useState('')
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
   const toolExposureSignature = useMemo(
     () =>
@@ -279,30 +283,47 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         : tool.name
       : null,
   }))
+  const hiddenToolCount = displayedTools.filter((tool) => !tool.exposed).length
+  const filteredResources = gateway.discovery.resources.filter(
+    (resource) =>
+      resource.name.toLowerCase().includes(resourceSearch.trim().toLowerCase()) ||
+      resource.uri.toLowerCase().includes(resourceSearch.trim().toLowerCase()) ||
+      resource.description?.toLowerCase().includes(resourceSearch.trim().toLowerCase()),
+  )
+  const filteredPrompts = gateway.discovery.prompts.filter(
+    (prompt) =>
+      prompt.name.toLowerCase().includes(promptSearch.trim().toLowerCase()) ||
+      prompt.description?.toLowerCase().includes(promptSearch.trim().toLowerCase()),
+  )
 
   const handleExposeAllChange = (checked: boolean) => {
     setDraftSelectedToolNames(checked ? [...allToolNames].sort((left, right) => left.localeCompare(right)) : [])
     setSelectedRowToolNames([])
+    setExposureSaveError(null)
   }
 
   const handleBulkEnableSelected = (toolNames: string[]) => {
     setDraftSelectedToolNames((current) => applyBulkExposureToDraft(current, toolNames, true))
     setSelectedRowToolNames([])
+    setExposureSaveError(null)
   }
 
   const handleBulkDisableSelected = (toolNames: string[]) => {
     setDraftSelectedToolNames((current) => applyBulkExposureToDraft(current, toolNames, false))
     setSelectedRowToolNames([])
+    setExposureSaveError(null)
   }
 
   const handleCancelExposureDraft = () => {
     setDraftSelectedToolNames(currentExposedToolNames)
     setSelectedRowToolNames([])
     setManageToolsMode(false)
+    setExposureSaveError(null)
   }
 
   const handleSaveExposureDraft = async () => {
     setIsSavingExposure(true)
+    setExposureSaveError(null)
     try {
       const policy = buildExposurePolicyFromDraft(allToolNames, draftSelectedToolNames)
       await setExposurePolicy(gateway.id, policy)
@@ -310,9 +331,24 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       setManageToolsMode(false)
       setSelectedRowToolNames([])
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to update tool exposure'))
+      const message = getErrorMessage(error, 'Failed to update tool exposure')
+      setExposureSaveError(`Could not save these exposure changes. Your draft is still local. ${message}`)
+      toast.error(message)
     } finally {
       setIsSavingExposure(false)
+    }
+  }
+
+  const handleProxyResourcesToggle = async (enabled: boolean) => {
+    try {
+      await updateGateway(gateway.id, {
+        config: {
+          proxy_resources: enabled,
+        },
+      })
+      toast.success(enabled ? 'Resource exposure enabled' : 'Resource exposure disabled')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to update resource exposure'))
     }
   }
 
@@ -361,6 +397,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <TransportBadge transport={gateway.transport} />
+                  <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    {gateway.source === 'lab_service' ? 'Lab gateway' : 'Custom gateway'}
+                  </Badge>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <span
@@ -402,59 +441,56 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 </div>
               </div>
 
-              <div className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
                 <div className="rounded-xl border bg-muted/20 p-4">
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Configuration</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    {gateway.transport === 'http' ? (
-                      <div className="rounded-lg border bg-background p-3">
-                        <div className="flex items-start gap-3">
-                          <Globe className="mt-0.5 size-4 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">URL</p>
-                            <code className="break-all text-xs text-muted-foreground">{gateway.config.url}</code>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border bg-background p-3">
-                        <div className="flex items-start gap-3">
-                          <Terminal className="mt-0.5 size-4 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">Command</p>
-                            <code className="break-all text-xs text-muted-foreground">
-                              {gateway.config.command ?? 'Not configured'}
-                              {gateway.config.args?.length ? ` ${gateway.config.args.join(' ')}` : ''}
-                            </code>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {gateway.config.bearer_token_env && (
-                      <div className="rounded-lg border bg-background p-3">
-                        <div className="flex items-start gap-3">
-                          <Key className="mt-0.5 size-4 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">Bearer token env</p>
-                            <code className="text-xs text-muted-foreground">{gateway.config.bearer_token_env}</code>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="rounded-lg border bg-background p-3">
-                      <div className="flex items-start gap-3">
-                        <FileText className="mt-0.5 size-4 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">Proxy resources</p>
-                          <p className="text-xs text-muted-foreground">
-                            {gateway.config.proxy_resources ? 'Enabled for downstream resource requests' : 'Disabled'}
-                          </p>
-                        </div>
-                      </div>
+                  <dl className="mt-3 divide-y rounded-lg border bg-background">
+                    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_1fr] sm:items-start">
+                      <dt className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        {gateway.transport === 'http' ? <Globe className="size-3.5" /> : <Terminal className="size-3.5" />}
+                        {gateway.transport === 'http' ? 'Endpoint' : 'Command'}
+                      </dt>
+                      <dd className="min-w-0 text-sm text-foreground">
+                        <code className="break-all text-xs text-muted-foreground">
+                          {gateway.transport === 'http'
+                            ? gateway.config.url
+                            : `${gateway.config.command ?? 'Not configured'}${gateway.config.args?.length ? ` ${gateway.config.args.join(' ')}` : ''}`}
+                        </code>
+                      </dd>
                     </div>
-                  </div>
+                    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_1fr] sm:items-start">
+                      <dt className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        <Key className="size-3.5" />
+                        Bearer env
+                      </dt>
+                      <dd className="text-sm text-muted-foreground">
+                        {gateway.config.bearer_token_env ? (
+                          <code className="text-xs text-muted-foreground">{gateway.config.bearer_token_env}</code>
+                        ) : (
+                          'Not configured'
+                        )}
+                      </dd>
+                    </div>
+                    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_1fr] sm:items-start">
+                      <dt className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                        <FileText className="size-3.5" />
+                        Resources
+                      </dt>
+                      <dd className="text-sm text-muted-foreground">
+                        {gateway.config.proxy_resources ? 'Exposed to downstream clients' : 'Hidden from downstream clients'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {hiddenToolCount === 0
+                      ? 'Every discovered tool is currently exposed downstream.'
+                      : `${hiddenToolCount} discovered tool${hiddenToolCount === 1 ? ' is' : 's are'} currently hidden from downstream clients.`}
+                  </p>
+                  {gateway.discovery.prompts.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Prompt exposure is upstream-derived today; per-prompt controls are not available yet.
+                    </p>
+                  )}
                 </div>
 
                 {isLabGateway && (
@@ -570,6 +606,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 hasDraftChanges={hasDraftChanges}
                 isSaving={isSavingExposure}
                 selectedRowToolNames={selectedRowToolNames}
+                currentExposedToolNames={currentExposedToolNames}
+                draftSelectedToolNames={draftSelectedToolNames}
+                saveErrorMessage={exposureSaveError}
                 onExposeAllChange={handleExposeAllChange}
                 onManageModeChange={setManageToolsMode}
                 onRowSelectionChange={setSelectedRowToolNames}
@@ -583,7 +622,36 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
 
           <TabsContent value="resources">
             <div className="rounded-lg border bg-card p-6">
-              <h2 className="text-lg font-semibold mb-4">Discovered MCP Resources</h2>
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">Discovered MCP Resources</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Resource exposure is managed as a surface-level setting for this gateway.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                  <div className="relative w-full min-w-[240px] lg:w-[280px]">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={resourceSearch}
+                      onChange={(event) => setResourceSearch(event.target.value)}
+                      placeholder="Search resources..."
+                      className="flex h-9 w-full rounded-md border bg-background px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
+                    <span>{filteredResources.length}/{gateway.discovery.resources.length}</span>
+                    <span>visible</span>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                    <span className="text-sm font-medium">Expose resources</span>
+                    <Switch
+                      checked={gateway.config.proxy_resources ?? true}
+                      onCheckedChange={handleProxyResourcesToggle}
+                    />
+                  </div>
+                </div>
+              </div>
               {gateway.discovery.resources.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="size-8 mx-auto mb-3 opacity-50" />
@@ -591,7 +659,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {gateway.discovery.resources.map((resource) => (
+                  {filteredResources.map((resource) => (
                     <div key={resource.name} className="flex items-start justify-between rounded-lg border p-4">
                       <div>
                         <code className="text-sm font-mono font-medium">{resource.name}</code>
@@ -611,7 +679,32 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
 
           <TabsContent value="prompts">
             <div className="rounded-lg border bg-card p-6">
-              <h2 className="text-lg font-semibold mb-4">Discovered MCP Prompts</h2>
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">Discovered MCP Prompts</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Prompts are currently upstream-derived. Search and inspect them here while tool exposure is managed separately.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                  <div className="relative w-full min-w-[240px] lg:w-[280px]">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={promptSearch}
+                      onChange={(event) => setPromptSearch(event.target.value)}
+                      placeholder="Search prompts..."
+                      className="flex h-9 w-full rounded-md border bg-background px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
+                    <span>{filteredPrompts.length}/{gateway.discovery.prompts.length}</span>
+                    <span>visible</span>
+                  </div>
+                  <Badge variant="outline" className="rounded-full px-3 py-1 text-muted-foreground">
+                    Upstream-derived
+                  </Badge>
+                </div>
+              </div>
               {gateway.discovery.prompts.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <MessageSquare className="size-8 mx-auto mb-3 opacity-50" />
@@ -619,7 +712,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {gateway.discovery.prompts.map((prompt) => (
+                  {filteredPrompts.map((prompt) => (
                     <div key={prompt.name} className="rounded-lg border p-4">
                       <div className="flex items-center justify-between">
                         <code className="text-sm font-mono font-medium">{prompt.name}</code>
