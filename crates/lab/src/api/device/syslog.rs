@@ -12,11 +12,12 @@ pub struct DeviceSyslogBatch {
 
 pub async fn handle_batch(
     State(state): State<AppState>,
-    Json(_payload): Json<DeviceSyslogBatch>,
+    Json(payload): Json<DeviceSyslogBatch>,
 ) -> Result<Json<DeviceAck>, ToolError> {
-    let _store = state
+    let store = state
         .device_store
         .clone()
         .ok_or_else(|| ToolError::internal_message("device store is not configured"))?;
+    store.record_logs(&payload.device_id, payload.events).await;
     Ok(super::ok())
 }

@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
+use crate::device::log_event::DeviceLogEvent;
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceFleetStore {
@@ -19,6 +20,7 @@ pub struct DeviceSnapshot {
     pub role: Option<String>,
     pub status: Option<DeviceStatus>,
     pub metadata: Option<DeviceMetadataUpload>,
+    pub logs: Vec<DeviceLogEvent>,
 }
 
 impl DeviceFleetStore {
@@ -33,6 +35,7 @@ impl DeviceFleetStore {
                 role: None,
                 status: None,
                 metadata: None,
+                logs: Vec::new(),
             });
         snapshot.device_id = hello.device_id;
         snapshot.last_seen = SystemTime::now();
@@ -50,6 +53,7 @@ impl DeviceFleetStore {
                 role: None,
                 status: None,
                 metadata: None,
+                logs: Vec::new(),
             });
         snapshot.device_id = status.device_id.clone();
         snapshot.connected = status.connected;
@@ -78,9 +82,35 @@ impl DeviceFleetStore {
                 role: None,
                 status: None,
                 metadata: None,
+                logs: Vec::new(),
             });
         snapshot.device_id = metadata.device_id.clone();
         snapshot.last_seen = SystemTime::now();
         snapshot.metadata = Some(metadata);
+    }
+
+    pub async fn record_logs(&self, device_id: &str, events: Vec<DeviceLogEvent>) {
+        let mut inner = self.inner.write().await;
+        let snapshot = inner
+            .entry(device_id.to_string())
+            .or_insert_with(|| DeviceSnapshot {
+                device_id: device_id.to_string(),
+                connected: false,
+                last_seen: SystemTime::now(),
+                role: None,
+                status: None,
+                metadata: None,
+                logs: Vec::new(),
+            });
+        snapshot.last_seen = SystemTime::now();
+        snapshot.logs.extend(events);
+    }
+
+    pub async fn logs_for_device(&self, device_id: &str) -> Vec<DeviceLogEvent> {
+        let inner = self.inner.read().await;
+        inner
+            .get(device_id)
+            .map(|snapshot| snapshot.logs.clone())
+            .unwrap_or_default()
     }
 }

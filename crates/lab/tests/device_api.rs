@@ -12,7 +12,7 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn hello_endpoint_updates_master_store() {
-    let app = test_device_router();
+    let (app, _store) = test_device_router();
     let response = app
         .oneshot(hello_request(
             r#"{"device_id":"dookie","role":"non-master","version":"1.0.0"}"#,
@@ -25,7 +25,7 @@ async fn hello_endpoint_updates_master_store() {
 
 #[tokio::test]
 async fn syslog_batch_endpoint_accepts_normalized_events() {
-    let app = test_device_router();
+    let (app, store) = test_device_router();
     let response = app
         .oneshot(syslog_request(
             r#"{"device_id":"dookie","events":[{"device_id":"dookie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
@@ -34,11 +34,13 @@ async fn syslog_batch_endpoint_accepts_normalized_events() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(store.logs_for_device("dookie").await.len(), 1);
 }
 
-fn test_device_router() -> axum::Router {
-    let state = AppState::new().with_device_store(Arc::new(DeviceFleetStore::default()));
-    build_router_with_bearer(state, None, None)
+fn test_device_router() -> (axum::Router, Arc<DeviceFleetStore>) {
+    let store = Arc::new(DeviceFleetStore::default());
+    let state = AppState::new().with_device_store(Arc::clone(&store));
+    (build_router_with_bearer(state, None, None), store)
 }
 
 fn hello_request(body: &str) -> Request<Body> {

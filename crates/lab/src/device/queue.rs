@@ -20,6 +20,14 @@ impl QueuedEnvelope {
             payload,
         }
     }
+
+    #[must_use]
+    pub fn syslog_batch(payload: serde_json::Value) -> Self {
+        Self {
+            kind: "syslog_batch".to_string(),
+            payload,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

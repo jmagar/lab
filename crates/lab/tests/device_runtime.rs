@@ -1,4 +1,5 @@
 use lab::device::checkin::{DeviceHello, DeviceStatus};
+use lab::device::log_event::DeviceLogEvent;
 use lab::device::runtime::DeviceRuntime;
 use lab::device::store::DeviceFleetStore;
 
@@ -64,4 +65,23 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     let runtime =
         DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path());
     runtime.upload_initial_metadata().await.unwrap();
+}
+
+#[tokio::test]
+async fn master_store_keeps_uploaded_logs_by_device() {
+    let store = DeviceFleetStore::default();
+    store.record_logs(
+        "dookie",
+        vec![DeviceLogEvent {
+            device_id: "dookie".into(),
+            source: "journald".into(),
+            timestamp_unix_ms: 1,
+            level: Some("info".into()),
+            message: "hello".into(),
+            fields: Default::default(),
+        }],
+    )
+    .await;
+
+    assert_eq!(store.logs_for_device("dookie").await.len(), 1);
 }
