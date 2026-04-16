@@ -2,6 +2,8 @@
 
 `lab` is a pluggable homelab CLI and MCP server implemented as a Rust workspace with a split between reusable upstream-facing SDK clients and product-facing dispatch and surface layers.
 
+It also includes a product-local device runtime subsystem. That subsystem is separate from gateway and shared service dispatch code and owns fleet role resolution, device ingest, and master-only control-plane gating.
+
 ## Core Shape
 
 - One workspace
@@ -49,6 +51,7 @@ It is separated from `lab-apis` because it depends on `axum`, which is forbidden
 - output rendering
 - install/uninstall flows
 - doctor and operator workflows
+- the device runtime and fleet state store
 
 It must stay thin at the surface boundary, but it still owns shared product dispatch and product-local systems such as gateway and upstream management.
 
@@ -197,4 +200,4 @@ Each service gets:
 - one `PluginMeta` when it participates in install/TUI/doctor flows
 - one health-check implementation when it models a remotely configured service
 
-There are product-local exceptions. [`EXTRACT.md`](./EXTRACT.md) is a synthetic bootstrap service, and [`GATEWAY.md`](./GATEWAY.md) is a product-local management surface for runtime upstream configuration rather than a feature-gated `lab-apis` integration.
+There are product-local exceptions. [`EXTRACT.md`](./EXTRACT.md) is a synthetic bootstrap service, [`GATEWAY.md`](./GATEWAY.md) is a product-local management surface for runtime upstream configuration, and [`DEVICE_RUNTIME.md`](./DEVICE_RUNTIME.md) describes the device runtime that turns every `lab serve` process into either the fleet `master` or a reporting non-master device.

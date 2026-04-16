@@ -14,6 +14,7 @@ pub struct QueuedEnvelope {
 
 impl QueuedEnvelope {
     #[must_use]
+    #[allow(dead_code)]
     pub fn status(payload: serde_json::Value) -> Self {
         Self {
             kind: "status".to_string(),
@@ -85,8 +86,7 @@ async fn append_entry(path: &Path, envelope: &QueuedEnvelope) -> Result<()> {
             .with_context(|| format!("create {}", parent.display()))?;
     }
 
-    let mut line =
-        serde_json::to_string(envelope).context("serialize queue entry for append")?;
+    let mut line = serde_json::to_string(envelope).context("serialize queue entry for append")?;
     line.push('\n');
 
     use tokio::io::AsyncWriteExt as _;

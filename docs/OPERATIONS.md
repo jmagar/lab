@@ -128,6 +128,37 @@ Typical checks include:
 
 `lab health` should expose normalized health status using shared service contracts.
 
+## Device Runtime Operations
+
+Every Linux `x86_64` fleet member runs `lab serve` as a device runtime.
+
+Operationally:
+
+- one device is the `master`
+- non-master devices report to the master over `/v1/device/*`
+- fleet inventory and fleet logs are queried from the master
+
+Useful commands:
+
+```bash
+lab device list
+lab device get dookie
+lab logs search dookie oauth
+```
+
+Useful HTTP checks:
+
+```bash
+curl http://<device>:8765/health
+curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<master>:8765/v1/device/devices
+```
+
+Current operational limits:
+
+- fleet state is in-memory on the master
+- non-master background uploads reuse the shared static bearer token when bearer auth is enabled
+- non-master devices intentionally do not expose Web UI, gateway management, or MCP
+
 ## Install and Patch Workflows
 
 Install and uninstall operations should:

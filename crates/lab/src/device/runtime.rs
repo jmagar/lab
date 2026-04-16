@@ -29,21 +29,21 @@ impl DeviceRuntime {
     }
 
     #[must_use]
-    pub fn for_http_master(
-        resolved: ResolvedDeviceRuntime,
-        master_port: u16,
-    ) -> Self {
+    pub fn for_http_master(resolved: ResolvedDeviceRuntime, master_port: u16) -> Self {
         let master_client = match resolved.role {
             DeviceRole::Master => None,
-            DeviceRole::NonMaster => Some(MasterClient::new(format!(
-                "http://{}:{}",
-                resolved.master_host, master_port
-            ))),
+            DeviceRole::NonMaster => Some(MasterClient::with_bearer_token(
+                format!("http://{}:{}", resolved.master_host, master_port),
+                std::env::var("LAB_MCP_HTTP_TOKEN")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty()),
+            )),
         };
         Self::new(resolved, master_client)
     }
 
     #[must_use]
+    #[allow(dead_code)]
     pub fn non_master_for_test(local_host: &str, base_url: String) -> Self {
         let resolved = resolve_runtime_role(local_host, Some("master"))
             .expect("non-master test runtime should resolve");
@@ -51,6 +51,7 @@ impl DeviceRuntime {
     }
 
     #[must_use]
+    #[allow(dead_code)]
     pub fn non_master_for_test_with_home(
         local_host: &str,
         base_url: String,

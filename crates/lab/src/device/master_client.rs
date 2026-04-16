@@ -8,14 +8,22 @@ use crate::device::identity::resolve_local_hostname;
 pub struct MasterClient {
     http: reqwest::Client,
     base_url: String,
+    bearer_token: Option<String>,
 }
 
 impl MasterClient {
     #[must_use]
+    #[allow(dead_code)]
     pub fn new(base_url: impl Into<String>) -> Self {
+        Self::with_bearer_token(base_url, None)
+    }
+
+    #[must_use]
+    pub fn with_bearer_token(base_url: impl Into<String>, bearer_token: Option<String>) -> Self {
         Self {
             http: reqwest::Client::new(),
             base_url: base_url.into(),
+            bearer_token,
         }
     }
 
@@ -40,7 +48,8 @@ impl MasterClient {
     }
 
     pub async fn fetch_device(&self, device_id: &str) -> Result<serde_json::Value> {
-        self.get_json(&format!("/v1/device/devices/{device_id}")).await
+        self.get_json(&format!("/v1/device/devices/{device_id}"))
+            .await
     }
 
     pub async fn search_logs(&self, device_id: &str, query: &str) -> Result<serde_json::Value> {
@@ -55,18 +64,24 @@ impl MasterClient {
     }
 
     pub fn from_config(config: &LabConfig) -> Result<Self> {
-        let host = match config.device.as_ref().and_then(|prefs| prefs.master.as_deref()) {
+        let host = match config
+            .device
+            .as_ref()
+            .and_then(|prefs| prefs.master.as_deref())
+        {
             Some(host) => host.to_string(),
             None => resolve_local_hostname()?,
         };
         let port = config.mcp.port.unwrap_or(8765);
-        Ok(Self::new(format!("http://{host}:{port}")))
+        Ok(Self::with_bearer_token(
+            format!("http://{host}:{port}"),
+            master_bearer_token(),
+        ))
     }
 
     async fn post_json<T: serde::Serialize + ?Sized>(&self, path: &str, payload: &T) -> Result<()> {
         let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
-        self.http
-            .post(&url)
+        self.request(self.http.post(&url))
             .json(payload)
             .send()
             .await
@@ -79,8 +94,7 @@ impl MasterClient {
     async fn get_json(&self, path: &str) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
         let response = self
-            .http
-            .get(&url)
+            .request(self.http.get(&url))
             .send()
             .await
             .with_context(|| format!("GET {url}"))?
@@ -99,8 +113,7 @@ impl MasterClient {
     ) -> Result<serde_json::Value> {
         let url = format!("{}{}", self.base_url.trim_end_matches('/'), path);
         let response = self
-            .http
-            .post(&url)
+            .request(self.http.post(&url))
             .json(payload)
             .send()
             .await
@@ -112,4 +125,17 @@ impl MasterClient {
             .await
             .with_context(|| format!("decode {url}"))
     }
+
+    fn request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match self.bearer_token.as_deref() {
+            Some(token) => builder.bearer_auth(token),
+            None => builder,
+        }
+    }
+}
+
+fn master_bearer_token() -> Option<String> {
+    std::env::var("LAB_MCP_HTTP_TOKEN")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }

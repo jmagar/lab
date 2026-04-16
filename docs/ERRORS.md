@@ -199,6 +199,17 @@ Default mapping expectations:
 - `upstream_error` -> `502 Bad Gateway`
 - `internal_error` -> `500 Internal Server Error`
 
+## Device Runtime Notes
+
+The device runtime uses the same shared taxonomy.
+
+Important cases in this implementation:
+
+- master-only fleet query routes on a non-master device return `not_found`
+- invalid OAuth relay target input returns `invalid_param`
+- missing fleet store wiring returns `internal_error`
+- failed master-bound HTTP uploads map through the normal transport-layer kinds rather than inventing device-local variants
+
 ## Message Rules
 
 Messages must help diagnose the issue without changing the stable kind.

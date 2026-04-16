@@ -103,6 +103,21 @@ Optional when applicable:
 - `operation = "health"`
 - `kind` on failure
 
+### Device Runtime Ingest
+
+Device-runtime HTTP handlers participate in the same API dispatch contract.
+
+At minimum, the following actions must be traceable on the master:
+
+- `device.hello`
+- `device.status`
+- `device.metadata`
+- `device.syslog.batch`
+- `device.logs.search`
+- `device.oauth.relay.start`
+
+Non-master startup warnings for failed hello, metadata upload, or bootstrap log flush must be logged without leaking tokens or raw secret config content.
+
 ### Shared Outbound Requests
 
 `lab-apis::core::HttpClient` must emit:
@@ -203,6 +218,12 @@ The practical result must be:
 - HTTP-originated requests can be tied back to a `request_id`
 - multi-instance requests can be tied back to an `instance`
 
+For device-runtime uploads, operators must be able to correlate:
+
+- the non-master startup or flush attempt
+- the outbound request to the master
+- the master-side device ingest handler
+
 ## Error Classification
 
 The public error taxonomy remains the stable contract.
@@ -252,6 +273,7 @@ Additional rules:
 - do not log request bodies by default
 - do not log query parameters when they contain secrets
 - do not echo secrets in doctor output, prompts, or TUI flows
+- do not log raw discovered MCP config file contents; only metadata such as path, source, and hash are acceptable
 
 ## Level Rules
 

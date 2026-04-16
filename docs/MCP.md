@@ -20,6 +20,8 @@ Rules:
 - transport changes must not change dispatch or catalog behavior
 - HTTP transport may expose opt-in CORS origins
 
+When the process resolves as a non-master device, MCP is not exposed at all. Non-master devices keep only the local device runtime and the `/v1/device/*` HTTP namespace.
+
 ## Server Capabilities
 
 `lab serve` advertises these MCP capabilities:
@@ -142,6 +144,8 @@ It handles:
 Its job is discovery and server-level visibility, not service-specific business logic.
 
 The top-level catalog is generated from the same action metadata that powers per-service help. It must never be maintained as a second hand-written registry.
+
+The catalog/help surface may also describe the operator-facing `device` and `logs` command groups. In this implementation those are master-routed CLI and HTTP workflows, not standalone MCP tools.
 
 ## Result Envelope
 

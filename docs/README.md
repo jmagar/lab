@@ -12,6 +12,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
 - Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, lab-issued JWT behavior, and callback-forwarding constraints.
 - Use [GATEWAY.md](./GATEWAY.md) when managing upstream MCP gateways over CLI, MCP, or `/v1/gateway`.
+- Use [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md), [FLEET_LOGS.md](./FLEET_LOGS.md), and [DEPLOY.md](./DEPLOY.md) for the master/non-master fleet runtime, device inventory, and deployment model.
 - See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP gateway setup, configuration, tool merging, circuit breaker behavior, and resource proxying.
 - Consult [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
 - Use [OBSERVABILITY.md](./OBSERVABILITY.md) for the mandatory logging, correlation, redaction, and verification contract.
@@ -64,8 +65,10 @@ The docs are split by topic so contributors do not have to recover architecture,
 4. [GATEWAY.md](./GATEWAY.md) (if managing upstream MCP gateways)
 5. [UPSTREAM.md](./UPSTREAM.md) (if proxying upstream MCP servers)
 6. [EXTRACT.md](./EXTRACT.md)
-7. [OPERATIONS.md](./OPERATIONS.md)
-8. [CLI.md](./CLI.md)
+7. [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
+8. [DEPLOY.md](./DEPLOY.md)
+9. [OPERATIONS.md](./OPERATIONS.md)
+10. [CLI.md](./CLI.md)
 
 ## Topic Map
 
@@ -81,6 +84,12 @@ The docs are split by topic so contributors do not have to recover architecture,
   HTTP auth modes: static bearer compatibility, internal Google-backed OAuth, lab-issued JWTs, JWKS, RFC 9728 metadata, and redirect/callback forwarding rules.
 - [GATEWAY.md](./GATEWAY.md)
   Gateway control plane: CRUD, reload/test flows, runtime views, and tool exposure policy.
+- [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
+  Master/non-master runtime roles, `/v1/device/*`, AI CLI inventory upload, queueing, and device OAuth relay.
+- [FLEET_LOGS.md](./FLEET_LOGS.md)
+  Fleet log ingestion, queueing, search, and current storage limits.
+- [DEPLOY.md](./DEPLOY.md)
+  Device-runtime deployment model for master and non-master machines.
 - [UPSTREAM.md](./UPSTREAM.md)
   Upstream MCP proxy gateway: config, discovery, tool collision handling, circuit breaker, resource proxying.
 - [TRANSPORT.md](./TRANSPORT.md)
@@ -136,6 +145,9 @@ Use the smallest correct doc:
 - RMCP SDK integration, feature posture, and server-shape rules: [RMCP.md](./RMCP.md)
 - HTTP auth modes, JWKS, and JWT validation: [OAUTH.md](./OAUTH.md)
 - gateway control plane and exposure policy: [GATEWAY.md](./GATEWAY.md)
+- device runtime roles, fleet ingest, and master gating: [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
+- fleet log ingestion and search: [FLEET_LOGS.md](./FLEET_LOGS.md)
+- deployment topology and rollout guidance: [DEPLOY.md](./DEPLOY.md)
 - upstream MCP proxy, circuit breaker, resource proxying: [UPSTREAM.md](./UPSTREAM.md)
 - transport configuration, middleware, sessions: [TRANSPORT.md](./TRANSPORT.md)
 - TUI behavior: [TUI.md](./TUI.md)

@@ -14,6 +14,8 @@ The CLI is the human-facing surface for `lab`. It must remain thin, predictable,
 The CLI includes:
 
 - one subcommand per service
+- `device`
+- `logs`
 - `serve`
 - `gateway`
 - `plugins`
@@ -34,6 +36,8 @@ Representative command tree:
 ```text
 lab
 ├── <service> ...
+├── device
+├── logs
 ├── serve
 ├── gateway
 ├── plugins
@@ -142,6 +146,34 @@ Exit semantics:
 
 It must expose normalized service health results using the shared `ServiceStatus` model.
 
+## `lab serve`
+
+`lab serve` is the device runtime entrypoint on every fleet machine.
+
+Rules:
+
+- local hostname plus `[device].master` decide whether the process is `master` or non-master
+- the `master` exposes the Web UI, MCP, `/v1/{service}`, `/v1/gateway`, and `/v1/device/*`
+- a non-master device exposes only `/health`, `/ready`, and `/v1/device/*`
+- non-master startup attempts an initial hello, metadata upload, and bootstrap log flush to the master
+
+## `lab device`
+
+`lab device` is the fleet inventory command group. It routes to the configured master.
+
+Commands:
+
+- `lab device list`
+- `lab device get <device_id>`
+
+## `lab logs`
+
+`lab logs` is the fleet log query command group. It also routes to the configured master.
+
+Commands:
+
+- `lab logs search <device_id> <query>`
+
 ## Install and Uninstall
 
 `lab install` and `lab uninstall` handle:
@@ -215,3 +247,5 @@ Runtime behavior:
   - unreachable upstream target -> `502`
   - upstream timeout -> `504`
   - unsupported method -> `405`
+
+The device runtime also exposes this relay capability remotely through `POST /v1/device/oauth/relay/start`.

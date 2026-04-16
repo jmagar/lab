@@ -343,7 +343,10 @@ impl ServerHandler for LabMcpServer {
         if svc.is_some() && !self.action_allowed_on_mcp(&service, &action).await {
             let mut extra = serde_json::Map::new();
             if let Some(valid) = self.allowed_mcp_actions(&service).await {
-                extra.insert("valid".to_string(), serde_json::to_value(valid).unwrap_or(Value::Array(Vec::new())));
+                extra.insert(
+                    "valid".to_string(),
+                    serde_json::to_value(valid).unwrap_or(Value::Array(Vec::new())),
+                );
             }
             let envelope = build_error_extra(
                 &service,
@@ -579,7 +582,11 @@ impl LabMcpServer {
 
     async fn action_allowed_on_mcp(&self, service: &str, action: &str) -> bool {
         match &self.gateway_manager {
-            Some(manager) => manager.mcp_action_allowed_for_service(service, action).await,
+            Some(manager) => {
+                manager
+                    .mcp_action_allowed_for_service(service, action)
+                    .await
+            }
             None => true,
         }
     }
@@ -601,7 +608,9 @@ impl LabMcpServer {
             if let Some(allowed_actions) = self.allowed_mcp_actions(&service.name).await
                 && !allowed_actions.is_empty()
             {
-                service.actions.retain(|action| allowed_actions.contains(&action.name));
+                service
+                    .actions
+                    .retain(|action| allowed_actions.contains(&action.name));
             }
             services.push(service);
         }
@@ -624,7 +633,8 @@ impl LabMcpServer {
         if let Some(allowed_actions) = self.allowed_mcp_actions(service).await
             && !allowed_actions.is_empty()
         {
-            entry.actions
+            entry
+                .actions
                 .retain(|action| allowed_actions.contains(&action.name));
         }
 
@@ -1074,6 +1084,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: None,
+            device_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
 
@@ -1103,6 +1114,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: Some(std::sync::Arc::clone(&manager)),
+            device_role: None,
             peers: std::sync::Arc::clone(&notifier.peers),
         };
 
@@ -1143,6 +1155,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::build_default_registry()),
             gateway_manager: Some(manager),
+            device_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
 
@@ -1180,6 +1193,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::build_default_registry()),
             gateway_manager: Some(manager),
+            device_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
 
@@ -1190,11 +1204,11 @@ mod tests {
         let actions = value.as_array().expect("array");
         assert!(actions.iter().any(|action| action["name"] == "help"));
         assert!(actions.iter().any(|action| action["name"] == "schema"));
-        assert!(actions
-            .iter()
-            .any(|action| action["name"] == "server.info"));
-        assert!(!actions
-            .iter()
-            .any(|action| action["name"] == "session.list"));
+        assert!(actions.iter().any(|action| action["name"] == "server.info"));
+        assert!(
+            !actions
+                .iter()
+                .any(|action| action["name"] == "session.list")
+        );
     }
 }

@@ -74,6 +74,25 @@ Value precedence at point of use (highest wins):
 |-----|-------------|---------|-------------|
 | `cors_origins` | `LAB_CORS_ORIGINS` | `[]` | Additional CORS origins (loopback always included) |
 
+### `[device]`
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `master` | — | local hostname | Hostname of the fleet master device. |
+
+Example:
+
+```toml
+[device]
+master = "tootie"
+```
+
+Rules:
+
+- when omitted, the local machine resolves itself as `master`
+- non-master devices use this hostname plus `mcp.port` to reach `http://<master>:<port>`
+- the device runtime uses this for fleet hello, metadata upload, log upload, and master-routed CLI commands such as `lab device list`
+
 ### `[web]`
 
 | Key | Env override | Default | Description |
@@ -106,6 +125,8 @@ lab oauth relay-local --machine dookie --port 38935
 ```
 
 `oauth.machines` config is TOML-only. There is no env-var override for the named machine map.
+
+The device runtime reuses the same target model when `POST /v1/device/oauth/relay/start` is used to start a local relay remotely on a fleet device.
 
 ### `[admin]`
 
@@ -237,6 +258,12 @@ Environment variables override `[auth]` values field-by-field.
 ### OAuth Relay Machine Targets
 
 `target_url` is the full callback base URL, not just a host.
+
+## Device Runtime Auth
+
+If the master protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, non-master device runtime traffic and master-routed `lab device` / `lab logs` commands reuse that bearer token automatically.
+
+There is not a separate `[device]` auth block in this implementation.
 
 ```toml
 [oauth.machines.dookie]

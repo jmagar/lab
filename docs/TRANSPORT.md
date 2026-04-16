@@ -146,12 +146,18 @@ Allowed headers: `Authorization`, `Content-Type`, `x-request-id`.
 
 ## Route Layout
 
+The HTTP router is role-aware:
+
+- the `master` exposes the full operator control plane
+- a non-master device keeps only `/health`, `/ready`, and `/v1/device/*`
+- non-master devices do not expose `/mcp`, `/v1/{service}`, `/v1/gateway`, `/v1/openapi.json`, `/v1/docs`, or the Web UI
+
 When HTTP transport is active, the server exposes:
 
 | Path | Auth | Description |
 |------|------|-------------|
-| `/` | no | Labby web UI shell (when exported assets are available) |
-| `/gateways/`, `/gateway/`, `/activity/`, `/settings/`, `/docs/` | no | Labby SPA routes (when exported assets are available) |
+| `/` | no | Labby web UI shell on the master. Non-master devices return `403`. |
+| `/gateways/`, `/gateway/`, `/activity/`, `/settings/`, `/docs/` | no | Labby SPA routes on the master. |
 | `/health` | no | Liveness probe |
 | `/ready` | no | Readiness probe |
 | `/.well-known/oauth-authorization-server` | no | Authorization-server metadata |
@@ -161,9 +167,11 @@ When HTTP transport is active, the server exposes:
 | `/authorize` | no | Authorization entrypoint |
 | `/auth/google/callback` | no | Google callback endpoint |
 | `/token` | no | Authorization-code and refresh-token exchange |
-| `/v1/{service}` | yes | REST API (POST with action+params) |
-| `/v1/{service}/actions` | yes | Action catalog (GET) |
-| `/mcp` | yes | MCP streamable HTTP transport |
+| `/v1/device/*` | yes | Device runtime ingest, fleet queries, and remote OAuth relay start |
+| `/v1/{service}` | yes | REST API (POST with action+params) on the master only |
+| `/v1/{service}/actions` | yes | Action catalog (GET) on the master only |
+| `/v1/gateway` | yes | Gateway management on the master only |
+| `/mcp` | yes | MCP streamable HTTP transport on the master only |
 
 ## Example: Local Development
 
@@ -204,3 +212,4 @@ curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" \
 - [CONFIG.md](./CONFIG.md) — env var and config.toml loading
 - [MCP.md](./MCP.md) — MCP protocol surface
 - [RMCP.md](./RMCP.md) — RMCP SDK integration contract
+- [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md) — master/non-master runtime model
