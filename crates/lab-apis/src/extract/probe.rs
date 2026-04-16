@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use reqwest::{Client, StatusCode, header::LOCATION};
-use tracing::debug;
+use tracing::{debug, warn};
 use url::Url;
 
 use super::error::ExtractError;
@@ -112,7 +112,14 @@ pub async fn probe_endpoint(url: &str) -> Result<Option<VerifiedEndpoint>, Extra
 }
 
 fn probe_client() -> Result<&'static Client, ExtractError> {
-    PROBE_CLIENT.as_ref().map_err(probe_error)
+    PROBE_CLIENT.as_ref().map_err(|error| {
+        warn!(
+            kind = "internal_error",
+            message = %error,
+            "extract probe client init failed"
+        );
+        probe_error(error)
+    })
 }
 
 fn is_reachable_status(status: StatusCode) -> bool {
