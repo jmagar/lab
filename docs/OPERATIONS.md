@@ -128,6 +128,52 @@ Typical checks include:
 
 `lab health` should expose normalized health status using shared service contracts.
 
+## Device Runtime Operations
+
+In the current Linux `x86_64` v1 target, every supported fleet member runs `lab serve` as a device runtime.
+
+Setup order:
+
+1. Pick one machine as the master and start it first with `lab serve`.
+2. If you use bearer auth, set `LAB_MCP_HTTP_TOKEN` on the master before starting it and reuse that same token on every non-master device that reports to it.
+3. On each non-master, set the master machine name in `~/.lab/config.toml`:
+
+```toml
+[device]
+master = "tootie"
+```
+
+4. Start each non-master with `lab serve`.
+5. Only use `lab serve mcp --stdio` when you explicitly want a local stdio MCP session instead of the default HTTP runtime.
+
+Operationally:
+
+- one device is the `master`
+- non-master devices report to the master over `/v1/device/*`
+- fleet inventory and fleet logs are queried from the master
+
+Useful commands:
+
+```bash
+lab device list
+lab device get dookie
+lab logs search dookie oauth
+```
+
+Useful HTTP checks:
+
+```bash
+curl http://<device>:8765/health
+curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<master>:8765/v1/device/devices
+```
+
+Current operational limits:
+
+- fleet state is in-memory on the master
+- non-master background uploads reuse the shared static bearer token when bearer auth is enabled
+- non-master devices intentionally do not expose Web UI, gateway management, or MCP
+- the master should be reachable on its configured HTTP port before non-masters start reporting to it
+
 ## Install and Patch Workflows
 
 Install and uninstall operations should:

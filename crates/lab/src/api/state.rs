@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
+use crate::config::DeviceRole;
+use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::ServiceClients;
 use crate::registry::{ToolRegistry, build_default_registry};
 
@@ -40,6 +42,10 @@ pub struct AppState {
     ///
     /// `None` when gateway management is not wired for this process.
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
+    /// Shared fleet state store for device runtime ingestion.
+    pub device_store: Option<Arc<DeviceFleetStore>>,
+    /// Resolved device role for the current process.
+    pub device_role: Option<DeviceRole>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
     /// When true, `/v1/*` skips auth middleware for hosted UI requests.
@@ -79,6 +85,8 @@ impl AppState {
             auth_config: None,
             oauth_state: None,
             gateway_manager: None,
+            device_store: None,
+            device_role: None,
             web_assets_dir: None,
             web_ui_auth_disabled: false,
         }
@@ -108,6 +116,18 @@ impl AppState {
         self
     }
 
+    #[must_use]
+    pub fn with_device_store(mut self, store: Arc<DeviceFleetStore>) -> Self {
+        self.device_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_device_role(mut self, role: DeviceRole) -> Self {
+        self.device_role = Some(role);
+        self
+    }
+
     /// Attach an exported Labby assets directory for static web serving.
     #[must_use]
     pub fn with_web_assets_dir(mut self, dir: PathBuf) -> Self {
@@ -120,6 +140,11 @@ impl AppState {
     pub fn with_web_ui_auth_disabled(mut self, disabled: bool) -> Self {
         self.web_ui_auth_disabled = disabled;
         self
+    }
+
+    #[must_use]
+    pub fn is_master(&self) -> bool {
+        !matches!(self.device_role, Some(DeviceRole::NonMaster))
     }
 }
 

@@ -23,6 +23,9 @@ pub mod servarr;
 /// Bootstrap utility: extract API keys from existing service config files.
 pub mod extract;
 
+/// Device-runtime control-plane client shared by CLI and runtime code.
+pub mod device_runtime;
+
 /// Radarr movie management client.
 #[cfg(feature = "radarr")]
 pub mod radarr;

@@ -22,6 +22,9 @@ pub mod health;
 /// HTTP auth helpers for bearer-or-OAuth mode (metadata, WWW-Authenticate).
 pub mod oauth;
 
+/// Device runtime ingestion routes mounted under `/v1/device/*`.
+pub mod device;
+
 /// Static Labby web asset serving helpers.
 pub mod web;
 

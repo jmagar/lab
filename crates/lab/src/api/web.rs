@@ -8,6 +8,7 @@ use axum::{
 };
 
 use super::state::AppState;
+use crate::config::DeviceRole;
 
 fn sanitize_relative_path(path: &str) -> PathBuf {
     let trimmed = path.trim_start_matches('/');
@@ -78,6 +79,18 @@ async fn resolve_asset_path(base_dir: &Path, request_path: &str) -> PathBuf {
 pub async fn serve_web_request(State(state): State<AppState>, request: Request) -> Response {
     if !matches!(*request.method(), Method::GET | Method::HEAD) {
         return StatusCode::NOT_FOUND.into_response();
+    }
+
+    if matches!(state.device_role, Some(DeviceRole::NonMaster)) {
+        tracing::warn!(
+            path = %request.uri().path(),
+            "rejected web ui request on non-master device"
+        );
+        return (
+            StatusCode::FORBIDDEN,
+            "web ui is disabled on non-master devices",
+        )
+            .into_response();
     }
 
     let Some(base_dir) = state.web_assets_dir.as_deref() else {

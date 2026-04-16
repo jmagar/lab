@@ -17,6 +17,9 @@ use tokio::sync::mpsc;
 
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
+use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::device::runtime::DeviceRuntime;
+use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
@@ -28,21 +31,21 @@ use crate::registry::{ToolRegistry, build_default_registry};
 #[derive(Debug, Clone, Copy, ValueEnum)]
 #[value(rename_all = "lowercase")]
 pub enum Transport {
-    /// stdin/stdout framing for local MCP clients such as Claude Desktop.
+    /// stdin/stdout framing (available via `lab serve mcp --stdio`).
     Stdio,
-    /// HTTP transport for the hosted `/mcp` surface.
+    /// HTTP transport (default) — requires `LAB_MCP_HTTP_TOKEN` or OAuth when exposed remotely.
     Http,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum ServeCommand {
-    /// Run MCP-only helper modes.
+    /// Run the MCP server over stdio instead of the default HTTP transport.
     Mcp(McpArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct McpArgs {
-    /// Serve the MCP surface over stdin/stdout instead of the hosted HTTP endpoint.
+    /// Confirm that MCP should run over stdio.
     #[arg(long)]
     pub stdio: bool,
 }
@@ -53,7 +56,7 @@ pub struct ServeArgs {
     /// Comma- or space-separated list of services to enable. Empty = all.
     #[arg(long, value_delimiter = ',')]
     pub services: Vec<String>,
-    /// Legacy MCP transport selector. Prefer `lab serve` or `lab serve mcp --stdio`.
+    /// Legacy transport selector. Prefer `lab serve` for HTTP and `lab serve mcp --stdio` for stdio.
     #[arg(long, value_enum, hide = true)]
     pub transport: Option<Transport>,
     /// Bind host for the HTTP transport.
@@ -68,7 +71,12 @@ pub struct ServeArgs {
 
 /// Run the serve subcommand.
 pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
-    let transport = resolve_transport(args.transport, args.command.as_ref())?;
+    let transport = resolve_transport(
+        args.transport,
+        args.command.as_ref(),
+        std::env::var("LAB_MCP_TRANSPORT").ok(),
+        config.mcp.transport.as_deref(),
+    )?;
     // Resolve host and port here for source-of-truth ordering, but defer
     // address parsing and validation until the actual bind call in run_http.
     // This way an invalid host string only errors when the hosted HTTP app path is chosen.
@@ -85,6 +93,18 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
 
     let registry = build_default_registry();
     let registry = filter_registry(registry, &args.services)?;
+    let local_host = resolve_local_hostname().context("resolve local hostname")?;
+    let resolved_runtime = resolve_runtime_role(
+        &local_host,
+        config
+            .device
+            .as_ref()
+            .and_then(|prefs| prefs.master.as_deref()),
+    )
+    .context("resolve device runtime role")?;
+    let device_store = Arc::new(DeviceFleetStore::default());
+    let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
+    let device_role = device_runtime.role();
 
     let gateway_runtime = GatewayRuntimeHandle::default();
     if !config.upstream.is_empty() {
@@ -107,7 +127,15 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     install_gateway_manager(Arc::clone(&gateway_manager));
 
     match transport {
-        Transport::Stdio => run_stdio(Arc::new(registry), Arc::clone(&gateway_manager), notifier).await,
+        Transport::Stdio => {
+            run_stdio(
+                Arc::new(registry),
+                Arc::clone(&gateway_manager),
+                device_role,
+                notifier,
+            )
+            .await
+        }
         Transport::Http => {
             if host.is_empty() {
                 anyhow::bail!(
@@ -146,10 +174,26 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             state = state.with_gateway_manager(Arc::clone(&gateway_manager));
             state = state.with_auth_config(auth_config);
             state = state.with_web_ui_auth_disabled(resolve_web_ui_auth_disabled(&config.web)?);
+            state = state.with_device_store(Arc::clone(&device_store));
+            state = state.with_device_role(device_role);
+            state = state.with_web_ui_auth_disabled(resolve_web_ui_auth_disabled(&config.web)?);
             if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
                 tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
                 state = state.with_web_assets_dir(web_assets_dir);
             }
+
+            let startup_runtime = device_runtime.clone();
+            tokio::spawn(async move {
+                if let Err(error) = startup_runtime.send_initial_hello().await {
+                    tracing::warn!(error = %error, "initial device hello failed");
+                }
+                if let Err(error) = startup_runtime.upload_initial_metadata().await {
+                    tracing::warn!(error = %error, "initial device metadata upload failed");
+                }
+                if let Err(error) = startup_runtime.collect_and_flush_bootstrap_logs().await {
+                    tracing::warn!(error = %error, "initial device log flush failed");
+                }
+            });
 
             run_http(
                 &host,
@@ -190,12 +234,28 @@ fn resolve_web_ui_auth_disabled(web: &crate::config::WebPreferences) -> Result<b
     Ok(web.disable_auth.unwrap_or(false))
 }
 
-fn resolve_transport(cli: Option<Transport>, command: Option<&ServeCommand>) -> Result<Transport> {
-    if let Some(ServeCommand::Mcp(McpArgs { stdio: true })) = command {
+fn resolve_transport(
+    cli: Option<Transport>,
+    command: Option<&ServeCommand>,
+    env: Option<String>,
+    config: Option<&str>,
+) -> Result<Transport> {
+    if let Some(ServeCommand::Mcp(args)) = command {
+        if !args.stdio {
+            anyhow::bail!("`lab serve mcp` requires `--stdio`");
+        }
         return Ok(Transport::Stdio);
     }
     if let Some(transport) = cli {
         return Ok(transport);
+    }
+    if let Some(value) = env {
+        return Transport::from_str(&value, true)
+            .map_err(|err| anyhow::anyhow!("invalid LAB_MCP_TRANSPORT value `{value}`: {err}"));
+    }
+    if let Some(value) = config {
+        return Transport::from_str(value, true)
+            .map_err(|err| anyhow::anyhow!("invalid mcp.transport value `{value}`: {err}"));
     }
     Ok(Transport::Http)
 }
@@ -295,6 +355,7 @@ async fn run_http(
 async fn run_stdio(
     registry: Arc<ToolRegistry>,
     gateway_manager: Arc<GatewayManager>,
+    device_role: crate::config::DeviceRole,
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     tracing::info!(
@@ -304,6 +365,7 @@ async fn run_stdio(
     let server = LabMcpServer {
         registry,
         gateway_manager: Some(Arc::clone(&gateway_manager)),
+        device_role: Some(device_role),
         peers: Arc::clone(&notifier.peers),
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
@@ -351,6 +413,7 @@ fn build_mcp_service(
     // All HTTP sessions share the same PeerNotifier (and thus the same peers
     // vec) so that gateway reload notifications reach every connected session.
     let shared_peers = Arc::clone(&notifier.peers);
+    let device_role = state.device_role;
 
     Ok(StreamableHttpService::new(
         move || {
@@ -360,6 +423,7 @@ fn build_mcp_service(
             Ok(LabMcpServer {
                 registry: reg,
                 gateway_manager: manager,
+                device_role,
                 peers,
             })
         },
@@ -448,15 +512,31 @@ mod tests {
         let resolved = resolve_transport(
             Some(Transport::Http),
             Some(&ServeCommand::Mcp(McpArgs { stdio: true })),
+            Some("http".into()),
+            Some("http"),
         )
-        .expect("explicit stdio helper should win");
+        .expect("mcp stdio command should win");
+        assert!(matches!(resolved, Transport::Stdio));
+
+        let resolved = resolve_transport(
+            Some(Transport::Http),
+            None,
+            Some("stdio".into()),
+            Some("stdio"),
+        )
+        .expect("cli value should win");
+        assert!(matches!(resolved, Transport::Http));
+
+        let resolved = resolve_transport(None, None, Some("http".into()), Some("stdio"))
+            .expect("env value should win");
+        assert!(matches!(resolved, Transport::Http));
+
+        let resolved =
+            resolve_transport(None, None, None, Some("stdio")).expect("config value should win");
         assert!(matches!(resolved, Transport::Stdio));
 
         let resolved =
-            resolve_transport(Some(Transport::Stdio), None).expect("cli value should win");
-        assert!(matches!(resolved, Transport::Stdio));
-
-        let resolved = resolve_transport(None, None).expect("default should be hosted HTTP");
+            resolve_transport(None, None, None, None).expect("http should be the default");
         assert!(matches!(resolved, Transport::Http));
     }
 

@@ -68,6 +68,7 @@ rsa          = "0.10.0-rc.17"
 rand         = "0.9"
 rusqlite     = { version = "0.37", features = ["bundled"] }
 sha2         = "0.10"
+percent-encoding = "2.3"
 
 # http server (lab binary only)
 axum         = { version = "0.8", features = ["macros", "json", "tokio", "http2"] }

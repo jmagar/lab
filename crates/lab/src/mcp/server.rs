@@ -19,6 +19,7 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 
+use crate::config::DeviceRole;
 use crate::dispatch::gateway::manager::GatewayManager;
 use crate::dispatch::gateway::types::GatewayCatalogDiff;
 use crate::dispatch::upstream::types::UpstreamCapability;
@@ -97,6 +98,8 @@ pub struct LabMcpServer {
     pub registry: Arc<ToolRegistry>,
     /// Shared gateway manager used to resolve the current live upstream pool.
     pub gateway_manager: Option<Arc<GatewayManager>>,
+    /// Resolved role for the current device.
+    pub device_role: Option<DeviceRole>,
     /// Connected peers for list-changed notifications.
     pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
 }
@@ -201,14 +204,16 @@ impl ServerHandler for LabMcpServer {
         ];
 
         for svc in self.registry.services() {
-            let uri = format!("lab://{}/actions", svc.name);
-            let name = format!("{}/actions", svc.name);
-            resources.push(
-                RawResource::new(uri, name)
-                    .with_description(format!("Action list for {}", svc.name))
-                    .with_mime_type("application/json")
-                    .no_annotation(),
-            );
+            if self.service_visible_on_mcp(svc.name).await {
+                let uri = format!("lab://{}/actions", svc.name);
+                let name = format!("{}/actions", svc.name);
+                resources.push(
+                    RawResource::new(uri, name)
+                        .with_description(format!("Action list for {}", svc.name))
+                        .with_mime_type("application/json")
+                        .no_annotation(),
+                );
+            }
         }
 
         if let Some(pool) = self.current_upstream_pool().await {
@@ -568,6 +573,9 @@ impl LabMcpServer {
     }
 
     async fn service_visible_on_mcp(&self, service: &str) -> bool {
+        if matches!(self.device_role, Some(DeviceRole::NonMaster)) {
+            return false;
+        }
         match &self.gateway_manager {
             Some(manager) => manager.surface_enabled_for_service(service, "mcp").await,
             None => true,
@@ -1078,6 +1086,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: None,
+            device_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
 
@@ -1107,6 +1116,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: Some(std::sync::Arc::clone(&manager)),
+            device_role: None,
             peers: std::sync::Arc::clone(&notifier.peers),
         };
 
@@ -1147,6 +1157,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::build_default_registry()),
             gateway_manager: Some(manager),
+            device_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
 
@@ -1184,6 +1195,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::build_default_registry()),
             gateway_manager: Some(manager),
+            device_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
         };
 

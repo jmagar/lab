@@ -1353,6 +1353,8 @@ mod tests {
             name: Arc::clone(&upstream_name),
             tools: HashMap::new(),
             exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            prompt_count: 0,
+            resource_count: 0,
             tool_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
                 consecutive_failures: 1,
             },

@@ -375,6 +375,7 @@ async fn authenticate_request(
 
 /// Build the `/v1` sub-router with all feature-gated service routes.
 fn build_v1_router(state: &AppState) -> Router<AppState> {
+    let is_master = state.is_master();
     let openapi_spec: Arc<String> = super::openapi::build_openapi_spec(state.registry.services())
         .unwrap_or_else(|e| {
             tracing::error!(error = %e, "failed to serialize OpenAPI spec");
@@ -382,29 +383,33 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         });
     let spec_for_route = openapi_spec;
 
-    let mut v1 = Router::new()
-        .route("/{service}/actions", get(service_actions))
-        .nest("/gateway", services::gateway::routes(state.clone()))
-        .route(
-            "/openapi.json",
-            get(move || {
-                let spec = spec_for_route.clone();
-                async move {
-                    (
-                        [
-                            (header::CONTENT_TYPE, "application/json"),
-                            (header::CACHE_CONTROL, "private, no-store"),
-                        ],
-                        (*spec).clone(),
-                    )
-                }
-            }),
-        )
-        .route(
-            "/docs",
-            get(|| async { Html(include_str!("openapi_docs.html")) }),
-        )
-        .nest("/extract", services::extract::routes(state.clone()));
+    let mut v1 = Router::new().nest("/device", super::device::routes(state.clone()));
+
+    if is_master {
+        v1 = v1
+            .route("/{service}/actions", get(service_actions))
+            .nest("/gateway", services::gateway::routes(state.clone()))
+            .route(
+                "/openapi.json",
+                get(move || {
+                    let spec = spec_for_route.clone();
+                    async move {
+                        (
+                            [
+                                (header::CONTENT_TYPE, "application/json"),
+                                (header::CACHE_CONTROL, "private, no-store"),
+                            ],
+                            (*spec).clone(),
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/docs",
+                get(|| async { Html(include_str!("openapi_docs.html")) }),
+            )
+            .nest("/extract", services::extract::routes(state.clone()));
+    }
 
     macro_rules! mount_if_enabled {
         ($v1:ident, $state:ident, $feat:literal, $name:literal, $mod:ident) => {
@@ -415,133 +420,31 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         };
     }
 
-    mount_if_enabled!(v1, state, "radarr", "radarr", radarr);
-    mount_if_enabled!(v1, state, "sonarr", "sonarr", sonarr);
-    mount_if_enabled!(v1, state, "prowlarr", "prowlarr", prowlarr);
-    mount_if_enabled!(v1, state, "plex", "plex", plex);
-    mount_if_enabled!(v1, state, "tautulli", "tautulli", tautulli);
-    mount_if_enabled!(v1, state, "sabnzbd", "sabnzbd", sabnzbd);
-    mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
-    mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
-    mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
-    mount_if_enabled!(v1, state, "memos", "memos", memos);
-    mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
-    mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
-    mount_if_enabled!(v1, state, "arcane", "arcane", arcane);
-    mount_if_enabled!(v1, state, "unraid", "unraid", unraid);
-    mount_if_enabled!(v1, state, "unifi", "unifi", unifi);
-    mount_if_enabled!(v1, state, "overseerr", "overseerr", overseerr);
-    mount_if_enabled!(v1, state, "gotify", "gotify", gotify);
-    mount_if_enabled!(v1, state, "openai", "openai", openai);
-    mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
-    mount_if_enabled!(v1, state, "tei", "tei", tei);
-    mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
+    if is_master {
+        mount_if_enabled!(v1, state, "radarr", "radarr", radarr);
+        mount_if_enabled!(v1, state, "sonarr", "sonarr", sonarr);
+        mount_if_enabled!(v1, state, "prowlarr", "prowlarr", prowlarr);
+        mount_if_enabled!(v1, state, "plex", "plex", plex);
+        mount_if_enabled!(v1, state, "tautulli", "tautulli", tautulli);
+        mount_if_enabled!(v1, state, "sabnzbd", "sabnzbd", sabnzbd);
+        mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
+        mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
+        mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
+        mount_if_enabled!(v1, state, "memos", "memos", memos);
+        mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
+        mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
+        mount_if_enabled!(v1, state, "arcane", "arcane", arcane);
+        mount_if_enabled!(v1, state, "unraid", "unraid", unraid);
+        mount_if_enabled!(v1, state, "unifi", "unifi", unifi);
+        mount_if_enabled!(v1, state, "overseerr", "overseerr", overseerr);
+        mount_if_enabled!(v1, state, "gotify", "gotify", gotify);
+        mount_if_enabled!(v1, state, "openai", "openai", openai);
+        mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
+        mount_if_enabled!(v1, state, "tei", "tei", tei);
+        mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
+    }
 
     v1
-}
-
-fn protect_with_auth(
-    router: Router<AppState>,
-    static_token: Option<Arc<str>>,
-    auth_state_for_middleware: Option<Arc<lab_auth::state::AuthState>>,
-    resource_url: Option<Arc<str>>,
-) -> Router<AppState> {
-    router.layer(axum::middleware::from_fn(move |mut request: Request<Body>, next: Next| {
-        let static_token = static_token.clone();
-        let auth_state = auth_state_for_middleware.clone();
-        let resource_url = resource_url.clone();
-        async move {
-            fn auth_error_response(
-                message: &str,
-                resource_url: Option<&str>,
-            ) -> axum::response::Response {
-                let err = ToolError::Sdk {
-                    sdk_kind: "auth_failed".into(),
-                    message: message.into(),
-                };
-                let mut response = err.into_response();
-                if let Some(url) = resource_url {
-                    let www_auth = crate::api::oauth::www_authenticate_value(url);
-                    if let Ok(value) = HeaderValue::from_str(&www_auth) {
-                        response
-                            .headers_mut()
-                            .insert(header::WWW_AUTHENTICATE, value);
-                    }
-                }
-                response
-            }
-
-            let auth_header = request
-                .headers()
-                .get(header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(parse_bearer_token);
-
-            let Some(token) = auth_header else {
-                return Ok(auth_error_response(
-                    "missing bearer token",
-                    resource_url.as_deref(),
-                ));
-            };
-
-            if let Some(ref expected) = static_token
-                && tokens_equal(&token, expected.as_ref())
-            {
-                request
-                    .extensions_mut()
-                    .insert(crate::api::oauth::AuthContext {
-                        sub: "static-bearer".to_string(),
-                        scopes: vec!["lab:read".to_string(), "lab:admin".to_string()],
-                        issuer: "local".to_string(),
-                    });
-                return Ok::<_, std::convert::Infallible>(next.run(request).await);
-            }
-
-            if let Some(ref auth_state) = auth_state {
-                let expected_aud = auth_state
-                    .config
-                    .public_url
-                    .as_ref()
-                    .map(|url| url.as_str().trim_end_matches('/').to_string());
-                let Some(ref expected_aud) = expected_aud else {
-                    return Ok(auth_error_response(
-                        "server misconfigured: LAB_PUBLIC_URL required for JWT validation",
-                        resource_url.as_deref(),
-                    ));
-                };
-                match auth_state.signing_keys.validate_access_token(&token, expected_aud) {
-                    Ok(claims) => {
-                        if claims.iss != *expected_aud {
-                            return Ok(auth_error_response(
-                                "invalid bearer token",
-                                resource_url.as_deref(),
-                            ));
-                        }
-
-                        request.extensions_mut().insert(crate::api::oauth::AuthContext {
-                            sub: claims.sub,
-                            scopes: claims
-                                .scope
-                                .split_whitespace()
-                                .filter(|scope| !scope.is_empty())
-                                .map(ToOwned::to_owned)
-                                .collect(),
-                            issuer: claims.iss,
-                        });
-                        return Ok(next.run(request).await);
-                    }
-                    Err(error) => {
-                        tracing::debug!(error = %error, "lab-auth JWT validation failed");
-                    }
-                }
-            }
-
-            Ok(auth_error_response(
-                "invalid bearer token",
-                resource_url.as_deref(),
-            ))
-        }
-    }))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -568,6 +471,7 @@ pub fn build_router(
     // Build separate protected sub-routers so `/v1/*` can accept browser
     // sessions while `/mcp` remains token-authenticated only.
     let v1_router = Router::new().nest("/v1", v1);
+    let is_master = state.is_master();
     let static_token = bearer_token.map(Arc::<str>::from);
     let auth_state = auth_state.map(Arc::new);
     let needs_auth = static_token.is_some() || auth_state.is_some();
@@ -631,10 +535,10 @@ pub fn build_router(
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
         .merge(v1_protected);
-    if let Some(mcp) = mcp_protected {
+    if let Some(mcp) = mcp_protected.filter(|_| is_master) {
         router = router.merge(mcp);
     }
-    if let Some(auth_state) = auth_state.as_ref() {
+    if is_master && let Some(auth_state) = auth_state.as_ref() {
         let _ = auth_state;
         router = router
             .route(

@@ -2453,6 +2453,7 @@ dependencies = [
  "futures",
  "insta",
  "jiff",
+ "percent-encoding",
  "quick-xml",
  "reqwest",
  "russh",

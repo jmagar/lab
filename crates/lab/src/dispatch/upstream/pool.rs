@@ -25,6 +25,16 @@ use super::types::{
     UpstreamToolExposureRow,
 };
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct UpstreamCachedSummary {
+    pub discovered_tool_count: usize,
+    pub exposed_tool_count: usize,
+    pub discovered_resource_count: usize,
+    pub exposed_resource_count: usize,
+    pub discovered_prompt_count: usize,
+    pub exposed_prompt_count: usize,
+}
+
 /// Per-upstream timeout for initial discovery (`list_tools`).
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -91,6 +101,61 @@ async fn routable_upstream_peers(
         .drain(..)
         .filter_map(|name| connections.get(&name).map(|conn| (name, conn.peer.clone())))
         .collect()
+}
+
+async fn discover_capability_counts(
+    name: &str,
+    peer: &rmcp::service::Peer<RoleClient>,
+    proxy_resources: bool,
+) -> (
+    usize,
+    Option<String>,
+    UpstreamHealth,
+    usize,
+    Option<String>,
+    UpstreamHealth,
+) {
+    let (resource_count, resource_error, resource_health) = if proxy_resources {
+        match peer.list_resources(None).await {
+            Ok(result) => (result.resources.len(), None, UpstreamHealth::Healthy),
+            Err(error) => (
+                0,
+                Some(format!("failed to list resources from upstream: {error}")),
+                UpstreamHealth::Unhealthy {
+                    consecutive_failures: 1,
+                },
+            ),
+        }
+    } else {
+        (0, None, UpstreamHealth::Healthy)
+    };
+
+    let (prompt_count, prompt_error, prompt_health) = match peer.list_prompts(None).await {
+        Ok(result) => (result.prompts.len(), None, UpstreamHealth::Healthy),
+        Err(error) => (
+            0,
+            Some(format!("failed to list prompts from upstream: {error}")),
+            UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+        ),
+    };
+
+    if let Some(error) = &resource_error {
+        tracing::warn!(upstream = %name, error = %error, "failed to discover upstream resources");
+    }
+    if let Some(error) = &prompt_error {
+        tracing::warn!(upstream = %name, error = %error, "failed to discover upstream prompts");
+    }
+
+    (
+        resource_count,
+        resource_error,
+        resource_health,
+        prompt_count,
+        prompt_error,
+        prompt_health,
+    )
 }
 
 /// Merge upstream prompts deterministically and return the winning owner for each prompt.
@@ -242,14 +307,35 @@ impl UpstreamPool {
                 let name = config.name.clone();
                 match tokio::time::timeout(DISCOVERY_TIMEOUT, connect_upstream(&config)).await {
                     Ok(Ok((conn, tools))) => {
+                        let (
+                            resource_count,
+                            resource_last_error,
+                            resource_health,
+                            prompt_count,
+                            prompt_last_error,
+                            prompt_health,
+                        ) = discover_capability_counts(&name, &conn.peer, config.proxy_resources).await;
                         tracing::info!(
                             upstream = %name,
                             transport = upstream_transport(&config),
                             target = %upstream_target(&config),
                             tool_count = tools.len(),
+                            resource_count,
+                            prompt_count,
                             "upstream discovery succeeded"
                         );
-                        Ok((name, config.expose_tools.clone(), conn, tools))
+                        Ok((
+                            name,
+                            config.expose_tools.clone(),
+                            conn,
+                            tools,
+                            resource_count,
+                            resource_last_error,
+                            resource_health,
+                            prompt_count,
+                            prompt_last_error,
+                            prompt_health,
+                        ))
                     }
                     Ok(Err(e)) => {
                         let error = e.to_string();
@@ -285,7 +371,18 @@ impl UpstreamPool {
 
         while let Some(result) = futures.next().await {
             match result {
-                Ok((name, expose_tools, conn, tools)) => {
+                Ok((
+                    name,
+                    expose_tools,
+                    conn,
+                    tools,
+                    resource_count,
+                    resource_last_error,
+                    resource_health,
+                    prompt_count,
+                    prompt_last_error,
+                    prompt_health,
+                )) => {
                     let upstream_name: Arc<str> = Arc::from(name.as_str());
                     let mut tool_map: HashMap<String, UpstreamTool> = HashMap::new();
                     for tool in tools {
@@ -322,15 +419,19 @@ impl UpstreamPool {
                         name: Arc::clone(&upstream_name),
                         tools: tool_map,
                         exposure_policy,
+                        prompt_count,
+                        resource_count,
                         tool_health: UpstreamHealth::Healthy,
-                        prompt_health: UpstreamHealth::Healthy,
-                        resource_health: UpstreamHealth::Healthy,
+                        prompt_health,
+                        resource_health,
                         tool_unhealthy_since: None,
-                        prompt_unhealthy_since: None,
-                        resource_unhealthy_since: None,
+                        prompt_unhealthy_since: (!prompt_health.is_routable())
+                            .then(std::time::Instant::now),
+                        resource_unhealthy_since: (!resource_health.is_routable())
+                            .then(std::time::Instant::now),
                         tool_last_error: None,
-                        prompt_last_error: None,
-                        resource_last_error: None,
+                        prompt_last_error,
+                        resource_last_error,
                     };
 
                     self.catalog.write().await.insert(name.clone(), entry);
@@ -341,6 +442,8 @@ impl UpstreamPool {
                         name: Arc::from(name.as_str()),
                         tools: HashMap::new(),
                         exposure_policy: ToolExposurePolicy::All,
+                        prompt_count: 0,
+                        resource_count: 0,
                         tool_health: UpstreamHealth::Unhealthy {
                             consecutive_failures: 1,
                         },
@@ -466,6 +569,38 @@ impl UpstreamPool {
             .collect();
         rows.sort_by(|left, right| left.name.cmp(&right.name));
         rows
+    }
+
+    pub async fn cached_upstream_summary(&self, upstream_name: &str) -> Option<UpstreamCachedSummary> {
+        let catalog = self.catalog.read().await;
+        let entry = catalog.get(upstream_name)?;
+        let discovered_tool_count = entry.tools.len();
+        let exposed_tool_count = entry
+            .tools
+            .values()
+            .filter(|tool| entry.exposure_policy.matches(tool.tool.name.as_ref()))
+            .count();
+        let discovered_resource_count = entry.resource_count;
+        let exposed_resource_count = if entry.resource_health.is_routable() {
+            entry.resource_count
+        } else {
+            0
+        };
+        let discovered_prompt_count = entry.prompt_count;
+        let exposed_prompt_count = if entry.prompt_health.is_routable() {
+            entry.prompt_count
+        } else {
+            0
+        };
+
+        Some(UpstreamCachedSummary {
+            discovered_tool_count,
+            exposed_tool_count,
+            discovered_resource_count,
+            exposed_resource_count,
+            discovered_prompt_count,
+            exposed_prompt_count,
+        })
     }
 
     /// Return the current tool health for one upstream.
@@ -692,6 +827,12 @@ impl UpstreamPool {
                 Ok(result) => {
                     self.record_success_for(&name, UpstreamCapability::Resources)
                         .await;
+                    {
+                        let mut catalog = self.catalog.write().await;
+                        if let Some(entry) = catalog.get_mut(&name) {
+                            entry.resource_count = result.resources.len();
+                        }
+                    }
                     for mut resource in result.resources {
                         let original_uri = resource.uri.clone();
                         resource.uri = format!("lab://upstream/{name}/{original_uri}");
@@ -705,6 +846,12 @@ impl UpstreamPool {
                         format!("failed to list resources from upstream: {e}"),
                     )
                     .await;
+                    {
+                        let mut catalog = self.catalog.write().await;
+                        if let Some(entry) = catalog.get_mut(&name) {
+                            entry.resource_count = 0;
+                        }
+                    }
                     tracing::warn!(
                         upstream = %name,
                         error = %e,
@@ -815,6 +962,12 @@ impl UpstreamPool {
                 Ok(result) => {
                     self.record_success_for(&name, UpstreamCapability::Prompts)
                         .await;
+                    {
+                        let mut catalog = self.catalog.write().await;
+                        if let Some(entry) = catalog.get_mut(&name) {
+                            entry.prompt_count = result.prompts.len();
+                        }
+                    }
                     upstream_prompts.push((name, result.prompts));
                 }
                 Err(e) => {
@@ -824,6 +977,12 @@ impl UpstreamPool {
                         format!("failed to list prompts from upstream: {e}"),
                     )
                     .await;
+                    {
+                        let mut catalog = self.catalog.write().await;
+                        if let Some(entry) = catalog.get_mut(&name) {
+                            entry.prompt_count = 0;
+                        }
+                    }
                     tracing::warn!(
                         upstream = %name,
                         error = %e,
@@ -1231,6 +1390,8 @@ mod tests {
                 "github_*".to_string(),
             ])
             .expect("policy"),
+            prompt_count: 0,
+            resource_count: 0,
             tool_health: UpstreamHealth::Healthy,
             prompt_health: UpstreamHealth::Healthy,
             resource_health: UpstreamHealth::Healthy,
@@ -1280,6 +1441,8 @@ mod tests {
             tools,
             exposure_policy: ToolExposurePolicy::from_patterns(vec!["search_repos".into()])
                 .expect("policy"),
+            prompt_count: 0,
+            resource_count: 0,
             tool_health: UpstreamHealth::Healthy,
             prompt_health: UpstreamHealth::Healthy,
             resource_health: UpstreamHealth::Healthy,
@@ -1308,6 +1471,8 @@ mod tests {
             name: Arc::clone(&upstream_name),
             tools: HashMap::new(),
             exposure_policy: ToolExposurePolicy::All,
+            prompt_count: 0,
+            resource_count: 0,
             tool_health: UpstreamHealth::Healthy,
             prompt_health: UpstreamHealth::Healthy,
             resource_health: UpstreamHealth::Healthy,

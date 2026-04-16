@@ -6,6 +6,7 @@
 
 pub mod audit;
 pub mod completions;
+pub mod device;
 pub mod doctor;
 pub mod extract;
 pub mod gateway;
@@ -13,6 +14,7 @@ pub mod health;
 pub mod help;
 pub mod helpers;
 pub mod install;
+pub mod logs;
 pub mod oauth;
 pub mod params;
 pub mod plugins;
@@ -99,6 +101,8 @@ pub enum Command {
     Serve(serve::ServeArgs),
     /// Audit configured services and report problems.
     Doctor,
+    /// Query fleet devices from the configured master.
+    Device(device::DeviceArgs),
     /// Quick reachability check for configured services.
     Health,
     /// Open the plugin manager TUI.
@@ -123,6 +127,8 @@ pub enum Command {
     Gateway(gateway::GatewayArgs),
     /// Run local OAuth callback relay helpers.
     Oauth(oauth::OauthArgs),
+    /// Search fleet logs on the configured master.
+    Logs(logs::LogsArgs),
     /// Radarr movie collection manager.
     #[cfg(feature = "radarr")]
     Radarr(radarr::RadarrArgs),
@@ -194,6 +200,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     match cli.command {
         Command::Serve(args) => serve::run(args, &config).await,
         Command::Doctor => doctor::run(format),
+        Command::Device(args) => device::run(args, format, &config).await,
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
         Command::Audit(args) => audit::run(args, format),
@@ -206,6 +213,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Extract(cmd) => cmd.run().await.map(|()| ExitCode::SUCCESS),
         Command::Gateway(args) => gateway::run(args, format, &config).await,
         Command::Oauth(args) => oauth::run(args, &config).await,
+        Command::Logs(args) => logs::run(args, format, &config).await,
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,
         #[cfg(feature = "sonarr")]

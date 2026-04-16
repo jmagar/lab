@@ -47,6 +47,9 @@ pub struct LabConfig {
     /// OAuth callback relay preferences.
     #[serde(default)]
     pub oauth: OauthPreferences,
+    /// Device runtime preferences.
+    #[serde(default)]
+    pub device: Option<DevicePreferences>,
     /// Admin tool settings.
     #[serde(default)]
     pub admin: AdminPreferences,
@@ -62,6 +65,28 @@ pub struct LabConfig {
     /// Virtual MCP servers backed by canonically configured Lab services.
     #[serde(default)]
     pub virtual_servers: Vec<VirtualServerConfig>,
+}
+
+/// Device runtime preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DevicePreferences {
+    #[serde(default)]
+    pub master: Option<String>,
+}
+
+/// Runtime role for the current device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeviceRole {
+    Master,
+    NonMaster,
+}
+
+/// Resolved device runtime configuration after comparing local and master hosts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedDeviceRuntime {
+    pub local_host: String,
+    pub master_host: String,
+    pub role: DeviceRole,
 }
 
 /// Configuration for a single upstream MCP server.

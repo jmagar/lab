@@ -37,12 +37,26 @@ struct RelayState {
 
 pub async fn run_local_relay(config: LocalRelayConfig) -> Result<(), OauthRelayError> {
     let bind_addr = config.bind_addr;
-    let listener = TcpListener::bind(bind_addr)
+    let listener = bind_local_relay_listener(bind_addr).await?;
+    serve_local_relay(listener, config).await
+}
+
+pub async fn bind_local_relay_listener(
+    bind_addr: SocketAddr,
+) -> Result<TcpListener, OauthRelayError> {
+    TcpListener::bind(bind_addr)
         .await
         .map_err(|source| OauthRelayError::Bind {
             bind_addr: bind_addr.to_string(),
             source,
-        })?;
+        })
+}
+
+pub async fn serve_local_relay(
+    listener: TcpListener,
+    config: LocalRelayConfig,
+) -> Result<(), OauthRelayError> {
+    let bind_addr = config.bind_addr;
 
     tracing::info!(
         surface = "oauth_relay",
