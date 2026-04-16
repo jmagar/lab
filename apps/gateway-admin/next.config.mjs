@@ -14,9 +14,6 @@ const nextConfig = {
   output: 'export',
   trailingSlash: true,
   allowedDevOrigins,
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   images: {
     unoptimized: true,
   },

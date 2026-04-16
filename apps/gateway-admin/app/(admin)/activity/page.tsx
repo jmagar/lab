@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity, Clock } from 'lucide-react'
+import { Activity } from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
 import { EmptyState } from '@/components/gateway/empty-state'
 

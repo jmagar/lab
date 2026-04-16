@@ -9,8 +9,10 @@ import {
 } from '../auth/session-store.ts'
 import { hasApiTokenAuth } from '../auth/auth-mode.ts'
 
+type FetchMock = typeof globalThis.fetch
+
 test('loadBrowserSession stores authenticated payloads', async () => {
-  globalThis.fetch = async () =>
+  globalThis.fetch = (async () =>
     new Response(
       JSON.stringify({
         authenticated: true,
@@ -22,7 +24,7 @@ test('loadBrowserSession stores authenticated payloads', async () => {
         csrf_token: 'csrf-123',
       }),
       { status: 200 },
-    ) as typeof fetch
+    )) as FetchMock
 
   const state = await loadBrowserSession()
   assert.equal(state.status, 'authenticated')
@@ -31,15 +33,47 @@ test('loadBrowserSession stores authenticated payloads', async () => {
 
 test('loadBrowserSession falls back to unauthenticated when /auth/session fails', async () => {
   __setBrowserSessionStateForTests({ status: 'loading' })
-  globalThis.fetch = async () =>
+  globalThis.fetch = (async () =>
     new Response('not found', {
-      status: 404,
+      status: 401,
       headers: { 'content-type': 'text/plain' },
-    }) as typeof fetch
+    })) as FetchMock
 
   const state = await loadBrowserSession()
   assert.deepEqual(state, { status: 'unauthenticated' })
   assert.deepEqual(getBrowserSessionState(), { status: 'unauthenticated' })
+})
+
+test('loadBrowserSession keeps backend failures distinct from auth failures', async () => {
+  __setBrowserSessionStateForTests({ status: 'loading' })
+  globalThis.fetch = (async () =>
+    new Response('boom', {
+      status: 500,
+      headers: { 'content-type': 'text/plain' },
+    })) as FetchMock
+
+  const state = await loadBrowserSession()
+  assert.deepEqual(state, {
+    status: 'error',
+    message: 'Unable to reach the authentication service. Try again.',
+  })
+  assert.deepEqual(getBrowserSessionState(), {
+    status: 'error',
+    message: 'Unable to reach the authentication service. Try again.',
+  })
+})
+
+test('loadBrowserSession keeps network failures distinct from auth failures', async () => {
+  __setBrowserSessionStateForTests({ status: 'loading' })
+  globalThis.fetch = (async () => {
+    throw new Error('socket hang up')
+  }) as FetchMock
+
+  const state = await loadBrowserSession()
+  assert.deepEqual(state, {
+    status: 'error',
+    message: 'Unable to reach the authentication service. Try again.',
+  })
 })
 
 test('logoutBrowserSession resets local state after POST', async () => {
@@ -73,7 +107,7 @@ test('logoutBrowserSession preserves local state when /auth/logout fails', async
     csrfToken: 'csrf-123',
   })
 
-  globalThis.fetch = async () => new Response('boom', { status: 500 }) as typeof fetch
+  globalThis.fetch = (async () => new Response('boom', { status: 500 })) as FetchMock
 
   await assert.rejects(
     logoutBrowserSession(),

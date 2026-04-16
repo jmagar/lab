@@ -2,7 +2,7 @@
 
 import useSWR, { mutate } from 'swr'
 import { gatewayApi } from '@/lib/api/gateway-client'
-import { mockGateways, mockExposurePolicy, mockTestResult, mockReloadResult, mockExposurePolicyPreview } from '@/lib/api/mock-data'
+import { mockGateways, mockTestResult, mockReloadResult } from '@/lib/api/mock-data'
 import type {
   Gateway,
   CreateGatewayInput,

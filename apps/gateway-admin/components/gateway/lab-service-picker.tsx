@@ -12,7 +12,6 @@ import {
   FolderKanban,
   HardDrive,
   Library,
-  Network,
   RadioTower,
   Router,
   ScanSearch,
