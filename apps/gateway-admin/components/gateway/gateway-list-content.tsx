@@ -214,7 +214,7 @@ export function GatewayListContent() {
             gateways?.length === 0 ? (
               <EmptyState
                 title="No gateways configured"
-                description="Get started by adding your first MCP gateway connection to manage upstream server tools."
+                description="Get started by adding your first MCP gateway connection to manage upstream gateway tools."
                 action={{ label: 'Add Gateway', onClick: handleCreate }}
               />
             ) : (

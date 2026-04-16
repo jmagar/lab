@@ -346,7 +346,11 @@ async fn run_http(
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .with_context(|| format!("failed to bind HTTP listener on `{addr}`"))?;
-    tracing::info!(addr, http_mcp_enabled = mount_http_mcp, "lab serve (http) ready");
+    tracing::info!(
+        addr,
+        http_mcp_enabled = mount_http_mcp,
+        "lab serve (http) ready"
+    );
     axum::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)
 }
@@ -530,9 +534,8 @@ mod tests {
 
     use super::{
         McpArgs, PeerNotifier, ServeCommand, Transport, allowed_hosts, bind_addr,
-        build_http_router, is_loopback_host, resolve_port,
-        resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
-        resolve_web_ui_auth_disabled, should_run_stdio,
+        build_http_router, is_loopback_host, resolve_port, resolve_session_ttl_secs,
+        resolve_stateful_mode, resolve_transport, resolve_web_ui_auth_disabled, should_run_stdio,
     };
     use crate::api::AppState;
     use crate::cli::Cli;

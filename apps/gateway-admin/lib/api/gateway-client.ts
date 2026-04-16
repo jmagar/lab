@@ -28,6 +28,7 @@ import {
 import { testResultFromProbe } from '@/lib/server/gateway-test-result'
 import { gatewayActionUrl } from './gateway-config'
 import { confirmGatewayParams, gatewayRequestInit } from './gateway-request'
+import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from './tool-exposure-draft'
 
 export class GatewayApiError extends Error {
   status: number
@@ -276,9 +277,10 @@ export const gatewayApi = {
         { id },
         signal,
       )
+      const patterns = stripExposeNonePattern(policy.allowed_actions)
       return {
         mode: policy.allowed_actions.length === 0 ? 'expose_all' : 'allowlist',
-        patterns: policy.allowed_actions,
+        patterns,
       }
     }
 
@@ -289,7 +291,9 @@ export const gatewayApi = {
   async setExposurePolicy(id: string, policy: ExposurePolicy, signal?: AbortSignal): Promise<ExposurePolicy> {
     const serverView = await findServerView(id, signal)
     if (serverView.source === 'lab_service') {
-      const allowedActions = policy.mode === 'allowlist' ? policy.patterns : []
+      const allowedActions = policy.mode === 'allowlist'
+        ? policy.patterns.length === 0 ? [EXPOSE_NONE_PATTERN] : policy.patterns
+        : []
       await gatewayAction<{ allowed_actions: string[] }>(
         'gateway.virtual_server.set_mcp_policy',
         confirmGatewayParams({
@@ -300,11 +304,13 @@ export const gatewayApi = {
       )
       return {
         mode: policy.mode,
-        patterns: allowedActions,
+        patterns: stripExposeNonePattern(allowedActions),
       }
     }
 
-    const exposeTools = policy.mode === 'allowlist' ? policy.patterns : null
+    const exposeTools = policy.mode === 'allowlist'
+      ? policy.patterns.length === 0 ? [EXPOSE_NONE_PATTERN] : policy.patterns
+      : null
     await gatewayAction<BackendGatewayView>(
       'gateway.update',
       {
@@ -316,7 +322,7 @@ export const gatewayApi = {
       signal,
     )
     return policy.mode === 'allowlist'
-      ? { mode: 'allowlist', patterns: policy.patterns }
+      ? { mode: 'allowlist', patterns: stripExposeNonePattern(exposeTools ?? []) }
       : { mode: 'expose_all', patterns: [] }
   },
 

@@ -6,8 +6,8 @@ use crate::api::state::AppState;
 
 use lab_auth::session::{BROWSER_CSRF_HEADER_NAME, BROWSER_SESSION_COOKIE_NAME};
 
-fn oauth_state(state: &AppState) -> Option<lab_auth::state::AuthState> {
-    state.oauth_state.as_ref().map(|state| (**state).clone())
+fn oauth_state(state: &AppState) -> Option<&lab_auth::state::AuthState> {
+    state.oauth_state.as_ref().map(|state| state.as_ref())
 }
 
 fn no_store_json(body: serde_json::Value) -> Response {
