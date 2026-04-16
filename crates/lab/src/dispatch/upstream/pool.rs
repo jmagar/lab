@@ -314,7 +314,8 @@ impl UpstreamPool {
                             prompt_count,
                             prompt_last_error,
                             prompt_health,
-                        ) = discover_capability_counts(&name, &conn.peer, config.proxy_resources).await;
+                        ) = discover_capability_counts(&name, &conn.peer, config.proxy_resources)
+                            .await;
                         tracing::info!(
                             upstream = %name,
                             transport = upstream_transport(&config),
@@ -571,7 +572,10 @@ impl UpstreamPool {
         rows
     }
 
-    pub async fn cached_upstream_summary(&self, upstream_name: &str) -> Option<UpstreamCachedSummary> {
+    pub async fn cached_upstream_summary(
+        &self,
+        upstream_name: &str,
+    ) -> Option<UpstreamCachedSummary> {
         let catalog = self.catalog.read().await;
         let entry = catalog.get(upstream_name)?;
         let discovered_tool_count = entry.tools.len();

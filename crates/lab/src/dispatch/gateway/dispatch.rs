@@ -313,10 +313,11 @@ mod tests {
             crate::dispatch::upstream::types::UpstreamEntry {
                 name: std::sync::Arc::clone(&upstream_name),
                 tools,
-                exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::from_patterns(
-                    vec!["scrape".to_string()],
-                )
-                .expect("policy"),
+                exposure_policy:
+                    crate::dispatch::upstream::types::ToolExposurePolicy::from_patterns(vec![
+                        "scrape".to_string(),
+                    ])
+                    .expect("policy"),
                 prompt_count: 3,
                 resource_count: 4,
                 tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,

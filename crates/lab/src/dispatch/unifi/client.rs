@@ -42,8 +42,8 @@ pub fn client_from_env() -> Option<UnifiClient> {
     let url = env_non_empty("UNIFI_URL")?;
     let key = env_non_empty("UNIFI_API_KEY")?;
     build_client(&url, &key)
-    .map_err(|e| tracing::warn!(error = %e, url, "unifi client construction failed"))
-    .ok()
+        .map_err(|e| tracing::warn!(error = %e, url, "unifi client construction failed"))
+        .ok()
 }
 
 /// Resolve a `UniFi` client by optional instance label.
