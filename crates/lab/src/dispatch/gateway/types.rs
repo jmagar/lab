@@ -100,3 +100,14 @@ pub struct ServiceActionView {
     #[serde(default)]
     pub destructive: bool,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayToolExposureRowView {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub exposed: bool,
+    #[serde(default)]
+    pub matched_by: Option<String>,
+}

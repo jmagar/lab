@@ -8,6 +8,21 @@ use crate::dispatch::helpers::{InstancePool, env_non_empty};
 
 static POOL: OnceLock<InstancePool<UnifiClient>> = OnceLock::new();
 
+fn build_client(url: &str, key: &str) -> Result<UnifiClient, lab_apis::unifi::UnifiError> {
+    let resolve_ip = env_non_empty("UNIFI_RESOLVE_IP").and_then(|value| value.parse().ok());
+    let allow_insecure_tls = env_non_empty("UNIFI_ALLOW_INSECURE_TLS")
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"));
+    UnifiClient::new_with_resolve(
+        url,
+        Auth::ApiKey {
+            header: "X-API-KEY".into(),
+            key: key.to_string(),
+        },
+        resolve_ip,
+        allow_insecure_tls,
+    )
+}
+
 /// Return (or lazily build) the `UniFi` instance pool.
 ///
 /// Built once by scanning env vars at first call. Subsequent calls are
@@ -15,15 +30,9 @@ static POOL: OnceLock<InstancePool<UnifiClient>> = OnceLock::new();
 fn pool() -> &'static InstancePool<UnifiClient> {
     POOL.get_or_init(|| {
         InstancePool::build("UNIFI", |url, key| {
-            UnifiClient::new(
-                &url,
-                Auth::ApiKey {
-                    header: "X-API-KEY".into(),
-                    key,
-                },
-            )
-            .map_err(|e| tracing::warn!(error = %e, "unifi client construction failed"))
-            .ok()
+            build_client(&url, &key)
+                .map_err(|e| tracing::warn!(error = %e, "unifi client construction failed"))
+                .ok()
         })
     })
 }
@@ -32,13 +41,7 @@ fn pool() -> &'static InstancePool<UnifiClient> {
 pub fn client_from_env() -> Option<UnifiClient> {
     let url = env_non_empty("UNIFI_URL")?;
     let key = env_non_empty("UNIFI_API_KEY")?;
-    UnifiClient::new(
-        &url,
-        Auth::ApiKey {
-            header: "X-API-KEY".into(),
-            key,
-        },
-    )
+    build_client(&url, &key)
     .map_err(|e| tracing::warn!(error = %e, url, "unifi client construction failed"))
     .ok()
 }

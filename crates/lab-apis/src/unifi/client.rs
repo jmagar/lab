@@ -4,9 +4,12 @@
 //! client keeps the endpoint prefix internal so callers only provide the
 //! controller root URL.
 
+use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
+
 use serde_json::Value;
 
-use crate::core::{Auth, HttpClient};
+use crate::core::{ApiError, Auth, HttpClient};
 
 use super::{UnifiError, types::ApplicationInfo};
 
@@ -27,6 +30,54 @@ impl UnifiClient {
     pub fn new(base_url: &str, auth: Auth) -> Result<Self, UnifiError> {
         Ok(Self {
             http: HttpClient::new(base_url, auth)?,
+        })
+    }
+
+    /// Build a client against the controller root URL, forcing hostname
+    /// resolution to a specific IP while preserving TLS hostname validation.
+    ///
+    /// This is useful for local controllers whose certificate is issued for a
+    /// stable hostname like `unifi.local` but must be reached at a raw IP.
+    ///
+    /// # Errors
+    /// Returns [`UnifiError::Api`] if URL parsing or TLS client setup fails.
+    pub fn new_with_resolve(
+        base_url: &str,
+        auth: Auth,
+        resolve_ip: Option<IpAddr>,
+        allow_insecure_tls: bool,
+    ) -> Result<Self, UnifiError> {
+        if resolve_ip.is_none() && !allow_insecure_tls {
+            return Self::new(base_url, auth);
+        }
+
+        let parsed = reqwest::Url::parse(base_url)
+            .map_err(|e| UnifiError::Api(ApiError::Internal(format!("invalid base URL: {e}"))))?;
+        let mut builder = reqwest::Client::builder()
+            .user_agent(concat!("lab-apis/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30));
+
+        if let Some(resolve_ip) = resolve_ip {
+            let host = parsed.host_str().ok_or_else(|| {
+                UnifiError::Api(ApiError::Internal("missing host in base URL".into()))
+            })?;
+            let port = parsed.port_or_known_default().ok_or_else(|| {
+                UnifiError::Api(ApiError::Internal("missing port and unknown scheme".into()))
+            })?;
+            builder = builder.resolve(host, SocketAddr::new(resolve_ip, port));
+        }
+
+        if allow_insecure_tls {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+
+        let inner = builder
+            .build()
+            .map_err(|e| UnifiError::Api(ApiError::Internal(format!("reqwest::Client::build: {e}"))))?;
+
+        Ok(Self {
+            http: HttpClient::from_parts(base_url.to_string(), auth, inner),
         })
     }
 

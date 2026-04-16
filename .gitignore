@@ -75,6 +75,7 @@ specs/
 
 # ── Repo-specific ────────────────────────────────────────────────────────────
 data/
+proxies/
 config.local.toml
 *.key
 *.pem

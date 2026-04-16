@@ -4,6 +4,7 @@ import type {
   ExposurePolicyPreview,
   Gateway,
   GatewayWarning,
+  ServiceAction,
   TransportType,
   UpdateGatewayInput,
 } from '../types/gateway'
@@ -42,6 +43,11 @@ export interface BackendServerView {
   config_summary?: BackendServerConfigSummaryView
 }
 
+export interface BackendVirtualServiceDiscovery {
+  tool_names?: string[]
+  tools?: ServiceAction[]
+}
+
 export interface BackendGatewayConfigView {
   name: string
   url?: string | null
@@ -71,8 +77,15 @@ export interface GatewayProbeStatus {
   last_error?: string
 }
 
+export interface BackendGatewayToolRow {
+  name: string
+  description?: string | null
+  exposed?: boolean
+  matched_by?: string | null
+}
+
 export interface GatewayDiscoverySnapshot {
-  tools: string[]
+  tools: Array<string | BackendGatewayToolRow>
   resources: string[]
   prompts: string[]
 }
@@ -227,7 +240,10 @@ function buildWarnings(probe: GatewayProbeStatus): GatewayWarning[] {
   ]
 }
 
-export function normalizeServerView(view: BackendServerView): Gateway {
+export function normalizeServerView(
+  view: BackendServerView,
+  discovery?: BackendVirtualServiceDiscovery,
+): Gateway {
   const transport = (view.config_summary?.transport ?? 'http') as Gateway['transport']
   const target = view.config_summary?.target ?? undefined
   const warnings = (view.warnings ?? []).map((warning) => ({
@@ -236,6 +252,12 @@ export function normalizeServerView(view: BackendServerView): Gateway {
     timestamp: NOW(),
   }))
   const lastError = warnings[0]?.message
+  const tools = discovery?.tools
+    ?? (discovery?.tool_names ?? []).map((name) => ({
+      name,
+      description: '',
+      destructive: false,
+    }))
 
   return {
     id: view.id,
@@ -271,11 +293,16 @@ export function normalizeServerView(view: BackendServerView): Gateway {
       healthy: (view.connected ?? false) && warnings.length === 0,
       connected: view.connected ?? false,
       ...(lastError ? { last_error: lastError } : {}),
-      discovered_tool_count: 0,
-      exposed_tool_count: 0,
+      discovered_tool_count: tools.length,
+      exposed_tool_count: tools.length,
     },
     discovery: {
-      tools: [],
+      tools: tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description || undefined,
+        exposed: true,
+        matched_by: '*',
+      })),
       resources: [],
       prompts: [],
     },
@@ -293,11 +320,12 @@ export function normalizeGateway(
   const config = view.config
   const humanizedError = humanizeProbeError(probe.last_error, config)
   const exposePatterns = config.expose_tools
-  const tools = discovery.tools.map((name) => {
+  const tools = discovery.tools.map((tool) => {
+    const name = typeof tool === 'string' ? tool : tool.name
     const matchedBy = matchTool(name, exposePatterns)
     return {
       name,
-      description: undefined,
+      description: typeof tool === 'string' ? undefined : tool.description ?? undefined,
       exposed: matchedBy !== null,
       matched_by: matchedBy,
     }

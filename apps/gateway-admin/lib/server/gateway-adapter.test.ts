@@ -105,6 +105,48 @@ test('normalizeGateway applies allowlist exposure patterns', () => {
   )
 })
 
+test('normalizeGateway preserves discovered tool descriptions when provided', () => {
+  const gateway = normalizeGateway(
+    {
+      config: {
+        name: 'noxa',
+        command: 'noxa',
+        args: ['mcp'],
+        proxy_resources: true,
+      },
+      runtime: {
+        name: 'noxa',
+        tool_count: 2,
+        resource_count: 0,
+        prompt_count: 0,
+      },
+    },
+    {
+      connected: true,
+      healthy: true,
+    },
+    {
+      tools: [
+        { name: 'scrape', description: 'Fetch a single page as markdown', exposed: true, matched_by: '*' },
+        { name: 'crawl', description: 'Recursively crawl a site', exposed: true, matched_by: '*' },
+      ],
+      resources: [],
+      prompts: [],
+    }
+  )
+
+  assert.deepEqual(
+    gateway.discovery.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+    })),
+    [
+      { name: 'scrape', description: 'Fetch a single page as markdown' },
+      { name: 'crawl', description: 'Recursively crawl a site' },
+    ]
+  )
+})
+
 test('normalizeServerView maps unified server rows into list-friendly gateway cards', () => {
   const gateway = normalizeServerView({
     id: 'plex',
@@ -128,6 +170,94 @@ test('normalizeServerView maps unified server rows into list-friendly gateway ca
   assert.equal(gateway.status.connected, false)
   assert.equal(gateway.config.url, undefined)
   assert.equal(gateway.config.command, undefined)
+})
+
+test('normalizeServerView can include compiled lab-service tools', () => {
+  const gateway = normalizeServerView(
+    {
+      id: 'plex',
+      name: 'plex',
+      source: 'lab_service',
+      configured: true,
+      enabled: true,
+      connected: true,
+      warnings: [],
+      config_summary: {
+        transport: 'lab_service',
+        target: 'plex',
+      },
+    },
+    {
+      tools: [
+        { name: 'server.info', description: 'Show server metadata', destructive: false },
+        { name: 'library.list', description: 'List available libraries', destructive: false },
+      ],
+    }
+  )
+
+  assert.equal(gateway.status.discovered_tool_count, 2)
+  assert.equal(gateway.status.exposed_tool_count, 2)
+  assert.deepEqual(
+    gateway.discovery.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      exposed: tool.exposed,
+      matched_by: tool.matched_by,
+    })),
+    [
+      {
+        name: 'server.info',
+        description: 'Show server metadata',
+        exposed: true,
+        matched_by: '*',
+      },
+      {
+        name: 'library.list',
+        description: 'List available libraries',
+        exposed: true,
+        matched_by: '*',
+      },
+    ]
+  )
+})
+
+test('normalizeServerView can include discovered custom-gateway tools for summary counts', () => {
+  const gateway = normalizeServerView(
+    {
+      id: 'noxa',
+      name: 'noxa',
+      source: 'custom_gateway',
+      configured: true,
+      enabled: true,
+      connected: true,
+      warnings: [],
+      config_summary: {
+        transport: 'stdio',
+        target: 'noxa',
+      },
+    },
+    {
+      tools: [
+        { name: 'scrape', description: 'Fetch a single page as markdown', destructive: false },
+        { name: 'crawl', description: 'Recursively crawl a site', destructive: false },
+        { name: 'search', description: 'Search the web', destructive: false },
+      ],
+    }
+  )
+
+  assert.equal(gateway.status.discovered_tool_count, 3)
+  assert.equal(gateway.status.exposed_tool_count, 3)
+  assert.deepEqual(
+    gateway.discovery.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+    })),
+    [
+      { name: 'scrape', description: 'Fetch a single page as markdown' },
+      { name: 'crawl', description: 'Recursively crawl a site' },
+      { name: 'search', description: 'Search the web' },
+    ]
+  )
 })
 
 test('gatewayInputToSpec converts UI input into backend spec payload', () => {

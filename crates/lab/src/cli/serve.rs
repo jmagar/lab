@@ -1,12 +1,12 @@
 //! `lab serve` — start the MCP server.
 
 use std::process::ExitCode;
-use std::sync::Arc;
 use std::time::Duration;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use clap::{Args, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
 use lab_auth::config::AuthMode;
 use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::{
@@ -28,10 +28,23 @@ use crate::registry::{ToolRegistry, build_default_registry};
 #[derive(Debug, Clone, Copy, ValueEnum)]
 #[value(rename_all = "lowercase")]
 pub enum Transport {
-    /// stdin/stdout framing (default, used by Claude Desktop etc.).
+    /// stdin/stdout framing for local MCP clients such as Claude Desktop.
     Stdio,
-    /// HTTP transport — requires `LAB_MCP_HTTP_TOKEN` in the environment.
+    /// HTTP transport for the hosted `/mcp` surface.
     Http,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ServeCommand {
+    /// Run MCP-only helper modes.
+    Mcp(McpArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct McpArgs {
+    /// Serve the MCP surface over stdin/stdout instead of the hosted HTTP endpoint.
+    #[arg(long)]
+    pub stdio: bool,
 }
 
 /// `lab serve` arguments.
@@ -40,8 +53,8 @@ pub struct ServeArgs {
     /// Comma- or space-separated list of services to enable. Empty = all.
     #[arg(long, value_delimiter = ',')]
     pub services: Vec<String>,
-    /// Transport to use.
-    #[arg(long, value_enum)]
+    /// Legacy MCP transport selector. Prefer `lab serve` or `lab serve mcp --stdio`.
+    #[arg(long, value_enum, hide = true)]
     pub transport: Option<Transport>,
     /// Bind host for the HTTP transport.
     #[arg(long)]
@@ -49,27 +62,21 @@ pub struct ServeArgs {
     /// Bind port for the HTTP transport.
     #[arg(long)]
     pub port: Option<u16>,
+    #[command(subcommand)]
+    pub command: Option<ServeCommand>,
 }
 
 /// Run the serve subcommand.
 pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
-    let transport = resolve_transport(
-        args.transport,
-        std::env::var("LAB_MCP_TRANSPORT").ok(),
-        config.mcp.transport.as_deref(),
-    )?;
+    let transport = resolve_transport(args.transport, args.command.as_ref())?;
     // Resolve host and port here for source-of-truth ordering, but defer
     // address parsing and validation until the actual bind call in run_http.
-    // This way an invalid host string only errors when HTTP transport is chosen,
-    // not when --transport stdio is used (thread #2).
+    // This way an invalid host string only errors when the hosted HTTP app path is chosen.
     let host = args
         .host
         .or_else(|| std::env::var("LAB_MCP_HTTP_HOST").ok())
         .or_else(|| config.mcp.host.clone())
         .unwrap_or_else(|| "127.0.0.1".to_string());
-    if matches!(transport, Transport::Http) && host.is_empty() {
-        anyhow::bail!("HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config");
-    }
     let port = resolve_port(
         args.port,
         std::env::var("LAB_MCP_HTTP_PORT").ok(),
@@ -100,10 +107,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     install_gateway_manager(Arc::clone(&gateway_manager));
 
     match transport {
-        Transport::Stdio => {
-            run_stdio(Arc::new(registry), Arc::clone(&gateway_manager), notifier).await
-        }
+        Transport::Stdio => run_stdio(Arc::new(registry), Arc::clone(&gateway_manager), notifier).await,
         Transport::Http => {
+            if host.is_empty() {
+                anyhow::bail!(
+                    "HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config"
+                );
+            }
+
             let bearer_token = http_token();
             let auth_config =
                 resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
@@ -134,6 +145,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             let mut state = AppState::from_registry(registry);
             state = state.with_gateway_manager(Arc::clone(&gateway_manager));
             state = state.with_auth_config(auth_config);
+            state = state.with_web_ui_auth_disabled(resolve_web_ui_auth_disabled(&config.web)?);
             if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
                 tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
                 state = state.with_web_assets_dir(web_assets_dir);
@@ -169,23 +181,24 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .find(|path| path.join("index.html").is_file())
 }
 
-fn resolve_transport(
-    cli: Option<Transport>,
-    env: Option<String>,
-    config: Option<&str>,
-) -> Result<Transport> {
+fn resolve_web_ui_auth_disabled(web: &crate::config::WebPreferences) -> Result<bool> {
+    if let Ok(value) = std::env::var("LAB_WEB_UI_DISABLE_AUTH") {
+        return value
+            .parse::<bool>()
+            .with_context(|| format!("invalid LAB_WEB_UI_DISABLE_AUTH value `{value}`"));
+    }
+
+    Ok(web.disable_auth.unwrap_or(false))
+}
+
+fn resolve_transport(cli: Option<Transport>, command: Option<&ServeCommand>) -> Result<Transport> {
+    if let Some(ServeCommand::Mcp(McpArgs { stdio: true })) = command {
+        return Ok(Transport::Stdio);
+    }
     if let Some(transport) = cli {
         return Ok(transport);
     }
-    if let Some(value) = env {
-        return Transport::from_str(&value, true)
-            .map_err(|err| anyhow::anyhow!("invalid LAB_MCP_TRANSPORT value `{value}`: {err}"));
-    }
-    if let Some(value) = config {
-        return Transport::from_str(value, true)
-            .map_err(|err| anyhow::anyhow!("invalid mcp.transport value `{value}`: {err}"));
-    }
-    Ok(Transport::Stdio)
+    Ok(Transport::Http)
 }
 
 fn resolve_port(cli: Option<u16>, env: Option<String>, config: Option<u16>) -> Result<u16> {
@@ -422,24 +435,28 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 #[cfg(test)]
 mod tests {
     use super::{
-        Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port, resolve_transport,
-        resolve_session_ttl_secs, resolve_stateful_mode,
+        McpArgs, ServeCommand, Transport, allowed_hosts, bind_addr, is_loopback_host,
+        resolve_port, resolve_transport, resolve_session_ttl_secs, resolve_stateful_mode,
+        resolve_web_ui_auth_disabled,
     };
-    use crate::config::{LabConfig, McpPreferences};
+    use clap::Parser;
+    use crate::config::{LabConfig, McpPreferences, WebPreferences};
+    use crate::cli::Cli;
 
     #[test]
-    fn transport_resolution_prefers_cli_then_env_then_config() {
-        let resolved =
-            resolve_transport(Some(Transport::Http), Some("stdio".into()), Some("stdio"))
-                .expect("cli value should win");
-        assert!(matches!(resolved, Transport::Http));
-
-        let resolved = resolve_transport(None, Some("http".into()), Some("stdio"))
-            .expect("env value should win");
-        assert!(matches!(resolved, Transport::Http));
+    fn transport_resolution_prefers_explicit_stdio_then_cli_then_http_default() {
+        let resolved = resolve_transport(
+            Some(Transport::Http),
+            Some(&ServeCommand::Mcp(McpArgs { stdio: true })),
+        )
+        .expect("explicit stdio helper should win");
+        assert!(matches!(resolved, Transport::Stdio));
 
         let resolved =
-            resolve_transport(None, None, Some("http")).expect("config value should win");
+            resolve_transport(Some(Transport::Stdio), None).expect("cli value should win");
+        assert!(matches!(resolved, Transport::Stdio));
+
+        let resolved = resolve_transport(None, None).expect("default should be hosted HTTP");
         assert!(matches!(resolved, Transport::Http));
     }
 
@@ -461,7 +478,7 @@ mod tests {
     fn config_defaults_are_available_for_serve_resolution() {
         let cfg = LabConfig {
             mcp: McpPreferences {
-                transport: Some("http".into()),
+                transport: Some("stdio".into()),
                 host: Some("0.0.0.0".into()),
                 port: Some(9000),
                 session_ttl_secs: Some(120),
@@ -473,6 +490,33 @@ mod tests {
         assert_eq!(cfg.mcp.host.as_deref(), Some("0.0.0.0"));
         assert_eq!(cfg.mcp.session_ttl_secs, Some(120));
         assert_eq!(cfg.mcp.stateful, Some(false));
+    }
+
+    #[test]
+    fn web_ui_auth_disabled_resolution_prefers_config_then_default() {
+        assert!(resolve_web_ui_auth_disabled(&WebPreferences {
+            assets_dir: None,
+            disable_auth: Some(true),
+        })
+        .unwrap());
+        assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default()).unwrap());
+    }
+
+    #[test]
+    fn serve_subcommand_parses_stdio_helper() {
+        let cli = Cli::try_parse_from(["lab", "serve", "mcp", "--stdio"])
+            .expect("nested stdio helper should parse");
+
+        match cli.command {
+            crate::cli::Command::Serve(args) => {
+                assert!(args.transport.is_none());
+                match args.command {
+                    Some(ServeCommand::Mcp(McpArgs { stdio })) => assert!(stdio),
+                    other => panic!("unexpected serve subcommand: {other:?}"),
+                }
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     #[test]

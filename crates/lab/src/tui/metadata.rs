@@ -41,14 +41,14 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
     let sem = Arc::new(Semaphore::new(5));
     let mut handles: Vec<tokio::task::JoinHandle<Option<ServiceHealth>>> = Vec::new();
 
-    // Macro for services with `health() -> Result<(), ServiceError>` (most services).
-    macro_rules! spawn_health {
-        ($name:literal, $client:expr) => {{
+    // Macro for services with light probe methods returning `Result<T, E>`.
+    macro_rules! spawn_health_expr {
+        ($name:literal, $expr:expr) => {{
             let sem = sem.clone();
             handles.push(tokio::spawn(async move {
                 let _permit = sem.acquire_owned().await.ok()?;
                 let start = std::time::Instant::now();
-                let result = $client.health().await;
+                let result = $expr.await;
                 let latency_ms =
                     Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
                 let (reachable, auth_ok, message) = match result {
@@ -88,6 +88,12 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
                     message,
                 })
             }));
+        }};
+    }
+
+    macro_rules! spawn_health {
+        ($name:literal, $client:expr) => {{
+            spawn_health_expr!($name, $client.health())
         }};
     }
 
@@ -196,17 +202,10 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "unifi")]
     {
-        if let (Some(url), Some(key)) = (vars.get("UNIFI_URL"), vars.get("UNIFI_API_KEY")) {
-            use lab_apis::core::Auth;
-            if let Ok(client) = lab_apis::unifi::UnifiClient::new(
-                url,
-                Auth::ApiKey {
-                    header: "X-API-KEY".to_owned(),
-                    key: key.clone(),
-                },
-            ) {
-                spawn_health_trait!("unifi", client);
-            }
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::unifi::client_from_env)
+        {
+            spawn_health_trait!("unifi", client);
         }
     }
 
@@ -299,6 +298,195 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "apprise")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::apprise::client_from_env)
+        {
+            spawn_health!("apprise", client);
+        }
+    }
+
+    #[cfg(feature = "bytestash")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::bytestash::client_from_env)
+        {
+            spawn_health_trait!("bytestash", client);
+        }
+    }
+
+    #[cfg(feature = "qdrant")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::qdrant::client_from_env)
+        {
+            spawn_health!("qdrant", client);
+        }
+    }
+
+    #[cfg(feature = "tei")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::tei::client_from_env)
+        {
+            spawn_health!("tei", client);
+        }
+    }
+
+    #[cfg(feature = "linkding")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::linkding::client_from_env)
+        {
+            spawn_health_expr!("linkding", client.probe());
+        }
+    }
+
+    #[cfg(feature = "memos")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::memos::client_from_env)
+        {
+            spawn_health_expr!("memos", client.health());
+        }
+    }
+
+    #[cfg(feature = "paperless")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::paperless::client_from_env,
+        ) {
+            spawn_health_expr!("paperless", client.probe());
+        }
+    }
+
+    #[cfg(feature = "openai")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::openai::client_from_env)
+        {
+            spawn_health!("openai", client);
+        }
+    }
+
+    #[cfg(feature = "tautulli")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::tautulli::client_from_env,
+        ) {
+            spawn_health_expr!("tautulli", client.probe());
+        }
+    }
+
+    #[cfg(feature = "arcane")]
+    {
+        if let Some(client) =
+            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::arcane::client_from_env)
+        {
+            spawn_health_expr!("arcane", client.health());
+        }
+    }
+
+    #[cfg(feature = "qbittorrent")]
+    {
+        let qbittorrent_vars = vars.clone();
+        let sem = sem.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire_owned().await.ok()?;
+            let start = std::time::Instant::now();
+            let result = async {
+                let url = qbittorrent_vars
+                    .get("QBITTORRENT_URL")
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned()
+                    .ok_or_else(|| "QBITTORRENT_URL not configured".to_string())?;
+
+                let sid = if let Some(sid) = qbittorrent_vars
+                    .get("QBITTORRENT_SID")
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned()
+                {
+                    sid
+                } else {
+                    let username = qbittorrent_vars
+                        .get("QBITTORRENT_USERNAME")
+                        .filter(|value| !value.trim().is_empty())
+                        .cloned()
+                        .ok_or_else(|| "QBITTORRENT_USERNAME not configured".to_string())?;
+                    let password = qbittorrent_vars
+                        .get("QBITTORRENT_PASSWORD")
+                        .filter(|value| !value.trim().is_empty())
+                        .cloned()
+                        .ok_or_else(|| "QBITTORRENT_PASSWORD not configured".to_string())?;
+
+                    let login_client = reqwest::Client::builder()
+                        .connect_timeout(std::time::Duration::from_secs(5))
+                        .timeout(std::time::Duration::from_secs(10))
+                        .build()
+                        .map_err(|e| e.to_string())?;
+                    let login_url = format!("{}/api/v2/auth/login", url.trim_end_matches('/'));
+                    let resp = login_client
+                        .post(&login_url)
+                        .form(&[("username", username), ("password", password)])
+                        .send()
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let set_cookie = resp
+                        .headers()
+                        .get("set-cookie")
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_string);
+                    let body = resp.text().await.map_err(|e| e.to_string())?;
+                    if body.trim() != "Ok." {
+                        return Err(
+                            "qbittorrent login failed — check QBITTORRENT_USERNAME/PASSWORD"
+                                .to_string(),
+                        );
+                    }
+                    set_cookie
+                        .as_deref()
+                        .and_then(|value| {
+                            value
+                                .split(';')
+                                .next()
+                                .filter(|part| part.trim_start().starts_with("SID="))
+                                .map(|part| part.trim().to_string())
+                        })
+                        .ok_or_else(|| "qbittorrent login did not return SID cookie".to_string())?
+                };
+
+                let client = lab_apis::qbittorrent::QbittorrentClient::new(&url, sid)
+                    .map_err(|e| e.to_string())?;
+                client.version().await.map_err(|e| e.to_string())
+            }
+            .await;
+            let latency_ms = Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX));
+            let (reachable, auth_ok, message) = match result {
+                Ok(_) => (true, true, None),
+                Err(e) => {
+                    let msg = e.to_string();
+                    let auth_fail = msg.contains("401")
+                        || msg.contains("403")
+                        || msg.contains("auth")
+                        || msg.contains("Auth")
+                        || msg.contains("Unauthorized")
+                        || msg.contains("Forbidden");
+                    (false, !auth_fail, Some(msg))
+                }
+            };
+            Some(ServiceHealth {
+                service: "qbittorrent".to_owned(),
+                reachable,
+                auth_ok,
+                latency_ms,
+                message,
+            })
+        }));
+    }
+
     // Collect results.
     let mut results = Vec::new();
     for handle in handles {
@@ -307,4 +495,54 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn check_all_services_includes_qdrant_and_tei() {
+        let qdrant = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/healthz"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&qdrant)
+            .await;
+
+        let tei = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/health"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&tei)
+            .await;
+
+        let temp_dir = TempDir::new().expect("temp dir");
+        let env_path = temp_dir.path().join(".env");
+        fs::write(
+            &env_path,
+            format!("QDRANT_URL={}\nTEI_URL={}\n", qdrant.uri(), tei.uri()),
+        )
+        .expect("write env");
+
+        let results = super::check_all_services(&env_path).await;
+
+        let qdrant_health = results
+            .iter()
+            .find(|health| health.service == "qdrant")
+            .expect("qdrant health");
+        assert!(qdrant_health.reachable);
+        assert!(qdrant_health.auth_ok);
+
+        let tei_health = results
+            .iter()
+            .find(|health| health.service == "tei")
+            .expect("tei health");
+        assert!(tei_health.reachable);
+        assert!(tei_health.auth_ok);
+    }
 }

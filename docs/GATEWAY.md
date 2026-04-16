@@ -30,7 +30,7 @@ Secrets remain indirect:
 | `gateway.remove` | Remove a gateway, reconcile runtime state, return the removed config view. |
 | `gateway.reload` | Reload `~/.config/lab/config.toml`, rebuild the runtime pool, and pick up changed env-token values. |
 | `gateway.status` | Return runtime counts for configured gateways. |
-| `gateway.discovered_tools` | Return tool names discovered for one gateway. |
+| `gateway.discovered_tools` | Return discovered tool metadata and exposure state for one gateway. |
 | `gateway.discovered_resources` | Return proxied resource URIs discovered for one gateway. |
 | `gateway.discovered_prompts` | Return prompt names discovered for one gateway. |
 

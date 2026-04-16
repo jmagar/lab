@@ -45,7 +45,17 @@ pub const META: PluginMeta = PluginMeta {
             secret: true,
         },
     ],
-    optional_env: &[],
+    optional_env: &[EnvVar {
+        name: "UNIFI_RESOLVE_IP",
+        description: "Optional IP override used to resolve the UniFi hostname while preserving TLS hostname validation",
+        example: "10.1.0.1",
+        secret: false,
+    }, EnvVar {
+        name: "UNIFI_ALLOW_INSECURE_TLS",
+        description: "Allow self-signed or privately-issued TLS certificates for the UniFi controller",
+        example: "true",
+        secret: false,
+    }],
     default_port: Some(443),
 };
 

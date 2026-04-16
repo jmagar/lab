@@ -63,6 +63,14 @@ impl RequestLogContext {
 }
 
 impl HttpClient {
+    pub(crate) fn from_parts(base_url: impl Into<String>, auth: Auth, inner: Client) -> Self {
+        Self {
+            base_url: base_url.into(),
+            auth,
+            inner,
+        }
+    }
+
     /// Construct a new client with a base URL and auth strategy.
     ///
     /// # Errors
@@ -88,11 +96,7 @@ impl HttpClient {
             .default_headers(headers)
             .build()
             .map_err(|e| ApiError::Internal(format!("reqwest::Client::build: {e}")))?;
-        Ok(Self {
-            base_url: base_url.into(),
-            auth,
-            inner,
-        })
+        Ok(Self::from_parts(base_url, auth, inner))
     }
 
     /// Base URL this client targets.

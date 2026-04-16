@@ -42,6 +42,8 @@ pub struct AppState {
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
+    /// When true, `/v1/*` skips auth middleware for hosted UI requests.
+    pub web_ui_auth_disabled: bool,
 }
 
 impl AppState {
@@ -78,6 +80,7 @@ impl AppState {
             oauth_state: None,
             gateway_manager: None,
             web_assets_dir: None,
+            web_ui_auth_disabled: false,
         }
     }
 
@@ -109,6 +112,13 @@ impl AppState {
     #[must_use]
     pub fn with_web_assets_dir(mut self, dir: PathBuf) -> Self {
         self.web_assets_dir = Some(Arc::new(dir));
+        self
+    }
+
+    /// Disable auth on `/v1/*` while leaving `/mcp` auth unchanged.
+    #[must_use]
+    pub fn with_web_ui_auth_disabled(mut self, disabled: bool) -> Self {
+        self.web_ui_auth_disabled = disabled;
         self
     }
 }

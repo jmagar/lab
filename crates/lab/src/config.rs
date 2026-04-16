@@ -320,6 +320,9 @@ pub struct WebPreferences {
     /// Path to the exported Labby assets directory served by `lab serve`.
     #[serde(default)]
     pub assets_dir: Option<PathBuf>,
+    /// Disable `/v1/*` auth for the hosted web UI. Intended only for trusted reverse-proxy setups.
+    #[serde(default)]
+    pub disable_auth: Option<bool>,
 }
 
 /// OAuth local relay preferences.

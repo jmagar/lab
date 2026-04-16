@@ -12,6 +12,7 @@ import type {
 } from '@/lib/types/gateway'
 import {
   type BackendGatewayRuntimeView,
+  type BackendGatewayToolRow,
   type BackendServerView,
   type BackendGatewayView,
   type GatewayDiscoverySnapshot,
@@ -82,7 +83,7 @@ async function gatewayAction<T>(action: string, params: object, signal?: AbortSi
 
 async function fetchDiscovery(name: string, signal?: AbortSignal): Promise<GatewayDiscoverySnapshot> {
   const [tools, resources, prompts] = await Promise.all([
-    gatewayAction<string[]>('gateway.discovered_tools', { name }, signal),
+    gatewayAction<BackendGatewayToolRow[]>('gateway.discovered_tools', { name }, signal),
     gatewayAction<string[]>('gateway.discovered_resources', { name }, signal),
     gatewayAction<string[]>('gateway.discovered_prompts', { name }, signal),
   ])
@@ -135,13 +136,69 @@ async function findServerView(id: string, signal?: AbortSignal): Promise<Backend
   return gatewayAction<BackendServerView>('gateway.server.get', { id }, signal)
 }
 
+function compiledTools(actions: ServiceAction[]): ServiceAction[] {
+  return [...actions].sort((left, right) => left.name.localeCompare(right.name))
+}
+
+async function fetchSortedServiceActions(
+  service: string,
+  signal?: AbortSignal,
+): Promise<ServiceAction[]> {
+  return compiledTools(
+    await gatewayAction<ServiceAction[]>(
+      'gateway.service_actions',
+      { service },
+      signal,
+    ),
+  )
+}
+
+async function normalizeListedServerView(
+  view: BackendServerView,
+  signal?: AbortSignal,
+): Promise<Gateway> {
+  if (view.source === 'lab_service') {
+    return normalizeServerView(view, {
+      tools: await fetchSortedServiceActions(view.name, signal),
+    })
+  }
+
+  const gatewayView = await gatewayAction<BackendGatewayView>('gateway.get', { name: view.name }, signal)
+  return normalizeGatewayView(gatewayView, true, signal)
+}
+
+async function normalizeLabServiceServer(
+  serverView: BackendServerView,
+  signal?: AbortSignal,
+): Promise<Gateway> {
+  const [serviceConfig, actions] = await Promise.all([
+    gatewayAction<ServiceConfig>(
+      'gateway.service_config.get',
+      { service: serverView.name },
+      signal,
+    ),
+    fetchSortedServiceActions(serverView.name, signal),
+  ])
+  const serviceView = normalizeServerView(serverView, {
+    tools: actions,
+  })
+
+  return {
+    ...serviceView,
+    config: {
+      ...serviceView.config,
+      url: fieldPreview(serviceConfig, '_URL'),
+    },
+  }
+}
+
 async function mutateVirtualServer(
   action: 'gateway.virtual_server.enable' | 'gateway.virtual_server.disable',
   id: string,
   signal?: AbortSignal,
 ): Promise<Gateway> {
   const view = await gatewayAction<BackendServerView>(action, confirmGatewayParams({ id }), signal)
-  return normalizeServerView(view)
+  return normalizeLabServiceServer(view, signal)
 }
 
 function fieldPreview(config: ServiceConfig, suffix: string): string | undefined {
@@ -151,26 +208,13 @@ function fieldPreview(config: ServiceConfig, suffix: string): string | undefined
 export const gatewayApi = {
   async list(signal?: AbortSignal): Promise<Gateway[]> {
     const views = await gatewayAction<BackendServerView[]>('gateway.list', {}, signal)
-    return views.map((view) => normalizeServerView(view))
+    return Promise.all(views.map((view) => normalizeListedServerView(view, signal)))
   },
 
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
     const serverView = await findServerView(id, signal)
     if (serverView.source === 'lab_service') {
-      const serviceConfig = await gatewayAction<ServiceConfig>(
-        'gateway.service_config.get',
-        { service: serverView.name },
-        signal,
-      )
-      const serviceView = normalizeServerView(serverView)
-
-      return {
-        ...serviceView,
-        config: {
-          ...serviceView.config,
-          url: fieldPreview(serviceConfig, '_URL'),
-        },
-      }
+      return normalizeLabServiceServer(serverView, signal)
     }
 
     const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
@@ -292,7 +336,9 @@ export const gatewayApi = {
           )).map(
             (action) => action.name,
           )
-        : await gatewayAction<string[]>('gateway.discovered_tools', { name: id }, signal)
+        : (await gatewayAction<BackendGatewayToolRow[]>('gateway.discovered_tools', { name: id }, signal)).map(
+            (tool) => tool.name,
+          )
     return previewExposurePolicy(tools, patterns)
   },
 
@@ -339,6 +385,6 @@ export const gatewayApi = {
       confirmGatewayParams({ id, surface, enabled }),
       signal,
     )
-    return normalizeServerView(view)
+    return normalizeLabServiceServer(view, signal)
   },
 }

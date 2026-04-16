@@ -68,15 +68,15 @@ export function GatewayTable({
     loadingAction?.id === id && loadingAction?.action === action
 
   return (
-    <Table>
+    <Table className="table-fixed">
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[200px]">Name</TableHead>
-          <TableHead className="w-[100px]">Transport</TableHead>
+          <TableHead className="w-[38%]">Name</TableHead>
+          <TableHead className="w-[110px]">Transport</TableHead>
           <TableHead className="w-[120px]">Status</TableHead>
-          <TableHead className="w-[160px]">Tools</TableHead>
-          <TableHead className="w-[100px]">Warnings</TableHead>
-          <TableHead className="w-[100px] text-right">Actions</TableHead>
+          <TableHead className="w-[140px]">Tools</TableHead>
+          <TableHead className="w-[110px]">Warnings</TableHead>
+          <TableHead className="w-[116px] text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -88,12 +88,12 @@ export function GatewayTable({
             key={gateway.id}
             className={gateway.source === 'lab_service' && !(gateway.enabled ?? true) ? 'group bg-muted/20 text-muted-foreground' : 'group'}
           >
-            <TableCell>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+            <TableCell className="w-[38%] align-top whitespace-normal">
+              <div className="min-w-0 space-y-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <Link 
                     href={gatewayDetailHref(gateway.id)}
-                    className="font-medium hover:underline underline-offset-4"
+                    className="min-w-0 max-w-full font-medium break-words hover:underline underline-offset-4"
                   >
                     {gateway.name}
                   </Link>
@@ -103,7 +103,7 @@ export function GatewayTable({
                     </Badge>
                   )}
                 </div>
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground break-all">
                   {gateway.transport === 'http'
                     ? gateway.config.url
                     : gateway.transport === 'lab_service'
@@ -111,27 +111,28 @@ export function GatewayTable({
                       : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
                 </p>
                 {gateway.status.last_error && (
-                  <p className="line-clamp-2 text-xs text-warning">{gateway.status.last_error}</p>
+                  <p className="line-clamp-2 break-words text-xs text-warning">{gateway.status.last_error}</p>
                 )}
               </div>
             </TableCell>
-            <TableCell>
+            <TableCell className="align-top">
               <TransportBadge transport={gateway.transport} />
             </TableCell>
-            <TableCell>
+            <TableCell className="align-top">
               <StatusBadge 
                 healthy={gateway.status.healthy} 
                 connected={gateway.status.connected} 
               />
             </TableCell>
-            <TableCell>
+            <TableCell className="align-top whitespace-normal">
               <MetricsStrip
                 discoveredCount={gateway.status.discovered_tool_count}
                 exposedCount={gateway.status.exposed_tool_count}
                 showFiltered={false}
+                layout="stacked"
               />
             </TableCell>
-            <TableCell>
+            <TableCell className="align-top">
               <WarningsPill warnings={gateway.warnings} />
             </TableCell>
             <TableCell className="text-right">

@@ -18,7 +18,8 @@ use super::params::GatewayUpdatePatch;
 use super::service_catalog::service_meta;
 use super::types::{
     CatalogChangeNotifier, GatewayCatalogDiff, GatewayConfigView, GatewayRuntimeView,
-    GatewayView, ServiceConfigFieldView, ServiceConfigView, VirtualServerMcpPolicyView,
+    GatewayToolExposureRowView, GatewayView, ServiceConfigFieldView, ServiceConfigView,
+    VirtualServerMcpPolicyView,
 };
 use super::view_models::{
     ServerConfigSummaryView, ServerView, SurfaceStateView, SurfaceStatesView,
@@ -506,19 +507,25 @@ impl GatewayManager {
         Ok(diff)
     }
 
-    pub async fn discovered_tools(&self, name: &str) -> Result<Vec<String>, ToolError> {
+    pub async fn discovered_tools(
+        &self,
+        name: &str,
+    ) -> Result<Vec<GatewayToolExposureRowView>, ToolError> {
         let Some(pool) = self.runtime.current_pool().await else {
             return Ok(Vec::new());
         };
-        let mut tools: Vec<String> = pool
-            .healthy_tools()
+
+        Ok(pool
+            .tool_exposure_rows(name)
             .await
             .into_iter()
-            .filter(|tool| tool.upstream_name.as_ref() == name)
-            .map(|tool| tool.tool.name.to_string())
-            .collect();
-        tools.sort();
-        Ok(tools)
+            .map(|row| GatewayToolExposureRowView {
+                name: row.name,
+                description: row.description,
+                exposed: row.exposed,
+                matched_by: row.matched_by,
+            })
+            .collect())
     }
 
     pub async fn discovered_resources(&self, name: &str) -> Result<Vec<String>, ToolError> {
@@ -760,14 +767,14 @@ fn server_view_from_virtual_server(
     let connected = record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
     let warnings = health
         .and_then(|status| {
-            status.message.as_ref().map(|message| {
+            health_warning_message(status).map(|message| {
                 vec![super::view_models::ServerWarningView {
                     code: if status.reachable {
                         "health_warning".to_string()
                     } else {
                         "connection_error".to_string()
                     },
-                    message: message.clone(),
+                    message: message.to_string(),
                 }]
             })
         })
@@ -806,6 +813,42 @@ fn server_view_from_virtual_server(
     }
 }
 
+fn health_warning_message(status: &ServiceHealth) -> Option<&str> {
+    let message = status.message.as_deref()?;
+
+    if !status.reachable || !status.auth_ok {
+        return Some(message);
+    }
+
+    if is_actionable_health_warning(message) {
+        return Some(message);
+    }
+
+    None
+}
+
+fn is_actionable_health_warning(message: &str) -> bool {
+    let normalized = message.trim().to_ascii_lowercase();
+    let warning_markers = [
+        "auth",
+        "denied",
+        "degraded",
+        "error",
+        "failed",
+        "invalid",
+        "offline",
+        "timed out",
+        "timeout",
+        "unavailable",
+        "unreachable",
+        "warning",
+    ];
+
+    warning_markers
+        .iter()
+        .any(|marker| normalized.contains(marker))
+}
+
 fn read_env_values(path: &std::path::Path) -> Result<HashMap<String, String>, ToolError> {
     Ok(dotenvy::from_path_iter(path)
         .ok()
@@ -842,7 +885,9 @@ fn service_config_view(
 ) -> ServiceConfigView {
     let mut fields = Vec::new();
     for env in meta.required_env.iter().chain(meta.optional_env.iter()) {
-        let value = values.get(env.name);
+        let value = values
+            .get(env.name)
+            .and_then(|value| (!value.trim().is_empty()).then_some(value));
         fields.push(ServiceConfigFieldView {
             name: env.name.to_string(),
             present: value.is_some(),
@@ -1048,6 +1093,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn service_config_get_treats_empty_values_as_not_present() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("OPENAI_API_KEY".to_string(), "token".to_string());
+        values.insert("OPENAI_URL".to_string(), String::new());
+
+        let config = manager
+            .set_service_config("openai", &values)
+            .await
+            .expect("set service config");
+
+        let url = config
+            .fields
+            .iter()
+            .find(|field| field.name == "OPENAI_URL")
+            .expect("url field");
+        assert!(!url.present);
+        assert_eq!(url.value_preview, None);
+    }
+
+    #[tokio::test]
     async fn disabling_virtual_server_preserves_configured_service_listing() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.toml");
@@ -1101,6 +1170,29 @@ mod tests {
 
         assert!(!view.connected);
         assert!(!view.surfaces.mcp.connected);
+    }
+
+    #[test]
+    fn healthy_informational_probe_messages_do_not_create_gateway_warnings() {
+        let view = server_view_from_virtual_server(
+            &VirtualServerConfig {
+                id: "unraid".to_string(),
+                service: "unraid".to_string(),
+                enabled: true,
+                surfaces: VirtualServerSurfacesConfig::default(),
+                mcp_policy: None,
+            },
+            Some(&ServiceHealth {
+                service: "unraid".to_string(),
+                reachable: true,
+                auth_ok: true,
+                latency_ms: Some(12),
+                message: Some("online".to_string()),
+            }),
+        );
+
+        assert!(view.connected);
+        assert!(view.warnings.is_empty());
     }
 
     #[tokio::test]

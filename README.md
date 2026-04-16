@@ -135,13 +135,21 @@ lab help --json
 
 ```bash
 lab serve
-LAB_MCP_HTTP_TOKEN=... lab serve --transport http
-LAB_AUTH_MODE=oauth LAB_PUBLIC_URL=https://lab.example.com LAB_GOOGLE_CLIENT_ID=... LAB_GOOGLE_CLIENT_SECRET=... lab serve --transport http
-lab serve --transport http --host 127.0.0.1 --port 8765
+LAB_MCP_HTTP_TOKEN=... lab serve
+LAB_AUTH_MODE=oauth LAB_PUBLIC_URL=https://lab.example.com LAB_GOOGLE_CLIENT_ID=... LAB_GOOGLE_CLIENT_SECRET=... lab serve
+lab serve --host 127.0.0.1 --port 8765
+lab serve mcp --stdio
 lab serve --services radarr,sonarr,plex
 ```
 
-When the exported Labby bundle exists at `apps/gateway-admin/out`, `lab serve --transport http`
+`lab serve` is the hosted runtime path. It always starts the HTTP server for:
+
+- the product API
+- the Labby web UI (when exported assets exist)
+- OAuth metadata and token endpoints
+- the hosted HTTP MCP surface at `/mcp`
+
+When the exported Labby bundle exists at `apps/gateway-admin/out`, `lab serve`
 also serves the web UI from the same origin. In that mode:
 
 - Labby UI is available at `http://127.0.0.1:8765/`
@@ -189,7 +197,8 @@ or replace the normal OAuth listener on the real MCP client machine.
 
 ```
 lab help              Print the service + action catalog
-lab serve             Start the MCP server (stdio or HTTP transport)
+lab serve             Start the hosted lab server (API + web UI + OAuth + HTTP MCP)
+lab serve mcp --stdio Start the MCP server over stdio for local clients
 lab doctor            Audit configured services and report problems
 lab health            Quick reachability check for configured services
 lab plugins           Open the TUI plugin manager
@@ -208,14 +217,25 @@ Global flag: `--json` — emit JSON instead of human-readable tables.
 
 | Flag | Description |
 | --- | --- |
-| `--transport <stdio\|http>` | Transport (default: `stdio`) |
 | `--host <addr>` | HTTP bind host (default: `127.0.0.1`) |
 | `--port <port>` | HTTP bind port (default: `8765`) |
 | `--services <list>` | Comma-separated service filter (default: all) |
 
-Config precedence: CLI args > env vars (`LAB_MCP_TRANSPORT`, `LAB_MCP_HTTP_HOST`, `LAB_MCP_HTTP_PORT`) > `config.toml` (first found from search order) > defaults.
+`lab serve` always starts the hosted HTTP server. That includes the API, OAuth endpoints, web UI when assets are available, and the HTTP MCP surface at `/mcp`.
 
-HTTP transport requires either `LAB_MCP_HTTP_TOKEN` in bearer mode or the OAuth settings (`LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, and Google client credentials) in OAuth mode.
+Config precedence for the hosted listener: CLI args > env vars (`LAB_MCP_HTTP_HOST`, `LAB_MCP_HTTP_PORT`) > `config.toml` (first found from search order) > defaults.
+
+The hosted HTTP server requires either `LAB_MCP_HTTP_TOKEN` in bearer mode or the OAuth settings (`LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, and Google client credentials) in OAuth mode.
+
+### `lab serve mcp --stdio`
+
+Use this when you want a stdio MCP server for a local client such as Claude Desktop or an editor integration.
+
+```bash
+lab serve mcp --stdio
+```
+
+The hosted API/web UI server and the stdio MCP helper are now separate operator paths.
 
 ### `lab extract`
 
@@ -262,8 +282,9 @@ Destructive CLI commands require `-y`/`--yes` to run non-interactively. `--no-co
 
 ### One tool per service
 
-`lab serve` starts the MCP server. When HTTP transport is enabled, it can also host the Labby
-web UI from the same port as the API and MCP endpoints. Every service is exposed as **one MCP tool**
+`lab serve` starts the hosted lab server. That hosted runtime includes the API, OAuth endpoints,
+and, when assets are available, the Labby web UI from the same port as the API and MCP endpoints.
+Every service is exposed as **one MCP tool**
 accepting a shared input shape:
 
 ```json
@@ -273,7 +294,7 @@ accepting a shared input shape:
 }
 ```
 
-This keeps the total MCP tool count at ~23 instead of hundreds. The default transport is `stdio`; HTTP is also supported.
+This keeps the total MCP tool count at ~23 instead of hundreds. The hosted MCP surface defaults to HTTP at `/mcp`. For stdio clients, use `lab serve mcp --stdio`.
 
 ### Tool list
 

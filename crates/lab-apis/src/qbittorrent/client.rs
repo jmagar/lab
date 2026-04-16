@@ -43,19 +43,10 @@ impl QbittorrentClient {
 
     /// Get the qBittorrent application version string.
     ///
-    /// The `/api/v2/app/version` endpoint returns a plain text body (e.g. `v4.6.3`).
-    /// We parse it as a JSON `Value` to be tolerant of both plain-text and
-    /// JSON-quoted responses, then extract the string.
-    ///
     /// # Errors
     /// Returns `QbittorrentError::Api` on HTTP failure.
     pub async fn version(&self) -> Result<String, QbittorrentError> {
-        let raw: serde_json::Value = self.http.get_json("/api/v2/app/version").await?;
-        let v = match raw {
-            serde_json::Value::String(s) => s,
-            other => other.to_string(),
-        };
-        Ok(v)
+        Ok(self.http.get_text("/api/v2/app/version").await?)
     }
 
     /// Get qBittorrent application preferences.

@@ -70,7 +70,7 @@ impl PlexClient {
     /// # Errors
     /// Returns `PlexError::Api` on HTTP failure.
     pub async fn probe(&self) -> Result<(), PlexError> {
-        drop(self.get_value("/").await?);
+        drop(self.http.get_text("/identity").await?);
         Ok(())
     }
 

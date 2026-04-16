@@ -261,9 +261,9 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "gateway.discovered_tools",
-        description: "List discovered upstream tools for one gateway",
+        description: "List discovered upstream tool metadata and exposure state for one gateway",
         destructive: false,
-        returns: "string[]",
+        returns: "GatewayToolExposureRowView[]",
         params: &[NAME_PARAM],
     },
     ActionSpec {
