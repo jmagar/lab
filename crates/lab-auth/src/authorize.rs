@@ -9,15 +9,58 @@ use tracing::{debug, info, warn};
 
 use crate::error::AuthError;
 use crate::google::AuthorizeUrlRequest;
+use crate::session::{append_set_cookie, build_browser_session_cookie, create_browser_session};
 use crate::state::AuthState;
 use crate::types::{
-    AuthorizationCodeRow, AuthorizationRequestRow, AuthorizeQuery, CallbackQuery,
-    ClientRegistrationRequest, ClientRegistrationResponse, RegisteredClient,
+    AuthorizationCodeRow, AuthorizationRequestRow, AuthorizeQuery, BrowserLoginQuery,
+    BrowserLoginStateRow, CallbackQuery, ClientRegistrationRequest, ClientRegistrationResponse,
+    RegisteredClient,
 };
 use crate::util::{fingerprint, now_unix, random_token};
 
 const AUTH_REQUEST_TTL_SECS: i64 = 300;
 const LAB_SCOPE: &str = "lab";
+
+pub async fn browser_login(
+    State(state): State<AuthState>,
+    Query(query): Query<BrowserLoginQuery>,
+) -> Result<Response, AuthError> {
+    let return_to = sanitize_return_to(&state, query.return_to.as_deref());
+    let provider_code_verifier = random_token(32)?;
+    let provider_code_challenge =
+        URL_SAFE_NO_PAD.encode(Sha256::digest(provider_code_verifier.as_bytes()));
+    let request_state = random_token(24)?;
+    let oauth_state_id = fingerprint(&request_state);
+
+    state
+        .store
+        .insert_browser_login_state(BrowserLoginStateRow {
+            state: request_state.clone(),
+            return_to: return_to.clone(),
+            provider_code_verifier,
+            created_at: now_unix(),
+            expires_at: now_unix() + AUTH_REQUEST_TTL_SECS,
+        })
+        .await?;
+
+    let location = state.google.authorize_url(AuthorizeUrlRequest {
+        state: request_state,
+        scope: LAB_SCOPE.to_string(),
+        code_challenge: provider_code_challenge,
+        code_challenge_method: "S256".to_string(),
+    })?;
+    info!(
+        oauth_state_id = %oauth_state_id,
+        return_to = %return_to,
+        "browser login redirected to upstream provider"
+    );
+
+    Ok((
+        StatusCode::FOUND,
+        [(header::LOCATION, location.to_string())],
+    )
+        .into_response())
+}
 
 pub async fn register_client(
     State(state): State<AuthState>,
@@ -174,6 +217,26 @@ pub async fn callback(
         provider = "google",
         "oauth callback received"
     );
+    if let Some(login) = state.store.take_browser_login_state(&query.state).await? {
+        let google = state
+            .google
+            .exchange_code(&query.code, &login.provider_code_verifier)
+            .await?;
+        let session = create_browser_session(&state, google.subject, google.email).await?;
+        let mut response = Redirect::to(&login.return_to).into_response();
+        append_set_cookie(
+            &mut response,
+            &build_browser_session_cookie(&state, &session.session_id),
+        );
+        info!(
+            oauth_state_id = %oauth_state_id,
+            return_to = %login.return_to,
+            subject_id = %fingerprint(&session.subject),
+            "browser login callback issued session cookie"
+        );
+        return Ok(response);
+    }
+
     let request = state
         .store
         .take_authorization_request(&query.state)
@@ -247,6 +310,37 @@ pub async fn callback(
     Ok(Redirect::to(redirect_uri.as_str()).into_response())
 }
 
+fn sanitize_return_to(state: &AuthState, requested: Option<&str>) -> String {
+    let Some(requested) = requested.map(str::trim).filter(|value| !value.is_empty()) else {
+        return "/".to_string();
+    };
+    if requested.starts_with('/') && !requested.starts_with("//") {
+        return requested.to_string();
+    }
+    let Some(public_url) = state.config.public_url.as_ref() else {
+        return "/".to_string();
+    };
+    let Ok(url) = reqwest::Url::parse(requested) else {
+        return "/".to_string();
+    };
+    if url.scheme() != public_url.scheme()
+        || url.host_str() != public_url.host_str()
+        || url.port_or_known_default() != public_url.port_or_known_default()
+    {
+        return "/".to_string();
+    }
+    let mut normalized = url.path().to_string();
+    if let Some(query) = url.query() {
+        normalized.push('?');
+        normalized.push_str(query);
+    }
+    if let Some(fragment) = url.fragment() {
+        normalized.push('#');
+        normalized.push_str(fragment);
+    }
+    normalized
+}
+
 fn validate_response_type(response_type: &str) -> Result<(), AuthError> {
     if response_type == "code" {
         Ok(())
@@ -289,7 +383,10 @@ fn is_loopback_redirect(value: &str) -> bool {
 }
 
 fn is_allowed_redirect_uri(value: &str, patterns: &[String]) -> bool {
-    is_loopback_redirect(value) || patterns.iter().any(|pattern| wildcard_matches(pattern, value))
+    is_loopback_redirect(value)
+        || patterns
+            .iter()
+            .any(|pattern| wildcard_matches(pattern, value))
 }
 
 fn wildcard_matches(pattern: &str, value: &str) -> bool {
@@ -460,6 +557,43 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn browser_login_starts_upstream_flow_and_persists_return_to_state() {
+        let state = test_auth_state().await;
+        let app = router(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/login?return_to=%2Fgateways%2F%3Ftab%3Dlab")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FOUND);
+        let location = Url::parse(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let upstream_state = location
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .map(|(_, value)| value.into_owned())
+            .unwrap();
+        let stored = state
+            .store
+            .take_browser_login_state(&upstream_state)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.return_to, "/gateways/?tab=lab");
+    }
+
+    #[tokio::test]
     async fn callback_rejects_expired_or_mismatched_state() {
         let app = router(test_auth_state_with_mock_google().await);
         let response = app
@@ -472,6 +606,60 @@ pub mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn browser_login_callback_sets_session_cookie_and_redirects_home() {
+        let state = test_auth_state_with_mock_google().await;
+        let app = router(state.clone());
+        let login = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/login?return_to=%2Fgateways%2F")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let location = Url::parse(
+            login
+                .headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let upstream_state = location
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .map(|(_, value)| value.into_owned())
+            .unwrap();
+
+        let callback = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/auth/google/callback?state={upstream_state}&code=upstream-code"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callback.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            callback.headers().get(header::LOCATION).unwrap(),
+            "/gateways/"
+        );
+        let cookie = callback
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .find_map(|value| value.to_str().ok())
+            .unwrap();
+        assert!(cookie.contains("lab_session="));
     }
 
     #[tokio::test]

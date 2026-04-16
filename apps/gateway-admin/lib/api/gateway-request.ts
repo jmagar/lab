@@ -1,9 +1,16 @@
+import { getSessionCsrfToken } from '../auth/session.ts'
+
 export function gatewayHeaders(token = process.env.NEXT_PUBLIC_API_TOKEN): HeadersInit {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   }
   if (token) {
     headers.Authorization = `Bearer ${token}`
+  } else {
+    const csrfToken = getSessionCsrfToken()
+    if (csrfToken) {
+      headers['x-csrf-token'] = csrfToken
+    }
   }
   return headers
 }

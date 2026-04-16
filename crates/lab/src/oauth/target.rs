@@ -267,7 +267,10 @@ mod tests {
     #[test]
     fn headers_nominated_by_connection_are_filtered() {
         let mut headers = HeaderMap::new();
-        headers.insert(CONNECTION, HeaderValue::from_static("x-lab-session, keep-alive"));
+        headers.insert(
+            CONNECTION,
+            HeaderValue::from_static("x-lab-session, keep-alive"),
+        );
         headers.insert("x-lab-session", HeaderValue::from_static("secret"));
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
 

@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 use tokio::sync::RwLock;
 
@@ -163,7 +163,6 @@ impl SharedServiceClients {
 
     #[cfg(test)]
     pub fn refresh_count(&self) -> usize {
-        self.refresh_count
-            .load(std::sync::atomic::Ordering::SeqCst)
+        self.refresh_count.load(std::sync::atomic::Ordering::SeqCst)
     }
 }

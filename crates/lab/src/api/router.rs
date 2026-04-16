@@ -8,10 +8,10 @@ use axum::{
     Router,
     body::Body,
     extract::State,
-    http::{HeaderName, HeaderValue, Request, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, header},
     middleware::Next,
     response::{Html, IntoResponse},
-    routing::get,
+    routing::{get, post},
 };
 use subtle::ConstantTimeEq;
 use tower_http::{
@@ -82,6 +82,13 @@ async fn auth_authorize(
     Ok(lab_auth::authorize::authorize(State(app_auth_state(&state)?), query).await?)
 }
 
+async fn auth_browser_login(
+    State(state): State<AppState>,
+    query: axum::extract::Query<lab_auth::types::BrowserLoginQuery>,
+) -> Result<impl IntoResponse, LabAuthError> {
+    Ok(lab_auth::authorize::browser_login(State(app_auth_state(&state)?), query).await?)
+}
+
 async fn auth_callback(
     State(state): State<AppState>,
     query: axum::extract::Query<lab_auth::types::CallbackQuery>,
@@ -94,6 +101,276 @@ async fn auth_token(
     form: axum::extract::Form<lab_auth::types::TokenRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::token::token(State(app_auth_state(&state)?), form).await?)
+}
+
+async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let Ok(auth_state) = app_auth_state(&state) else {
+        return (
+            StatusCode::OK,
+            [(header::CACHE_CONTROL, "private, no-store")],
+            axum::Json(serde_json::json!({ "authenticated": false })),
+        )
+            .into_response();
+    };
+
+    let cookie_name = lab_auth::session::BROWSER_SESSION_COOKIE_NAME;
+    let has_cookie_header = headers.contains_key(header::COOKIE);
+    let browser_session_cookie = lab_auth::session::read_cookie(&headers, cookie_name);
+    let has_browser_session_cookie = browser_session_cookie.is_some();
+    tracing::info!(
+        has_cookie_header,
+        has_browser_session_cookie,
+        "auth session request received"
+    );
+    let maybe_session = browser_session_cookie.map(|session_id| async move {
+        match auth_state.store.find_browser_session(&session_id).await {
+            Ok(session) => {
+                tracing::info!(
+                    has_cookie_header,
+                    has_browser_session_cookie,
+                    session_found = session.is_some(),
+                    "auth session lookup completed"
+                );
+                session
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    has_cookie_header,
+                    has_browser_session_cookie,
+                    "auth session lookup failed"
+                );
+                None
+            }
+        }
+    });
+    let session = match maybe_session {
+        Some(fut) => fut.await,
+        None => None,
+    };
+
+    let body = match session {
+        Some(session) => serde_json::json!({
+            "authenticated": true,
+            "user": {
+                "sub": session.subject,
+                "email": session.email,
+            },
+            "expires_at": session.expires_at,
+            "csrf_token": session.csrf_token,
+        }),
+        None => serde_json::json!({ "authenticated": false }),
+    };
+
+    (
+        StatusCode::OK,
+        [(header::CACHE_CONTROL, "private, no-store")],
+        axum::Json(body),
+    )
+        .into_response()
+}
+
+async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let Ok(auth_state) = app_auth_state(&state) else {
+        return StatusCode::NO_CONTENT.into_response();
+    };
+
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    if let Some(session_id) =
+        lab_auth::session::read_cookie(&headers, lab_auth::session::BROWSER_SESSION_COOKIE_NAME)
+    {
+        let csrf = headers
+            .get(lab_auth::session::BROWSER_CSRF_HEADER_NAME)
+            .and_then(|value| value.to_str().ok());
+        match auth_state.store.find_browser_session(&session_id).await {
+            Ok(Some(session)) => {
+                if csrf != Some(session.csrf_token.as_str()) {
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        axum::Json(serde_json::json!({
+                            "kind": "validation_failed",
+                            "message": "missing or invalid csrf token",
+                        })),
+                    )
+                        .into_response();
+                }
+                if let Err(error) = auth_state.store.revoke_browser_session(&session_id).await {
+                    tracing::error!(error = %error, "failed to revoke browser session");
+                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(error = %error, "failed to load browser session for logout");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        }
+    }
+    lab_auth::session::append_set_cookie(
+        &mut response,
+        &lab_auth::session::clear_browser_session_cookie(&auth_state),
+    );
+    response
+}
+
+fn auth_error_response(message: &str, resource_url: Option<&str>) -> axum::response::Response {
+    let err = ToolError::Sdk {
+        sdk_kind: "auth_failed".into(),
+        message: message.into(),
+    };
+    let mut response = err.into_response();
+    if let Some(url) = resource_url {
+        let www_auth = crate::api::oauth::www_authenticate_value(url);
+        if let Ok(value) = HeaderValue::from_str(&www_auth) {
+            response
+                .headers_mut()
+                .insert(header::WWW_AUTHENTICATE, value);
+        }
+    }
+    response
+}
+
+fn csrf_error_response(message: &str) -> axum::response::Response {
+    ToolError::Sdk {
+        sdk_kind: "validation_failed".into(),
+        message: message.into(),
+    }
+    .into_response()
+}
+
+async fn authenticate_request(
+    mut request: Request<Body>,
+    next: Next,
+    static_token: Option<Arc<str>>,
+    auth_state: Option<Arc<lab_auth::state::AuthState>>,
+    resource_url: Option<Arc<str>>,
+    allow_session_cookie: bool,
+) -> Result<axum::response::Response, std::convert::Infallible> {
+    let auth_header = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_bearer_token);
+
+    if let Some(token) = auth_header {
+        if let Some(ref expected) = static_token
+            && tokens_equal(&token, expected.as_ref())
+        {
+            request
+                .extensions_mut()
+                .insert(crate::api::oauth::AuthContext {
+                    sub: "static-bearer".to_string(),
+                    scopes: vec!["lab:read".to_string(), "lab:admin".to_string()],
+                    issuer: "local".to_string(),
+                    via_session: false,
+                    csrf_token: None,
+                    email: None,
+                });
+            return Ok(next.run(request).await);
+        }
+
+        if let Some(ref auth_state) = auth_state {
+            let expected_aud = auth_state
+                .config
+                .public_url
+                .as_ref()
+                .map(|url| url.as_str().trim_end_matches('/').to_string());
+            let Some(ref expected_aud) = expected_aud else {
+                return Ok(auth_error_response(
+                    "server misconfigured: LAB_PUBLIC_URL required for JWT validation",
+                    resource_url.as_deref(),
+                ));
+            };
+            match auth_state
+                .signing_keys
+                .validate_access_token(&token, expected_aud)
+            {
+                Ok(claims) => {
+                    if claims.iss != *expected_aud {
+                        return Ok(auth_error_response(
+                            "invalid bearer token",
+                            resource_url.as_deref(),
+                        ));
+                    }
+
+                    request
+                        .extensions_mut()
+                        .insert(crate::api::oauth::AuthContext {
+                            sub: claims.sub,
+                            scopes: claims
+                                .scope
+                                .split_whitespace()
+                                .filter(|scope| !scope.is_empty())
+                                .map(ToOwned::to_owned)
+                                .collect(),
+                            issuer: claims.iss,
+                            via_session: false,
+                            csrf_token: None,
+                            email: None,
+                        });
+                    return Ok(next.run(request).await);
+                }
+                Err(error) => {
+                    tracing::debug!(error = %error, "lab-auth JWT validation failed");
+                }
+            }
+        }
+
+        return Ok(auth_error_response(
+            "invalid bearer token",
+            resource_url.as_deref(),
+        ));
+    }
+
+    if allow_session_cookie
+        && let Some(auth_state) = auth_state
+        && let Some(session_id) = lab_auth::session::read_cookie(
+            request.headers(),
+            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+        )
+    {
+        match auth_state.store.find_browser_session(&session_id).await {
+            Ok(Some(session)) => {
+                if !matches!(
+                    *request.method(),
+                    Method::GET | Method::HEAD | Method::OPTIONS
+                ) {
+                    let csrf = request
+                        .headers()
+                        .get(lab_auth::session::BROWSER_CSRF_HEADER_NAME)
+                        .and_then(|value| value.to_str().ok());
+                    if csrf != Some(session.csrf_token.as_str()) {
+                        return Ok(csrf_error_response("missing or invalid csrf token"));
+                    }
+                }
+
+                request
+                    .extensions_mut()
+                    .insert(crate::api::oauth::AuthContext {
+                        sub: session.subject,
+                        scopes: vec!["lab:read".to_string(), "lab:admin".to_string()],
+                        issuer: "browser-session".to_string(),
+                        via_session: true,
+                        csrf_token: Some(session.csrf_token),
+                        email: session.email,
+                    });
+                return Ok(next.run(request).await);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::debug!(error = %error, "browser session lookup failed");
+            }
+        }
+    }
+
+    Ok(auth_error_response(
+        if allow_session_cookie {
+            "missing bearer token or session cookie"
+        } else {
+            "missing bearer token"
+        },
+        resource_url.as_deref(),
+    ))
 }
 
 /// Build the `/v1` sub-router with all feature-gated service routes.
@@ -288,22 +565,12 @@ pub fn build_router(
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
-    let mut protected = Router::new();
-
-    // Apply layered auth to the protected sub-router (lab-y8aa).
-    //
-    // Auth priority: try static bearer first (cheapest), then OAuth JWT.
-    // Either is accepted. If both are absent, no auth middleware is applied
-    // (the safety gate in serve.rs prevents non-localhost bind without auth).
-    //
-    // `AuthContext` is injected as an Extension for downstream scope checks.
-    // Static bearer tokens get implicit lab:admin scope (full access).
+    // Build separate protected sub-routers so `/v1/*` can accept browser
+    // sessions while `/mcp` remains token-authenticated only.
+    let v1_router = Router::new().nest("/v1", v1);
     let static_token = bearer_token.map(Arc::<str>::from);
     let auth_state = auth_state.map(Arc::new);
-    let auth_state_for_middleware = auth_state.clone();
     let needs_auth = static_token.is_some() || auth_state.is_some();
-
-    // Resolve resource_url once for WWW-Authenticate headers on 401.
     let resource_url: Option<Arc<str>> = auth_state
         .as_ref()
         .and_then(|state| state.config.public_url.as_ref().map(url::Url::as_str))
@@ -314,32 +581,47 @@ pub fn build_router(
                 .and_then(|cfg| cfg.public_url.as_ref().map(url::Url::as_str))
         })
         .map(Arc::from);
-
-    let v1_router = if needs_auth && !state.web_ui_auth_disabled {
-        protect_with_auth(
-            Router::new().nest("/v1", v1),
-            static_token.clone(),
-            auth_state_for_middleware.clone(),
-            resource_url.clone(),
-        )
+    let auth_state_for_v1 = auth_state.clone();
+    let static_token_for_v1 = static_token.clone();
+    let resource_url_for_v1 = resource_url.clone();
+    let v1_protected = if needs_auth {
+        v1_router.layer(axum::middleware::from_fn(
+            move |request: Request<Body>, next: Next| {
+                authenticate_request(
+                    request,
+                    next,
+                    static_token_for_v1.clone(),
+                    auth_state_for_v1.clone(),
+                    resource_url_for_v1.clone(),
+                    true,
+                )
+            },
+        ))
     } else {
-        Router::new().nest("/v1", v1)
+        v1_router
     };
-    protected = protected.merge(v1_router);
 
-    if let Some(mcp) = mcp_router {
-        let mcp_router = if needs_auth {
-            protect_with_auth(
-                mcp,
-                static_token.clone(),
-                auth_state_for_middleware.clone(),
-                resource_url.clone(),
-            )
+    let auth_state_for_mcp = auth_state.clone();
+    let static_token_for_mcp = static_token.clone();
+    let resource_url_for_mcp = resource_url.clone();
+    let mcp_protected = mcp_router.map(|mcp| {
+        if needs_auth {
+            mcp.layer(axum::middleware::from_fn(
+                move |request: Request<Body>, next: Next| {
+                    authenticate_request(
+                        request,
+                        next,
+                        static_token_for_mcp.clone(),
+                        auth_state_for_mcp.clone(),
+                        resource_url_for_mcp.clone(),
+                        false,
+                    )
+                },
+            ))
         } else {
             mcp
-        };
-        protected = protected.merge(mcp_router);
-    }
+        }
+    });
 
     // Build the outer router: health probes + discovery (no auth) + protected routes (auth).
     // Layers apply bottom-up: last .layer() call = outermost middleware.
@@ -348,7 +630,10 @@ pub fn build_router(
     let mut router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
-        .merge(protected);
+        .merge(v1_protected);
+    if let Some(mcp) = mcp_protected {
+        router = router.merge(mcp);
+    }
     if let Some(auth_state) = auth_state.as_ref() {
         let _ = auth_state;
         router = router
@@ -361,10 +646,13 @@ pub fn build_router(
                 get(auth_protected_resource_metadata),
             )
             .route("/jwks", get(auth_jwks))
-            .route("/register", axum::routing::post(auth_register))
+            .route("/register", post(auth_register))
             .route("/authorize", get(auth_authorize))
+            .route("/auth/login", get(auth_browser_login))
+            .route("/auth/session", get(auth_session))
+            .route("/auth/logout", post(auth_logout))
             .route("/auth/google/callback", get(auth_callback))
-            .route("/token", axum::routing::post(auth_token));
+            .route("/token", post(auth_token));
     }
 
     if state.web_assets_dir.is_some() {
@@ -475,6 +763,7 @@ fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
             AUTHORIZATION,
             CONTENT_TYPE,
             HeaderName::from_static("x-request-id"),
+            HeaderName::from_static(lab_auth::session::BROWSER_CSRF_HEADER_NAME),
         ])
 }
 
@@ -830,6 +1119,200 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn v1_accepts_browser_session_cookie() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        let app = build_router(state, None, Some(auth_state), None, &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn mcp_rejects_browser_session_cookie_without_bearer() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        let mcp_router = Router::new().route("/mcp", get(|| async { StatusCode::OK }));
+        let app = build_router(state, None, Some(auth_state), Some(mcp_router), &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/mcp")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn v1_session_post_requires_csrf_header() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        let app = build_router(state, None, Some(auth_state), None, &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/gateway")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .body(Body::from(r#"{"action":"gateway.list","params":{}}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn auth_session_returns_browser_identity_and_csrf_token() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        let app = build_router(state, None, Some(auth_state), None, &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/auth/session")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["authenticated"], true);
+        assert_eq!(json["user"]["sub"], "browser-user");
+        assert_eq!(json["csrf_token"], "csrf-123");
+    }
+
+    #[tokio::test]
+    async fn auth_logout_revokes_session_and_clears_cookie() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        let store = auth_state.store.clone();
+        let app = build_router(state, None, Some(auth_state), None, &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/logout")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .header(lab_auth::session::BROWSER_CSRF_HEADER_NAME, "csrf-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(cookie.contains("Max-Age=0"));
+        assert!(
+            store
+                .find_browser_session("sess-123")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_logout_returns_internal_error_when_revocation_fails() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        auth_state
+            .store
+            .execute_test_statement("DROP TABLE browser_sessions;")
+            .await
+            .unwrap();
+        let app = build_router(state, None, Some(auth_state), None, &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/logout")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .header(lab_auth::session::BROWSER_CSRF_HEADER_NAME, "csrf-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(response.headers().get(header::SET_COOKIE).is_none());
+    }
+
+    #[tokio::test]
     async fn oauth_mode_missing_token_returns_www_authenticate_metadata_hint() {
         let state = AppState::new();
         let auth_state = test_lab_auth_state().await;
@@ -857,7 +1340,11 @@ mod tests {
     #[tokio::test]
     async fn serves_web_assets_for_browser_routes_when_configured() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(
+            dir.path().join("index.html"),
+            "<html><body>Labby</body></html>",
+        )
+        .unwrap();
 
         let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
         let app = build_router_with_bearer(state, None, None);
@@ -886,7 +1373,11 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(
+            dir.path().join("index.html"),
+            "<html><body>Labby</body></html>",
+        )
+        .unwrap();
         fs::write(outside.path().join("secret.txt"), "top-secret").unwrap();
         unix_fs::symlink(
             outside.path().join("secret.txt"),
@@ -912,7 +1403,11 @@ mod tests {
     #[tokio::test]
     async fn v1_routes_still_win_over_web_asset_fallback() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("index.html"), "<html><body>Labby</body></html>").unwrap();
+        fs::write(
+            dir.path().join("index.html"),
+            "<html><body>Labby</body></html>",
+        )
+        .unwrap();
 
         let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
         let app = build_router_with_bearer(state, None, None);
@@ -976,5 +1471,24 @@ mod tests {
                 azp: "client".to_string(),
             })
             .unwrap()
+    }
+
+    async fn seed_browser_session(
+        auth_state: &lab_auth::state::AuthState,
+    ) -> lab_auth::types::BrowserSessionRow {
+        let session = lab_auth::types::BrowserSessionRow {
+            session_id: "sess-123".to_string(),
+            subject: "browser-user".to_string(),
+            email: Some("browser@example.com".to_string()),
+            csrf_token: "csrf-123".to_string(),
+            created_at: 1,
+            expires_at: i64::MAX,
+        };
+        auth_state
+            .store
+            .upsert_browser_session(session.clone())
+            .await
+            .unwrap();
+        session
     }
 }

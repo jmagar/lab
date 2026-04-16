@@ -40,7 +40,11 @@ fn max_response_bytes() -> usize {
 }
 
 fn upstream_transport(config: &UpstreamConfig) -> &'static str {
-    if config.url.is_some() { "http" } else { "stdio" }
+    if config.url.is_some() {
+        "http"
+    } else {
+        "stdio"
+    }
 }
 
 fn upstream_target(config: &UpstreamConfig) -> String {

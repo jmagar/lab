@@ -6,7 +6,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::error::AuthError;
 use crate::types::{
-    AuthorizationCodeRow, AuthorizationRequestRow, RefreshTokenRow, RegisteredClient,
+    AuthorizationCodeRow, AuthorizationRequestRow, BrowserLoginStateRow, BrowserSessionRow,
+    RefreshTokenRow, RegisteredClient,
 };
 use crate::util::{ensure_restrictive_permissions, now_unix, set_restrictive_permissions};
 
@@ -267,6 +268,120 @@ impl SqliteStore {
         .await
     }
 
+    pub async fn upsert_browser_session(
+        &self,
+        session: BrowserSessionRow,
+    ) -> Result<(), AuthError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO browser_sessions (
+                    session_id, subject, email, csrf_token, created_at, expires_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(session_id) DO UPDATE SET
+                    subject = excluded.subject,
+                    email = excluded.email,
+                    csrf_token = excluded.csrf_token,
+                    created_at = excluded.created_at,
+                    expires_at = excluded.expires_at",
+                params![
+                    session.session_id,
+                    session.subject,
+                    session.email,
+                    session.csrf_token,
+                    session.created_at,
+                    session.expires_at,
+                ],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_browser_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<BrowserSessionRow>, AuthError> {
+        let session_id = session_id.to_string();
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT session_id, subject, email, csrf_token, created_at, expires_at
+                 FROM browser_sessions
+                 WHERE session_id = ?1
+                   AND expires_at > ?2",
+                params![session_id, now],
+                row_to_browser_session,
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
+    pub async fn revoke_browser_session(&self, session_id: &str) -> Result<(), AuthError> {
+        let session_id = session_id.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM browser_sessions WHERE session_id = ?1",
+                params![session_id],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn execute_test_statement(&self, sql: &str) -> Result<(), AuthError> {
+        let sql = sql.to_string();
+        self.with_conn(move |conn| conn.execute_batch(&sql).map_err(sqlite_error))
+            .await
+    }
+
+    pub async fn insert_browser_login_state(
+        &self,
+        login: BrowserLoginStateRow,
+    ) -> Result<(), AuthError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO browser_login_states (
+                    state, return_to, provider_code_verifier, created_at, expires_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    login.state,
+                    login.return_to,
+                    login.provider_code_verifier,
+                    login.created_at,
+                    login.expires_at,
+                ],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn take_browser_login_state(
+        &self,
+        state: &str,
+    ) -> Result<Option<BrowserLoginStateRow>, AuthError> {
+        let state = state.to_string();
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "DELETE FROM browser_login_states
+                 WHERE state = ?1
+                   AND expires_at > ?2
+                 RETURNING state, return_to, provider_code_verifier, created_at, expires_at",
+                params![state, now],
+                row_to_browser_login_state,
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
     /// Delete expired rows from `authorization_requests`, `authorization_codes`, and
     /// `refresh_tokens`. Returns the total number of deleted rows.
     pub async fn cleanup_expired(&self) -> Result<u64, AuthError> {
@@ -277,6 +392,8 @@ impl SqliteStore {
                 "authorization_requests",
                 "authorization_codes",
                 "refresh_tokens",
+                "browser_sessions",
+                "browser_login_states",
             ] {
                 let deleted = conn
                     .execute(
@@ -368,6 +485,21 @@ fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
             provider_refresh_token TEXT,
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS browser_sessions (
+            session_id TEXT PRIMARY KEY,
+            subject TEXT NOT NULL,
+            email TEXT,
+            csrf_token TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS browser_login_states (
+            state TEXT PRIMARY KEY,
+            return_to TEXT NOT NULL,
+            provider_code_verifier TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
         );",
     )
     .map_err(sqlite_error)?;
@@ -428,11 +560,32 @@ fn row_to_refresh_token(row: &rusqlite::Row<'_>) -> rusqlite::Result<RefreshToke
     })
 }
 
+fn row_to_browser_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<BrowserSessionRow> {
+    Ok(BrowserSessionRow {
+        session_id: row.get(0)?,
+        subject: row.get(1)?,
+        email: row.get(2)?,
+        csrf_token: row.get(3)?,
+        created_at: row.get(4)?,
+        expires_at: row.get(5)?,
+    })
+}
+
+fn row_to_browser_login_state(row: &rusqlite::Row<'_>) -> rusqlite::Result<BrowserLoginStateRow> {
+    Ok(BrowserLoginStateRow {
+        state: row.get(0)?,
+        return_to: row.get(1)?,
+        provider_code_verifier: row.get(2)?,
+        created_at: row.get(3)?,
+        expires_at: row.get(4)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use crate::types::{AuthorizationCodeRow, RefreshTokenRow};
+    use crate::types::{AuthorizationCodeRow, BrowserSessionRow, RefreshTokenRow};
 
     use crate::util::now_unix;
 
@@ -601,5 +754,53 @@ mod tests {
             created_at: now,
             expires_at: now + 300,
         }
+    }
+
+    #[tokio::test]
+    async fn browser_session_round_trip_succeeds() {
+        let store = temp_store().await;
+        let row = BrowserSessionRow {
+            session_id: "sess_123".into(),
+            subject: "user_1".into(),
+            email: Some("jmagar@example.com".into()),
+            csrf_token: "csrf_123".into(),
+            created_at: 1,
+            expires_at: now_unix() + 9_999,
+        };
+
+        store.upsert_browser_session(row.clone()).await.unwrap();
+        let fetched = store
+            .find_browser_session("sess_123")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(fetched.session_id, row.session_id);
+        assert_eq!(fetched.subject, row.subject);
+        assert_eq!(fetched.csrf_token, row.csrf_token);
+    }
+
+    #[tokio::test]
+    async fn revoking_browser_session_removes_it() {
+        let store = temp_store().await;
+        let row = BrowserSessionRow {
+            session_id: "sess_123".into(),
+            subject: "user_1".into(),
+            email: None,
+            csrf_token: "csrf_123".into(),
+            created_at: 1,
+            expires_at: now_unix() + 9_999,
+        };
+
+        store.upsert_browser_session(row).await.unwrap();
+        store.revoke_browser_session("sess_123").await.unwrap();
+
+        assert!(
+            store
+                .find_browser_session("sess_123")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }

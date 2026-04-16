@@ -174,11 +174,7 @@ async fn relay_callback(
         Err(error) => {
             return json_error(
                 StatusCode::BAD_GATEWAY,
-                format_upstream_error(
-                    &forward_url,
-                    &redact_forward_target(&forward_url),
-                    &error,
-                ),
+                format_upstream_error(&forward_url, &redact_forward_target(&forward_url), &error),
             );
         }
     };
@@ -249,7 +245,11 @@ fn redact_forward_target(url: &reqwest::Url) -> String {
     redacted.to_string()
 }
 
-fn format_upstream_error(url: &reqwest::Url, redacted_target: &str, error: &reqwest::Error) -> String {
+fn format_upstream_error(
+    url: &reqwest::Url,
+    redacted_target: &str,
+    error: &reqwest::Error,
+) -> String {
     let sanitized_source = error.to_string().replace(url.as_str(), redacted_target);
     format!(
         "failed to reach oauth relay target `{}`: {}",

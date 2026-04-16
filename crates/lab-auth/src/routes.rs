@@ -1,7 +1,7 @@
 use axum::Router;
 use axum::routing::{get, post};
 
-use crate::authorize::{authorize, callback, register_client};
+use crate::authorize::{authorize, browser_login, callback, register_client};
 use crate::metadata::{authorization_server_metadata, jwks, protected_resource_metadata};
 use crate::state::AuthState;
 use crate::token::token;
@@ -19,6 +19,7 @@ pub fn router(state: AuthState) -> Router {
         .route("/jwks", get(jwks))
         .route("/register", post(register_client))
         .route("/authorize", get(authorize))
+        .route("/auth/login", get(browser_login))
         .route("/auth/google/callback", get(callback))
         .route("/token", post(token))
         .with_state(state)

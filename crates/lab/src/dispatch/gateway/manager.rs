@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use crate::config::{backup_env, env_is_up_to_date, write_env, LabConfig, UpstreamConfig};
+use crate::config::{LabConfig, UpstreamConfig, backup_env, env_is_up_to_date, write_env};
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::upstream::pool::UpstreamPool;
@@ -130,7 +130,11 @@ impl GatewayManager {
         })?;
 
         for field in values.keys() {
-            let valid = meta.required_env.iter().chain(meta.optional_env.iter()).any(|env| env.name == field);
+            let valid = meta
+                .required_env
+                .iter()
+                .chain(meta.optional_env.iter())
+                .any(|env| env.name == field);
             if !valid {
                 return Err(ToolError::InvalidParam {
                     message: format!("field `{field}` is not valid for service `{service}`"),
@@ -298,9 +302,10 @@ impl GatewayManager {
         };
 
         match &virtual_server.mcp_policy {
-            Some(policy) if !policy.allowed_actions.is_empty() => {
-                policy.allowed_actions.iter().any(|allowed| allowed == action)
-            }
+            Some(policy) if !policy.allowed_actions.is_empty() => policy
+                .allowed_actions
+                .iter()
+                .any(|allowed| allowed == action),
             _ => true,
         }
     }
@@ -587,7 +592,10 @@ impl GatewayManager {
         enabled: bool,
     ) -> Result<ServerView, ToolError> {
         let mut cfg = self.config.read().await.clone();
-        let existing_index = cfg.virtual_servers.iter().position(|server| server.id == id);
+        let existing_index = cfg
+            .virtual_servers
+            .iter()
+            .position(|server| server.id == id);
         let index = if let Some(index) = existing_index {
             index
         } else {
@@ -604,13 +612,14 @@ impl GatewayManager {
                 });
             }
 
-            cfg.virtual_servers.push(crate::config::VirtualServerConfig {
-                id: id.to_string(),
-                service: id.to_string(),
-                enabled: false,
-                surfaces: crate::config::VirtualServerSurfacesConfig::default(),
-                mcp_policy: None,
-            });
+            cfg.virtual_servers
+                .push(crate::config::VirtualServerConfig {
+                    id: id.to_string(),
+                    service: id.to_string(),
+                    enabled: false,
+                    surfaces: crate::config::VirtualServerSurfacesConfig::default(),
+                    mcp_policy: None,
+                });
             cfg.virtual_servers.len() - 1
         };
 
@@ -764,7 +773,8 @@ fn server_view_from_virtual_server(
     let service = match &record.source {
         VirtualServerSource::LabService { service } => service.clone(),
     };
-    let connected = record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
+    let connected =
+        record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
     let warnings = health
         .and_then(|status| {
             health_warning_message(status).map(|message| {
@@ -868,7 +878,11 @@ fn values_to_service_creds(
             } else {
                 None
             };
-            let secret = if url.is_some() { None } else { Some(value.clone()) };
+            let secret = if url.is_some() {
+                None
+            } else {
+                Some(value.clone())
+            };
             ServiceCreds {
                 service: service.to_string(),
                 url,
@@ -1287,7 +1301,8 @@ mod tests {
     async fn service_clients_refresh_after_service_config_update() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.toml");
-        let shared_clients = SharedServiceClients::from_clients(crate::dispatch::clients::ServiceClients::default());
+        let shared_clients =
+            SharedServiceClients::from_clients(crate::dispatch::clients::ServiceClients::default());
         let manager = GatewayManager::new(path, GatewayRuntimeHandle::default())
             .with_service_clients(shared_clients.clone());
 
@@ -1358,6 +1373,9 @@ mod tests {
         pool.insert_entry_for_tests("broken-upstream", entry).await;
 
         let runtime = runtime_view(Some(&pool), "broken-upstream", None).await;
-        assert_eq!(runtime.last_error.as_deref(), Some("stdio handshake failed"));
+        assert_eq!(
+            runtime.last_error.as_deref(),
+            Some("stdio handshake failed")
+        );
     }
 }

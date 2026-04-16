@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
+import { __setBrowserSessionStateForTests } from '../auth/session-store.ts'
 import { confirmGatewayParams, gatewayHeaders, gatewayRequestInit } from './gateway-request.ts'
 
 test('gatewayRequestInit omits cookies when bearer auth is configured', () => {
@@ -12,6 +13,7 @@ test('gatewayRequestInit omits cookies when bearer auth is configured', () => {
 })
 
 test('gatewayHeaders omits authorization when no token is provided', () => {
+  __setBrowserSessionStateForTests({ status: 'unauthenticated' })
   const headers = gatewayHeaders(undefined) as Record<string, string>
 
   assert.equal(headers['Content-Type'], 'application/json')
@@ -19,10 +21,17 @@ test('gatewayHeaders omits authorization when no token is provided', () => {
 })
 
 test('gatewayRequestInit keeps credentialed requests for session-auth setups', () => {
+  __setBrowserSessionStateForTests({
+    status: 'authenticated',
+    user: { sub: 'browser-user', email: 'browser@example.com' },
+    expiresAt: 42,
+    csrfToken: 'csrf-123',
+  })
   const init = gatewayRequestInit('gateway.list', {}, undefined)
 
   assert.equal(init.credentials, 'include')
   assert.equal((init.headers as Record<string, string>)['Content-Type'], 'application/json')
+  assert.equal((init.headers as Record<string, string>)['x-csrf-token'], 'csrf-123')
 })
 
 test('confirmGatewayParams marks destructive gateway mutations for explicit confirmation', () => {

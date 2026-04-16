@@ -1,9 +1,9 @@
 //! `lab serve` — start the MCP server.
 
-use std::process::ExitCode;
-use std::time::Duration;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand, ValueEnum};
@@ -172,8 +172,7 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
     let from_config = web.assets_dir.clone();
-    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../apps/gateway-admin/out");
+    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/gateway-admin/out");
 
     [from_env, from_config, Some(fallback)]
         .into_iter()
@@ -336,7 +335,8 @@ fn build_mcp_service(
     session_manager.session_config = session_config;
     let session_manager = Arc::new(session_manager);
 
-    let stateful = resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
+    let stateful =
+        resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
 
     let config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(allowed_hosts(
@@ -545,7 +545,10 @@ mod tests {
 
     #[test]
     fn session_ttl_resolution_prefers_env_then_config_then_default() {
-        assert_eq!(resolve_session_ttl_secs(Some("120".into()), Some(90)).unwrap(), 120);
+        assert_eq!(
+            resolve_session_ttl_secs(Some("120".into()), Some(90)).unwrap(),
+            120
+        );
         assert_eq!(resolve_session_ttl_secs(None, Some(90)).unwrap(), 90);
         assert_eq!(resolve_session_ttl_secs(None, None).unwrap(), 300);
     }
