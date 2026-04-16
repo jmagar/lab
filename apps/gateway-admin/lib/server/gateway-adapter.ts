@@ -8,6 +8,7 @@ import type {
   TransportType,
   UpdateGatewayInput,
 } from '../types/gateway'
+import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from '../api/tool-exposure-draft.ts'
 
 export interface BackendSurfaceStateView {
   enabled?: boolean
@@ -464,7 +465,11 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
 }
 
 export function exposurePolicyFromConfig(config: BackendGatewayConfigView): ExposurePolicy {
-  const patterns = config.expose_tools ?? []
+  const rawPatterns = config.expose_tools ?? []
+  const patterns = stripExposeNonePattern(rawPatterns)
+  if (rawPatterns.includes(EXPOSE_NONE_PATTERN)) {
+    return { mode: 'allowlist', patterns: [] }
+  }
   if (patterns.length === 0) {
     return { mode: 'expose_all', patterns: [] }
   }

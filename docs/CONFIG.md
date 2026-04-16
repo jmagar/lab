@@ -234,6 +234,7 @@ Full details in [OAUTH.md](./OAUTH.md).
 | `LAB_GOOGLE_CLIENT_SECRET` | oauth mode | Google OAuth client secret. |
 | `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
 | `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
+| `LAB_AUTH_ALLOWED_REDIRECT_URIS` | no | Comma-separated non-loopback redirect URI patterns. Host wildcards must be full labels, not raw suffix globs. |
 | `LAB_AUTH_ACCESS_TOKEN_TTL_SECS` | no | Override lab-issued JWT access token lifetime. Defaults to `3600`. |
 | `LAB_AUTH_REFRESH_TOKEN_TTL_SECS` | no | Override refresh token lifetime. Defaults to `2592000` (30 days). |
 | `LAB_AUTH_CODE_TTL_SECS` | no | Override authorization code lifetime. Defaults to `300`. |

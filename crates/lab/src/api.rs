@@ -22,6 +22,9 @@ pub mod health;
 /// HTTP auth helpers for bearer-or-OAuth mode (metadata, WWW-Authenticate).
 pub mod oauth;
 
+/// Browser-session endpoints for the hosted UI.
+pub mod browser_session;
+
 /// Device runtime ingestion routes mounted under `/v1/device/*`.
 pub mod device;
 

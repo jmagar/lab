@@ -127,6 +127,19 @@ async fn device_oauth_route_rejects_non_loopback_bind_addr() {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
+#[tokio::test]
+async fn device_oauth_route_rejects_invalid_target_url() {
+    let (app, _store) = test_device_router();
+    let response = app
+        .oneshot(oauth_relay_start_request(
+            r#"{"bind_addr":"127.0.0.1:0","target_url":"not-a-url","request_timeout_ms":100}"#,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
 fn test_device_router() -> (axum::Router, Arc<DeviceFleetStore>) {
     let store = Arc::new(DeviceFleetStore::default());
     let state = AppState::new().with_device_store(Arc::clone(&store));

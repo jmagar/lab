@@ -8,8 +8,8 @@ use tokio::sync::RwLock;
 use crate::config::{LabConfig, UpstreamConfig, backup_env, env_is_up_to_date, write_env};
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
-use crate::dispatch::upstream::pool::UpstreamPool;
 use crate::dispatch::upstream::pool::UpstreamCachedSummary;
+use crate::dispatch::upstream::pool::UpstreamPool;
 use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
@@ -712,7 +712,10 @@ fn empty_upstream_summary() -> UpstreamCachedSummary {
     UpstreamCachedSummary::default()
 }
 
-async fn upstream_summary(pool: Option<&UpstreamPool>, upstream_name: &str) -> UpstreamCachedSummary {
+async fn upstream_summary(
+    pool: Option<&UpstreamPool>,
+    upstream_name: &str,
+) -> UpstreamCachedSummary {
     let Some(pool) = pool else {
         return empty_upstream_summary();
     };
@@ -722,13 +725,18 @@ async fn upstream_summary(pool: Option<&UpstreamPool>, upstream_name: &str) -> U
         .unwrap_or_else(empty_upstream_summary)
 }
 
-async fn server_view_from_upstream(pool: Option<&UpstreamPool>, upstream: &UpstreamConfig) -> ServerView {
+async fn server_view_from_upstream(
+    pool: Option<&UpstreamPool>,
+    upstream: &UpstreamConfig,
+) -> ServerView {
     let summary = upstream_summary(pool, &upstream.name).await;
     let last_error = match pool {
         Some(pool) => pool.upstream_last_error(&upstream.name).await,
         None => None,
     };
-    let connected = summary.exposed_tool_count + summary.exposed_resource_count + summary.exposed_prompt_count > 0;
+    let connected =
+        summary.exposed_tool_count + summary.exposed_resource_count + summary.exposed_prompt_count
+            > 0;
 
     ServerView {
         id: upstream.name.clone(),
@@ -802,6 +810,12 @@ fn server_view_from_virtual_server(
         configured: true,
         enabled: record.enabled,
         connected,
+        discovered_tool_count: 0,
+        exposed_tool_count: 0,
+        discovered_resource_count: 0,
+        exposed_resource_count: 0,
+        discovered_prompt_count: 0,
+        exposed_prompt_count: 0,
         surfaces: SurfaceStatesView {
             cli: SurfaceStateView {
                 enabled: record.surfaces.cli,

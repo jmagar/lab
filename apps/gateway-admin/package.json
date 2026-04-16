@@ -9,7 +9,8 @@
     "start": "python3 -m http.server 3000 -d out",
     "preview": "python3 -m http.server 3000 -d out",
     "lint": "eslint .",
-    "test": "node --test --experimental-strip-types lib/server/**/*.test.ts lib/api/**/*.test.ts"
+    "test": "node --test --experimental-strip-types lib/server/**/*.test.ts lib/api/**/*.test.ts lib/dashboard/**/*.test.ts",
+    "test:browser": "node --test --experimental-strip-types lib/browser/**/*.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -63,14 +64,18 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^10.2.0",
+    "globals": "^17.5.0",
     "playwright": "^1.59.1",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "typescript-eslint": "^8.58.2"
   }
 }

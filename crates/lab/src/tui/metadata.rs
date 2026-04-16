@@ -92,9 +92,7 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
     }
 
     macro_rules! spawn_health {
-        ($name:literal, $client:expr) => {{
-            spawn_health_expr!($name, $client.health())
-        }};
+        ($name:literal, $client:expr) => {{ spawn_health_expr!($name, $client.health()) }};
     }
 
     // Macro for services that implement `ServiceClient` trait health() -> Result<ServiceStatus, ApiError>.
@@ -202,9 +200,10 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "unifi")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::unifi::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::unifi::client_from_env,
+        ) {
             spawn_health_trait!("unifi", client);
         }
     }
@@ -300,54 +299,60 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "apprise")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::apprise::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::apprise::client_from_env,
+        ) {
             spawn_health!("apprise", client);
         }
     }
 
     #[cfg(feature = "bytestash")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::bytestash::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::bytestash::client_from_env,
+        ) {
             spawn_health_trait!("bytestash", client);
         }
     }
 
     #[cfg(feature = "qdrant")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::qdrant::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::qdrant::client_from_env,
+        ) {
             spawn_health!("qdrant", client);
         }
     }
 
     #[cfg(feature = "tei")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::tei::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::tei::client_from_env,
+        ) {
             spawn_health!("tei", client);
         }
     }
 
     #[cfg(feature = "linkding")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::linkding::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::linkding::client_from_env,
+        ) {
             spawn_health_expr!("linkding", client.probe());
         }
     }
 
     #[cfg(feature = "memos")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::memos::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::memos::client_from_env,
+        ) {
             spawn_health_expr!("memos", client.health());
         }
     }
@@ -364,9 +369,10 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "openai")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::openai::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::openai::client_from_env,
+        ) {
             spawn_health!("openai", client);
         }
     }
@@ -383,9 +389,10 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
 
     #[cfg(feature = "arcane")]
     {
-        if let Some(client) =
-            crate::dispatch::helpers::with_env_override(vars.clone(), crate::dispatch::arcane::client_from_env)
-        {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::arcane::client_from_env,
+        ) {
             spawn_health_expr!("arcane", client.health());
         }
     }

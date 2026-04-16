@@ -3,12 +3,14 @@ import assert from 'node:assert/strict'
 
 import {
   buildGatewayPatch,
+  exposurePolicyFromConfig,
   gatewayInputToSpec,
   normalizeGateway,
   normalizeServerView,
   previewExposurePolicy,
   probeStatusFromRuntime,
 } from './gateway-adapter.ts'
+import { EXPOSE_NONE_PATTERN } from '../api/tool-exposure-draft.ts'
 
 test('normalizeGateway maps backend views into UI gateway shape', () => {
   const gateway = normalizeGateway(
@@ -367,6 +369,19 @@ test('previewExposurePolicy supports leading wildcard patterns', () => {
     exposed_count: 2,
     filtered_count: 0,
   })
+})
+
+test('exposurePolicyFromConfig preserves expose none sentinel as an empty allowlist', () => {
+  assert.deepEqual(
+    exposurePolicyFromConfig({
+      name: 'fixture-http',
+      expose_tools: [EXPOSE_NONE_PATTERN],
+    }),
+    {
+      mode: 'allowlist',
+      patterns: [],
+    },
+  )
 })
 
 test('probeStatusFromRuntime marks zero-capability gateways unhealthy', () => {
