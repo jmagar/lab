@@ -9,6 +9,7 @@ use crate::config::{LabConfig, UpstreamConfig, backup_env, env_is_up_to_date, wr
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::upstream::pool::UpstreamPool;
+use crate::dispatch::upstream::pool::UpstreamCachedSummary;
 use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
@@ -173,16 +174,10 @@ impl GatewayManager {
     pub async fn list(&self) -> Result<Vec<ServerView>, ToolError> {
         let cfg = self.config.read().await.clone();
         let pool = self.runtime.current_pool().await;
-        let prompt_owners = match pool.as_deref() {
-            Some(p) => Some(p.prompt_ownership_map(&[]).await),
-            None => None,
-        };
         let virtual_health = self.virtual_service_health_map().await;
         let mut views = Vec::with_capacity(cfg.upstream.len() + cfg.virtual_servers.len());
         for upstream in &cfg.upstream {
-            views.push(
-                server_view_from_upstream(pool.as_deref(), upstream, prompt_owners.as_ref()).await,
-            );
+            views.push(server_view_from_upstream(pool.as_deref(), upstream).await);
         }
         for virtual_server in &cfg.virtual_servers {
             views.push(server_view_from_virtual_server(
@@ -198,16 +193,7 @@ impl GatewayManager {
         let pool = self.runtime.current_pool().await;
 
         if let Some(upstream) = cfg.upstream.iter().find(|upstream| upstream.name == id) {
-            let prompt_owners = match pool.as_deref() {
-                Some(p) => Some(p.prompt_ownership_map(&[]).await),
-                None => None,
-            };
-            return Ok(server_view_from_upstream(
-                pool.as_deref(),
-                upstream,
-                prompt_owners.as_ref(),
-            )
-            .await);
+            return Ok(server_view_from_upstream(pool.as_deref(), upstream).await);
         }
 
         let virtual_server = find_virtual_server(&cfg, id)?;
@@ -722,13 +708,27 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
     }
 }
 
-async fn server_view_from_upstream(
-    pool: Option<&UpstreamPool>,
-    upstream: &UpstreamConfig,
-    prompt_owners: Option<&HashMap<String, String>>,
-) -> ServerView {
-    let runtime = runtime_view(pool, &upstream.name, prompt_owners).await;
-    let connected = runtime.tool_count + runtime.resource_count + runtime.prompt_count > 0;
+fn empty_upstream_summary() -> UpstreamCachedSummary {
+    UpstreamCachedSummary::default()
+}
+
+async fn upstream_summary(pool: Option<&UpstreamPool>, upstream_name: &str) -> UpstreamCachedSummary {
+    let Some(pool) = pool else {
+        return empty_upstream_summary();
+    };
+
+    pool.cached_upstream_summary(upstream_name)
+        .await
+        .unwrap_or_else(empty_upstream_summary)
+}
+
+async fn server_view_from_upstream(pool: Option<&UpstreamPool>, upstream: &UpstreamConfig) -> ServerView {
+    let summary = upstream_summary(pool, &upstream.name).await;
+    let last_error = match pool {
+        Some(pool) => pool.upstream_last_error(&upstream.name).await,
+        None => None,
+    };
+    let connected = summary.exposed_tool_count + summary.exposed_resource_count + summary.exposed_prompt_count > 0;
 
     ServerView {
         id: upstream.name.clone(),
@@ -737,6 +737,12 @@ async fn server_view_from_upstream(
         configured: true,
         enabled: true,
         connected,
+        discovered_tool_count: summary.discovered_tool_count,
+        exposed_tool_count: summary.exposed_tool_count,
+        discovered_resource_count: summary.discovered_resource_count,
+        exposed_resource_count: summary.exposed_resource_count,
+        discovered_prompt_count: summary.discovered_prompt_count,
+        exposed_prompt_count: summary.exposed_prompt_count,
         surfaces: SurfaceStatesView {
             mcp: SurfaceStateView {
                 enabled: true,
@@ -744,8 +750,7 @@ async fn server_view_from_upstream(
             },
             ..SurfaceStatesView::default()
         },
-        warnings: runtime
-            .last_error
+        warnings: last_error
             .as_ref()
             .map(|message| {
                 vec![super::view_models::ServerWarningView {
@@ -956,32 +961,23 @@ async fn runtime_view(
         };
     };
 
-    let tool_count = pool
-        .healthy_tools()
+    let summary = pool
+        .cached_upstream_summary(name)
         .await
-        .into_iter()
-        .filter(|tool| tool.upstream_name.as_ref() == name)
-        .count();
-    let resource_count = pool
-        .list_upstream_resources()
-        .await
-        .into_iter()
-        .filter(|resource| resource.uri.starts_with(&format!("lab://upstream/{name}/")))
-        .count();
+        .unwrap_or_else(empty_upstream_summary);
     let prompt_count = match prompt_owners {
         Some(owners) => owners.values().filter(|owner| *owner == name).count(),
-        None => {
-            // Fallback: compute on the fly (single-upstream callers like `test`).
-            let owners = pool.prompt_ownership_map(&[]).await;
-            owners.values().filter(|owner| *owner == name).count()
-        }
+        None => summary.exposed_prompt_count,
     };
 
     GatewayRuntimeView {
         name: name.to_string(),
-        tool_count,
-        resource_count,
+        tool_count: summary.discovered_tool_count,
+        resource_count: summary.discovered_resource_count,
         prompt_count,
+        exposed_tool_count: summary.exposed_tool_count,
+        exposed_resource_count: summary.exposed_resource_count,
+        exposed_prompt_count: summary.exposed_prompt_count,
         last_error: pool.upstream_last_error(name).await,
     }
 }

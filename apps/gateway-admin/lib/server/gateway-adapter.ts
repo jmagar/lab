@@ -38,6 +38,12 @@ export interface BackendServerView {
   configured?: boolean
   enabled?: boolean
   connected?: boolean
+  discovered_tool_count?: number
+  exposed_tool_count?: number
+  discovered_resource_count?: number
+  exposed_resource_count?: number
+  discovered_prompt_count?: number
+  exposed_prompt_count?: number
   surfaces?: BackendSurfaceStatesView
   warnings?: BackendServerWarningView[]
   config_summary?: BackendServerConfigSummaryView
@@ -63,6 +69,9 @@ export interface BackendGatewayRuntimeView {
   tool_count: number
   resource_count: number
   prompt_count: number
+  exposed_tool_count?: number
+  exposed_resource_count?: number
+  exposed_prompt_count?: number
   last_error?: string | null
 }
 
@@ -293,8 +302,12 @@ export function normalizeServerView(
       healthy: (view.connected ?? false) && warnings.length === 0,
       connected: view.connected ?? false,
       ...(lastError ? { last_error: lastError } : {}),
-      discovered_tool_count: tools.length,
-      exposed_tool_count: tools.length,
+      discovered_tool_count: view.discovered_tool_count ?? tools.length,
+      exposed_tool_count: view.exposed_tool_count ?? tools.length,
+      discovered_resource_count: view.discovered_resource_count ?? 0,
+      exposed_resource_count: view.exposed_resource_count ?? 0,
+      discovered_prompt_count: view.discovered_prompt_count ?? 0,
+      exposed_prompt_count: view.exposed_prompt_count ?? 0,
     },
     discovery: {
       tools: tools.map((tool) => ({
@@ -357,7 +370,11 @@ export function normalizeGateway(
       connected: probe.connected,
       last_error: humanizedError,
       discovered_tool_count: view.runtime.tool_count,
-      exposed_tool_count: tools.filter((tool) => tool.exposed).length,
+      exposed_tool_count: view.runtime.exposed_tool_count ?? tools.filter((tool) => tool.exposed).length,
+      discovered_resource_count: view.runtime.resource_count,
+      exposed_resource_count: view.runtime.exposed_resource_count ?? view.runtime.resource_count,
+      discovered_prompt_count: view.runtime.prompt_count,
+      exposed_prompt_count: view.runtime.exposed_prompt_count ?? view.runtime.prompt_count,
     },
     discovery: {
       tools,

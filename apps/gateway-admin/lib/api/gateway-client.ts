@@ -163,8 +163,7 @@ async function normalizeListedServerView(
     })
   }
 
-  const gatewayView = await gatewayAction<BackendGatewayView>('gateway.get', { name: view.name }, signal)
-  return normalizeGatewayView(gatewayView, true, signal)
+  return normalizeServerView(view)
 }
 
 async function normalizeLabServiceServer(

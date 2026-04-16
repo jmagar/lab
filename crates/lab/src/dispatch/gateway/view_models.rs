@@ -46,6 +46,18 @@ pub struct ServerView {
     #[serde(default)]
     pub connected: bool,
     #[serde(default)]
+    pub discovered_tool_count: usize,
+    #[serde(default)]
+    pub exposed_tool_count: usize,
+    #[serde(default)]
+    pub discovered_resource_count: usize,
+    #[serde(default)]
+    pub exposed_resource_count: usize,
+    #[serde(default)]
+    pub discovered_prompt_count: usize,
+    #[serde(default)]
+    pub exposed_prompt_count: usize,
+    #[serde(default)]
     pub surfaces: SurfaceStatesView,
     #[serde(default)]
     pub warnings: Vec<ServerWarningView>,

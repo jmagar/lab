@@ -241,6 +241,13 @@ mod tests {
 
         assert!(value.is_array());
         assert_eq!(value.as_array().expect("array").len(), 1);
+        let row = &value.as_array().expect("array")[0];
+        assert_eq!(row["discovered_tool_count"], 0);
+        assert_eq!(row["exposed_tool_count"], 0);
+        assert_eq!(row["discovered_resource_count"], 0);
+        assert_eq!(row["exposed_resource_count"], 0);
+        assert_eq!(row["discovered_prompt_count"], 0);
+        assert_eq!(row["exposed_prompt_count"], 0);
     }
 
     #[tokio::test]

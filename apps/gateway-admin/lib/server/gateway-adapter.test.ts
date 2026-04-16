@@ -230,6 +230,12 @@ test('normalizeServerView can include discovered custom-gateway tools for summar
       configured: true,
       enabled: true,
       connected: true,
+      discovered_tool_count: 5,
+      exposed_tool_count: 3,
+      discovered_resource_count: 4,
+      exposed_resource_count: 2,
+      discovered_prompt_count: 6,
+      exposed_prompt_count: 6,
       warnings: [],
       config_summary: {
         transport: 'stdio',
@@ -245,8 +251,12 @@ test('normalizeServerView can include discovered custom-gateway tools for summar
     }
   )
 
-  assert.equal(gateway.status.discovered_tool_count, 3)
+  assert.equal(gateway.status.discovered_tool_count, 5)
   assert.equal(gateway.status.exposed_tool_count, 3)
+  assert.equal(gateway.status.discovered_resource_count, 4)
+  assert.equal(gateway.status.exposed_resource_count, 2)
+  assert.equal(gateway.status.discovered_prompt_count, 6)
+  assert.equal(gateway.status.exposed_prompt_count, 6)
   assert.deepEqual(
     gateway.discovery.tools.map((tool) => ({
       name: tool.name,

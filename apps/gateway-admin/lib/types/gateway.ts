@@ -17,6 +17,10 @@ export interface GatewayStatus {
   last_error?: string
   discovered_tool_count: number
   exposed_tool_count: number
+  discovered_resource_count: number
+  exposed_resource_count: number
+  discovered_prompt_count: number
+  exposed_prompt_count: number
 }
 
 export interface SurfaceState {

@@ -200,6 +200,10 @@ pub struct UpstreamEntry {
     pub tools: HashMap<String, UpstreamTool>,
     /// Exposure policy for discovered tools from this upstream.
     pub exposure_policy: ToolExposurePolicy,
+    /// Last successfully discovered upstream prompt count.
+    pub prompt_count: usize,
+    /// Last successfully discovered upstream resource count.
+    pub resource_count: usize,
     /// Current tool-discovery/tool-call health state.
     pub tool_health: UpstreamHealth,
     /// Current prompt capability health state.

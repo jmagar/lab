@@ -48,6 +48,12 @@ pub struct GatewayRuntimeView {
     #[serde(default)]
     pub prompt_count: usize,
     #[serde(default)]
+    pub exposed_tool_count: usize,
+    #[serde(default)]
+    pub exposed_resource_count: usize,
+    #[serde(default)]
+    pub exposed_prompt_count: usize,
+    #[serde(default)]
     pub last_error: Option<String>,
 }
 
