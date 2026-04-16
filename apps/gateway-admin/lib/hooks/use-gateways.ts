@@ -3,11 +3,15 @@
 import useSWR, { mutate } from 'swr'
 import { gatewayApi } from '@/lib/api/gateway-client'
 import {
+  getMockGatewayFallback,
+  getMockGatewaysFallback,
+  getMockServiceActionsFallback,
+  getMockServiceConfigFallback,
+  getMockSupportedServicesFallback,
+} from '@/lib/api/mock-fallback'
+import {
   mockGateways,
   mockReloadResult,
-  mockServiceActions,
-  mockServiceConfigs,
-  mockSupportedServices,
   mockTestResult,
 } from '@/lib/api/mock-data'
 import type {
@@ -55,7 +59,7 @@ function abortableMockDelay(ms: number, signal?: AbortSignal): Promise<void> {
 const fetchGateways = async (): Promise<Gateway[]> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    return mockGateways
+    return getMockGatewaysFallback()
   }
   return gatewayApi.list()
 }
@@ -63,7 +67,7 @@ const fetchGateways = async (): Promise<Gateway[]> => {
 const fetchGateway = async (id: string): Promise<Gateway> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    const gateway = mockGateways.find(g => g.id === id)
+    const gateway = getMockGatewayFallback(id)
     if (!gateway) throw new Error('Gateway not found')
     return gateway
   }
@@ -86,7 +90,7 @@ const fetchExposurePolicy = async (id: string): Promise<ExposurePolicy> => {
 const fetchSupportedServices = async (): Promise<SupportedService[]> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    return mockSupportedServices
+    return getMockSupportedServicesFallback()
   }
   return gatewayApi.supportedServices()
 }
@@ -94,7 +98,7 @@ const fetchSupportedServices = async (): Promise<SupportedService[]> => {
 const fetchServiceConfig = async (service: string): Promise<ServiceConfig> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    return mockServiceConfigs[service] ?? { service, configured: false, fields: [] }
+    return getMockServiceConfigFallback(service)
   }
   return gatewayApi.getServiceConfig(service)
 }
@@ -102,7 +106,7 @@ const fetchServiceConfig = async (service: string): Promise<ServiceConfig> => {
 const fetchServiceActions = async (service: string): Promise<ServiceAction[]> => {
   if (USE_MOCK_DATA) {
     await mockDelay()
-    return mockServiceActions[service] ?? []
+    return getMockServiceActionsFallback(service)
   }
   return gatewayApi.serviceActions(service)
 }
@@ -124,6 +128,8 @@ async function refreshGatewayCache(id?: string, extraKeys: string[] = []) {
 export function useGateways() {
   return useSWR<Gateway[]>(GATEWAYS_KEY, fetchGateways, {
     revalidateOnFocus: false,
+    fallbackData: USE_MOCK_DATA ? getMockGatewaysFallback() : undefined,
+    revalidateOnMount: !USE_MOCK_DATA,
   })
 }
 
@@ -133,6 +139,8 @@ export function useGateway(id: string | null) {
     id ? () => fetchGateway(id) : null,
     {
       revalidateOnFocus: false,
+      fallbackData: USE_MOCK_DATA && id ? getMockGatewayFallback(id) : undefined,
+      revalidateOnMount: !USE_MOCK_DATA,
     }
   )
 }
@@ -150,6 +158,8 @@ export function useExposurePolicy(id: string | null) {
 export function useSupportedServices() {
   return useSWR<SupportedService[]>(SUPPORTED_SERVICES_KEY, fetchSupportedServices, {
     revalidateOnFocus: false,
+    fallbackData: USE_MOCK_DATA ? getMockSupportedServicesFallback() : undefined,
+    revalidateOnMount: !USE_MOCK_DATA,
   })
 }
 
@@ -159,6 +169,8 @@ export function useServiceConfig(service: string | null) {
     service ? () => fetchServiceConfig(service) : null,
     {
       revalidateOnFocus: false,
+      fallbackData: USE_MOCK_DATA && service ? getMockServiceConfigFallback(service) : undefined,
+      revalidateOnMount: !USE_MOCK_DATA,
     }
   )
 }
@@ -169,6 +181,8 @@ export function useServiceActions(service: string | null) {
     service ? () => fetchServiceActions(service) : null,
     {
       revalidateOnFocus: false,
+      fallbackData: USE_MOCK_DATA && service ? getMockServiceActionsFallback(service) : undefined,
+      revalidateOnMount: !USE_MOCK_DATA,
     }
   )
 }

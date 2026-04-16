@@ -159,7 +159,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         toast.success('Lab gateway disabled successfully')
       }
     } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to update server state'))
+      toast.error(getErrorMessage(error, 'Failed to update gateway state'))
     }
   }
 
@@ -395,7 +395,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     </div>
                     <div className="flex items-center justify-between rounded-lg border p-4">
                       <div className="space-y-0.5">
-                        <Label htmlFor="virtual-enabled" className="font-medium">Virtual server enabled</Label>
+                        <Label htmlFor="virtual-enabled" className="font-medium">Gateway enabled</Label>
                         <p className="text-sm text-muted-foreground">
                           Controls whether this Lab service is exposed as a visible gateway.
                         </p>

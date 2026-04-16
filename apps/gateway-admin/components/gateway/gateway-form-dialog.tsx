@@ -203,7 +203,7 @@ export function GatewayFormDialog({
 
   const handleTest = async () => {
     if (!gateway || gateway.source === 'lab_service') {
-      toast.info('Save and enable the server first, then test from the detail page.')
+      toast.info('Save and enable the gateway first, then test from the detail page.')
       return
     }
 
