@@ -6,8 +6,8 @@ use crate::api::state::AppState;
 
 use lab_auth::session::{BROWSER_CSRF_HEADER_NAME, BROWSER_SESSION_COOKIE_NAME};
 
-fn oauth_state(state: &AppState) -> Option<lab_auth::state::AuthState> {
-    state.oauth_state.as_ref().map(|state| (**state).clone())
+fn oauth_state(state: &AppState) -> Option<&lab_auth::state::AuthState> {
+    state.oauth_state.as_ref().map(|state| state.as_ref())
 }
 
 fn no_store_json(body: serde_json::Value) -> Response {
@@ -30,7 +30,7 @@ fn session_cookie(headers: &HeaderMap) -> Option<String> {
 async fn load_browser_session(
     auth_state: &lab_auth::state::AuthState,
     headers: &HeaderMap,
-) -> Option<lab_auth::types::BrowserSessionRow> {
+) -> Result<Option<lab_auth::types::BrowserSessionRow>, lab_auth::error::AuthError> {
     let has_cookie_header = headers.contains_key(header::COOKIE);
     let browser_session_cookie = session_cookie(headers);
     let has_browser_session_cookie = browser_session_cookie.is_some();
@@ -41,7 +41,7 @@ async fn load_browser_session(
     );
 
     let Some(session_id) = browser_session_cookie else {
-        return None;
+        return Ok(None);
     };
 
     match auth_state.store.find_browser_session(&session_id).await {
@@ -52,7 +52,7 @@ async fn load_browser_session(
                 session_found = session.is_some(),
                 "auth session lookup completed"
             );
-            session
+            Ok(session)
         }
         Err(error) => {
             tracing::warn!(
@@ -61,7 +61,7 @@ async fn load_browser_session(
                 has_browser_session_cookie,
                 "auth session lookup failed"
             );
-            None
+            Err(error)
         }
     }
 }
@@ -83,7 +83,7 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
     };
 
     let body = match load_browser_session(&auth_state, &headers).await {
-        Some(session) => serde_json::json!({
+        Ok(Some(session)) => serde_json::json!({
             "authenticated": true,
             "user": {
                 "sub": session.subject,
@@ -92,7 +92,11 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
             "expires_at": session.expires_at,
             "csrf_token": session.csrf_token,
         }),
-        None => return unauthenticated_session_response(),
+        Ok(None) => return unauthenticated_session_response(),
+        Err(error) => {
+            tracing::error!(error = %error, "failed to load browser session for auth session");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
     };
 
     no_store_json(body)

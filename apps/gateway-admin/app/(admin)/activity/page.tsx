@@ -9,6 +9,11 @@ import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { buildGatewayActivityFeed } from '@/lib/dashboard/admin-insights'
 import { useGateways } from '@/lib/hooks/use-gateways'
 
+const activityTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
+
 const toneStyles = {
   success: 'border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
   warning: 'border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300',
@@ -97,7 +102,7 @@ export default function ActivityPage() {
                           <p className="text-sm text-muted-foreground">{item.detail}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <Clock3 className="size-3.5" />
-                            <span>{new Date(item.timestamp).toLocaleString()}</span>
+                            <span>{activityTimestampFormatter.format(new Date(item.timestamp))}</span>
                           </div>
                         </div>
                       </div>

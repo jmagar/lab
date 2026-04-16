@@ -38,6 +38,11 @@ interface SettingsOptions {
 }
 
 export function buildGatewayActivityFeed(gateways: Gateway[]): GatewayActivityItem[] {
+  const parseTimestamp = (value: string) => {
+    const parsed = Date.parse(value)
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+
   return gateways
     .flatMap((gateway) => {
       const statusItem: GatewayActivityItem = gateway.status.connected && gateway.status.healthy
@@ -76,7 +81,7 @@ export function buildGatewayActivityFeed(gateways: Gateway[]): GatewayActivityIt
       return [statusItem, ...warningItems]
     })
     .sort((left, right) => {
-      const timestampDelta = Date.parse(right.timestamp) - Date.parse(left.timestamp)
+      const timestampDelta = parseTimestamp(right.timestamp) - parseTimestamp(left.timestamp)
       if (timestampDelta !== 0) {
         return timestampDelta
       }

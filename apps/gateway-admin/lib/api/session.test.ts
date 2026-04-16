@@ -124,8 +124,8 @@ test('hasApiTokenAuth only enables bearer mode for non-empty tokens', () => {
 })
 
 test('shouldBypassBrowserSessionAuth enables standalone mock builds without session fetches', () => {
-  assert.equal(shouldBypassBrowserSessionAuth(undefined, false), false)
-  assert.equal(shouldBypassBrowserSessionAuth('dev-token', false), true)
-  assert.equal(shouldBypassBrowserSessionAuth(undefined, true), true)
-  assert.equal(shouldBypassBrowserSessionAuth('dev-token', true), true)
+  assert.equal(shouldBypassBrowserSessionAuth(undefined, 'false'), false)
+  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'false'), true)
+  assert.equal(shouldBypassBrowserSessionAuth(undefined, 'true'), true)
+  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'true'), true)
 })

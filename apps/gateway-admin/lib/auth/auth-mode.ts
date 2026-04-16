@@ -8,7 +8,7 @@ export function hasMockDataAuthMode(mockData = process.env.NEXT_PUBLIC_MOCK_DATA
 
 export function shouldBypassBrowserSessionAuth(
   token = process.env.NEXT_PUBLIC_API_TOKEN,
-  mockData = process.env.NEXT_PUBLIC_MOCK_DATA === 'true',
+  mockData = process.env.NEXT_PUBLIC_MOCK_DATA,
 ) {
-  return hasApiTokenAuth(token) || mockData
+  return hasApiTokenAuth(token) || hasMockDataAuthMode(mockData)
 }

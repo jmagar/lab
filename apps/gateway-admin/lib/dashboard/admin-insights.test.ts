@@ -19,6 +19,28 @@ test('buildGatewayActivityFeed sorts the newest gateway events first', () => {
   assert.match(events[1]?.title ?? '', /CONNECTION_FAILED|DISCOVERY_FAILED/)
 })
 
+test('buildGatewayActivityFeed pushes invalid timestamps behind valid events deterministically', () => {
+  const [firstGateway, secondGateway] = mockGateways
+  assert.ok(firstGateway)
+  assert.ok(secondGateway)
+
+  const events = buildGatewayActivityFeed([
+    {
+      ...firstGateway,
+      updated_at: 'not-a-timestamp',
+      warnings: [],
+    },
+    {
+      ...secondGateway,
+      updated_at: '2026-04-15T16:42:00Z',
+      warnings: [],
+    },
+  ])
+
+  assert.equal(events[0]?.gatewayId, secondGateway.id)
+  assert.equal(events.at(-1)?.gatewayId, firstGateway.id)
+})
+
 test('buildGatewaySettingsSnapshot summarizes gateway fleet posture and auth mode', () => {
   const snapshot = buildGatewaySettingsSnapshot(mockGateways, {
     hasApiToken: true,
