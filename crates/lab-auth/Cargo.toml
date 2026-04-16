@@ -15,6 +15,7 @@ categories             = ["authentication", "web-programming::http-server"]
 axum.workspace         = true
 base64.workspace       = true
 getrandom             = "0.3"
+httpdate              = "1"
 jsonwebtoken.workspace = true
 reqwest.workspace      = true
 rsa.workspace          = true

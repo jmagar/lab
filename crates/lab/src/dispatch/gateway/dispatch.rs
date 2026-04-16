@@ -340,6 +340,8 @@ mod tests {
                     .expect("policy"),
                 prompt_count: 3,
                 resource_count: 4,
+                prompt_names: Vec::new(),
+                resource_uris: Vec::new(),
                 tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
                 prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
                 resource_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,

@@ -1170,7 +1170,7 @@ fn redacted_gateway_target(upstream: &UpstreamConfig) -> Option<String> {
 
 fn redact_gateway_url(url: &str) -> String {
     let Ok(mut parsed) = Url::parse(url) else {
-        return url.to_string();
+        return "[invalid-url-redacted]".to_string();
     };
 
     let _ = parsed.set_username("");
@@ -1651,6 +1651,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn server_view_redacts_invalid_target_urls() {
+        let upstream = UpstreamConfig {
+            name: "fixture-http".to_string(),
+            url: Some("http://user:pass@[::1".to_string()),
+            bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
+            command: None,
+            args: Vec::new(),
+            proxy_resources: false,
+            expose_tools: None,
+        };
+
+        let view = server_view_from_upstream(None, &upstream).await;
+
+        assert_eq!(
+            view.config_summary.target.as_deref(),
+            Some("[invalid-url-redacted]")
+        );
+    }
+
+    #[tokio::test]
     async fn configured_service_appears_in_list_before_virtual_server_enablement() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.toml");
@@ -2047,6 +2067,8 @@ mod tests {
             exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
             prompt_count: 0,
             resource_count: 0,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
                 consecutive_failures: 1,
             },
