@@ -10,7 +10,7 @@ export {
   logoutBrowserSession,
   subscribeToBrowserSession,
   type BrowserSessionState,
-} from './session-store'
+} from './session-store.ts'
 import { getBrowserSessionState, subscribeToBrowserSession } from './session-store.ts'
 
 export function useBrowserSession() {

@@ -3,6 +3,7 @@
 import * as React from 'react'
 
 import { LoginScreen } from '@/components/auth/login-screen'
+import { hasApiTokenAuth } from '@/lib/auth/auth-mode'
 import { loadBrowserSession, useBrowserSession } from '@/lib/auth/session'
 
 type AuthBootstrapProps = {
@@ -11,12 +12,17 @@ type AuthBootstrapProps = {
 
 export function AuthBootstrap({ children }: AuthBootstrapProps) {
   const session = useBrowserSession()
+  const hasBearerAuth = hasApiTokenAuth()
 
   React.useEffect(() => {
-    if (session.status === 'loading') {
+    if (!hasBearerAuth && session.status === 'loading') {
       void loadBrowserSession()
     }
-  }, [session.status])
+  }, [hasBearerAuth, session.status])
+
+  if (hasBearerAuth) {
+    return <>{children}</>
+  }
 
   if (session.status === 'loading') {
     return (

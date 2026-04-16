@@ -173,9 +173,16 @@ async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> impl 
                     )
                         .into_response();
                 }
-                drop(auth_state.store.revoke_browser_session(&session_id).await);
+                if let Err(error) = auth_state.store.revoke_browser_session(&session_id).await {
+                    tracing::error!(error = %error, "failed to revoke browser session");
+                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                }
             }
-            Ok(None) | Err(_) => {}
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(error = %error, "failed to load browser session for logout");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
         }
     }
     lab_auth::session::append_set_cookie(
@@ -1106,6 +1113,40 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn auth_logout_returns_internal_error_when_revocation_fails() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        auth_state
+            .store
+            .execute_test_statement("DROP TABLE browser_sessions;")
+            .await
+            .unwrap();
+        let app = build_router(state, None, Some(auth_state), None, &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/logout")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .header(lab_auth::session::BROWSER_CSRF_HEADER_NAME, "csrf-123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(response.headers().get(header::SET_COOKIE).is_none());
     }
 
     #[tokio::test]

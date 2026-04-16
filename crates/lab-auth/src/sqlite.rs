@@ -332,6 +332,12 @@ impl SqliteStore {
         .await
     }
 
+    pub async fn execute_test_statement(&self, sql: &str) -> Result<(), AuthError> {
+        let sql = sql.to_string();
+        self.with_conn(move |conn| conn.execute_batch(&sql).map_err(sqlite_error))
+            .await
+    }
+
     pub async fn insert_browser_login_state(
         &self,
         login: BrowserLoginStateRow,

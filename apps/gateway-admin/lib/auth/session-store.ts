@@ -67,19 +67,29 @@ export function getSessionCsrfToken() {
 }
 
 export async function loadBrowserSession() {
-  const response = await fetch('/auth/session', {
-    cache: 'no-store',
-    credentials: 'include',
-  })
-  const payload = (await response.json()) as SessionPayload
-  const next = normalizePayload(payload)
+  let next: BrowserSessionState = { status: 'unauthenticated' }
+
+  try {
+    const response = await fetch('/auth/session', {
+      cache: 'no-store',
+      credentials: 'include',
+    })
+
+    if (response.ok) {
+      const payload = (await response.json()) as SessionPayload
+      next = normalizePayload(payload)
+    }
+  } catch {
+    next = { status: 'unauthenticated' }
+  }
+
   setState(next)
   return next
 }
 
 export async function logoutBrowserSession() {
   const csrfToken = getSessionCsrfToken()
-  await fetch('/auth/logout', {
+  const response = await fetch('/auth/logout', {
     method: 'POST',
     cache: 'no-store',
     credentials: 'include',
@@ -89,6 +99,11 @@ export async function logoutBrowserSession() {
         }
       : undefined,
   })
+
+  if (!response.ok) {
+    throw new Error('Failed to logout browser session')
+  }
+
   setState({ status: 'unauthenticated' })
 }
 

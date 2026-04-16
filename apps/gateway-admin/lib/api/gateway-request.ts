@@ -1,4 +1,4 @@
-import { getSessionCsrfToken } from '../auth/session-store.ts'
+import { getSessionCsrfToken } from '../auth/session.ts'
 
 export function gatewayHeaders(token = process.env.NEXT_PUBLIC_API_TOKEN): HeadersInit {
   const headers: HeadersInit = {
