@@ -41,6 +41,8 @@ pub struct AuthorizeQuery {
     pub redirect_uri: String,
     pub state: String,
     #[serde(default)]
+    pub resource: Option<String>,
+    #[serde(default)]
     pub scope: String,
     pub code_challenge: String,
     pub code_challenge_method: String,
@@ -65,6 +67,8 @@ pub struct TokenRequest {
     pub code: Option<String>,
     #[serde(default)]
     pub client_id: Option<String>,
+    #[serde(default)]
+    pub resource: Option<String>,
     #[serde(default)]
     pub redirect_uri: Option<String>,
     #[serde(default)]

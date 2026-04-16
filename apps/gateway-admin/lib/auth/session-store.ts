@@ -9,6 +9,10 @@ export type BrowserSessionState =
       expiresAt: number
       csrfToken: string
     }
+  | {
+      status: 'error'
+      message: string
+    }
   | { status: 'unauthenticated' }
 
 type SessionPayload =
@@ -67,7 +71,7 @@ export function getSessionCsrfToken() {
 }
 
 export async function loadBrowserSession() {
-  let next: BrowserSessionState = { status: 'unauthenticated' }
+  let next: BrowserSessionState
 
   try {
     const response = await fetch('/auth/session', {
@@ -78,9 +82,19 @@ export async function loadBrowserSession() {
     if (response.ok) {
       const payload = (await response.json()) as SessionPayload
       next = normalizePayload(payload)
+    } else if (response.status === 401 || response.status === 403) {
+      next = { status: 'unauthenticated' }
+    } else {
+      next = {
+        status: 'error',
+        message: SESSION_ERROR_MESSAGE,
+      }
     }
   } catch {
-    next = { status: 'unauthenticated' }
+    next = {
+      status: 'error',
+      message: SESSION_ERROR_MESSAGE,
+    }
   }
 
   setState(next)
@@ -110,3 +124,4 @@ export async function logoutBrowserSession() {
 export function __setBrowserSessionStateForTests(state: BrowserSessionState) {
   currentState = state
 }
+const SESSION_ERROR_MESSAGE = 'Unable to reach the authentication service. Try again.'

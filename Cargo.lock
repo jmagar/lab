@@ -2477,6 +2477,7 @@ dependencies = [
  "getrandom 0.3.4",
  "jsonwebtoken",
  "rand 0.9.2",
+ "rand_core 0.9.5",
  "reqwest",
  "rsa 0.10.0-rc.17",
  "rusqlite",

@@ -1,6 +1,8 @@
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use std::time::{Duration, Instant};
+
+use jsonwebtoken::{Algorithm, DecodingKey, Header, Validation, decode, decode_header};
 use reqwest::Url;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
@@ -9,6 +11,9 @@ use crate::util::fingerprint;
 
 const GOOGLE_AUTHORIZE_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_JWKS_ENDPOINT: &str = "https://www.googleapis.com/oauth2/v3/certs";
+const GOOGLE_ISSUER: &str = "https://accounts.google.com";
+const GOOGLE_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuthorizeUrlRequest {
@@ -27,6 +32,7 @@ pub struct GoogleProvider {
     pub http: reqwest::Client,
     authorize_endpoint: Url,
     token_endpoint: Url,
+    jwks_endpoint: Url,
 }
 
 impl std::fmt::Debug for GoogleProvider {
@@ -61,9 +67,121 @@ struct GoogleTokenResponse {
 
 #[derive(Debug, Deserialize)]
 struct GoogleIdTokenClaims {
+    iss: String,
     sub: String,
     #[serde(default)]
     email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleJwks {
+    keys: Vec<GoogleJwk>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleJwk {
+    kid: String,
+    #[serde(default)]
+    alg: Option<String>,
+    n: String,
+    e: String,
+}
+
+struct GoogleRequestTrace<'a> {
+    operation: &'static str,
+    method: &'static str,
+    endpoint: &'a Url,
+    started: Instant,
+}
+
+impl<'a> GoogleRequestTrace<'a> {
+    fn start(operation: &'static str, method: &'static str, endpoint: &'a Url) -> Self {
+        info!(
+            provider = "google",
+            operation,
+            method,
+            host = endpoint.host_str().unwrap_or_default(),
+            path = endpoint.path(),
+            "request.start"
+        );
+        Self {
+            operation,
+            method,
+            endpoint,
+            started: Instant::now(),
+        }
+    }
+
+    fn finish(&self, status: reqwest::StatusCode) {
+        info!(
+            provider = "google",
+            operation = self.operation,
+            method = self.method,
+            host = self.endpoint.host_str().unwrap_or_default(),
+            path = self.endpoint.path(),
+            status = status.as_u16(),
+            elapsed_ms = self.started.elapsed().as_millis(),
+            "request.finish"
+        );
+    }
+
+    fn error(&self, status: Option<reqwest::StatusCode>, error: &reqwest::Error) {
+        match status {
+            Some(status) => warn!(
+                provider = "google",
+                operation = self.operation,
+                method = self.method,
+                host = self.endpoint.host_str().unwrap_or_default(),
+                path = self.endpoint.path(),
+                status = status.as_u16(),
+                elapsed_ms = self.started.elapsed().as_millis(),
+                error = %error,
+                "request.error"
+            ),
+            None => warn!(
+                provider = "google",
+                operation = self.operation,
+                method = self.method,
+                host = self.endpoint.host_str().unwrap_or_default(),
+                path = self.endpoint.path(),
+                elapsed_ms = self.started.elapsed().as_millis(),
+                error = %error,
+                "request.error"
+            ),
+        }
+    }
+}
+
+struct GoogleRequestErrors {
+    transport_context: &'static str,
+    transport_log: &'static str,
+    status_context: &'static str,
+    status_log: &'static str,
+    decode_context: &'static str,
+    decode_log: &'static str,
+}
+
+async fn read_json_response<T: DeserializeOwned>(
+    trace: GoogleRequestTrace<'_>,
+    request: reqwest::RequestBuilder,
+    errors: GoogleRequestErrors,
+) -> Result<T, AuthError> {
+    let response = request.send().await.map_err(|error| {
+        trace.error(None, &error);
+        warn!(provider = "google", error = %error, "{}", errors.transport_log);
+        AuthError::Storage(format!("{}: {error}", errors.transport_context))
+    })?;
+    let status = response.status();
+    let response = response.error_for_status().map_err(|error| {
+        trace.error(Some(status), &error);
+        warn!(provider = "google", error = %error, "{}", errors.status_log);
+        AuthError::Storage(format!("{}: {error}", errors.status_context))
+    })?;
+    trace.finish(status);
+    response.json::<T>().await.map_err(|error| {
+        warn!(provider = "google", error = %error, "{}", errors.decode_log);
+        AuthError::Storage(format!("{}: {error}", errors.decode_context))
+    })
 }
 
 impl GoogleProvider {
@@ -77,10 +195,14 @@ impl GoogleProvider {
                 "email".to_string(),
                 "profile".to_string(),
             ],
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .timeout(GOOGLE_HTTP_TIMEOUT)
+                .build()
+                .expect("google oauth http client should build"),
             authorize_endpoint: Url::parse(GOOGLE_AUTHORIZE_ENDPOINT)
                 .expect("valid google auth url"),
             token_endpoint: Url::parse(GOOGLE_TOKEN_ENDPOINT).expect("valid google token url"),
+            jwks_endpoint: Url::parse(GOOGLE_JWKS_ENDPOINT).expect("valid google jwks url"),
         }
     }
 
@@ -88,6 +210,12 @@ impl GoogleProvider {
     pub fn with_endpoints(mut self, authorize_endpoint: Url, token_endpoint: Url) -> Self {
         self.authorize_endpoint = authorize_endpoint;
         self.token_endpoint = token_endpoint;
+        self
+    }
+
+    #[cfg(test)]
+    pub fn with_jwks_endpoint(mut self, jwks_endpoint: Url) -> Self {
+        self.jwks_endpoint = jwks_endpoint;
         self
     }
 
@@ -120,40 +248,34 @@ impl GoogleProvider {
         code: &str,
         code_verifier: &str,
     ) -> Result<GoogleExchange, AuthError> {
+        let trace = GoogleRequestTrace::start("code_exchange", "POST", &self.token_endpoint);
         info!(
             provider = "google",
             oauth_code_id = %fingerprint(code),
             redirect_uri = %self.redirect_uri,
             "oauth upstream code exchange started"
         );
-        let response = self
-            .http
-            .post(self.token_endpoint.clone())
-            .form(&[
+        let payload: GoogleTokenResponse = read_json_response(
+            trace,
+            self.http.post(self.token_endpoint.clone()).form(&[
                 ("grant_type", "authorization_code"),
                 ("code", code),
                 ("client_id", self.client_id.as_str()),
                 ("client_secret", self.client_secret.as_str()),
                 ("redirect_uri", self.redirect_uri.as_str()),
                 ("code_verifier", code_verifier),
-            ])
-            .send()
-            .await
-            .map_err(|error| {
-                warn!(provider = "google", error = %error, "oauth upstream code exchange request failed");
-                AuthError::Storage(format!("exchange google auth code: {error}"))
-            })?;
-        let response = response
-            .error_for_status()
-            .map_err(|error| {
-                warn!(provider = "google", error = %error, "oauth upstream code exchange returned error status");
-                AuthError::Storage(format!("google token endpoint error: {error}"))
-            })?;
-        let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
-            warn!(provider = "google", error = %error, "oauth upstream code exchange returned an unreadable payload");
-            AuthError::Storage(format!("decode google token response: {error}"))
-        })?;
-        let claims = parse_id_token_claims(&payload.id_token)?;
+            ]),
+            GoogleRequestErrors {
+                transport_context: "exchange google auth code",
+                transport_log: "oauth upstream code exchange request failed",
+                status_context: "google token endpoint error",
+                status_log: "oauth upstream code exchange returned error status",
+                decode_context: "decode google token response",
+                decode_log: "oauth upstream code exchange returned an unreadable payload",
+            },
+        )
+        .await?;
+        let claims = self.verify_id_token(&payload.id_token).await?;
         info!(
             provider = "google",
             subject_id = %fingerprint(&claims.sub),
@@ -172,35 +294,31 @@ impl GoogleProvider {
     }
 
     pub async fn refresh(&self, refresh_token: &str) -> Result<GoogleExchange, AuthError> {
+        let trace = GoogleRequestTrace::start("refresh", "POST", &self.token_endpoint);
         info!(
             provider = "google",
             refresh_token_id = %fingerprint(refresh_token),
             "oauth upstream refresh started"
         );
-        let response = self
-            .http
-            .post(self.token_endpoint.clone())
-            .form(&[
+        let payload: GoogleTokenResponse = read_json_response(
+            trace,
+            self.http.post(self.token_endpoint.clone()).form(&[
                 ("grant_type", "refresh_token"),
                 ("refresh_token", refresh_token),
                 ("client_id", self.client_id.as_str()),
                 ("client_secret", self.client_secret.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|error| {
-                warn!(provider = "google", error = %error, "oauth upstream refresh request failed");
-                AuthError::Storage(format!("refresh google token: {error}"))
-            })?;
-        let response = response.error_for_status().map_err(|error| {
-            warn!(provider = "google", error = %error, "oauth upstream refresh returned error status");
-            AuthError::Storage(format!("google refresh endpoint error: {error}"))
-        })?;
-        let payload: GoogleTokenResponse = response.json().await.map_err(|error| {
-            warn!(provider = "google", error = %error, "oauth upstream refresh returned an unreadable payload");
-            AuthError::Storage(format!("decode google refresh response: {error}"))
-        })?;
-        let claims = parse_id_token_claims(&payload.id_token)?;
+            ]),
+            GoogleRequestErrors {
+                transport_context: "refresh google token",
+                transport_log: "oauth upstream refresh request failed",
+                status_context: "google refresh endpoint error",
+                status_log: "oauth upstream refresh returned error status",
+                decode_context: "decode google refresh response",
+                decode_log: "oauth upstream refresh returned an unreadable payload",
+            },
+        )
+        .await?;
+        let claims = self.verify_id_token(&payload.id_token).await?;
         info!(
             provider = "google",
             subject_id = %fingerprint(&claims.sub),
@@ -217,37 +335,92 @@ impl GoogleProvider {
             id_token: payload.id_token,
         })
     }
+
+    async fn verify_id_token(&self, id_token: &str) -> Result<GoogleIdTokenClaims, AuthError> {
+        let header = decode_header(id_token)
+            .map_err(|error| AuthError::Storage(format!("verify google id_token: {error}")))?;
+        validate_id_token_header(&header)?;
+        let kid = header
+            .kid
+            .ok_or_else(|| AuthError::Storage("google id_token is missing a key id".to_string()))?;
+        let jwks = self.fetch_jwks().await?;
+        let key = jwks
+            .keys
+            .into_iter()
+            .find(|key| key.kid == kid)
+            .ok_or_else(|| {
+                AuthError::Storage("google id_token key id was not found in JWKS".to_string())
+            })?;
+        if let Some(alg) = key.alg.as_deref()
+            && alg != "RS256"
+        {
+            return Err(AuthError::Storage(format!(
+                "google JWKS key `{}` uses unsupported algorithm `{alg}`",
+                key.kid
+            )));
+        }
+
+        let decoding_key = DecodingKey::from_rsa_components(&key.n, &key.e).map_err(|error| {
+            AuthError::Storage(format!("build google id_token decoding key: {error}"))
+        })?;
+        let mut validation = Validation::new(Algorithm::RS256);
+        validation.validate_exp = true;
+        validation.leeway = 0;
+        validation.set_audience(&[self.client_id.as_str()]);
+
+        let claims = decode::<GoogleIdTokenClaims>(id_token, &decoding_key, &validation)
+            .map(|data| data.claims)
+            .map_err(|error| AuthError::Storage(format!("invalid google id_token: {error}")))?;
+
+        if claims.iss != GOOGLE_ISSUER && claims.iss != "accounts.google.com" {
+            return Err(AuthError::Storage(format!(
+                "invalid google id_token issuer `{}`",
+                claims.iss
+            )));
+        }
+
+        Ok(claims)
+    }
+
+    async fn fetch_jwks(&self) -> Result<GoogleJwks, AuthError> {
+        read_json_response(
+            GoogleRequestTrace::start("fetch_jwks", "GET", &self.jwks_endpoint),
+            self.http.get(self.jwks_endpoint.clone()),
+            GoogleRequestErrors {
+                transport_context: "fetch google jwks",
+                transport_log: "google jwks request failed",
+                status_context: "google jwks endpoint error",
+                status_log: "google jwks request returned error status",
+                decode_context: "decode google jwks response",
+                decode_log: "google jwks payload unreadable",
+            },
+        )
+        .await
+    }
 }
 
-/// Extract the `sub` claim from a Google id_token by base64-decoding the JWT payload.
-///
-/// **Signature verification is intentionally skipped.** This function is only called with
-/// id_tokens obtained directly from Google's token endpoint during a server-side OAuth
-/// code exchange over TLS. Because the token never passes through an untrusted client,
-/// the TLS channel itself authenticates the issuer and protects integrity.
-///
-/// If this function is ever called with tokens received from untrusted sources (e.g.
-/// passed in by a browser client), full signature verification against Google's JWKS
-/// endpoint must be added first.
-fn parse_id_token_claims(id_token: &str) -> Result<GoogleIdTokenClaims, AuthError> {
-    let mut parts = id_token.split('.');
-    let _header = parts
-        .next()
-        .ok_or_else(|| AuthError::Storage("google id_token is missing a JWT header".to_string()))?;
-    let payload = parts.next().ok_or_else(|| {
-        AuthError::Storage("google id_token is missing a JWT payload".to_string())
-    })?;
-    let decoded = URL_SAFE_NO_PAD
-        .decode(payload.as_bytes())
-        .map_err(|error| AuthError::Storage(format!("decode google id_token payload: {error}")))?;
-    serde_json::from_slice(&decoded)
-        .map_err(|error| AuthError::Storage(format!("parse google id_token claims: {error}")))
+fn validate_id_token_header(header: &Header) -> Result<(), AuthError> {
+    if header.alg != Algorithm::RS256 {
+        return Err(AuthError::Storage(format!(
+            "verify google id_token: unsupported algorithm `{:?}`",
+            header.alg
+        )));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::OnceLock;
+
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+    use rand_core::{OsRng, UnwrapMut};
+    use rsa::RsaPrivateKey;
+    use rsa::pkcs8::EncodePrivateKey;
+    use rsa::traits::PublicKeyParts;
     use serde_json::json;
     use url::Url;
     use wiremock::matchers::{method, path};
@@ -272,6 +445,64 @@ mod tests {
         assert_eq!(token.refresh_token.as_deref(), Some("refresh-token"));
     }
 
+    #[tokio::test]
+    async fn google_exchange_rejects_unsigned_id_tokens() {
+        let provider = mocked_google_provider_with_id_token(test_id_token()).await;
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("verify google id_token"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn google_exchange_rejects_wrong_audience_in_id_token() {
+        let provider =
+            mocked_google_provider_with_id_token(signed_test_id_token("other-client", false, true))
+                .await;
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("invalid google id_token"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn google_exchange_rejects_expired_id_token() {
+        let provider =
+            mocked_google_provider_with_id_token(signed_test_id_token("client-id", true, true))
+                .await;
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("invalid google id_token"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn google_exchange_rejects_wrong_issuer_in_id_token() {
+        let provider =
+            mocked_google_provider_with_id_token(signed_test_id_token("client-id", false, false))
+                .await;
+        let error = provider
+            .exchange_code("code", "verifier")
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("issuer"),
+            "unexpected error: {error}"
+        );
+    }
+
     fn test_google_provider() -> GoogleProvider {
         GoogleProvider::new(
             "client-id".to_string(),
@@ -281,6 +512,10 @@ mod tests {
     }
 
     async fn mocked_google_provider() -> GoogleProvider {
+        mocked_google_provider_with_id_token(signed_test_id_token("client-id", false, true)).await
+    }
+
+    async fn mocked_google_provider_with_id_token(id_token: String) -> GoogleProvider {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/token"))
@@ -288,15 +523,22 @@ mod tests {
                 "access_token": "google-access-token",
                 "refresh_token": "refresh-token",
                 "expires_in": 3600,
-                "id_token": test_id_token(),
+                "id_token": id_token,
             })))
             .mount(&server)
             .await;
+        Mock::given(method("GET"))
+            .and(path("/certs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(test_jwks()))
+            .mount(&server)
+            .await;
 
-        test_google_provider().with_endpoints(
-            server.uri().parse::<Url>().unwrap(),
-            server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
-        )
+        test_google_provider()
+            .with_endpoints(
+                server.uri().parse::<Url>().unwrap(),
+                server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
+            )
+            .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap())
     }
 
     fn sample_request() -> AuthorizeUrlRequest {
@@ -312,5 +554,55 @@ mod tests {
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
         let payload = URL_SAFE_NO_PAD.encode(br#"{"sub":"google-subject-123"}"#);
         format!("{header}.{payload}.")
+    }
+
+    fn signed_test_id_token(client_id: &str, expired: bool, valid_issuer: bool) -> String {
+        let claims = json!({
+            "iss": if valid_issuer { "https://accounts.google.com" } else { "https://evil.example.com" },
+            "aud": client_id,
+            "sub": "google-subject-123",
+            "email": "user@example.com",
+            "iat": (unix_now() - 10) as usize,
+            "exp": if expired { (unix_now() - 3600) as usize } else { (unix_now() + 3600) as usize },
+        });
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("test-kid".to_string());
+        encode(&header, &claims, &test_encoding_key()).unwrap()
+    }
+
+    fn test_jwks() -> serde_json::Value {
+        let key = test_rsa_key();
+        let public_key = key.to_public_key();
+        json!({
+            "keys": [{
+                "kid": "test-kid",
+                "alg": "RS256",
+                "kty": "RSA",
+                "use": "sig",
+                "n": URL_SAFE_NO_PAD.encode(public_key.n_bytes()),
+                "e": URL_SAFE_NO_PAD.encode(public_key.e_bytes()),
+            }]
+        })
+    }
+
+    fn test_rsa_key() -> &'static RsaPrivateKey {
+        static TEST_RSA_KEY: OnceLock<RsaPrivateKey> = OnceLock::new();
+        TEST_RSA_KEY.get_or_init(|| {
+            let mut rng = OsRng;
+            let mut rng = UnwrapMut(&mut rng);
+            RsaPrivateKey::new(&mut rng, 2048).unwrap()
+        })
+    }
+
+    fn test_encoding_key() -> EncodingKey {
+        let pem = test_rsa_key().to_pkcs8_pem(Default::default()).unwrap();
+        EncodingKey::from_rsa_pem(pem.as_bytes()).unwrap()
+    }
+
+    fn unix_now() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
     }
 }

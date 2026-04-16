@@ -28,7 +28,7 @@ pub async fn protected_resource_metadata(
 ) -> Json<ProtectedResourceMetadata> {
     let base = public_base_url(&state);
     Json(ProtectedResourceMetadata {
-        resource: format!("{base}/mcp"),
+        resource: canonical_resource_url(&state),
         authorization_servers: vec![base],
         scopes_supported: vec!["lab".to_string()],
         bearer_methods_supported: vec!["header".to_string()],
@@ -48,6 +48,10 @@ pub(crate) fn public_base_url(state: &AuthState) -> String {
         .as_str()
         .trim_end_matches('/')
         .to_string()
+}
+
+pub fn canonical_resource_url(state: &AuthState) -> String {
+    format!("{}/mcp", public_base_url(state))
 }
 
 #[cfg(test)]
@@ -78,5 +82,25 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["token_endpoint"], "https://lab.example.com/token");
+    }
+
+    #[tokio::test]
+    async fn protected_resource_metadata_uses_canonical_mcp_resource_uri() {
+        let app = router(test_auth_state().await);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/.well-known/oauth-protected-resource")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["resource"], "https://lab.example.com/mcp");
     }
 }

@@ -36,6 +36,7 @@ async fn authorization_code_grant(
     state: AuthState,
     request: TokenRequest,
 ) -> Result<TokenResponse, AuthError> {
+    crate::authorize::validate_resource(&state, request.resource.as_deref())?;
     let code = require_field(request.code, "code")?;
     let client_id = require_field(request.client_id, "client_id")?;
     let redirect_uri = require_field(request.redirect_uri, "redirect_uri")?;
@@ -149,6 +150,7 @@ async fn refresh_token_grant(
     state: AuthState,
     request: TokenRequest,
 ) -> Result<TokenResponse, AuthError> {
+    crate::authorize::validate_resource(&state, request.resource.as_deref())?;
     let client_id = require_field(request.client_id, "client_id")?;
     let refresh_token = require_field(request.refresh_token, "refresh_token")?;
     let refresh_token_id = fingerprint(&refresh_token);
@@ -231,19 +233,13 @@ fn build_token_response(
     scope: String,
     refresh_token: Option<String>,
 ) -> Result<TokenResponse, AuthError> {
-    let base = state
-        .config
-        .public_url
-        .as_ref()
-        .expect("oauth state must have public_url")
-        .as_str()
-        .trim_end_matches('/')
-        .to_string();
+    let issuer = crate::metadata::public_base_url(state);
+    let resource = crate::metadata::canonical_resource_url(state);
     let now = now_unix() as usize;
     let access_token = state.signing_keys.issue_access_token(AccessClaims {
-        iss: base.clone(),
+        iss: issuer,
         sub: subject,
-        aud: base,
+        aud: resource,
         exp: now + state.config.access_token_ttl.as_secs() as usize,
         iat: now,
         jti: random_token(18)?,
@@ -271,6 +267,7 @@ fn pkce_challenge(code_verifier: &str) -> String {
 mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode, header};
+    use jsonwebtoken::dangerous::insecure_decode;
     use tower::util::ServiceExt;
 
     use crate::routes::router;
@@ -303,6 +300,11 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["access_token"].is_string());
         assert!(json["refresh_token"].is_string());
+        let access_token = json["access_token"].as_str().expect("access token string");
+        let claims = insecure_decode::<crate::jwt::AccessClaims>(access_token)
+            .expect("decode access token")
+            .claims;
+        assert_eq!(claims.aud, "https://lab.example.com/mcp");
     }
 
     #[tokio::test]
@@ -388,6 +390,28 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn token_endpoint_rejects_mismatched_resource_parameter() {
+        let state = test_auth_state_with_registered_client().await;
+        seed_authorization_code(&state).await;
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/token")
+                    .header(
+                        header::CONTENT_TYPE,
+                        "application/x-www-form-urlencoded",
+                    )
+                    .body(Body::from("grant_type=authorization_code&code=lab-code&client_id=client&resource=https%3A%2F%2Fother.example.com%2Fmcp&redirect_uri=http://127.0.0.1:7777/callback&code_verifier=verifier"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 
     #[tokio::test]

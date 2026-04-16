@@ -1,4 +1,13 @@
-import type { Gateway, ExposurePolicy, ExposurePolicyPreview, TestGatewayResult, ReloadGatewayResult } from '@/lib/types/gateway'
+import type {
+  Gateway,
+  ExposurePolicy,
+  ExposurePolicyPreview,
+  ReloadGatewayResult,
+  ServiceAction,
+  ServiceConfig,
+  SupportedService,
+  TestGatewayResult,
+} from '@/lib/types/gateway'
 
 export const mockGateways: Gateway[] = [
   {
@@ -16,6 +25,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 8,
       exposed_tool_count: 3,
+      discovered_resource_count: 1,
+      exposed_resource_count: 1,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
     },
     discovery: {
       tools: [
@@ -51,6 +64,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 12,
       exposed_tool_count: 12,
+      discovered_resource_count: 3,
+      exposed_resource_count: 3,
+      discovered_prompt_count: 2,
+      exposed_prompt_count: 2,
     },
     discovery: {
       tools: [
@@ -96,6 +113,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 15,
       exposed_tool_count: 5,
+      discovered_resource_count: 0,
+      exposed_resource_count: 0,
+      discovered_prompt_count: 1,
+      exposed_prompt_count: 1,
     },
     discovery: {
       tools: [
@@ -141,6 +162,10 @@ export const mockGateways: Gateway[] = [
       last_error: 'Connection refused: Unable to connect to PostgreSQL server at localhost:5432',
       discovered_tool_count: 0,
       exposed_tool_count: 0,
+      discovered_resource_count: 0,
+      exposed_resource_count: 0,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
     },
     discovery: {
       tools: [],
@@ -168,6 +193,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 4,
       exposed_tool_count: 4,
+      discovered_resource_count: 1,
+      exposed_resource_count: 1,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
     },
     discovery: {
       tools: [
@@ -218,4 +247,146 @@ export const mockReloadResult: ReloadGatewayResult = {
   message: 'Gateway reloaded successfully',
   previous_tool_count: 8,
   new_tool_count: 8,
+}
+
+export const mockSupportedServices: SupportedService[] = [
+  {
+    key: 'filesystem',
+    display_name: 'Filesystem',
+    category: 'Documents',
+    description: 'Local filesystem access for reading and writing project files.',
+    required_env: [
+      {
+        name: 'FILESYSTEM_URL',
+        description: 'Base URL for the filesystem adapter',
+        example: 'http://localhost:8787',
+        secret: false,
+      },
+    ],
+    optional_env: [
+      {
+        name: 'FILESYSTEM_TOKEN',
+        description: 'Optional bearer token for the filesystem adapter',
+        example: 'filesystem-dev-token',
+        secret: true,
+      },
+    ],
+    default_port: 8787,
+  },
+  {
+    key: 'github',
+    display_name: 'GitHub',
+    category: 'Developer Tools',
+    description: 'Repository search, issue management, and pull request workflows.',
+    required_env: [
+      {
+        name: 'GITHUB_URL',
+        description: 'Base URL for the GitHub MCP adapter',
+        example: 'https://github.example.com/mcp',
+        secret: false,
+      },
+      {
+        name: 'GITHUB_TOKEN',
+        description: 'GitHub personal access token',
+        example: 'ghp_xxxxxxxxxxxx',
+        secret: true,
+      },
+    ],
+    optional_env: [],
+    default_port: 443,
+  },
+  {
+    key: 'slack',
+    display_name: 'Slack',
+    category: 'Notifications',
+    description: 'Channel search, posting, and workspace lookup tools.',
+    required_env: [
+      {
+        name: 'SLACK_URL',
+        description: 'Base URL for the Slack MCP adapter',
+        example: 'https://slack.example.com/mcp',
+        secret: false,
+      },
+      {
+        name: 'SLACK_BOT_TOKEN',
+        description: 'Slack bot token used for API access',
+        example: 'xoxb-xxxxxxxxxxxx',
+        secret: true,
+      },
+    ],
+    optional_env: [],
+    default_port: 443,
+  },
+  {
+    key: 'memory',
+    display_name: 'Memory',
+    category: 'Notes',
+    description: 'A lightweight key-value memory service for assistants.',
+    required_env: [
+      {
+        name: 'MEMORY_URL',
+        description: 'Base URL for the memory MCP adapter',
+        example: 'http://localhost:8788',
+        secret: false,
+      },
+    ],
+    optional_env: [],
+    default_port: 8788,
+  },
+]
+
+export const mockServiceConfigs: Record<string, ServiceConfig> = {
+  filesystem: {
+    service: 'filesystem',
+    configured: true,
+    fields: [
+      { name: 'FILESYSTEM_URL', present: true, secret: false, value_preview: 'http://localhost:8787' },
+      { name: 'FILESYSTEM_TOKEN', present: false, secret: true, value_preview: null },
+    ],
+  },
+  github: {
+    service: 'github',
+    configured: true,
+    fields: [
+      { name: 'GITHUB_URL', present: true, secret: false, value_preview: 'https://github.example.com/mcp' },
+      { name: 'GITHUB_TOKEN', present: true, secret: true, value_preview: '••••••••' },
+    ],
+  },
+  slack: {
+    service: 'slack',
+    configured: true,
+    fields: [
+      { name: 'SLACK_URL', present: true, secret: false, value_preview: 'https://slack.example.com/mcp' },
+      { name: 'SLACK_BOT_TOKEN', present: true, secret: true, value_preview: '••••••••' },
+    ],
+  },
+  memory: {
+    service: 'memory',
+    configured: false,
+    fields: [{ name: 'MEMORY_URL', present: false, secret: false, value_preview: 'http://localhost:8788' }],
+  },
+}
+
+export const mockServiceActions: Record<string, ServiceAction[]> = {
+  filesystem: [
+    { name: 'read_file', description: 'Read contents of a file', destructive: false },
+    { name: 'write_file', description: 'Write a file to disk', destructive: true },
+    { name: 'list_directory', description: 'List directory contents', destructive: false },
+  ],
+  github: [
+    { name: 'list_issues', description: 'List repository issues', destructive: false },
+    { name: 'create_issue', description: 'Create a GitHub issue', destructive: true },
+    { name: 'merge_pull_request', description: 'Merge a pull request', destructive: true },
+  ],
+  slack: [
+    { name: 'send_message', description: 'Send a Slack message', destructive: true },
+    { name: 'list_channels', description: 'List Slack channels', destructive: false },
+    { name: 'search_messages', description: 'Search Slack messages', destructive: false },
+  ],
+  memory: [
+    { name: 'store_memory', description: 'Store a memory by key', destructive: true },
+    { name: 'retrieve_memory', description: 'Retrieve a stored memory', destructive: false },
+    { name: 'list_memories', description: 'List stored memories', destructive: false },
+    { name: 'delete_memory', description: 'Delete a stored memory', destructive: true },
+  ],
 }

@@ -66,13 +66,6 @@ pub async fn serve_local_relay(
         target = %config.resolved_target.target_url,
         "oauth relay local listener ready"
     );
-    #[allow(clippy::print_stdout)]
-    {
-        println!(
-            "OAuth relay listening on http://{} -> {}",
-            config.bind_addr, config.resolved_target.target_url
-        );
-    }
 
     let state = RelayState {
         resolved_target: config.resolved_target,

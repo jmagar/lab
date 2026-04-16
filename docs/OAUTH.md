@@ -76,6 +76,7 @@ Google-specific notes:
 - `lab` sends `access_type=offline` when redirecting to Google so the provider can issue a refresh token
 - `lab` also sends `prompt=consent` so a fresh Google consent flow can return a new refresh token after the app was previously authorized without offline access
 - if Google still does not return an upstream refresh token, `lab` omits `refresh_token` from its token response and later refresh grants fail closed
+- `lab` validates the Google `id_token` cryptographically against Google JWKS and rejects tokens with the wrong issuer, audience, or expiry before minting any local identity
 
 ## Browser-Local Callback Forwarding
 
@@ -143,8 +144,14 @@ LAB_AUTH_ALLOWED_REDIRECT_URIS=https://callback.tootie.tv/callback/*
 allowed_client_redirect_uris = ["https://callback.tootie.tv/callback/*"]
 ```
 
-Patterns support simple `*` wildcards. Use this only for redirect URIs you explicitly operate or
-trust.
+Patterns are matched as structured URLs, not raw substrings:
+
+- scheme and port must match exactly
+- host wildcards are allowed only as full labels, e.g. `https://*.example.com/callback` or `https://callback.*.tv/callback/*`
+- path and query may use simple `*` wildcards
+- partial host-label globs such as `https://callback.example.com*` are rejected and do not safely scope a trust boundary
+
+Use this only for redirect URIs you explicitly operate or trust.
 
 ## Runtime JWT Validation
 

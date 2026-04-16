@@ -16,7 +16,6 @@ axum.workspace         = true
 base64.workspace       = true
 getrandom             = "0.3"
 jsonwebtoken.workspace = true
-rand.workspace         = true
 reqwest.workspace      = true
 rsa.workspace          = true
 rusqlite.workspace     = true
@@ -31,6 +30,8 @@ tracing.workspace      = true
 url.workspace          = true
 
 [dev-dependencies]
+rand.workspace = true
+rand_core = { version = "0.9", features = ["os_rng", "std"] }
 tempfile = "3.10"
 wiremock.workspace = true
 

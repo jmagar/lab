@@ -72,9 +72,9 @@ impl UnifiClient {
             builder = builder.danger_accept_invalid_certs(true);
         }
 
-        let inner = builder
-            .build()
-            .map_err(|e| UnifiError::Api(ApiError::Internal(format!("reqwest::Client::build: {e}"))))?;
+        let inner = builder.build().map_err(|e| {
+            UnifiError::Api(ApiError::Internal(format!("reqwest::Client::build: {e}")))
+        })?;
 
         Ok(Self {
             http: HttpClient::from_parts(base_url.to_string(), auth, inner),

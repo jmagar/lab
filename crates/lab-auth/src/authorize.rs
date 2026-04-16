@@ -109,6 +109,7 @@ pub async fn authorize(
     Query(query): Query<AuthorizeQuery>,
 ) -> Result<Response, AuthError> {
     validate_response_type(&query.response_type)?;
+    validate_resource(&state, query.resource.as_deref())?;
     let scope = validate_scope(&query.scope)?;
     let client_state_id = fingerprint(&query.state);
     info!(
@@ -369,6 +370,28 @@ fn validate_scope(scope: &str) -> Result<String, AuthError> {
     )))
 }
 
+pub(crate) fn validate_resource(
+    state: &AuthState,
+    requested: Option<&str>,
+) -> Result<(), AuthError> {
+    let Some(requested) = requested.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    let expected = crate::metadata::canonical_resource_url(state);
+    if requested == expected {
+        return Ok(());
+    }
+
+    warn!(
+        requested_resource = %requested,
+        expected_resource = %expected,
+        "oauth request rejected: resource does not match canonical MCP endpoint"
+    );
+    Err(AuthError::Validation(format!(
+        "resource must be `{expected}`"
+    )))
+}
+
 fn is_loopback_redirect(value: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(value) else {
         return false;
@@ -383,10 +406,16 @@ fn is_loopback_redirect(value: &str) -> bool {
 }
 
 fn is_allowed_redirect_uri(value: &str, patterns: &[String]) -> bool {
-    is_loopback_redirect(value)
-        || patterns
-            .iter()
-            .any(|pattern| wildcard_matches(pattern, value))
+    if is_loopback_redirect(value) {
+        return true;
+    }
+
+    let Ok(candidate) = reqwest::Url::parse(value) else {
+        return false;
+    };
+    patterns
+        .iter()
+        .any(|pattern| redirect_pattern_matches(pattern, &candidate))
 }
 
 fn wildcard_matches(pattern: &str, value: &str) -> bool {
@@ -428,18 +457,69 @@ fn wildcard_matches(pattern: &str, value: &str) -> bool {
     true
 }
 
+fn redirect_pattern_matches(pattern: &str, candidate: &reqwest::Url) -> bool {
+    let Ok(pattern) = reqwest::Url::parse(pattern) else {
+        return false;
+    };
+    if pattern.scheme() != candidate.scheme() {
+        return false;
+    }
+    if pattern.port_or_known_default() != candidate.port_or_known_default() {
+        return false;
+    }
+    let Some(pattern_host) = pattern.host_str() else {
+        return false;
+    };
+    let Some(candidate_host) = candidate.host_str() else {
+        return false;
+    };
+    if !host_pattern_matches(pattern_host, candidate_host) {
+        return false;
+    }
+    if !wildcard_matches(pattern.path(), candidate.path()) {
+        return false;
+    }
+
+    match (pattern.query(), candidate.query()) {
+        (Some(pattern_query), Some(candidate_query)) => {
+            wildcard_matches(pattern_query, candidate_query)
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn host_pattern_matches(pattern_host: &str, candidate_host: &str) -> bool {
+    let pattern_labels = pattern_host.split('.').collect::<Vec<_>>();
+    let candidate_labels = candidate_host.split('.').collect::<Vec<_>>();
+    if pattern_labels.len() != candidate_labels.len() {
+        return false;
+    }
+
+    pattern_labels
+        .iter()
+        .zip(candidate_labels.iter())
+        .all(|(pattern, candidate)| {
+            *pattern == "*" || (!pattern.contains('*') && pattern.eq_ignore_ascii_case(candidate))
+        })
+}
+
 #[cfg(test)]
 pub mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode, header};
     use base64::Engine;
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+    use rsa::RsaPrivateKey;
+    use rsa::pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding};
+    use rsa::traits::PublicKeyParts;
     use serde_json::json;
     use tower::util::ServiceExt;
     use url::Url;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::wildcard_matches;
+    use super::{host_pattern_matches, is_allowed_redirect_uri, wildcard_matches};
     use crate::config::{AuthConfig, AuthMode, GoogleConfig};
     use crate::google::GoogleProvider;
     use crate::routes::router;
@@ -521,16 +601,38 @@ pub mod tests {
             "https://callback.tootie.tv/callback/dookie"
         ));
         assert!(wildcard_matches(
-            "*example.com/callback",
-            "https://callback.example.com/callback"
-        ));
-        assert!(wildcard_matches(
             "https://callback.*.tv/callback/*",
             "https://callback.tootie.tv/callback/dookie"
         ));
-        assert!(!wildcard_matches(
-            "*example.com/callback",
-            "https://callback.example.com/callback/extra"
+        assert!(!wildcard_matches("/callback", "/callback/extra"));
+    }
+
+    #[test]
+    fn host_patterns_support_full_label_wildcards_only() {
+        assert!(host_pattern_matches("callback.*.tv", "callback.tootie.tv"));
+        assert!(host_pattern_matches(
+            "*.example.com",
+            "callback.example.com"
+        ));
+        assert!(!host_pattern_matches(
+            "callback.example.com*",
+            "callback.example.com"
+        ));
+        assert!(!host_pattern_matches(
+            "*.example.com",
+            "callback.nested.example.com"
+        ));
+    }
+
+    #[test]
+    fn wildcard_redirect_patterns_do_not_overmatch_similar_hosts() {
+        assert!(!is_allowed_redirect_uri(
+            "https://callback.tootie.tv.evil.example/callback/dookie",
+            &[String::from("https://callback.tootie.tv/callback/*")]
+        ));
+        assert!(!is_allowed_redirect_uri(
+            "https://callback.example.com.evil.example/callback",
+            &[String::from("https://callback.example.com*")]
         ));
     }
 
@@ -694,6 +796,21 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn authorize_rejects_mismatched_resource_parameter() {
+        let app = router(test_auth_state_with_registered_client().await);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/authorize?response_type=code&client_id=client&redirect_uri=http://127.0.0.1:7777/callback&state=abc&resource=https://other.example.com/mcp&scope=lab&code_challenge=pkce&code_challenge_method=S256")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
     async fn callback_rejects_expired_state() {
         let state = test_auth_state_with_registered_client().await;
         state
@@ -779,8 +896,13 @@ pub mod tests {
                 "access_token": "google-access-token",
                 "refresh_token": "refresh-token",
                 "expires_in": 3600,
-                "id_token": test_id_token(),
+                "id_token": signed_test_id_token(),
             })))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/certs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(test_jwks()))
             .mount(server)
             .await;
         state
@@ -807,7 +929,8 @@ pub mod tests {
         .with_endpoints(
             server.uri().parse::<Url>().unwrap(),
             server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
-        );
+        )
+        .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap());
         AuthState::for_tests(
             (*state.config).clone(),
             state.store.clone(),
@@ -816,11 +939,70 @@ pub mod tests {
         )
     }
 
-    fn test_id_token() -> String {
-        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(br#"{"alg":"none","typ":"JWT"}"#);
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(br#"{"sub":"google-subject-123"}"#);
-        format!("{header}.{payload}.")
+    fn signed_test_id_token() -> String {
+        let claims = json!({
+            "iss": "https://accounts.google.com",
+            "aud": "client-id",
+            "sub": "google-subject-123",
+            "email": "user@example.com",
+            "iat": now_unix() as usize,
+            "exp": (now_unix() + 3600) as usize,
+        });
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("test-kid".to_string());
+        encode(&header, &claims, &test_encoding_key()).unwrap()
     }
+
+    fn test_jwks() -> serde_json::Value {
+        let key = test_rsa_key();
+        let public_key = key.to_public_key();
+        json!({
+            "keys": [{
+                "kid": "test-kid",
+                "alg": "RS256",
+                "kty": "RSA",
+                "use": "sig",
+                "n": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public_key.n_bytes()),
+                "e": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public_key.e_bytes()),
+            }]
+        })
+    }
+
+    fn test_rsa_key() -> RsaPrivateKey {
+        RsaPrivateKey::from_pkcs8_pem(TEST_RSA_KEY_PEM).unwrap()
+    }
+
+    fn test_encoding_key() -> EncodingKey {
+        let pem = test_rsa_key().to_pkcs8_pem(LineEnding::LF).unwrap();
+        EncodingKey::from_rsa_pem(pem.as_bytes()).unwrap()
+    }
+
+    const TEST_RSA_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC/Wa3MQnrNbKu9
+H5+ZH30lrKV3+EJeuY0ofx3qMx73ax+ArHaPFHXq3PUAalSZ+UlBqRmX89DdzwWG
+l5hqt3wzGjGe49zxhY5+nUUPLtRiI4JH0iEH4Bg3W9e9gWAAPjVemuYmZ57R9XOd
+O1l0aI20mZiy4jeEN7Ls40I/pwyTcB22krOeHz13E1NzG+uDQnaMZkOKomRdTkKr
+tiSETBcpacpIdyLtdc9lHR4LbcZtBH3aMosjmgae3uvQyks6ntj0UQZaKNYqNwNE
++GSOqQdtJeoWhps1IYjhc9wcfrlL69nn5U4FXwCcPzGOKXCOW45/BB4nr2WF2Bkq
+N7iytDv/AgMBAAECggEABt1BtdUgsKPYWVV8FTMi+yoBWZdnUhyX6r78pL0mvDt0
+itok+qcCP+WjSFuII2nk7d0SFPhjIsHdceGYTyO76d1jsE5+S4+9997ObmgAqHCb
+qNXp521rkPjTeXHdrsSMh5NI9FG9SczjU92gLOPfSX5FEw24bh7NZWAVrVDhy5wn
+BWAZow2kByQ2SLRitUJr+a1xF3UO3PgHLKdP0H0qZp9TCar3nzJxwMUyGJxOcd4f
+mElyYNIsJtOBsIIoBsNh+aj5pSjOiuEZmfipbHuMWpjEwF1+UVH4iPXQugyKgFze
+Gc8wy3aFlmA4dH2jbSzP3aIwiFUDgqsUrqdyEXVVeQKBgQD5/psH3uk3AOkRC/k/
+P6cI5pwFG0rFRe3UgBJFqODnbTZR+0BwyTqf9kCZgi0nJIudCNyUF5utl8rkWdwE
+s2s42NibGWTVyb5dabT+dHwP42jFljCxxbZw1D3GmP1mX0ybyXj0BOqWEpMHc76q
+ZxzJFfML0FfyTxMVycukBL4bEwKBgQDD8m2Y5GvO17RJDeG6yPupTvWbcBaUTuwe
+0w9LOWSOYi3YPAIt7m6yE9XH9cWSFqXMoOAS5Lu1zUuBvwhZz3XAAeL9JpU2F/1V
+DW7NiChNb7Np2X1dUHZTS5EmaAkok55uEMfA1N1FhsDfN+qCxVPITUszYwrPCu52
+SMd4Nx5s5QKBgQDfK6woTZWyNYzaW+8IyIEL0BqN8HxCOZgD8MTfDNChqHwqmXpA
+dVNxg3rNz0kRvW0pJcUMKzsdr/k++v0P8T+RwvszEmtS8sOPTpN16HTsFh3s7ZPQ
+z2h7tuzjAqaMIh0YobXpWQ42JKS+rVQTePNYi9CpxjcMqAyokbnKVTWEowKBgFrB
+5/eAHVsh19RahKoyOzZRZztGsH6jC4S/d379J1E3skpMiSnjHQyIWWWTtZ4TtVnR
+TdgSb8smOonvBJwsljqH5S4h98ylUeZaIW87WId9bFljrkhRY2zzPFjQqSVNMn2C
+cjMjpRV189GwIYPOiB7nhiRYBIKfapII5bMNvJ7tAoGACMvtonFh25b7gB7j3Pep
+LEH/fA5CRiOs7Plrt2Sv54wAup4Y6+HQ8i/KFOXIejEN9vfY1YRfyD5Ajc05zg90
+uE8aLb5YtFvoaLAnc/A2ceW8sNxGgT5aPyLPUdmfSryAO4ayFDHmRlGFRsZtTUbn
+Iy60nwnOxK6B5mZV2Cs+kv8=
+-----END PRIVATE KEY-----"#;
 }
