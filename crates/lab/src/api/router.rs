@@ -1037,6 +1037,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_session_returns_internal_error_when_lookup_fails() {
+        let state = AppState::new();
+        let auth_state = test_lab_auth_state().await;
+        let session = seed_browser_session(&auth_state).await;
+        auth_state
+            .store
+            .execute_test_statement("DROP TABLE browser_sessions;")
+            .await
+            .unwrap();
+        let app = build_router(state, None, Some(auth_state), None, &[]);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/auth/session")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
     async fn auth_layer_accepts_valid_oauth_bearer_token() {
         let auth_state = test_lab_auth_state().await;
         let token = issue_test_lab_token(&auth_state);

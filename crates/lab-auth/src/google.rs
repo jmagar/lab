@@ -355,14 +355,7 @@ impl GoogleProvider {
         let kid = header
             .kid
             .ok_or_else(|| AuthError::Storage("google id_token is missing a key id".to_string()))?;
-        let jwks = self.fetch_jwks().await?;
-        let key = jwks
-            .keys
-            .into_iter()
-            .find(|key| key.kid == kid)
-            .ok_or_else(|| {
-                AuthError::Storage("google id_token key id was not found in JWKS".to_string())
-            })?;
+        let key = self.find_jwk_for_kid(&kid).await?;
         if let Some(alg) = key.alg.as_deref()
             && alg != "RS256"
         {
@@ -394,6 +387,22 @@ impl GoogleProvider {
         Ok(claims)
     }
 
+    async fn find_jwk_for_kid(&self, kid: &str) -> Result<GoogleJwk, AuthError> {
+        let jwks = self.fetch_jwks().await?;
+        if let Some(key) = jwks.keys.into_iter().find(|key| key.kid == kid) {
+            return Ok(key);
+        }
+
+        debug!(
+            provider = "google",
+            kid,
+            "google jwks cache miss for token key id; refreshing"
+        );
+        self.refresh_jwks().await?.keys.into_iter().find(|key| key.kid == kid).ok_or_else(
+            || AuthError::Storage("google id_token key id was not found in JWKS".to_string()),
+        )
+    }
+
     async fn fetch_jwks(&self) -> Result<GoogleJwks, AuthError> {
         if let Some(jwks) = self.cached_jwks().await {
             debug!(provider = "google", "google jwks cache hit");
@@ -411,10 +420,22 @@ impl GoogleProvider {
             return Ok(cached.jwks.clone());
         }
 
-        let trace = GoogleRequestTrace::start("fetch_jwks", "GET", &self.jwks_endpoint);
-        let response = self
-            .http
-            .get(self.jwks_endpoint.clone())
+        Self::refresh_jwks_locked(&self.http, &self.jwks_endpoint, &mut cache).await
+    }
+
+    async fn refresh_jwks(&self) -> Result<GoogleJwks, AuthError> {
+        let mut cache = self.jwks_cache.write().await;
+        Self::refresh_jwks_locked(&self.http, &self.jwks_endpoint, &mut cache).await
+    }
+
+    async fn refresh_jwks_locked(
+        http: &reqwest::Client,
+        jwks_endpoint: &Url,
+        cache: &mut Option<CachedGoogleJwks>,
+    ) -> Result<GoogleJwks, AuthError> {
+        let trace = GoogleRequestTrace::start("fetch_jwks", "GET", jwks_endpoint);
+        let response = http
+            .get(jwks_endpoint.clone())
             .send()
             .await
             .map_err(|error| {
@@ -482,6 +503,8 @@ fn validate_id_token_header(header: &Header) -> Result<(), AuthError> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -493,7 +516,7 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{AuthorizeUrlRequest, GoogleProvider};
+    use super::{AuthorizeUrlRequest, CachedGoogleJwks, GoogleJwk, GoogleJwks, GoogleProvider};
 
     #[test]
     fn google_authorize_url_includes_offline_access_prompt_and_pkce() {
@@ -611,6 +634,47 @@ mod tests {
         assert_eq!(jwks_requests, 1);
     }
 
+    #[tokio::test]
+    async fn google_exchange_refreshes_jwks_when_cached_kid_is_missing() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "google-access-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 3600,
+                "id_token": signed_test_id_token("client-id", false, true),
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/certs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(test_jwks()))
+            .mount(&server)
+            .await;
+
+        let provider = test_google_provider()
+            .with_endpoints(
+                server.uri().parse::<Url>().unwrap(),
+                server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
+            )
+            .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap());
+        *provider.jwks_cache.write().await = Some(CachedGoogleJwks {
+            jwks: wrong_test_jwks(),
+            expires_at: Instant::now() + Duration::from_secs(3600),
+        });
+
+        let exchange = provider.exchange_code("code", "verifier").await.unwrap();
+        assert_eq!(exchange.subject, "google-subject-123");
+
+        let requests = server.received_requests().await.unwrap();
+        let jwks_requests = requests
+            .iter()
+            .filter(|request| request.url.path() == "/certs")
+            .count();
+        assert_eq!(jwks_requests, 1);
+    }
+
     #[test]
     fn parse_max_age_reads_cache_control_max_age() {
         assert_eq!(super::parse_max_age("public, max-age=3600"), Some(3600));
@@ -697,6 +761,17 @@ mod tests {
                 "e": URL_SAFE_NO_PAD.encode(public_key.e_bytes()),
             }]
         })
+    }
+
+    fn wrong_test_jwks() -> GoogleJwks {
+        GoogleJwks {
+            keys: vec![GoogleJwk {
+                kid: "stale-kid".to_string(),
+                alg: Some("RS256".to_string()),
+                n: "stale-modulus".to_string(),
+                e: "AQAB".to_string(),
+            }],
+        }
     }
 
     fn test_rsa_key() -> RsaPrivateKey {

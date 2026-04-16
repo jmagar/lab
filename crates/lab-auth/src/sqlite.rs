@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params};
+use tracing::warn;
 
 use crate::error::AuthError;
 use crate::types::{
@@ -535,12 +536,16 @@ fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
 }
 
 fn validate_or_reopen_connection(conn: &mut Connection, path: &PathBuf) -> Result<(), AuthError> {
-    if conn
-        .query_row("SELECT 1", [], |row| row.get::<_, i64>(0))
-        .is_ok()
-    {
+    let probe = conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0));
+    if probe.is_ok() {
         return Ok(());
     }
+    let error = probe.expect_err("probe already checked as Err");
+    warn!(
+        path = %path.display(),
+        error = %error,
+        "stale sqlite connection detected, reopening"
+    );
 
     *conn = open_connection(path.clone())?;
     conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0))

@@ -126,7 +126,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     gateway_manager.seed_config(config.clone()).await;
     install_gateway_manager(Arc::clone(&gateway_manager));
 
-    if matches!(args.command, Some(ServeCommand::Mcp(McpArgs { stdio: true }))) {
+    if should_run_stdio(transport, args.command.as_ref()) {
         return run_stdio(
             Arc::new(registry),
             Arc::clone(&gateway_manager),
@@ -227,6 +227,11 @@ fn resolve_web_ui_auth_disabled(web: &crate::config::WebPreferences) -> Result<b
     }
 
     Ok(web.disable_auth.unwrap_or(false))
+}
+
+fn should_run_stdio(transport: Transport, command: Option<&ServeCommand>) -> bool {
+    matches!(transport, Transport::Stdio)
+        || matches!(command, Some(ServeCommand::Mcp(McpArgs { stdio: true })))
 }
 
 fn resolve_transport(
@@ -527,7 +532,7 @@ mod tests {
         McpArgs, PeerNotifier, ServeCommand, Transport, allowed_hosts, bind_addr,
         build_http_router, is_loopback_host, resolve_port,
         resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
-        resolve_web_ui_auth_disabled,
+        resolve_web_ui_auth_disabled, should_run_stdio,
     };
     use crate::api::AppState;
     use crate::cli::Cli;
@@ -626,6 +631,16 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn stdio_mode_is_selected_from_resolved_transport() {
+        assert!(should_run_stdio(Transport::Stdio, None));
+        assert!(should_run_stdio(
+            Transport::Http,
+            Some(&ServeCommand::Mcp(McpArgs { stdio: true })),
+        ));
+        assert!(!should_run_stdio(Transport::Http, None));
     }
 
     #[test]

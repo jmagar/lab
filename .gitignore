@@ -83,6 +83,3 @@ config.local.toml
 
 # Personal local cheatsheet (never commit)
 CLAUDE.md.local
-
-# Ignore accidental backslash-prefixed nested worktree copies
-\\home\\jmagar\\workspace\\worktrees\\lab\\pure-comet\\lab/

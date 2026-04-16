@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::RwLock;
@@ -10,6 +10,7 @@ use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::upstream::pool::UpstreamCachedSummary;
 use crate::dispatch::upstream::pool::UpstreamPool;
+use crate::registry::ToolRegistry;
 use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
@@ -51,6 +52,8 @@ pub fn diff_catalogs(
         prompts_changed: before.prompts != after.prompts,
     }
 }
+
+static VIRTUAL_SERVER_TOOL_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
 
 #[derive(Clone, Default)]
 pub struct GatewayRuntimeHandle {
@@ -789,7 +792,7 @@ fn server_view_from_virtual_server(
     let connected =
         record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
     let (discovered_tool_count, exposed_tool_count) =
-        virtual_server_tool_counts(config, record.enabled);
+        virtual_server_tool_counts(virtual_server_tool_registry(), config, record.enabled);
     let warnings = health
         .and_then(|status| {
             health_warning_message(status).map(|message| {
@@ -845,10 +848,10 @@ fn server_view_from_virtual_server(
 }
 
 fn virtual_server_tool_counts(
+    registry: &ToolRegistry,
     config: &crate::config::VirtualServerConfig,
     enabled: bool,
 ) -> (usize, usize) {
-    let registry = crate::registry::build_default_registry();
     let Some(entry) = registry.service(&config.service) else {
         return (0, 0);
     };
@@ -879,6 +882,10 @@ fn virtual_server_tool_counts(
     };
 
     (discovered, exposed)
+}
+
+fn virtual_server_tool_registry() -> &'static ToolRegistry {
+    VIRTUAL_SERVER_TOOL_REGISTRY.get_or_init(crate::registry::build_default_registry)
 }
 
 fn health_warning_message(status: &ServiceHealth) -> Option<&str> {
@@ -1351,7 +1358,7 @@ mod tests {
                     webui: true,
                 },
                 mcp_policy: Some(crate::config::VirtualServerMcpPolicyConfig {
-                    allowed_actions: vec!["server.status".to_string()],
+                    allowed_actions: vec!["server.info".to_string()],
                 }),
             },
             Some(&ServiceHealth {
@@ -1364,7 +1371,7 @@ mod tests {
         );
 
         assert!(view.discovered_tool_count > view.exposed_tool_count);
-        assert_eq!(view.exposed_tool_count, 2);
+        assert_eq!(view.exposed_tool_count, 3);
     }
 
     #[tokio::test]
@@ -1386,7 +1393,7 @@ mod tests {
                         webui: false,
                     },
                     mcp_policy: Some(crate::config::VirtualServerMcpPolicyConfig {
-                        allowed_actions: vec!["server.status".to_string()],
+                        allowed_actions: vec!["server.info".to_string()],
                     }),
                 }],
                 ..LabConfig::default()
@@ -1395,7 +1402,7 @@ mod tests {
 
         assert!(
             manager
-                .mcp_action_allowed_for_service("plex", "server.status")
+                .mcp_action_allowed_for_service("plex", "server.info")
                 .await
         );
         assert!(manager.mcp_action_allowed_for_service("plex", "help").await);
