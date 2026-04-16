@@ -33,7 +33,7 @@ export interface GatewayDocsSnapshot {
 }
 
 interface SettingsOptions {
-  hasApiToken: boolean
+  hasStandaloneBearerAuth: boolean
   hasMockData: boolean
 }
 
@@ -99,7 +99,7 @@ export function buildGatewaySettingsSnapshot(
   options: SettingsOptions,
 ): GatewaySettingsSnapshot {
   return {
-    authModeLabel: options.hasApiToken ? 'API token' : 'Browser session',
+    authModeLabel: options.hasStandaloneBearerAuth ? 'API token' : 'Browser session',
     runtimeLabel: options.hasMockData ? 'Mock preview' : 'Live control plane',
     totalGateways: gateways.length,
     connectedGateways: gateways.filter((gateway) => gateway.status.connected).length,

@@ -43,7 +43,7 @@ test('buildGatewayActivityFeed pushes invalid timestamps behind valid events det
 
 test('buildGatewaySettingsSnapshot summarizes gateway fleet posture and auth mode', () => {
   const snapshot = buildGatewaySettingsSnapshot(mockGateways, {
-    hasApiToken: true,
+    hasStandaloneBearerAuth: true,
     hasMockData: true,
   })
 
@@ -55,6 +55,16 @@ test('buildGatewaySettingsSnapshot summarizes gateway fleet posture and auth mod
   assert.equal(snapshot.warningCount, 3)
   assert.equal(snapshot.proxyResourceGateways, 4)
   assert.equal(snapshot.bearerTokenGateways, 2)
+})
+
+test('buildGatewaySettingsSnapshot reports browser session mode when a token exists but standalone bearer mode is off', () => {
+  const snapshot = buildGatewaySettingsSnapshot(mockGateways, {
+    hasStandaloneBearerAuth: false,
+    hasMockData: false,
+  })
+
+  assert.equal(snapshot.authModeLabel, 'Browser session')
+  assert.equal(snapshot.runtimeLabel, 'Live control plane')
 })
 
 test('buildGatewayDocsSnapshot derives operator-facing guidance from the current fleet', () => {
