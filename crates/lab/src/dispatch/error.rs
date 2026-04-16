@@ -139,6 +139,14 @@ impl ToolError {
             "internal_error" | "server_error" | "decode_error"
         )
     }
+
+    #[must_use]
+    pub fn internal_message(message: impl Into<String>) -> Self {
+        Self::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: message.into(),
+        }
+    }
 }
 
 // ── From<ServiceError> for ToolError ─────────────────────────────────────

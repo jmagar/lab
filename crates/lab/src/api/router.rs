@@ -107,6 +107,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
 
     let mut v1 = Router::new()
         .route("/{service}/actions", get(service_actions))
+        .nest("/device", super::device::routes(state.clone()))
         .nest("/gateway", services::gateway::routes(state.clone()))
         .route(
             "/openapi.json",
