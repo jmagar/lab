@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rusqlite::types::Value;
@@ -12,23 +13,26 @@ use crate::types::{
 use crate::util::{ensure_restrictive_permissions, now_unix, set_restrictive_permissions};
 
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
+const SQLITE_POOL_SIZE: usize = 4;
 
 #[derive(Clone, Debug)]
 pub struct SqliteStore {
-    conn: Arc<Mutex<Connection>>,
+    conns: Arc<Vec<Mutex<Connection>>>,
+    next_conn: Arc<AtomicUsize>,
 }
 
 impl SqliteStore {
     pub async fn open(path: PathBuf) -> Result<Self, AuthError> {
-        let conn = tokio::task::spawn_blocking(move || open_connection(path)).await;
-        let store = match conn {
+        let conns = tokio::task::spawn_blocking(move || open_connections(path, SQLITE_POOL_SIZE)).await;
+        let store = match conns {
             Ok(result) => result,
             Err(error) => Err(AuthError::Storage(format!(
                 "sqlite open task failed: {error}"
             ))),
         }
-        .map(|conn| Self {
-            conn: Arc::new(Mutex::new(conn)),
+        .map(|conns| Self {
+            conns: Arc::new(conns.into_iter().map(Mutex::new).collect()),
+            next_conn: Arc::new(AtomicUsize::new(0)),
         })?;
 
         store.cleanup_expired().await?;
@@ -413,9 +417,11 @@ impl SqliteStore {
         T: Send + 'static,
         F: FnOnce(&Connection) -> Result<T, AuthError> + Send + 'static,
     {
-        let conn = Arc::clone(&self.conn);
+        let conns = Arc::clone(&self.conns);
+        let len = conns.len();
+        let idx = self.next_conn.fetch_add(1, Ordering::Relaxed) % len;
         tokio::task::spawn_blocking(move || {
-            let guard = conn
+            let guard = conns[idx]
                 .lock()
                 .map_err(|_| AuthError::Storage("sqlite mutex poisoned".to_string()))?;
             op(&guard)
@@ -423,6 +429,17 @@ impl SqliteStore {
         .await
         .map_err(|error| AuthError::Storage(format!("sqlite task failed: {error}")))?
     }
+
+    #[cfg(test)]
+    fn connection_count(&self) -> usize {
+        self.conns.len()
+    }
+}
+
+fn open_connections(path: PathBuf, count: usize) -> Result<Vec<Connection>, AuthError> {
+    (0..count)
+        .map(|_| open_connection(path.clone()))
+        .collect()
 }
 
 fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
@@ -589,13 +606,19 @@ mod tests {
 
     use crate::util::now_unix;
 
-    use super::SqliteStore;
+    use super::{SQLITE_POOL_SIZE, SqliteStore};
 
     #[tokio::test]
     async fn sqlite_store_enables_wal_and_busy_timeout() {
         let store = temp_store().await;
         assert_eq!(pragma(&store, "journal_mode").await, "wal");
         assert!(pragma_ms(&store, "busy_timeout").await >= 5_000);
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_opens_multiple_connections() {
+        let store = temp_store().await;
+        assert_eq!(store.connection_count(), SQLITE_POOL_SIZE);
     }
 
     #[tokio::test]

@@ -275,6 +275,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gateway_list_surfaces_cached_custom_gateway_summary_counts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let runtime = GatewayRuntimeHandle::default();
+        let manager = GatewayManager::new(path, runtime.clone());
+
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                name: "noxa".to_string(),
+                url: None,
+                bearer_token_env: None,
+                command: Some("noxa".to_string()),
+                args: vec!["mcp".to_string()],
+                proxy_resources: true,
+                expose_tools: Some(vec!["scrape".to_string()]),
+            }])
+            .await;
+
+        let pool = crate::dispatch::upstream::pool::UpstreamPool::new();
+        let upstream_name: std::sync::Arc<str> = std::sync::Arc::from("noxa");
+        let mut tools = std::collections::HashMap::new();
+        for name in ["scrape", "crawl"] {
+            let schema = std::sync::Arc::new(serde_json::Map::new());
+            let tool = rmcp::model::Tool::new(name, format!("{name} description"), schema);
+            tools.insert(
+                name.to_string(),
+                crate::dispatch::upstream::types::UpstreamTool {
+                    tool,
+                    input_schema: None,
+                    upstream_name: std::sync::Arc::clone(&upstream_name),
+                },
+            );
+        }
+        pool.insert_entry_for_tests(
+            "noxa",
+            crate::dispatch::upstream::types::UpstreamEntry {
+                name: std::sync::Arc::clone(&upstream_name),
+                tools,
+                exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::from_patterns(
+                    vec!["scrape".to_string()],
+                )
+                .expect("policy"),
+                prompt_count: 3,
+                resource_count: 4,
+                tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+                prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+                resource_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+                tool_unhealthy_since: None,
+                prompt_unhealthy_since: None,
+                resource_unhealthy_since: None,
+                tool_last_error: None,
+                prompt_last_error: None,
+                resource_last_error: None,
+            },
+        )
+        .await;
+        runtime.swap(Some(std::sync::Arc::new(pool))).await;
+
+        let value = dispatch_with_manager(&manager, "gateway.list", json!({}))
+            .await
+            .expect("list");
+        let row = value
+            .as_array()
+            .expect("array")
+            .iter()
+            .find(|item| item["id"] == "noxa")
+            .expect("noxa row");
+
+        assert_eq!(row["discovered_tool_count"], 2);
+        assert_eq!(row["exposed_tool_count"], 1);
+        assert_eq!(row["discovered_resource_count"], 4);
+        assert_eq!(row["exposed_resource_count"], 4);
+        assert_eq!(row["discovered_prompt_count"], 3);
+        assert_eq!(row["exposed_prompt_count"], 3);
+    }
+
+    #[tokio::test]
     async fn virtual_server_policy_validation_uses_service_name() {
         let manager = test_manager();
         manager

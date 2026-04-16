@@ -16,6 +16,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 8,
       exposed_tool_count: 3,
+      discovered_resource_count: 1,
+      exposed_resource_count: 1,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
     },
     discovery: {
       tools: [
@@ -51,6 +55,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 12,
       exposed_tool_count: 12,
+      discovered_resource_count: 3,
+      exposed_resource_count: 3,
+      discovered_prompt_count: 2,
+      exposed_prompt_count: 2,
     },
     discovery: {
       tools: [
@@ -96,6 +104,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 15,
       exposed_tool_count: 5,
+      discovered_resource_count: 0,
+      exposed_resource_count: 0,
+      discovered_prompt_count: 1,
+      exposed_prompt_count: 1,
     },
     discovery: {
       tools: [
@@ -141,6 +153,10 @@ export const mockGateways: Gateway[] = [
       last_error: 'Connection refused: Unable to connect to PostgreSQL server at localhost:5432',
       discovered_tool_count: 0,
       exposed_tool_count: 0,
+      discovered_resource_count: 0,
+      exposed_resource_count: 0,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
     },
     discovery: {
       tools: [],
@@ -168,6 +184,10 @@ export const mockGateways: Gateway[] = [
       connected: true,
       discovered_tool_count: 4,
       exposed_tool_count: 4,
+      discovered_resource_count: 1,
+      exposed_resource_count: 1,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
     },
     discovery: {
       tools: [

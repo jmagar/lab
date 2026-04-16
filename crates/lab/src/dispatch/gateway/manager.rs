@@ -802,6 +802,12 @@ fn server_view_from_virtual_server(
         configured: true,
         enabled: record.enabled,
         connected,
+        discovered_tool_count: 0,
+        exposed_tool_count: 0,
+        discovered_resource_count: 0,
+        exposed_resource_count: 0,
+        discovered_prompt_count: 0,
+        exposed_prompt_count: 0,
         surfaces: SurfaceStatesView {
             cli: SurfaceStateView {
                 enabled: record.surfaces.cli,

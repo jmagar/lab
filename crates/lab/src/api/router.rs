@@ -8,7 +8,7 @@ use axum::{
     Router,
     body::Body,
     extract::State,
-    http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, header},
+    http::{HeaderName, HeaderValue, Method, Request, StatusCode, header},
     middleware::Next,
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -103,116 +103,6 @@ async fn auth_token(
     Ok(lab_auth::token::token(State(app_auth_state(&state)?), form).await?)
 }
 
-async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    let Ok(auth_state) = app_auth_state(&state) else {
-        return (
-            StatusCode::OK,
-            [(header::CACHE_CONTROL, "private, no-store")],
-            axum::Json(serde_json::json!({ "authenticated": false })),
-        )
-            .into_response();
-    };
-
-    let cookie_name = lab_auth::session::BROWSER_SESSION_COOKIE_NAME;
-    let has_cookie_header = headers.contains_key(header::COOKIE);
-    let browser_session_cookie = lab_auth::session::read_cookie(&headers, cookie_name);
-    let has_browser_session_cookie = browser_session_cookie.is_some();
-    tracing::info!(
-        has_cookie_header,
-        has_browser_session_cookie,
-        "auth session request received"
-    );
-    let maybe_session = browser_session_cookie.map(|session_id| async move {
-        match auth_state.store.find_browser_session(&session_id).await {
-            Ok(session) => {
-                tracing::info!(
-                    has_cookie_header,
-                    has_browser_session_cookie,
-                    session_found = session.is_some(),
-                    "auth session lookup completed"
-                );
-                session
-            }
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    has_cookie_header,
-                    has_browser_session_cookie,
-                    "auth session lookup failed"
-                );
-                None
-            }
-        }
-    });
-    let session = match maybe_session {
-        Some(fut) => fut.await,
-        None => None,
-    };
-
-    let body = match session {
-        Some(session) => serde_json::json!({
-            "authenticated": true,
-            "user": {
-                "sub": session.subject,
-                "email": session.email,
-            },
-            "expires_at": session.expires_at,
-            "csrf_token": session.csrf_token,
-        }),
-        None => serde_json::json!({ "authenticated": false }),
-    };
-
-    (
-        StatusCode::OK,
-        [(header::CACHE_CONTROL, "private, no-store")],
-        axum::Json(body),
-    )
-        .into_response()
-}
-
-async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    let Ok(auth_state) = app_auth_state(&state) else {
-        return StatusCode::NO_CONTENT.into_response();
-    };
-
-    let mut response = StatusCode::NO_CONTENT.into_response();
-    if let Some(session_id) =
-        lab_auth::session::read_cookie(&headers, lab_auth::session::BROWSER_SESSION_COOKIE_NAME)
-    {
-        let csrf = headers
-            .get(lab_auth::session::BROWSER_CSRF_HEADER_NAME)
-            .and_then(|value| value.to_str().ok());
-        match auth_state.store.find_browser_session(&session_id).await {
-            Ok(Some(session)) => {
-                if csrf != Some(session.csrf_token.as_str()) {
-                    return (
-                        StatusCode::UNPROCESSABLE_ENTITY,
-                        axum::Json(serde_json::json!({
-                            "kind": "validation_failed",
-                            "message": "missing or invalid csrf token",
-                        })),
-                    )
-                        .into_response();
-                }
-                if let Err(error) = auth_state.store.revoke_browser_session(&session_id).await {
-                    tracing::error!(error = %error, "failed to revoke browser session");
-                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-                }
-            }
-            Ok(None) => {}
-            Err(error) => {
-                tracing::error!(error = %error, "failed to load browser session for logout");
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            }
-        }
-    }
-    lab_auth::session::append_set_cookie(
-        &mut response,
-        &lab_auth::session::clear_browser_session_cookie(&auth_state),
-    );
-    response
-}
-
 fn auth_error_response(message: &str, resource_url: Option<&str>) -> axum::response::Response {
     let err = ToolError::Sdk {
         sdk_kind: "auth_failed".into(),
@@ -270,11 +160,7 @@ async fn authenticate_request(
         }
 
         if let Some(ref auth_state) = auth_state {
-            let expected_aud = auth_state
-                .config
-                .public_url
-                .as_ref()
-                .map(|url| url.as_str().trim_end_matches('/').to_string());
+            let expected_aud = Some(lab_auth::metadata::canonical_resource_url(auth_state));
             let Some(ref expected_aud) = expected_aud else {
                 return Ok(auth_error_response(
                     "server misconfigured: LAB_PUBLIC_URL required for JWT validation",
@@ -488,7 +374,7 @@ pub fn build_router(
     let auth_state_for_v1 = auth_state.clone();
     let static_token_for_v1 = static_token.clone();
     let resource_url_for_v1 = resource_url.clone();
-    let v1_protected = if needs_auth {
+    let v1_protected = if needs_auth && !state.web_ui_auth_disabled {
         v1_router.layer(axum::middleware::from_fn(
             move |request: Request<Body>, next: Next| {
                 authenticate_request(
@@ -553,8 +439,8 @@ pub fn build_router(
             .route("/register", post(auth_register))
             .route("/authorize", get(auth_authorize))
             .route("/auth/login", get(auth_browser_login))
-            .route("/auth/session", get(auth_session))
-            .route("/auth/logout", post(auth_logout))
+            .route("/auth/session", get(crate::api::browser_session::auth_session))
+            .route("/auth/logout", post(crate::api::browser_session::auth_logout))
             .route("/auth/google/callback", get(auth_callback))
             .route("/token", post(auth_token));
     }
@@ -1367,7 +1253,7 @@ mod tests {
             .issue_access_token(lab_auth::jwt::AccessClaims {
                 iss: "https://lab.example.com".to_string(),
                 sub: "google-user".to_string(),
-                aud: "https://lab.example.com".to_string(),
+                aud: "https://lab.example.com/mcp".to_string(),
                 exp: now + 3600,
                 iat: now,
                 jti: "test-jti".to_string(),

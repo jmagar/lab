@@ -173,10 +173,10 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             let mut state = AppState::from_registry(registry);
             state = state.with_gateway_manager(Arc::clone(&gateway_manager));
             state = state.with_auth_config(auth_config);
-            state = state.with_web_ui_auth_disabled(resolve_web_ui_auth_disabled(&config.web)?);
+            let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
+            state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
             state = state.with_device_store(Arc::clone(&device_store));
             state = state.with_device_role(device_role);
-            state = state.with_web_ui_auth_disabled(resolve_web_ui_auth_disabled(&config.web)?);
             if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
                 tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
                 state = state.with_web_assets_dir(web_assets_dir);

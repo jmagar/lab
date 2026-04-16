@@ -16,8 +16,10 @@ pub fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .and_then(|raw| {
             raw.split(';')
                 .map(str::trim)
-                .find_map(|cookie| cookie.split_once('='))
-                .and_then(|(key, value)| (key == name).then(|| value.to_string()))
+                .find_map(|cookie| {
+                    let (key, value) = cookie.split_once('=')?;
+                    (key.trim() == name).then(|| value.trim().to_string())
+                })
         })
 }
 
@@ -73,4 +75,38 @@ pub fn clear_browser_session_cookie(state: &AuthState) -> String {
         name = BROWSER_SESSION_COOKIE_NAME,
         secure = secure_attr,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::HeaderMap;
+
+    use super::read_cookie;
+
+    #[test]
+    fn read_cookie_finds_named_cookie_even_when_it_is_not_first() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::COOKIE,
+            "theme=dark; lab_session=session-123; other=value"
+                .parse()
+                .unwrap(),
+        );
+
+        assert_eq!(
+            read_cookie(&headers, super::BROWSER_SESSION_COOKIE_NAME),
+            Some("session-123".to_string())
+        );
+    }
+
+    #[test]
+    fn read_cookie_ignores_unrelated_cookies() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::COOKIE,
+            "theme=dark; other=value".parse().unwrap(),
+        );
+
+        assert_eq!(read_cookie(&headers, super::BROWSER_SESSION_COOKIE_NAME), None);
+    }
 }
