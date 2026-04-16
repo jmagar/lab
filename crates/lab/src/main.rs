@@ -12,6 +12,7 @@ mod audit;
 mod catalog;
 mod cli;
 mod config;
+mod device;
 mod dispatch;
 mod mcp;
 mod oauth;
