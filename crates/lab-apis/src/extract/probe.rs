@@ -8,12 +8,12 @@ use url::Url;
 
 use super::error::ExtractError;
 
-static PROBE_CLIENT: LazyLock<Client> = LazyLock::new(|| {
+static PROBE_CLIENT: LazyLock<Result<Client, String>> = LazyLock::new(|| {
     Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(2))
         .build()
-        .expect("extract probe client should be constructible")
+        .map_err(|error| error.to_string())
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +55,7 @@ pub fn refine_base_path(url: &str, base_path: Option<&str>) -> Option<String> {
 
 pub async fn probe_endpoint(url: &str) -> Result<Option<VerifiedEndpoint>, ExtractError> {
     let started = Instant::now();
-    let client = probe_client();
+    let client = probe_client()?;
 
     let mut current = Url::parse(url).map_err(probe_error)?;
 
@@ -111,8 +111,8 @@ pub async fn probe_endpoint(url: &str) -> Result<Option<VerifiedEndpoint>, Extra
     Ok(None)
 }
 
-fn probe_client() -> &'static Client {
-    &PROBE_CLIENT
+fn probe_client() -> Result<&'static Client, ExtractError> {
+    PROBE_CLIENT.as_ref().map_err(probe_error)
 }
 
 fn is_reachable_status(status: StatusCode) -> bool {
