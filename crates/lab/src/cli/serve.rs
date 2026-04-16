@@ -126,88 +126,83 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     gateway_manager.seed_config(config.clone()).await;
     install_gateway_manager(Arc::clone(&gateway_manager));
 
-    match transport {
-        Transport::Stdio => {
-            run_stdio(
-                Arc::new(registry),
-                Arc::clone(&gateway_manager),
-                device_role,
-                notifier,
-            )
-            .await
-        }
-        Transport::Http => {
-            if host.is_empty() {
-                anyhow::bail!(
-                    "HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config"
-                );
-            }
-
-            let bearer_token = http_token();
-            let auth_config =
-                resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
-            let auth_configured =
-                bearer_token.is_some() || matches!(auth_config.mode, AuthMode::OAuth);
-
-            // Safety gate: refuse to bind on a non-localhost address without
-            // any auth configured (lab-319g). This prevents accidental
-            // unauthenticated deployment on a LAN-accessible address.
-            if !auth_configured && !is_loopback_host(&host) {
-                anyhow::bail!(
-                    "refusing to bind HTTP on {host}:{port} without authentication. \
-                     Set LAB_MCP_HTTP_TOKEN or LAB_AUTH_MODE=oauth, or bind to \
-                     127.0.0.1 for local-only access."
-                );
-            }
-
-            let oauth_state = if matches!(auth_config.mode, AuthMode::OAuth) {
-                Some(
-                    lab_auth::state::AuthState::new(auth_config.clone())
-                        .await
-                        .context("initialize lab-auth oauth state")?,
-                )
-            } else {
-                None
-            };
-
-            let mut state = AppState::from_registry(registry);
-            state = state.with_gateway_manager(Arc::clone(&gateway_manager));
-            state = state.with_auth_config(auth_config);
-            let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
-            state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
-            state = state.with_device_store(Arc::clone(&device_store));
-            state = state.with_device_role(device_role);
-            if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
-                tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
-                state = state.with_web_assets_dir(web_assets_dir);
-            }
-
-            let startup_runtime = device_runtime.clone();
-            tokio::spawn(async move {
-                if let Err(error) = startup_runtime.send_initial_hello().await {
-                    tracing::warn!(error = %error, "initial device hello failed");
-                }
-                if let Err(error) = startup_runtime.upload_initial_metadata().await {
-                    tracing::warn!(error = %error, "initial device metadata upload failed");
-                }
-                if let Err(error) = startup_runtime.collect_and_flush_bootstrap_logs().await {
-                    tracing::warn!(error = %error, "initial device log flush failed");
-                }
-            });
-
-            run_http(
-                &host,
-                port,
-                bearer_token,
-                state,
-                oauth_state,
-                &config.mcp,
-                &config.api.cors_origins,
-                notifier,
-            )
-            .await
-        }
+    if matches!(args.command, Some(ServeCommand::Mcp(McpArgs { stdio: true }))) {
+        return run_stdio(
+            Arc::new(registry),
+            Arc::clone(&gateway_manager),
+            device_role,
+            notifier,
+        )
+        .await;
     }
+
+    if host.is_empty() {
+        anyhow::bail!("HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config");
+    }
+
+    let bearer_token = http_token();
+    let auth_config =
+        resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
+    let auth_configured = bearer_token.is_some() || matches!(auth_config.mode, AuthMode::OAuth);
+
+    // Safety gate: refuse to bind on a non-localhost address without
+    // any auth configured (lab-319g). This prevents accidental
+    // unauthenticated deployment on a LAN-accessible address.
+    if !auth_configured && !is_loopback_host(&host) {
+        anyhow::bail!(
+            "refusing to bind HTTP on {host}:{port} without authentication. \
+             Set LAB_MCP_HTTP_TOKEN or LAB_AUTH_MODE=oauth, or bind to \
+             127.0.0.1 for local-only access."
+        );
+    }
+
+    let oauth_state = if matches!(auth_config.mode, AuthMode::OAuth) {
+        Some(
+            lab_auth::state::AuthState::new(auth_config.clone())
+                .await
+                .context("initialize lab-auth oauth state")?,
+        )
+    } else {
+        None
+    };
+
+    let mut state = AppState::from_registry(registry);
+    state = state.with_gateway_manager(Arc::clone(&gateway_manager));
+    state = state.with_auth_config(auth_config);
+    let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
+    state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
+    state = state.with_device_store(Arc::clone(&device_store));
+    state = state.with_device_role(device_role);
+    if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
+        tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
+        state = state.with_web_assets_dir(web_assets_dir);
+    }
+
+    let startup_runtime = device_runtime.clone();
+    tokio::spawn(async move {
+        if let Err(error) = startup_runtime.send_initial_hello().await {
+            tracing::warn!(error = %error, "initial device hello failed");
+        }
+        if let Err(error) = startup_runtime.upload_initial_metadata().await {
+            tracing::warn!(error = %error, "initial device metadata upload failed");
+        }
+        if let Err(error) = startup_runtime.collect_and_flush_bootstrap_logs().await {
+            tracing::warn!(error = %error, "initial device log flush failed");
+        }
+    });
+
+    run_http(
+        &host,
+        port,
+        bearer_token,
+        state,
+        oauth_state,
+        &config.mcp,
+        &config.api.cors_origins,
+        notifier,
+        matches!(transport, Transport::Http),
+    )
+    .await
 }
 
 fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf> {
@@ -330,26 +325,52 @@ async fn run_http(
     mcp_config: &crate::config::McpPreferences,
     config_cors_origins: &[String],
     notifier: PeerNotifier,
+    mount_http_mcp: bool,
 ) -> Result<ExitCode> {
-    // Build the MCP streamable HTTP service in the serve path (not in the
-    // router module) to avoid an api->mcp dependency.
-    let mcp_service = build_mcp_service(&state, mcp_config, notifier)?;
-    let mcp_router = axum::Router::new().nest_service("/mcp", mcp_service);
-    let router = crate::api::router::build_router(
+    let router = build_http_router(
         state,
         bearer_token,
         auth_state,
-        Some(mcp_router),
+        mcp_config,
         config_cors_origins,
-    );
+        notifier,
+        mount_http_mcp,
+    )?;
     // Parse and validate the address at bind time, not at CLI parse time.
     let addr = bind_addr(host, port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .with_context(|| format!("failed to bind HTTP listener on `{addr}`"))?;
-    tracing::info!(addr, "lab serve (http) ready");
+    tracing::info!(addr, http_mcp_enabled = mount_http_mcp, "lab serve (http) ready");
     axum::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)
+}
+
+fn build_http_router(
+    state: AppState,
+    bearer_token: Option<String>,
+    auth_state: Option<lab_auth::state::AuthState>,
+    mcp_config: &crate::config::McpPreferences,
+    config_cors_origins: &[String],
+    notifier: PeerNotifier,
+    mount_http_mcp: bool,
+) -> Result<axum::Router> {
+    let mcp_router = if mount_http_mcp {
+        // Build the MCP streamable HTTP service in the serve path (not in the
+        // router module) to avoid an api->mcp dependency.
+        let mcp_service = build_mcp_service(&state, mcp_config, notifier)?;
+        Some(axum::Router::new().nest_service("/mcp", mcp_service))
+    } else {
+        None
+    };
+
+    Ok(crate::api::router::build_router(
+        state,
+        bearer_token,
+        auth_state,
+        mcp_router,
+        config_cors_origins,
+    ))
 }
 
 async fn run_stdio(
@@ -498,11 +519,17 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 
 #[cfg(test)]
 mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
     use super::{
-        McpArgs, ServeCommand, Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port,
+        McpArgs, PeerNotifier, ServeCommand, Transport, allowed_hosts, bind_addr,
+        build_http_router, is_loopback_host, resolve_port,
         resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
         resolve_web_ui_auth_disabled,
     };
+    use crate::api::AppState;
     use crate::cli::Cli;
     use crate::config::{LabConfig, McpPreferences, WebPreferences};
     use clap::Parser;
@@ -646,5 +673,72 @@ mod tests {
     fn allowed_hosts_include_configured_hosts() {
         let hosts = allowed_hosts(&["lab.internal".to_string()], None);
         assert!(hosts.contains(&"lab.internal".to_string()));
+    }
+
+    #[tokio::test]
+    async fn hosted_http_without_http_mcp_keeps_v1_routes_but_not_mcp() {
+        let state = AppState::new();
+        let app = build_http_router(
+            state,
+            None,
+            None,
+            &McpPreferences::default(),
+            &[],
+            PeerNotifier::default(),
+            false,
+        )
+        .expect("router without http mcp");
+
+        let v1_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(v1_response.status(), StatusCode::OK);
+
+        let mcp_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/mcp")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(mcp_response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn hosted_http_with_http_mcp_mounts_mcp_route() {
+        let state = AppState::new();
+        let app = build_http_router(
+            state,
+            None,
+            None,
+            &McpPreferences::default(),
+            &[],
+            PeerNotifier::default(),
+            true,
+        )
+        .expect("router with http mcp");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/mcp")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_ne!(response.status(), StatusCode::NOT_FOUND);
     }
 }

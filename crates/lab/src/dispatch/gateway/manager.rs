@@ -788,6 +788,8 @@ fn server_view_from_virtual_server(
     };
     let connected =
         record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
+    let (discovered_tool_count, exposed_tool_count) =
+        virtual_server_tool_counts(config, record.enabled);
     let warnings = health
         .and_then(|status| {
             health_warning_message(status).map(|message| {
@@ -810,8 +812,8 @@ fn server_view_from_virtual_server(
         configured: true,
         enabled: record.enabled,
         connected,
-        discovered_tool_count: 0,
-        exposed_tool_count: 0,
+        discovered_tool_count,
+        exposed_tool_count,
         discovered_resource_count: 0,
         exposed_resource_count: 0,
         discovered_prompt_count: 0,
@@ -840,6 +842,43 @@ fn server_view_from_virtual_server(
             target: Some(service),
         },
     }
+}
+
+fn virtual_server_tool_counts(
+    config: &crate::config::VirtualServerConfig,
+    enabled: bool,
+) -> (usize, usize) {
+    let registry = crate::registry::build_default_registry();
+    let Some(entry) = registry.service(&config.service) else {
+        return (0, 0);
+    };
+
+    let discovered = entry.actions.len();
+    if !enabled || !config.surfaces.mcp {
+        return (discovered, 0);
+    }
+
+    let exposed = if let Some(policy) = &config.mcp_policy {
+        if policy.allowed_actions.is_empty() {
+            discovered
+        } else {
+            let allowed: std::collections::HashSet<&str> = policy
+                .allowed_actions
+                .iter()
+                .map(String::as_str)
+                .chain(["help", "schema"])
+                .collect();
+            entry
+                .actions
+                .iter()
+                .filter(|action| allowed.contains(action.name))
+                .count()
+        }
+    } else {
+        discovered
+    };
+
+    (discovered, exposed)
 }
 
 fn health_warning_message(status: &ServiceHealth) -> Option<&str> {
@@ -1266,6 +1305,66 @@ mod tests {
         assert!(manager.surface_enabled_for_service("plex", "api").await);
         assert!(manager.surface_enabled_for_service("plex", "mcp").await);
         assert!(!manager.surface_enabled_for_service("plex", "cli").await);
+    }
+
+    #[test]
+    fn enabled_virtual_server_reports_compiled_tool_counts() {
+        let view = server_view_from_virtual_server(
+            &VirtualServerConfig {
+                id: "plex".to_string(),
+                service: "plex".to_string(),
+                enabled: true,
+                surfaces: VirtualServerSurfacesConfig {
+                    cli: true,
+                    api: true,
+                    mcp: true,
+                    webui: true,
+                },
+                mcp_policy: None,
+            },
+            Some(&ServiceHealth {
+                service: "plex".to_string(),
+                reachable: true,
+                auth_ok: true,
+                latency_ms: Some(12),
+                message: None,
+            }),
+        );
+
+        assert!(view.discovered_tool_count > 0);
+        assert_eq!(view.discovered_tool_count, view.exposed_tool_count);
+        assert_eq!(view.discovered_resource_count, 0);
+        assert_eq!(view.discovered_prompt_count, 0);
+    }
+
+    #[test]
+    fn virtual_server_mcp_policy_reduces_exposed_tool_count() {
+        let view = server_view_from_virtual_server(
+            &VirtualServerConfig {
+                id: "plex".to_string(),
+                service: "plex".to_string(),
+                enabled: true,
+                surfaces: VirtualServerSurfacesConfig {
+                    cli: true,
+                    api: true,
+                    mcp: true,
+                    webui: true,
+                },
+                mcp_policy: Some(crate::config::VirtualServerMcpPolicyConfig {
+                    allowed_actions: vec!["server.status".to_string()],
+                }),
+            },
+            Some(&ServiceHealth {
+                service: "plex".to_string(),
+                reachable: true,
+                auth_ok: true,
+                latency_ms: Some(12),
+                message: None,
+            }),
+        );
+
+        assert!(view.discovered_tool_count > view.exposed_tool_count);
+        assert_eq!(view.exposed_tool_count, 2);
     }
 
     #[tokio::test]
