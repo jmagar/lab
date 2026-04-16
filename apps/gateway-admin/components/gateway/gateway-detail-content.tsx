@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Play, 
@@ -24,16 +24,19 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusBadge } from './status-badge'
 import { TransportBadge } from './transport-badge'
-import { MetricsStrip } from './metrics-strip'
 import { ToolExposureTable } from './tool-exposure-table'
-import { ExposurePolicyEditor } from './exposure-policy-editor'
 import { GatewayFormDialog } from './gateway-form-dialog'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { TestResultPanel } from './test-result-panel'
 import { useGateway, useGatewayMutations } from '@/lib/hooks/use-gateways'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
+import {
+  applyBulkExposureToDraft,
+  buildExposurePolicyFromDraft,
+  createExposureDraftFromTools,
+  getDraftExposureSummary,
+} from '@/lib/api/tool-exposure-draft'
 import { getErrorMessage } from '@/lib/utils'
 
 interface GatewayDetailContentProps {
@@ -48,6 +51,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     reloadGateway,
     updateGateway,
     removeGateway,
+    setExposurePolicy,
     disableVirtualServer,
     enableVirtualServer,
     setVirtualServerSurface,
@@ -57,7 +61,32 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [isReloading, setIsReloading] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [manageToolsMode, setManageToolsMode] = useState(false)
+  const [draftSelectedToolNames, setDraftSelectedToolNames] = useState<string[]>([])
+  const [selectedRowToolNames, setSelectedRowToolNames] = useState<string[]>([])
+  const [isSavingExposure, setIsSavingExposure] = useState(false)
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
+  const toolExposureSignature = useMemo(
+    () =>
+      (gateway?.discovery.tools ?? [])
+        .map((tool) => `${tool.name}:${tool.exposed ? '1' : '0'}`)
+        .join('|'),
+    [gateway?.discovery.tools],
+  )
+  const allToolNames = useMemo(
+    () => gateway?.discovery.tools.map((tool) => tool.name) ?? [],
+    [gateway?.discovery.tools],
+  )
+  const currentExposedToolNames = useMemo(
+    () => createExposureDraftFromTools(gateway?.discovery.tools ?? []),
+    [gateway?.discovery.tools],
+  )
+
+  useEffect(() => {
+    setDraftSelectedToolNames(currentExposedToolNames)
+    setSelectedRowToolNames([])
+    setManageToolsMode(false)
+  }, [gateway?.id, toolExposureSignature])
 
   if (!gatewayId) {
     return (
@@ -235,6 +264,57 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         ['webui', gateway.surfaces.webui],
       ] as const)
     : []
+  const hasDraftChanges =
+    JSON.stringify(draftSelectedToolNames) !== JSON.stringify(currentExposedToolNames)
+  const exposureSummary = getDraftExposureSummary(allToolNames, draftSelectedToolNames)
+  const exposeAllTools =
+    allToolNames.length > 0 && draftSelectedToolNames.length === allToolNames.length
+  const draftSet = new Set(draftSelectedToolNames)
+  const displayedTools = gateway.discovery.tools.map((tool) => ({
+    ...tool,
+    exposed: draftSet.has(tool.name),
+    matched_by: draftSet.has(tool.name)
+      ? exposeAllTools
+        ? '*'
+        : tool.name
+      : null,
+  }))
+
+  const handleExposeAllChange = (checked: boolean) => {
+    setDraftSelectedToolNames(checked ? [...allToolNames].sort((left, right) => left.localeCompare(right)) : [])
+    setSelectedRowToolNames([])
+  }
+
+  const handleBulkEnableSelected = (toolNames: string[]) => {
+    setDraftSelectedToolNames((current) => applyBulkExposureToDraft(current, toolNames, true))
+    setSelectedRowToolNames([])
+  }
+
+  const handleBulkDisableSelected = (toolNames: string[]) => {
+    setDraftSelectedToolNames((current) => applyBulkExposureToDraft(current, toolNames, false))
+    setSelectedRowToolNames([])
+  }
+
+  const handleCancelExposureDraft = () => {
+    setDraftSelectedToolNames(currentExposedToolNames)
+    setSelectedRowToolNames([])
+    setManageToolsMode(false)
+  }
+
+  const handleSaveExposureDraft = async () => {
+    setIsSavingExposure(true)
+    try {
+      const policy = buildExposurePolicyFromDraft(allToolNames, draftSelectedToolNames)
+      await setExposurePolicy(gateway.id, policy)
+      toast.success('Tool exposure updated successfully')
+      setManageToolsMode(false)
+      setSelectedRowToolNames([])
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to update tool exposure'))
+    } finally {
+      setIsSavingExposure(false)
+    }
+  }
 
   return (
     <>
@@ -281,9 +361,14 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <TransportBadge transport={gateway.transport} />
-                  <StatusBadge healthy={gateway.status.healthy} connected={gateway.status.connected} />
                 </div>
-                <h1 className="text-2xl font-semibold">{gateway.name}</h1>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span
+                    className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                    aria-hidden="true"
+                  />
+                  <h1 className="text-2xl font-semibold">{gateway.name}</h1>
+                </div>
                 <p className="max-w-2xl text-sm text-muted-foreground">
                   {gateway.transport === 'http'
                     ? gateway.config.url
@@ -296,9 +381,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border bg-muted/20 p-4">
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Tool Surface</p>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">{gateway.status.exposed_tool_count}</p>
+                  <p className="mt-2 text-2xl font-semibold tabular-nums">{exposureSummary.label}</p>
                   <p className="text-sm text-muted-foreground">
-                    of {gateway.status.discovered_tool_count} discovered tools currently exposed
+                    exposed tools out of the {gateway.status.discovered_tool_count} discovered upstream
                   </p>
                 </div>
                 <div className="rounded-xl border bg-muted/20 p-4">
@@ -315,6 +400,100 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     prompt{gateway.discovery.prompts.length === 1 ? '' : 's'} discovered in the latest probe
                   </p>
                 </div>
+              </div>
+
+              <div className="grid gap-3 xl:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Configuration</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {gateway.transport === 'http' ? (
+                      <div className="rounded-lg border bg-background p-3">
+                        <div className="flex items-start gap-3">
+                          <Globe className="mt-0.5 size-4 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">URL</p>
+                            <code className="break-all text-xs text-muted-foreground">{gateway.config.url}</code>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border bg-background p-3">
+                        <div className="flex items-start gap-3">
+                          <Terminal className="mt-0.5 size-4 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">Command</p>
+                            <code className="break-all text-xs text-muted-foreground">
+                              {gateway.config.command ?? 'Not configured'}
+                              {gateway.config.args?.length ? ` ${gateway.config.args.join(' ')}` : ''}
+                            </code>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {gateway.config.bearer_token_env && (
+                      <div className="rounded-lg border bg-background p-3">
+                        <div className="flex items-start gap-3">
+                          <Key className="mt-0.5 size-4 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">Bearer token env</p>
+                            <code className="text-xs text-muted-foreground">{gateway.config.bearer_token_env}</code>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="rounded-lg border bg-background p-3">
+                      <div className="flex items-start gap-3">
+                        <FileText className="mt-0.5 size-4 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">Proxy resources</p>
+                          <p className="text-xs text-muted-foreground">
+                            {gateway.config.proxy_resources ? 'Enabled for downstream resource requests' : 'Disabled'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {isLabGateway && (
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Lab Controls</p>
+                    <div className="mt-3 space-y-3">
+                      <div className="flex items-center justify-between rounded-lg border bg-background p-3">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="virtual-enabled" className="font-medium">Gateway enabled</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Expose this Lab service as a visible gateway.
+                          </p>
+                        </div>
+                        <Switch
+                          id="virtual-enabled"
+                          checked={gateway.enabled ?? false}
+                          onCheckedChange={handleEnabledToggle}
+                        />
+                      </div>
+                      {surfaceEntries.map(([surface, state]) => (
+                        <div key={surface} className="flex items-center justify-between rounded-lg border bg-background p-3">
+                          <div className="space-y-0.5">
+                            <Label htmlFor={`surface-${surface}`} className="text-sm font-medium uppercase">
+                              {surface}
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              {state.connected ? 'Connected' : 'Not connected'}
+                            </p>
+                          </div>
+                          <Switch
+                            id={`surface-${surface}`}
+                            checked={state.enabled}
+                            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {gateway.status.last_error && (
@@ -345,11 +524,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 <Clock className="size-4" />
                 <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
               </div>
-              <MetricsStrip
-                discoveredCount={gateway.status.discovered_tool_count}
-                exposedCount={gateway.status.exposed_tool_count}
-                className="lg:justify-end"
-              />
             </div>
           </div>
         </div>
@@ -363,8 +537,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 {gateway.discovery.tools.length}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="exposure">Exposure Policy</TabsTrigger>
-            <TabsTrigger value="config">Configuration</TabsTrigger>
             <TabsTrigger value="resources">
               Resources
               <Badge variant="secondary" className="ml-2 text-xs">
@@ -390,112 +562,22 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           <TabsContent value="tools">
             <div className="rounded-lg border bg-card p-6">
               <h2 className="text-lg font-semibold mb-4">Discovered MCP Tools</h2>
-              <ToolExposureTable tools={gateway.discovery.tools} />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="exposure">
-            <ExposurePolicyEditor key={gateway.id} gateway={gateway} />
-          </TabsContent>
-
-          <TabsContent value="config">
-            <div className="rounded-lg border bg-card p-6">
-              <h2 className="text-lg font-semibold mb-6">Gateway Configuration</h2>
-              <div className="space-y-4">
-                {gateway.transport === 'http' ? (
-                  <div className="flex items-start gap-4 rounded-lg border p-4">
-                    <Globe className="size-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">URL</p>
-                      <code className="text-sm text-muted-foreground">{gateway.config.url}</code>
-                    </div>
-                  </div>
-                ) : isLabGateway ? (
-                  <>
-                    <div className="flex items-start gap-4 rounded-lg border p-4">
-                      <Globe className="size-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Service URL</p>
-                        <code className="text-sm text-muted-foreground">
-                          {gateway.config.url ?? 'Not configured'}
-                        </code>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="virtual-enabled" className="font-medium">Gateway enabled</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Controls whether this Lab service is exposed as a visible gateway.
-                        </p>
-                      </div>
-                      <Switch
-                        id="virtual-enabled"
-                        checked={gateway.enabled ?? false}
-                        onCheckedChange={handleEnabledToggle}
-                      />
-                    </div>
-                    {surfaceEntries.map(([surface, state]) => (
-                        <div key={surface} className="flex items-center justify-between rounded-lg border p-4">
-                          <div className="space-y-0.5">
-                            <Label htmlFor={`surface-${surface}`} className="text-sm font-medium uppercase">
-                              {surface}
-                            </Label>
-                            <p className="text-sm text-muted-foreground">
-                              {state.connected ? 'Connected' : 'Not connected'}
-                            </p>
-                          </div>
-                          <Switch
-                            id={`surface-${surface}`}
-                            checked={state.enabled}
-                            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
-                          />
-                        </div>
-                      ))}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-start gap-4 rounded-lg border p-4">
-                      <Terminal className="size-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Command</p>
-                        <code className="text-sm text-muted-foreground">{gateway.config.command}</code>
-                      </div>
-                    </div>
-                    {gateway.config.args && gateway.config.args.length > 0 && (
-                      <div className="flex items-start gap-4 rounded-lg border p-4">
-                        <Terminal className="size-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium">Arguments</p>
-                          <code className="text-sm text-muted-foreground">{gateway.config.args.join(' ')}</code>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {gateway.config.bearer_token_env && (
-                  <div className="flex items-start gap-4 rounded-lg border p-4">
-                    <Key className="size-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium">Bearer Token Env</p>
-                      <code className="text-sm text-muted-foreground">{gateway.config.bearer_token_env}</code>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                  <div className="flex items-center gap-4">
-                    <FileText className="size-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">Proxy Resources</p>
-                      <p className="text-sm text-muted-foreground">Forward MCP resource requests</p>
-                    </div>
-                  </div>
-                  <Badge variant={gateway.config.proxy_resources ? 'default' : 'secondary'}>
-                    {gateway.config.proxy_resources ? 'Enabled' : 'Disabled'}
-                  </Badge>
-                </div>
-              </div>
+              <ToolExposureTable
+                tools={displayedTools}
+                exposureLabel={exposureSummary.label}
+                exposeAll={exposeAllTools}
+                manageMode={manageToolsMode}
+                hasDraftChanges={hasDraftChanges}
+                isSaving={isSavingExposure}
+                selectedRowToolNames={selectedRowToolNames}
+                onExposeAllChange={handleExposeAllChange}
+                onManageModeChange={setManageToolsMode}
+                onRowSelectionChange={setSelectedRowToolNames}
+                onBulkEnableSelected={handleBulkEnableSelected}
+                onBulkDisableSelected={handleBulkDisableSelected}
+                onSaveChanges={handleSaveExposureDraft}
+                onCancelChanges={handleCancelExposureDraft}
+              />
             </div>
           </TabsContent>
 

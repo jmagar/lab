@@ -9,6 +9,7 @@ import {
   getMockServiceConfigFallback,
   getMockSupportedServicesFallback,
 } from '@/lib/api/mock-fallback'
+import { EXPOSE_NONE_PATTERN } from '@/lib/api/tool-exposure-draft'
 import {
   mockGateways,
   mockReloadResult,
@@ -275,8 +276,49 @@ export function useGatewayMutations() {
   const setExposurePolicy = useCallback(async (id: string, policy: ExposurePolicy): Promise<ExposurePolicy> => {
     if (USE_MOCK_DATA) {
       await mockDelay()
+      const mutateGatewayExposure = (gateway: Gateway): Gateway => {
+        const exposePatterns = policy.mode === 'allowlist' ? policy.patterns : []
+        const exposeAll = policy.mode === 'expose_all'
+        const exposeNone = exposePatterns.includes(EXPOSE_NONE_PATTERN)
+
+        const tools = gateway.discovery.tools.map((tool) => {
+          const exposed = exposeAll ? true : exposeNone ? false : exposePatterns.includes(tool.name)
+          return {
+            ...tool,
+            exposed,
+            matched_by: exposed ? (exposeAll ? '*' : tool.name) : null,
+          }
+        })
+
+        return {
+          ...gateway,
+          config: {
+            ...gateway.config,
+            expose_tools: policy.mode === 'expose_all' ? undefined : policy.patterns,
+          },
+          status: {
+            ...gateway.status,
+            exposed_tool_count: tools.filter((tool) => tool.exposed).length,
+          },
+          discovery: {
+            ...gateway.discovery,
+            tools,
+          },
+          updated_at: new Date().toISOString(),
+        }
+      }
+
+      await mutate(
+        gatewayKey(id),
+        (current?: Gateway) => (current ? mutateGatewayExposure(current) : current),
+        false,
+      )
+      await mutate(
+        GATEWAYS_KEY,
+        (current: Gateway[] = []) => current.map((gateway) => (gateway.id === id ? mutateGatewayExposure(gateway) : gateway)),
+        false,
+      )
       await mutate(exposurePolicyKey(id), policy, false)
-      await mutate(gatewayKey(id))
       return policy
     }
     const result = await gatewayApi.setExposurePolicy(id, policy)
