@@ -42,3 +42,26 @@ async fn non_master_runtime_posts_hello_to_master() {
     let runtime = DeviceRuntime::non_master_for_test("dookie", server.uri());
     runtime.send_initial_hello().await.unwrap();
 }
+
+#[tokio::test]
+async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join(".claude.json"),
+        r#"{"mcpServers":{"lab":{"command":"lab","args":["serve"]}}}"#,
+    )
+    .unwrap();
+
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::path("/v1/device/metadata"))
+        .and(wiremock::matchers::body_string_contains(".claude.json"))
+        .and(wiremock::matchers::body_string_contains("content_hash"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+
+    let runtime =
+        DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path());
+    runtime.upload_initial_metadata().await.unwrap();
+}

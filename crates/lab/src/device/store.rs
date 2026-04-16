@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use tokio::sync::RwLock;
 
-use crate::device::checkin::{DeviceHello, DeviceStatus};
+use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceFleetStore {
@@ -18,6 +18,7 @@ pub struct DeviceSnapshot {
     pub last_seen: SystemTime,
     pub role: Option<String>,
     pub status: Option<DeviceStatus>,
+    pub metadata: Option<DeviceMetadataUpload>,
 }
 
 impl DeviceFleetStore {
@@ -31,6 +32,7 @@ impl DeviceFleetStore {
                 last_seen: SystemTime::now(),
                 role: None,
                 status: None,
+                metadata: None,
             });
         snapshot.device_id = hello.device_id;
         snapshot.last_seen = SystemTime::now();
@@ -47,6 +49,7 @@ impl DeviceFleetStore {
                 last_seen: SystemTime::now(),
                 role: None,
                 status: None,
+                metadata: None,
             });
         snapshot.device_id = status.device_id.clone();
         snapshot.connected = status.connected;
@@ -62,5 +65,22 @@ impl DeviceFleetStore {
     pub async fn list_devices(&self) -> Vec<DeviceSnapshot> {
         let inner = self.inner.read().await;
         inner.values().cloned().collect()
+    }
+
+    pub async fn record_metadata(&self, metadata: DeviceMetadataUpload) {
+        let mut inner = self.inner.write().await;
+        let snapshot = inner
+            .entry(metadata.device_id.clone())
+            .or_insert_with(|| DeviceSnapshot {
+                device_id: metadata.device_id.clone(),
+                connected: false,
+                last_seen: SystemTime::now(),
+                role: None,
+                status: None,
+                metadata: None,
+            });
+        snapshot.device_id = metadata.device_id.clone();
+        snapshot.last_seen = SystemTime::now();
+        snapshot.metadata = Some(metadata);
     }
 }

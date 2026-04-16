@@ -1,15 +1,16 @@
 use axum::{Json, extract::State};
-use serde_json::Value;
 
 use crate::api::{ToolError, device::DeviceAck, state::AppState};
+use crate::device::checkin::DeviceMetadataUpload;
 
 pub async fn handle(
     State(state): State<AppState>,
-    Json(_payload): Json<Value>,
+    Json(payload): Json<DeviceMetadataUpload>,
 ) -> Result<Json<DeviceAck>, ToolError> {
-    let _store = state
+    let store = state
         .device_store
         .clone()
         .ok_or_else(|| ToolError::internal_message("device store is not configured"))?;
+    store.record_metadata(payload).await;
     Ok(super::ok())
 }

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use crate::device::checkin::{DeviceHello, DeviceStatus};
+use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 
 #[derive(Debug, Clone)]
 pub struct MasterClient {
@@ -25,7 +25,7 @@ impl MasterClient {
         self.post_json("/v1/device/status", payload).await
     }
 
-    pub async fn post_metadata(&self, payload: &serde_json::Value) -> Result<()> {
+    pub async fn post_metadata(&self, payload: &DeviceMetadataUpload) -> Result<()> {
         self.post_json("/v1/device/metadata", payload).await
     }
 

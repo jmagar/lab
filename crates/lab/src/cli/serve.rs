@@ -162,6 +162,9 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             if let Err(error) = device_runtime.send_initial_hello().await {
                 tracing::warn!(error = %error, "initial device hello failed");
             }
+            if let Err(error) = device_runtime.upload_initial_metadata().await {
+                tracing::warn!(error = %error, "initial device metadata upload failed");
+            }
 
             run_http(
                 &host,
