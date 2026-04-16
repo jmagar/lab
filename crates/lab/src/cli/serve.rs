@@ -21,6 +21,9 @@ use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::dispatch::gateway::types::CatalogChangeNotifier;
+use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::device::runtime::DeviceRuntime;
+use crate::device::store::DeviceFleetStore;
 use crate::mcp::server::{LabMcpServer, PeerNotifier};
 use crate::registry::{ToolRegistry, build_default_registry};
 
@@ -78,6 +81,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
 
     let registry = build_default_registry();
     let registry = filter_registry(registry, &args.services)?;
+    let local_host = resolve_local_hostname().context("resolve local hostname")?;
+    let resolved_runtime = resolve_runtime_role(
+        &local_host,
+        config.device.as_ref().and_then(|prefs| prefs.master.as_deref()),
+    )
+    .context("resolve device runtime role")?;
+    let device_store = Arc::new(DeviceFleetStore::default());
+    let device_runtime = DeviceRuntime::for_http_master(resolved_runtime, port);
 
     let gateway_runtime = GatewayRuntimeHandle::default();
     if !config.upstream.is_empty() {
@@ -134,9 +145,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             let mut state = AppState::from_registry(registry);
             state = state.with_gateway_manager(Arc::clone(&gateway_manager));
             state = state.with_auth_config(auth_config);
+            state = state.with_device_store(Arc::clone(&device_store));
             if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
                 tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
                 state = state.with_web_assets_dir(web_assets_dir);
+            }
+
+            if let Err(error) = device_runtime.send_initial_hello().await {
+                tracing::warn!(error = %error, "initial device hello failed");
             }
 
             run_http(
