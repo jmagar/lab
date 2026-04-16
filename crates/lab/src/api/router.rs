@@ -25,7 +25,6 @@ use tracing::Level;
 
 use lab_auth::error::AuthError as LabAuthError;
 
-
 /// Constant-time byte comparison using `subtle::ConstantTimeEq` to prevent
 /// timing-based token prefix leakage (lab-63jc).
 fn tokens_equal(a: &str, b: &str) -> bool {

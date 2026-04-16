@@ -33,7 +33,7 @@ async fn non_master_router_rejects_web_ui_surface() {
 
 #[tokio::test]
 async fn non_master_router_does_not_mount_oauth_metadata_surface() {
-    let auth_state = test_lab_auth_state().await;
+    let fixture = test_lab_auth_state().await;
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("index.html"),
@@ -45,7 +45,7 @@ async fn non_master_router_does_not_mount_oauth_metadata_surface() {
         .with_device_store(Arc::new(DeviceFleetStore::default()))
         .with_device_role(DeviceRole::NonMaster)
         .with_web_assets_dir(dir.path().to_path_buf());
-    let app = lab::api::router::build_router(state, None, Some(auth_state), None, &[]);
+    let app = lab::api::router::build_router(state, None, Some(fixture.auth_state), None, &[]);
     let response = app
         .oneshot(
             Request::builder()
@@ -105,8 +105,14 @@ fn web_request() -> Request<Body> {
         .unwrap()
 }
 
-async fn test_lab_auth_state() -> lab_auth::state::AuthState {
-    let dir = Box::leak(Box::new(tempfile::tempdir().unwrap()));
+struct TestAuthFixture {
+    #[allow(dead_code)]
+    dir: tempfile::TempDir,
+    auth_state: lab_auth::state::AuthState,
+}
+
+async fn test_lab_auth_state() -> TestAuthFixture {
+    let dir = tempfile::tempdir().unwrap();
     let config = AuthConfig {
         mode: AuthMode::OAuth,
         public_url: Some(url::Url::parse("https://lab.example.com").unwrap()),
@@ -125,5 +131,6 @@ async fn test_lab_auth_state() -> lab_auth::state::AuthState {
         },
         ..AuthConfig::default()
     };
-    lab_auth::state::AuthState::new(config).await.unwrap()
+    let auth_state = lab_auth::state::AuthState::new(config).await.unwrap();
+    TestAuthFixture { dir, auth_state }
 }

@@ -289,7 +289,10 @@ fn is_loopback_redirect(value: &str) -> bool {
 }
 
 fn is_allowed_redirect_uri(value: &str, patterns: &[String]) -> bool {
-    is_loopback_redirect(value) || patterns.iter().any(|pattern| wildcard_matches(pattern, value))
+    is_loopback_redirect(value)
+        || patterns
+            .iter()
+            .any(|pattern| wildcard_matches(pattern, value))
 }
 
 fn wildcard_matches(pattern: &str, value: &str) -> bool {

@@ -6,32 +6,24 @@ use crate::config::LabConfig;
 use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 use crate::device::identity::resolve_local_hostname;
 
-const DEFAULT_MASTER_CLIENT_TIMEOUT_SECS: u64 = 5;
-
 #[derive(Debug, Clone)]
 pub struct MasterClient {
     inner: DeviceRuntimeClient,
 }
 
 impl MasterClient {
-    #[must_use]
     #[allow(dead_code)]
-    pub fn new(base_url: impl Into<String>) -> Self {
+    pub fn new(base_url: impl Into<String>) -> Result<Self> {
         Self::with_bearer_token(base_url, None)
     }
 
-    #[must_use]
-    pub fn with_bearer_token(base_url: impl Into<String>, bearer_token: Option<String>) -> Self {
+    pub fn with_bearer_token(
+        base_url: impl Into<String>,
+        bearer_token: Option<String>,
+    ) -> Result<Self> {
         let auth = bearer_token.map_or(Auth::None, |token| Auth::Bearer { token });
-        let inner = DeviceRuntimeClient::new(
-            base_url,
-            auth,
-            Some(std::time::Duration::from_secs(
-                DEFAULT_MASTER_CLIENT_TIMEOUT_SECS,
-            )),
-        )
-        .expect("device runtime client builder should be valid");
-        Self { inner }
+        let inner = DeviceRuntimeClient::new(base_url, auth)?;
+        Ok(Self { inner })
     }
 
     pub async fn post_hello(&self, payload: &DeviceHello) -> Result<()> {
@@ -47,7 +39,10 @@ impl MasterClient {
     }
 
     pub async fn post_syslog_batch(&self, payload: &serde_json::Value) -> Result<()> {
-        self.inner.post_syslog_batch(payload).await.map_err(Into::into)
+        self.inner
+            .post_syslog_batch(payload)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn fetch_devices(&self) -> Result<serde_json::Value> {
@@ -59,7 +54,10 @@ impl MasterClient {
     }
 
     pub async fn search_logs(&self, device_id: &str, query: &str) -> Result<serde_json::Value> {
-        self.inner.search_logs(device_id, query).await.map_err(Into::into)
+        self.inner
+            .search_logs(device_id, query)
+            .await
+            .map_err(Into::into)
     }
 
     pub fn from_config(config: &LabConfig, port_override: Option<u16>) -> Result<Self> {
@@ -71,13 +69,8 @@ impl MasterClient {
             Some(host) => host.to_string(),
             None => resolve_local_hostname()?,
         };
-        let port = port_override
-            .or(config.mcp.port)
-            .unwrap_or(8765);
-        Ok(Self::with_bearer_token(
-            format!("http://{host}:{port}"),
-            master_bearer_token(),
-        ))
+        let port = port_override.or(config.mcp.port).unwrap_or(8765);
+        Self::with_bearer_token(format!("http://{host}:{port}"), master_bearer_token())
     }
 }
 

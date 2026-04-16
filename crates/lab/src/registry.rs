@@ -2,8 +2,8 @@
 //! startup; the MCP server walks the registry to expose tools and the
 //! catalog module walks it to produce discovery docs.
 
-use lab_apis::core::action::ActionSpec;
 use lab_apis::core::PluginMeta;
+use lab_apis::core::action::ActionSpec;
 use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;

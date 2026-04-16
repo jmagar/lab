@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -142,7 +143,38 @@ async fn rewrite_entries(path: &Path, entries: &[QueuedEnvelope]) -> Result<()> 
         serialized
     };
 
-    fs::write(path, content)
-        .await
-        .with_context(|| format!("rewrite {}", path.display()))
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("queue");
+    let tmp_path = path.with_file_name(format!("{file_name}.{suffix}.tmp"));
+
+    use tokio::io::AsyncWriteExt as _;
+
+    let write_result = async {
+        let mut file = fs::File::create(&tmp_path)
+            .await
+            .with_context(|| format!("write temp {}", tmp_path.display()))?;
+        file.write_all(content.as_bytes())
+            .await
+            .with_context(|| format!("write temp {}", tmp_path.display()))?;
+        file.sync_all()
+            .await
+            .with_context(|| format!("sync temp {}", tmp_path.display()))?;
+        drop(file);
+        fs::rename(&tmp_path, path)
+            .await
+            .with_context(|| format!("rewrite {}", path.display()))
+    }
+    .await;
+
+    if write_result.is_err() {
+        drop(fs::remove_file(&tmp_path).await);
+    }
+
+    write_result
 }

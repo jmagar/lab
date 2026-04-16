@@ -15,7 +15,9 @@ pub struct DeviceArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum DeviceCommand {
+    /// List all registered devices visible from the master.
     List,
+    /// Get details for a specific device by `device_id`.
     Get { device_id: String },
 }
 
@@ -29,7 +31,9 @@ pub async fn run(args: DeviceArgs, format: OutputFormat, config: &LabConfig) -> 
 }
 
 pub async fn fetch_devices(config: &LabConfig) -> Result<serde_json::Value> {
-    MasterClient::from_config(config, None)?.fetch_devices().await
+    MasterClient::from_config(config, None)?
+        .fetch_devices()
+        .await
 }
 
 pub async fn fetch_device(config: &LabConfig, device_id: &str) -> Result<serde_json::Value> {

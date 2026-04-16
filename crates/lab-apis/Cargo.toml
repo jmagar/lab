@@ -22,6 +22,7 @@ serde_json.workspace  = true
 thiserror.workspace   = true
 jiff.workspace        = true
 tracing.workspace     = true
+percent-encoding.workspace = true
 russh.workspace        = true
 russh-sftp.workspace   = true
 russh-config.workspace = true

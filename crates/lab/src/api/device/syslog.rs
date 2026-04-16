@@ -1,10 +1,6 @@
 use std::time::Instant;
 
-use axum::{
-    Json,
-    extract::State,
-    http::HeaderMap,
-};
+use axum::{Json, extract::State, http::HeaderMap};
 use serde::Deserialize;
 
 use crate::api::{ToolError, device::DeviceAck, state::AppState};
@@ -26,10 +22,8 @@ pub async fn handle_batch(
     let start = Instant::now();
     let device_id = normalize_device_id_value(&payload.device_id, "device_id")?;
     for (index, event) in payload.events.iter_mut().enumerate() {
-        let event_id = normalize_device_id_value(
-            &event.device_id,
-            &format!("events[{index}].device_id"),
-        )?;
+        let event_id =
+            normalize_device_id_value(&event.device_id, &format!("events[{index}].device_id"))?;
         if event_id != device_id {
             return Err(ToolError::InvalidParam {
                 message: format!(
@@ -42,7 +36,9 @@ pub async fn handle_batch(
     }
 
     let event_count = payload.events.len();
-    let request_id = headers.get("x-request-id").and_then(|value| value.to_str().ok());
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok());
     let store = state
         .device_store
         .clone()

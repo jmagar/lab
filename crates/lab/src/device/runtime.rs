@@ -45,10 +45,9 @@ impl DeviceRuntime {
 
     #[must_use]
     #[allow(dead_code)]
-    pub fn non_master_for_test(local_host: &str, base_url: String) -> Self {
-        let resolved = resolve_runtime_role(local_host, Some("master"))
-            .expect("non-master test runtime should resolve");
-        Self::new(resolved, Some(MasterClient::new(base_url)))
+    pub fn non_master_for_test(local_host: &str, base_url: String) -> Result<Self> {
+        let resolved = resolve_runtime_role(local_host, Some("master"))?;
+        Ok(Self::new(resolved, Some(MasterClient::new(base_url)?)))
     }
 
     #[must_use]
@@ -57,10 +56,10 @@ impl DeviceRuntime {
         local_host: &str,
         base_url: String,
         home_dir: &Path,
-    ) -> Self {
-        let mut runtime = Self::non_master_for_test(local_host, base_url);
+    ) -> Result<Self> {
+        let mut runtime = Self::non_master_for_test(local_host, base_url)?;
         runtime.home_dir = home_dir.to_path_buf();
-        runtime
+        Ok(runtime)
     }
 
     pub async fn send_initial_hello(&self) -> Result<()> {

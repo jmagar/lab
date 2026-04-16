@@ -63,7 +63,10 @@ pub async fn dispatch_with_manager(
             let service = manager.service_for_virtual_server_id(&params.id).await?;
             let valid_actions = compiled_service_actions(&service)?;
             for action in &params.allowed_actions {
-                if !valid_actions.iter().any(|candidate| candidate.name == action.as_str()) {
+                if !valid_actions
+                    .iter()
+                    .any(|candidate| candidate.name == action.as_str())
+                {
                     return Err(ToolError::InvalidParam {
                         message: format!(
                             "action `{action}` is not valid for service `{}`",
@@ -85,7 +88,11 @@ pub async fn dispatch_with_manager(
         }
         "gateway.service_config.set" => {
             let params: ServiceConfigSetParams = parse_params(params_value)?;
-            to_json(manager.set_service_config(&params.service, &params.values).await?)
+            to_json(
+                manager
+                    .set_service_config(&params.service, &params.values)
+                    .await?,
+            )
         }
         "gateway.service_actions" => {
             let params: ServiceConfigGetParams = parse_params(params_value)?;
@@ -149,10 +156,12 @@ pub async fn dispatch_with_manager(
 
 fn compiled_service_actions(service: &str) -> Result<Vec<ServiceActionView>, ToolError> {
     let registry = crate::registry::build_default_registry();
-    let entry = registry.service(service).ok_or_else(|| ToolError::InvalidParam {
-        message: format!("unknown service `{service}`"),
-        param: "service".to_string(),
-    })?;
+    let entry = registry
+        .service(service)
+        .ok_or_else(|| ToolError::InvalidParam {
+            message: format!("unknown service `{service}`"),
+            param: "service".to_string(),
+        })?;
 
     Ok(entry
         .actions
@@ -249,13 +258,10 @@ mod tests {
             }])
             .await;
 
-        let value = dispatch_with_manager(
-            &manager,
-            "gateway.server.get",
-            json!({"id":"fixture-http"}),
-        )
-        .await
-        .expect("server get");
+        let value =
+            dispatch_with_manager(&manager, "gateway.server.get", json!({"id":"fixture-http"}))
+                .await
+                .expect("server get");
 
         assert_eq!(value["id"], "fixture-http");
         assert_eq!(value["source"], "custom_gateway");
@@ -396,11 +402,12 @@ mod tests {
         let list = dispatch_with_manager(&manager, "gateway.list", json!({}))
             .await
             .expect("list after disable");
-        assert!(list
-            .as_array()
-            .expect("array")
-            .iter()
-            .any(|server| server["id"] == "plex" && server["enabled"] == false));
+        assert!(
+            list.as_array()
+                .expect("array")
+                .iter()
+                .any(|server| server["id"] == "plex" && server["enabled"] == false)
+        );
     }
 
     #[tokio::test]
@@ -423,16 +430,20 @@ mod tests {
 
         assert_eq!(value["service"], "plex");
         assert_eq!(value["configured"], true);
-        assert!(value["fields"]
-            .as_array()
-            .expect("fields")
-            .iter()
-            .any(|field| field["name"] == "PLEX_URL" && field["present"] == true));
-        assert!(value["fields"]
-            .as_array()
-            .expect("fields")
-            .iter()
-            .any(|field| field["name"] == "PLEX_TOKEN" && field["present"] == true));
+        assert!(
+            value["fields"]
+                .as_array()
+                .expect("fields")
+                .iter()
+                .any(|field| field["name"] == "PLEX_URL" && field["present"] == true)
+        );
+        assert!(
+            value["fields"]
+                .as_array()
+                .expect("fields")
+                .iter()
+                .any(|field| field["name"] == "PLEX_TOKEN" && field["present"] == true)
+        );
     }
 
     #[tokio::test]
@@ -475,16 +486,21 @@ mod tests {
 
         assert_eq!(value["service"], "plex");
         assert_eq!(value["configured"], true);
-        assert!(value["fields"]
-            .as_array()
-            .expect("fields")
-            .iter()
-            .any(|field| field["name"] == "PLEX_URL" && field["value_preview"] == "http://127.0.0.1:32400"));
-        assert!(value["fields"]
-            .as_array()
-            .expect("fields")
-            .iter()
-            .any(|field| field["name"] == "PLEX_TOKEN" && field["secret"] == true));
+        assert!(
+            value["fields"]
+                .as_array()
+                .expect("fields")
+                .iter()
+                .any(|field| field["name"] == "PLEX_URL"
+                    && field["value_preview"] == "http://127.0.0.1:32400")
+        );
+        assert!(
+            value["fields"]
+                .as_array()
+                .expect("fields")
+                .iter()
+                .any(|field| field["name"] == "PLEX_TOKEN" && field["secret"] == true)
+        );
     }
 
     #[tokio::test]

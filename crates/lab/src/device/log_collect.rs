@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -20,19 +21,18 @@ pub fn collect_bootstrap_logs(device_id: &str) -> Result<Vec<DeviceLogEvent>> {
             continue;
         }
 
-        let raw = match fs::read(path) {
+        let raw = match read_tail(path, BOOTSTRAP_LOG_BYTE_LIMIT as usize) {
             Ok(raw) => raw,
             Err(error) => {
                 tracing::debug!(path = %path.display(), error = %error, "skipping unreadable bootstrap log candidate");
                 continue;
             }
         };
-        let slice = tail_bytes(&raw, BOOTSTRAP_LOG_BYTE_LIMIT as usize);
         let timestamp_unix_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        let events = String::from_utf8_lossy(slice)
+        let events = String::from_utf8_lossy(&raw)
             .lines()
             .filter(|line| !line.trim().is_empty())
             .rev()
@@ -58,10 +58,12 @@ pub fn collect_bootstrap_logs(device_id: &str) -> Result<Vec<DeviceLogEvent>> {
     bail!("no readable bootstrap log source found under /var/log/syslog or /var/log/messages")
 }
 
-fn tail_bytes(bytes: &[u8], max_len: usize) -> &[u8] {
-    if bytes.len() <= max_len {
-        bytes
-    } else {
-        &bytes[bytes.len() - max_len..]
-    }
+fn read_tail(path: &Path, max_len: usize) -> std::io::Result<Vec<u8>> {
+    let mut file = fs::File::open(path)?;
+    let len = file.metadata()?.len() as usize;
+    let start = len.saturating_sub(max_len) as u64;
+    file.seek(SeekFrom::Start(start))?;
+    let mut buf = Vec::with_capacity(len.saturating_sub(start as usize));
+    file.read_to_end(&mut buf)?;
+    Ok(buf)
 }

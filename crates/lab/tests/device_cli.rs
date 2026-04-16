@@ -60,6 +60,7 @@ async fn master_client_applies_bearer_token_to_master_requests() {
         .await;
 
     let value = MasterClient::with_bearer_token(server.uri(), Some("shared-secret".into()))
+        .unwrap()
         .fetch_devices()
         .await
         .unwrap();

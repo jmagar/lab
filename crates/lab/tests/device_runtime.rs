@@ -43,7 +43,7 @@ async fn non_master_runtime_posts_hello_to_master() {
         .mount(&server)
         .await;
 
-    let runtime = DeviceRuntime::non_master_for_test("dookie", server.uri());
+    let runtime = DeviceRuntime::non_master_for_test("dookie", server.uri()).unwrap();
     runtime.send_initial_hello().await.unwrap();
 }
 
@@ -65,7 +65,8 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
         .mount(&server)
         .await;
 
-    let runtime = DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path());
+    let runtime =
+        DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path()).unwrap();
     runtime.upload_initial_metadata().await.unwrap();
 }
 
@@ -108,7 +109,8 @@ async fn flush_queue_acks_successes_before_returning_a_later_delivery_error() {
         .await;
 
     let temp = tempfile::tempdir().unwrap();
-    let runtime = DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path());
+    let runtime =
+        DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path()).unwrap();
     runtime
         .queue_syslog_batch(vec![DeviceLogEvent {
             device_id: "dookie".into(),

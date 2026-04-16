@@ -20,6 +20,7 @@ async fn queue_persists_and_reloads_entries() {
         .unwrap();
     let drained = reopened.drain_batch(10).await.unwrap();
     assert_eq!(drained.len(), 1);
+    assert_eq!(drained[0].payload["device_id"], "tootie");
 }
 
 #[tokio::test]

@@ -27,7 +27,8 @@ pub fn resolve_runtime_role(
     local_host: &str,
     configured_master: Option<&str>,
 ) -> Result<ResolvedDeviceRuntime> {
-    let local_host = normalize_host_identifier(local_host).unwrap_or_else(|| "localhost".to_string());
+    let local_host =
+        normalize_host_identifier(local_host).unwrap_or_else(|| "localhost".to_string());
     let master_host = configured_master
         .and_then(normalize_host_identifier)
         .unwrap_or_else(|| local_host.clone());
@@ -62,14 +63,13 @@ fn hosts_refer_to_same_device(local_host: &str, master_host: &str) -> bool {
         return true;
     }
 
-    let local_is_ip = local_host.parse::<IpAddr>().is_ok();
-    let master_is_ip = master_host.parse::<IpAddr>().is_ok();
-    if local_is_ip || master_is_ip {
-        return false;
+    match (local_host.parse::<IpAddr>(), master_host.parse::<IpAddr>()) {
+        (Ok(local_ip), Ok(master_ip)) => return local_ip == master_ip,
+        (Ok(_), Err(_)) | (Err(_), Ok(_)) => return false,
+        (Err(_), Err(_)) => {}
     }
 
     let local_short = short_host_identifier(local_host);
     let master_short = short_host_identifier(master_host);
-    local_short == master_short
-        && (local_host == local_short || master_host == master_short)
+    local_short == master_short && (local_host == local_short || master_host == master_short)
 }

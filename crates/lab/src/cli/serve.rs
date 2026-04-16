@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use clap::{Args, ValueEnum};
+use clap::{Args, Subcommand, ValueEnum};
 use lab_auth::config::AuthMode;
 use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::{
@@ -31,10 +31,23 @@ use crate::registry::{ToolRegistry, build_default_registry};
 #[derive(Debug, Clone, Copy, ValueEnum)]
 #[value(rename_all = "lowercase")]
 pub enum Transport {
-    /// stdin/stdout framing (default, used by Claude Desktop etc.).
+    /// stdin/stdout framing (available via `lab serve mcp --stdio`).
     Stdio,
-    /// HTTP transport — requires `LAB_MCP_HTTP_TOKEN` in the environment.
+    /// HTTP transport (default) — requires `LAB_MCP_HTTP_TOKEN` or OAuth when exposed remotely.
     Http,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ServeCommand {
+    /// Run the MCP server over stdio instead of the default HTTP transport.
+    Mcp(McpArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct McpArgs {
+    /// Confirm that MCP should run over stdio.
+    #[arg(long)]
+    pub stdio: bool,
 }
 
 /// `lab serve` arguments.
@@ -43,8 +56,8 @@ pub struct ServeArgs {
     /// Comma- or space-separated list of services to enable. Empty = all.
     #[arg(long, value_delimiter = ',')]
     pub services: Vec<String>,
-    /// Transport to use.
-    #[arg(long, value_enum)]
+    /// Legacy transport selector. Prefer `lab serve` for HTTP and `lab serve mcp --stdio` for stdio.
+    #[arg(long, value_enum, hide = true)]
     pub transport: Option<Transport>,
     /// Bind host for the HTTP transport.
     #[arg(long)]
@@ -52,12 +65,15 @@ pub struct ServeArgs {
     /// Bind port for the HTTP transport.
     #[arg(long)]
     pub port: Option<u16>,
+    #[command(subcommand)]
+    pub command: Option<ServeCommand>,
 }
 
 /// Run the serve subcommand.
 pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let transport = resolve_transport(
         args.transport,
+        args.command.as_ref(),
         std::env::var("LAB_MCP_TRANSPORT").ok(),
         config.mcp.transport.as_deref(),
     )?;
@@ -206,9 +222,16 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
 
 fn resolve_transport(
     cli: Option<Transport>,
+    command: Option<&ServeCommand>,
     env: Option<String>,
     config: Option<&str>,
 ) -> Result<Transport> {
+    if let Some(ServeCommand::Mcp(args)) = command {
+        if !args.stdio {
+            anyhow::bail!("`lab serve mcp` requires `--stdio`");
+        }
+        return Ok(Transport::Stdio);
+    }
     if let Some(transport) = cli {
         return Ok(transport);
     }
@@ -220,7 +243,7 @@ fn resolve_transport(
         return Transport::from_str(value, true)
             .map_err(|err| anyhow::anyhow!("invalid mcp.transport value `{value}`: {err}"));
     }
-    Ok(Transport::Stdio)
+    Ok(Transport::Http)
 }
 
 fn resolve_port(cli: Option<u16>, env: Option<String>, config: Option<u16>) -> Result<u16> {
@@ -462,24 +485,41 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 #[cfg(test)]
 mod tests {
     use super::{
-        Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port,
+        McpArgs, ServeCommand, Transport, allowed_hosts, bind_addr, is_loopback_host, resolve_port,
         resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
     };
     use crate::config::{LabConfig, McpPreferences};
 
     #[test]
-    fn transport_resolution_prefers_cli_then_env_then_config() {
-        let resolved =
-            resolve_transport(Some(Transport::Http), Some("stdio".into()), Some("stdio"))
-                .expect("cli value should win");
+    fn transport_resolution_prefers_explicit_stdio_then_cli_then_http_default() {
+        let resolved = resolve_transport(
+            Some(Transport::Http),
+            Some(&ServeCommand::Mcp(McpArgs { stdio: true })),
+            Some("http".into()),
+            Some("http"),
+        )
+        .expect("mcp stdio command should win");
+        assert!(matches!(resolved, Transport::Stdio));
+
+        let resolved = resolve_transport(
+            Some(Transport::Http),
+            None,
+            Some("stdio".into()),
+            Some("stdio"),
+        )
+        .expect("cli value should win");
         assert!(matches!(resolved, Transport::Http));
 
-        let resolved = resolve_transport(None, Some("http".into()), Some("stdio"))
+        let resolved = resolve_transport(None, None, Some("http".into()), Some("stdio"))
             .expect("env value should win");
         assert!(matches!(resolved, Transport::Http));
 
         let resolved =
-            resolve_transport(None, None, Some("http")).expect("config value should win");
+            resolve_transport(None, None, None, Some("stdio")).expect("config value should win");
+        assert!(matches!(resolved, Transport::Stdio));
+
+        let resolved =
+            resolve_transport(None, None, None, None).expect("http should be the default");
         assert!(matches!(resolved, Transport::Http));
     }
 

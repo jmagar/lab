@@ -48,11 +48,11 @@ pub async fn handle_start(
 
     let bound_addr =
         crate::device::oauth::start_local_oauth_relay(payload.bind_addr, resolved_target, timeout)
-        .await
-        .map_err(|error| ToolError::Sdk {
-            sdk_kind: "internal_error".to_string(),
-            message: error.to_string(),
-        })?;
+            .await
+            .map_err(|error| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: error.to_string(),
+            })?;
 
     Ok(Json(StartOauthRelayResponse {
         ok: true,

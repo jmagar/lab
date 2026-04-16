@@ -15,6 +15,7 @@ pub struct LogsArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum LogsCommand {
+    /// Search fleet logs for a device from the master control plane.
     Search { device: String, query: String },
 }
 

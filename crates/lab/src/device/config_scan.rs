@@ -68,9 +68,9 @@ fn scan_codex_config(source: &str, path: &Path) -> Result<Option<DiscoveredMcpCo
         return Ok(None);
     }
 
-    let raw = fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
     let parsed: toml::Value =
-        toml::from_slice(&raw).with_context(|| format!("parse {}", path.display()))?;
+        toml::from_str(&raw).with_context(|| format!("parse {}", path.display()))?;
     let servers = parsed
         .get("mcp_servers")
         .and_then(toml::Value::as_table)
@@ -85,7 +85,12 @@ fn scan_codex_config(source: &str, path: &Path) -> Result<Option<DiscoveredMcpCo
         })
         .unwrap_or_default();
 
-    Ok(Some(build_discovered_file(source, path, &raw, servers)?))
+    Ok(Some(build_discovered_file(
+        source,
+        path,
+        raw.as_bytes(),
+        servers,
+    )?))
 }
 
 fn build_discovered_file(

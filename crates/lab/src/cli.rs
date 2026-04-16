@@ -6,20 +6,20 @@
 
 pub mod audit;
 pub mod completions;
-pub mod doctor;
 pub mod device;
+pub mod doctor;
 pub mod extract;
 pub mod gateway;
 pub mod health;
 pub mod help;
 pub mod helpers;
 pub mod install;
+pub mod logs;
 pub mod oauth;
 pub mod params;
 pub mod plugins;
 pub mod scaffold;
 pub mod serve;
-pub mod logs;
 
 #[cfg(feature = "apprise")]
 pub mod apprise;
