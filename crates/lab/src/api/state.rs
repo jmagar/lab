@@ -44,6 +44,8 @@ pub struct AppState {
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
     /// Shared fleet state store for device runtime ingestion.
     pub device_store: Option<Arc<DeviceFleetStore>>,
+    /// Shared local-master log runtime used by API SSE and adapter-local lookups.
+    pub logs_system: Option<Arc<crate::dispatch::logs::types::LogSystem>>,
     /// Resolved device role for the current process.
     pub device_role: Option<DeviceRole>,
     /// Optional directory containing exported Labby web assets.
@@ -86,6 +88,7 @@ impl AppState {
             oauth_state: None,
             gateway_manager: None,
             device_store: None,
+            logs_system: None,
             device_role: None,
             web_assets_dir: None,
             web_ui_auth_disabled: false,
@@ -119,6 +122,12 @@ impl AppState {
     #[must_use]
     pub fn with_device_store(mut self, store: Arc<DeviceFleetStore>) -> Self {
         self.device_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_log_system(mut self, system: Arc<crate::dispatch::logs::types::LogSystem>) -> Self {
+        self.logs_system = Some(system);
         self
     }
 

@@ -9,6 +9,7 @@ The app is designed to be served as static assets while talking directly to the 
 - App framework: Next.js 16 + React 19
 - Package manager: `pnpm` (lockfile included)
 - Data mode: browser client over the Rust `/v1/gateway` endpoint, with same-origin browser session auth for hosted deployments and optional mock data for local UI work
+- Security rule: browser-facing flows must use backend-supported redacted payloads for any response that can contain secrets. The Setup page requests redacted extract scan results and never receives raw extracted secret values.
 
 ## Local Usage
 
@@ -32,10 +33,11 @@ In hosted mode, the UI expects Rust-owned browser session auth:
 - `POST /auth/logout` clears the browser session
 - `/v1/*` uses same-origin requests with `credentials: 'include'`
 
-If the backend is protected by a static bearer token and you need a standalone browser build to talk to it directly, set `NEXT_PUBLIC_API_TOKEN` as an explicit dev override. This is suitable for local development and smoke testing only because the token is embedded into the browser bundle.
+If the backend is protected by a static bearer token and you need a standalone browser build to talk to it directly, set both `NEXT_PUBLIC_API_TOKEN` and `NEXT_PUBLIC_STANDALONE_BEARER_AUTH=true`. This is suitable for local development and smoke testing only because the token is embedded into the browser bundle. Hosted same-origin deployments should leave the standalone flag unset so the UI uses Rust-owned browser session auth.
 
 ```bash
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8765/v1 \
+NEXT_PUBLIC_STANDALONE_BEARER_AUTH=true \
 NEXT_PUBLIC_API_TOKEN=your-local-dev-token \
 pnpm dev
 ```

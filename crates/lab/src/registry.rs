@@ -190,6 +190,15 @@ pub fn build_default_registry() -> ToolRegistry {
         dispatch: dispatch_fn!(crate::mcp::services::gateway::dispatch),
     });
 
+    reg.register(RegisteredService {
+        name: "logs",
+        description: "Search and stream local-master runtime logs",
+        category: "bootstrap",
+        status: "available",
+        actions: crate::mcp::services::logs::ACTIONS,
+        dispatch: dispatch_fn!(crate::mcp::services::logs::dispatch),
+    });
+
     register_service!(
         reg,
         "radarr",
@@ -479,6 +488,7 @@ mod tests {
             let mut s = std::collections::HashSet::new();
             s.insert(lab_apis::extract::META.name); // always-on
             s.insert("gateway");
+            s.insert("logs");
             #[cfg(feature = "radarr")]
             s.insert(lab_apis::radarr::META.name);
             #[cfg(feature = "sonarr")]
