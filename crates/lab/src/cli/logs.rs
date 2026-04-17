@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 use crate::cli::helpers::run_action_command;
 use crate::config::LabConfig;
 use crate::device::master_client::MasterClient;
-use crate::dispatch::error::ToolError;
 use crate::dispatch::logs::client::{
     bootstrap_store_backed_log_system, resolve_retention, resolve_store_path,
 };
@@ -157,14 +156,6 @@ fn build_search_query(args: LocalSearchArgs) -> LogQuery {
         correlation_id: args.correlation_id,
         limit: args.limit,
     }
-}
-
-#[allow(dead_code)]
-pub async fn run_local_search_for_test(
-    system: Arc<LogSystem>,
-    query: LogQuery,
-) -> Result<Value, ToolError> {
-    dispatch_with_system(&system, "logs.search", json!({ "query": query })).await
 }
 
 #[cfg(test)]

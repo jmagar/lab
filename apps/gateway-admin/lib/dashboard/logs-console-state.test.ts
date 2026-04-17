@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   buildLogSearchQuery,
   matchesLogFilters,
+  matchesVisibleLogEvent,
   mergeTimelineEvents,
 } from './logs-console-state.ts'
 import type { LogEvent, LogFilterState } from '../types/logs.ts'
@@ -101,6 +102,32 @@ test('matchesLogFilters can match request identifiers and structured fields', ()
       filters,
     ),
     true,
+  )
+})
+
+test('matchesVisibleLogEvent applies the same filter contract plus the active time window', () => {
+  const filters: LogFilterState = {
+    text: 'timeout',
+    subsystems: ['gateway'],
+    levels: ['warn'],
+    limit: 100,
+  }
+
+  assert.equal(
+    matchesVisibleLogEvent(
+      eventWith({ ts: 200, message: 'gateway timeout detected', level: 'warn' }),
+      filters,
+      { afterTs: 100 },
+    ),
+    true,
+  )
+  assert.equal(
+    matchesVisibleLogEvent(
+      eventWith({ ts: 50, message: 'gateway timeout detected', level: 'warn' }),
+      filters,
+      { afterTs: 100 },
+    ),
+    false,
   )
 })
 

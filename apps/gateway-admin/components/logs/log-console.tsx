@@ -16,7 +16,7 @@ import { fetchLogs, fetchLogStats } from '@/lib/api/logs-client'
 import { connectLogStream } from '@/lib/api/logs-stream'
 import {
   buildLogSearchQuery,
-  matchesLogFilters,
+  matchesVisibleLogEvent,
   mergeTimelineEvents,
 } from '@/lib/dashboard/logs-console-state'
 import type {
@@ -111,17 +111,19 @@ export function LogConsole() {
   const effectivePausedRef = React.useRef(effectivePaused)
   const bufferedEventsRef = React.useRef(bufferedEvents)
   const maxEntriesRef = React.useRef(filters.limit)
+  const afterTsRef = React.useRef<number | null>(null)
   const afterTs = React.useMemo(() => {
     const windowMs = WINDOW_TO_MS[windowPreset]
     return windowMs == null ? null : Date.now() - windowMs
-  }, [windowPreset, refreshToken, deferredFilters])
+  }, [windowPreset, refreshToken])
 
   React.useLayoutEffect(() => {
     filtersRef.current = filters
     effectivePausedRef.current = effectivePaused
     bufferedEventsRef.current = bufferedEvents
     maxEntriesRef.current = filters.limit
-  }, [bufferedEvents, filters, effectivePaused])
+    afterTsRef.current = afterTs
+  }, [afterTs, bufferedEvents, filters, effectivePaused])
 
   React.useEffect(() => {
     if (!copyStatus) {
@@ -157,9 +159,12 @@ export function LogConsole() {
 
         const fetchedEvents = mergeTimelineEvents([], result.events, deferredFilters.limit)
         const fetchedEventIds = new Set(fetchedEvents.map((event) => event.event_id))
-        const uncoveredBufferedEvents = bufferedEventsRef.current.filter(
-          (event) => !fetchedEventIds.has(event.event_id),
-        )
+        const uncoveredBufferedEvents = bufferedEventsRef.current.filter((event) => {
+          if (fetchedEventIds.has(event.event_id)) {
+            return false
+          }
+          return matchesVisibleLogEvent(event, deferredFilters, { afterTs })
+        })
 
         startTransition(() => {
           setEvents(
@@ -217,7 +222,7 @@ export function LogConsole() {
         })
       },
       onEvent: (event) => {
-        if (!matchesLogFilters(event, filtersRef.current)) {
+        if (!matchesVisibleLogEvent(event, filtersRef.current, { afterTs: afterTsRef.current })) {
           return
         }
 

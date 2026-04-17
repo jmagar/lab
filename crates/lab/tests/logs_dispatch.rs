@@ -309,8 +309,8 @@ async fn logs_stats_returns_retention_metadata() {
         .unwrap();
 
     let value = lab::dispatch::logs::dispatch("logs.stats", serde_json::json!({}))
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     assert!(value.get("on_disk_bytes").is_some());
 }
@@ -401,15 +401,16 @@ async fn store_search_text_matches_request_identifiers() {
         })
         .await
         .unwrap();
-    store.insert(&event_with(
-        "evt-request-id",
-        1_713_225_600_000,
-        lab::dispatch::logs::types::Subsystem::Gateway,
-        lab::dispatch::logs::types::LogLevel::Warn,
-        "gateway warning",
-    ))
-    .await
-    .unwrap();
+    store
+        .insert(&event_with(
+            "evt-request-id",
+            1_713_225_600_000,
+            lab::dispatch::logs::types::Subsystem::Gateway,
+            lab::dispatch::logs::types::LogLevel::Warn,
+            "gateway warning",
+        ))
+        .await
+        .unwrap();
 
     let result = store
         .search(lab::dispatch::logs::types::LogQuery {

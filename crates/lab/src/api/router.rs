@@ -301,7 +301,12 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
             )
             .nest("/extract", services::extract::routes(state.clone()));
 
-        if state.registry.services().iter().any(|service| service.name == "logs") {
+        if state
+            .registry
+            .services()
+            .iter()
+            .any(|service| service.name == "logs")
+        {
             v1 = v1.nest("/logs", services::logs::routes(state.clone()));
         }
     }

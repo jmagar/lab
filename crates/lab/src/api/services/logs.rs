@@ -117,16 +117,18 @@ async fn stream_logs(
     );
 
     let opened_at = std::time::Instant::now();
-    let request_id_for_stream = request_id.clone();
 
-    let stream = stream::unfold(receiver, move |mut receiver| {
-        let request_id = request_id_for_stream.clone();
-        async move {
+    let stream = stream::unfold(
+        (receiver, request_id, opened_at),
+        move |(mut receiver, request_id, opened_at)| async move {
             loop {
                 match receiver.recv().await {
                     Ok(event) => match serde_json::to_string(&event) {
                         Ok(payload) => {
-                            return Some((Ok(Event::default().data(payload)), receiver));
+                            return Some((
+                                Ok(Event::default().data(payload)),
+                                (receiver, request_id, opened_at),
+                            ));
                         }
                         Err(error) => {
                             warn!(error = %error, "failed to serialize log event for SSE; skipping");
@@ -136,7 +138,7 @@ async fn stream_logs(
                         warn!(skipped, "SSE log subscriber lagged; dropping events");
                         return Some((
                             Ok(Event::default().event("lag").data(skipped.to_string())),
-                            receiver,
+                            (receiver, request_id, opened_at),
                         ));
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
@@ -152,8 +154,8 @@ async fn stream_logs(
                     }
                 }
             }
-        }
-    });
+        },
+    );
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }

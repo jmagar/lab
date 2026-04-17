@@ -41,6 +41,18 @@ export function matchesLogFilters(event: LogEvent, filters: LogFilterState): boo
   return true
 }
 
+export function matchesVisibleLogEvent(
+  event: LogEvent,
+  filters: LogFilterState,
+  options?: { afterTs?: number | null },
+): boolean {
+  if (options?.afterTs != null && event.ts < options.afterTs) {
+    return false
+  }
+
+  return matchesLogFilters(event, filters)
+}
+
 function buildSearchableEventText(event: LogEvent): string {
   const structuredFields = JSON.stringify(event.fields_json ?? {})
   return [

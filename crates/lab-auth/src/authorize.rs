@@ -403,10 +403,7 @@ fn is_loopback_redirect(value: &str) -> bool {
     if url.scheme() != "http" {
         return false;
     }
-    matches!(
-        url.host_str(),
-        Some("127.0.0.1" | "localhost" | "::1")
-    )
+    matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"))
 }
 
 fn is_allowed_redirect_uri(value: &str, patterns: &[String]) -> bool {

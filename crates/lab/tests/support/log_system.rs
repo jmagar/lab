@@ -47,12 +47,14 @@ impl SqlitePathCleanup {
 
 impl Drop for SqlitePathCleanup {
     fn drop(&mut self) {
-        cleanup_sqlite_path(&self.path);
+        if let Err(error) = cleanup_sqlite_path(&self.path) {
+            eprintln!("failed to clean up {}: {error}", self.path.display());
+        }
     }
 }
 
 #[allow(dead_code)]
-pub(crate) fn cleanup_sqlite_path(path: &Path) {
+pub(crate) fn cleanup_sqlite_path(path: &Path) -> std::io::Result<()> {
     let with_suffix = |suffix: &str| -> PathBuf {
         let mut os = path.as_os_str().to_os_string();
         os.push(suffix);
@@ -64,7 +66,9 @@ pub(crate) fn cleanup_sqlite_path(path: &Path) {
         match fs::remove_file(&candidate) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => panic!("remove {}: {error}", candidate.display()),
+            Err(error) => return Err(error),
         }
     }
+
+    Ok(())
 }

@@ -70,13 +70,16 @@ async fn logs_local_search_uses_shared_dispatch_contract() {
         .await
         .expect("seed event");
 
-    let value = lab::cli::logs::run_local_search_for_test(
-        system,
-        LogQuery {
-            subsystems: vec![Subsystem::Gateway],
-            levels: vec![LogLevel::Warn],
-            ..LogQuery::default()
-        },
+    let value = lab::dispatch::logs::dispatch::dispatch_with_system(
+        &system,
+        "logs.search",
+        serde_json::json!({
+            "query": LogQuery {
+                subsystems: vec![Subsystem::Gateway],
+                levels: vec![LogLevel::Warn],
+                ..LogQuery::default()
+            }
+        }),
     )
     .await
     .expect("search response");

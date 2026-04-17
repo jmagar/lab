@@ -14,6 +14,21 @@ mod support;
 
 use support::log_system::{InstalledLogSystemGuard, test_lock};
 
+fn logs_registry() -> lab::registry::ToolRegistry {
+    let mut registry = lab::registry::ToolRegistry::new();
+    registry.register(lab::registry::RegisteredService {
+        name: "logs",
+        description: "Search and stream local-master runtime logs",
+        category: "bootstrap",
+        status: "available",
+        actions: lab::mcp::services::logs::ACTIONS,
+        dispatch: |action, params| {
+            Box::pin(async move { lab::mcp::services::logs::dispatch(&action, params).await })
+        },
+    });
+    registry
+}
+
 fn raw_gateway_event(message: &str) -> lab::dispatch::logs::types::RawLogEvent {
     lab::dispatch::logs::types::RawLogEvent {
         ts: Some(1_713_225_600_000),
@@ -43,7 +58,8 @@ async fn test_app() -> (Router, Arc<lab::dispatch::logs::types::LogSystem>) {
     let logs_system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .expect("log system");
-    let state = lab::api::state::AppState::new().with_log_system(Arc::clone(&logs_system));
+    let state = lab::api::state::AppState::from_registry(logs_registry())
+        .with_log_system(Arc::clone(&logs_system));
     (
         lab::api::router::build_router_with_bearer(state, None, None),
         logs_system,
