@@ -46,19 +46,25 @@ impl Default for IngestCounters {
 
 pub struct IngestHandle {
     tx: Option<mpsc::Sender<RawLogEvent>>,
+    /// Inline write-through path used by `submit` (await). The store and hub
+    /// are owned by the LogSystem and shared with the writer task, so this is
+    /// a cheap Arc clone.
+    inline: Option<(Arc<LogStore>, Arc<StreamHub>)>,
     counters: Arc<IngestCounters>,
 }
 
 impl IngestHandle {
     pub async fn submit(&self, raw: RawLogEvent) -> Result<(), ToolError> {
-        let Some(tx) = &self.tx else {
+        // Await-path: persist inline so callers see their write before returning.
+        // Non-await callers (the tracing layer) use `try_submit` instead.
+        let Some((store, hub)) = &self.inline else {
             return Err(ToolError::internal_message(
                 "log system is read-only (no ingest writer)",
             ));
         };
-        tx.send(raw)
-            .await
-            .map_err(|_| ToolError::internal_message("log ingest channel closed"))?;
+        let event = canonicalize(raw);
+        store.insert(&event).await?;
+        hub.publish(event);
         self.counters.record_accepted();
         Ok(())
     }
@@ -86,7 +92,11 @@ impl IngestHandle {
 }
 
 pub fn readonly_handle(counters: Arc<IngestCounters>) -> IngestHandle {
-    IngestHandle { tx: None, counters }
+    IngestHandle {
+        tx: None,
+        inline: None,
+        counters,
+    }
 }
 
 pub fn spawn_writer(
@@ -98,6 +108,7 @@ pub fn spawn_writer(
     let counters = Arc::new(IngestCounters::new());
     let handle = IngestHandle {
         tx: Some(tx),
+        inline: Some((Arc::clone(&store), Arc::clone(&hub))),
         counters: Arc::clone(&counters),
     };
 
@@ -182,11 +193,14 @@ fn parse_level(s: &str) -> Option<LogLevel> {
 }
 
 fn redact_bearer(msg: &str) -> String {
+    // Replace the entire "Bearer <token>" sequence with "<redacted-auth>" so the
+    // literal substring "Bearer " does not survive — asserted by
+    // tests/logs_dispatch.rs:221.
     let mut out = String::with_capacity(msg.len());
     let mut rest = msg;
     while let Some(pos) = rest.find("Bearer ") {
         out.push_str(&rest[..pos]);
-        out.push_str("Bearer <redacted>");
+        out.push_str("<redacted-auth>");
         let after = &rest[pos + "Bearer ".len()..];
         let tok_end = after
             .find(|c: char| c.is_whitespace())
@@ -372,7 +386,8 @@ mod tests {
         let msg = "Authorization: Bearer secret-value";
         let out = redact_bearer(msg);
         assert!(!out.contains("secret-value"));
-        assert!(out.contains("Bearer <redacted>"));
+        assert!(!out.contains("Bearer "));
+        assert!(out.contains("<redacted-auth>"));
     }
 
     #[test]
