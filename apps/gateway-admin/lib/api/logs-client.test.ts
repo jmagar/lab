@@ -111,6 +111,24 @@ test('fetchLogs surfaces non-JSON error responses with status context', async ()
   }
 })
 
+test('fetchLogStats rejects empty successful JSON responses', async () => {
+  const originalFetch = globalThis.fetch
+  try {
+    globalThis.fetch = async () =>
+      new Response(null, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+    await assert.rejects(
+      () => fetchLogStats(),
+      /empty JSON response from gateway/,
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('connectLogStream refuses standalone bearer mode in v1', () => {
   assert.throws(
     () =>

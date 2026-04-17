@@ -30,7 +30,7 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
       throw new Error(`request failed with status ${response.status} ${response.statusText}`.trim())
     }
-    return undefined as T
+    throw new Error('empty JSON response from gateway')
   }
 
   let payload: unknown
