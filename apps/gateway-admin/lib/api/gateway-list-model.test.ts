@@ -1,0 +1,137 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+import type { Gateway, ServiceAction, ServiceConfig, SupportedService } from '../types/gateway.ts'
+import { mergeGatewayListWithSupportedServices } from './gateway-list-model.ts'
+
+function makeGateway(partial: Partial<Gateway> & Pick<Gateway, 'id' | 'name'>): Gateway {
+  return {
+    id: partial.id,
+    name: partial.name,
+    transport: partial.transport ?? 'http',
+    source: partial.source ?? 'custom_gateway',
+    configured: partial.configured ?? true,
+    enabled: partial.enabled ?? true,
+    surfaces: partial.surfaces ?? {
+      cli: { enabled: false, connected: false },
+      api: { enabled: false, connected: false },
+      mcp: { enabled: true, connected: true },
+      webui: { enabled: false, connected: false },
+    },
+    config: partial.config ?? {},
+    status: partial.status ?? {
+      healthy: true,
+      connected: true,
+      discovered_tool_count: 0,
+      exposed_tool_count: 0,
+      discovered_resource_count: 0,
+      exposed_resource_count: 0,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
+    },
+    discovery: partial.discovery ?? { tools: [], resources: [], prompts: [] },
+    warnings: partial.warnings ?? [],
+    created_at: partial.created_at ?? '2026-04-16T00:00:00Z',
+    updated_at: partial.updated_at ?? '2026-04-16T00:00:00Z',
+  }
+}
+
+test('mergeGatewayListWithSupportedServices appends missing lab services as deactivated rows at the bottom', () => {
+  const existing = [
+    makeGateway({ id: 'custom-1', name: 'custom-1' }),
+    makeGateway({
+      id: 'plex',
+      name: 'plex',
+      transport: 'lab_service',
+      source: 'lab_service',
+      enabled: true,
+      status: {
+        healthy: true,
+        connected: true,
+        discovered_tool_count: 29,
+        exposed_tool_count: 29,
+        discovered_resource_count: 0,
+        exposed_resource_count: 0,
+        discovered_prompt_count: 0,
+        exposed_prompt_count: 0,
+      },
+    }),
+  ]
+
+  const supported: SupportedService[] = [
+    {
+      key: 'plex',
+      display_name: 'Plex',
+      category: 'Media',
+      description: 'Plex service',
+      required_env: [],
+      optional_env: [],
+    },
+    {
+      key: 'radarr',
+      display_name: 'Radarr',
+      category: 'Media',
+      description: 'Radarr service',
+      required_env: [],
+      optional_env: [],
+    },
+  ]
+
+  const serviceConfigs = new Map<string, ServiceConfig>([
+    ['radarr', { service: 'radarr', configured: false, fields: [] }],
+  ])
+  const serviceActions = new Map<string, ServiceAction[]>([
+    ['radarr', [{ name: 'movie.search', description: 'Search', destructive: false }]],
+  ])
+
+  const merged = mergeGatewayListWithSupportedServices(existing, supported, serviceConfigs, serviceActions)
+
+  assert.deepEqual(merged.map((gateway) => gateway.id), ['custom-1', 'plex', 'radarr'])
+  assert.equal(merged[2]?.source, 'lab_service')
+  assert.equal(merged[2]?.enabled, false)
+  assert.equal(merged[2]?.configured, false)
+  assert.equal(merged[2]?.status.connected, false)
+  assert.equal(merged[2]?.status.discovered_tool_count, 1)
+  assert.equal(merged[2]?.status.exposed_tool_count, 0)
+})
+
+test('mergeGatewayListWithSupportedServices preserves existing disabled lab rows and keeps them after active rows', () => {
+  const existing = [
+    makeGateway({ id: 'custom-1', name: 'custom-1' }),
+    makeGateway({
+      id: 'radarr',
+      name: 'radarr',
+      transport: 'lab_service',
+      source: 'lab_service',
+      enabled: false,
+      configured: true,
+      status: {
+        healthy: false,
+        connected: false,
+        discovered_tool_count: 53,
+        exposed_tool_count: 0,
+        discovered_resource_count: 0,
+        exposed_resource_count: 0,
+        discovered_prompt_count: 0,
+        exposed_prompt_count: 0,
+      },
+    }),
+  ]
+
+  const supported: SupportedService[] = [
+    {
+      key: 'radarr',
+      display_name: 'Radarr',
+      category: 'Media',
+      description: 'Radarr service',
+      required_env: [],
+      optional_env: [],
+    },
+  ]
+
+  const merged = mergeGatewayListWithSupportedServices(existing, supported, new Map(), new Map())
+
+  assert.deepEqual(merged.map((gateway) => gateway.id), ['custom-1', 'radarr'])
+  assert.equal(merged[1]?.enabled, false)
+  assert.equal(merged[1]?.status.discovered_tool_count, 53)
+})

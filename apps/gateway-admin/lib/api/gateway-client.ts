@@ -29,6 +29,7 @@ import { testResultFromProbe } from '@/lib/server/gateway-test-result'
 import { gatewayActionUrl } from './gateway-config'
 import { confirmGatewayParams, gatewayRequestInit } from './gateway-request'
 import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from './tool-exposure-draft'
+import { synthesizeLabGateway } from './gateway-list-model'
 
 export class GatewayApiError extends Error {
   status: number
@@ -192,6 +193,25 @@ async function normalizeLabServiceServer(
   }
 }
 
+async function fallbackSupportedServiceGateway(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Gateway | null> {
+  const supportedServices = await gatewayAction<SupportedService[]>('gateway.supported_services', {}, signal)
+  const supported = supportedServices.find((service) => service.key === id)
+
+  if (!supported) {
+    return null
+  }
+
+  const [serviceConfig, actions] = await Promise.all([
+    gatewayAction<ServiceConfig>('gateway.service_config.get', { service: supported.key }, signal),
+    fetchSortedServiceActions(supported.key, signal),
+  ])
+
+  return synthesizeLabGateway(supported, serviceConfig, actions)
+}
+
 async function mutateVirtualServer(
   action: 'gateway.virtual_server.enable' | 'gateway.virtual_server.disable',
   id: string,
@@ -212,7 +232,18 @@ export const gatewayApi = {
   },
 
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
-    const serverView = await findServerView(id, signal)
+    let serverView: BackendServerView
+    try {
+      serverView = await findServerView(id, signal)
+    } catch (error) {
+      if (error instanceof GatewayApiError) {
+        const fallback = await fallbackSupportedServiceGateway(id, signal)
+        if (fallback) {
+          return fallback
+        }
+      }
+      throw error
+    }
     if (serverView.source === 'lab_service') {
       return normalizeLabServiceServer(serverView, signal)
     }

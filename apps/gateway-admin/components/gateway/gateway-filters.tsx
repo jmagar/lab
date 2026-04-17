@@ -14,20 +14,21 @@ import {
 export type HealthFilter =
   | 'all'
   | 'active'
-  | 'configured'
   | 'enabled'
   | 'disabled'
-  | 'connected'
-  | 'disconnected'
-export type TransportFilter = 'all' | 'http' | 'stdio' | 'lab_service'
+  | 'configured'
+export type ConnectionFilter = 'all' | 'connected' | 'disconnected'
+export type GatewayTypeFilter = 'all' | 'lab' | 'custom' | 'http' | 'stdio'
 
 interface GatewayFiltersProps {
   search: string
   onSearchChange: (value: string) => void
   healthFilter: HealthFilter
   onHealthFilterChange: (value: HealthFilter) => void
-  transportFilter: TransportFilter
-  onTransportFilterChange: (value: TransportFilter) => void
+  connectionFilter: ConnectionFilter
+  onConnectionFilterChange: (value: ConnectionFilter) => void
+  typeFilter: GatewayTypeFilter
+  onTypeFilterChange: (value: GatewayTypeFilter) => void
 }
 
 export function GatewayFilters({
@@ -35,15 +36,19 @@ export function GatewayFilters({
   onSearchChange,
   healthFilter,
   onHealthFilterChange,
-  transportFilter,
-  onTransportFilterChange,
+  connectionFilter,
+  onConnectionFilterChange,
+  typeFilter,
+  onTypeFilterChange,
 }: GatewayFiltersProps) {
-  const hasFilters = search || healthFilter !== 'all' || transportFilter !== 'all'
+  const hasFilters =
+    search || healthFilter !== 'all' || connectionFilter !== 'all' || typeFilter !== 'all'
 
   const clearFilters = () => {
     onSearchChange('')
     onHealthFilterChange('all')
-    onTransportFilterChange('all')
+    onConnectionFilterChange('all')
+    onTypeFilterChange('all')
   }
 
   return (
@@ -58,31 +63,41 @@ export function GatewayFilters({
         />
       </div>
 
-      <div className="grid w-full gap-3 sm:w-auto sm:grid-cols-2">
+      <div className="grid w-full gap-3 sm:w-auto sm:grid-cols-3">
       <Select value={healthFilter} onValueChange={(v) => onHealthFilterChange(v as HealthFilter)}>
         <SelectTrigger className="w-full sm:w-[160px]">
-          <SelectValue placeholder="Health" />
+          <SelectValue placeholder="State" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All status</SelectItem>
+          <SelectItem value="all">All states</SelectItem>
           <SelectItem value="active">Active</SelectItem>
-          <SelectItem value="configured">Configured</SelectItem>
           <SelectItem value="enabled">Enabled</SelectItem>
-          <SelectItem value="disabled">Disabled</SelectItem>
+          <SelectItem value="disabled">Deactivated</SelectItem>
+          <SelectItem value="configured">Configured</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select value={connectionFilter} onValueChange={(v) => onConnectionFilterChange(v as ConnectionFilter)}>
+        <SelectTrigger className="w-full sm:w-[160px]">
+          <SelectValue placeholder="Connection" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All connections</SelectItem>
           <SelectItem value="connected">Connected</SelectItem>
           <SelectItem value="disconnected">Disconnected</SelectItem>
         </SelectContent>
       </Select>
 
-      <Select value={transportFilter} onValueChange={(v) => onTransportFilterChange(v as TransportFilter)}>
+      <Select value={typeFilter} onValueChange={(v) => onTypeFilterChange(v as GatewayTypeFilter)}>
         <SelectTrigger className="w-full sm:w-[140px]">
-          <SelectValue placeholder="Transport" />
+          <SelectValue placeholder="Type" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All types</SelectItem>
+          <SelectItem value="lab">Lab</SelectItem>
+          <SelectItem value="custom">Custom</SelectItem>
           <SelectItem value="http">HTTP</SelectItem>
           <SelectItem value="stdio">stdio</SelectItem>
-          <SelectItem value="lab_service">Lab</SelectItem>
         </SelectContent>
       </Select>
       </div>
