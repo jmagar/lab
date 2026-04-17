@@ -16,14 +16,14 @@ use owo_colors::{OwoColorize, XtermColors};
 
 use crate::config::{backup_env, env_is_up_to_date, write_env};
 use crate::output::{OutputFormat, print};
-use lab_apis::extract::{ExtractClient, ExtractReport, Uri};
+use lab_apis::extract::{ExtractClient, ExtractReport, ScanTarget, Uri};
 
-/// `lab extract <uri> [--apply | --diff] [-y] [--json]`
+/// `lab extract [uri] [--apply | --diff] [-y] [--json]`
 #[derive(Debug, Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ExtractCmd {
     /// Appdata path to scan. Local (`/path` or `~/path`) or SSH (`host:/path`).
-    pub uri: String,
+    pub uri: Option<String>,
 
     /// Write the extracted creds into `~/.lab/.env` (destructive — prompts).
     #[arg(long)]
@@ -61,13 +61,11 @@ impl ExtractCmd {
     /// Propagates any error from `ExtractClient::scan`, the confirmation
     /// prompt, or the `.env` writer.
     pub async fn run(self) -> Result<()> {
-        let uri: Uri = self
-            .uri
-            .parse()
-            .with_context(|| format!("invalid uri: {}", self.uri))?;
-
         let client = ExtractClient::new();
-        let report = client.scan(uri).await.with_context(|| "scan failed")?;
+        let report = client
+            .scan(self.scan_target()?)
+            .await
+            .with_context(|| "scan failed")?;
 
         if self.apply {
             self.apply_report(&report)?;
@@ -174,6 +172,19 @@ impl ExtractCmd {
         print(report, format)
     }
 
+    fn scan_target(&self) -> Result<ScanTarget> {
+        match self.uri.as_deref() {
+            Some(uri) => {
+                let uri: Uri = uri.parse().with_context(|| format!("invalid uri: {uri}"))?;
+                Ok(ScanTarget::Targeted(uri))
+            }
+            None if self.apply || self.diff => {
+                anyhow::bail!("extract.apply and extract.diff require a targeted uri")
+            }
+            None => Ok(ScanTarget::Fleet),
+        }
+    }
+
     fn resolve_env_path(&self) -> Result<PathBuf> {
         if let Some(p) = &self.env_path {
             return Ok(p.clone());
@@ -219,4 +230,75 @@ fn confirm_destructive(action: &str) -> Result<bool> {
         .read_line(&mut buf)
         .context("read confirmation")?;
     Ok(buf.trim().eq_ignore_ascii_case("y"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lab_apis::extract::ScanTarget;
+
+    #[test]
+    fn bare_extract_maps_to_fleet_scan() {
+        let cmd = ExtractCmd {
+            uri: None,
+            apply: false,
+            diff: false,
+            yes: false,
+            dry_run: false,
+            force: false,
+            json: false,
+            env_path: None,
+        };
+
+        assert!(matches!(
+            cmd.scan_target().expect("scan target"),
+            ScanTarget::Fleet
+        ));
+    }
+
+    #[test]
+    fn targeted_extract_maps_to_targeted_scan() {
+        let cmd = ExtractCmd {
+            uri: Some("/tmp/appdata".to_owned()),
+            apply: false,
+            diff: false,
+            yes: false,
+            dry_run: false,
+            force: false,
+            json: false,
+            env_path: None,
+        };
+
+        assert!(matches!(
+            cmd.scan_target().expect("scan target"),
+            ScanTarget::Targeted(_)
+        ));
+    }
+
+    #[test]
+    fn apply_and_diff_still_require_uri() {
+        let apply = ExtractCmd {
+            uri: None,
+            apply: true,
+            diff: false,
+            yes: false,
+            dry_run: false,
+            force: false,
+            json: false,
+            env_path: None,
+        };
+        let diff = ExtractCmd {
+            uri: None,
+            apply: false,
+            diff: true,
+            yes: false,
+            dry_run: false,
+            force: false,
+            json: false,
+            env_path: None,
+        };
+
+        assert!(apply.scan_target().is_err());
+        assert!(diff.scan_target().is_err());
+    }
 }

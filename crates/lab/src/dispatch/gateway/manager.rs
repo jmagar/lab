@@ -953,6 +953,10 @@ fn values_to_service_creds(
                 url,
                 secret,
                 env_field: field.clone(),
+                source_host: None,
+                probe_host: None,
+                runtime: None,
+                url_verified: false,
             }
         })
         .collect()

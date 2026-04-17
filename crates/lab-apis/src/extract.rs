@@ -21,24 +21,23 @@
 //! # Ok(()) }
 //! ```
 
-/// Pluggable per-app config parsers.
 pub mod parsers;
-
-/// File-reading abstraction over local fs and ssh.
 pub mod transport;
-
-/// Public types: `Uri`, `ExtractedCreds`, `ServiceCreds`, `ExtractReport`.
+pub mod ssh_config;
+pub mod inventory;
+pub mod runtime;
+pub mod probe;
+pub mod fleet;
 pub mod types;
-
-/// `ExtractError` (thiserror).
 pub mod error;
-
-/// `ExtractClient` — orchestrates URI parsing, transport selection, and parser dispatch.
 pub mod client;
 
 pub use client::ExtractClient;
 pub use error::ExtractError;
-pub use types::{ExtractReport, ExtractWarning, ServiceCreds, Uri};
+pub use types::{
+    ExtractReport, ExtractWarning, RedactedExtractReport, RedactedServiceCreds, RuntimeProvenance,
+    ScanTarget, ServiceCreds, Uri,
+};
 
 use crate::core::plugin::{Category, PluginMeta};
 

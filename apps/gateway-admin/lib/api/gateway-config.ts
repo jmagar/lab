@@ -7,6 +7,10 @@ export function gatewayActionUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/gateway`
 }
 
+export function extractActionUrl(baseUrl?: string): string {
+  return `${normalizeGatewayApiBase(baseUrl)}/extract`
+}
+
 export function gatewayDetailHref(id: string): string {
   return `/gateway/?id=${encodeURIComponent(id)}`
 }
