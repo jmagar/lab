@@ -9,6 +9,10 @@ config.toml
 
 # ── Runtime artifacts ────────────────────────────────────────────────────────
 logs/
+!apps/gateway-admin/app/(admin)/logs/
+!apps/gateway-admin/app/(admin)/logs/page.tsx
+!apps/gateway-admin/components/logs/
+!apps/gateway-admin/components/logs/*.tsx
 backups/
 *.log
 *.pid

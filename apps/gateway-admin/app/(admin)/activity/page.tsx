@@ -36,6 +36,11 @@ export default function ActivityPage() {
         breadcrumbs={[
           { label: 'Activity' }
         ]}
+        actions={(
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/logs">Open logs</Link>
+          </Button>
+        )}
       />
       <div className="flex-1 p-6">
         <div className="space-y-6">
@@ -66,6 +71,13 @@ export default function ActivityPage() {
               <h1 className="text-lg font-semibold">Gateway activity</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Health probes and warning events derived from the current control-plane state.
+              </p>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Need the raw event stream or persisted runtime history? Use the dedicated{' '}
+                <Link href="/logs" className="font-medium text-primary underline-offset-4 hover:underline">
+                  log console
+                </Link>
+                .
               </p>
             </div>
 

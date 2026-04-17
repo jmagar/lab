@@ -38,6 +38,9 @@ pub struct LabConfig {
     /// Logging preferences (overridden by `LAB_LOG` / `LAB_LOG_FORMAT` env vars).
     #[serde(default)]
     pub log: LogPreferences,
+    /// Local-master log subsystem preferences.
+    #[serde(default)]
+    pub local_logs: Option<LocalLogsPreferences>,
     /// HTTP API preferences.
     #[serde(default)]
     pub api: ApiPreferences,
@@ -327,6 +330,26 @@ pub struct LogPreferences {
     /// Overridden by `LAB_LOG_FORMAT` env var.
     #[serde(default)]
     pub format: Option<String>,
+}
+
+/// Local-master log store and retention preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LocalLogsPreferences {
+    /// Optional path override for the embedded log store.
+    #[serde(default)]
+    pub store_path: Option<PathBuf>,
+    /// Retention window in days.
+    #[serde(default)]
+    pub retention_days: Option<u64>,
+    /// Max retained logical bytes. Oldest events are evicted first.
+    #[serde(default)]
+    pub max_bytes: Option<u64>,
+    /// Bounded ingest queue size for the long-lived runtime.
+    #[serde(default)]
+    pub queue_capacity: Option<usize>,
+    /// Bounded live-subscriber ring size for the SSE stream hub.
+    #[serde(default)]
+    pub subscriber_capacity: Option<usize>,
 }
 
 /// HTTP API preferences.

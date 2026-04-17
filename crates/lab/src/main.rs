@@ -30,6 +30,7 @@ use is_terminal::IsTerminal;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use crate::cli::Cli;
+use crate::dispatch::logs::ingest::LogIngestLayer;
 
 /// Initialize tracing.
 ///
@@ -53,6 +54,7 @@ fn init_tracing(log: &config::LogPreferences) {
     if use_json {
         tracing_subscriber::registry()
             .with(filter)
+            .with(LogIngestLayer)
             .with(fmt::layer().json().with_writer(std::io::stderr))
             .init();
     } else {
@@ -60,6 +62,7 @@ fn init_tracing(log: &config::LogPreferences) {
         let ansi = std::io::stderr().is_terminal();
         tracing_subscriber::registry()
             .with(filter)
+            .with(LogIngestLayer)
             .with(
                 fmt::layer()
                     .with_target(false)
