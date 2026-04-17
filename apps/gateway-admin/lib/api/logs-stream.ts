@@ -9,6 +9,7 @@ export function logsStreamUrl(baseUrl?: string) {
 export function connectLogStream(
   handlers: {
     onEvent: (event: LogEvent) => void
+    onLag?: (skipped: number) => void
     onOpen?: () => void
     onError?: (message: string) => void
   },
@@ -18,7 +19,12 @@ export function connectLogStream(
     standaloneBearerAuth?: boolean
   },
 ) {
-  if (isStandaloneBearerAuthMode(options?.token, options?.standaloneBearerAuth ? 'true' : undefined)) {
+  const modeOverride =
+    typeof options?.standaloneBearerAuth === 'boolean'
+      ? (options.standaloneBearerAuth ? 'true' : 'false')
+      : undefined
+
+  if (isStandaloneBearerAuthMode(options?.token, modeOverride)) {
     throw new Error(
       'live log streaming uses hosted same-origin session auth in v1; standalone bearer mode is not supported for EventSource',
     )
@@ -32,10 +38,24 @@ export function connectLogStream(
     handlers.onOpen?.()
   }
   source.onmessage = (message) => {
-    handlers.onEvent(JSON.parse(message.data) as LogEvent)
+    try {
+      handlers.onEvent(JSON.parse(message.data) as LogEvent)
+    } catch {
+      handlers.onError?.('received malformed log event')
+    }
   }
+  source.addEventListener('lag', (message) => {
+    const skipped = Number(message.data)
+    if (Number.isInteger(skipped) && skipped > 0) {
+      handlers.onLag?.(skipped)
+      return
+    }
+    handlers.onError?.('received malformed lag event')
+  })
   source.onerror = () => {
-    handlers.onError?.('live stream disconnected')
+    if (source.readyState === EventSource.CLOSED) {
+      handlers.onError?.('live stream disconnected')
+    }
   }
 
   return () => {

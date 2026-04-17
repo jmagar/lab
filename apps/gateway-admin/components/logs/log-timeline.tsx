@@ -9,14 +9,10 @@ import type { LogEvent } from '@/lib/types/logs'
 interface LogTimelineProps {
   events: LogEvent[]
   isLoading: boolean
+  showLiveEdgeBadge: boolean
   viewportRef: React.RefObject<HTMLDivElement | null>
   onViewportScroll: () => void
 }
-
-const timestampFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'medium',
-})
 
 const levelStyles = {
   trace: 'border-slate-300 bg-slate-100 text-slate-700',
@@ -29,9 +25,15 @@ const levelStyles = {
 export function LogTimeline({
   events,
   isLoading,
+  showLiveEdgeBadge,
   viewportRef,
   onViewportScroll,
 }: LogTimelineProps) {
+  const timestampFormatter = new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  })
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-900/5">
       <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4">
@@ -78,7 +80,7 @@ export function LogTimeline({
                       </Badge>
                       <Badge variant="outline">{event.subsystem}</Badge>
                       {event.action ? <Badge variant="outline">{event.action}</Badge> : null}
-                      {index === events.length - 1 ? (
+                      {showLiveEdgeBadge && index === events.length - 1 ? (
                         <Badge variant="outline" className="border-cyan-300 bg-cyan-50 text-cyan-700">
                           <ArrowDown className="size-3.5" />
                           live edge

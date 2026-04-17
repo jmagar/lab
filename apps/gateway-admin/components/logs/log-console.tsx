@@ -64,16 +64,12 @@ function retainedWindow(stats: LogStoreStats | null): string {
   return `${timestampFormatter.format(new Date(stats.oldest_retained_ts))} -> ${timestampFormatter.format(new Date(stats.newest_retained_ts))}`
 }
 
-function queryPreview(filters: LogFilterState, windowPreset: string): string {
+function queryPreviewForAfterTs(filters: LogFilterState, afterTs: number | null): string {
   return JSON.stringify(
     {
       action: 'logs.search',
       params: {
-        query: buildLogSearchQuery(filters, {
-          afterTs: WINDOW_TO_MS[windowPreset]
-            ? Date.now() - (WINDOW_TO_MS[windowPreset] ?? 0)
-            : null,
-        }),
+        query: buildLogSearchQuery(filters, { afterTs }),
       },
     },
     null,
@@ -91,6 +87,7 @@ export function LogConsole() {
   const [isRefreshing, setIsRefreshing] = React.useState(false)
   const [connected, setConnected] = React.useState(false)
   const [streamError, setStreamError] = React.useState<string | null>(null)
+  const [copyStatus, setCopyStatus] = React.useState<string | null>(null)
   const [manualPause, setManualPause] = React.useState(false)
   const [atLiveEdge, setAtLiveEdge] = React.useState(true)
   const [lastEventTs, setLastEventTs] = React.useState<number | null>(null)
@@ -102,15 +99,30 @@ export function LogConsole() {
   const effectivePaused = manualPause || !atLiveEdge
   const effectivePausedRef = React.useRef(effectivePaused)
   const maxEntriesRef = React.useRef(filters.limit)
+  const afterTs = React.useMemo(() => {
+    const windowMs = WINDOW_TO_MS[windowPreset]
+    return windowMs == null ? null : Date.now() - windowMs
+  }, [windowPreset, refreshToken])
 
-  filtersRef.current = filters
-  effectivePausedRef.current = effectivePaused
-  maxEntriesRef.current = filters.limit
+  React.useLayoutEffect(() => {
+    filtersRef.current = filters
+    effectivePausedRef.current = effectivePaused
+    maxEntriesRef.current = filters.limit
+  }, [filters, effectivePaused])
 
-  const afterTs =
-    WINDOW_TO_MS[windowPreset] == null
-      ? null
-      : Date.now() - (WINDOW_TO_MS[windowPreset] ?? 0)
+  React.useEffect(() => {
+    if (!copyStatus) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCopyStatus(null)
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [copyStatus])
 
   React.useEffect(() => {
     const controller = new AbortController()
@@ -156,7 +168,7 @@ export function LogConsole() {
       disposed = true
       controller.abort()
     }
-  }, [afterTs, deferredFilters, refreshToken])
+  }, [afterTs, deferredFilters])
 
   React.useEffect(() => {
     const disconnect = connectLogStream({
@@ -170,6 +182,11 @@ export function LogConsole() {
         startTransition(() => {
           setConnected(false)
           setStreamError(message)
+        })
+      },
+      onLag: (skipped) => {
+        startTransition(() => {
+          setStreamError(`live stream lagged and dropped ${skipped} event${skipped === 1 ? '' : 's'}`)
         })
       },
       onEvent: (event) => {
@@ -247,13 +264,22 @@ export function LogConsole() {
               variant="outline"
               size="sm"
               onClick={() => {
-                const preview = queryPreview(filters, windowPreset)
-                void navigator.clipboard.writeText(preview)
+                const preview = queryPreviewForAfterTs(filters, afterTs)
+                navigator.clipboard
+                  .writeText(preview)
+                  .then(() => {
+                    setCopyStatus('Query copied')
+                  })
+                  .catch((error: unknown) => {
+                    console.warn('failed to copy logs query preview', error)
+                    setCopyStatus('Copy failed')
+                  })
               }}
             >
               <Copy className="size-4" />
               Copy query
             </Button>
+            {copyStatus ? <span className="text-xs text-muted-foreground">{copyStatus}</span> : null}
             <Button variant="outline" size="sm" asChild>
               <Link href="/activity">Back to activity</Link>
             </Button>
@@ -347,7 +373,7 @@ export function LogConsole() {
                     </Badge>
                   </div>
                   <pre className="overflow-x-auto text-xs text-slate-100">
-                    {queryPreview(filters, windowPreset)}
+                    {queryPreviewForAfterTs(filters, afterTs)}
                   </pre>
                 </div>
               </CardContent>
@@ -357,6 +383,7 @@ export function LogConsole() {
           <LogTimeline
             events={events}
             isLoading={isLoading}
+            showLiveEdgeBadge={!effectivePaused && atLiveEdge}
             viewportRef={viewportRef}
             onViewportScroll={() => {
               const viewport = viewportRef.current

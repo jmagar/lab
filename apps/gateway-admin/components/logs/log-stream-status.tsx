@@ -13,16 +13,16 @@ interface LogStreamStatusProps {
   onJumpToNewest: () => void
 }
 
-const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'medium',
-})
-
 export function LogStreamStatusCard({
   status,
   onTogglePause,
   onJumpToNewest,
 }: LogStreamStatusProps) {
+  const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  })
+
   return (
     <Card className="border-slate-200/80 bg-linear-to-br from-slate-950 via-slate-900 to-sky-950 text-slate-50 shadow-lg shadow-sky-950/10">
       <CardHeader className="gap-3">

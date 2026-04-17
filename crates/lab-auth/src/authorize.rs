@@ -405,7 +405,7 @@ fn is_loopback_redirect(value: &str) -> bool {
     }
     matches!(
         url.host_str(),
-        Some("127.0.0.1" | "localhost" | "::1" | "[::1]")
+        Some("127.0.0.1" | "localhost" | "::1")
     )
 }
 

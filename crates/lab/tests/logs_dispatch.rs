@@ -1,14 +1,8 @@
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-static LOG_SYSTEM_TEST_LOCK: Mutex<()> = Mutex::new(());
+mod support;
 
-fn lock_log_system_tests() -> MutexGuard<'static, ()> {
-    LOG_SYSTEM_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
+use support::log_system::{InstalledLogSystemGuard, SqlitePathCleanup, test_lock};
 
 fn event_with(
     event_id: &str,
@@ -87,18 +81,19 @@ async fn logs_dispatch_help_and_schema_exist() {
 }
 
 #[test]
-fn log_system_bootstrap_is_single_owner() {
-    let _lock = lock_log_system_tests();
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+fn log_system_bootstrap_installs_runtime() {
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let runtime = lab::dispatch::logs::client::bootstrap_log_system_for_test();
     assert!(runtime.is_ok());
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
 }
 
 #[tokio::test]
 async fn local_live_commands_fail_cleanly_without_long_lived_runtime() {
-    let _lock = lock_log_system_tests();
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let error = lab::dispatch::logs::dispatch("logs.tail", serde_json::json!({"limit": 10}))
         .await
         .unwrap_err();
@@ -211,6 +206,9 @@ async fn retention_enforces_age_and_size_limits() {
 
 #[tokio::test]
 async fn ingest_redacts_sensitive_fields_before_store_and_stream() {
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
@@ -231,6 +229,9 @@ async fn ingest_redacts_sensitive_fields_before_store_and_stream() {
 
 #[tokio::test]
 async fn stream_subscribers_receive_new_events_without_querying_store() {
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
@@ -249,6 +250,9 @@ async fn stream_subscribers_receive_new_events_without_querying_store() {
 
 #[tokio::test]
 async fn full_ingest_queue_records_overflow_without_blocking_caller() {
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(1)
         .await
         .unwrap();
@@ -256,14 +260,26 @@ async fn full_ingest_queue_records_overflow_without_blocking_caller() {
         drop(system.try_ingest(raw_gateway_event("queue pressure")));
     }
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    let stats = system.stats().await.unwrap();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    let stats = loop {
+        let stats = system.stats().await.unwrap();
+        if stats.dropped_event_count > 0 {
+            break stats;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "never observed dropped events: {stats:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
     assert!(stats.dropped_event_count > 0);
 }
 
 #[tokio::test]
 async fn logs_search_returns_filtered_results() {
-    let _lock = lock_log_system_tests();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
@@ -278,28 +294,32 @@ async fn logs_search_returns_filtered_results() {
     .await
     .unwrap();
 
-    assert!(value.get("events").is_some());
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+    let events = value["events"].as_array().expect("events array");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["message"], "search me");
 }
 
 #[tokio::test]
 async fn logs_stats_returns_retention_metadata() {
-    let _lock = lock_log_system_tests();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let _system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
 
     let value = lab::dispatch::logs::dispatch("logs.stats", serde_json::json!({}))
-        .await
-        .unwrap();
+    .await
+    .unwrap();
 
     assert!(value.get("on_disk_bytes").is_some());
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
 }
 
 #[tokio::test]
 async fn logs_tail_returns_bounded_follow_up_window() {
-    let _lock = lock_log_system_tests();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
@@ -317,7 +337,6 @@ async fn logs_tail_returns_bounded_follow_up_window() {
 
     assert!(value.get("events").is_some());
     assert!(value.get("next_cursor").is_some());
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
 }
 
 #[tokio::test]
@@ -406,7 +425,11 @@ async fn store_search_text_matches_request_identifiers() {
 
 #[tokio::test]
 async fn local_logs_persist_across_restart() {
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let path = unique_store_path("lab-local-logs-persist");
+    let _cleanup = SqlitePathCleanup::new(path.clone());
     let writer = lab::dispatch::logs::client::bootstrap_running_log_system(
         path.clone(),
         lab::dispatch::logs::types::LogRetention::default(),

@@ -3,6 +3,10 @@ use clap::Parser;
 use lab::cli::Cli;
 use lab::dispatch::logs::types::{LogLevel, LogQuery, RawLogEvent, Subsystem};
 
+mod support;
+
+use support::log_system::{InstalledLogSystemGuard, test_lock};
+
 fn raw_gateway_event(message: &str) -> RawLogEvent {
     RawLogEvent {
         ts: Some(1_713_225_600_000),
@@ -55,6 +59,9 @@ fn logs_cli_parses_local_search() {
 
 #[tokio::test]
 async fn logs_local_search_uses_shared_dispatch_contract() {
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .expect("runtime");
@@ -74,5 +81,7 @@ async fn logs_local_search_uses_shared_dispatch_contract() {
     .await
     .expect("search response");
 
-    assert!(value.get("events").is_some());
+    let events = value["events"].as_array().expect("events array");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["message"], "local cli query");
 }

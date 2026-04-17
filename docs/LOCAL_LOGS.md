@@ -31,6 +31,7 @@ CLI:
 - `lab logs local search`
 - `lab logs local tail`
 - `lab logs local stats`
+- `lab logs local stream` — rejected with guidance; use `GET /v1/logs/stream` or `lab logs local tail`
 
 MCP:
 

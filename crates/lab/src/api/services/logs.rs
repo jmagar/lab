@@ -9,6 +9,7 @@ use axum::{
 };
 use futures::stream;
 use serde_json::Value;
+use tracing::warn;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
@@ -57,10 +58,22 @@ async fn stream_logs(
         loop {
             match receiver.recv().await {
                 Ok(event) => {
-                    let payload = serde_json::to_string(&event).ok()?;
-                    return Some((Ok(Event::default().data(payload)), receiver));
+                    match serde_json::to_string(&event) {
+                        Ok(payload) => {
+                            return Some((Ok(Event::default().data(payload)), receiver));
+                        }
+                        Err(error) => {
+                            warn!(error = %error, "failed to serialize log event for SSE; skipping");
+                        }
+                    }
                 }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    warn!(skipped, "SSE log subscriber lagged; dropping events");
+                    return Some((
+                        Ok(Event::default().event("lag").data(skipped.to_string())),
+                        receiver,
+                    ));
+                }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
             }
         }

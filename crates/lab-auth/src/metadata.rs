@@ -40,16 +40,14 @@ pub async fn jwks(State(state): State<AuthState>) -> Json<crate::jwt::JwksDocume
 }
 
 pub(crate) fn public_base_url(state: &AuthState) -> String {
-    debug_assert!(
-        state.config.public_url.is_some(),
-        "oauth state must have public_url"
-    );
     state
         .config
         .public_url
         .as_ref()
-        .map(|value| value.as_str().trim_end_matches('/').to_string())
-        .unwrap_or_default()
+        .expect("oauth state must have public_url configured")
+        .as_str()
+        .trim_end_matches('/')
+        .to_string()
 }
 
 pub fn canonical_resource_url(state: &AuthState) -> String {

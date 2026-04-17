@@ -125,3 +125,16 @@ test('mergeTimelineEvents deduplicates, sorts chronologically, and keeps the new
     ],
   )
 })
+
+test('mergeTimelineEvents breaks equal timestamps by event identifier', () => {
+  const merged = mergeTimelineEvents(
+    [eventWith({ event_id: 'evt-b', ts: 10, message: 'b' })],
+    [eventWith({ event_id: 'evt-a', ts: 10, message: 'a' })],
+    10,
+  )
+
+  assert.deepEqual(
+    merged.map((event) => event.event_id),
+    ['evt-a', 'evt-b'],
+  )
+})

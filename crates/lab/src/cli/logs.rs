@@ -57,11 +57,11 @@ pub struct LocalSearchArgs {
     #[arg(long)]
     pub before_ts: Option<i64>,
     #[arg(long = "level")]
-    pub levels: Vec<String>,
+    pub levels: Vec<crate::dispatch::logs::types::LogLevel>,
     #[arg(long = "subsystem")]
-    pub subsystems: Vec<String>,
+    pub subsystems: Vec<crate::dispatch::logs::types::Subsystem>,
     #[arg(long = "surface")]
-    pub surfaces: Vec<String>,
+    pub surfaces: Vec<crate::dispatch::logs::types::Surface>,
     #[arg(long)]
     pub action: Option<String>,
     #[arg(long)]
@@ -175,24 +175,15 @@ fn build_search_query(args: LocalSearchArgs) -> LogQuery {
         text: args.text,
         after_ts: args.after_ts,
         before_ts: args.before_ts,
-        levels: parse_values(args.levels),
-        subsystems: parse_values(args.subsystems),
-        surfaces: parse_values(args.surfaces),
+        levels: args.levels,
+        subsystems: args.subsystems,
+        surfaces: args.surfaces,
         action: args.action,
         request_id: args.request_id,
         session_id: args.session_id,
         correlation_id: args.correlation_id,
         limit: args.limit,
     }
-}
-
-fn parse_values<T>(raw: Vec<String>) -> Vec<T>
-where
-    T: for<'de> serde::Deserialize<'de>,
-{
-    raw.into_iter()
-        .filter_map(|value| serde_json::from_value(json!(value)).ok())
-        .collect()
 }
 
 #[allow(dead_code)]
@@ -231,5 +222,20 @@ mod tests {
         .expect("local search parses");
 
         assert!(matches!(cli.command, Command::Logs(_)));
+    }
+
+    #[test]
+    fn logs_cli_rejects_invalid_local_search_filters() {
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "logs",
+                "local",
+                "search",
+                "--level",
+                "warning",
+            ])
+            .is_err()
+        );
     }
 }

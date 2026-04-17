@@ -1,6 +1,5 @@
 use std::pin::pin;
 use std::sync::Arc;
-use std::sync::{Mutex, MutexGuard};
 
 use axum::{
     Router,
@@ -10,13 +9,9 @@ use axum::{
 use futures::future::poll_fn;
 use tower::ServiceExt;
 
-static LOG_SYSTEM_TEST_LOCK: Mutex<()> = Mutex::new(());
+mod support;
 
-fn lock_log_system_tests() -> MutexGuard<'static, ()> {
-    LOG_SYSTEM_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
+use support::log_system::{InstalledLogSystemGuard, test_lock};
 
 fn raw_gateway_event(message: &str) -> lab::dispatch::logs::types::RawLogEvent {
     lab::dispatch::logs::types::RawLogEvent {
@@ -54,22 +49,25 @@ async fn test_app() -> (Router, Arc<lab::dispatch::logs::types::LogSystem>) {
     )
 }
 
-async fn read_next_body_chunk(body: Body) -> axum::body::Bytes {
+async fn read_next_body_chunk(body: Body) -> Option<axum::body::Bytes> {
     let mut body = pin!(body);
     loop {
-        let frame = poll_fn(|cx| body.as_mut().poll_frame(cx))
-            .await
-            .expect("body frame result")
-            .expect("body frame available");
+        let frame = match poll_fn(|cx| body.as_mut().poll_frame(cx)).await {
+            Some(Ok(frame)) => frame,
+            Some(Err(error)) => panic!("body frame result: {error}"),
+            None => return None,
+        };
         if let Ok(data) = frame.into_data() {
-            return data;
+            return Some(data);
         }
     }
 }
 
 #[tokio::test]
 async fn post_logs_search_route_exists() {
-    let _lock = lock_log_system_tests();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let (app, _logs_system) = test_app().await;
     let response = app
         .oneshot(
@@ -90,7 +88,9 @@ async fn post_logs_search_route_exists() {
 
 #[tokio::test]
 async fn logs_stream_sse_route_emits_event_stream_content_type() {
-    let _lock = lock_log_system_tests();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let (app, _logs_system) = test_app().await;
     let response = app
         .oneshot(
@@ -115,7 +115,9 @@ async fn logs_stream_sse_route_emits_event_stream_content_type() {
 
 #[tokio::test]
 async fn logs_sse_reconnect_resumes_stream() {
-    let _lock = lock_log_system_tests();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let (app, logs_system) = test_app().await;
 
     let first_response = app
@@ -135,7 +137,9 @@ async fn logs_sse_reconnect_resumes_stream() {
         .await
         .expect("first event");
 
-    let first_chunk = read_next_body_chunk(first_response.into_body()).await;
+    let first_chunk = read_next_body_chunk(first_response.into_body())
+        .await
+        .expect("first sse frame");
     let first_text = String::from_utf8(first_chunk.to_vec()).expect("utf8 body");
     assert!(first_text.contains("first sse payload"));
 
@@ -155,15 +159,18 @@ async fn logs_sse_reconnect_resumes_stream() {
         .await
         .expect("second event");
 
-    let second_chunk = read_next_body_chunk(second_response.into_body()).await;
+    let second_chunk = read_next_body_chunk(second_response.into_body())
+        .await
+        .expect("second sse frame");
     let second_text = String::from_utf8(second_chunk.to_vec()).expect("utf8 body");
     assert!(second_text.contains("second sse payload"));
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
 }
 
 #[tokio::test]
 async fn logs_mcp_tail_matches_api_query_semantics() {
-    let _lock = lock_log_system_tests();
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let (app, logs_system) = test_app().await;
     logs_system
         .ingest(raw_gateway_event("shared tail semantics"))
@@ -200,11 +207,13 @@ async fn logs_mcp_tail_matches_api_query_semantics() {
         .expect("response bytes");
     let api_value: serde_json::Value = serde_json::from_slice(&body).expect("json body");
     assert_eq!(api_value, mcp_value);
-    lab::dispatch::logs::client::clear_installed_log_system_for_test();
 }
 
 #[tokio::test]
 async fn logs_routes_respect_runtime_service_filtering() {
+    let mut lock = test_lock();
+    let _lock = lock.write().expect("log system test lock");
+    let _installed = InstalledLogSystemGuard::new();
     let logs_system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .expect("log system");

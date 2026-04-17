@@ -257,7 +257,7 @@ Full details in [OAUTH.md](./OAUTH.md).
 |----------|----------|-------------|
 | `LAB_AUTH_MODE` | no | `bearer` or `oauth`. Defaults to `bearer`. |
 | `LAB_MCP_HTTP_TOKEN` | bearer mode only | Static bearer token for protected HTTP routes. |
-| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, JWT issuer/audience, callback construction, and allowed-host derivation. |
+| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, JWT issuer/audience, callback construction, and allowed-host derivation. Path-prefixed deployments are supported. |
 | `LAB_AUTH_SQLITE_PATH` | no | Override path for the auth SQLite database. Defaults to `~/.lab/auth.db`. |
 | `LAB_AUTH_KEY_PATH` | no | Override path for the persisted JWT signing key. Defaults to `~/.lab/auth-jwt.pem`. |
 | `LAB_GOOGLE_CLIENT_ID` | oauth mode | Google OAuth client ID. |

@@ -435,7 +435,7 @@ pub fn build_service_paths(service_names: &[String]) -> Vec<(String, PathItem)> 
                     .tag("logs")
                     .summary(Some("Subscribe to live local-master log events"))
                     .description(Some(
-                        "Server-sent events stream for live local-master logs. Hosted same-origin browser session auth is the supported v1 access mode.",
+                        "Server-sent events stream for live local-master logs. API clients use bearer auth here, while the hosted gateway-admin browser consumes the same endpoint with same-origin session auth.",
                     ))
                     .responses(
                         ResponsesBuilder::new()

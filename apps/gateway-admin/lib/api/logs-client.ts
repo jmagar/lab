@@ -1,5 +1,5 @@
 import { normalizeGatewayApiBase } from './gateway-config.ts'
-import { gatewayHeaders } from './gateway-request.ts'
+import { gatewayRequestInit } from './gateway-request.ts'
 import { isStandaloneBearerAuthMode } from '../auth/auth-mode.ts'
 import type { LogSearchQuery, LogSearchResult, LogStoreStats } from '../types/logs.ts'
 
@@ -14,22 +14,41 @@ export function logsRequestInit(
   signal?: AbortSignal,
   standaloneBearerAuth = isStandaloneBearerAuthMode(token),
 ): RequestInit {
-  return {
-    method: 'POST',
-    headers: gatewayHeaders(token, standaloneBearerAuth),
-    body: JSON.stringify({ action, params }),
-    cache: 'no-store',
-    credentials: standaloneBearerAuth ? 'omit' : 'include',
-    signal,
-  }
+  return gatewayRequestInit(action, params, token, signal, standaloneBearerAuth)
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const payload = await response.json()
+  const raw = await response.text()
+  if (raw.length === 0) {
+    if (!response.ok) {
+      throw new Error(`request failed with status ${response.status} ${response.statusText}`.trim())
+    }
+    throw new Error('empty JSON response from gateway')
+  }
+
+  let payload: unknown
+  try {
+    payload = JSON.parse(raw)
+  } catch (error) {
+    if (!response.ok) {
+      const snippet = raw.trim().slice(0, 120)
+      const detail = snippet ? `: ${snippet}` : ''
+      throw new Error(
+        `request failed with status ${response.status} ${response.statusText}${detail}`.trim(),
+        { cause: error },
+      )
+    }
+    const message =
+      error instanceof Error
+        ? `invalid JSON response from gateway: ${error.message}`
+        : 'invalid JSON response from gateway'
+    throw new Error(message, { cause: error })
+  }
+
   if (!response.ok) {
     const message =
-      typeof payload?.message === 'string'
-        ? payload.message
+      typeof (payload as { message?: unknown })?.message === 'string'
+        ? (payload as { message: string }).message
         : `request failed with status ${response.status}`
     throw new Error(message)
   }

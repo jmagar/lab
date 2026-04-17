@@ -86,5 +86,6 @@ export function mergeTimelineEvents(
       }
       return left.ts - right.ts
     })
+    // Keep the newest-N window stable even if a caller passes 0 or a negative limit.
     .slice(-Math.max(maxEntries, 1))
 }

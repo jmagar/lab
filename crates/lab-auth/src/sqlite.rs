@@ -540,11 +540,7 @@ fn open_connection(path: &Path) -> Result<Connection, AuthError> {
 }
 
 fn validate_or_reopen_connection(conn: &mut Connection, path: &Path) -> Result<(), AuthError> {
-    let probe = conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0));
-    if probe.is_ok() {
-        return Ok(());
-    }
-    let Err(error) = probe else {
+    let Err(error) = conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0)) else {
         return Ok(());
     };
     warn!(
