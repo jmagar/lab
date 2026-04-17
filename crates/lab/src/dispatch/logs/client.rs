@@ -1,55 +1,172 @@
-// Stub — replaced by Task 9.
-use std::path::PathBuf;
-use std::sync::Arc;
+//! LogSystem bootstrap + env/config resolution.
 
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock, RwLock};
+
+use super::ingest::{self, IngestCounters};
+use super::store::LogStore;
+use super::stream::StreamHub;
 use super::types::{LogRetention, LogSystem};
 use crate::config::LabConfig;
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::env_non_empty;
 
-pub fn clear_installed_log_system_for_test() {}
+// ── Process-global installed LogSystem ────────────────────────────────────────
 
-pub fn require_system() -> Result<Arc<LogSystem>, ToolError> {
-    Err(ToolError::internal_message("log system stub (Task 9)"))
+static INSTALLED: OnceLock<RwLock<Option<Arc<LogSystem>>>> = OnceLock::new();
+
+fn installed_slot() -> &'static RwLock<Option<Arc<LogSystem>>> {
+    INSTALLED.get_or_init(|| RwLock::new(None))
 }
 
+fn install(system: Arc<LogSystem>) {
+    let slot = installed_slot();
+    let mut w = slot.write().expect("installed log system lock poisoned");
+    *w = Some(system);
+}
+
+pub fn require_system() -> Result<Arc<LogSystem>, ToolError> {
+    let slot = installed_slot();
+    let r = slot.read().expect("installed log system lock poisoned");
+    r.as_ref().cloned().ok_or_else(|| {
+        ToolError::internal_message("local log system is not installed in this process")
+    })
+}
+
+pub fn clear_installed_log_system_for_test() {
+    let slot = installed_slot();
+    let mut w = slot.write().expect("installed log system lock poisoned");
+    *w = None;
+}
+
+// ── Bootstraps ────────────────────────────────────────────────────────────────
+
 pub async fn bootstrap_running_log_system(
-    _p: PathBuf,
-    _r: LogRetention,
-    _q: usize,
-    _s: usize,
+    store_path: PathBuf,
+    retention: LogRetention,
+    queue_capacity: usize,
+    subscriber_capacity: usize,
 ) -> anyhow::Result<Arc<LogSystem>> {
-    unimplemented!("bootstrap_running_log_system stub (Task 9)")
+    let store = Arc::new(LogStore::open(store_path, retention).await?);
+    let hub = Arc::new(StreamHub::new(subscriber_capacity));
+    let (handle, counters) =
+        ingest::spawn_writer(Arc::clone(&store), Arc::clone(&hub), queue_capacity);
+
+    let system = Arc::new(LogSystem {
+        store,
+        hub,
+        ingest: handle,
+        counters,
+    });
+    install(Arc::clone(&system));
+    Ok(system)
 }
 
 pub async fn bootstrap_store_backed_log_system(
-    _p: PathBuf,
-    _r: LogRetention,
+    store_path: PathBuf,
+    retention: LogRetention,
 ) -> anyhow::Result<Arc<LogSystem>> {
-    unimplemented!("bootstrap_store_backed_log_system stub (Task 9)")
+    let store = Arc::new(LogStore::open(store_path, retention).await?);
+    let hub = Arc::new(StreamHub::new(1));
+    let counters = Arc::new(IngestCounters::new());
+    let handle = ingest::readonly_handle(Arc::clone(&counters));
+
+    Ok(Arc::new(LogSystem {
+        store,
+        hub,
+        ingest: handle,
+        counters,
+    }))
 }
 
+// ── Test helpers ──────────────────────────────────────────────────────────────
+
 #[doc(hidden)]
-pub async fn bootstrap_running_log_system_for_test(_q: usize) -> anyhow::Result<Arc<LogSystem>> {
-    unimplemented!("bootstrap_running_log_system_for_test stub (Task 9)")
+pub async fn bootstrap_running_log_system_for_test(
+    queue_capacity: usize,
+) -> anyhow::Result<Arc<LogSystem>> {
+    let path = unique_test_store_path();
+    bootstrap_running_log_system(path, LogRetention::default(), queue_capacity, 32).await
 }
 
 #[doc(hidden)]
 pub fn bootstrap_log_system_for_test() -> anyhow::Result<Arc<LogSystem>> {
-    unimplemented!("bootstrap_log_system_for_test stub (Task 9)")
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(bootstrap_running_log_system_for_test(16))
 }
 
-pub fn resolve_store_path(_c: Option<&LabConfig>) -> PathBuf {
-    PathBuf::new()
+fn unique_test_store_path() -> PathBuf {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "lab-logs-test-bootstrap-{}-{unique}.db",
+        std::process::id()
+    ))
 }
 
-pub fn resolve_retention(_c: Option<&LabConfig>) -> LogRetention {
-    LogRetention::default()
+// ── Config resolvers ──────────────────────────────────────────────────────────
+
+const DEFAULT_DB_PATH_REL: &str = ".lab/logs.db";
+
+pub fn resolve_store_path(config: Option<&LabConfig>) -> PathBuf {
+    if let Some(env) = env_non_empty("LAB_LOGS_STORE_PATH") {
+        return PathBuf::from(env);
+    }
+    if let Some(cfg) = config.and_then(|c| c.local_logs.as_ref()) {
+        if let Some(p) = &cfg.store_path {
+            return p.clone();
+        }
+    }
+    default_store_path()
 }
 
-pub fn resolve_queue_capacity(_c: Option<&LabConfig>) -> usize {
-    4096
+fn default_store_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(DEFAULT_DB_PATH_REL)
 }
 
-pub fn resolve_subscriber_capacity(_c: Option<&LabConfig>) -> usize {
-    1024
+pub fn resolve_retention(config: Option<&LabConfig>) -> LogRetention {
+    let base = config
+        .and_then(|c| c.local_logs.as_ref())
+        .map(|c| LogRetention {
+            max_age_days: c.retention_days.unwrap_or(LogRetention::default().max_age_days),
+            max_bytes: c.max_bytes.unwrap_or(LogRetention::default().max_bytes),
+        })
+        .unwrap_or_default();
+
+    LogRetention {
+        max_age_days: env_non_empty("LAB_LOGS_RETENTION_DAYS")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(base.max_age_days),
+        max_bytes: env_non_empty("LAB_LOGS_MAX_BYTES")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(base.max_bytes),
+    }
+}
+
+pub fn resolve_queue_capacity(config: Option<&LabConfig>) -> usize {
+    env_non_empty("LAB_LOGS_QUEUE_CAPACITY")
+        .and_then(|s| s.parse().ok())
+        .or_else(|| {
+            config
+                .and_then(|c| c.local_logs.as_ref())
+                .and_then(|c| c.queue_capacity)
+        })
+        .unwrap_or(4096)
+}
+
+pub fn resolve_subscriber_capacity(config: Option<&LabConfig>) -> usize {
+    env_non_empty("LAB_LOGS_SUBSCRIBER_CAPACITY")
+        .and_then(|s| s.parse().ok())
+        .or_else(|| {
+            config
+                .and_then(|c| c.local_logs.as_ref())
+                .and_then(|c| c.subscriber_capacity)
+        })
+        .unwrap_or(1024)
 }
