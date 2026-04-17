@@ -1198,7 +1198,7 @@ fn redact_gateway_url(url: &str) -> String {
 }
 
 fn is_sensitive_query_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase();
+    let normalized = key.to_ascii_lowercase().replace('-', "_");
     matches!(
         normalized.as_str(),
         "token"
@@ -1242,10 +1242,9 @@ fn redact_gateway_stdio_value(value: &str) -> String {
 }
 
 fn format_redacted_gateway_command(command: &str, args: &[String]) -> String {
-    if command == "env"
-        && let Some(actual_command) = args.iter().find(|arg| !arg.contains('='))
-    {
-        return actual_command.clone();
+    if command == "env" {
+        let _ = args;
+        return "env".to_string();
     }
 
     redact_gateway_stdio_value(command)
@@ -1692,6 +1691,7 @@ mod tests {
                     "OPENAI_API_KEY=super-secret".to_string(),
                     "npx".to_string(),
                     "--access_token=abc123".to_string(),
+                    "--api-key=super-secret".to_string(),
                 ],
                 proxy_resources: false,
                 expose_tools: None,
@@ -1706,6 +1706,7 @@ mod tests {
                 "OPENAI_API_KEY=[redacted]".to_string(),
                 "npx".to_string(),
                 "--access_token=[redacted]".to_string(),
+                "--api-key=[redacted]".to_string(),
             ]
         );
     }
@@ -1768,7 +1769,7 @@ mod tests {
 
         let view = server_view_from_upstream(None, &upstream).await;
 
-        assert_eq!(view.config_summary.target.as_deref(), Some("npx"));
+        assert_eq!(view.config_summary.target.as_deref(), Some("env"));
     }
 
     #[tokio::test]
