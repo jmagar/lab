@@ -1,5 +1,6 @@
 use std::pin::pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{
     Router,
@@ -49,8 +50,7 @@ async fn test_app() -> (Router, Arc<lab::dispatch::logs::types::LogSystem>) {
     )
 }
 
-async fn read_next_body_chunk(body: Body) -> Option<axum::body::Bytes> {
-    let mut body = pin!(body);
+async fn read_next_body_chunk(mut body: std::pin::Pin<&mut Body>) -> Option<axum::body::Bytes> {
     loop {
         let frame = match poll_fn(|cx| body.as_mut().poll_frame(cx)).await {
             Some(Ok(frame)) => frame,
@@ -59,6 +59,30 @@ async fn read_next_body_chunk(body: Body) -> Option<axum::body::Bytes> {
         };
         if let Ok(data) = frame.into_data() {
             return Some(data);
+        }
+    }
+}
+
+async fn wait_for_substring(body: Body, needle: &str) -> String {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let mut body = pin!(body);
+    let mut collected = String::new();
+
+    loop {
+        let Some(remaining) = deadline.checked_duration_since(tokio::time::Instant::now()) else {
+            panic!("never observed {needle}; got {collected:?}");
+        };
+
+        let next_chunk = tokio::time::timeout(remaining, read_next_body_chunk(body.as_mut()))
+            .await
+            .unwrap_or_else(|_| panic!("timed out waiting for {needle}; got {collected:?}"));
+        let Some(chunk) = next_chunk else {
+            panic!("stream closed before {needle}; got {collected:?}");
+        };
+
+        collected.push_str(std::str::from_utf8(&chunk).unwrap_or(""));
+        if collected.contains(needle) {
+            return collected;
         }
     }
 }
@@ -114,7 +138,7 @@ async fn logs_stream_sse_route_emits_event_stream_content_type() {
 }
 
 #[tokio::test]
-async fn logs_sse_reconnect_resumes_stream() {
+async fn logs_sse_subscribers_receive_events_after_subscribe() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
@@ -137,10 +161,7 @@ async fn logs_sse_reconnect_resumes_stream() {
         .await
         .expect("first event");
 
-    let first_chunk = read_next_body_chunk(first_response.into_body())
-        .await
-        .expect("first sse frame");
-    let first_text = String::from_utf8(first_chunk.to_vec()).expect("utf8 body");
+    let first_text = wait_for_substring(first_response.into_body(), "first sse payload").await;
     assert!(first_text.contains("first sse payload"));
 
     let second_response = app
@@ -159,10 +180,7 @@ async fn logs_sse_reconnect_resumes_stream() {
         .await
         .expect("second event");
 
-    let second_chunk = read_next_body_chunk(second_response.into_body())
-        .await
-        .expect("second sse frame");
-    let second_text = String::from_utf8(second_chunk.to_vec()).expect("utf8 body");
+    let second_text = wait_for_substring(second_response.into_body(), "second sse payload").await;
     assert!(second_text.contains("second sse payload"));
 }
 

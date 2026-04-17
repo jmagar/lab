@@ -38,11 +38,14 @@ export function connectLogStream(
     handlers.onOpen?.()
   }
   source.onmessage = (message) => {
+    let event: LogEvent
     try {
-      handlers.onEvent(JSON.parse(message.data) as LogEvent)
+      event = JSON.parse(message.data) as LogEvent
     } catch {
       handlers.onError?.('received malformed log event')
+      return
     }
+    handlers.onEvent(event)
   }
   source.addEventListener('lag', (message) => {
     const skipped = Number(message.data)

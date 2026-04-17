@@ -107,59 +107,32 @@ pub async fn run_local(
     config: &LabConfig,
 ) -> Result<ExitCode> {
     let system = local_log_system(config).await?;
-    match local.command {
-        LocalLogsCommand::Search(args) => {
-            let query = build_search_query(args);
-            run_action_command(
-                "logs",
-                "logs.search".to_string(),
-                json!({ "query": query }),
-                format,
-                move |action, params| {
-                    let system = Arc::clone(&system);
-                    async move { dispatch_with_system(&system, &action, params).await }
-                },
-            )
-            .await
-        }
-        LocalLogsCommand::Tail(args) => {
-            let request = LogTailRequest {
+    let (action, params) = match local.command {
+        LocalLogsCommand::Search(args) => (
+            "logs.search".to_string(),
+            json!({ "query": build_search_query(args) }),
+        ),
+        LocalLogsCommand::Tail(args) => (
+            "logs.tail".to_string(),
+            serde_json::to_value(LogTailRequest {
                 after_ts: args.after_ts,
                 since_event_id: args.since_event_id,
                 limit: args.limit,
-            };
-            run_action_command(
-                "logs",
-                "logs.tail".to_string(),
-                serde_json::to_value(request)?,
-                format,
-                move |action, params| {
-                    let system = Arc::clone(&system);
-                    async move { dispatch_with_system(&system, &action, params).await }
-                },
-            )
-            .await
-        }
-        LocalLogsCommand::Stats => {
-            run_action_command(
-                "logs",
-                "logs.stats".to_string(),
-                json!({}),
-                format,
-                move |action, params| {
-                    let system = Arc::clone(&system);
-                    async move { dispatch_with_system(&system, &action, params).await }
-                },
-            )
-            .await
-        }
-        LocalLogsCommand::Stream => Err(anyhow::anyhow!(
-            "{}",
-            serde_json::to_string(&ToolError::internal_message(
+            })?,
+        ),
+        LocalLogsCommand::Stats => ("logs.stats".to_string(), json!({})),
+        LocalLogsCommand::Stream => {
+            return Err(anyhow::anyhow!(
                 "true live log streaming is only available over HTTP SSE at `/v1/logs/stream`; use `lab logs local tail` for bounded follow-up windows"
-            ))?
-        )),
-    }
+            ));
+        }
+    };
+
+    run_action_command("logs", action, params, format, move |action, params| {
+        let system = Arc::clone(&system);
+        async move { dispatch_with_system(&system, &action, params).await }
+    })
+    .await
 }
 
 async fn local_log_system(config: &LabConfig) -> Result<Arc<LogSystem>> {
@@ -227,15 +200,7 @@ mod tests {
     #[test]
     fn logs_cli_rejects_invalid_local_search_filters() {
         assert!(
-            Cli::try_parse_from([
-                "lab",
-                "logs",
-                "local",
-                "search",
-                "--level",
-                "warning",
-            ])
-            .is_err()
+            Cli::try_parse_from(["lab", "logs", "local", "search", "--level", "warning",]).is_err()
         );
     }
 }

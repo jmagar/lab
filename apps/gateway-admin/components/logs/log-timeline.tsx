@@ -22,6 +22,11 @@ const levelStyles = {
   error: 'border-rose-300 bg-rose-50 text-rose-700',
 } as const
 
+const timestampFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'medium',
+})
+
 export function LogTimeline({
   events,
   isLoading,
@@ -29,11 +34,6 @@ export function LogTimeline({
   viewportRef,
   onViewportScroll,
 }: LogTimelineProps) {
-  const timestampFormatter = new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'medium',
-  })
-
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-900/5">
       <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4">

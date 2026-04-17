@@ -53,11 +53,12 @@ impl Drop for SqlitePathCleanup {
 
 #[allow(dead_code)]
 pub(crate) fn cleanup_sqlite_path(path: &Path) {
-    let sidecars = [
-        path.to_path_buf(),
-        PathBuf::from(format!("{}-wal", path.display())),
-        PathBuf::from(format!("{}-shm", path.display())),
-    ];
+    let with_suffix = |suffix: &str| -> PathBuf {
+        let mut os = path.as_os_str().to_os_string();
+        os.push(suffix);
+        PathBuf::from(os)
+    };
+    let sidecars = [path.to_path_buf(), with_suffix("-wal"), with_suffix("-shm")];
 
     for candidate in sidecars {
         match fs::remove_file(&candidate) {

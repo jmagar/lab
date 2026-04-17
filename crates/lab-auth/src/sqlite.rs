@@ -65,7 +65,7 @@ impl SqliteStore {
                 Value::Integer(int) => int.to_string(),
                 other => format!("{other:?}"),
             })
-            .map_err(|error| sqlite_error(&error))
+            .map_err(sqlite_error)
         })
         .await
     }
@@ -82,7 +82,7 @@ impl SqliteStore {
                     created_at = excluded.created_at",
                 params![client.client_id, redirect_uris, client.created_at],
             )
-            .map_err(|error| sqlite_error(&error))?;
+            .map_err(sqlite_error)?;
             Ok(())
         })
         .await
@@ -116,7 +116,7 @@ impl SqliteStore {
                 },
             )
             .optional()
-            .map_err(|error| sqlite_error(&error))
+            .map_err(sqlite_error)
         })
         .await
     }
@@ -144,7 +144,7 @@ impl SqliteStore {
                     request.expires_at,
                 ],
             )
-            .map_err(|error| sqlite_error(&error))?;
+            .map_err(sqlite_error)?;
             Ok(())
         })
         .await
@@ -170,7 +170,7 @@ impl SqliteStore {
                 rusqlite::Error::QueryReturnedNoRows => AuthError::InvalidGrant(
                     "authorization state is missing, expired, or already used".to_string(),
                 ),
-                other => sqlite_error(&other),
+                other => sqlite_error(other),
             })
         })
         .await
@@ -197,7 +197,7 @@ impl SqliteStore {
                     code.expires_at,
                 ],
             )
-            .map_err(|error| sqlite_error(&error))?;
+            .map_err(sqlite_error)?;
             Ok(())
         })
         .await
@@ -221,7 +221,7 @@ impl SqliteStore {
                 rusqlite::Error::QueryReturnedNoRows => AuthError::InvalidGrant(
                     "authorization code is missing, expired, or already redeemed".to_string(),
                 ),
-                other => sqlite_error(&other),
+                other => sqlite_error(other),
             })
         })
         .await
@@ -251,7 +251,7 @@ impl SqliteStore {
                     token.expires_at,
                 ],
             )
-            .map_err(|error| sqlite_error(&error))?;
+            .map_err(sqlite_error)?;
             Ok(())
         })
         .await
@@ -274,7 +274,7 @@ impl SqliteStore {
                 row_to_refresh_token,
             )
             .optional()
-            .map_err(|error| sqlite_error(&error))
+            .map_err(sqlite_error)
         })
         .await
     }
@@ -303,7 +303,7 @@ impl SqliteStore {
                     session.expires_at,
                 ],
             )
-            .map_err(|error| sqlite_error(&error))?;
+            .map_err(sqlite_error)?;
             Ok(())
         })
         .await
@@ -325,7 +325,7 @@ impl SqliteStore {
                 row_to_browser_session,
             )
             .optional()
-            .map_err(|error| sqlite_error(&error))
+            .map_err(sqlite_error)
         })
         .await
     }
@@ -337,7 +337,7 @@ impl SqliteStore {
                 "DELETE FROM browser_sessions WHERE session_id = ?1",
                 params![session_id],
             )
-            .map_err(|error| sqlite_error(&error))?;
+            .map_err(sqlite_error)?;
             Ok(())
         })
         .await
@@ -345,11 +345,8 @@ impl SqliteStore {
 
     pub async fn execute_test_statement(&self, sql: &str) -> Result<(), AuthError> {
         let sql = sql.to_string();
-        self.with_conn(move |conn| {
-            conn.execute_batch(&sql)
-                .map_err(|error| sqlite_error(&error))
-        })
-        .await
+        self.with_conn(move |conn| conn.execute_batch(&sql).map_err(sqlite_error))
+            .await
     }
 
     pub async fn insert_browser_login_state(
@@ -369,7 +366,7 @@ impl SqliteStore {
                     login.expires_at,
                 ],
             )
-            .map_err(|error| sqlite_error(&error))?;
+            .map_err(sqlite_error)?;
             Ok(())
         })
         .await
@@ -391,7 +388,7 @@ impl SqliteStore {
                 row_to_browser_login_state,
             )
             .optional()
-            .map_err(|error| sqlite_error(&error))
+            .map_err(sqlite_error)
         })
         .await
     }
@@ -414,7 +411,7 @@ impl SqliteStore {
                         &format!("DELETE FROM {table} WHERE expires_at <= ?1"),
                         params![now],
                     )
-                    .map_err(|error| sqlite_error(&error))?;
+                    .map_err(sqlite_error)?;
                 total += deleted as u64;
             }
             Ok(total)
@@ -467,13 +464,13 @@ fn open_connection(path: &Path) -> Result<Connection, AuthError> {
         ensure_restrictive_permissions(path)?;
     }
 
-    let conn = Connection::open(path).map_err(|error| sqlite_error(&error))?;
+    let conn = Connection::open(path).map_err(sqlite_error)?;
     conn.busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
-        .map_err(|error| sqlite_error(&error))?;
+        .map_err(sqlite_error)?;
     conn.pragma_update(None, "journal_mode", "WAL")
-        .map_err(|error| sqlite_error(&error))?;
+        .map_err(sqlite_error)?;
     conn.pragma_update(None, "foreign_keys", "ON")
-        .map_err(|error| sqlite_error(&error))?;
+        .map_err(sqlite_error)?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS registered_clients (
             client_id TEXT PRIMARY KEY,
@@ -529,7 +526,7 @@ fn open_connection(path: &Path) -> Result<Connection, AuthError> {
             expires_at INTEGER NOT NULL
         );",
     )
-    .map_err(|error| sqlite_error(&error))?;
+    .map_err(sqlite_error)?;
 
     if !existed {
         set_restrictive_permissions(path)?;
@@ -552,10 +549,10 @@ fn validate_or_reopen_connection(conn: &mut Connection, path: &Path) -> Result<(
     *conn = open_connection(path)?;
     conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0))
         .map(|_| ())
-        .map_err(|error| sqlite_error(&error))
+        .map_err(sqlite_error)
 }
 
-fn sqlite_error(error: &rusqlite::Error) -> AuthError {
+fn sqlite_error(error: rusqlite::Error) -> AuthError {
     AuthError::Storage(format!("sqlite error: {error}"))
 }
 

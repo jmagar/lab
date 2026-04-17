@@ -64,6 +64,17 @@ function retainedWindow(stats: LogStoreStats | null): string {
   return `${timestampFormatter.format(new Date(stats.oldest_retained_ts))} -> ${timestampFormatter.format(new Date(stats.newest_retained_ts))}`
 }
 
+function scrollViewportToBottom(viewport: HTMLDivElement | null) {
+  viewport?.scrollTo({
+    top: viewport.scrollHeight,
+    behavior: 'smooth',
+  })
+}
+
+function formatRetentionWindowDays(days: number): string {
+  return `${days} day${days === 1 ? '' : 's'}`
+}
+
 function queryPreviewForAfterTs(filters: LogFilterState, afterTs: number | null): string {
   return JSON.stringify(
     {
@@ -98,17 +109,19 @@ export function LogConsole() {
   const filtersRef = React.useRef(filters)
   const effectivePaused = manualPause || !atLiveEdge
   const effectivePausedRef = React.useRef(effectivePaused)
+  const bufferedEventsRef = React.useRef(bufferedEvents)
   const maxEntriesRef = React.useRef(filters.limit)
   const afterTs = React.useMemo(() => {
     const windowMs = WINDOW_TO_MS[windowPreset]
     return windowMs == null ? null : Date.now() - windowMs
-  }, [windowPreset, refreshToken])
+  }, [windowPreset, refreshToken, deferredFilters])
 
   React.useLayoutEffect(() => {
     filtersRef.current = filters
     effectivePausedRef.current = effectivePaused
+    bufferedEventsRef.current = bufferedEvents
     maxEntriesRef.current = filters.limit
-  }, [filters, effectivePaused])
+  }, [bufferedEvents, filters, effectivePaused])
 
   React.useEffect(() => {
     if (!copyStatus) {
@@ -142,9 +155,23 @@ export function LogConsole() {
           return
         }
 
+        const fetchedEvents = mergeTimelineEvents([], result.events, deferredFilters.limit)
+        const fetchedEventIds = new Set(fetchedEvents.map((event) => event.event_id))
+        const uncoveredBufferedEvents = bufferedEventsRef.current.filter(
+          (event) => !fetchedEventIds.has(event.event_id),
+        )
+
         startTransition(() => {
-          setEvents(mergeTimelineEvents([], result.events, deferredFilters.limit))
-          setBufferedEvents([])
+          setEvents(
+            effectivePausedRef.current
+              ? fetchedEvents
+              : mergeTimelineEvents(
+                  fetchedEvents,
+                  uncoveredBufferedEvents,
+                  deferredFilters.limit,
+                ),
+          )
+          setBufferedEvents(effectivePausedRef.current ? uncoveredBufferedEvents : [])
           setStats(nextStats)
           setStreamError(null)
         })
@@ -210,10 +237,7 @@ export function LogConsole() {
 
         if (!effectivePausedRef.current) {
           requestAnimationFrame(() => {
-            viewportRef.current?.scrollTo({
-              top: viewportRef.current.scrollHeight,
-              behavior: 'smooth',
-            })
+            scrollViewportToBottom(viewportRef.current)
           })
         }
       },
@@ -237,16 +261,14 @@ export function LogConsole() {
     })
 
     requestAnimationFrame(() => {
-      viewportRef.current?.scrollTo({
-        top: viewportRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
+      scrollViewportToBottom(viewportRef.current)
     })
   }, [bufferedEvents, effectivePaused, filters.limit])
 
   const streamStatus: LogStreamStatus = {
     connected,
     paused: effectivePaused,
+    atLiveEdge,
     buffered: bufferedEvents.length,
     lastEventTs,
     error: streamError,
@@ -300,15 +322,23 @@ export function LogConsole() {
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Stored events</p>
-                <p className="mt-2 text-2xl font-semibold tabular-nums">{stats?.total_event_count ?? 0}</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums">
+                  {stats ? stats.total_event_count : 'Loading…'}
+                </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Retention</p>
-                <p className="mt-2 text-sm font-medium">{stats ? `${stats.retention.max_age_days} days / ${formatBytes(stats.retention.max_bytes)}` : 'Loading…'}</p>
+                <p className="mt-2 text-sm font-medium">
+                  {stats
+                    ? `${formatRetentionWindowDays(stats.retention.max_age_days)} / ${formatBytes(stats.retention.max_bytes)}`
+                    : 'Loading…'}
+                </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Dropped</p>
-                <p className="mt-2 text-2xl font-semibold tabular-nums">{stats?.dropped_event_count ?? 0}</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums">
+                  {stats ? stats.dropped_event_count : 'Loading…'}
+                </p>
               </div>
             </div>
           </div>
@@ -335,6 +365,9 @@ export function LogConsole() {
               onJumpToNewest={() => {
                 setManualPause(false)
                 setAtLiveEdge(true)
+                requestAnimationFrame(() => {
+                  scrollViewportToBottom(viewportRef.current)
+                })
               }}
             />
 

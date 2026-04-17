@@ -79,7 +79,7 @@ export function LogStreamStatusCard({
             variant="outline"
             className="border-white/15 bg-white/5 text-slate-50 hover:bg-white/10"
             onClick={onJumpToNewest}
-            disabled={status.buffered === 0 && !status.paused}
+            disabled={status.atLiveEdge && status.buffered === 0}
           >
             <RefreshCw className="size-4" />
             Jump to newest

@@ -61,7 +61,7 @@ function buildSearchableEventText(event: LogEvent): string {
     event.upstream_event_id ?? '',
     structuredFields,
   ]
-    .join(' ')
+    .join('\u0000')
     .toLowerCase()
 }
 

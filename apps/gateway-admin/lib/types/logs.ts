@@ -82,6 +82,7 @@ export interface LogFilterState {
 export interface LogStreamStatus {
   connected: boolean
   paused: boolean
+  atLiveEdge: boolean
   buffered: number
   lastEventTs: number | null
   error: string | null
