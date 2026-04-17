@@ -6,15 +6,10 @@ use super::types::{LogQuery, LogTailRequest};
 use crate::dispatch::error::ToolError;
 
 pub fn parse_search_params(params: Value) -> Result<LogQuery, ToolError> {
+    // Accept both `{"query": {...}}` (wrapped) and `{...}` (flat); `null` too.
     let inner = match params {
-        Value::Object(mut map) => {
-            if let Some(q) = map.remove("query") {
-                q
-            } else {
-                Value::Object(map)
-            }
-        }
-        Value::Null => Value::Object(Default::default()),
+        Value::Object(mut map) => map.remove("query").unwrap_or(Value::Object(map)),
+        Value::Null => Value::Object(serde_json::Map::new()),
         other => other,
     };
     serde_json::from_value::<LogQuery>(inner).map_err(|e| ToolError::InvalidParam {
@@ -24,9 +19,10 @@ pub fn parse_search_params(params: Value) -> Result<LogQuery, ToolError> {
 }
 
 pub fn parse_tail_params(params: Value) -> Result<LogTailRequest, ToolError> {
-    let inner = match params {
-        Value::Null => Value::Object(Default::default()),
-        other => other,
+    let inner = if params.is_null() {
+        Value::Object(serde_json::Map::new())
+    } else {
+        params
     };
     serde_json::from_value::<LogTailRequest>(inner).map_err(|e| ToolError::InvalidParam {
         message: format!("invalid LogTailRequest: {e}"),

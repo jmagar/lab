@@ -17,7 +17,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             action_schema(ACTIONS, a)
         }
         other => {
-            validate_action(other)?;
+            // Validate the action name before requiring an installed system,
+            // so `unknown_action` surfaces even when no LogSystem is available.
+            if !ACTIONS.iter().any(|a| a.name == other) {
+                return Err(ToolError::UnknownAction {
+                    message: format!("unknown action `{other}` for service `logs`"),
+                    valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+                    hint: None,
+                });
+            }
             let system = client::require_system()?;
             dispatch_with_system(&system, other, params).await
         }
@@ -35,77 +43,21 @@ pub async fn dispatch_with_system(
             let a = require_str(&params, "action")?;
             action_schema(ACTIONS, a)
         }
-        "logs.search" => {
-            let q = parse_search_params(params)?;
-            let result = system.search(q).await?;
-            to_json(result)
-        }
-        "logs.tail" => {
-            let r = parse_tail_params(params)?;
-            let result = system.tail(r).await?;
-            to_json(result)
-        }
-        "logs.stats" => {
-            let stats = system.stats().await?;
-            to_json(stats)
-        }
+        "logs.search" => to_json(system.search(parse_search_params(params)?).await?),
+        "logs.tail" => to_json(system.tail(parse_tail_params(params)?).await?),
+        "logs.stats" => to_json(system.stats().await?),
         "logs.stream" => Err(ToolError::Sdk {
             sdk_kind: "not_found".to_string(),
             message:
                 "live push is HTTP SSE only; connect to GET /v1/logs/stream to receive events"
                     .to_string(),
         }),
-        unknown => Err(unknown_action_error(unknown)),
+        unknown => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{unknown}` for service `logs`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
     }
-}
-
-fn validate_action(action: &str) -> Result<(), ToolError> {
-    if ACTIONS.iter().any(|a| a.name == action) {
-        Ok(())
-    } else {
-        Err(unknown_action_error(action))
-    }
-}
-
-fn unknown_action_error(action: &str) -> ToolError {
-    let valid: Vec<String> = ACTIONS.iter().map(|a| a.name.to_string()).collect();
-    let hint = closest(&valid, action);
-    ToolError::UnknownAction {
-        message: format!("unknown action `{action}` for service `logs`"),
-        valid,
-        hint,
-    }
-}
-
-fn closest(valid: &[String], action: &str) -> Option<String> {
-    valid
-        .iter()
-        .filter(|v| v.len().abs_diff(action.len()) <= 2)
-        .min_by_key(|v| levenshtein(v, action))
-        .filter(|v| levenshtein(v, action) <= 3)
-        .cloned()
-}
-
-fn levenshtein(a: &str, b: &str) -> usize {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    if a.is_empty() {
-        return b.len();
-    }
-    if b.is_empty() {
-        return a.len();
-    }
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    let mut curr = vec![0; b.len() + 1];
-    for i in 1..=a.len() {
-        curr[0] = i;
-        for j in 1..=b.len() {
-            let cost = usize::from(a[i - 1] != b[j - 1]);
-            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-    prev[b.len()]
 }
 
 #[cfg(test)]
