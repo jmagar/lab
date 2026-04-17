@@ -417,22 +417,33 @@ fn render_extract_report(
 
     let mut out = String::new();
     writeln!(out, "{}", render_heading("Extract Report", ctx)).ok();
-    if let Some(uri) = map.get("uri") {
+    if let Some(target) = map.get("target") {
         writeln!(
             out,
             "{} {}",
             primary("Scan target:", ctx),
-            render_uri(uri, ctx)
+            render_target(target, ctx)
         )
         .ok();
     }
+    let verified = creds
+        .iter()
+        .filter(|cred| {
+            cred.as_object()
+                .and_then(|map| map.get("url_verified"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        })
+        .count();
     writeln!(
         out,
-        "{} {} | {} {} | {} {}",
+        "{} {} | {} {} | {} {} | {} {}",
         primary("Found:", ctx),
         accent(found.len().to_string().as_str(), ctx),
         primary("Credentials:", ctx),
         accent(creds.len().to_string().as_str(), ctx),
+        primary("Verified:", ctx),
+        accent(verified.to_string().as_str(), ctx),
         primary("Warnings:", ctx),
         accent(warnings.len().to_string().as_str(), ctx)
     )
@@ -450,7 +461,12 @@ fn render_extract_report(
 
     if !warnings.is_empty() {
         out.push('\n');
-        let headers = vec!["Service".to_string(), "Warning".to_string()];
+        let headers = vec![
+            "Service".to_string(),
+            "Host".to_string(),
+            "Runtime".to_string(),
+            "Warning".to_string(),
+        ];
         let rows = warnings
             .iter()
             .filter_map(Value::as_object)
@@ -458,6 +474,10 @@ fn render_extract_report(
                 vec![
                     map.get("service")
                         .map_or_else(|| "-".to_string(), |v| render_cell_text(v, ctx)),
+                    map.get("host")
+                        .map_or_else(|| dim("-", ctx), |v| render_cell_text(v, ctx)),
+                    map.get("runtime")
+                        .map_or_else(|| dim("-", ctx), |v| render_runtime(v, ctx)),
                     map.get("message")
                         .map_or_else(|| "-".to_string(), |v| render_cell_text(v, ctx)),
                 ]
@@ -474,8 +494,12 @@ fn render_extract_creds(items: &[Value], ctx: RenderContext) -> String {
     let headers = vec![
         "Service".to_string(),
         "URL".to_string(),
+        "Verified".to_string(),
         "Secret".to_string(),
         "Env".to_string(),
+        "Source".to_string(),
+        "Probe".to_string(),
+        "Runtime".to_string(),
     ];
     let rows = items
         .iter()
@@ -486,9 +510,17 @@ fn render_extract_creds(items: &[Value], ctx: RenderContext) -> String {
                     .map_or_else(|| "-".to_string(), |v| render_cell_text(v, ctx)),
                 map.get("url")
                     .map_or_else(|| dim("-", ctx), |v| render_cell_text(v, ctx)),
+                map.get("url_verified")
+                    .map_or_else(|| dim("-", ctx), |v| render_cell_text(v, ctx)),
                 render_secret_state(map.get("secret"), ctx),
                 map.get("env_field")
                     .map_or_else(|| "-".to_string(), |v| render_cell_text(v, ctx)),
+                map.get("source_host")
+                    .map_or_else(|| dim("-", ctx), |v| render_cell_text(v, ctx)),
+                map.get("probe_host")
+                    .map_or_else(|| dim("-", ctx), |v| render_cell_text(v, ctx)),
+                map.get("runtime")
+                    .map_or_else(|| dim("-", ctx), |v| render_runtime(v, ctx)),
             ]
         })
         .collect::<Vec<_>>();
@@ -641,6 +673,32 @@ fn render_uri(value: &Value, ctx: RenderContext) -> String {
                 _ => render_cell_text(value, ctx),
             }
         }
+        _ => render_cell_text(value, ctx),
+    }
+}
+
+fn render_target(value: &Value, ctx: RenderContext) -> String {
+    match value {
+        Value::Object(map) => match map.get("mode").and_then(Value::as_str) {
+            Some("fleet") => accent("fleet", ctx),
+            Some("targeted") => map
+                .get("uri")
+                .map_or_else(|| accent("targeted", ctx), |uri| render_uri(uri, ctx)),
+            _ => render_cell_text(value, ctx),
+        },
+        _ => render_cell_text(value, ctx),
+    }
+}
+
+fn render_runtime(value: &Value, ctx: RenderContext) -> String {
+    let Some(map) = value.as_object() else {
+        return render_cell_text(value, ctx);
+    };
+    let name = map.get("container_name").and_then(Value::as_str);
+    let image = map.get("image").and_then(Value::as_str);
+    match (name, image) {
+        (Some(name), Some(image)) if !image.is_empty() => accent(&format!("{name} ({image})"), ctx),
+        (Some(name), _) => accent(name, ctx),
         _ => render_cell_text(value, ctx),
     }
 }
@@ -948,29 +1006,52 @@ mod tests {
     }
 
     #[test]
-    fn extract_report_renders_creds_and_warnings() {
+    fn extract_report_renders_fleet_provenance_and_url_only_results() {
         let val = json!({
-            "uri": {"Local": "/mnt/appdata"},
+            "target": {"mode": "fleet"},
             "found": ["radarr", "sonarr", "plex"],
             "creds": [
                 {
                     "service": "radarr",
-                    "url": "http://radarr:7878",
-                    "secret": "abc",
-                    "env_field": "RADARR_API_KEY"
+                    "url": "http://100.64.0.12:7878",
+                    "secret": null,
+                    "env_field": "RADARR_API_KEY",
+                    "source_host": "media-node",
+                    "probe_host": "100.64.0.12",
+                    "runtime": {
+                        "container_name": "radarr",
+                        "image": "lscr.io/linuxserver/radarr:latest"
+                    },
+                    "url_verified": true
                 }
             ],
             "warnings": [
-                {"service": "plex", "message": "token missing"}
+                {
+                    "service": "plex",
+                    "host": "media-node",
+                    "runtime": {
+                        "container_name": "plex",
+                        "image": "plexinc/pms-docker:latest"
+                    },
+                    "message": "config root could not be resolved"
+                }
             ]
         });
 
         let out = render(&val, OutputFormat::Human).unwrap();
         assert!(out.contains("Extract Report"));
-        assert!(out.contains("Credentials:"));
-        assert!(out.contains("Warnings:"));
+        assert!(out.contains("Scan target:"));
+        assert!(out.contains("fleet"));
+        assert!(out.contains("Verified:"));
+        assert!(out.contains("Source"));
+        assert!(out.contains("Probe"));
+        assert!(out.contains("Runtime"));
         assert!(out.contains("radarr"));
+        assert!(out.contains("media-node"));
+        assert!(out.contains("100.64.0.12"));
+        assert!(out.contains("lscr.io/linuxserver/radarr:latest"));
         assert!(out.contains("✓"));
-        assert!(!out.contains("set"));
+        assert!(out.contains("plex"));
+        assert!(out.contains("config root could not be resolved"));
     }
 }

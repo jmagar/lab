@@ -8,7 +8,9 @@ import {
   LayoutDashboard, 
   Settings, 
   Activity,
+  ScrollText,
   HelpCircle,
+  WandSparkles,
 } from 'lucide-react'
 
 import {
@@ -44,9 +46,19 @@ const navigation = [
     icon: Cable,
   },
   {
+    title: 'Setup',
+    url: '/setup',
+    icon: WandSparkles,
+  },
+  {
     title: 'Activity',
     url: '/activity',
     icon: Activity,
+  },
+  {
+    title: 'Logs',
+    url: '/logs',
+    icon: ScrollText,
   },
 ]
 

@@ -9,8 +9,8 @@ import {
   getMockServiceConfigFallback,
   getMockSupportedServicesFallback,
 } from '@/lib/api/mock-fallback'
-import { EXPOSE_NONE_PATTERN } from '@/lib/api/tool-exposure-draft'
-import { getMockGatewayOverride, setMockGatewayOverride } from '@/lib/api/mock-gateway-overrides'
+import { setMockGatewayOverride } from '@/lib/api/mock-gateway-overrides'
+import { mergeGatewayListWithSupportedServices } from '@/lib/api/gateway-list-model'
 import {
   mockGateways,
   mockReloadResult,
@@ -63,7 +63,52 @@ const fetchGateways = async (): Promise<Gateway[]> => {
     await mockDelay()
     return getMockGatewaysFallback()
   }
-  return gatewayApi.list()
+
+  const [gateways, supportedServices] = await Promise.all([
+    gatewayApi.list(),
+    gatewayApi.supportedServices(),
+  ])
+
+  const missingServices = supportedServices.filter(
+    (service) => !gateways.some((gateway) => gateway.id === service.key),
+  )
+
+  if (missingServices.length === 0) {
+    return gateways
+  }
+
+  const serviceEntries = await Promise.all(
+    missingServices.map(async (service) => {
+      const [configResult, actionsResult] = await Promise.allSettled([
+        gatewayApi.getServiceConfig(service.key),
+        gatewayApi.serviceActions(service.key),
+      ])
+
+      return {
+        key: service.key,
+        config: configResult.status === 'fulfilled' ? configResult.value : undefined,
+        actions: actionsResult.status === 'fulfilled' ? actionsResult.value : undefined,
+      }
+    }),
+  )
+
+  const serviceConfigs = new Map(
+    serviceEntries
+      .filter((entry) => entry.config !== undefined)
+      .map((entry) => [entry.key, entry.config!]),
+  )
+  const serviceActions = new Map(
+    serviceEntries
+      .filter((entry) => entry.actions !== undefined)
+      .map((entry) => [entry.key, entry.actions!]),
+  )
+
+  return mergeGatewayListWithSupportedServices(
+    gateways,
+    supportedServices,
+    serviceConfigs,
+    serviceActions,
+  )
 }
 
 const fetchGateway = async (id: string): Promise<Gateway> => {

@@ -112,6 +112,8 @@ impl std::fmt::Display for ToolError {
     }
 }
 
+impl std::error::Error for ToolError {}
+
 impl ToolError {
     /// Canonical stable string tag.
     #[must_use]

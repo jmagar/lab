@@ -1,12 +1,17 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Plus } from 'lucide-react'
+import { Activity, Cable, Plus, TriangleAlert, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { AppHeader } from '@/components/app-header'
 import { GatewayTable } from './gateway-table'
-import { GatewayFilters, type HealthFilter, type TransportFilter } from './gateway-filters'
+import {
+  GatewayFilters,
+  type ConnectionFilter,
+  type GatewayTypeFilter,
+  type HealthFilter,
+} from './gateway-filters'
 import { GatewayTableSkeleton } from './table-skeleton'
 import { EmptyState } from './empty-state'
 import { GatewayFormDialog } from './gateway-form-dialog'
@@ -24,7 +29,8 @@ export function GatewayListContent() {
   // Filters
   const [search, setSearch] = useState('')
   const [healthFilter, setHealthFilter] = useState<HealthFilter>('all')
-  const [transportFilter, setTransportFilter] = useState<TransportFilter>('all')
+  const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>('all')
+  const [typeFilter, setTypeFilter] = useState<GatewayTypeFilter>('all')
 
   // Dialogs
   const [formOpen, setFormOpen] = useState(false)
@@ -52,28 +58,41 @@ export function GatewayListContent() {
         return false
       }
 
-      // Health filter
+      // State filter
       if (healthFilter !== 'all') {
         const isConfigured = gateway.configured ?? true
         const isEnabled = gateway.enabled ?? true
-        const isConnected = gateway.status.connected
 
         if (healthFilter === 'active' && !(isConfigured && isEnabled)) return false
         if (healthFilter === 'configured' && !isConfigured) return false
         if (healthFilter === 'enabled' && !isEnabled) return false
         if (healthFilter === 'disabled' && isEnabled) return false
-        if (healthFilter === 'connected' && !isConnected) return false
-        if (healthFilter === 'disconnected' && isConnected) return false
       }
 
-      // Transport filter
-      if (transportFilter !== 'all' && gateway.transport !== transportFilter) {
+      // Connection filter
+      if (connectionFilter !== 'all') {
+        const isConnected = gateway.status.connected
+        if (connectionFilter === 'connected' && !isConnected) return false
+        if (connectionFilter === 'disconnected' && isConnected) return false
+      }
+
+      // Type filter
+      if (typeFilter === 'lab' && gateway.source !== 'lab_service') {
+        return false
+      }
+      if (typeFilter === 'custom' && gateway.source === 'lab_service') {
+        return false
+      }
+      if (
+        (typeFilter === 'http' || typeFilter === 'stdio') &&
+        gateway.transport !== typeFilter
+      ) {
         return false
       }
 
       return true
     })
-  }, [gateways, search, healthFilter, transportFilter])
+  }, [gateways, search, healthFilter, connectionFilter, typeFilter])
 
   const handleCreate = () => {
     setEditingGateway(null)
@@ -166,26 +185,29 @@ export function GatewayListContent() {
       />
 
       <div className="flex-1 p-6 space-y-6">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Configured</p>
-            <p className="mt-2 text-3xl font-semibold">{summary.total}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Gateway connections tracked by this admin.</p>
-          </div>
-          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Healthy</p>
-            <p className="mt-2 text-3xl font-semibold text-success">{summary.healthy}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Connected and returning tools right now.</p>
-          </div>
-          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Disconnected</p>
-            <p className="mt-2 text-3xl font-semibold text-warning">{summary.disconnected}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Known gateways that are not usable yet.</p>
-          </div>
-          <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Discovered Tools</p>
-            <p className="mt-2 text-3xl font-semibold text-primary">{summary.tools}</p>
-            <p className="mt-1 text-sm text-muted-foreground">
+        <div className="rounded-xl border bg-card/80 p-3 shadow-sm shadow-black/5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
+              <Cable className="size-4 text-muted-foreground" />
+              <span className="tabular-nums">{summary.total}</span>
+              <span className="text-muted-foreground">configured</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
+              <Activity className="size-4 text-emerald-500" />
+              <span className="tabular-nums">{summary.healthy}</span>
+              <span className="text-muted-foreground">healthy</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
+              <TriangleAlert className="size-4 text-amber-500" />
+              <span className="tabular-nums">{summary.disconnected}</span>
+              <span className="text-muted-foreground">disconnected</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
+              <Wrench className="size-4 text-primary" />
+              <span className="tabular-nums">{summary.tools}</span>
+              <span className="text-muted-foreground">tools</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
               {summary.warnings} warning{summary.warnings === 1 ? '' : 's'} across all gateways.
             </p>
           </div>
@@ -197,8 +219,10 @@ export function GatewayListContent() {
           onSearchChange={setSearch}
           healthFilter={healthFilter}
           onHealthFilterChange={setHealthFilter}
-          transportFilter={transportFilter}
-          onTransportFilterChange={setTransportFilter}
+          connectionFilter={connectionFilter}
+          onConnectionFilterChange={setConnectionFilter}
+          typeFilter={typeFilter}
+          onTypeFilterChange={setTypeFilter}
         />
 
         {/* Content */}

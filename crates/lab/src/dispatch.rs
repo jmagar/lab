@@ -14,6 +14,7 @@ pub mod helpers;
 pub mod lab_admin;
 #[cfg(feature = "linkding")]
 pub mod linkding;
+pub mod logs;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "openai")]

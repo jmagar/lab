@@ -44,7 +44,7 @@ pub(crate) fn public_base_url(state: &AuthState) -> String {
         .config
         .public_url
         .as_ref()
-        .expect("oauth state must have public_url")
+        .expect("oauth state must have public_url configured")
         .as_str()
         .trim_end_matches('/')
         .to_string()

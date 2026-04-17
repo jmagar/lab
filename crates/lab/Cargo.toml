@@ -58,6 +58,7 @@ strip-ansi-escapes           = "0.2"
 
 rmcp.workspace               = true
 jsonwebtoken.workspace       = true
+rusqlite.workspace          = true
 
 axum.workspace               = true
 tower.workspace              = true

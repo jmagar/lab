@@ -83,10 +83,8 @@ pub fn parse_servarr_config_xml(
                 if let Some(field) = current {
                     let text = e
                         .decode()
-                        .map_err(|err| ExtractError::Parse {
-                            service: service.to_owned(),
-                            path: PathBuf::new(),
-                            message: format!("XML decode: {err}"),
+                        .map_err(|err| {
+                            ExtractError::parse(service, format!("XML decode: {err}"))
                         })?
                         .into_owned();
                     match field {
@@ -102,34 +100,20 @@ pub fn parse_servarr_config_xml(
             Ok(Event::End(_)) => current = None,
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(ExtractError::Parse {
-                    service: service.to_owned(),
-                    path: PathBuf::new(),
-                    message: format!("XML parse error: {e}"),
-                });
+                return Err(ExtractError::parse(service, format!("XML parse error: {e}")));
             }
             _ => {}
         }
         buf.clear();
     }
 
-    let port_str = port.ok_or_else(|| ExtractError::Parse {
-        service: service.to_owned(),
-        path: PathBuf::new(),
-        message: "missing <Port>".to_owned(),
+    let port_str = port.ok_or_else(|| ExtractError::parse(service.to_owned(), "missing <Port>".to_owned()))?;
+
+    let port_num: u16 = port_str.parse().map_err(|_| {
+        ExtractError::parse(service, format!("invalid Port: {port_str:?}"))
     })?;
 
-    let port_num: u16 = port_str.parse().map_err(|_| ExtractError::Parse {
-        service: service.to_owned(),
-        path: PathBuf::new(),
-        message: format!("invalid Port: {port_str:?}"),
-    })?;
-
-    let key = api_key.ok_or_else(|| ExtractError::Parse {
-        service: service.to_owned(),
-        path: PathBuf::new(),
-        message: "missing <ApiKey>".to_owned(),
-    })?;
+    let key = api_key.ok_or_else(|| ExtractError::parse(service.to_owned(), "missing <ApiKey>".to_owned()))?;
 
     let scheme = if enable_ssl { "https" } else { "http" };
     let host = match bind_address.as_deref() {
@@ -150,6 +134,10 @@ pub fn parse_servarr_config_xml(
         url: Some(format!("{scheme}://{host}:{port_num}{base}")),
         secret: Some(key),
         env_field: env_field.to_owned(),
+        source_host: None,
+        probe_host: None,
+        runtime: None,
+        url_verified: false,
     })
 }
 

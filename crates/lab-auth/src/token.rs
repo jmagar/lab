@@ -8,8 +8,11 @@ use tracing::{info, warn};
 use crate::error::AuthError;
 use crate::jwt::AccessClaims;
 use crate::state::AuthState;
+use crate::types::AuthorizationCodeRow;
 use crate::types::{RefreshTokenRow, TokenRequest, TokenResponse};
-use crate::util::{fingerprint, now_unix, random_token};
+use crate::util::{
+    duration_secs_usize, expires_at, fingerprint, now_unix, random_token, timestamp_usize,
+};
 
 pub async fn token(
     State(state): State<AuthState>,
@@ -59,51 +62,17 @@ async fn authorization_code_grant(
         );
         error
     })?;
-    if row.client_id != client_id {
-        warn!(
-            auth_code_id = %auth_code_id,
-            requested_client_id = %client_id,
-            stored_client_id = %row.client_id,
-            "oauth token rejected: client_id does not match authorization code"
-        );
-        return Err(AuthError::InvalidGrant(
-            "client_id does not match the authorization code".to_string(),
-        ));
-    }
-    if row.redirect_uri != redirect_uri {
-        warn!(
-            auth_code_id = %auth_code_id,
-            requested_redirect_uri = %redirect_uri,
-            stored_redirect_uri = %row.redirect_uri,
-            "oauth token rejected: redirect_uri does not match authorization code"
-        );
-        return Err(AuthError::InvalidGrant(
-            "redirect_uri does not match the authorization code".to_string(),
-        ));
-    }
-    if row.code_challenge_method != "S256" {
-        warn!(
-            auth_code_id = %auth_code_id,
-            code_challenge_method = %row.code_challenge_method,
-            "oauth token rejected: unsupported PKCE method on authorization code"
-        );
-        return Err(AuthError::InvalidGrant(
-            "authorization code uses an unsupported PKCE method".to_string(),
-        ));
-    }
-    if pkce_challenge(&code_verifier) != row.code_challenge {
-        warn!(
-            auth_code_id = %auth_code_id,
-            client_id = %row.client_id,
-            "oauth token rejected: code_verifier did not match authorization code"
-        );
-        return Err(AuthError::InvalidGrant(
-            "code_verifier does not match the authorization code".to_string(),
-        ));
-    }
+    validate_authorization_code_row(
+        &row,
+        &client_id,
+        &redirect_uri,
+        &code_verifier,
+        &auth_code_id,
+    )?;
 
     let refresh_token = if let Some(provider_refresh_token) = row.provider_refresh_token {
         let refresh_token = random_token(24)?;
+        let created_at = now_unix();
         state
             .store
             .upsert_refresh_token(RefreshTokenRow {
@@ -112,8 +81,12 @@ async fn authorization_code_grant(
                 subject: row.subject.clone(),
                 scope: row.scope.clone(),
                 provider_refresh_token: Some(provider_refresh_token),
-                created_at: now_unix(),
-                expires_at: now_unix() + state.config.refresh_token_ttl.as_secs() as i64,
+                created_at,
+                expires_at: expires_at(
+                    created_at,
+                    state.config.refresh_token_ttl,
+                    "LAB_AUTH_REFRESH_TOKEN_TTL_SECS",
+                )?,
             })
             .await?;
         info!(
@@ -137,13 +110,7 @@ async fn authorization_code_grant(
         None
     };
 
-    Ok(build_token_response(
-        &state,
-        row.client_id,
-        row.subject,
-        row.scope,
-        refresh_token,
-    )?)
+    build_token_response(&state, row.client_id, row.subject, row.scope, refresh_token)
 }
 
 async fn refresh_token_grant(
@@ -205,7 +172,11 @@ async fn refresh_token_grant(
             scope: stored.scope.clone(),
             provider_refresh_token: google.refresh_token.or(Some(provider_refresh_token)),
             created_at: stored.created_at,
-            expires_at: now_unix() + state.config.refresh_token_ttl.as_secs() as i64,
+            expires_at: expires_at(
+                now_unix(),
+                state.config.refresh_token_ttl,
+                "LAB_AUTH_REFRESH_TOKEN_TTL_SECS",
+            )?,
         })
         .await?;
     info!(
@@ -217,13 +188,13 @@ async fn refresh_token_grant(
         "oauth refresh_token grant issued new lab access token"
     );
 
-    Ok(build_token_response(
+    build_token_response(
         &state,
         stored.client_id,
         google.subject,
         stored.scope,
         Some(refresh_token),
-    )?)
+    )
 }
 
 fn build_token_response(
@@ -235,12 +206,18 @@ fn build_token_response(
 ) -> Result<TokenResponse, AuthError> {
     let issuer = crate::metadata::public_base_url(state);
     let resource = crate::metadata::canonical_resource_url(state);
-    let now = now_unix() as usize;
-    let access_token = state.signing_keys.issue_access_token(AccessClaims {
+    let now = timestamp_usize(now_unix(), "current unix timestamp")?;
+    let access_token_ttl = duration_secs_usize(
+        state.config.access_token_ttl,
+        "LAB_AUTH_ACCESS_TOKEN_TTL_SECS",
+    )?;
+    let access_token = state.signing_keys.issue_access_token(&AccessClaims {
         iss: issuer,
         sub: subject,
         aud: resource,
-        exp: now + state.config.access_token_ttl.as_secs() as usize,
+        exp: now.checked_add(access_token_ttl).ok_or_else(|| {
+            AuthError::Config("LAB_AUTH_ACCESS_TOKEN_TTL_SECS exceeds supported range".to_string())
+        })?,
         iat: now,
         jti: random_token(18)?,
         scope: scope.clone(),
@@ -261,6 +238,58 @@ fn require_field(value: Option<String>, field: &str) -> Result<String, AuthError
 
 fn pkce_challenge(code_verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(code_verifier.as_bytes()))
+}
+
+fn validate_authorization_code_row(
+    row: &AuthorizationCodeRow,
+    client_id: &str,
+    redirect_uri: &str,
+    code_verifier: &str,
+    auth_code_id: &str,
+) -> Result<(), AuthError> {
+    if row.client_id != client_id {
+        warn!(
+            auth_code_id = %auth_code_id,
+            requested_client_id = %client_id,
+            stored_client_id = %row.client_id,
+            "oauth token rejected: client_id does not match authorization code"
+        );
+        return Err(AuthError::InvalidGrant(
+            "client_id does not match the authorization code".to_string(),
+        ));
+    }
+    if row.redirect_uri != redirect_uri {
+        warn!(
+            auth_code_id = %auth_code_id,
+            requested_redirect_uri = %redirect_uri,
+            stored_redirect_uri = %row.redirect_uri,
+            "oauth token rejected: redirect_uri does not match authorization code"
+        );
+        return Err(AuthError::InvalidGrant(
+            "redirect_uri does not match the authorization code".to_string(),
+        ));
+    }
+    if row.code_challenge_method != "S256" {
+        warn!(
+            auth_code_id = %auth_code_id,
+            code_challenge_method = %row.code_challenge_method,
+            "oauth token rejected: unsupported PKCE method on authorization code"
+        );
+        return Err(AuthError::InvalidGrant(
+            "authorization code uses an unsupported PKCE method".to_string(),
+        ));
+    }
+    if pkce_challenge(code_verifier) != row.code_challenge {
+        warn!(
+            auth_code_id = %auth_code_id,
+            client_id = %row.client_id,
+            "oauth token rejected: code_verifier did not match authorization code"
+        );
+        return Err(AuthError::InvalidGrant(
+            "code_verifier does not match the authorization code".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

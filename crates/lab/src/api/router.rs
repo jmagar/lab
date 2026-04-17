@@ -300,6 +300,15 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
                 get(|| async { Html(include_str!("openapi_docs.html")) }),
             )
             .nest("/extract", services::extract::routes(state.clone()));
+
+        if state
+            .registry
+            .services()
+            .iter()
+            .any(|service| service.name == "logs")
+        {
+            v1 = v1.nest("/logs", services::logs::routes(state.clone()));
+        }
     }
 
     macro_rules! mount_if_enabled {
@@ -1314,7 +1323,7 @@ mod tests {
             .as_secs() as usize;
         auth_state
             .signing_keys
-            .issue_access_token(lab_auth::jwt::AccessClaims {
+            .issue_access_token(&lab_auth::jwt::AccessClaims {
                 iss: "https://lab.example.com".to_string(),
                 sub: "google-user".to_string(),
                 aud: "https://lab.example.com/mcp".to_string(),

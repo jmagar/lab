@@ -36,11 +36,7 @@ impl Parser for QbittorrentParser {
         let prefs = sections
             .get("preferences")
             .or_else(|| sections.get(""))
-            .ok_or_else(|| ExtractError::Parse {
-                service: "qbittorrent".to_owned(),
-                path: PathBuf::new(),
-                message: "missing [Preferences] section".to_owned(),
-            })?;
+            .ok_or_else(|| ExtractError::parse("qbittorrent".to_owned(), "missing [Preferences] section".to_owned()))?;
 
         let port = prefs.get(r"WebUI\Port").map_or("8080", String::as_str);
 
@@ -59,6 +55,10 @@ impl Parser for QbittorrentParser {
             // SID is dynamic — cannot be extracted from config.
             secret: None,
             env_field: "QBITTORRENT_SID".to_owned(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
         })
     }
 }

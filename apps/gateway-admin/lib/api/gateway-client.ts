@@ -27,10 +27,12 @@ import {
 } from '@/lib/server/gateway-adapter'
 import { testResultFromProbe } from '@/lib/server/gateway-test-result'
 import { gatewayActionUrl } from './gateway-config'
-import { confirmGatewayParams, gatewayRequestInit } from './gateway-request'
+import { confirmGatewayParams } from './gateway-request'
 import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from './tool-exposure-draft'
+import { synthesizeLabGateway } from './gateway-list-model'
+import { performServiceAction, type ServiceActionError } from './service-action-client'
 
-export class GatewayApiError extends Error {
+export class GatewayApiError extends Error implements ServiceActionError {
   status: number
   code?: string
   constructor(
@@ -45,41 +47,15 @@ export class GatewayApiError extends Error {
   }
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException
-    ? error.name === 'AbortError'
-    : error instanceof Error && error.name === 'AbortError'
-}
-
-async function parseActionResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }))
-    throw new GatewayApiError(
-      error.message || 'An error occurred',
-      response.status,
-      error.kind || error.code
-    )
-  }
-  return response.json()
-}
-
 async function gatewayAction<T>(action: string, params: object, signal?: AbortSignal): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(gatewayActionUrl(), gatewayRequestInit(action, params, undefined, signal))
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw error
-    }
-    const message = error instanceof Error ? error.message : 'unknown network error'
-    throw new GatewayApiError(
-      `Gateway backend action \`${action}\` failed before a response was received: ${message}`,
-      502,
-      'backend_unreachable'
-    )
-  }
-
-  return parseActionResponse<T>(response)
+  return performServiceAction<T, GatewayApiError>({
+    action,
+    params,
+    signal,
+    serviceLabel: 'Gateway',
+    url: gatewayActionUrl(),
+    createError: (message, status, code) => new GatewayApiError(message, status, code),
+  })
 }
 
 async function fetchDiscovery(name: string, signal?: AbortSignal): Promise<GatewayDiscoverySnapshot> {
@@ -192,6 +168,25 @@ async function normalizeLabServiceServer(
   }
 }
 
+async function fallbackSupportedServiceGateway(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Gateway | null> {
+  const supportedServices = await gatewayAction<SupportedService[]>('gateway.supported_services', {}, signal)
+  const supported = supportedServices.find((service) => service.key === id)
+
+  if (!supported) {
+    return null
+  }
+
+  const [serviceConfig, actions] = await Promise.all([
+    gatewayAction<ServiceConfig>('gateway.service_config.get', { service: supported.key }, signal),
+    fetchSortedServiceActions(supported.key, signal),
+  ])
+
+  return synthesizeLabGateway(supported, serviceConfig, actions)
+}
+
 async function mutateVirtualServer(
   action: 'gateway.virtual_server.enable' | 'gateway.virtual_server.disable',
   id: string,
@@ -212,7 +207,18 @@ export const gatewayApi = {
   },
 
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
-    const serverView = await findServerView(id, signal)
+    let serverView: BackendServerView
+    try {
+      serverView = await findServerView(id, signal)
+    } catch (error) {
+      if (error instanceof GatewayApiError) {
+        const fallback = await fallbackSupportedServiceGateway(id, signal)
+        if (fallback) {
+          return fallback
+        }
+      }
+      throw error
+    }
     if (serverView.source === 'lab_service') {
       return normalizeLabServiceServer(serverView, signal)
     }

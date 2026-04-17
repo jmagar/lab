@@ -57,6 +57,36 @@ Value precedence at point of use (highest wins):
 | `filter` | `LAB_LOG` | `"lab=info,lab_apis=warn"` | Tracing filter directive |
 | `format` | `LAB_LOG_FORMAT` | `"text"` | Log format: `"text"` or `"json"` |
 
+### `[local_logs]`
+
+Local-master runtime log store preferences.
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `store_path` | `LAB_LOCAL_LOGS_STORE_PATH` | `~/.lab/logs.db` | Embedded SQLite store path for persisted local-master logs |
+| `retention_days` | `LAB_LOCAL_LOGS_RETENTION_DAYS` | `7` | Time-based retention window in days |
+| `max_bytes` | `LAB_LOCAL_LOGS_MAX_BYTES` | `268435456` | Size-based retention limit in logical stored bytes |
+| `queue_capacity` | `LAB_LOCAL_LOGS_QUEUE_CAPACITY` | `1024` | Bounded ingest queue size for the long-lived runtime |
+| `subscriber_capacity` | `LAB_LOCAL_LOGS_SUBSCRIBER_CAPACITY` | `256` | Bounded live fanout ring size for SSE subscribers |
+
+Example:
+
+```toml
+[local_logs]
+store_path = "/var/lib/lab/logs.db"
+retention_days = 14
+max_bytes = 536870912
+queue_capacity = 2048
+subscriber_capacity = 512
+```
+
+Rules:
+
+- retention is whichever limit hits first: age or size
+- oldest events are evicted first by the shared local log subsystem
+- these knobs affect the local-master runtime log store only; they do not change fleet device log retention
+- the browser log console and `lab logs local *` commands both read this same local store contract
+
 ### `[mcp]`
 
 | Key | Env override | Default | Description |
@@ -227,7 +257,7 @@ Full details in [OAUTH.md](./OAUTH.md).
 |----------|----------|-------------|
 | `LAB_AUTH_MODE` | no | `bearer` or `oauth`. Defaults to `bearer`. |
 | `LAB_MCP_HTTP_TOKEN` | bearer mode only | Static bearer token for protected HTTP routes. |
-| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, JWT issuer/audience, callback construction, and allowed-host derivation. |
+| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, JWT issuer/audience, callback construction, and allowed-host derivation. Path-prefixed deployments are supported. |
 | `LAB_AUTH_SQLITE_PATH` | no | Override path for the auth SQLite database. Defaults to `~/.lab/auth.db`. |
 | `LAB_AUTH_KEY_PATH` | no | Override path for the persisted JWT signing key. Defaults to `~/.lab/auth-jwt.pem`. |
 | `LAB_GOOGLE_CLIENT_ID` | oauth mode | Google OAuth client ID. |

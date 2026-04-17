@@ -137,8 +137,8 @@ impl<'a> GoogleRequestTrace<'a> {
     }
 
     fn error(&self, status: Option<reqwest::StatusCode>, error: &reqwest::Error) {
-        match status {
-            Some(status) => warn!(
+        if let Some(status) = status {
+            warn!(
                 provider = "google",
                 operation = self.operation,
                 method = self.method,
@@ -148,8 +148,9 @@ impl<'a> GoogleRequestTrace<'a> {
                 elapsed_ms = self.started.elapsed().as_millis(),
                 error = %error,
                 "request.error"
-            ),
-            None => warn!(
+            );
+        } else {
+            warn!(
                 provider = "google",
                 operation = self.operation,
                 method = self.method,
@@ -158,7 +159,7 @@ impl<'a> GoogleRequestTrace<'a> {
                 elapsed_ms = self.started.elapsed().as_millis(),
                 error = %error,
                 "request.error"
-            ),
+            );
         }
     }
 }
@@ -196,8 +197,26 @@ async fn read_json_response<T: DeserializeOwned>(
 }
 
 impl GoogleProvider {
-    pub fn new(client_id: String, client_secret: String, redirect_uri: Url) -> Self {
-        Self {
+    pub fn new(
+        client_id: String,
+        client_secret: String,
+        redirect_uri: Url,
+    ) -> Result<Self, AuthError> {
+        let http = reqwest::Client::builder()
+            .timeout(GOOGLE_HTTP_TIMEOUT)
+            .build()
+            .map_err(|error| {
+                AuthError::Storage(format!("build google oauth http client: {error}"))
+            })?;
+        let authorize_endpoint = Url::parse(GOOGLE_AUTHORIZE_ENDPOINT).map_err(|error| {
+            AuthError::Config(format!("parse google authorize endpoint: {error}"))
+        })?;
+        let token_endpoint = Url::parse(GOOGLE_TOKEN_ENDPOINT)
+            .map_err(|error| AuthError::Config(format!("parse google token endpoint: {error}")))?;
+        let jwks_endpoint = Url::parse(GOOGLE_JWKS_ENDPOINT)
+            .map_err(|error| AuthError::Config(format!("parse google jwks endpoint: {error}")))?;
+
+        Ok(Self {
             client_id,
             client_secret,
             redirect_uri,
@@ -206,16 +225,12 @@ impl GoogleProvider {
                 "email".to_string(),
                 "profile".to_string(),
             ],
-            http: reqwest::Client::builder()
-                .timeout(GOOGLE_HTTP_TIMEOUT)
-                .build()
-                .expect("google oauth http client should build"),
-            authorize_endpoint: Url::parse(GOOGLE_AUTHORIZE_ENDPOINT)
-                .expect("valid google auth url"),
-            token_endpoint: Url::parse(GOOGLE_TOKEN_ENDPOINT).expect("valid google token url"),
-            jwks_endpoint: Url::parse(GOOGLE_JWKS_ENDPOINT).expect("valid google jwks url"),
+            http,
+            authorize_endpoint,
+            token_endpoint,
+            jwks_endpoint,
             jwks_cache: Arc::new(RwLock::new(None)),
-        }
+        })
     }
 
     #[cfg(test)]
@@ -231,7 +246,7 @@ impl GoogleProvider {
         self
     }
 
-    pub fn authorize_url(&self, request: AuthorizeUrlRequest) -> Result<Url, AuthError> {
+    pub fn authorize_url(&self, request: &AuthorizeUrlRequest) -> Result<Url, AuthError> {
         let mut url = self.authorize_endpoint.clone();
         let scope = self.scopes.join(" ");
         url.query_pairs_mut()
@@ -413,23 +428,30 @@ impl GoogleProvider {
             return Ok(jwks);
         }
 
-        let mut cache = self.jwks_cache.write().await;
-        if let Some(cached) = cache.as_ref()
-            && cached.expires_at > Instant::now()
-        {
-            debug!(
-                provider = "google",
-                "google jwks cache hit after refresh lock"
-            );
-            return Ok(cached.jwks.clone());
-        }
-
-        Self::refresh_jwks_locked(&self.http, &self.jwks_endpoint, &mut cache).await
+        let jwks = {
+            let mut cache = self.jwks_cache.write().await;
+            if let Some(cached) = cache
+                .as_ref()
+                .filter(|cached| cached.expires_at > Instant::now())
+            {
+                debug!(
+                    provider = "google",
+                    "google jwks cache hit after refresh lock"
+                );
+                cached.jwks.clone()
+            } else {
+                Self::refresh_jwks_locked(&self.http, &self.jwks_endpoint, &mut cache).await?
+            }
+        };
+        Ok(jwks)
     }
 
     async fn refresh_jwks(&self) -> Result<GoogleJwks, AuthError> {
-        let mut cache = self.jwks_cache.write().await;
-        Self::refresh_jwks_locked(&self.http, &self.jwks_endpoint, &mut cache).await
+        let jwks = {
+            let mut cache = self.jwks_cache.write().await;
+            Self::refresh_jwks_locked(&self.http, &self.jwks_endpoint, &mut cache).await?
+        };
+        Ok(jwks)
     }
 
     async fn refresh_jwks_locked(
@@ -482,8 +504,7 @@ fn google_jwks_ttl(headers: &header::HeaderMap) -> Duration {
         .get(header::CACHE_CONTROL)
         .and_then(|value| value.to_str().ok())
         .and_then(parse_max_age)
-        .map(Duration::from_secs)
-        .unwrap_or(GOOGLE_DEFAULT_JWKS_TTL)
+        .map_or(GOOGLE_DEFAULT_JWKS_TTL, Duration::from_secs)
 }
 
 fn parse_max_age(cache_control: &str) -> Option<u64> {
@@ -529,7 +550,8 @@ mod tests {
     #[test]
     fn google_authorize_url_includes_offline_access_prompt_and_pkce() {
         let provider = test_google_provider();
-        let url = provider.authorize_url(sample_request()).unwrap();
+        let request = sample_request();
+        let url = provider.authorize_url(&request).unwrap();
         assert!(url.as_str().contains("access_type=offline"));
         assert!(url.as_str().contains("prompt=consent"));
         assert!(url.as_str().contains("code_challenge="));
@@ -695,6 +717,7 @@ mod tests {
             "client-secret".to_string(),
             Url::parse("https://lab.example.com/auth/google/callback").unwrap(),
         )
+        .unwrap()
     }
 
     async fn mocked_google_provider() -> GoogleProvider {

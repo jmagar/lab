@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -26,9 +26,10 @@ pub struct SqliteStore {
 impl SqliteStore {
     pub async fn open(path: PathBuf) -> Result<Self, AuthError> {
         let path_for_open = path.clone();
-        let conns =
-            tokio::task::spawn_blocking(move || open_connections(path_for_open, SQLITE_POOL_SIZE))
-                .await;
+        let conns = tokio::task::spawn_blocking(move || {
+            open_connections(path_for_open.as_path(), SQLITE_POOL_SIZE)
+        })
+        .await;
         let store = match conns {
             Ok(result) => result,
             Err(error) => Err(AuthError::Storage(format!(
@@ -444,11 +445,11 @@ impl SqliteStore {
     }
 }
 
-fn open_connections(path: PathBuf, count: usize) -> Result<Vec<Connection>, AuthError> {
-    (0..count).map(|_| open_connection(path.clone())).collect()
+fn open_connections(path: &Path, count: usize) -> Result<Vec<Connection>, AuthError> {
+    (0..count).map(|_| open_connection(path)).collect()
 }
 
-fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
+fn open_connection(path: &Path) -> Result<Connection, AuthError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
             AuthError::Storage(format!(
@@ -460,10 +461,10 @@ fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
 
     let existed = path.exists();
     if existed {
-        ensure_restrictive_permissions(&path)?;
+        ensure_restrictive_permissions(path)?;
     }
 
-    let conn = Connection::open(&path).map_err(sqlite_error)?;
+    let conn = Connection::open(path).map_err(sqlite_error)?;
     conn.busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .map_err(sqlite_error)?;
     conn.pragma_update(None, "journal_mode", "WAL")
@@ -528,26 +529,24 @@ fn open_connection(path: PathBuf) -> Result<Connection, AuthError> {
     .map_err(sqlite_error)?;
 
     if !existed {
-        set_restrictive_permissions(&path)?;
+        set_restrictive_permissions(path)?;
     }
-    ensure_restrictive_permissions(&path)?;
+    ensure_restrictive_permissions(path)?;
 
     Ok(conn)
 }
 
-fn validate_or_reopen_connection(conn: &mut Connection, path: &PathBuf) -> Result<(), AuthError> {
-    let probe = conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0));
-    if probe.is_ok() {
+fn validate_or_reopen_connection(conn: &mut Connection, path: &Path) -> Result<(), AuthError> {
+    let Err(error) = conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0)) else {
         return Ok(());
-    }
-    let error = probe.expect_err("probe already checked as Err");
+    };
     warn!(
         path = %path.display(),
         error = %error,
         "stale sqlite connection detected, reopening"
     );
 
-    *conn = open_connection(path.clone())?;
+    *conn = open_connection(path)?;
     conn.query_row("SELECT 1", [], |row| row.get::<_, i64>(0))
         .map(|_| ())
         .map_err(sqlite_error)

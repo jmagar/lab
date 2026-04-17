@@ -7,9 +7,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use russh::client;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::agent::client::AgentClient;
+use russh::{ChannelMsg, client};
 use russh_sftp::client::SftpSession;
 
 use super::error::ExtractError;
@@ -22,6 +22,14 @@ pub enum Transport {
     Local(LocalFs),
     /// Read files from a remote host over SSH (`russh`).
     Ssh(SshFs),
+}
+
+/// Captured output from a remote command execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteCommandOutput {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_status: Option<u32>,
 }
 
 impl Transport {
@@ -242,7 +250,7 @@ impl SshFs {
         })
     }
 
-    async fn read(&self, path: &Path) -> Result<Vec<u8>, ExtractError> {
+    pub(crate) async fn read(&self, path: &Path) -> Result<Vec<u8>, ExtractError> {
         self.sftp
             .read(path.to_string_lossy().into_owned())
             .await
@@ -266,5 +274,152 @@ impl SshFs {
             .filter(|entry| entry.file_type().is_dir())
             .map(|entry| dir.join(entry.file_name()))
             .collect())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn run_command(
+        &self,
+        action: &str,
+        command: &str,
+    ) -> Result<RemoteCommandOutput, ExtractError> {
+        let mut channel =
+            self._session
+                .channel_open_session()
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: self.host.clone(),
+                    message: format!("channel open: {e}"),
+                })?;
+
+        channel
+            .exec(true, command)
+            .await
+            .map_err(|e| ExtractError::Ssh {
+                host: self.host.clone(),
+                message: format!("exec: {e}"),
+            })?;
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        let mut exit_status = None;
+
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { data } => stdout.push_str(&String::from_utf8_lossy(&data)),
+                ChannelMsg::ExtendedData { data, .. } => {
+                    stderr.push_str(&String::from_utf8_lossy(&data));
+                }
+                ChannelMsg::ExitStatus {
+                    exit_status: status,
+                } => exit_status = Some(status),
+                _ => {}
+            }
+        }
+
+        let output = RemoteCommandOutput {
+            stdout,
+            stderr,
+            exit_status,
+        };
+
+        if output.exit_status != Some(0) {
+            return Err(remote_command_failed(&self.host, action, command, output));
+        }
+
+        Ok(output)
+    }
+}
+
+fn remote_command_failed(
+    host: &str,
+    action: &str,
+    _command: &str,
+    output: RemoteCommandOutput,
+) -> ExtractError {
+    let summary = output
+        .stderr
+        .trim()
+        .to_owned()
+        .or_else_if_empty(|| output.stdout.trim().to_owned())
+        .unwrap_or_else(|| match output.exit_status {
+            Some(_) => "remote command returned a non-zero exit status".to_owned(),
+            None => "remote command did not report an exit status".to_owned(),
+        });
+
+    ExtractError::RemoteCommand {
+        host: host.to_owned(),
+        action: action.to_owned(),
+        exit_status: output.exit_status,
+        message: summary,
+    }
+}
+
+trait StringFallback {
+    fn or_else_if_empty<F>(self, fallback: F) -> Option<String>
+    where
+        F: FnOnce() -> String;
+}
+
+impl StringFallback for String {
+    fn or_else_if_empty<F>(self, fallback: F) -> Option<String>
+    where
+        F: FnOnce() -> String,
+    {
+        if self.is_empty() {
+            let alt = fallback();
+            (!alt.is_empty()).then_some(alt)
+        } else {
+            Some(self)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_zero_remote_command_uses_action_label_not_shell_source() {
+        let err = remote_command_failed(
+            "media-node",
+            "docker.inspect",
+            "docker inspect radarr --format '{{json .Config.Env}}' SECRET=abc123",
+            RemoteCommandOutput {
+                stdout: String::new(),
+                stderr: "permission denied".to_owned(),
+                exit_status: Some(1),
+            },
+        );
+
+        let rendered = err.to_string();
+        assert!(rendered.contains("docker.inspect"));
+        assert!(!rendered.contains("SECRET=abc123"));
+        assert!(!rendered.contains("docker inspect radarr"));
+    }
+
+    #[test]
+    fn missing_exit_status_is_reported_as_failure() {
+        let err = remote_command_failed(
+            "media-node",
+            "docker.ps",
+            "docker ps",
+            RemoteCommandOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_status: None,
+            },
+        );
+
+        let ExtractError::RemoteCommand {
+            exit_status,
+            message,
+            ..
+        } = err
+        else {
+            panic!("expected remote command error");
+        };
+
+        assert_eq!(exit_status, None);
+        assert_eq!(message, "remote command did not report an exit status");
     }
 }

@@ -1,5 +1,5 @@
 use std::fmt;
-use std::path::PathBuf;
+use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -59,7 +59,7 @@ impl fmt::Debug for SigningKeys {
 }
 
 impl SigningKeys {
-    pub fn load_or_create(path: PathBuf) -> Result<Self, AuthError> {
+    pub fn load_or_create(path: &Path) -> Result<Self, AuthError> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
                 AuthError::Storage(format!(
@@ -71,11 +71,11 @@ impl SigningKeys {
 
         let existed = path.exists();
         if existed {
-            ensure_restrictive_permissions(&path)?;
+            ensure_restrictive_permissions(path)?;
         }
 
         let private_key = if existed {
-            let pem = std::fs::read_to_string(&path).map_err(|error| {
+            let pem = std::fs::read_to_string(path).map_err(|error| {
                 AuthError::Storage(format!("read signing key `{}`: {error}", path.display()))
             })?;
             RsaPrivateKey::from_pkcs8_pem(&pem)
@@ -88,18 +88,18 @@ impl SigningKeys {
             let pem = key
                 .to_pkcs8_pem(LineEnding::LF)
                 .map_err(|error| AuthError::Storage(format!("encode signing key PEM: {error}")))?;
-            std::fs::write(&path, pem.as_bytes()).map_err(|error| {
+            std::fs::write(path, pem.as_bytes()).map_err(|error| {
                 AuthError::Storage(format!("write signing key `{}`: {error}", path.display()))
             })?;
-            set_restrictive_permissions(&path)?;
+            set_restrictive_permissions(path)?;
             key
         };
 
-        ensure_restrictive_permissions(&path)?;
-        Self::from_private_key(private_key)
+        ensure_restrictive_permissions(path)?;
+        Self::from_private_key(&private_key)
     }
 
-    pub fn issue_access_token(&self, claims: AccessClaims) -> Result<String, AuthError> {
+    pub fn issue_access_token(&self, claims: &AccessClaims) -> Result<String, AuthError> {
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(self.key_id.clone());
         encode(&header, &claims, &self.encoding_key)
@@ -118,15 +118,15 @@ impl SigningKeys {
             .map_err(|_| AuthError::InvalidAccessToken)
     }
 
-    pub fn jwks(&self) -> &JwksDocument {
+    pub const fn jwks(&self) -> &JwksDocument {
         &self.jwks
     }
 
-    fn from_private_key(private_key: RsaPrivateKey) -> Result<Self, AuthError> {
+    fn from_private_key(private_key: &RsaPrivateKey) -> Result<Self, AuthError> {
         let private_pem = private_key
             .to_pkcs8_pem(LineEnding::LF)
             .map_err(|error| AuthError::Storage(format!("encode signing key PEM: {error}")))?;
-        let public_key = RsaPublicKey::from(&private_key);
+        let public_key = RsaPublicKey::from(private_key);
         let public_pem = public_key
             .to_public_key_pem(LineEnding::LF)
             .map_err(|error| AuthError::Storage(format!("encode public key PEM: {error}")))?;
@@ -205,8 +205,9 @@ mod tests {
     #[test]
     fn generated_key_is_reused_on_second_load() {
         let dir = tempfile::tempdir().unwrap();
-        let first = SigningKeys::load_or_create(dir.path().join("auth-jwt.pem")).unwrap();
-        let second = SigningKeys::load_or_create(dir.path().join("auth-jwt.pem")).unwrap();
+        let path = dir.path().join("auth-jwt.pem");
+        let first = SigningKeys::load_or_create(&path).unwrap();
+        let second = SigningKeys::load_or_create(&path).unwrap();
         assert_eq!(first.key_id, second.key_id);
     }
 
@@ -219,14 +220,15 @@ mod tests {
         let path = dir.path().join("auth-jwt.pem");
         std::fs::write(&path, "bad").unwrap();
         std::fs::set_permissions(&path, PermissionsExt::from_mode(0o644)).unwrap();
-        let err = SigningKeys::load_or_create(path).unwrap_err();
+        let err = SigningKeys::load_or_create(&path).unwrap_err();
         assert!(err.to_string().contains("permissions"));
     }
 
     #[test]
     fn minted_access_token_round_trips_and_contains_kid() {
         let signer = test_signer();
-        let token = signer.issue_access_token(sample_claims()).unwrap();
+        let claims = sample_claims();
+        let token = signer.issue_access_token(&claims).unwrap();
         let claims = signer
             .validate_access_token(&token, "https://lab.example.com")
             .unwrap();
@@ -238,7 +240,8 @@ mod tests {
     #[test]
     fn wrong_audience_is_rejected() {
         let signer = test_signer();
-        let token = signer.issue_access_token(sample_claims()).unwrap();
+        let claims = sample_claims();
+        let token = signer.issue_access_token(&claims).unwrap();
         let result = signer.validate_access_token(&token, "https://other.example.com");
         assert!(
             result.is_err(),
@@ -248,7 +251,8 @@ mod tests {
 
     fn test_signer() -> SigningKeys {
         let dir = tempfile::tempdir().unwrap();
-        SigningKeys::load_or_create(dir.path().join("auth-jwt.pem")).unwrap()
+        let path = dir.path().join("auth-jwt.pem");
+        SigningKeys::load_or_create(&path).unwrap()
     }
 
     fn sample_claims() -> AccessClaims {

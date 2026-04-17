@@ -103,6 +103,18 @@ Optional when applicable:
 - `operation = "health"`
 - `kind` on failure
 
+### Local Log Ingest Boundary
+
+The local-master `logs` subsystem is a shared observability consumer, not a replacement for dispatch logging.
+
+Rules:
+
+- `main.rs` owns tracing setup and attaches the local log ingest layer once
+- normalization and redaction happen before persistence and before SSE fanout
+- the local store is fed from tracing-aware runtime events, not by scraping terminal output
+- `/v1/logs/stream` is live push from the in-process subscriber hub, not database tailing
+- reserved remote-ingest fields remain in the event model intentionally so future fleet and syslog ingest can converge on the same query contract without schema churn
+
 ### Device Runtime Ingest
 
 Device-runtime HTTP handlers participate in the same API dispatch contract.
@@ -274,6 +286,8 @@ Additional rules:
 - do not log query parameters when they contain secrets
 - do not echo secrets in doctor output, prompts, or TUI flows
 - do not log raw discovered MCP config file contents; only metadata such as path, source, and hash are acceptable
+- do not persist bearer tokens, cookies, authorization headers, or raw secret material in the local log store
+- do not fan out unredacted structured fields to live SSE subscribers
 
 ## Level Rules
 

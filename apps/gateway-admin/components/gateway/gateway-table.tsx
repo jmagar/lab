@@ -9,6 +9,9 @@ import {
   Play, 
   RefreshCw, 
   Trash2,
+  FileText,
+  MessageSquare,
+  Wrench,
 } from 'lucide-react'
 import {
   Table,
@@ -27,13 +30,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { StatusBadge } from './status-badge'
 import { TransportBadge } from './transport-badge'
 import { WarningsPill } from './warnings-pill'
-import { MetricsStrip } from './metrics-strip'
 import type { Gateway } from '@/lib/types/gateway'
 import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { buildGatewayEndpointPreview } from '@/lib/api/gateway-mobile'
+import { SurfaceRatio } from './surface-ratio'
 
 interface GatewayTableProps {
   gateways: Gateway[]
@@ -74,7 +76,6 @@ export function GatewayTable({
         {gateways.map((gateway) => {
           const supportsProbeControls = gateway.source !== 'lab_service'
           const isDisabled = gateway.source === 'lab_service' && !(gateway.enabled ?? true)
-          const endpointPreview = buildGatewayEndpointPreview(gateway)
 
           return (
             <article
@@ -99,7 +100,10 @@ export function GatewayTable({
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge healthy={gateway.status.healthy} connected={gateway.status.connected} />
+                        <span
+                          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                          aria-hidden="true"
+                        />
                         <TransportBadge transport={gateway.transport} />
                         <WarningsPill warnings={gateway.warnings} />
                       </div>
@@ -148,21 +152,25 @@ export function GatewayTable({
                     </DropdownMenu>
                   </div>
 
-                  <p className="text-xs text-muted-foreground break-all">
-                    {endpointPreview}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/20 p-3">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Tools</p>
-                      <p className="text-sm font-semibold tabular-nums">{gateway.status.discovered_tool_count}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Exposed</p>
-                      <p className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-                        {gateway.status.exposed_tool_count}
-                      </p>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-3">
+                    <SurfaceRatio
+                      icon={Wrench}
+                      label="Tools"
+                      exposed={gateway.status.exposed_tool_count}
+                      total={gateway.status.discovered_tool_count}
+                    />
+                    <SurfaceRatio
+                      icon={FileText}
+                      label="Resources"
+                      exposed={gateway.status.exposed_resource_count}
+                      total={gateway.status.discovered_resource_count}
+                    />
+                    <SurfaceRatio
+                      icon={MessageSquare}
+                      label="Prompts"
+                      exposed={gateway.status.exposed_prompt_count}
+                      total={gateway.status.discovered_prompt_count}
+                    />
                   </div>
 
                   {gateway.status.last_error && (
@@ -211,26 +219,28 @@ export function GatewayTable({
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[38%]">Name</TableHead>
-              <TableHead className="w-[110px]">Transport</TableHead>
-              <TableHead className="w-[120px]">Status</TableHead>
-              <TableHead className="w-[140px]">Tools</TableHead>
-              <TableHead className="w-[110px]">Warnings</TableHead>
+              <TableHead className="w-[62%]">Gateway</TableHead>
+              <TableHead className="w-[26%]">Surfaces</TableHead>
               <TableHead className="w-[116px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {gateways.map((gateway) => {
               const supportsProbeControls = gateway.source !== 'lab_service'
+              const endpointPreview = buildGatewayEndpointPreview(gateway)
 
               return (
               <TableRow
                 key={gateway.id}
                 className={gateway.source === 'lab_service' && !(gateway.enabled ?? true) ? 'group bg-muted/20 text-muted-foreground' : 'group'}
               >
-                <TableCell className="w-[38%] align-top whitespace-normal">
+                <TableCell className="w-[62%] align-top whitespace-normal">
                   <div className="min-w-0 space-y-1">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span
+                        className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                        aria-hidden="true"
+                      />
                       <Link 
                         href={gatewayDetailHref(gateway.id)}
                         className="min-w-0 max-w-full font-medium break-words hover:underline underline-offset-4"
@@ -242,34 +252,43 @@ export function GatewayTable({
                           Disabled
                         </Badge>
                       )}
+                      <TransportBadge transport={gateway.transport} />
+                      <WarningsPill warnings={gateway.warnings} />
                     </div>
-                    <p className="text-xs text-muted-foreground break-all">
-                      {buildGatewayEndpointPreview(gateway)}
-                    </p>
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span className="truncate" title={endpointPreview}>
+                        {endpointPreview}
+                      </span>
+                      <span className="tabular-nums">
+                        {gateway.source === 'lab_service' && !(gateway.enabled ?? true) ? 'deactivated' : 'active'}
+                      </span>
+                    </div>
                     {gateway.status.last_error && (
                       <p className="line-clamp-2 break-words text-xs text-warning">{gateway.status.last_error}</p>
                     )}
                   </div>
                 </TableCell>
                 <TableCell className="align-top">
-                  <TransportBadge transport={gateway.transport} />
-                </TableCell>
-                <TableCell className="align-top">
-                  <StatusBadge 
-                    healthy={gateway.status.healthy} 
-                    connected={gateway.status.connected} 
-                  />
-                </TableCell>
-                <TableCell className="align-top whitespace-normal">
-                  <MetricsStrip
-                    discoveredCount={gateway.status.discovered_tool_count}
-                    exposedCount={gateway.status.exposed_tool_count}
-                    showFiltered={false}
-                    layout="stacked"
-                  />
-                </TableCell>
-                <TableCell className="align-top">
-                  <WarningsPill warnings={gateway.warnings} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SurfaceRatio
+                      icon={Wrench}
+                      label="Tools"
+                      exposed={gateway.status.exposed_tool_count}
+                      total={gateway.status.discovered_tool_count}
+                    />
+                    <SurfaceRatio
+                      icon={FileText}
+                      label="Resources"
+                      exposed={gateway.status.exposed_resource_count}
+                      total={gateway.status.discovered_resource_count}
+                    />
+                    <SurfaceRatio
+                      icon={MessageSquare}
+                      label="Prompts"
+                      exposed={gateway.status.exposed_prompt_count}
+                      total={gateway.status.discovered_prompt_count}
+                    />
+                  </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
