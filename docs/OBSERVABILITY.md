@@ -186,6 +186,13 @@ surrounding caller context, including `request_id` when present. Timeouts must
 be logged as explicit failures rather than disappearing into generic disconnect
 noise.
 
+For negotiated RMCP logging notifications sent back to MCP clients:
+
+- reuse the same `surface/service/action/elapsed_ms[/kind]` payload shape as local dispatch logs
+- omit `kind` on success notifications
+- preserve the caller-derived failure severity (`warning` for caller/user errors,
+  `error` for internal or upstream failures)
+
 ### Health Probes
 
 Health probes are not normal business actions and must be distinguishable in logs.

@@ -27,6 +27,9 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 | `LAB_AUTH_ALLOWED_REDIRECT_URIS` | no | Comma-separated redirect URI patterns allowed for dynamic client registration in addition to loopback callbacks. |
 | `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
 | `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
+| `LAB_AUTH_REGISTER_REQUESTS_PER_MINUTE` | no | Process-local rate limit for `POST /register`. Defaults to `20`. |
+| `LAB_AUTH_AUTHORIZE_REQUESTS_PER_MINUTE` | no | Process-local rate limit for `/authorize` and browser login initiation. Defaults to `60`. |
+| `LAB_AUTH_MAX_PENDING_OAUTH_STATES` | no | Maximum non-expired pending authorization + browser-login states stored at once. Defaults to `1024`. |
 
 ## Startup Behavior
 
@@ -59,6 +62,8 @@ Registration rules in the initial launch:
 - loopback redirect URIs are always accepted
 - optional non-loopback redirect URI patterns can be allowed with `LAB_AUTH_ALLOWED_REDIRECT_URIS` or `[auth].allowed_client_redirect_uris`
 - unlisted public HTTPS redirect URIs are rejected
+- `POST /register`, `/authorize`, and hosted browser-login initiation are process-locally rate limited
+- new login/authorization state is rejected once the pending non-expired state cap is reached
 
 Flow summary:
 
@@ -246,7 +251,8 @@ They must also:
 - capture response `x-request-id` values on failures
 - avoid showing a hosted-login CTA unless hosted login is actually available
 - invalidate or refresh cached session state when later requests fail with
-  `auth_failed` or CSRF-style auth errors
+  `auth_failed` or a CSRF-style `validation_failed` response
+- not treat unrelated validation failures as implicit logout/session-expiry events
 
 ### OAuth Error Kinds
 

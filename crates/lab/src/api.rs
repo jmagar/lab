@@ -16,6 +16,9 @@ pub mod error;
 /// Router builder — composes all feature-gated route groups.
 pub mod router;
 
+/// Shared auth-route request-id and dispatch logging helpers.
+pub mod auth_helpers;
+
 /// `GET /health` and `GET /ready` liveness/readiness probes.
 pub mod health;
 

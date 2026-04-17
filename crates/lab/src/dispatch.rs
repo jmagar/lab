@@ -35,6 +35,7 @@ pub mod qbittorrent;
 pub mod qdrant;
 #[cfg(feature = "radarr")]
 pub mod radarr;
+pub mod redact;
 #[cfg(feature = "sabnzbd")]
 pub mod sabnzbd;
 #[cfg(feature = "sonarr")]

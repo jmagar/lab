@@ -117,7 +117,7 @@ test('logoutBrowserSession resets local state after POST', async () => {
   assert.deepEqual(getBrowserSessionState(), { status: 'unauthenticated' })
 })
 
-test('logoutBrowserSession preserves local state when /auth/logout fails', async () => {
+test('logoutBrowserSession clears local state even when /auth/logout fails', async () => {
   __setBrowserSessionStateForTests({
     status: 'authenticated',
     user: { sub: 'browser-user', email: 'browser@example.com' },
@@ -131,7 +131,7 @@ test('logoutBrowserSession preserves local state when /auth/logout fails', async
     logoutBrowserSession(),
     /Failed to logout browser session/,
   )
-  assert.equal(getBrowserSessionState().status, 'authenticated')
+  assert.deepEqual(getBrowserSessionState(), { status: 'unauthenticated', loginAvailable: true })
 })
 
 test('hasApiTokenAuth only enables bearer mode for non-empty tokens', () => {

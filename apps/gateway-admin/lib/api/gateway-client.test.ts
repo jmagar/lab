@@ -249,6 +249,58 @@ test('gatewayApi.setExposurePolicy sends confirm=true when updating a gateway co
   )
 })
 
+test('gatewayApi.list does not refresh browser session for non-csrf validation errors', async () => {
+  __setBrowserSessionStateForTests({
+    status: 'authenticated',
+    user: { sub: 'browser-user', email: 'browser@example.com' },
+    expiresAt: 123,
+    csrfToken: 'csrf-old',
+    loginAvailable: true,
+  })
+
+  const urls: string[] = []
+  globalThis.fetch = (async (input) => {
+    const url = String(input)
+    urls.push(url)
+
+    if (url === '/v1/gateway') {
+      return new Response(
+        JSON.stringify({
+          kind: 'validation_failed',
+          message: 'missing required parameter `name`',
+        }),
+        {
+          status: 422,
+          headers: {
+            'content-type': 'application/json',
+            'x-request-id': 'req-gateway-validation-1',
+          },
+        },
+      )
+    }
+
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  await assert.rejects(
+    gatewayApi.list(),
+    (error: unknown) => {
+      assert.ok(error instanceof GatewayApiError)
+      assert.equal(error.code, 'validation_failed')
+      return true
+    },
+  )
+
+  assert.deepEqual(getBrowserSessionState(), {
+    status: 'authenticated',
+    user: { sub: 'browser-user', email: 'browser@example.com' },
+    expiresAt: 123,
+    csrfToken: 'csrf-old',
+    loginAvailable: true,
+  })
+  assert.deepEqual(urls, ['/v1/gateway'])
+})
+
 test('gatewayApi destructive mutations send confirm=true', async () => {
   const actions: Array<{ action: string; params: Record<string, unknown> }> = []
 

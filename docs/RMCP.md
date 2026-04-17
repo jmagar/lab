@@ -205,12 +205,22 @@ Rules:
 
 - advertise logging capability in server info when available
 - honor negotiated log level handling where RMCP supports it
+- map negotiated levels onto the same dispatch outcome vocabulary used by local
+  tracing (`success -> info`, caller/user errors -> warning, internal/upstream
+  failures -> error)
 - emit sanitized log notifications only; never send tokens, cookies, auth
   headers, raw credential-bearing URLs, or secret env values
 - reuse the same action/service/upstream context and redaction rules that apply
   to local structured logs
 - logging notifications supplement local tracing; they do not replace required
   server-side observability
+
+Current implementation notes:
+
+- prompt/resource/tool read paths do not recompute catalog snapshots or fan out
+  list-changed notifications on every request
+- gateway-driven upstream catalog changes are propagated through the dedicated
+  peer notifier instead of piggybacking on ordinary request traffic
 
 ## Resource and Prompt Ownership
 

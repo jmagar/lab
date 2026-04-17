@@ -5,7 +5,7 @@ use axum::{Json, extract::State, http::HeaderMap};
 use serde::Deserialize;
 use std::time::Instant;
 
-use crate::api::router::request_id;
+use crate::api::auth_helpers::request_id;
 use crate::api::{ToolError, state::AppState};
 
 #[derive(Debug, Deserialize)]
@@ -84,4 +84,52 @@ pub async fn handle_start(
         ok: true,
         bind_addr: bound_addr,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::api::state::AppState;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    #[tokio::test]
+    async fn handle_start_rejects_non_loopback_bind_addr() {
+        let response = handle_start(
+            State(AppState::new()),
+            HeaderMap::new(),
+            Json(StartOauthRelayRequest {
+                bind_addr: "192.168.1.10:0".parse().unwrap(),
+                target_url: "http://127.0.0.1/callback".to_string(),
+                default_port: None,
+                request_timeout_ms: Some(100),
+            }),
+        )
+        .await
+        .unwrap_err()
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn handle_start_returns_bound_loopback_address() {
+        let response = handle_start(
+            State(AppState::new()),
+            HeaderMap::new(),
+            Json(StartOauthRelayRequest {
+                bind_addr: "127.0.0.1:0".parse().unwrap(),
+                target_url: "http://127.0.0.1/callback".to_string(),
+                default_port: None,
+                request_timeout_ms: Some(100),
+            }),
+        )
+        .await
+        .expect("relay start succeeds");
+
+        assert!(response.0.ok);
+        assert!(response.0.bind_addr.ip().is_loopback());
+        assert_ne!(response.0.bind_addr.port(), 0);
+    }
 }
