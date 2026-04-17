@@ -19,7 +19,7 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 |----------|----------|-------------|
 | `LAB_AUTH_MODE` | no | `bearer` or `oauth`. Defaults to `bearer`. |
 | `LAB_MCP_HTTP_TOKEN` | bearer mode | Static bearer token for protected HTTP routes. |
-| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, callback construction, and JWT issuer/audience. |
+| `LAB_PUBLIC_URL` | oauth mode | Public base URL for metadata, callback construction, and JWT issuer/audience. Path-prefixed deployments are supported. |
 | `LAB_GOOGLE_CLIENT_ID` | oauth mode | Google OAuth client ID. |
 | `LAB_GOOGLE_CLIENT_SECRET` | oauth mode | Google OAuth client secret. |
 | `LAB_AUTH_SQLITE_PATH` | no | Override path for the SQLite auth database. |

@@ -140,6 +140,58 @@ async fn device_oauth_route_rejects_invalid_target_url() {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
+#[tokio::test]
+async fn existing_fleet_logs_search_still_works() {
+    let (app, store) = test_device_router();
+    store
+        .record_hello(lab::device::checkin::DeviceHello {
+            device_id: "dookie".to_string(),
+            role: "non-master".to_string(),
+            version: "1.0.0".to_string(),
+        })
+        .await;
+    store
+        .record_logs(
+            "dookie",
+            vec![lab::device::log_event::DeviceLogEvent {
+                device_id: "dookie".to_string(),
+                timestamp_unix_ms: 1,
+                source: "journald".to_string(),
+                level: Some("info".to_string()),
+                message: "hello from fleet search".to_string(),
+                fields: serde_json::Map::new(),
+            }],
+        )
+        .await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/device/logs/search")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "device_id":"dookie",
+                        "query":"hello"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let events: Vec<lab::device::log_event::DeviceLogEvent> =
+        serde_json::from_slice(&body).unwrap();
+    assert_eq!(events.len(), 1);
+    assert!(events[0].message.contains("fleet search"));
+}
+
 fn test_device_router() -> (axum::Router, Arc<DeviceFleetStore>) {
     let store = Arc::new(DeviceFleetStore::default());
     let state = AppState::new().with_device_store(Arc::clone(&store));

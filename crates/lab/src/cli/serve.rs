@@ -24,6 +24,10 @@ use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::dispatch::gateway::types::CatalogChangeNotifier;
+use crate::dispatch::logs::client::{
+    bootstrap_running_log_system, resolve_queue_capacity, resolve_retention, resolve_store_path,
+    resolve_subscriber_capacity,
+};
 use crate::mcp::server::{LabMcpServer, PeerNotifier};
 use crate::registry::{ToolRegistry, build_default_registry};
 
@@ -125,6 +129,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let gateway_manager = Arc::new(gateway_manager);
     gateway_manager.seed_config(config.clone()).await;
     install_gateway_manager(Arc::clone(&gateway_manager));
+    let logs_system = bootstrap_running_log_system(
+        resolve_store_path(Some(config)),
+        resolve_retention(Some(config)),
+        resolve_queue_capacity(Some(config)),
+        resolve_subscriber_capacity(Some(config)),
+    )
+    .await?;
 
     if should_run_stdio(transport, args.command.as_ref()) {
         return run_stdio(
@@ -172,6 +183,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
     state = state.with_device_store(Arc::clone(&device_store));
+    state = state.with_log_system(logs_system);
     state = state.with_device_role(device_role);
     if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
         tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
