@@ -1,8 +1,13 @@
 use axum::extract::{Form, State};
-use axum::{Json, response::IntoResponse};
+use axum::{
+    Json,
+    http::{HeaderValue, header},
+    response::{IntoResponse, Response},
+};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use tracing::{info, warn};
 
 use crate::error::AuthError;
@@ -23,16 +28,43 @@ pub async fn token(
         client_id = request.client_id.as_deref().unwrap_or("<missing>"),
         "oauth token request received"
     );
-    match request.grant_type.as_str() {
-        "authorization_code" => authorization_code_grant(state, request).await.map(Json),
-        "refresh_token" => refresh_token_grant(state, request).await.map(Json),
+    let response = match request.grant_type.as_str() {
+        "authorization_code" => authorization_code_grant(state, request)
+            .await
+            .map(|response| TokenResponseWithCache(Json(response))),
+        "refresh_token" => refresh_token_grant(state, request)
+            .await
+            .map(|response| TokenResponseWithCache(Json(response))),
         other => {
             warn!(grant_type = %other, "oauth token rejected: unsupported grant type");
             Err(AuthError::Validation(format!(
                 "unsupported grant_type `{other}`"
             )))
         }
+    };
+
+    match response {
+        Ok(response) => Ok(response),
+        Err(error) => Err(error),
     }
+}
+
+struct TokenResponseWithCache(Json<TokenResponse>);
+
+impl IntoResponse for TokenResponseWithCache {
+    fn into_response(self) -> Response {
+        apply_token_cache_headers(self.0.into_response())
+    }
+}
+
+fn apply_token_cache_headers(mut response: Response) -> Response {
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+    response
 }
 
 async fn authorization_code_grant(
@@ -279,7 +311,11 @@ fn validate_authorization_code_row(
             "authorization code uses an unsupported PKCE method".to_string(),
         ));
     }
-    if pkce_challenge(code_verifier) != row.code_challenge {
+    if !bool::from(
+        pkce_challenge(code_verifier)
+            .as_bytes()
+            .ct_eq(row.code_challenge.as_bytes()),
+    ) {
         warn!(
             auth_code_id = %auth_code_id,
             client_id = %row.client_id,
@@ -301,6 +337,7 @@ mod tests {
 
     use crate::routes::router;
 
+    use super::super::authorize::tests::test_auth_state_with_mock_google;
     use super::super::authorize::tests::test_auth_state_with_registered_client;
 
     #[tokio::test]
@@ -323,6 +360,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::PRAGMA)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -356,6 +407,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::PRAGMA)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -419,6 +484,67 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::PRAGMA)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
+    }
+
+    #[tokio::test]
+    async fn token_endpoint_refresh_grant_sets_cache_headers() {
+        let state = test_auth_state_with_mock_google().await;
+        state
+            .store
+            .upsert_refresh_token(crate::types::RefreshTokenRow {
+                refresh_token: "refresh-token".to_string(),
+                client_id: "client".to_string(),
+                subject: "google-subject-123".to_string(),
+                scope: "lab".to_string(),
+                provider_refresh_token: Some("provider-refresh".to_string()),
+                created_at: crate::util::now_unix() - 60,
+                expires_at: crate::util::now_unix() + 3600,
+            })
+            .await
+            .unwrap();
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/token")
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(
+                        "grant_type=refresh_token&refresh_token=refresh-token&client_id=client",
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::PRAGMA)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
     }
 
     #[tokio::test]
@@ -474,6 +600,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::PRAGMA)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
     }
 
     #[tokio::test]
@@ -510,6 +650,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::PRAGMA)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-cache")
+        );
     }
 
     #[tokio::test]

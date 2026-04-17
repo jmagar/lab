@@ -101,20 +101,40 @@ pub fn build_forward_url(
 
 /// Filter hop-by-hop headers from an inbound request before forwarding.
 pub fn filter_hop_by_hop_request_headers(headers: &HeaderMap) -> HeaderMap {
-    filter_headers(headers)
+    filter_headers(headers, REQUEST_HEADER_ALLOWLIST)
 }
 
 /// Filter hop-by-hop headers from an upstream response before returning it.
 pub fn filter_hop_by_hop_response_headers(headers: &HeaderMap) -> HeaderMap {
-    filter_headers(headers)
+    filter_headers(headers, RESPONSE_HEADER_ALLOWLIST)
 }
 
-fn filter_headers(headers: &HeaderMap) -> HeaderMap {
+const REQUEST_HEADER_ALLOWLIST: &[&str] = &[
+    "accept",
+    "accept-language",
+    "content-type",
+    "origin",
+    "referer",
+    "user-agent",
+];
+
+const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
+    "cache-control",
+    "content-language",
+    "content-type",
+    "expires",
+    "location",
+    "pragma",
+];
+
+fn filter_headers(headers: &HeaderMap, allowlist: &[&str]) -> HeaderMap {
     let connection_header_names = connection_header_names(headers);
     headers
         .iter()
         .filter(|(name, _)| {
-            !is_hop_by_hop_header(name) && !connection_header_names.contains(name.as_str())
+            allowlist.contains(&name.as_str())
+                && !is_hop_by_hop_header(name)
+                && !connection_header_names.contains(name.as_str())
         })
         .fold(HeaderMap::new(), |mut filtered, (name, value)| {
             filtered.append(name.clone(), copy_header_value(value));
@@ -157,7 +177,11 @@ fn is_hop_by_hop_header(name: &HeaderName) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::header::{CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, TRANSFER_ENCODING};
+    use axum::http::header;
+    use axum::http::header::{
+        AUTHORIZATION, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, HOST, ORIGIN, REFERER,
+        SET_COOKIE, TRANSFER_ENCODING, USER_AGENT,
+    };
 
     #[test]
     fn resolve_machine_target_returns_configured_machine() {
@@ -241,6 +265,14 @@ mod tests {
         headers.insert(HOST, HeaderValue::from_static("localhost"));
         headers.insert(TRANSFER_ENCODING, HeaderValue::from_static("chunked"));
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer secret"));
+        headers.insert(COOKIE, HeaderValue::from_static("lab_session=secret"));
+        headers.insert(ORIGIN, HeaderValue::from_static("https://lab.example.com"));
+        headers.insert(
+            REFERER,
+            HeaderValue::from_static("https://lab.example.com/auth"),
+        );
+        headers.insert(USER_AGENT, HeaderValue::from_static("lab-test"));
 
         let filtered = filter_hop_by_hop_request_headers(&headers);
 
@@ -248,6 +280,11 @@ mod tests {
         assert!(!filtered.contains_key(HOST));
         assert!(!filtered.contains_key(TRANSFER_ENCODING));
         assert!(filtered.contains_key(CONTENT_TYPE));
+        assert!(filtered.contains_key(ORIGIN));
+        assert!(filtered.contains_key(REFERER));
+        assert!(filtered.contains_key(USER_AGENT));
+        assert!(!filtered.contains_key(AUTHORIZATION));
+        assert!(!filtered.contains_key(COOKIE));
     }
 
     #[test]
@@ -256,12 +293,25 @@ mod tests {
         headers.insert(CONNECTION, HeaderValue::from_static("close"));
         headers.insert(CONTENT_LENGTH, HeaderValue::from_static("123"));
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/plain"));
+        headers.insert(SET_COOKIE, HeaderValue::from_static("oauth=secret"));
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        headers.insert(header::EXPIRES, HeaderValue::from_static("0"));
+        headers.insert(
+            header::LOCATION,
+            HeaderValue::from_static("https://example.com"),
+        );
+        headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
 
         let filtered = filter_hop_by_hop_response_headers(&headers);
 
         assert!(!filtered.contains_key(CONNECTION));
         assert!(!filtered.contains_key(CONTENT_LENGTH));
         assert!(filtered.contains_key(CONTENT_TYPE));
+        assert!(filtered.contains_key(header::CACHE_CONTROL));
+        assert!(filtered.contains_key(header::EXPIRES));
+        assert!(filtered.contains_key(header::LOCATION));
+        assert!(filtered.contains_key(header::PRAGMA));
+        assert!(!filtered.contains_key(SET_COOKIE));
     }
 
     #[test]

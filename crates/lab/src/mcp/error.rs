@@ -185,7 +185,7 @@ impl From<ToolError> for DispatchError {
                 hint: None,
             },
             ToolError::Sdk { sdk_kind, message } => Self {
-                kind: sdk_kind_to_static(&sdk_kind),
+                kind: canonical_kind(&sdk_kind),
                 message,
                 valid: None,
                 param: None,
@@ -195,10 +195,11 @@ impl From<ToolError> for DispatchError {
     }
 }
 
-/// Map a dynamic SDK kind string to a `&'static str` from the canonical vocabulary.
+/// Map a dynamic kind string to a `&'static str` from the canonical vocabulary.
 ///
-/// Must stay in sync with `serve::static_kind` and `ToolError::kind()`.
-fn sdk_kind_to_static(s: &str) -> &'static str {
+/// This is the single MCP-local normalization point for kind tags recovered
+/// from serialized upstream error payloads and `ToolError::kind()` values.
+pub(crate) fn canonical_kind(s: &str) -> &'static str {
     match s {
         "unknown_action" => "unknown_action",
         "unknown_subaction" => "unknown_subaction",
@@ -213,6 +214,61 @@ fn sdk_kind_to_static(s: &str) -> &'static str {
         "network_error" => "network_error",
         "server_error" => "server_error",
         "decode_error" => "decode_error",
+        "internal_error" => "internal_error",
+        "upstream_error" => "upstream_error",
         _ => "internal_error",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_kind;
+    use crate::dispatch::error::ToolError;
+
+    #[test]
+    fn canonical_kind_round_trips_all_tool_error_kinds() {
+        let variants = [
+            ToolError::UnknownAction {
+                message: String::new(),
+                valid: vec![],
+                hint: None,
+            },
+            ToolError::MissingParam {
+                message: String::new(),
+                param: "p".into(),
+            },
+            ToolError::InvalidParam {
+                message: String::new(),
+                param: "p".into(),
+            },
+            ToolError::UnknownInstance {
+                message: String::new(),
+                valid: vec![],
+            },
+            ToolError::ConfirmationRequired {
+                message: String::new(),
+            },
+            ToolError::Sdk {
+                sdk_kind: "auth_failed".into(),
+                message: String::new(),
+            },
+            ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: String::new(),
+            },
+            ToolError::Sdk {
+                sdk_kind: "upstream_error".into(),
+                message: String::new(),
+            },
+        ];
+
+        for err in variants {
+            let kind = err.kind();
+            assert_eq!(
+                canonical_kind(kind),
+                kind,
+                "canonical_kind({kind:?}) should round-trip"
+            );
+        }
     }
 }

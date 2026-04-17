@@ -21,16 +21,16 @@
 //! # Ok(()) }
 //! ```
 
-pub mod parsers;
-pub mod transport;
-pub mod ssh_config;
-pub mod inventory;
-pub mod runtime;
-pub mod probe;
-pub mod fleet;
-pub mod types;
-pub mod error;
 pub mod client;
+pub mod error;
+pub mod fleet;
+pub mod inventory;
+pub mod parsers;
+pub mod probe;
+pub mod runtime;
+pub mod ssh_config;
+pub mod transport;
+pub mod types;
 
 pub use client::ExtractClient;
 pub use error::ExtractError;

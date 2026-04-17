@@ -209,7 +209,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         name: "gateway.add",
         description: "Add a gateway and reconcile runtime state",
-        destructive: false,
+        destructive: true,
         returns: "GatewayView",
         params: &[ParamSpec {
             name: "spec",
@@ -221,7 +221,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         name: "gateway.update",
         description: "Update a gateway and reconcile runtime state",
-        destructive: false,
+        destructive: true,
         returns: "GatewayView",
         params: &[
             NAME_PARAM,
@@ -236,14 +236,14 @@ pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         name: "gateway.remove",
         description: "Remove a gateway and reconcile runtime state",
-        destructive: false,
+        destructive: true,
         returns: "GatewayView",
         params: &[NAME_PARAM],
     },
     ActionSpec {
         name: "gateway.reload",
         description: "Reload gateways from config and reconcile runtime state",
-        destructive: false,
+        destructive: true,
         returns: "GatewayCatalogDiff",
         params: &[],
     },
@@ -281,3 +281,43 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[NAME_PARAM],
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::ACTIONS;
+
+    #[test]
+    fn gateway_reconciliation_actions_are_marked_destructive() {
+        for action in [
+            "gateway.add",
+            "gateway.update",
+            "gateway.remove",
+            "gateway.reload",
+        ] {
+            let spec = ACTIONS
+                .iter()
+                .find(|spec| spec.name == action)
+                .expect("gateway action");
+            assert!(spec.destructive, "{action} should be destructive");
+        }
+    }
+
+    #[test]
+    fn gateway_read_actions_remain_non_destructive() {
+        for action in [
+            "gateway.list",
+            "gateway.get",
+            "gateway.test",
+            "gateway.status",
+            "gateway.discovered_tools",
+            "gateway.discovered_resources",
+            "gateway.discovered_prompts",
+        ] {
+            let spec = ACTIONS
+                .iter()
+                .find(|spec| spec.name == action)
+                .expect("gateway action");
+            assert!(!spec.destructive, "{action} should remain non-destructive");
+        }
+    }
+}

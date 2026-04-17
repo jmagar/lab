@@ -30,12 +30,16 @@ impl Parser for TautulliParser {
         let root = sections
             .get("")
             .or_else(|| sections.get("general"))
-            .ok_or_else(|| ExtractError::parse("tautulli".to_owned(), "no root section or [General] in config.ini".to_owned()))?;
+            .ok_or_else(|| {
+                ExtractError::parse(
+                    "tautulli".to_owned(),
+                    "no root section or [General] in config.ini".to_owned(),
+                )
+            })?;
 
-        let api_key = root
-            .get("api_key")
-            .cloned()
-            .ok_or_else(|| ExtractError::parse("tautulli".to_owned(), "missing api_key".to_owned()))?;
+        let api_key = root.get("api_key").cloned().ok_or_else(|| {
+            ExtractError::parse("tautulli".to_owned(), "missing api_key".to_owned())
+        })?;
 
         let host = root.get("http_host").map_or("localhost", String::as_str);
         let host = if host == "0.0.0.0" || host.is_empty() {

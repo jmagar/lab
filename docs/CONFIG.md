@@ -91,7 +91,7 @@ Rules:
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
-| `transport` | `LAB_MCP_TRANSPORT` | `"stdio"` | MCP transport: `"stdio"` or `"http"` |
+| `transport` | `LAB_MCP_TRANSPORT` | `"http"` | MCP transport: `"stdio"` or `"http"` |
 | `host` | `LAB_MCP_HTTP_HOST` | `"127.0.0.1"` | HTTP bind address |
 | `port` | `LAB_MCP_HTTP_PORT` | `8765` | HTTP bind port |
 | `session_ttl_secs` | `LAB_MCP_SESSION_TTL_SECS` | `300` | HTTP MCP session keep-alive TTL (seconds) |
@@ -354,7 +354,7 @@ proxy_resources = false
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LAB_MCP_TRANSPORT` | `stdio` | Transport: `stdio` or `http`. |
+| `LAB_MCP_TRANSPORT` | `http` | Transport: `stdio` or `http`. |
 | `LAB_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address. |
 | `LAB_MCP_HTTP_PORT` | `8765` | HTTP bind port. |
 | `LAB_MCP_HTTP_TOKEN` | — | Static bearer token for HTTP auth. |

@@ -61,7 +61,8 @@ impl LogStore {
     }
 
     pub async fn search(&self, query: LogQuery) -> Result<LogSearchResult, ToolError> {
-        self.blocking("search", move |c| run_search(c, &query)).await
+        self.blocking("search", move |c| run_search(c, &query))
+            .await
     }
 
     pub async fn tail(&self, req: LogTailRequest) -> Result<LogTailResult, ToolError> {
@@ -105,10 +106,8 @@ pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, To
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let path = std::env::temp_dir().join(format!(
-        "lab-logs-test-{}-{unique}.db",
-        std::process::id()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("lab-logs-test-{}-{unique}.db", std::process::id()));
     LogStore::open(path, retention).await
 }
 
@@ -215,7 +214,10 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
     let rows = stmt.query_map(params_from_iter(args.iter()), row_to_event)?;
     let events: Vec<LogEvent> = rows.collect::<Result<_, _>>()?;
     let next_cursor = events.last().map(|e| e.event_id.clone());
-    Ok(LogSearchResult { events, next_cursor })
+    Ok(LogSearchResult {
+        events,
+        next_cursor,
+    })
 }
 
 fn append_in_clause<I>(
@@ -313,21 +315,24 @@ fn run_tail(conn: &Connection, req: &LogTailRequest) -> Result<LogTailResult, ru
     let rows = stmt.query_map(params_from_iter(args.iter()), row_to_event)?;
     let events: Vec<LogEvent> = rows.collect::<Result<_, _>>()?;
     let next_cursor = events.last().map(|e| e.event_id.clone());
-    Ok(LogTailResult { events, next_cursor })
+    Ok(LogTailResult {
+        events,
+        next_cursor,
+    })
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
-fn run_stats(
-    conn: &Connection,
-    retention: LogRetention,
-) -> Result<LogStoreStats, rusqlite::Error> {
-    let (total_event_count, oldest_retained_ts, newest_retained_ts): (u64, Option<i64>, Option<i64>) =
-        conn.query_row(
-            "SELECT COUNT(*), MIN(ts), MAX(ts) FROM log_events",
-            [],
-            |row| Ok((row.get::<_, u64>(0)?, row.get(1)?, row.get(2)?)),
-        )?;
+fn run_stats(conn: &Connection, retention: LogRetention) -> Result<LogStoreStats, rusqlite::Error> {
+    let (total_event_count, oldest_retained_ts, newest_retained_ts): (
+        u64,
+        Option<i64>,
+        Option<i64>,
+    ) = conn.query_row(
+        "SELECT COUNT(*), MIN(ts), MAX(ts) FROM log_events",
+        [],
+        |row| Ok((row.get::<_, u64>(0)?, row.get(1)?, row.get(2)?)),
+    )?;
 
     let on_disk_bytes = content_bytes(conn)?;
 

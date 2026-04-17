@@ -9,7 +9,7 @@ import type {
   ServiceConfig,
   ServiceAction,
   SupportedService,
-} from '@/lib/types/gateway'
+} from '../types/gateway.ts'
 import {
   type BackendGatewayRuntimeView,
   type BackendGatewayToolRow,
@@ -24,8 +24,8 @@ import {
   normalizeServerView,
   previewExposurePolicy,
   probeStatusFromRuntime,
-} from '@/lib/server/gateway-adapter'
-import { testResultFromProbe } from '@/lib/server/gateway-test-result'
+} from '../server/gateway-adapter.ts'
+import { testResultFromProbe } from '../server/gateway-test-result.ts'
 import { gatewayActionUrl } from './gateway-config'
 import { confirmGatewayParams } from './gateway-request'
 import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from './tool-exposure-draft'
@@ -230,7 +230,7 @@ export const gatewayApi = {
   async create(input: CreateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
     const view = await gatewayAction<BackendGatewayView>(
       'gateway.add',
-      { spec: gatewayInputToSpec(input) },
+      confirmGatewayParams({ spec: gatewayInputToSpec(input) }),
       signal,
     )
     return normalizeGatewayView(view, true, signal)
@@ -239,17 +239,17 @@ export const gatewayApi = {
   async update(id: string, input: UpdateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
     const view = await gatewayAction<BackendGatewayView>(
       'gateway.update',
-      {
+      confirmGatewayParams({
         name: id,
         patch: buildGatewayPatch(input),
-      },
+      }),
       signal,
     )
     return normalizeGatewayView(view, true, signal)
   },
 
   async remove(id: string, signal?: AbortSignal): Promise<void> {
-    await gatewayAction<BackendGatewayView>('gateway.remove', { name: id }, signal)
+    await gatewayAction<BackendGatewayView>('gateway.remove', confirmGatewayParams({ name: id }), signal)
   },
 
   async test(id: string, signal?: AbortSignal): Promise<TestGatewayResult> {
@@ -264,7 +264,7 @@ export const gatewayApi = {
 
   async reload(id: string, signal?: AbortSignal): Promise<ReloadGatewayResult> {
     const before = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
-    await gatewayAction('gateway.reload', {}, signal)
+    await gatewayAction('gateway.reload', confirmGatewayParams({}), signal)
     const after = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
 
     return {
@@ -319,12 +319,12 @@ export const gatewayApi = {
       : null
     await gatewayAction<BackendGatewayView>(
       'gateway.update',
-      {
+      confirmGatewayParams({
         name: id,
         patch: {
           expose_tools: exposeTools,
         },
-      },
+      }),
       signal,
     )
     return policy.mode === 'allowlist'

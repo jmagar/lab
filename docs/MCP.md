@@ -8,12 +8,13 @@ The RMCP SDK integration contract that underpins this surface lives in [RMCP.md]
 
 `lab serve` supports two transports:
 
-- `stdio`: local MCP clients such as Claude Desktop and `.mcp.json`
+- `stdio`: local child-process MCP clients such as Claude Desktop and `.mcp.json`
 - `http`: remote or network-accessible MCP clients
 
 Rules:
 
-- `stdio` is the default
+- HTTP is the default `lab serve` transport
+- `stdio` is the explicit child-process transport via `lab serve mcp --stdio`
 - HTTP supports `LAB_AUTH_MODE=bearer|oauth`
 - bearer mode preserves `LAB_MCP_HTTP_TOKEN`
 - oauth mode requires `LAB_PUBLIC_URL` and Google client credentials

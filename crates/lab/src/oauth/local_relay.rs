@@ -63,7 +63,7 @@ pub async fn serve_local_relay(
         bind_addr = %config.bind_addr,
         machine_id = ?config.resolved_target.machine_id,
         default_port = ?config.resolved_target.default_port,
-        target = %config.resolved_target.target_url,
+        target = %redact_forward_target(&config.resolved_target.target_url),
         "oauth relay local listener ready"
     );
 
@@ -98,7 +98,11 @@ async fn relay_callback(
         );
     }
 
-    let suffix_path = suffix_path_for_request(state.resolved_target.target_url.path(), uri.path());
+    let suffix_path =
+        match suffix_path_for_request(state.resolved_target.target_url.path(), uri.path()) {
+            Ok(path) => path,
+            Err(detail) => return json_error(StatusCode::NOT_FOUND, detail),
+        };
     let query_items = parse_query_items(uri.query());
     let query_refs = query_items
         .iter()
@@ -219,7 +223,10 @@ fn json_error(status: StatusCode, detail: impl Into<String>) -> Response {
     response
 }
 
-fn suffix_path_for_request(target_base_path: &str, request_path: &str) -> String {
+fn suffix_path_for_request(
+    target_base_path: &str,
+    request_path: &str,
+) -> Result<String, &'static str> {
     let normalized_base = target_base_path.trim_end_matches('/');
     let request_path = request_path.trim_end_matches('/');
     let suffix = if request_path == normalized_base {
@@ -227,12 +234,16 @@ fn suffix_path_for_request(target_base_path: &str, request_path: &str) -> String
     } else if normalized_base.is_empty() {
         request_path
     } else if let Some(rest) = request_path.strip_prefix(normalized_base) {
-        rest.strip_prefix('/').unwrap_or(request_path)
+        match rest.strip_prefix('/') {
+            Some(rest) => rest,
+            None if rest.is_empty() => "",
+            None => return Err("path not under relay target"),
+        }
     } else {
         request_path
     };
 
-    suffix.trim_matches('/').to_string()
+    Ok(suffix.trim_matches('/').to_string())
 }
 
 fn parse_query_items(query: Option<&str>) -> Vec<(String, String)> {
@@ -289,6 +300,7 @@ mod tests {
         method: String,
         path_and_query: String,
         body: Vec<u8>,
+        headers: Vec<(String, String)>,
     }
 
     #[derive(Clone)]
@@ -310,6 +322,7 @@ mod tests {
             response_headers: vec![
                 (header::CONTENT_TYPE.as_str(), "text/plain; charset=utf-8"),
                 (header::CONNECTION.as_str(), "close"),
+                (header::SET_COOKIE.as_str(), "oauth=secret; HttpOnly"),
             ],
             delay: Duration::from_millis(0),
         })
@@ -336,6 +349,8 @@ mod tests {
                 header::CONTENT_TYPE.as_str(),
                 "application/x-www-form-urlencoded",
             )
+            .header(header::AUTHORIZATION.as_str(), "Bearer secret-token")
+            .header(header::COOKIE.as_str(), "lab_session=secret")
             .body("grant_type=authorization_code")
             .send()
             .await
@@ -360,6 +375,57 @@ mod tests {
             HeaderValue::from_static("text/plain; charset=utf-8")
         );
         assert!(response_headers.get(header::CONNECTION).is_none());
+        assert!(response_headers.get(header::SET_COOKIE).is_none());
+        assert!(
+            seen[0]
+                .headers
+                .iter()
+                .all(|(name, _)| name != header::AUTHORIZATION.as_str())
+        );
+        assert!(
+            seen[0]
+                .headers
+                .iter()
+                .all(|(name, _)| name != header::COOKIE.as_str())
+        );
+
+        relay.abort();
+        upstream.handle.abort();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn oauth_local_relay_rejects_paths_outside_the_target_boundary() {
+        let upstream = spawn_upstream(UpstreamState {
+            seen_requests: Arc::new(Mutex::new(Vec::new())),
+            response_status: StatusCode::OK,
+            response_body: "ok",
+            response_headers: vec![(header::CONTENT_TYPE.as_str(), "text/plain")],
+            delay: Duration::from_millis(0),
+        })
+        .await;
+
+        let relay_addr = available_loopback_addr().await;
+        let relay = spawn_relay(LocalRelayConfig {
+            bind_addr: relay_addr,
+            resolved_target: resolve_explicit_target(
+                &format!("http://{}/callback", upstream.addr),
+                Some(relay_addr.port()),
+            )
+            .unwrap(),
+            request_timeout: Duration::from_millis(250),
+        })
+        .await;
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{}/callback2/extra?code=abc", relay_addr))
+            .send()
+            .await
+            .expect("relay request should succeed");
+        let status = response.status();
+        let body = response.text().await.expect("body should decode");
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(body.contains("path not under relay target"));
 
         relay.abort();
         upstream.handle.abort();
@@ -457,7 +523,7 @@ mod tests {
         let _tracing_lock = TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
-            .with(EnvFilter::new("lab=info"))
+            .with(EnvFilter::new("info"))
             .with(
                 fmt::layer()
                     .json()
@@ -467,19 +533,11 @@ mod tests {
             );
         let _guard = tracing::subscriber::set_default(subscriber);
 
-        let upstream = spawn_upstream(UpstreamState {
-            seen_requests: Arc::new(Mutex::new(Vec::new())),
-            response_status: StatusCode::OK,
-            response_body: "ok",
-            response_headers: vec![(header::CONTENT_TYPE.as_str(), "text/plain")],
-            delay: Duration::from_millis(0),
-        })
-        .await;
         let relay_addr = available_loopback_addr().await;
         let relay = spawn_relay(LocalRelayConfig {
             bind_addr: relay_addr,
             resolved_target: resolve_explicit_target(
-                &format!("http://{}/callback/dookie", upstream.addr),
+                "http://127.0.0.1:38935/callback/dookie?token=secret-value#fragment",
                 Some(relay_addr.port()),
             )
             .unwrap(),
@@ -487,20 +545,10 @@ mod tests {
         })
         .await;
 
-        let response = reqwest::Client::new()
-            .get(format!(
-                "http://{}/callback/dookie/extra?code=abc&state=xyz",
-                relay_addr
-            ))
-            .send()
-            .await
-            .expect("relay request should succeed");
-        assert_eq!(response.status(), StatusCode::OK);
-
         let logs = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let logs = captured_logs(&buf);
-                if logs.contains("/callback/dookie/extra") {
+                if logs.contains("oauth relay local listener ready") {
                     break logs;
                 }
                 sleep(Duration::from_millis(10)).await;
@@ -509,25 +557,27 @@ mod tests {
         .await
         .expect("relay logs should be captured");
         assert!(!logs.is_empty());
-        assert!(logs.contains("/callback/dookie/extra"));
-        assert!(!logs.contains("code=abc"));
-        assert!(!logs.contains("state=xyz"));
+        assert!(!logs.contains("token=secret-value"));
+        assert!(!logs.contains("fragment"));
+        assert!(logs.contains("target"));
 
         relay.abort();
-        upstream.handle.abort();
     }
 
     #[test]
     fn suffix_path_for_request_requires_segment_boundary() {
         assert_eq!(
             suffix_path_for_request("/callback", "/callback2/extra"),
-            "callback2/extra"
+            Err("path not under relay target")
         );
         assert_eq!(
             suffix_path_for_request("/callback/dookie", "/callback/dookie/extra"),
-            "extra"
+            Ok("extra".to_string())
         );
-        assert_eq!(suffix_path_for_request("/callback", "/callback"), "");
+        assert_eq!(
+            suffix_path_for_request("/callback", "/callback"),
+            Ok("".to_string())
+        );
     }
 
     async fn spawn_upstream(state: UpstreamState) -> UpstreamHandle {
@@ -546,6 +596,7 @@ mod tests {
         State(state): State<UpstreamState>,
         method: Method,
         uri: Uri,
+        headers: HeaderMap,
         body: Bytes,
     ) -> impl IntoResponse {
         state.seen_requests.lock().unwrap().push(SeenRequest {
@@ -554,6 +605,15 @@ mod tests {
                 .path_and_query()
                 .map_or_else(|| uri.path().to_string(), ToString::to_string),
             body: body.to_vec(),
+            headers: headers
+                .iter()
+                .filter_map(|(name, value)| {
+                    value
+                        .to_str()
+                        .ok()
+                        .map(|value| (name.as_str().to_string(), value.to_string()))
+                })
+                .collect(),
         });
 
         if !state.delay.is_zero() {

@@ -227,12 +227,20 @@ pub fn parse_docker_ps_lines(contents: &str) -> Result<Vec<RuntimeContainerSumma
 pub fn parse_docker_inspect(contents: &str) -> Result<RuntimeContainerDetails, ExtractError> {
     let mut containers: Vec<DockerInspectRow> =
         serde_json::from_str(contents).map_err(|error| parse_error(error))?;
-    let row = containers.pop().ok_or_else(|| ExtractError::parse("extract".to_owned(), "docker inspect returned no containers".to_owned()))?;
+    let row = containers.pop().ok_or_else(|| {
+        ExtractError::parse(
+            "extract".to_owned(),
+            "docker inspect returned no containers".to_owned(),
+        )
+    })?;
 
     let container_name = row.name.trim_start_matches('/').to_owned();
     let image = row.config.and_then(|config| config.image);
     let service = supported_service(&container_name, image.as_deref()).ok_or_else(|| {
-        ExtractError::parse("extract", format!("unsupported container '{container_name}'"))
+        ExtractError::parse(
+            "extract",
+            format!("unsupported container '{container_name}'"),
+        )
     })?;
 
     let published_ports = row

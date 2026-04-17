@@ -2,15 +2,15 @@
 
 Lab supports two MCP transports: stdio and streamable HTTP. Both expose the same server behavior — transport choice does not change the catalog, schemas, envelopes, or destructive-op policy.
 
-## Stdio (Default)
+## Stdio
 
-Stdio is the default transport. Used by Claude Desktop, IDE extensions, and any MCP client that launches lab as a child process.
+Stdio is the explicit child-process transport. Use it for Claude Desktop, IDE extensions, and any MCP client that launches lab as a child process.
 
 No authentication is required — security is provided by process-level isolation. The parent process owns the stdio pipes and controls access.
 
 ```bash
-lab serve                      # stdio (default)
-lab serve --transport stdio    # explicit
+lab serve mcp --stdio
+lab serve --transport stdio
 ```
 
 Or via env:
@@ -21,13 +21,14 @@ LAB_MCP_TRANSPORT=stdio lab serve
 
 No network listener is opened. No host, port, or auth configuration is needed.
 
-## Streamable HTTP
+## Streamable HTTP (Default)
 
 The HTTP transport mounts the MCP protocol at `/mcp` inside the axum HTTP server, alongside the
 REST API at `/v1/*`. When exported Labby assets are available, the same server also hosts the web UI
 from `/`.
 
 ```bash
+lab serve
 lab serve --transport http
 ```
 
@@ -35,7 +36,7 @@ lab serve --transport http
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LAB_MCP_TRANSPORT` | `stdio` | Transport selection. Set to `http` for network access. |
+| `LAB_MCP_TRANSPORT` | `http` | Transport selection. Set to `stdio` for child-process use. |
 | `LAB_MCP_HTTP_HOST` | `127.0.0.1` | Bind address. |
 | `LAB_MCP_HTTP_PORT` | `8765` | Bind port. |
 | `LAB_MCP_HTTP_TOKEN` | — | Static bearer token for authentication. |
@@ -63,7 +64,7 @@ CLI flags take precedence over env vars, which take precedence over config.toml:
 1. `--host`, `--port`, `--transport` (CLI)
 2. `LAB_MCP_HTTP_HOST`, `LAB_MCP_HTTP_PORT`, `LAB_MCP_TRANSPORT` (env)
 3. `mcp.host`, `mcp.port`, `mcp.transport` (config.toml)
-4. Defaults: `127.0.0.1`, `8765`, `stdio`
+4. Defaults: `127.0.0.1`, `8765`, `http`
 
 ### Session Management
 

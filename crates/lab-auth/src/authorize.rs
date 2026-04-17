@@ -888,7 +888,7 @@ pub mod tests {
         state
     }
 
-    async fn test_auth_state_with_mock_google() -> AuthState {
+    pub(crate) async fn test_auth_state_with_mock_google() -> AuthState {
         let state = test_auth_state_with_registered_client().await;
         let server = Box::leak(Box::new(MockServer::start().await));
         Mock::given(method("POST"))
