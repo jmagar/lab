@@ -77,6 +77,11 @@ specs/
 *.profraw
 *.profdata
 
+# ── Node / TypeScript build artifacts ────────────────────────────────────────
+node_modules/
+.next/
+*.tsbuildinfo
+
 # ── Repo-specific ────────────────────────────────────────────────────────────
 data/
 proxies/
