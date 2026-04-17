@@ -1,18 +1,13 @@
-//! Linkding parser. Reads `linkding/db.sqlite3`, extracts `LINKDING_URL` + `LINKDING_TOKEN`.
-
-use std::fs;
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
+use tempfile::NamedTempFile;
 
 use crate::extract::error::ExtractError;
 use crate::extract::parsers::Parser;
 use crate::extract::types::ServiceCreds;
 
-/// Linkding config parser.
 pub struct LinkdingParser;
 
 impl Parser for LinkdingParser {
@@ -25,48 +20,26 @@ impl Parser for LinkdingParser {
     }
 
     fn parse(&self, contents: &[u8]) -> Result<ServiceCreds, ExtractError> {
-        let database_path = write_temp_sqlite(contents)?;
-        let result = parse_linkding_database(&database_path);
-        drop(fs::remove_file(&database_path));
-        result
+        let database = write_temp_sqlite(contents)?;
+        parse_linkding_database(database.path())
     }
 }
 
-fn write_temp_sqlite(contents: &[u8]) -> Result<PathBuf, ExtractError> {
-    let unique = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| ExtractError::Parse {
-            service: "linkding".to_owned(),
-            path: PathBuf::new(),
-            message: format!("system time error: {error}"),
-        })?
-        .as_nanos();
-
-    let path = std::env::temp_dir().join(format!(
-        "lab-extract-linkding-{}-{unique}.sqlite3",
-        std::process::id()
-    ));
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-
-    let mut file = options.open(&path).map_err(|source| ExtractError::Io {
-        path: path.clone(),
+fn write_temp_sqlite(contents: &[u8]) -> Result<NamedTempFile, ExtractError> {
+    let mut file = NamedTempFile::new().map_err(|source| ExtractError::Io {
+        path: PathBuf::from("<tempfile>"),
         source,
     })?;
-    file.write_all(contents).map_err(|source| ExtractError::Io {
-        path: path.clone(),
-        source,
-    })?;
+    file.write_all(contents)
+        .map_err(|source| ExtractError::Io {
+            path: file.path().to_path_buf(),
+            source,
+        })?;
     file.flush().map_err(|source| ExtractError::Io {
-        path: path.clone(),
+        path: file.path().to_path_buf(),
         source,
     })?;
-    Ok(path)
+    Ok(file)
 }
 
 fn parse_linkding_database(path: &Path) -> Result<ServiceCreds, ExtractError> {
@@ -103,6 +76,8 @@ fn parse_linkding_database(path: &Path) -> Result<ServiceCreds, ExtractError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_linkding_db() -> Vec<u8> {
         let path = std::env::temp_dir().join(format!(

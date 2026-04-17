@@ -4,11 +4,11 @@
 //! All real work is delegated to `lab_apis::extract::ExtractClient`.
 
 use lab_apis::core::action::{ActionSpec, ParamSpec};
-use lab_apis::extract::{ExtractClient, ScanTarget, Uri};
+use lab_apis::extract::{ExtractClient, RedactedExtractReport, ScanTarget, Uri};
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, require_str};
+use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
 
 /// Action catalog — read by `extract.help`, the `lab.help` meta-tool, and
 /// the `lab://extract/actions` MCP resource. **One source of truth**.
@@ -36,12 +36,20 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "scan",
         description: "Scan an appdata path and return discovered service credentials",
         destructive: false,
-        params: &[ParamSpec {
-            name: "uri",
-            ty: "string",
-            required: false,
-            description: "Local path or 'host:/abs/path' for SSH; omit for fleet scan",
-        }],
+        params: &[
+            ParamSpec {
+                name: "uri",
+                ty: "string",
+                required: false,
+                description: "Local path or 'host:/abs/path' for SSH; omit for fleet scan",
+            },
+            ParamSpec {
+                name: "redact_secrets",
+                ty: "bool",
+                required: false,
+                description: "Return browser-safe results without secret values",
+            },
+        ],
         returns: "DiscoveredService[]",
     },
     ActionSpec {
@@ -97,15 +105,13 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         "scan" => {
             let target = parse_scan_target(&params)?;
+            let redact_secrets = parse_redact_secrets(&params)?;
             let client = ExtractClient::new();
             let report = client.scan(target).await.map_err(|e| ToolError::Sdk {
                 sdk_kind: "internal_error".into(),
                 message: e.to_string(),
             })?;
-            serde_json::to_value(report).map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".into(),
-                message: e.to_string(),
-            })
+            serialize_scan_report(report, redact_secrets)
         }
         "apply" => {
             // Destructive — the registry has already invoked elicitation
@@ -125,6 +131,26 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             hint: None,
         }),
     }
+}
+
+fn parse_redact_secrets(params: &Value) -> Result<bool, ToolError> {
+    match params.get("redact_secrets") {
+        None => Ok(false),
+        Some(value) => value.as_bool().ok_or_else(|| ToolError::InvalidParam {
+            message: "parameter `redact_secrets` must be a bool".into(),
+            param: "redact_secrets".into(),
+        }),
+    }
+}
+
+fn serialize_scan_report(
+    report: lab_apis::extract::ExtractReport,
+    redact_secrets: bool,
+) -> Result<Value, ToolError> {
+    if redact_secrets {
+        return to_json(RedactedExtractReport::from(report));
+    }
+    to_json(report)
 }
 
 fn parse_uri(params: &Value) -> Result<Uri, ToolError> {
@@ -187,5 +213,40 @@ mod tests {
                 message
             } if sdk_kind == "invalid_param" && message == "param 'uri' must be a string"
         ));
+    }
+
+    #[test]
+    fn scan_rejects_non_boolean_redact_flag() {
+        let error = parse_redact_secrets(&json!({"redact_secrets": "yes"}))
+            .expect_err("non-bool redact flag should be rejected");
+        assert!(matches!(
+            error,
+            ToolError::InvalidParam { param, .. } if param == "redact_secrets"
+        ));
+    }
+
+    #[test]
+    fn redacted_scan_serialization_omits_secret_values() {
+        let report = lab_apis::extract::ExtractReport {
+            target: ScanTarget::Fleet,
+            uri: None,
+            found: vec!["radarr".to_owned()],
+            creds: vec![lab_apis::extract::ServiceCreds {
+                service: "radarr".to_owned(),
+                url: Some("http://100.64.0.12:7878".to_owned()),
+                secret: Some("secret-key".to_owned()),
+                env_field: "RADARR_API_KEY".to_owned(),
+                source_host: Some("media-node".to_owned()),
+                probe_host: Some("100.64.0.12".to_owned()),
+                runtime: None,
+                url_verified: true,
+            }],
+            warnings: vec![],
+        };
+
+        let value = serialize_scan_report(report, true).expect("serialize redacted report");
+
+        assert_eq!(value["creds"][0]["secret_present"], true);
+        assert!(value["creds"][0].get("secret").is_none());
     }
 }

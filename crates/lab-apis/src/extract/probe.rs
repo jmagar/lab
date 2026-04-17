@@ -149,11 +149,7 @@ fn is_followable_redirect(status: StatusCode) -> bool {
 
 fn probe_error(error: impl std::fmt::Display) -> ExtractError {
     drop(error);
-    ExtractError::Parse {
-        service: "extract".to_owned(),
-        path: std::path::PathBuf::new(),
-        message: "probe request failed".to_owned(),
-    }
+    ExtractError::parse("extract".to_owned(), "probe request failed".to_owned())
 }
 
 #[cfg(test)]

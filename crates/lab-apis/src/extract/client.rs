@@ -205,10 +205,11 @@ impl ExtractClient {
             .parsers
             .iter()
             .find(|p| p.name() == parser_name)
-            .ok_or_else(|| ExtractError::Parse {
-                service: parser_name.to_owned(),
-                path: PathBuf::new(),
-                message: format!("no parser registered for '{parser_name}'"),
+            .ok_or_else(|| {
+                ExtractError::parse(
+                    parser_name,
+                    format!("no parser registered for '{parser_name}'"),
+                )
             })?;
         parser.parse(contents)
     }
@@ -761,11 +762,7 @@ mod tests {
         fn into_extract_result(self, service: &str) -> Result<T, ExtractError> {
             match self {
                 Self::Ok(value) => Ok(value),
-                Self::Err(message) => Err(ExtractError::Parse {
-                    service: service.to_owned(),
-                    path: PathBuf::new(),
-                    message: message.to_owned(),
-                }),
+                Self::Err(message) => Err(ExtractError::parse(service, message)),
             }
         }
     }

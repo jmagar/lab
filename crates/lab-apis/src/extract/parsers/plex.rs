@@ -61,22 +61,17 @@ impl Parser for PlexParser {
                 }
                 Ok(Event::Eof) => break,
                 Err(e) => {
-                    return Err(ExtractError::Parse {
-                        service: "plex".to_owned(),
-                        path: PathBuf::new(),
-                        message: format!("XML parse error: {e}"),
-                    });
+                    return Err(ExtractError::parse(
+                        "plex",
+                        format!("XML parse error: {e}"),
+                    ));
                 }
                 _ => {}
             }
             buf.clear();
         }
 
-        let tok = token.ok_or_else(|| ExtractError::Parse {
-            service: "plex".to_owned(),
-            path: PathBuf::new(),
-            message: "missing PlexOnlineToken attribute".to_owned(),
-        })?;
+        let tok = token.ok_or_else(|| ExtractError::parse("plex".to_owned(), "missing PlexOnlineToken attribute".to_owned()))?;
 
         let port_str = port.as_deref().unwrap_or("32400");
         let url = format!("http://localhost:{port_str}");

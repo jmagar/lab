@@ -69,6 +69,16 @@ pub enum ExtractError {
     },
 }
 
+impl ExtractError {
+    pub(crate) fn parse(service: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Parse {
+            service: service.into(),
+            path: PathBuf::new(),
+            message: message.into(),
+        }
+    }
+}
+
 fn nothing_found_message(target: &ScanTarget) -> String {
     match target {
         ScanTarget::Targeted(uri) => {

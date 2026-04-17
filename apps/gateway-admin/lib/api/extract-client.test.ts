@@ -29,7 +29,7 @@ test('extractApi.scan performs a fleet scan when uri is omitted', async () => {
   assert.equal(requestInit?.method, 'POST')
   assert.deepEqual(JSON.parse(String(requestInit?.body)), {
     action: 'scan',
-    params: {},
+    params: { redact_secrets: true },
   })
   assert.equal(report.target.mode, 'fleet')
 })
@@ -44,7 +44,14 @@ test('extractApi.scan performs a targeted scan when uri is provided', async () =
       JSON.stringify({
         target: { mode: 'targeted', uri: { host: 'squirts', path: '/mnt/appdata' } },
         found: ['overseerr'],
-        creds: [],
+        creds: [
+          {
+            service: 'overseerr',
+            url: 'http://100.75.111.118:5055/login',
+            env_field: 'OVERSEERR_API_KEY',
+            secret_present: true,
+          },
+        ],
         warnings: [],
       }),
       { status: 200 },
@@ -55,7 +62,7 @@ test('extractApi.scan performs a targeted scan when uri is provided', async () =
 
   assert.deepEqual(JSON.parse(String(requestInit?.body)), {
     action: 'scan',
-    params: { uri: 'squirts:/mnt/appdata' },
+    params: { uri: 'squirts:/mnt/appdata', redact_secrets: true },
   })
 })
 
@@ -78,7 +85,7 @@ test('extractApi.scan preserves empty strings so the backend can reject them', a
 
   assert.deepEqual(JSON.parse(String(requestInit?.body)), {
     action: 'scan',
-    params: { uri: '' },
+    params: { uri: '', redact_secrets: true },
   })
 })
 
@@ -110,9 +117,45 @@ test('extract target supports structured ssh uri payloads', async () => {
       uri: { host: 'squirts', path: '/mnt/appdata' },
     },
     found: [],
-    creds: [],
+    creds: [
+      {
+        service: 'overseerr',
+        url: 'http://100.75.111.118:5055/login',
+        env_field: 'OVERSEERR_API_KEY',
+        secret_present: true,
+      },
+    ],
     warnings: [],
   }
 
   assert.deepEqual(report.target.uri, { host: 'squirts', path: '/mnt/appdata' })
+  assert.equal(report.creds[0]?.secret_present, true)
+})
+
+test('extractApi.scan surfaces backend_unreachable failures', async () => {
+  __setBrowserSessionStateForTests({ status: 'unauthenticated' })
+  globalThis.fetch = async () => {
+    throw new Error('connection refused')
+  }
+
+  await assert.rejects(
+    extractApi.scan(),
+    (error: unknown) =>
+      error instanceof ExtractApiError
+      && error.status === 502
+      && error.code === 'backend_unreachable'
+      && error.message.includes('connection refused'),
+  )
+})
+
+test('extractApi.scan rethrows abort errors unchanged', async () => {
+  __setBrowserSessionStateForTests({ status: 'unauthenticated' })
+  globalThis.fetch = async () => {
+    throw new DOMException('request aborted', 'AbortError')
+  }
+
+  await assert.rejects(
+    extractApi.scan(),
+    (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
+  )
 })
