@@ -363,7 +363,7 @@ fn run_tail(conn: &Connection, req: &LogTailRequest) -> Result<LogTailResult, ru
 fn run_stats(
     conn: &Connection,
     retention: LogRetention,
-    path: &Path,
+    _path: &Path,
 ) -> Result<LogStoreStats, rusqlite::Error> {
     let (total_event_count, oldest_retained_ts, newest_retained_ts): (u64, Option<i64>, Option<i64>) =
         conn.query_row(
@@ -372,7 +372,7 @@ fn run_stats(
             |row| Ok((row.get::<_, u64>(0)?, row.get(1)?, row.get(2)?)),
         )?;
 
-    let on_disk_bytes = sidecar_bytes(path);
+    let on_disk_bytes = content_bytes(conn)?;
 
     Ok(LogStoreStats {
         on_disk_bytes,
@@ -384,21 +384,16 @@ fn run_stats(
     })
 }
 
-fn sidecar_bytes(path: &Path) -> u64 {
-    let mut total = 0u64;
-    for suffix in ["", "-wal", "-shm"] {
-        let p = if suffix.is_empty() {
-            path.to_path_buf()
-        } else {
-            let mut os = path.as_os_str().to_os_string();
-            os.push(suffix);
-            PathBuf::from(os)
-        };
-        if let Ok(meta) = std::fs::metadata(&p) {
-            total = total.saturating_add(meta.len());
-        }
-    }
-    total
+/// Sum of the logical content bytes retained (message + fields_json + small
+/// per-row overhead). This is what retention policies act on — NOT the
+/// physical SQLite file size, which has fixed overhead + WAL sidecar weight
+/// that can't be shrunk below a few KB regardless of content.
+fn content_bytes(conn: &Connection) -> Result<u64, rusqlite::Error> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(LENGTH(message) + LENGTH(fields_json)), 0) FROM log_events",
+        [],
+        |row| row.get::<_, i64>(0).map(|n| n.max(0) as u64),
+    )
 }
 
 // ── Maintenance ───────────────────────────────────────────────────────────────
@@ -406,7 +401,7 @@ fn sidecar_bytes(path: &Path) -> u64 {
 fn run_maintenance(
     conn: &Connection,
     retention: LogRetention,
-    path: &Path,
+    _path: &Path,
 ) -> Result<(), rusqlite::Error> {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -415,19 +410,18 @@ fn run_maintenance(
     let cutoff = now_ms.saturating_sub((retention.max_age_days as i64) * 86_400_000);
     conn.execute("DELETE FROM log_events WHERE ts < ?1", params![cutoff])?;
 
-    for _ in 0..16 {
-        if sidecar_bytes(path) <= retention.max_bytes {
+    for _ in 0..64 {
+        if content_bytes(conn)? <= retention.max_bytes {
             break;
         }
         let affected = conn.execute(
             "DELETE FROM log_events WHERE rowid IN
-               (SELECT rowid FROM log_events ORDER BY ts ASC LIMIT 1024)",
+               (SELECT rowid FROM log_events ORDER BY ts ASC LIMIT 256)",
             [],
         )?;
         if affected == 0 {
             break;
         }
-        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;")?;
     }
     Ok(())
 }
