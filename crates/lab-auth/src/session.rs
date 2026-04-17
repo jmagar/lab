@@ -4,7 +4,7 @@ use axum::response::Response;
 use crate::error::AuthError;
 use crate::state::AuthState;
 use crate::types::BrowserSessionRow;
-use crate::util::{now_unix, random_token};
+use crate::util::{expires_at, now_unix, random_token};
 
 pub const BROWSER_SESSION_COOKIE_NAME: &str = "lab_session";
 pub const BROWSER_CSRF_HEADER_NAME: &str = "x-csrf-token";
@@ -39,7 +39,11 @@ pub async fn create_browser_session(
         email,
         csrf_token: random_token(18)?,
         created_at,
-        expires_at: created_at + state.config.refresh_token_ttl.as_secs() as i64,
+        expires_at: expires_at(
+            created_at,
+            state.config.refresh_token_ttl,
+            "LAB_AUTH_REFRESH_TOKEN_TTL_SECS",
+        )?,
     };
     state.store.upsert_browser_session(session.clone()).await?;
     Ok(session)

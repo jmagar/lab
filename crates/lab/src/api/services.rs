@@ -8,6 +8,7 @@ pub mod helpers;
 
 pub mod extract;
 pub mod gateway;
+pub mod logs;
 
 #[cfg(feature = "radarr")]
 pub mod radarr;

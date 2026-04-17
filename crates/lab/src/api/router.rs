@@ -280,6 +280,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         v1 = v1
             .route("/{service}/actions", get(service_actions))
             .nest("/gateway", services::gateway::routes(state.clone()))
+            .nest("/logs", services::logs::routes(state.clone()))
             .route(
                 "/openapi.json",
                 get(move || {
@@ -1314,7 +1315,7 @@ mod tests {
             .as_secs() as usize;
         auth_state
             .signing_keys
-            .issue_access_token(lab_auth::jwt::AccessClaims {
+            .issue_access_token(&lab_auth::jwt::AccessClaims {
                 iss: "https://lab.example.com".to_string(),
                 sub: "google-user".to_string(),
                 aud: "https://lab.example.com/mcp".to_string(),

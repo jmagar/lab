@@ -8,6 +8,7 @@ import {
   LayoutDashboard, 
   Settings, 
   Activity,
+  ScrollText,
   HelpCircle,
 } from 'lucide-react'
 
@@ -47,6 +48,11 @@ const navigation = [
     title: 'Activity',
     url: '/activity',
     icon: Activity,
+  },
+  {
+    title: 'Logs',
+    url: '/logs',
+    icon: ScrollText,
   },
 ]
 

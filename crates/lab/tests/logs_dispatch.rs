@@ -1,0 +1,361 @@
+use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+static LOG_SYSTEM_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_log_system_tests() -> MutexGuard<'static, ()> {
+    LOG_SYSTEM_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn event_with(
+    event_id: &str,
+    ts: i64,
+    subsystem: lab::dispatch::logs::types::Subsystem,
+    level: lab::dispatch::logs::types::LogLevel,
+    message: &str,
+) -> lab::dispatch::logs::types::LogEvent {
+    let mut event = lab::dispatch::logs::types::LogEvent::fixture();
+    event.event_id = event_id.to_string();
+    event.ts = ts;
+    event.subsystem = subsystem;
+    event.level = level;
+    event.message = message.to_string();
+    event
+}
+
+fn raw_gateway_event(message: &str) -> lab::dispatch::logs::types::RawLogEvent {
+    lab::dispatch::logs::types::RawLogEvent {
+        ts: Some(1_713_225_600_000),
+        level: Some("warn".to_string()),
+        subsystem: Some("gateway".to_string()),
+        surface: Some("api".to_string()),
+        action: Some("gateway.list".to_string()),
+        message: message.to_string(),
+        request_id: Some("req-gateway".to_string()),
+        session_id: None,
+        correlation_id: None,
+        trace_id: None,
+        span_id: None,
+        instance: Some("default".to_string()),
+        auth_flow: None,
+        outcome_kind: Some("ok".to_string()),
+        fields_json: serde_json::json!({"route":"gateway.list"}),
+        source_kind: None,
+        source_node_id: None,
+        source_device_id: None,
+        ingest_path: None,
+        upstream_event_id: None,
+    }
+}
+
+fn raw_event_with_bearer_token() -> lab::dispatch::logs::types::RawLogEvent {
+    let mut event = raw_gateway_event("Authorization: Bearer secret-value");
+    event.fields_json = serde_json::json!({"authorization":"Bearer secret-value"});
+    event
+}
+
+fn unique_store_path(prefix: &str) -> std::path::PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    std::env::temp_dir().join(format!("{prefix}-{}-{unique}.db", std::process::id()))
+}
+
+#[test]
+fn default_registry_includes_logs_service() {
+    let registry = lab::registry::build_default_registry();
+    let service = registry.service("logs").expect("logs service registered");
+    assert_eq!(service.status, "available");
+}
+
+#[tokio::test]
+async fn logs_dispatch_help_and_schema_exist() {
+    let help = lab::dispatch::logs::dispatch("help", serde_json::json!({}))
+        .await
+        .unwrap();
+    let schema =
+        lab::dispatch::logs::dispatch("schema", serde_json::json!({"action":"logs.search"}))
+            .await
+            .unwrap();
+
+    assert!(help.is_object());
+    assert!(schema.is_object());
+}
+
+#[test]
+fn log_system_bootstrap_is_single_owner() {
+    let _lock = lock_log_system_tests();
+    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+    let runtime = lab::dispatch::logs::client::bootstrap_log_system_for_test();
+    assert!(runtime.is_ok());
+    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+}
+
+#[tokio::test]
+async fn local_live_commands_fail_cleanly_without_long_lived_runtime() {
+    let _lock = lock_log_system_tests();
+    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+    let error = lab::dispatch::logs::dispatch("logs.tail", serde_json::json!({"limit": 10}))
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind(), "internal_error");
+}
+
+#[test]
+fn log_event_serialization_preserves_future_ingest_fields() {
+    let event = lab::dispatch::logs::types::LogEvent::fixture();
+    let json = serde_json::to_value(&event).unwrap();
+    assert!(json.get("source_kind").is_some());
+    assert!(json.get("source_device_id").is_some());
+    assert!(json.get("ingest_path").is_some());
+}
+
+#[test]
+fn subsystem_enum_includes_local_master_taxonomy() {
+    assert_eq!(
+        lab::dispatch::logs::types::Subsystem::Gateway.as_str(),
+        "gateway"
+    );
+    assert_eq!(
+        lab::dispatch::logs::types::Subsystem::OauthRelay.as_str(),
+        "oauth_relay"
+    );
+    assert_eq!(
+        lab::dispatch::logs::types::Subsystem::AuthUpstream.as_str(),
+        "auth_upstream"
+    );
+}
+
+#[tokio::test]
+async fn store_search_filters_by_subsystem_and_level() {
+    let store =
+        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+            max_age_days: 30,
+            max_bytes: 1024 * 1024,
+        })
+        .await
+        .unwrap();
+    store
+        .insert(&event_with(
+            "evt-gateway-warn",
+            1_713_225_600_000,
+            lab::dispatch::logs::types::Subsystem::Gateway,
+            lab::dispatch::logs::types::LogLevel::Warn,
+            "gateway warning",
+        ))
+        .await
+        .unwrap();
+    store
+        .insert(&event_with(
+            "evt-api-info",
+            1_713_225_601_000,
+            lab::dispatch::logs::types::Subsystem::Api,
+            lab::dispatch::logs::types::LogLevel::Info,
+            "api info",
+        ))
+        .await
+        .unwrap();
+
+    let result = store
+        .search(lab::dispatch::logs::types::LogQuery {
+            subsystems: vec![lab::dispatch::logs::types::Subsystem::Gateway],
+            levels: vec![lab::dispatch::logs::types::LogLevel::Warn],
+            ..lab::dispatch::logs::types::LogQuery::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.events.len(), 1);
+}
+
+#[tokio::test]
+async fn retention_enforces_age_and_size_limits() {
+    let store =
+        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+            max_age_days: 7,
+            max_bytes: 1024,
+        })
+        .await
+        .unwrap();
+    store
+        .insert(&event_with(
+            "evt-old",
+            1,
+            lab::dispatch::logs::types::Subsystem::Gateway,
+            lab::dispatch::logs::types::LogLevel::Warn,
+            &"x".repeat(2048),
+        ))
+        .await
+        .unwrap();
+    store
+        .insert(&event_with(
+            "evt-new",
+            4_102_444_800_000,
+            lab::dispatch::logs::types::Subsystem::Gateway,
+            lab::dispatch::logs::types::LogLevel::Info,
+            "recent event",
+        ))
+        .await
+        .unwrap();
+
+    store.run_maintenance().await.unwrap();
+    let stats = store.stats().await.unwrap();
+
+    assert!(stats.on_disk_bytes <= 1024);
+    assert!(stats.oldest_retained_ts.unwrap_or_default() >= 4_102_444_800_000);
+}
+
+#[tokio::test]
+async fn ingest_redacts_sensitive_fields_before_store_and_stream() {
+    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+        .await
+        .unwrap();
+    system.ingest(raw_event_with_bearer_token()).await.unwrap();
+
+    let stored = system
+        .search(lab::dispatch::logs::types::LogQuery::default())
+        .await
+        .unwrap();
+    assert!(!stored.events[0].message.contains("Bearer "));
+    assert!(
+        !stored.events[0]
+            .fields_json
+            .to_string()
+            .contains("secret-value")
+    );
+}
+
+#[tokio::test]
+async fn stream_subscribers_receive_new_events_without_querying_store() {
+    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+        .await
+        .unwrap();
+    let mut sub = system
+        .subscribe(lab::dispatch::logs::types::StreamSubscription::default())
+        .await
+        .unwrap();
+    system.ingest(raw_gateway_event("stream me")).await.unwrap();
+
+    let next = sub.recv().await.unwrap();
+    assert_eq!(
+        next.subsystem,
+        lab::dispatch::logs::types::Subsystem::Gateway
+    );
+}
+
+#[tokio::test]
+async fn full_ingest_queue_records_overflow_without_blocking_caller() {
+    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(1)
+        .await
+        .unwrap();
+    for _ in 0..100 {
+        drop(system.try_ingest(raw_gateway_event("queue pressure")));
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let stats = system.stats().await.unwrap();
+    assert!(stats.dropped_event_count > 0);
+}
+
+#[tokio::test]
+async fn logs_search_returns_filtered_results() {
+    let _lock = lock_log_system_tests();
+    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+        .await
+        .unwrap();
+    system.ingest(raw_gateway_event("search me")).await.unwrap();
+
+    let value = lab::dispatch::logs::dispatch(
+        "logs.search",
+        serde_json::json!({
+            "query": { "subsystems": ["gateway"], "levels": ["warn"] }
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert!(value.get("events").is_some());
+    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+}
+
+#[tokio::test]
+async fn logs_stats_returns_retention_metadata() {
+    let _lock = lock_log_system_tests();
+    let _system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+        .await
+        .unwrap();
+
+    let value = lab::dispatch::logs::dispatch("logs.stats", serde_json::json!({}))
+        .await
+        .unwrap();
+
+    assert!(value.get("on_disk_bytes").is_some());
+    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+}
+
+#[tokio::test]
+async fn logs_tail_returns_bounded_follow_up_window() {
+    let _lock = lock_log_system_tests();
+    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+        .await
+        .unwrap();
+    system.ingest(raw_gateway_event("tail me")).await.unwrap();
+
+    let value = lab::dispatch::logs::dispatch(
+        "logs.tail",
+        serde_json::json!({
+            "after_ts": 0,
+            "limit": 50
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert!(value.get("events").is_some());
+    assert!(value.get("next_cursor").is_some());
+    lab::dispatch::logs::client::clear_installed_log_system_for_test();
+}
+
+#[tokio::test]
+async fn local_logs_persist_across_restart() {
+    let path = unique_store_path("lab-local-logs-persist");
+    let writer = lab::dispatch::logs::client::bootstrap_running_log_system(
+        path.clone(),
+        lab::dispatch::logs::types::LogRetention::default(),
+        16,
+        16,
+    )
+    .await
+    .expect("writer runtime");
+    writer
+        .ingest(raw_gateway_event("persisted across restart"))
+        .await
+        .expect("seed event");
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let reader = lab::dispatch::logs::client::bootstrap_store_backed_log_system(
+        path,
+        lab::dispatch::logs::types::LogRetention::default(),
+    )
+    .await
+    .expect("reader runtime");
+
+    let result = reader
+        .search(lab::dispatch::logs::types::LogQuery {
+            text: Some("persisted".to_string()),
+            ..lab::dispatch::logs::types::LogQuery::default()
+        })
+        .await
+        .expect("search after restart");
+
+    assert_eq!(result.events.len(), 1);
+    assert!(
+        result.events[0]
+            .message
+            .contains("persisted across restart")
+    );
+}

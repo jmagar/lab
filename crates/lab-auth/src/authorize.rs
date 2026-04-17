@@ -16,7 +16,7 @@ use crate::types::{
     BrowserLoginStateRow, CallbackQuery, ClientRegistrationRequest, ClientRegistrationResponse,
     RegisteredClient,
 };
-use crate::util::{fingerprint, now_unix, random_token};
+use crate::util::{expires_at, fingerprint, now_unix, random_token};
 
 const AUTH_REQUEST_TTL_SECS: i64 = 300;
 const LAB_SCOPE: &str = "lab";
@@ -43,7 +43,7 @@ pub async fn browser_login(
         })
         .await?;
 
-    let location = state.google.authorize_url(AuthorizeUrlRequest {
+    let location = state.google.authorize_url(&AuthorizeUrlRequest {
         state: request_state,
         scope: LAB_SCOPE.to_string(),
         code_challenge: provider_code_challenge,
@@ -180,7 +180,7 @@ pub async fn authorize(
         })
         .await?;
 
-    let location = state.google.authorize_url(AuthorizeUrlRequest {
+    let location = state.google.authorize_url(&AuthorizeUrlRequest {
         state: request_state,
         scope,
         code_challenge: provider_code_challenge,
@@ -282,7 +282,11 @@ pub async fn callback(
             code_challenge_method: request.code_challenge_method,
             provider_refresh_token: google.refresh_token,
             created_at: now_unix(),
-            expires_at: now_unix() + state.config.auth_code_ttl.as_secs() as i64,
+            expires_at: expires_at(
+                now_unix(),
+                state.config.auth_code_ttl,
+                "LAB_AUTH_CODE_TTL_SECS",
+            )?,
         })
         .await?;
     info!(
@@ -401,7 +405,7 @@ fn is_loopback_redirect(value: &str) -> bool {
     }
     matches!(
         url.host_str(),
-        Some("127.0.0.1") | Some("localhost") | Some("::1") | Some("[::1]")
+        Some("127.0.0.1" | "localhost" | "::1" | "[::1]")
     )
 }
 
@@ -926,6 +930,7 @@ pub mod tests {
             "client-secret".to_string(),
             Url::parse("https://lab.example.com/auth/google/callback").unwrap(),
         )
+        .unwrap()
         .with_endpoints(
             server.uri().parse::<Url>().unwrap(),
             server.uri().parse::<Url>().unwrap().join("/token").unwrap(),

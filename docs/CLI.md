@@ -168,11 +168,24 @@ Commands:
 
 ## `lab logs`
 
-`lab logs` is the fleet log query command group. It also routes to the configured master.
+`lab logs` now has two additive paths:
+
+- fleet search routed to the configured master
+- local-master log search and bounded follow-up queries against the embedded runtime store
 
 Commands:
 
 - `lab logs search <device_id> <query>`
+- `lab logs local search [--subsystem <name>] [--level <level>] [--text <needle>] [--limit <n>]`
+- `lab logs local tail [--after-ts <unix_ms>] [--since-event-id <id>] [--limit <n>]`
+- `lab logs local stats`
+
+Rules:
+
+- `lab logs search <device_id> <query>` keeps the existing fleet behavior and continues to use `POST /v1/device/logs/search`
+- `lab logs local *` is strictly local-master and uses the shared `dispatch::logs` contract
+- true live streaming is not a CLI capability in v1; operators should use `GET /v1/logs/stream` or the gateway-admin `/logs` page
+- CLI local log commands stay thin adapters; normalization, retention, search, and tail semantics are owned by `dispatch::logs`
 
 ## Install and Uninstall
 

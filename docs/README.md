@@ -13,6 +13,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, lab-issued JWT behavior, and callback-forwarding constraints.
 - Use [GATEWAY.md](./GATEWAY.md) when managing upstream MCP gateways over CLI, MCP, or `/v1/gateway`.
 - Use [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md), [FLEET_LOGS.md](./FLEET_LOGS.md), and [DEPLOY.md](./DEPLOY.md) for the master/non-master fleet runtime, device inventory, and deployment model.
+- Use [LOCAL_LOGS.md](./LOCAL_LOGS.md) for the local-master runtime log store, `/v1/logs`, SSE streaming, and gateway-admin `/logs`.
 - See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP gateway setup, configuration, tool merging, circuit breaker behavior, and resource proxying.
 - Consult [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
 - Use [OBSERVABILITY.md](./OBSERVABILITY.md) for the mandatory logging, correlation, redaction, and verification contract.
@@ -88,6 +89,8 @@ The docs are split by topic so contributors do not have to recover architecture,
   Master/non-master runtime roles, `/v1/device/*`, AI CLI inventory upload, queueing, and device OAuth relay.
 - [FLEET_LOGS.md](./FLEET_LOGS.md)
   Fleet log ingestion, queueing, search, and current storage limits.
+- [LOCAL_LOGS.md](./LOCAL_LOGS.md)
+  Local-master runtime logging: shared store, bounded search/tail actions, SSE streaming, retention, and future fleet/syslog seams.
 - [DEPLOY.md](./DEPLOY.md)
   Device-runtime deployment model for master and non-master machines.
 - [UPSTREAM.md](./UPSTREAM.md)
@@ -147,6 +150,7 @@ Use the smallest correct doc:
 - gateway control plane and exposure policy: [GATEWAY.md](./GATEWAY.md)
 - device runtime roles, fleet ingest, and master gating: [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
 - fleet log ingestion and search: [FLEET_LOGS.md](./FLEET_LOGS.md)
+- local-master runtime log store and SSE console: [LOCAL_LOGS.md](./LOCAL_LOGS.md)
 - deployment topology and rollout guidance: [DEPLOY.md](./DEPLOY.md)
 - upstream MCP proxy, circuit breaker, resource proxying: [UPSTREAM.md](./UPSTREAM.md)
 - transport configuration, middleware, sessions: [TRANSPORT.md](./TRANSPORT.md)
