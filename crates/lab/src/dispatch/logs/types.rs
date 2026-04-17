@@ -37,6 +37,19 @@ impl LogLevel {
             Self::Error => "error",
         }
     }
+
+    /// Parse a case-insensitive level name. Recognizes standard aliases
+    /// (`warning`, `err`, `information`).
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s.to_ascii_lowercase().as_str() {
+            "trace" => Self::Trace,
+            "debug" => Self::Debug,
+            "info" | "information" => Self::Info,
+            "warn" | "warning" => Self::Warn,
+            "error" | "err" => Self::Error,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(

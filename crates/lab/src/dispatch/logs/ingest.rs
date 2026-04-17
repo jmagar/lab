@@ -10,9 +10,18 @@ use super::stream::StreamHub;
 use super::types::{LogEvent, LogLevel, RawLogEvent, Subsystem, Surface};
 use crate::dispatch::error::ToolError;
 
+/// Milliseconds since the Unix epoch, clamped to a signed 64-bit range.
+pub(super) fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+}
+
+/// Counters for ingest-queue health. Only drops are exported via `stats`;
+/// accepted-event totals would be redundant with the store row count.
 pub struct IngestCounters {
     dropped: AtomicU64,
-    total: AtomicU64,
 }
 
 impl IngestCounters {
@@ -20,7 +29,6 @@ impl IngestCounters {
     pub fn new() -> Self {
         Self {
             dropped: AtomicU64::new(0),
-            total: AtomicU64::new(0),
         }
     }
 
@@ -31,10 +39,6 @@ impl IngestCounters {
 
     pub fn record_drop(&self) {
         self.dropped.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn record_accepted(&self) {
-        self.total.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -65,7 +69,6 @@ impl IngestHandle {
         let event = canonicalize(raw);
         store.insert(&event).await?;
         hub.publish(event);
-        self.counters.record_accepted();
         Ok(())
     }
 
@@ -76,17 +79,14 @@ impl IngestHandle {
             ));
         };
         match tx.try_send(raw) {
-            Ok(()) => {
-                self.counters.record_accepted();
-                Ok(())
-            }
+            Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.counters.record_drop();
                 Ok(())
             }
-            Err(mpsc::error::TrySendError::Closed(_)) => Err(ToolError::internal_message(
-                "log ingest channel closed",
-            )),
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                Err(ToolError::internal_message("log ingest channel closed"))
+            }
         }
     }
 }
@@ -131,16 +131,11 @@ pub fn spawn_writer(
 fn canonicalize(mut raw: RawLogEvent) -> LogEvent {
     raw.message = redact_bearer(&raw.message);
 
-    let ts = raw.ts.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(0)
-    });
+    let ts = raw.ts.unwrap_or_else(now_ms);
     let level = raw
         .level
         .as_deref()
-        .and_then(parse_level)
+        .and_then(LogLevel::parse)
         .unwrap_or(LogLevel::Info);
     let subsystem = raw
         .subsystem
@@ -179,17 +174,6 @@ fn canonicalize(mut raw: RawLogEvent) -> LogEvent {
         ingest_path: raw.ingest_path.or_else(|| Some("tracing".to_string())),
         upstream_event_id: raw.upstream_event_id,
     }
-}
-
-fn parse_level(s: &str) -> Option<LogLevel> {
-    Some(match s.to_ascii_lowercase().as_str() {
-        "trace" => LogLevel::Trace,
-        "debug" => LogLevel::Debug,
-        "info" | "information" => LogLevel::Info,
-        "warn" | "warning" => LogLevel::Warn,
-        "error" | "err" => LogLevel::Error,
-        _ => return None,
-    })
 }
 
 fn redact_bearer(msg: &str) -> String {
@@ -275,23 +259,25 @@ where
         event.record(&mut visitor);
 
         let raw = RawLogEvent {
-            ts: Some(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0),
+            ts: Some(now_ms()),
+            level: Some(
+                match *metadata.level() {
+                    tracing::Level::TRACE => "trace",
+                    tracing::Level::DEBUG => "debug",
+                    tracing::Level::INFO => "info",
+                    tracing::Level::WARN => "warn",
+                    tracing::Level::ERROR => "error",
+                }
+                .to_string(),
             ),
-            level: Some(match *metadata.level() {
-                tracing::Level::TRACE => "trace",
-                tracing::Level::DEBUG => "debug",
-                tracing::Level::INFO => "info",
-                tracing::Level::WARN => "warn",
-                tracing::Level::ERROR => "error",
-            }.to_string()),
-            subsystem: visitor.subsystem.or_else(|| Some("core_runtime".to_string())),
+            subsystem: visitor
+                .subsystem
+                .or_else(|| Some("core_runtime".to_string())),
             surface: visitor.surface,
             action: visitor.action,
-            message: visitor.message.unwrap_or_else(|| metadata.target().to_string()),
+            message: visitor
+                .message
+                .unwrap_or_else(|| metadata.target().to_string()),
             request_id: visitor.request_id,
             session_id: visitor.session_id,
             correlation_id: visitor.correlation_id,
