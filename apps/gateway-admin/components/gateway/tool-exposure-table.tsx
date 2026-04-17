@@ -29,7 +29,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import type { DiscoveredTool } from '@/lib/types/gateway'
-import { filterGatewayTools, summarizeGatewayTools } from '@/lib/api/gateway-mobile'
 
 interface ToolExposureTableProps {
   tools: DiscoveredTool[]
@@ -118,50 +117,44 @@ export function ToolExposureTable({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="space-y-3">
+      <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
               placeholder="Search tools..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="pl-9"
+              className="h-9 pl-9"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
+            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-sm font-medium">
               <Wrench className="size-4 text-primary" />
               {exposureLabel}
             </div>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm text-muted-foreground tabular-nums">
               {hiddenCount} hidden
             </span>
             {hasDraftChanges && (
-              <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 px-3 py-1 text-amber-700 dark:text-amber-300">
+              <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-300">
                 Unsaved changes
               </Badge>
             )}
             {!manageMode ? (
-              <>
-                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm text-muted-foreground">
-                  <span className="font-medium">Expose all tools</span>
-                  <Switch checked={exposeAll} disabled />
-                </div>
-                <Button variant="outline" onClick={() => onManageModeChange(true)}>
-                  <SlidersHorizontal className="mr-2 size-4" />
-                  Manage Tools
-                </Button>
-              </>
+              <Button variant="outline" size="sm" onClick={() => onManageModeChange(true)}>
+                <SlidersHorizontal className="mr-2 size-4" />
+                Manage Tools
+              </Button>
             ) : (
               <>
-                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
-                  <span className="text-sm font-medium">Expose all tools</span>
+                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1">
+                  <span className="text-sm font-medium">Expose all</span>
                   <Switch checked={exposeAll} onCheckedChange={onExposeAllChange} />
                 </div>
-                <Button variant="outline" onClick={onCancelChanges}>
+                <Button variant="outline" size="sm" onClick={onCancelChanges}>
                   <X className="mr-2 size-4" />
                   Cancel
                 </Button>
@@ -193,8 +186,8 @@ export function ToolExposureTable({
 
         {manageMode && (
           <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <label htmlFor="select-all-visible" className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <Checkbox
                     id="select-all-visible"
@@ -203,7 +196,7 @@ export function ToolExposureTable({
                   />
                   Select all visible
                 </label>
-                <Badge variant="secondary">{selectedRowToolNames.length} selected</Badge>
+                <Badge variant="secondary" className="rounded-full">{selectedRowToolNames.length} selected</Badge>
                 {hasDraftChanges && (
                   <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
                     Unsaved changes
@@ -220,6 +213,7 @@ export function ToolExposureTable({
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
+                size="sm"
                 disabled={selectedRowToolNames.length === 0}
                 onClick={() => onBulkEnableSelected(selectedRowToolNames)}
               >
@@ -227,12 +221,13 @@ export function ToolExposureTable({
               </Button>
               <Button
                 variant="outline"
+                size="sm"
                 disabled={selectedRowToolNames.length === 0}
                 onClick={() => onBulkDisableSelected(selectedRowToolNames)}
               >
                 Disable selected
               </Button>
-              <Button disabled={!hasDraftChanges || isSaving} onClick={onSaveChanges}>
+              <Button size="sm" disabled={!hasDraftChanges || isSaving} onClick={onSaveChanges}>
                 {isSaving ? 'Saving…' : 'Save changes'}
               </Button>
             </div>
@@ -297,14 +292,12 @@ export function ToolExposureTable({
             <TableRow className="sticky top-0 z-10 bg-background">
               {manageMode && <TableHead className="w-[44px]" />}
               <TableHead>Tool</TableHead>
-              <TableHead className="hidden md:table-cell">Description</TableHead>
-              <TableHead className="w-[170px]">Exposure</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredTools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={manageMode ? 4 : 3} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={manageMode ? 2 : 1} className="py-8 text-center text-muted-foreground">
                   {tools.length === 0 ? 'No tools discovered' : 'No tools match your search'}
                 </TableCell>
               </TableRow>
@@ -321,28 +314,26 @@ export function ToolExposureTable({
                     </TableCell>
                   )}
                   <TableCell>
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`size-2 rounded-full ${tool.exposed ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                        aria-hidden="true"
-                      />
-                      <code className="text-sm font-mono">{tool.name}</code>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                    {tool.description || '—'}
-                  </TableCell>
-                  <TableCell>
-                    {tool.exposed ? (
-                      <Badge variant="secondary" className="text-xs">
-                        {tool.matched_by === '*' ? 'Expose all' : 'Enabled'}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`size-2 rounded-full ${tool.exposed ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                            aria-hidden="true"
+                          />
+                          <code className="text-sm font-mono">{tool.name}</code>
+                        </div>
+                        <p className="pl-[18px] line-clamp-2 text-[13px] leading-5 text-muted-foreground">
+                          {tool.description || 'No description provided.'}
+                        </p>
+                      </div>
+                      <Badge
+                        variant={tool.exposed ? 'secondary' : 'outline'}
+                        className="shrink-0 rounded-full px-2 py-0.5 text-[11px]"
+                      >
+                        {tool.exposed ? 'On' : 'Off'}
                       </Badge>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <EyeOff className="size-3.5" />
-                        Hidden
-                      </span>
-                    )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

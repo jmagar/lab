@@ -9,20 +9,17 @@ import {
   Trash2,
   AlertTriangle,
   Clock,
-  Terminal,
-  Globe,
-  Key,
   FileText,
   MessageSquare,
   Loader2,
   Search,
+  Wrench,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TransportBadge } from './transport-badge'
@@ -39,6 +36,8 @@ import {
   getDraftExposureSummary,
 } from '@/lib/api/tool-exposure-draft'
 import { getErrorMessage } from '@/lib/utils'
+import { buildGatewayClientConfig } from '@/lib/api/gateway-client-config'
+import { SurfaceRatio } from './surface-ratio'
 
 interface GatewayDetailContentProps {
   gatewayId: string | null
@@ -285,6 +284,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       : null,
   }))
   const hiddenToolCount = displayedTools.filter((tool) => !tool.exposed).length
+  const clientConfigJson = JSON.stringify(buildGatewayClientConfig(gateway), null, 2)
+  const resourceExposureEnabled = gateway.config.proxy_resources ?? true
   const filteredResources = gateway.discovery.resources.filter(
     (resource) =>
       resource.name.toLowerCase().includes(resourceSearch.trim().toLowerCase()) ||
@@ -296,6 +297,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       prompt.name.toLowerCase().includes(promptSearch.trim().toLowerCase()) ||
       prompt.description?.toLowerCase().includes(promptSearch.trim().toLowerCase()),
   )
+  const gatewayStatusLabel =
+    gateway.status.healthy && gateway.status.connected ? 'Connected' : 'Offline'
 
   const handleExposeAllChange = (checked: boolean) => {
     if (!manageToolsMode) {
@@ -395,176 +398,148 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
 
       <div className="flex-1 p-6 space-y-6">
         {/* Header Summary */}
-        <div className="rounded-lg border bg-card p-6">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-5">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <TransportBadge transport={gateway.transport} />
-                  <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    {gateway.source === 'lab_service' ? 'Lab gateway' : 'Custom gateway'}
+        <div className="rounded-lg border bg-card p-5">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <TransportBadge transport={gateway.transport} />
+                <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  {gateway.source === 'lab_service' ? 'Lab gateway' : 'Custom gateway'}
+                </Badge>
+                {gateway.warnings.length > 0 && (
+                  <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                    {gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}
                   </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="size-4" />
+                <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                  aria-hidden="true"
+                />
+                <h1 className="text-3xl font-semibold tracking-tight">{gateway.name}</h1>
+              </div>
+              <p className="max-w-3xl text-sm text-muted-foreground">
+                {gateway.transport === 'http'
+                  ? gateway.config.url
+                  : isLabGateway
+                    ? gateway.config.url ?? 'Lab-managed gateway configuration'
+                    : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <SurfaceRatio
+                icon={Wrench}
+                label="Tools"
+                exposed={gateway.status.exposed_tool_count}
+                total={gateway.status.discovered_tool_count}
+              />
+              <SurfaceRatio
+                icon={FileText}
+                label="Resources"
+                exposed={gateway.status.exposed_resource_count}
+                total={gateway.status.discovered_resource_count}
+              />
+              <SurfaceRatio
+                icon={MessageSquare}
+                label="Prompts"
+                exposed={gateway.status.exposed_prompt_count}
+                total={gateway.status.discovered_prompt_count}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-2.5">
+              <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                <span
+                  className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                  aria-hidden="true"
+                />
+                <span className="text-sm font-medium">{gatewayStatusLabel}</span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                <span className="text-sm font-medium">Expose resources</span>
+                <Switch
+                  aria-label="Expose resources"
+                  checked={resourceExposureEnabled}
+                  onCheckedChange={handleProxyResourcesToggle}
+                />
+              </div>
+              {isLabGateway && (
+                <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                  <span className="text-sm font-medium">Gateway enabled</span>
+                  <Switch
+                    aria-label="Gateway enabled"
+                    checked={gateway.enabled ?? false}
+                    onCheckedChange={handleEnabledToggle}
+                  />
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
+              )}
+              {surfaceEntries.map(([surface, state]) => (
+                <div key={surface} className="inline-flex items-center gap-2 rounded-full border bg-background px-2.5 py-1.5">
                   <span
-                    className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                    className={`size-2 rounded-full ${state.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
                     aria-hidden="true"
                   />
-                  <h1 className="text-2xl font-semibold">{gateway.name}</h1>
+                  <span className="text-sm font-medium uppercase">{surface}</span>
+                  <Switch
+                    aria-label={`${surface.toUpperCase()} surface`}
+                    checked={state.enabled}
+                    onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
+                  />
                 </div>
-                <p className="max-w-2xl text-sm text-muted-foreground">
-                  {gateway.transport === 'http'
-                    ? gateway.config.url
-                    : isLabGateway
-                      ? gateway.config.url ?? 'Lab-managed gateway configuration'
-                      : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
-                </p>
-              </div>
-              
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border bg-muted/20 p-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Tool Surface</p>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">{exposureSummary.label}</p>
-                  <p className="text-sm text-muted-foreground">
-                    exposed tools out of the {gateway.status.discovered_tool_count} discovered upstream
-                  </p>
+              ))}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+              <div className="rounded-xl border bg-background">
+                <div className="border-b px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Client JSON</p>
                 </div>
-                <div className="rounded-xl border bg-muted/20 p-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Resources</p>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">{gateway.discovery.resources.length}</p>
-                  <p className="text-sm text-muted-foreground">
-                    resource{gateway.discovery.resources.length === 1 ? '' : 's'} available to downstream clients
-                  </p>
-                </div>
-                <div className="rounded-xl border bg-muted/20 p-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Prompts</p>
-                  <p className="mt-2 text-2xl font-semibold tabular-nums">{gateway.discovery.prompts.length}</p>
-                  <p className="text-sm text-muted-foreground">
-                    prompt{gateway.discovery.prompts.length === 1 ? '' : 's'} discovered in the latest probe
-                  </p>
-                </div>
+                <pre className="overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-foreground">
+                  <code>{clientConfigJson}</code>
+                </pre>
               </div>
 
-              <div className="grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
-                <div className="rounded-xl border bg-muted/20 p-4">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Configuration</p>
-                  <dl className="mt-3 divide-y rounded-lg border bg-background">
-                    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_1fr] sm:items-start">
-                      <dt className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        {gateway.transport === 'http' ? <Globe className="size-3.5" /> : <Terminal className="size-3.5" />}
-                        {gateway.transport === 'http' ? 'Endpoint' : 'Command'}
-                      </dt>
-                      <dd className="min-w-0 text-sm text-foreground">
-                        <code className="break-all text-xs text-muted-foreground">
-                          {gateway.transport === 'http'
-                            ? gateway.config.url
-                            : isLabGateway
-                              ? gateway.config.url ?? 'Lab-managed gateway configuration'
-                              : `${gateway.config.command ?? 'Not configured'}${gateway.config.args?.length ? ` ${gateway.config.args.join(' ')}` : ''}`}
-                        </code>
-                      </dd>
-                    </div>
-                    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_1fr] sm:items-start">
-                      <dt className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        <Key className="size-3.5" />
-                        Bearer env
-                      </dt>
-                      <dd className="text-sm text-muted-foreground">
-                        {gateway.config.bearer_token_env ? (
-                          <code className="text-xs text-muted-foreground">{gateway.config.bearer_token_env}</code>
-                        ) : (
-                          'Not configured'
-                        )}
-                      </dd>
-                    </div>
-                    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[140px_1fr] sm:items-start">
-                      <dt className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        <FileText className="size-3.5" />
-                        Resources
-                      </dt>
-                      <dd className="text-sm text-muted-foreground">
-                        {gateway.config.proxy_resources ? 'Exposed to downstream clients' : 'Hidden from downstream clients'}
-                      </dd>
-                    </div>
-                  </dl>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {hiddenToolCount === 0
-                      ? 'Every discovered tool is currently exposed downstream.'
-                      : `${hiddenToolCount} discovered tool${hiddenToolCount === 1 ? ' is' : 's are'} currently hidden from downstream clients.`}
-                  </p>
-                  {gateway.discovery.prompts.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Prompt exposure is upstream-derived today; per-prompt controls are not available yet.
-                    </p>
-                  )}
-                </div>
-
-                {isLabGateway && (
-                  <div className="rounded-xl border bg-muted/20 p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Lab Controls</p>
-                    <div className="mt-3 space-y-3">
-                      <div className="flex items-center justify-between rounded-lg border bg-background p-3">
-                        <div className="space-y-0.5">
-                          <Label htmlFor="virtual-enabled" className="font-medium">Gateway enabled</Label>
-                          <p className="text-xs text-muted-foreground">
-                            Expose this Lab service as a visible gateway.
-                          </p>
-                        </div>
-                        <Switch
-                          id="virtual-enabled"
-                          checked={gateway.enabled ?? false}
-                          onCheckedChange={handleEnabledToggle}
-                        />
+              <div className="space-y-3">
+                {gateway.status.last_error ? (
+                  <div className="rounded-xl border border-warning/20 bg-warning/10 p-4 text-sm text-warning">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                      <div className="space-y-1">
+                        <p className="font-medium">Most recent probe result</p>
+                        <p>{gateway.status.last_error}</p>
                       </div>
-                      {surfaceEntries.map(([surface, state]) => (
-                        <div key={surface} className="flex items-center justify-between rounded-lg border bg-background p-3">
-                          <div className="space-y-0.5">
-                            <Label htmlFor={`surface-${surface}`} className="text-sm font-medium uppercase">
-                              {surface}
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                              {state.connected ? 'Connected' : 'Not connected'}
-                            </p>
-                          </div>
-                          <Switch
-                            id={`surface-${surface}`}
-                            checked={state.enabled}
-                            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
-                          />
-                        </div>
-                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-success/20 bg-success/10 p-4 text-sm text-success">
+                    <div className="space-y-1">
+                      <p className="font-medium">Gateway reachable</p>
+                      <p>
+                        The latest probe discovered {gateway.status.discovered_tool_count} tools, {gateway.status.discovered_resource_count} resources, and {gateway.status.discovered_prompt_count} prompts.
+                      </p>
                     </div>
                   </div>
                 )}
-              </div>
 
-              {gateway.status.last_error && (
-                <div className="flex items-start gap-2 rounded-md border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
-                  <AlertTriangle className="size-4 mt-0.5 shrink-0" />
-                  <div className="space-y-1">
-                    <p className="font-medium">Most recent probe result</p>
-                    <p>{gateway.status.last_error}</p>
-                  </div>
+                <div className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+                  <p>
+                    {hiddenToolCount === 0
+                      ? 'All discovered tools are currently exposed downstream.'
+                      : `${hiddenToolCount} discovered tool${hiddenToolCount === 1 ? ' is' : 's are'} currently hidden from downstream clients.`}
+                  </p>
+                  <p className="mt-2">
+                    Resources are {resourceExposureEnabled ? 'currently exposed' : 'currently hidden'}, while prompts remain upstream-derived.
+                  </p>
                 </div>
-              )}
-
-              {!gateway.status.last_error && gateway.status.connected && (
-                <div className="flex items-start gap-2 rounded-md border border-success/20 bg-success/10 p-3 text-sm text-success">
-                  <FileText className="size-4 mt-0.5 shrink-0" />
-                  <div className="space-y-1">
-                    <p className="font-medium">Gateway reachable</p>
-                    <p>
-                      The latest probe confirmed a healthy upstream and a ready downstream surface.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-4 text-sm text-muted-foreground lg:text-right">
-              <div className="flex items-center gap-2 lg:justify-end">
-                <Clock className="size-4" />
-                <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -602,8 +577,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </TabsList>
 
           <TabsContent value="tools">
-            <div className="rounded-lg border bg-card p-6">
-              <h2 className="text-lg font-semibold mb-4">Discovered MCP Tools</h2>
+            <div className="rounded-lg border bg-card p-4">
               <ToolExposureTable
                 tools={displayedTools}
                 exposureLabel={exposureSummary.label}
@@ -627,7 +601,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </TabsContent>
 
           <TabsContent value="resources">
-            <div className="rounded-lg border bg-card p-6">
+            <div className="rounded-lg border bg-card p-5">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">Discovered MCP Resources</h2>
@@ -649,13 +623,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     <span>{filteredResources.length}/{gateway.discovery.resources.length}</span>
                     <span>visible</span>
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
-                    <span className="text-sm font-medium">Expose resources</span>
-                    <Switch
-                      checked={gateway.config.proxy_resources ?? true}
-                      onCheckedChange={handleProxyResourcesToggle}
-                    />
-                  </div>
+                  <Badge variant="outline" className="rounded-full px-3 py-1 text-muted-foreground">
+                    {resourceExposureEnabled ? 'Resources exposed' : 'Resources hidden'}
+                  </Badge>
                 </div>
               </div>
               {gateway.discovery.resources.length === 0 ? (
@@ -684,7 +654,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </TabsContent>
 
           <TabsContent value="prompts">
-            <div className="rounded-lg border bg-card p-6">
+            <div className="rounded-lg border bg-card p-5">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">Discovered MCP Prompts</h2>
