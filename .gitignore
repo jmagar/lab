@@ -13,6 +13,8 @@ logs/
 !apps/gateway-admin/app/(admin)/logs/page.tsx
 !apps/gateway-admin/components/logs/
 !apps/gateway-admin/components/logs/*.tsx
+!crates/lab/src/dispatch/logs/
+!crates/lab/src/dispatch/logs/*.rs
 backups/
 *.log
 *.pid
