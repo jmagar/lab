@@ -33,6 +33,7 @@ pub fn require_system() -> Result<Arc<LogSystem>, ToolError> {
     })
 }
 
+#[doc(hidden)]
 pub fn clear_installed_log_system_for_test() {
     let slot = installed_slot();
     let mut w = slot.write().expect("installed log system lock poisoned");
