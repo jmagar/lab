@@ -280,7 +280,6 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         v1 = v1
             .route("/{service}/actions", get(service_actions))
             .nest("/gateway", services::gateway::routes(state.clone()))
-            .nest("/logs", services::logs::routes(state.clone()))
             .route(
                 "/openapi.json",
                 get(move || {
@@ -301,6 +300,10 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
                 get(|| async { Html(include_str!("openapi_docs.html")) }),
             )
             .nest("/extract", services::extract::routes(state.clone()));
+
+        if state.registry.services().iter().any(|service| service.name == "logs") {
+            v1 = v1.nest("/logs", services::logs::routes(state.clone()));
+        }
     }
 
     macro_rules! mount_if_enabled {

@@ -321,6 +321,90 @@ async fn logs_tail_returns_bounded_follow_up_window() {
 }
 
 #[tokio::test]
+async fn logs_tail_honors_since_event_id_cursor() {
+    let store =
+        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+            max_age_days: 30,
+            max_bytes: 1024 * 1024,
+        })
+        .await
+        .unwrap();
+    store
+        .insert(&event_with(
+            "evt-1",
+            10,
+            lab::dispatch::logs::types::Subsystem::Gateway,
+            lab::dispatch::logs::types::LogLevel::Info,
+            "before cursor",
+        ))
+        .await
+        .unwrap();
+    store
+        .insert(&event_with(
+            "evt-2",
+            20,
+            lab::dispatch::logs::types::Subsystem::Gateway,
+            lab::dispatch::logs::types::LogLevel::Info,
+            "cursor",
+        ))
+        .await
+        .unwrap();
+    store
+        .insert(&event_with(
+            "evt-3",
+            30,
+            lab::dispatch::logs::types::Subsystem::Gateway,
+            lab::dispatch::logs::types::LogLevel::Info,
+            "after cursor",
+        ))
+        .await
+        .unwrap();
+
+    let result = store
+        .tail(lab::dispatch::logs::types::LogTailRequest {
+            since_event_id: Some("evt-2".to_string()),
+            limit: Some(10),
+            ..lab::dispatch::logs::types::LogTailRequest::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.events.len(), 1);
+    assert_eq!(result.events[0].event_id, "evt-3");
+}
+
+#[tokio::test]
+async fn store_search_text_matches_request_identifiers() {
+    let store =
+        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+            max_age_days: 30,
+            max_bytes: 1024 * 1024,
+        })
+        .await
+        .unwrap();
+    store.insert(&event_with(
+        "evt-request-id",
+        1_713_225_600_000,
+        lab::dispatch::logs::types::Subsystem::Gateway,
+        lab::dispatch::logs::types::LogLevel::Warn,
+        "gateway warning",
+    ))
+    .await
+    .unwrap();
+
+    let result = store
+        .search(lab::dispatch::logs::types::LogQuery {
+            text: Some("req-fixture".to_string()),
+            ..lab::dispatch::logs::types::LogQuery::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.events.len(), 1);
+    assert_eq!(result.events[0].event_id, "evt-request-id");
+}
+
+#[tokio::test]
 async fn local_logs_persist_across_restart() {
     let path = unique_store_path("lab-local-logs-persist");
     let writer = lab::dispatch::logs::client::bootstrap_running_log_system(

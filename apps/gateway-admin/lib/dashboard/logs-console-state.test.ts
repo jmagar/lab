@@ -80,6 +80,30 @@ test('matchesLogFilters applies text, subsystem, and level filters', () => {
   )
 })
 
+test('matchesLogFilters can match request identifiers and structured fields', () => {
+  const filters: LogFilterState = {
+    text: 'req-123',
+    subsystems: [],
+    levels: [],
+    limit: 100,
+  }
+
+  assert.equal(
+    matchesLogFilters(
+      eventWith({ request_id: 'req-123' }),
+      filters,
+    ),
+    true,
+  )
+  assert.equal(
+    matchesLogFilters(
+      eventWith({ fields_json: { correlation_id: 'req-123' } }),
+      filters,
+    ),
+    true,
+  )
+})
+
 test('mergeTimelineEvents deduplicates, sorts chronologically, and keeps the newest entries', () => {
   const merged = mergeTimelineEvents(
     [

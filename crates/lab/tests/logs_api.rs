@@ -202,3 +202,29 @@ async fn logs_mcp_tail_matches_api_query_semantics() {
     assert_eq!(api_value, mcp_value);
     lab::dispatch::logs::client::clear_installed_log_system_for_test();
 }
+
+#[tokio::test]
+async fn logs_routes_respect_runtime_service_filtering() {
+    let logs_system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+        .await
+        .expect("log system");
+    let state = lab::api::state::AppState::from_registry(lab::registry::ToolRegistry::new())
+        .with_log_system(logs_system);
+    let app = lab::api::router::build_router_with_bearer(state, None, None);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/logs")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::json!({"action":"logs.search","params":{"query":{}}}).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}

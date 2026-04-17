@@ -28,7 +28,7 @@ export function buildLogSearchQuery(
 export function matchesLogFilters(event: LogEvent, filters: LogFilterState): boolean {
   const text = filters.text.trim().toLowerCase()
 
-  if (text && !`${event.message} ${event.action ?? ''}`.toLowerCase().includes(text)) {
+  if (text && !buildSearchableEventText(event).includes(text)) {
     return false
   }
   if (filters.subsystems.length > 0 && !filters.subsystems.includes(event.subsystem)) {
@@ -39,6 +39,30 @@ export function matchesLogFilters(event: LogEvent, filters: LogFilterState): boo
   }
 
   return true
+}
+
+function buildSearchableEventText(event: LogEvent): string {
+  const structuredFields = JSON.stringify(event.fields_json ?? {})
+  return [
+    event.message,
+    event.action ?? '',
+    event.request_id ?? '',
+    event.session_id ?? '',
+    event.correlation_id ?? '',
+    event.trace_id ?? '',
+    event.span_id ?? '',
+    event.instance ?? '',
+    event.auth_flow ?? '',
+    event.outcome_kind ?? '',
+    event.source_kind ?? '',
+    event.source_node_id ?? '',
+    event.source_device_id ?? '',
+    event.ingest_path ?? '',
+    event.upstream_event_id ?? '',
+    structuredFields,
+  ]
+    .join(' ')
+    .toLowerCase()
 }
 
 export function mergeTimelineEvents(
