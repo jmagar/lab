@@ -123,6 +123,27 @@ pub struct ServiceCreds {
     pub url_verified: bool,
 }
 
+/// Browser-safe credential metadata with secrets redacted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RedactedServiceCreds {
+    /// Lowercase service name (`radarr`, `sonarr`, ...).
+    pub service: String,
+    /// Base URL inferred from config and runtime probing, if known.
+    pub url: Option<String>,
+    /// Field name to use when writing to `.env` (e.g. `RADARR_API_KEY`).
+    pub env_field: String,
+    /// Whether the service had a first-party secret available.
+    pub secret_present: bool,
+    /// SSH host or local source that produced this discovery.
+    pub source_host: Option<String>,
+    /// Host identity used to probe the endpoint.
+    pub probe_host: Option<String>,
+    /// Runtime/container provenance for this discovery.
+    pub runtime: Option<RuntimeProvenance>,
+    /// Whether the URL was verified as reachable.
+    pub url_verified: bool,
+}
+
 /// One non-fatal issue encountered while scanning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractWarning {
@@ -150,6 +171,49 @@ pub struct ExtractReport {
     pub creds: Vec<ServiceCreds>,
     /// Non-fatal warnings (corrupt files, missing fields, etc.).
     pub warnings: Vec<ExtractWarning>,
+}
+
+/// Browser-safe extract report with secret values removed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RedactedExtractReport {
+    /// The scan target that was requested.
+    pub target: ScanTarget,
+    /// Legacy targeted URI field preserved for compatibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<Uri>,
+    /// Service names that were found and parsed successfully.
+    pub found: Vec<String>,
+    /// Per-service browser-safe metadata.
+    pub creds: Vec<RedactedServiceCreds>,
+    /// Non-fatal warnings (corrupt files, missing fields, etc.).
+    pub warnings: Vec<ExtractWarning>,
+}
+
+impl From<ServiceCreds> for RedactedServiceCreds {
+    fn from(value: ServiceCreds) -> Self {
+        Self {
+            service: value.service,
+            url: value.url,
+            env_field: value.env_field,
+            secret_present: value.secret.is_some(),
+            source_host: value.source_host,
+            probe_host: value.probe_host,
+            runtime: value.runtime,
+            url_verified: value.url_verified,
+        }
+    }
+}
+
+impl From<ExtractReport> for RedactedExtractReport {
+    fn from(value: ExtractReport) -> Self {
+        Self {
+            target: value.target,
+            uri: value.uri,
+            found: value.found,
+            creds: value.creds.into_iter().map(Into::into).collect(),
+            warnings: value.warnings,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -213,5 +277,30 @@ mod tests {
         assert_eq!(value["creds"][0]["url_verified"], true);
         assert_eq!(value["warnings"][0]["host"], "media-node");
         assert_eq!(value["warnings"][0]["runtime"]["container_name"], "plex");
+    }
+
+    #[test]
+    fn redacted_report_drops_secret_values_but_keeps_presence_metadata() {
+        let report = ExtractReport {
+            target: ScanTarget::Fleet,
+            uri: None,
+            found: vec!["radarr".to_owned()],
+            creds: vec![ServiceCreds {
+                service: "radarr".to_owned(),
+                url: Some("http://100.64.0.12:7878".to_owned()),
+                secret: Some("secret-key".to_owned()),
+                env_field: "RADARR_API_KEY".to_owned(),
+                source_host: Some("media-node".to_owned()),
+                probe_host: Some("100.64.0.12".to_owned()),
+                runtime: None,
+                url_verified: true,
+            }],
+            warnings: vec![],
+        };
+
+        let value = serde_json::to_value(RedactedExtractReport::from(report)).expect("serialize");
+
+        assert_eq!(value["creds"][0]["secret_present"], true);
+        assert!(value["creds"][0].get("secret").is_none());
     }
 }

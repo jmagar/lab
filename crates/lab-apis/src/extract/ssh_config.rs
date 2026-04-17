@@ -50,9 +50,7 @@ pub fn parse_ssh_config(contents: &str) -> Vec<SshHostTarget> {
             aliases.extend(
                 parts
                     .filter(|alias| {
-                        !alias.starts_with('!')
-                            && !alias.contains('*')
-                            && !alias.contains('?')
+                        !alias.starts_with('!') && !alias.contains('*') && !alias.contains('?')
                     })
                     .map(ToOwned::to_owned),
             );

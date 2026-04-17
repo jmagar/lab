@@ -9,7 +9,7 @@
     "start": "python3 -m http.server 3000 -d out",
     "preview": "python3 -m http.server 3000 -d out",
     "lint": "eslint .",
-    "test": "node --test --experimental-strip-types lib/server/**/*.test.ts lib/api/**/*.test.ts lib/dashboard/**/*.test.ts",
+    "test": "node --test --experimental-strip-types lib/server/**/*.test.ts lib/api/**/*.test.ts lib/dashboard/**/*.test.ts components/setup/**/*.test.tsx",
     "test:browser": "node --test --experimental-strip-types lib/browser/**/*.test.ts"
   },
   "dependencies": {
@@ -74,6 +74,7 @@
     "playwright": "^1.59.1",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
+    "tsx": "^4.21.0",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3",
     "typescript-eslint": "^8.58.2"

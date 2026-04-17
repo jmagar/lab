@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::net::Ipv4Addr;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use serde::Deserialize;
@@ -227,20 +227,12 @@ pub fn parse_docker_ps_lines(contents: &str) -> Result<Vec<RuntimeContainerSumma
 pub fn parse_docker_inspect(contents: &str) -> Result<RuntimeContainerDetails, ExtractError> {
     let mut containers: Vec<DockerInspectRow> =
         serde_json::from_str(contents).map_err(|error| parse_error(error))?;
-    let row = containers.pop().ok_or_else(|| ExtractError::Parse {
-        service: "extract".to_owned(),
-        path: PathBuf::new(),
-        message: "docker inspect returned no containers".to_owned(),
-    })?;
+    let row = containers.pop().ok_or_else(|| ExtractError::parse("extract".to_owned(), "docker inspect returned no containers".to_owned()))?;
 
     let container_name = row.name.trim_start_matches('/').to_owned();
     let image = row.config.and_then(|config| config.image);
     let service = supported_service(&container_name, image.as_deref()).ok_or_else(|| {
-        ExtractError::Parse {
-            service: "extract".to_owned(),
-            path: PathBuf::new(),
-            message: format!("unsupported container '{container_name}'"),
-        }
+        ExtractError::parse("extract", format!("unsupported container '{container_name}'"))
     })?;
 
     let published_ports = row
@@ -352,11 +344,7 @@ fn service_from_name(name: &str) -> Option<&'static str> {
 }
 
 fn parse_error(error: serde_json::Error) -> ExtractError {
-    ExtractError::Parse {
-        service: "extract".to_owned(),
-        path: PathBuf::new(),
-        message: format!("runtime parse error: {error}"),
-    }
+    ExtractError::parse("extract", format!("runtime parse error: {error}"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -450,7 +438,10 @@ mod tests {
     #[test]
     fn tailscale_lookup_rejects_malformed_ipv4_values() {
         assert_eq!(parse_tailscale_ipv4("1.2.3\n"), None);
-        assert_eq!(parse_tailscale_ipv4("100.75.111.118\n"), Some("100.75.111.118".to_owned()));
+        assert_eq!(
+            parse_tailscale_ipv4("100.75.111.118\n"),
+            Some("100.75.111.118".to_owned())
+        );
     }
 
     #[test]

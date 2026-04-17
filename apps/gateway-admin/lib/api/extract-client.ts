@@ -1,5 +1,5 @@
 import { extractActionUrl } from './gateway-config.ts'
-import { gatewayRequestInit } from './gateway-request.ts'
+import { performServiceAction, type ServiceActionError } from './service-action-client.ts'
 
 export interface ExtractRuntimeMeta {
   container_name?: string
@@ -9,8 +9,8 @@ export interface ExtractRuntimeMeta {
 export interface ExtractCredential {
   service: string
   url: string | null
-  secret: string | null
   env_field: string
+  secret_present: boolean
   source_host?: string
   probe_host?: string
   runtime?: ExtractRuntimeMeta
@@ -41,7 +41,7 @@ export interface ExtractReport {
   warnings: ExtractWarning[]
 }
 
-export class ExtractApiError extends Error {
+export class ExtractApiError extends Error implements ServiceActionError {
   status: number
   code?: string
 
@@ -53,54 +53,24 @@ export class ExtractApiError extends Error {
   }
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException
-    ? error.name === 'AbortError'
-    : error instanceof Error && error.name === 'AbortError'
-}
-
-async function parseExtractResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }))
-    throw new ExtractApiError(
-      error.message || 'An error occurred',
-      response.status,
-      error.kind || error.code,
-    )
-  }
-
-  return response.json()
-}
-
 async function extractAction<T>(
   action: string,
   params: object,
   signal?: AbortSignal,
 ): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(
-      extractActionUrl(),
-      gatewayRequestInit(action, params, undefined, signal),
-    )
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw error
-    }
-    const message = error instanceof Error ? error.message : 'unknown network error'
-    throw new ExtractApiError(
-      `Extract backend action \`${action}\` failed before a response was received: ${message}`,
-      502,
-      'backend_unreachable',
-    )
-  }
-
-  return parseExtractResponse<T>(response)
+  return performServiceAction<T, ExtractApiError>({
+    action,
+    params,
+    signal,
+    serviceLabel: 'Extract',
+    url: extractActionUrl(),
+    createError: (message, status, code) => new ExtractApiError(message, status, code),
+  })
 }
 
 export const extractApi = {
   async scan(uri?: string, signal?: AbortSignal): Promise<ExtractReport> {
-    const params = uri === undefined ? {} : { uri }
+    const params = uri === undefined ? { redact_secrets: true } : { uri, redact_secrets: true }
     return extractAction<ExtractReport>('scan', params, signal)
   },
 }

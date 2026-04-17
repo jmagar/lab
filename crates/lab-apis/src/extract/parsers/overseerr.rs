@@ -1,5 +1,3 @@
-//! Overseerr parser. Reads `overseerr/settings.json`, extracts `OVERSEERR_URL` + `OVERSEERR_API_KEY`.
-
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -8,7 +6,6 @@ use crate::extract::error::ExtractError;
 use crate::extract::parsers::Parser;
 use crate::extract::types::ServiceCreds;
 
-/// Overseerr config parser.
 pub struct OverseerrParser;
 
 impl Parser for OverseerrParser {
@@ -21,22 +18,14 @@ impl Parser for OverseerrParser {
     }
 
     fn parse(&self, contents: &[u8]) -> Result<ServiceCreds, ExtractError> {
-        let settings: OverseerrSettings =
-            serde_json::from_slice(contents).map_err(|error| ExtractError::Parse {
-                service: "overseerr".to_owned(),
-                path: PathBuf::new(),
-                message: format!("JSON parse error: {error}"),
-            })?;
+        let settings: OverseerrSettings = serde_json::from_slice(contents)
+            .map_err(|error| ExtractError::parse("overseerr", format!("JSON parse error: {error}")))?;
 
         let api_key = settings
             .main
             .api_key
             .filter(|value| !value.is_empty())
-            .ok_or_else(|| ExtractError::Parse {
-                service: "overseerr".to_owned(),
-                path: PathBuf::new(),
-                message: "missing main.apiKey".to_owned(),
-            })?;
+            .ok_or_else(|| ExtractError::parse("overseerr", "missing main.apiKey"))?;
 
         let url = settings
             .main
