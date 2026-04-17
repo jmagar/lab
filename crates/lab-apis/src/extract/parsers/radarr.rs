@@ -83,9 +83,7 @@ pub fn parse_servarr_config_xml(
                 if let Some(field) = current {
                     let text = e
                         .decode()
-                        .map_err(|err| {
-                            ExtractError::parse(service, format!("XML decode: {err}"))
-                        })?
+                        .map_err(|err| ExtractError::parse(service, format!("XML decode: {err}")))?
                         .into_owned();
                     match field {
                         "Port" => port = Some(text),
@@ -100,20 +98,25 @@ pub fn parse_servarr_config_xml(
             Ok(Event::End(_)) => current = None,
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(ExtractError::parse(service, format!("XML parse error: {e}")));
+                return Err(ExtractError::parse(
+                    service,
+                    format!("XML parse error: {e}"),
+                ));
             }
             _ => {}
         }
         buf.clear();
     }
 
-    let port_str = port.ok_or_else(|| ExtractError::parse(service.to_owned(), "missing <Port>".to_owned()))?;
+    let port_str =
+        port.ok_or_else(|| ExtractError::parse(service.to_owned(), "missing <Port>".to_owned()))?;
 
-    let port_num: u16 = port_str.parse().map_err(|_| {
-        ExtractError::parse(service, format!("invalid Port: {port_str:?}"))
-    })?;
+    let port_num: u16 = port_str
+        .parse()
+        .map_err(|_| ExtractError::parse(service, format!("invalid Port: {port_str:?}")))?;
 
-    let key = api_key.ok_or_else(|| ExtractError::parse(service.to_owned(), "missing <ApiKey>".to_owned()))?;
+    let key = api_key
+        .ok_or_else(|| ExtractError::parse(service.to_owned(), "missing <ApiKey>".to_owned()))?;
 
     let scheme = if enable_ssl { "https" } else { "http" };
     let host = match bind_address.as_deref() {

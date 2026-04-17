@@ -8,7 +8,7 @@
 config.toml
 
 # ── Runtime artifacts ────────────────────────────────────────────────────────
-logs/
+/logs/
 !apps/gateway-admin/app/(admin)/logs/
 !apps/gateway-admin/app/(admin)/logs/page.tsx
 !apps/gateway-admin/components/logs/

@@ -24,12 +24,13 @@ impl Parser for SabnzbdParser {
 
     fn parse(&self, contents: &[u8]) -> Result<ServiceCreds, ExtractError> {
         let sections = ini::parse(contents);
-        let misc = sections.get("misc").ok_or_else(|| ExtractError::parse("sabnzbd".to_owned(), "missing [misc] section".to_owned()))?;
+        let misc = sections.get("misc").ok_or_else(|| {
+            ExtractError::parse("sabnzbd".to_owned(), "missing [misc] section".to_owned())
+        })?;
 
-        let api_key = misc
-            .get("api_key")
-            .cloned()
-            .ok_or_else(|| ExtractError::parse("sabnzbd".to_owned(), "missing api_key in [misc]".to_owned()))?;
+        let api_key = misc.get("api_key").cloned().ok_or_else(|| {
+            ExtractError::parse("sabnzbd".to_owned(), "missing api_key in [misc]".to_owned())
+        })?;
 
         let host = misc.get("host").map_or("localhost", String::as_str);
         let host = if host == "0.0.0.0" || host.is_empty() {

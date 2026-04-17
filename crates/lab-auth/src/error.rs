@@ -68,6 +68,12 @@ impl IntoResponse for AuthError {
             "message": self.to_string(),
         }));
         let mut response = (status, body).into_response();
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        response
+            .headers_mut()
+            .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
         if let Self::RateLimited { retry_after_ms, .. } = self
             && let Ok(value) = HeaderValue::from_str(&(retry_after_ms / 1_000).max(1).to_string())
         {

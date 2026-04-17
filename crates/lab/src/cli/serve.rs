@@ -28,7 +28,8 @@ use crate::dispatch::logs::client::{
     bootstrap_running_log_system, resolve_queue_capacity, resolve_retention, resolve_store_path,
     resolve_subscriber_capacity,
 };
-use crate::mcp::server::{LabMcpServer, PeerNotifier};
+use crate::mcp::peers::PeerNotifier;
+use crate::mcp::server::LabMcpServer;
 use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Transport choices for `lab serve`.
@@ -409,6 +410,9 @@ async fn run_stdio(
         gateway_manager: Some(Arc::clone(&gateway_manager)),
         device_role: Some(device_role),
         peers: Arc::clone(&notifier.peers),
+        logging_level: Arc::new(std::sync::atomic::AtomicU8::new(
+            crate::mcp::logging::logging_level_rank(rmcp::model::LoggingLevel::Info),
+        )),
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
     running.waiting().await?;
@@ -467,6 +471,9 @@ fn build_mcp_service(
                 gateway_manager: manager,
                 device_role,
                 peers,
+                logging_level: Arc::new(std::sync::atomic::AtomicU8::new(
+                    crate::mcp::logging::logging_level_rank(rmcp::model::LoggingLevel::Info),
+                )),
             })
         },
         session_manager,

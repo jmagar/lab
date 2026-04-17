@@ -9,11 +9,13 @@ export type BrowserSessionState =
       expiresAt: number
       csrfToken: string
     }
-  | {
-      status: 'error'
-      message: string
-    }
   | { status: 'unauthenticated' }
+  | {
+      status: 'auth_error'
+      kind?: string
+      message: string
+      requestId?: string
+    }
 
 type SessionPayload =
   | {
@@ -28,6 +30,11 @@ type SessionPayload =
   | {
       authenticated: false
     }
+
+type SessionErrorPayload = {
+  kind?: string
+  message?: string
+}
 
 let currentState: BrowserSessionState = { status: 'loading' }
 const listeners = new Set<() => void>()
@@ -85,14 +92,18 @@ export async function loadBrowserSession() {
     } else if (response.status === 401 || response.status === 403) {
       next = { status: 'unauthenticated' }
     } else {
+      const payload = (await response.json().catch(() => null)) as SessionErrorPayload | null
       next = {
-        status: 'error',
-        message: SESSION_ERROR_MESSAGE,
+        status: 'auth_error',
+        kind: payload?.kind,
+        message: payload?.message || SESSION_ERROR_MESSAGE,
+        requestId: response.headers.get('x-request-id') ?? undefined,
       }
     }
   } catch {
     next = {
-      status: 'error',
+      status: 'auth_error',
+      kind: 'network_error',
       message: SESSION_ERROR_MESSAGE,
     }
   }

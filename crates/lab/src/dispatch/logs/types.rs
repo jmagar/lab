@@ -13,9 +13,7 @@ use crate::dispatch::error::ToolError;
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 #[clap(rename_all = "lowercase")]
 pub enum LogLevel {
@@ -52,9 +50,7 @@ impl LogLevel {
     }
 }
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 #[clap(rename_all = "snake_case")]
 pub enum Subsystem {
@@ -104,9 +100,7 @@ impl Subsystem {
     }
 }
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 #[clap(rename_all = "snake_case")]
 pub enum Surface {
@@ -417,10 +411,7 @@ impl LogSystem {
         Ok(stats)
     }
 
-    pub async fn subscribe(
-        &self,
-        sub: StreamSubscription,
-    ) -> Result<LogStreamReceiver, ToolError> {
+    pub async fn subscribe(&self, sub: StreamSubscription) -> Result<LogStreamReceiver, ToolError> {
         Ok(self.hub.subscribe(sub))
     }
 }

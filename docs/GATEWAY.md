@@ -37,6 +37,11 @@ Secrets remain indirect:
 | `gateway.discovered_resources` | Return proxied resource URIs discovered for one gateway. |
 | `gateway.discovered_prompts` | Return prompt names discovered for one gateway. |
 
+`gateway.add`, `gateway.update`, `gateway.remove`, and `gateway.reload` are
+destructive actions in shared action metadata. HTTP callers must send
+`params.confirm = true`, CLI callers must confirm interactively or use `--yes` / `-y`, and MCP callers
+must go through elicitation when supported.
+
 ## Tool Exposure
 
 Gateway config can optionally restrict which discovered upstream tools are republished by `lab`.
@@ -60,11 +65,11 @@ expose_tools = ["search_repos", "github_*"]
 Typical patch payloads:
 
 ```json
-{ "action": "gateway.update", "params": { "name": "github", "patch": { "expose_tools": ["search_repos", "github_*"] } } }
+{ "action": "gateway.update", "params": { "confirm": true, "name": "github", "patch": { "expose_tools": ["search_repos", "github_*"] } } }
 ```
 
 ```json
-{ "action": "gateway.update", "params": { "name": "github", "patch": { "expose_tools": null } } }
+{ "action": "gateway.update", "params": { "confirm": true, "name": "github", "patch": { "expose_tools": null } } }
 ```
 
 ## Validation
@@ -103,8 +108,8 @@ lab gateway reload
 
 ```json
 { "tool": "gateway", "input": { "action": "gateway.list", "params": {} } }
-{ "tool": "gateway", "input": { "action": "gateway.add", "params": { "spec": { "name": "remote-lab", "url": "https://lab2.example.com/mcp", "bearer_token_env": "REMOTE_LAB_TOKEN" } } } }
-{ "tool": "gateway", "input": { "action": "gateway.reload", "params": {} } }
+{ "tool": "gateway", "input": { "action": "gateway.add", "params": { "confirm": true, "spec": { "name": "remote-lab", "url": "https://lab2.example.com/mcp", "bearer_token_env": "REMOTE_LAB_TOKEN" } } } }
+{ "tool": "gateway", "input": { "action": "gateway.reload", "params": { "confirm": true } } }
 ```
 
 ### HTTP API
@@ -116,7 +121,7 @@ POST /v1/gateway
 
 ```json
 POST /v1/gateway
-{ "action": "gateway.update", "params": { "name": "remote-lab", "patch": { "proxy_resources": true } } }
+{ "action": "gateway.update", "params": { "confirm": true, "name": "remote-lab", "patch": { "proxy_resources": true } } }
 ```
 
 ## Limitations

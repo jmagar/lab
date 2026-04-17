@@ -51,19 +51,32 @@ test('loadBrowserSession falls back to unauthenticated when /auth/session fails'
 test('loadBrowserSession keeps backend failures distinct from auth failures', async () => {
   __setBrowserSessionStateForTests({ status: 'loading' })
   globalThis.fetch = (async () =>
-    new Response('boom', {
+    new Response(
+      JSON.stringify({
+        kind: 'internal_error',
+        message: 'auth store unavailable',
+      }),
+      {
       status: 500,
-      headers: { 'content-type': 'text/plain' },
-    })) as FetchMock
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'req-auth-123',
+      },
+    },
+    )) as FetchMock
 
   const state = await loadBrowserSession()
   assert.deepEqual(state, {
-    status: 'error',
-    message: 'Unable to reach the authentication service. Try again.',
+    status: 'auth_error',
+    kind: 'internal_error',
+    message: 'auth store unavailable',
+    requestId: 'req-auth-123',
   })
   assert.deepEqual(getBrowserSessionState(), {
-    status: 'error',
-    message: 'Unable to reach the authentication service. Try again.',
+    status: 'auth_error',
+    kind: 'internal_error',
+    message: 'auth store unavailable',
+    requestId: 'req-auth-123',
   })
 })
 
@@ -75,7 +88,8 @@ test('loadBrowserSession keeps network failures distinct from auth failures', as
 
   const state = await loadBrowserSession()
   assert.deepEqual(state, {
-    status: 'error',
+    status: 'auth_error',
+    kind: 'network_error',
     message: 'Unable to reach the authentication service. Try again.',
   })
 })

@@ -18,8 +18,9 @@ impl Parser for OverseerrParser {
     }
 
     fn parse(&self, contents: &[u8]) -> Result<ServiceCreds, ExtractError> {
-        let settings: OverseerrSettings = serde_json::from_slice(contents)
-            .map_err(|error| ExtractError::parse("overseerr", format!("JSON parse error: {error}")))?;
+        let settings: OverseerrSettings = serde_json::from_slice(contents).map_err(|error| {
+            ExtractError::parse("overseerr", format!("JSON parse error: {error}"))
+        })?;
 
         let api_key = settings
             .main

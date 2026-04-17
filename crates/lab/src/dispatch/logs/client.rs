@@ -135,7 +135,9 @@ pub fn resolve_retention(config: Option<&LabConfig>) -> LogRetention {
     let base = config
         .and_then(|c| c.local_logs.as_ref())
         .map(|c| LogRetention {
-            max_age_days: c.retention_days.unwrap_or(LogRetention::default().max_age_days),
+            max_age_days: c
+                .retention_days
+                .unwrap_or(LogRetention::default().max_age_days),
             max_bytes: c.max_bytes.unwrap_or(LogRetention::default().max_bytes),
         })
         .unwrap_or_default();

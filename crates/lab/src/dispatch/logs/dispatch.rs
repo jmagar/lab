@@ -48,9 +48,8 @@ pub async fn dispatch_with_system(
         "logs.stats" => to_json(system.stats().await?),
         "logs.stream" => Err(ToolError::Sdk {
             sdk_kind: "not_found".to_string(),
-            message:
-                "live push is HTTP SSE only; connect to GET /v1/logs/stream to receive events"
-                    .to_string(),
+            message: "live push is HTTP SSE only; connect to GET /v1/logs/stream to receive events"
+                .to_string(),
         }),
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `{unknown}` for service `logs`"),

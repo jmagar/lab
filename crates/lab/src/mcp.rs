@@ -4,7 +4,9 @@
 
 pub mod envelope;
 pub mod error;
+pub mod logging;
 pub mod meta;
+pub mod peers;
 pub mod prompts;
 pub mod registry;
 pub mod resources;
