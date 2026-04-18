@@ -143,7 +143,7 @@ The upstream OAuth (outbound) surface adds five stable kinds for operator- and u
 
 #### `oauth_issuer_mismatch`
 
-**When:** The AS metadata document's `issuer` value does not byte-equal the discovered AS URL after RFC 3986 §6.2.2 normalization.
+**When:** The AS metadata `issuer` is missing, or an endpoint origin (scheme + host + port) does not match the issuer origin (RFC 8414 §3.3 requirement).
 
 **Surface:** Upstream OAuth manager (discovery).
 
@@ -153,7 +153,7 @@ The upstream OAuth (outbound) surface adds five stable kinds for operator- and u
 
 #### `oauth_unsupported_method`
 
-**When:** The upstream AS metadata omits `code_challenge_methods_supported` (RFC 7636 absence implies `plain`-only) or advertises only `plain`. `lab` refuses to fall back from S256.
+**When:** The upstream AS metadata omits `code_challenge_methods_supported` or advertises only `plain`. `lab` refuses to fall back from S256.
 
 **Surface:** Upstream OAuth manager (discovery).
 

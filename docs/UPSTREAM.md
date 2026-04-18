@@ -137,9 +137,11 @@ Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
 
 - HTTP upstream transport only. Stdio upstreams cannot use OAuth in this phase
   because stdio sessions do not carry a stable authenticated subject.
-- When the client transport is stdio, OAuth-tagged upstreams are filtered out
-  of the merged catalog and are not callable. Only built-in and static-bearer
-  upstreams are visible.
+- OAuth-tagged upstreams appear in the merged catalog regardless of transport.
+  Calling them without an active HTTP session returns `oauth_needs_reauth`.
+  The authorization initiation flow (`POST /v1/gateway/oauth/start`) requires an
+  HTTP session; stdio callers can see the catalog entries but cannot complete
+  the OAuth flow.
 - `/mcp` over HTTP and the hosted web UI are the supported call surfaces.
 
 ### Flow
@@ -177,12 +179,10 @@ Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
   once rmcp exposes a refresh hook we can extend.
 - **Issuer binding.** After AS metadata discovery, `metadata.issuer` is
   required — missing `issuer` surfaces as `oauth_issuer_mismatch`. The
-  `authorization_endpoint`, `token_endpoint`, and (when present)
-  `registration_endpoint` hosts must match the issuer host; any drift
-  surfaces as `oauth_issuer_mismatch` (RFC 8414 §3.3). Because rmcp's
-  discover_metadata does not report which discovery URL succeeded, `lab`
-  does not compare the issuer against the discovered AS URL directly;
-  it enforces endpoint/issuer host consistency instead.
+  `authorization_endpoint`, `token_endpoint`, `revocation_endpoint`, and
+  (when present) `registration_endpoint` and `userinfo_endpoint` origins
+  (scheme + host + port) must match the issuer origin; any drift surfaces as
+  `oauth_issuer_mismatch` (RFC 8414 §3.3).
 - **No Google reuse.** Outbound upstream OAuth is distinct from the inbound
   `lab-auth` Google provider used for user login to `lab`. They do not share
   code, clients, or tokens.
@@ -200,8 +200,8 @@ that changes an upstream's `client_id` evicts cached entries with a stale
 where a config edit would otherwise keep old credentials attached to a new
 upstream definition.
 
-OAuth-tagged upstreams are excluded from the global pool's startup discovery
-(`discover_all`), because discovery requires an authenticated subject that is
+OAuth-tagged upstreams are attempted during startup discovery (`discover_all`)
+but fail unhealthy because discovery requires an authenticated subject that is
 not available at startup. They appear as unhealthy in the startup catalog and
 are not included in the merged tool list until an operator completes the OAuth
 flow. The circuit breaker and catalog merging infrastructure applies to
@@ -211,7 +211,7 @@ pooled.
 ### Refresh Semantics
 
 Refresh is single-flight per `(upstream_name, subject)` using a `tokio::sync::Mutex`
-keyed on the pair, with an LRU cap to bound memory on long-running processes.
+keyed on the pair. Lock entries are retained for the lifetime of the process.
 
 Today the manager runs **proactive refresh only**:
 
@@ -227,9 +227,8 @@ Today the manager runs **proactive refresh only**:
   the original 401 as `oauth_needs_reauth` without retry, because a retry
   could double-execute a destructive tool call.
 
-On `invalid_grant` (refresh token revoked or rotated twice), `lab` deletes
-the persisted credential and returns `oauth_needs_reauth` to the caller. The
-user re-initiates authorization.
+On `invalid_grant` (refresh token revoked or rotated twice), `lab` returns
+`oauth_needs_reauth` to the caller. The user re-initiates authorization.
 
 ### `oauth_needs_reauth` Triggers
 

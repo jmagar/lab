@@ -141,24 +141,22 @@ session and the master-only middleware; non-master sessions get `403`.
 
 Callback security invariants (enforced in code, spec-required):
 
-- No authenticated session → `oauth_state_invalid` (no subject derivation from
-  the `state` parameter is permitted).
-- Subject is derived from the session, not the state row.
+- The callback is a browser-facing redirect endpoint. Subject is resolved from
+  the authenticated browser session cookie, **not** from the `state` parameter
+  or the pending state row. No session → `oauth_state_invalid`.
 - The `upstream` query parameter is forwarded to the manager, which enforces it
   against the pending state row's upstream name via the SQL primary key
-  (`(upstream_name, csrf_token)`).
+  (`(upstream_name, subject, csrf_token)`).
 - `state` is matched via a single `DELETE ... RETURNING` to prevent replay
   across connection-pool races.
 - The result page HTML-escapes the operator-controlled `upstream` name.
 
 ### Reload And Credential Lifecycle
 
-- `gateway.reload` evicts cached `AuthClient` entries for upstreams removed
-  from the new config. It does **not** delete persisted credential rows —
-  re-adding the upstream (and re-authorizing, if `client_id` changed) picks
-  them up. If `client_id` changed for an upstream still present in config,
-  the cache entry is evicted on next lookup (cached entries carry their
-  `built_with_client_id` and refuse reuse on mismatch).
+- `gateway.reload` eagerly evicts all cached `AuthClient` entries for every
+  OAuth upstream in the current config, then rebuilds a fresh upstream pool.
+  It does **not** delete persisted credential rows — `AuthClient`s are rebuilt
+  on the next request using whatever credentials are in the store.
 - `clear_credentials` is the only way to invalidate a persisted credential.
   It evicts the cache entry and deletes the row; in-flight `Arc<AuthClient>`
   holders complete naturally under the old token.
