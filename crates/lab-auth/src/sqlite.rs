@@ -419,7 +419,7 @@ impl SqliteStore {
             }
             let deleted = conn
                 .execute(
-                    "DELETE FROM upstream_oauth_state WHERE expires_at < ?1",
+                    "DELETE FROM upstream_oauth_state WHERE expires_at <= ?1",
                     params![now],
                 )
                 .map_err(sqlite_error)?;
@@ -427,7 +427,7 @@ impl SqliteStore {
             let deleted = conn
                 .execute(
                     "DELETE FROM upstream_oauth_credentials
-                     WHERE access_token_expires_at < ?1 AND refresh_token_present = 0",
+                     WHERE access_token_expires_at <= ?1 AND refresh_token_present = 0",
                     params![now],
                 )
                 .map_err(sqlite_error)?;

@@ -132,10 +132,21 @@ impl UpstreamConfig {
             });
         }
         if let Some(raw) = self.url.as_deref() {
-            canonicalize_upstream_url(raw).map_err(|_| ConfigError::InvalidUrl {
-                name: self.name.clone(),
-                url: raw.to_string(),
-            })?;
+            let canonical =
+                canonicalize_upstream_url(raw).map_err(|_| ConfigError::InvalidUrl {
+                    name: self.name.clone(),
+                    url: raw.to_string(),
+                })?;
+            // Only http:// and https:// are allowed for upstream MCP servers.
+            // Other schemes (file://, ftp://, etc.) are rejected at validation time
+            // rather than discovered at connection time.
+            let scheme = canonical.split("://").next().unwrap_or("");
+            if scheme != "http" && scheme != "https" {
+                return Err(ConfigError::InvalidUrl {
+                    name: self.name.clone(),
+                    url: raw.to_string(),
+                });
+            }
         }
         Ok(())
     }
@@ -520,8 +531,17 @@ pub fn load_toml(candidates: &[PathBuf]) -> Result<LabConfig> {
     for path in candidates {
         match std::fs::read_to_string(path) {
             Ok(raw) => {
-                return toml::from_str::<LabConfig>(&raw)
-                    .with_context(|| format!("failed to parse {}", path.display()));
+                let cfg = toml::from_str::<LabConfig>(&raw)
+                    .with_context(|| format!("failed to parse {}", path.display()))?;
+                // Validate all upstream configs eagerly at startup so that
+                // invalid configuration (conflicting auth, bad URL scheme, etc.)
+                // is discovered immediately rather than at first OAuth attempt.
+                for upstream in &cfg.upstream {
+                    upstream
+                        .validate()
+                        .with_context(|| format!("invalid upstream config '{}'", upstream.name))?;
+                }
+                return Ok(cfg);
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
