@@ -263,6 +263,30 @@ Default mapping expectations:
 - `oauth_unsupported_method` -> `502 Bad Gateway`
 - `internal_error` -> `500 Internal Server Error`
 
+## Deploy Service Kinds
+
+The `deploy` service (feature-gated) adds the following stable kinds, all
+surfaced via `DeployError::kind()` in `lab-apis/src/deploy/error.rs`:
+
+| `kind` | HTTP status | Meaning |
+|--------|-------------|---------|
+| `validation_failed` | 400 | Bad input (host alias, remote_path allowlist, etc.). |
+| `ssh_unreachable` | 502 | SSH connection or auth failed for a target. |
+| `build_failed` | 502 | Local `cargo build --release` failed. |
+| `preflight_failed` | 502 | Remote arch probe, writable-dir check, or sha256 probe failed. |
+| `transfer_failed` | 502 | Streaming the artifact to the remote failed. |
+| `install_failed` | 502 | Atomic rename/backup on the remote failed. |
+| `restart_failed` | 502 | `systemctl restart` or `is-active --wait` failed. |
+| `verify_failed` | 502 | Post-install `lab --version` probe failed. |
+| `partial_failure` | 200 | Multi-host run where some hosts failed; body carries `ok=false`. |
+| `conflict` | 409 | Another deploy is in progress for the same host. |
+| `arch_mismatch` | 502 | Remote `uname -m` differs from local build triple. |
+| `integrity_mismatch` | 502 | Remote sha256 of staged artifact differs from local. |
+| `auth_failed` | 401 | `LAB_DEPLOY_TOKEN` missing or headless `confirm: true` rejected. |
+
+MCP envelopes carry the redacted message from `DeployError::redacted_message()`;
+the full structured detail is logged at WARN locally.
+
 ## Device Runtime Notes
 
 The device runtime uses the same shared taxonomy.
