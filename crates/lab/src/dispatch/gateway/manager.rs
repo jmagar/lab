@@ -10,6 +10,7 @@ use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::upstream::pool::UpstreamCachedSummary;
 use crate::dispatch::upstream::pool::UpstreamPool;
+use crate::oauth::upstream::cache::OauthClientCache;
 use crate::registry::ToolRegistry;
 use lab_apis::extract::types::ServiceCreds;
 
@@ -78,6 +79,7 @@ pub struct GatewayManager {
     service_clients: Option<SharedServiceClients>,
     notifier: Option<CatalogChangeNotifier>,
     virtual_health_cache: Arc<RwLock<Option<VirtualServiceHealthCache>>>,
+    oauth_client_cache: Option<OauthClientCache>,
 }
 
 impl GatewayManager {
@@ -89,12 +91,19 @@ impl GatewayManager {
             service_clients: None,
             notifier: None,
             virtual_health_cache: Arc::new(RwLock::new(None)),
+            oauth_client_cache: None,
         }
     }
 
     #[must_use]
     pub fn with_service_clients(mut self, service_clients: SharedServiceClients) -> Self {
         self.service_clients = Some(service_clients);
+        self
+    }
+
+    #[must_use]
+    pub fn with_oauth_client_cache(mut self, cache: OauthClientCache) -> Self {
+        self.oauth_client_cache = Some(cache);
         self
     }
 
@@ -112,6 +121,23 @@ impl GatewayManager {
 
     pub async fn current_pool(&self) -> Option<Arc<UpstreamPool>> {
         self.runtime.current_pool().await
+    }
+
+    #[must_use]
+    pub fn oauth_client_cache(&self) -> Option<OauthClientCache> {
+        self.oauth_client_cache.clone()
+    }
+
+    pub fn evict_subject_client(&self, upstream: &str, subject: &str) {
+        if let Some(cache) = &self.oauth_client_cache {
+            cache.evict_subject(upstream, subject);
+        }
+    }
+
+    pub fn evict_upstream_clients(&self, upstream: &str) {
+        if let Some(cache) = &self.oauth_client_cache {
+            cache.evict_upstream(upstream);
+        }
     }
 
     pub async fn get_service_config(&self, service: &str) -> Result<ServiceConfigView, ToolError> {
@@ -485,11 +511,20 @@ impl GatewayManager {
                 sdk_kind: "internal_error".to_string(),
                 message: format!("config read task failed: {e}"),
             })??;
+        if let Some(cache) = &self.oauth_client_cache {
+            let existing = self.config.read().await.clone();
+            for upstream in existing.upstream.iter().filter(|upstream| upstream.oauth.is_some()) {
+                cache.evict_upstream(&upstream.name);
+            }
+        }
         let before = snapshot_from_pool(self.runtime.current_pool().await).await;
         let fresh_pool = if cfg.upstream.is_empty() {
             None
         } else {
-            let pool = Arc::new(UpstreamPool::new());
+            let pool = Arc::new(match &self.oauth_client_cache {
+                Some(cache) => UpstreamPool::new().with_oauth_client_cache(cache.clone()),
+                None => UpstreamPool::new(),
+            });
             pool.discover_all(&cfg.upstream).await;
             Some(pool)
         };
@@ -1052,8 +1087,17 @@ mod tests {
     use std::sync::Arc;
 
     use crate::config::{UpstreamConfig, VirtualServerConfig, VirtualServerSurfacesConfig};
+    use crate::oauth::upstream::cache::OauthClientCache;
+    use rmcp::transport::{AuthClient, AuthorizationManager};
 
     use super::*;
+
+    async fn dummy_auth_client() -> Arc<AuthClient<reqwest::Client>> {
+        let manager = AuthorizationManager::new("http://localhost")
+            .await
+            .expect("authorization manager");
+        Arc::new(AuthClient::new(reqwest::Client::new(), manager))
+    }
 
     #[test]
     fn catalog_diff_detects_removed_tool_provider() {
@@ -1500,5 +1544,62 @@ mod tests {
             runtime.last_error.as_deref(),
             Some("stdio handshake failed")
         );
+    }
+
+    #[tokio::test]
+    async fn reload_evicts_removed_upstream_oauth_clients() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        write_gateway_config(
+            &path,
+            &LabConfig {
+                upstream: vec![UpstreamConfig {
+                    name: "kept".to_string(),
+                    url: Some("http://127.0.0.1:7001".to_string()),
+                    bearer_token_env: None,
+                    command: None,
+                    args: Vec::new(),
+                    proxy_resources: false,
+                    expose_tools: None,
+                    oauth: None,
+                }],
+                ..LabConfig::default()
+            },
+        )
+        .expect("write config");
+
+        let cache = OauthClientCache::new(Arc::new(dashmap::DashMap::new()));
+        cache.insert_for_tests(
+            "removed",
+            "alice",
+            "preregistered:client-a",
+            dummy_auth_client().await,
+        );
+
+        let manager = GatewayManager::new(path.clone(), GatewayRuntimeHandle::default())
+            .with_oauth_client_cache(cache.clone());
+        manager
+            .seed_config(LabConfig {
+                upstream: vec![UpstreamConfig {
+                    name: "removed".to_string(),
+                    url: Some("http://127.0.0.1:7000".to_string()),
+                    bearer_token_env: None,
+                    command: None,
+                    args: Vec::new(),
+                    proxy_resources: false,
+                    expose_tools: None,
+                    oauth: Some(crate::config::UpstreamOauthConfig {
+                        mode: crate::config::UpstreamOauthMode::AuthorizationCodePkce,
+                        registration: crate::config::UpstreamOauthRegistration::Dynamic,
+                        scopes: None,
+                    }),
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        assert_eq!(cache.len(), 1);
+        manager.reload().await.expect("reload");
+        assert!(cache.is_empty());
     }
 }

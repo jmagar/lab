@@ -155,6 +155,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let bearer_token = http_token();
     let auth_config =
         resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
+    crate::mcp::server::verify_upstream_subject_resolution_support()
+        .context("verify upstream OAuth subject-resolution wiring")?;
     let auth_configured = bearer_token.is_some() || matches!(auth_config.mode, AuthMode::OAuth);
 
     // Safety gate: refuse to bind on a non-localhost address without

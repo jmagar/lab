@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+use axum::http::{self, request::Parts};
 use rmcp::model::{
     AnnotateAble, CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
     ElicitationAction, ElicitationSchema, GetPromptRequestParams, GetPromptResult,
@@ -64,6 +65,34 @@ pub struct LabMcpServer {
     pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
     /// Negotiated RMCP logging threshold for this server/session.
     pub logging_level: Arc<AtomicU8>,
+}
+
+pub fn verify_upstream_subject_resolution_support() -> anyhow::Result<()> {
+    let (parts, _) = http::Request::new(()).into_parts();
+    let auth = crate::api::oauth::AuthContext {
+        sub: "startup-self-test".to_string(),
+        scopes: Vec::new(),
+        issuer: "https://lab.example.com".to_string(),
+        via_session: false,
+        csrf_token: None,
+        email: None,
+    };
+
+    let mut extensions = rmcp::model::Extensions::new();
+    let mut parts = parts;
+    parts.extensions.insert(auth);
+    extensions.insert(parts);
+
+    if subject_from_extensions(&extensions) == Some("startup-self-test") {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "rmcp subject extraction self-test failed: RequestContext.extensions did not yield \
+         http::request::Parts/AuthContext. The current runtime expects rmcp 1.4 request \
+         extension propagation (Plan A). Wire the tokio::task_local fallback (Plan B) or pin \
+         a compatible rmcp version before starting."
+    );
 }
 
 impl ServerHandler for LabMcpServer {
@@ -838,6 +867,10 @@ struct CatalogSnapshot {
 }
 
 impl LabMcpServer {
+    fn request_subject<'a>(&self, context: &'a RequestContext<RoleServer>) -> Option<&'a str> {
+        subject_from_extensions(&context.extensions)
+    }
+
     async fn current_upstream_pool(
         &self,
     ) -> Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>> {
@@ -901,21 +934,19 @@ impl LabMcpServer {
         }
 
         let catalog = crate::catalog::build_catalog(&self.registry);
-        let mut entry = catalog
-            .services
-            .into_iter()
-            .find(|entry| entry.name == service)
-            .ok_or_else(|| anyhow::anyhow!("unknown service: {service}"))?;
+        let mut actions =
+            crate::catalog::actions_for(&catalog, service, crate::catalog::Transport::Http);
+        if actions.is_empty() && !catalog.services.iter().any(|entry| entry.name == service) {
+            anyhow::bail!("unknown service: {service}");
+        }
 
         if let Some(allowed_actions) = self.allowed_mcp_actions(service).await
             && !allowed_actions.is_empty()
         {
-            entry
-                .actions
-                .retain(|action| allowed_actions.contains(&action.name));
+            actions.retain(|action| allowed_actions.contains(&action.name));
         }
 
-        Ok(serde_json::to_value(entry.actions)?)
+        Ok(serde_json::to_value(actions)?)
     }
 
     async fn snapshot_catalog(&self) -> CatalogSnapshot {
@@ -998,6 +1029,13 @@ impl LabMcpServer {
         *guard = alive;
         guard.extend(added_since_snapshot);
     }
+}
+
+fn subject_from_extensions(extensions: &rmcp::model::Extensions) -> Option<&str> {
+    let parts = extensions.get::<Parts>()?;
+    parts.extensions
+        .get::<crate::api::oauth::AuthContext>()
+        .map(|auth| auth.sub.as_str())
 }
 
 /// Format the result of a dispatch operation into an MCP `CallToolResult`.
@@ -1496,5 +1534,28 @@ mod tests {
                 .iter()
                 .any(|action| action["name"] == "session.list")
         );
+    }
+
+    #[test]
+    fn server_reads_subject_scoped_upstream_pool_from_request_extensions() {
+        let mut parts = axum::http::Request::new(()).into_parts().0;
+        parts.extensions.insert(crate::api::oauth::AuthContext {
+            sub: "alice".to_string(),
+            scopes: vec!["lab".to_string()],
+            issuer: "https://lab.example.com".to_string(),
+            via_session: true,
+            csrf_token: None,
+            email: Some("alice@example.com".to_string()),
+        });
+
+        let mut extensions = rmcp::model::Extensions::new();
+        extensions.insert(parts);
+
+        assert_eq!(super::subject_from_extensions(&extensions), Some("alice"));
+    }
+
+    #[test]
+    fn upstream_subject_resolution_self_test_passes_for_plan_a() {
+        super::verify_upstream_subject_resolution_support().expect("self-test");
     }
 }

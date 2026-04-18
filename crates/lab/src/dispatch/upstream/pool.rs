@@ -17,10 +17,8 @@ use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
-use dashmap::DashMap;
-
 use crate::config::UpstreamConfig;
-use crate::oauth::upstream::manager::UpstreamOauthManager;
+use crate::oauth::upstream::cache::OauthClientCache;
 
 use super::types;
 use super::types::{
@@ -43,10 +41,6 @@ const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Default maximum response size from upstream servers (10 MB).
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
-
-/// Subject used when looking up stored OAuth credentials at connect time.
-/// All homelab connections use a single implicit user identity.
-const DEFAULT_SUBJECT: &str = "default";
 
 /// Read the max response size from env or use the default.
 fn max_response_bytes() -> usize {
@@ -227,7 +221,7 @@ pub struct UpstreamPool {
     resource_upstreams: Arc<RwLock<Vec<String>>>,
     /// Per-upstream OAuth managers, keyed by upstream name.
     /// `None` when the server was started without OAuth support.
-    oauth_managers: Option<Arc<DashMap<String, UpstreamOauthManager>>>,
+    oauth_client_cache: Option<OauthClientCache>,
 }
 
 /// A live connection to an upstream MCP server.
@@ -252,19 +246,17 @@ impl UpstreamPool {
             catalog: Arc::new(RwLock::new(HashMap::new())),
             connections: Arc::new(RwLock::new(HashMap::new())),
             resource_upstreams: Arc::new(RwLock::new(Vec::new())),
-            oauth_managers: None,
+            oauth_client_cache: None,
         }
     }
 
-    /// Attach OAuth managers so the pool can authenticate OAuth-protected upstreams.
+    /// Attach the per-`(upstream, subject)` OAuth client cache so the pool can
+    /// authenticate OAuth-protected upstreams.
     ///
     /// Must be called before `discover_all` for OAuth upstreams to connect successfully.
     #[must_use]
-    pub fn with_oauth_managers(
-        mut self,
-        managers: Arc<DashMap<String, UpstreamOauthManager>>,
-    ) -> Self {
-        self.oauth_managers = Some(managers);
+    pub fn with_oauth_client_cache(mut self, cache: OauthClientCache) -> Self {
+        self.oauth_client_cache = Some(cache);
         self
     }
 
@@ -306,7 +298,7 @@ impl UpstreamPool {
 
         let mut futures = FuturesUnordered::new();
         let mut processed_names = std::collections::HashSet::new();
-        let oauth_managers = self.oauth_managers.clone();
+        let oauth_client_cache = self.oauth_client_cache.clone();
 
         for config in configs {
             // Skip duplicates (only process the first occurrence of each name).
@@ -327,12 +319,12 @@ impl UpstreamPool {
             }
 
             let config = config.clone();
-            let oauth_managers = oauth_managers.clone();
+            let oauth_client_cache = oauth_client_cache.clone();
             futures.push(async move {
                 let name = config.name.clone();
                 match tokio::time::timeout(
                     DISCOVERY_TIMEOUT,
-                    connect_upstream(&config, oauth_managers.as_deref()),
+                    connect_upstream(&config, None, oauth_client_cache.as_ref()),
                 )
                 .await
                 {
@@ -1137,10 +1129,11 @@ fn validate_upstream_config(config: &UpstreamConfig) -> Result<(), String> {
 /// Connect to a single upstream MCP server and discover its tools.
 async fn connect_upstream(
     config: &UpstreamConfig,
-    oauth_managers: Option<&DashMap<String, UpstreamOauthManager>>,
+    subject: Option<&str>,
+    oauth_client_cache: Option<&OauthClientCache>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     if let Some(ref url) = config.url {
-        connect_http_upstream(url, config, oauth_managers).await
+        connect_http_upstream(url, config, subject, oauth_client_cache).await
     } else if let Some(ref command) = config.command {
         connect_stdio_upstream(command, &config.args, config).await
     } else {
@@ -1152,27 +1145,32 @@ async fn connect_upstream(
 async fn connect_http_upstream(
     url: &str,
     config: &UpstreamConfig,
-    oauth_managers: Option<&DashMap<String, UpstreamOauthManager>>,
+    subject: Option<&str>,
+    oauth_client_cache: Option<&OauthClientCache>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     let transport_config = StreamableHttpClientTransportConfig::with_uri(url);
 
     // OAuth path: when the upstream declares oauth config, build an AuthClient.
     if config.oauth.is_some() {
-        let manager = oauth_managers
-            .and_then(|m| m.get(&config.name))
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "upstream {} requires OAuth but no manager is registered",
-                    config.name
-                )
-            })?;
+        let subject = subject.ok_or_else(|| {
+            anyhow::anyhow!(
+                "upstream {} requires an authenticated subject; discovery must be request-scoped",
+                config.name
+            )
+        })?;
+        let cache = oauth_client_cache.ok_or_else(|| {
+            anyhow::anyhow!(
+                "upstream {} requires OAuth but no auth client cache is registered",
+                config.name
+            )
+        })?;
 
-        let auth_client = manager
-            .build_auth_client(DEFAULT_SUBJECT)
+        let auth_client = cache
+            .get_or_build(config, subject)
             .await
             .map_err(|e| anyhow::anyhow!("oauth_required: {e}"))?;
 
-        let worker = StreamableHttpClientWorker::new(auth_client, transport_config);
+        let worker = StreamableHttpClientWorker::new((*auth_client).clone(), transport_config);
         let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(worker).await?;
         let peer = service.peer().clone();
         let tools = peer.list_all_tools().await?;
@@ -1257,6 +1255,7 @@ fn resolve_exposure_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration};
 
     #[test]
     fn validate_rejects_empty_name() {
@@ -1366,6 +1365,56 @@ mod tests {
             oauth: None,
         };
         assert!(validate_upstream_config(&config).is_err());
+    }
+
+    fn oauth_http_config() -> UpstreamConfig {
+        UpstreamConfig {
+            name: "oauth-upstream".into(),
+            url: Some("http://127.0.0.1:8080/mcp".into()),
+            bearer_token_env: None,
+            command: None,
+            args: vec![],
+            proxy_resources: false,
+            expose_tools: None,
+            oauth: Some(UpstreamOauthConfig {
+                mode: UpstreamOauthMode::AuthorizationCodePkce,
+                registration: UpstreamOauthRegistration::Preregistered {
+                    client_id: "client-id".into(),
+                    client_secret_env: None,
+                },
+                scopes: None,
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn subject_scoped_upstream_requires_authenticated_subject_for_oauth_http_connect() {
+        let config = oauth_http_config();
+        let error = connect_http_upstream(
+            config.url.as_deref().expect("url"),
+            &config,
+            None,
+            Some(&OauthClientCache::new(Arc::new(dashmap::DashMap::new()))),
+        )
+        .await
+        .expect_err("missing subject should fail");
+
+        assert!(error.to_string().contains("requires an authenticated subject"));
+    }
+
+    #[tokio::test]
+    async fn subject_scoped_upstream_requires_registered_cache_for_oauth_http_connect() {
+        let config = oauth_http_config();
+        let error = connect_http_upstream(
+            config.url.as_deref().expect("url"),
+            &config,
+            Some("alice"),
+            None,
+        )
+        .await
+        .expect_err("missing cache should fail");
+
+        assert!(error.to_string().contains("no auth client cache is registered"));
     }
 
     #[test]
