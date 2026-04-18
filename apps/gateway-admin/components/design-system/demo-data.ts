@@ -127,3 +127,49 @@ export const feedbackModes = [
   'warning',
   'error',
 ] as const
+
+export const navigationTabs = [
+  'Overview',
+  'Policies',
+  'Logs',
+] as const
+
+export const sidebarPreviewItems = [
+  { label: 'Overview', active: false },
+  { label: 'Gateways', active: true },
+  { label: 'Logs', active: false },
+] as const
+
+export const metricCards = [
+  { label: 'Connected gateways', value: '18', detail: 'Across preview and prod clusters' },
+  { label: 'Warnings', value: '4', detail: 'Need operator review before rollout' },
+  { label: 'Published tools', value: '73', detail: 'Visible to downstream clients' },
+] as const
+
+export const denseRows = [
+  {
+    gateway: 'plex-prod',
+    transport: 'streamable_http',
+    tools: '18 exposed',
+    health: 'Healthy',
+  },
+  {
+    gateway: 'edge-lab',
+    transport: 'stdio',
+    tools: '9 exposed',
+    health: 'Warning',
+  },
+  {
+    gateway: 'preview-ssh',
+    transport: 'sse',
+    tools: '24 exposed',
+    health: 'Healthy',
+  },
+] as const
+
+export const keyValueBlocks = [
+  { label: 'Gateway ID', value: 'gw_01HZZP7D4JQY' },
+  { label: 'Last deploy', value: '2026-04-17 22:14 EDT' },
+  { label: 'Operator', value: 'labby-admin@example.com' },
+  { label: 'Auth mode', value: 'Session auth' },
+] as const
