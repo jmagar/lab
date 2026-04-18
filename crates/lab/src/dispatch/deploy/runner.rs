@@ -386,12 +386,16 @@ fn triple_to_arch(triple: &str) -> String {
 
 /// Normalize common architecture aliases to canonical Rust triple arch names.
 ///
-/// This handles cases like Docker/OCI image platforms (`amd64`, `arm64`)
-/// which differ from `uname -m` / Rust triple names (`x86_64`, `aarch64`).
+/// This handles cases like Docker/OCI image platforms (`amd64`, `arm64`) and
+/// Linux `uname -m` names (`armv7l`, `armhf`) which differ from Rust triple
+/// arch names (`x86_64`, `aarch64`, `armv7`).
 fn normalize_arch(arch: &str) -> &str {
     match arch {
         "amd64" | "x64" => "x86_64",
         "arm64" => "aarch64",
+        // uname -m on 32-bit ARM Linux returns `armv7l` (little-endian suffix).
+        // Rust triples use `armv7` without the `l`. armhf is a Debian alias.
+        "armv7l" | "armhf" => "armv7",
         other => other,
     }
 }

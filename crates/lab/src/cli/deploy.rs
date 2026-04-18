@@ -1,7 +1,10 @@
 //! CLI surface for the `deploy` service.
 //!
 //! Thin shim over `dispatch::deploy`. Destructive actions (`run`,
-//! `rollback`) require `-y` to proceed non-interactively.
+//! `rollback`) require `-y` / `--yes` / `--no-confirm` on a non-TTY, or
+//! will prompt interactively when stdin is a TTY.
+
+use std::io::{BufRead as _, IsTerminal as _};
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
@@ -33,8 +36,11 @@ pub enum DeployCmd {
         #[arg(required = true)]
         targets: Vec<String>,
         /// Confirm the destructive operation (required non-interactively).
-        #[arg(short = 'y', long = "yes")]
+        #[arg(short = 'y', long = "yes", visible_alias = "no-confirm")]
         yes: bool,
+        /// Dry-run: plan only, do not transfer or install anything.
+        #[arg(long)]
+        dry_run: bool,
         /// Maximum number of hosts to work on concurrently.
         #[arg(long)]
         max_parallel: Option<u32>,
@@ -48,8 +54,11 @@ pub enum DeployCmd {
         #[arg(required = true)]
         targets: Vec<String>,
         /// Confirm the destructive operation.
-        #[arg(short = 'y', long = "yes")]
+        #[arg(short = 'y', long = "yes", visible_alias = "no-confirm")]
         yes: bool,
+        /// Dry-run: plan only, do not roll back.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -77,6 +86,27 @@ impl DeployArgs {
     }
 }
 
+/// Require confirmation for a destructive operation.
+///
+/// - On a TTY: prompts interactively; proceeds on `y`/`Y`.
+/// - Not on a TTY without `-y`: returns an error.
+fn confirm_destructive(yes: bool, label: &str) -> Result<()> {
+    if yes {
+        return Ok(());
+    }
+    if std::io::stdin().is_terminal() {
+        eprint!("{label} is destructive. Proceed? [y/N] ");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            bail!("aborted");
+        }
+        Ok(())
+    } else {
+        bail!("{label} is destructive; pass -y / --yes to confirm non-interactively");
+    }
+}
+
 /// Execute a deploy CLI invocation against the concrete `DefaultRunner`.
 pub async fn run(
     args: DeployArgs,
@@ -89,27 +119,32 @@ pub async fn run(
         DeployCmd::Run {
             targets,
             yes,
+            dry_run,
             max_parallel,
             fail_fast,
         } => {
-            if !yes {
-                bail!("deploy run is destructive; pass -y to confirm");
+            if dry_run {
+                ("plan", json!({ "targets": targets }))
+            } else {
+                confirm_destructive(yes, "deploy run")?;
+                (
+                    "run",
+                    json!({
+                        "targets": targets,
+                        "confirm": true,
+                        "max_parallel": max_parallel,
+                        "fail_fast": fail_fast,
+                    }),
+                )
             }
-            (
-                "run",
-                json!({
-                    "targets": targets,
-                    "confirm": true,
-                    "max_parallel": max_parallel,
-                    "fail_fast": fail_fast,
-                }),
-            )
         }
-        DeployCmd::Rollback { targets, yes } => {
-            if !yes {
-                bail!("deploy rollback is destructive; pass -y to confirm");
+        DeployCmd::Rollback { targets, yes, dry_run } => {
+            if dry_run {
+                ("plan", json!({ "targets": targets }))
+            } else {
+                confirm_destructive(yes, "deploy rollback")?;
+                ("rollback", json!({ "targets": targets, "confirm": true }))
             }
-            ("rollback", json!({ "targets": targets, "confirm": true }))
         }
     };
 

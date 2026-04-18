@@ -496,19 +496,19 @@ export function GatewayFormDialog({
                 </div>
 
                 <RadioGroup value={authMode} onValueChange={(value) => setAuthMode(value as GatewayAuthMode)}>
-                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer">
+                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-none">
                     <RadioGroupItem value="none" id="auth-none" />
                     <div className="space-y-1">
-                      <Label htmlFor="auth-none" className="font-medium">No auth</Label>
+                      <span className="font-medium text-sm">No auth</span>
                       <p className="text-sm text-muted-foreground">
                         Use this when the upstream does not require an Authorization header.
                       </p>
                     </div>
                   </label>
-                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer">
+                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-bearer">
                     <RadioGroupItem value="bearer" id="auth-bearer" />
                     <div className="space-y-1">
-                      <Label htmlFor="auth-bearer" className="font-medium">Bearer token</Label>
+                      <span className="font-medium text-sm">Bearer token</span>
                       <p className="text-sm text-muted-foreground">
                         Recommended for GitHub and other remote HTTP MCP servers.
                       </p>
@@ -519,19 +519,19 @@ export function GatewayFormDialog({
                 {authMode === 'bearer' && (
                   <div className="space-y-4 rounded-xl border p-4">
                     <RadioGroup value={authSource} onValueChange={(value) => setAuthSource(value as GatewayAuthSource)}>
-                      <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
+                      <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" htmlFor="auth-source-paste">
                         <RadioGroupItem value="paste" id="auth-source-paste" />
                         <div className="space-y-1">
-                          <Label htmlFor="auth-source-paste" className="font-medium">Paste token</Label>
+                          <span className="font-medium text-sm">Paste token</span>
                           <p className="text-sm text-muted-foreground">
                             Paste the secret here and Labby will store it in <code>~/.lab/.env</code> for you.
                           </p>
                         </div>
                       </label>
-                      <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
+                      <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" htmlFor="auth-source-env">
                         <RadioGroupItem value="env" id="auth-source-env" />
                         <div className="space-y-1">
-                          <Label htmlFor="auth-source-env" className="font-medium">Use existing env var</Label>
+                          <span className="font-medium text-sm">Use existing env var</span>
                           <p className="text-sm text-muted-foreground">
                             Reference an existing environment variable instead of entering a secret here.
                           </p>
