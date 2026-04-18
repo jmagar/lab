@@ -57,6 +57,12 @@ pub struct UpstreamOauthManager {
     metadata_cache: Arc<RwLock<Option<AuthorizationMetadata>>>,
     /// In-flight authorization managers keyed by subject (begin → complete window).
     pending: Arc<DashMap<String, Arc<Mutex<AuthorizationManager>>>>,
+    /// CSRF token → subject reverse index for callback routing.
+    ///
+    /// The OAuth callback only carries the CSRF token (`state` param); this map
+    /// lets the callback handler find the subject without a database round-trip.
+    /// Entries are removed when `complete_authorization_callback` succeeds.
+    csrf_to_subject: Arc<DashMap<String, String>>,
 }
 
 impl UpstreamOauthManager {
@@ -79,6 +85,7 @@ impl UpstreamOauthManager {
             locks: Arc::new(RefreshLocks::new()),
             metadata_cache: Arc::new(RwLock::new(None)),
             pending: Arc::new(DashMap::new()),
+            csrf_to_subject: Arc::new(DashMap::new()),
         }
     }
 
@@ -147,6 +154,10 @@ impl UpstreamOauthManager {
             .await
             .map_err(|e| OauthError::Internal(format!("get authorization url: {e}")))?;
 
+        if let Some(csrf) = extract_state_param(&authorization_url) {
+            self.csrf_to_subject.insert(csrf, subject.to_string());
+        }
+
         self.pending
             .insert(subject.to_string(), Arc::new(Mutex::new(manager)));
 
@@ -188,6 +199,7 @@ impl UpstreamOauthManager {
             .map_err(map_auth_error)?;
 
         self.pending.remove(subject);
+        self.csrf_to_subject.retain(|_, v| v != subject);
 
         info!(
             upstream = %self.upstream.name,
@@ -198,6 +210,31 @@ impl UpstreamOauthManager {
         Ok(())
     }
 
+    /// Complete the authorization callback using the CSRF token to resolve the subject.
+    ///
+    /// Used by the callback HTTP route where the subject is not in the URL path —
+    /// the CSRF token carried in the `state` query param is used to look up the
+    /// subject from the in-memory index populated by `begin_authorization`.
+    pub async fn complete_authorization_callback_by_csrf(
+        &self,
+        code: &str,
+        csrf_token: &str,
+    ) -> Result<(), OauthError> {
+        let subject = self
+            .csrf_to_subject
+            .get(csrf_token)
+            .map(|v| v.clone())
+            .ok_or_else(|| {
+                OauthError::StateInvalid(
+                    "CSRF token not found; authorization may have expired or never started"
+                        .to_string(),
+                )
+            })?;
+
+        self.complete_authorization_callback(&subject, code, csrf_token)
+            .await
+    }
+
     /// Delete all stored credentials for `subject` and evict any cached state.
     pub async fn clear_credentials(&self, subject: &str) -> Result<(), OauthError> {
         self.sqlite
@@ -206,6 +243,7 @@ impl UpstreamOauthManager {
             .map_err(|e| OauthError::Internal(e.to_string()))?;
 
         self.pending.remove(subject);
+        self.csrf_to_subject.retain(|_, v| v != subject);
 
         info!(
             upstream = %self.upstream.name,
@@ -359,6 +397,15 @@ impl UpstreamOauthManager {
             )),
         }
     }
+}
+
+/// Extract the `state` query parameter from an authorization URL.
+fn extract_state_param(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    parsed
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .map(|(_, v)| v.into_owned())
 }
 
 fn map_auth_error(e: rmcp::transport::AuthError) -> OauthError {

@@ -309,6 +309,13 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         {
             v1 = v1.nest("/logs", services::logs::routes(state.clone()));
         }
+
+        if state.upstream_oauth.is_some() {
+            v1 = v1.nest(
+                "/upstream-oauth/:name",
+                services::upstream_oauth::routes(state.clone()),
+            );
+        }
     }
 
     macro_rules! mount_if_enabled {

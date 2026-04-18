@@ -52,6 +52,10 @@ pub struct AppState {
     pub web_assets_dir: Option<Arc<PathBuf>>,
     /// When true, `/v1/*` skips auth middleware for hosted UI requests.
     pub web_ui_auth_disabled: bool,
+    /// Per-upstream OAuth managers keyed by upstream name.
+    ///
+    /// Populated during `lab serve` startup when upstreams have `oauth` config blocks.
+    pub upstream_oauth: Option<Arc<dashmap::DashMap<String, crate::oauth::upstream::manager::UpstreamOauthManager>>>,
 }
 
 impl AppState {
@@ -92,6 +96,7 @@ impl AppState {
             device_role: None,
             web_assets_dir: None,
             web_ui_auth_disabled: false,
+            upstream_oauth: None,
         }
     }
 
@@ -148,6 +153,16 @@ impl AppState {
     #[must_use]
     pub fn with_web_ui_auth_disabled(mut self, disabled: bool) -> Self {
         self.web_ui_auth_disabled = disabled;
+        self
+    }
+
+    /// Attach the per-upstream OAuth manager map.
+    #[must_use]
+    pub fn with_upstream_oauth(
+        mut self,
+        managers: dashmap::DashMap<String, crate::oauth::upstream::manager::UpstreamOauthManager>,
+    ) -> Self {
+        self.upstream_oauth = Some(Arc::new(managers));
         self
     }
 
