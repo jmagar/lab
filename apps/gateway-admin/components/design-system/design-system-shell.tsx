@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { FoundationsSection } from './foundations-section'
 
 const sectionHeadings = [
   'Theme Foundations',
@@ -41,7 +42,10 @@ export function DesignSystemShell() {
         </Card>
 
         <div className="grid gap-4 xl:grid-cols-2">
-          {sectionHeadings.map((heading) => (
+          <div className="xl:col-span-2">
+            <FoundationsSection />
+          </div>
+          {sectionHeadings.filter((heading) => heading !== 'Theme Foundations').map((heading) => (
             <Card key={heading} className="h-full">
               <CardHeader className="border-b">
                 <CardTitle>{heading}</CardTitle>
