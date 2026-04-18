@@ -520,7 +520,9 @@ impl SqliteStore {
         &self,
         row: UpstreamOauthStateRow,
     ) -> Result<(), AuthError> {
-        if row.expires_at - row.created_at > UPSTREAM_OAUTH_STATE_MAX_TTL_SECS {
+        if row.expires_at <= row.created_at
+            || row.expires_at - row.created_at > UPSTREAM_OAUTH_STATE_MAX_TTL_SECS
+        {
             return Err(AuthError::InvalidGrant(
                 "state TTL exceeds 600s".to_string(),
             ));

@@ -191,10 +191,17 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
         });
     }
 
-    // Reject mutually-exclusive auth shapes (bearer_token_env + oauth).
-    upstream.validate().map_err(|e| ToolError::InvalidParam {
-        message: e.to_string(),
-        param: "bearer_token_env".to_string(),
+    // Reject mutually-exclusive auth shapes (bearer_token_env + oauth) and
+    // invalid URLs. Route param attribution by error variant.
+    upstream.validate().map_err(|e| match e {
+        crate::config::ConfigError::InvalidUrl { .. } => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "url".to_string(),
+        },
+        _ => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "bearer_token_env".to_string(),
+        },
     })?;
 
     match (&upstream.url, &upstream.command) {

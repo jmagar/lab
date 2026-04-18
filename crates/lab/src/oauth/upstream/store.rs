@@ -112,7 +112,10 @@ impl CredentialStore for SqliteCredentialStore {
         Self: 'async_trait,
     {
         Box::pin(async move {
-            let token_received_at = credentials.token_received_at.unwrap_or(0) as i64;
+            let token_received_at = credentials
+                .token_received_at
+                .map(|t| t as i64)
+                .unwrap_or_else(now_unix);
 
             let (access_token_expires_at, refresh_token_present) =
                 if let Some(ref token) = credentials.token_response {

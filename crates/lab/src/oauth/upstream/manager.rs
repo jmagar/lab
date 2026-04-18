@@ -429,9 +429,15 @@ impl UpstreamOauthManager {
                 // *is* the client identifier. No registration_endpoint call is
                 // issued — the AS fetches the document itself when it first sees
                 // the client_id. We construct the OAuth client locally.
-                url::Url::parse(url).map_err(|e| {
+                let parsed = url::Url::parse(url).map_err(|e| {
                     OauthError::Internal(format!("invalid client_metadata_document url: {e}"))
                 })?;
+                if parsed.scheme() != "https" {
+                    return Err(OauthError::Internal(format!(
+                        "client_metadata_document url must use https, got `{}`",
+                        parsed.scheme()
+                    )));
+                }
                 let cfg = OAuthClientConfig::new(url.clone(), self.redirect_uri.as_str())
                     .with_scopes(scopes.iter().map(|s| s.to_string()).collect());
                 Ok(cfg)

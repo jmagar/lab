@@ -139,8 +139,9 @@ impl OauthClientCache {
     /// Used by API handlers when credentials are cleared or when a refresh
     /// fails terminally and the next request must reauthenticate.
     pub fn evict_subject(&self, upstream: &str, subject: &str) {
-        self.clients
-            .remove(&(upstream.to_string(), subject.to_string()));
+        let key = (upstream.to_string(), subject.to_string());
+        self.clients.remove(&key);
+        self.build_locks.remove(&key);
     }
 
     /// Evict every entry for `upstream`.
@@ -150,6 +151,7 @@ impl OauthClientCache {
     /// upstream's sessions.
     pub fn evict_upstream(&self, upstream: &str) {
         self.clients.retain(|(name, _), _| name != upstream);
+        self.build_locks.retain(|(name, _), _| name != upstream);
     }
 
     /// Number of cached clients. Intended for tests and observability.
