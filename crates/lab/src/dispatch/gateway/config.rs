@@ -228,6 +228,79 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
     }
 }
 
+pub(crate) fn validate_bearer_token_env_name(value: &str) -> Result<(), ToolError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ToolError::InvalidParam {
+            message: "bearer token env var must not be empty".to_string(),
+            param: "bearer_token_env".to_string(),
+        });
+    }
+
+    if looks_like_raw_bearer_token(trimmed) {
+        return Err(ToolError::InvalidParam {
+            message: "bearer_token_env must be an environment variable name, not the token value"
+                .to_string(),
+            param: "bearer_token_env".to_string(),
+        });
+    }
+
+    if !is_valid_env_var_name(trimmed) {
+        return Err(ToolError::InvalidParam {
+            message: "bearer_token_env must be a valid environment variable name".to_string(),
+            param: "bearer_token_env".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+pub(crate) fn default_gateway_bearer_env_name(name: &str) -> String {
+    let normalized = name
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .split('_')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("_");
+
+    format!(
+        "{}_AUTH_HEADER",
+        if normalized.is_empty() {
+            "GATEWAY"
+        } else {
+            &normalized
+        }
+    )
+}
+
+fn looks_like_raw_bearer_token(value: &str) -> bool {
+    value.starts_with("Bearer ")
+        || value.starts_with("ghp_")
+        || value.starts_with("github_pat_")
+        || value.starts_with("ghu_")
+        || value.starts_with("ghs_")
+        || value.starts_with("ghr_")
+}
+
+fn is_valid_env_var_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    match chars.next() {
+        Some(ch) if ch == '_' || ch.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+
+    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
 fn validate_gateway_url(url: &str) -> Result<(), ToolError> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(ToolError::InvalidParam {
@@ -601,5 +674,37 @@ args = ["server.js"]
         .expect_err("bind-all should be rejected");
 
         assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn insert_upstream_rejects_raw_bearer_token_values_in_bearer_token_env() {
+        let err = insert_upstream(
+            &mut LabConfig::default(),
+            UpstreamConfig {
+                name: "github".to_string(),
+                url: Some("https://api.githubcopilot.com/mcp/".to_string()),
+                bearer_token_env: Some("Bearer ghp_secret".to_string()),
+                command: None,
+                args: Vec::new(),
+                proxy_resources: false,
+                expose_tools: None,
+                oauth: None,
+            },
+        )
+        .expect_err("raw bearer token should be rejected");
+
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn default_gateway_bearer_env_name_normalizes_gateway_names() {
+        assert_eq!(
+            default_gateway_bearer_env_name("github"),
+            "GITHUB_AUTH_HEADER"
+        );
+        assert_eq!(
+            default_gateway_bearer_env_name("github-copilot remote"),
+            "GITHUB_COPILOT_REMOTE_AUTH_HEADER"
+        );
     }
 }

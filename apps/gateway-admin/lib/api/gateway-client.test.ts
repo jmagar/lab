@@ -94,6 +94,45 @@ test('gatewayApi.create sends confirm=true with destructive gateway adds', async
   )
 })
 
+test('gatewayApi.create sends pasted bearer tokens as a separate payload field', async () => {
+  await withGatewayFetch(
+    {
+      'gateway.add': () => standardGatewayView,
+      'gateway.test': () => standardGatewayView.runtime,
+      'gateway.discovered_tools': () => ['tool.alpha'],
+      'gateway.discovered_resources': () => ['lab://resource.alpha'],
+      'gateway.discovered_prompts': () => ['prompt.alpha'],
+    },
+    async (requests) => {
+      await gatewayApi.create({
+        name: 'github',
+        transport: 'http',
+        config: {
+          url: 'https://api.githubcopilot.com/mcp/',
+          bearer_token_value: 'ghp_secret',
+        },
+      } as never)
+
+      assert.deepEqual(
+        requests.find((request) => request.action === 'gateway.add')?.params.spec,
+        {
+          name: 'github',
+          url: 'https://api.githubcopilot.com/mcp/',
+          command: null,
+          args: [],
+          bearer_token_env: 'GITHUB_AUTH_HEADER',
+          proxy_resources: false,
+          expose_tools: null,
+        },
+      )
+      assert.equal(
+        requests.find((request) => request.action === 'gateway.add')?.params.bearer_token_value,
+        'ghp_secret',
+      )
+    },
+  )
+})
+
 test('gatewayApi.update sends confirm=true with destructive gateway updates', async () => {
   await withGatewayFetch(
     {
@@ -118,6 +157,36 @@ test('gatewayApi.update sends confirm=true with destructive gateway updates', as
       assert.equal(
         requests.find((request) => request.action === 'gateway.update')?.params.confirm,
         true,
+      )
+    },
+  )
+})
+
+test('gatewayApi.update sends pasted bearer tokens as a separate payload field', async () => {
+  await withGatewayFetch(
+    {
+      'gateway.update': () => standardGatewayView,
+      'gateway.test': () => standardGatewayView.runtime,
+      'gateway.discovered_tools': () => ['tool.alpha'],
+      'gateway.discovered_resources': () => ['lab://resource.alpha'],
+      'gateway.discovered_prompts': () => ['prompt.alpha'],
+    },
+    async (requests) => {
+      await gatewayApi.update(
+        'github',
+        {
+          name: 'github',
+          transport: 'http',
+          config: {
+            url: 'https://api.githubcopilot.com/mcp/',
+            bearer_token_value: 'ghp_secret',
+          },
+        } as never,
+      )
+
+      assert.equal(
+        requests.find((request) => request.action === 'gateway.update')?.params.bearer_token_value,
+        'ghp_secret',
       )
     },
   )

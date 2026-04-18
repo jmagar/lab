@@ -200,22 +200,7 @@ export function GatewayListContent() {
 
       <div className={`relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary ${AURORA_PAGE_SHELL}`}>
         <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
-          <section className={cn(AURORA_MEDIUM_PANEL, 'space-y-5 p-5')}>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-1">
-                <p className={AURORA_MUTED_LABEL}>Gateway fleet</p>
-                <h1 className={cn(AURORA_DISPLAY_TITLE, 'text-2xl font-semibold text-aurora-text-primary')}>
-                  Operational gateway control plane
-                </h1>
-                <p className="max-w-3xl text-sm leading-6 text-aurora-text-muted">
-                  Monitor connection health, surface exposure, and operator follow-up without changing the existing workflow.
-                </p>
-              </div>
-              <p className="max-w-sm text-sm leading-6 text-aurora-text-muted">
-                {summary.warnings} warning{summary.warnings === 1 ? '' : 's'} across all gateways.
-              </p>
-            </div>
-
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className={AURORA_GATEWAY_STAT}>
                 <div className="flex items-center justify-between gap-3">

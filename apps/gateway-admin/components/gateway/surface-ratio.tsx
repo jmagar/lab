@@ -24,7 +24,6 @@ export function SurfaceRatio({ icon: Icon, label, exposed, total, className }: S
     >
       <Icon className="size-4 text-aurora-accent-strong" aria-hidden="true" />
       <span className="tabular-nums">{exposed}/{total}</span>
-      <span className="text-[11px] uppercase tracking-[0.16em] text-aurora-text-muted">{label}</span>
     </div>
   )
 }

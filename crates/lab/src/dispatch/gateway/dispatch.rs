@@ -119,11 +119,15 @@ pub async fn dispatch_with_manager(
         }
         "gateway.add" => {
             let params: GatewayAddParams = parse_params(params_value)?;
-            to_json(manager.add(params.spec).await?)
+            to_json(manager.add(params.spec, params.bearer_token_value).await?)
         }
         "gateway.update" => {
             let params: GatewayUpdateParams = parse_params(params_value)?;
-            to_json(manager.update(&params.name, params.patch).await?)
+            to_json(
+                manager
+                    .update(&params.name, params.patch, params.bearer_token_value)
+                    .await?,
+            )
         }
         "gateway.remove" => {
             let params: GatewayNameParams = parse_params(params_value)?;

@@ -7,6 +7,7 @@ export interface GatewayConfig {
   command?: string
   args?: string[]
   bearer_token_env?: string
+  bearer_token_value?: string
   proxy_resources?: boolean
   expose_tools?: string[]
 }

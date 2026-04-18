@@ -60,13 +60,7 @@ export function GatewayFilters({
 
   return (
     <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 p-4')}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <p className={AURORA_MUTED_LABEL}>Fleet controls</p>
-          <p className="text-sm text-aurora-text-muted">
-            Narrow the control-plane view without losing the dense operational table.
-          </p>
-        </div>
+      <div className="flex justify-end">
         {hasFilters && (
           <Button
             variant="outline"

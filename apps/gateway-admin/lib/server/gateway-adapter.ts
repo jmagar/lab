@@ -9,6 +9,7 @@ import type {
   UpdateGatewayInput,
 } from '../types/gateway'
 import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from '../api/tool-exposure-draft.ts'
+import { defaultGatewayBearerEnvName } from '../gateway-env.ts'
 
 export interface BackendSurfaceStateView {
   enabled?: boolean
@@ -466,6 +467,27 @@ export function gatewayInputToSpec(input: CreateGatewayInput) {
   }
 }
 
+export function buildGatewayCreatePayload(input: CreateGatewayInput) {
+  const spec = gatewayInputToSpec({
+    ...input,
+    config: {
+      ...input.config,
+      bearer_token_env:
+        input.config.bearer_token_env?.trim() ||
+        (input.config.bearer_token_value?.trim()
+          ? defaultGatewayBearerEnvName(input.name)
+          : undefined),
+    },
+  })
+
+  const payload: Record<string, unknown> = { spec }
+  const bearerTokenValue = input.config.bearer_token_value?.trim()
+  if (bearerTokenValue) {
+    payload.bearer_token_value = bearerTokenValue
+  }
+  return payload
+}
+
 export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; transport?: TransportType }) {
   const config = input.config ?? {}
   const patch: Record<string, unknown> = {}
@@ -501,6 +523,34 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
   }
 
   return patch
+}
+
+export function buildGatewayUpdatePayload(
+  id: string,
+  input: UpdateGatewayInput,
+) {
+  const patch = buildGatewayPatch({
+    ...input,
+    config: {
+      ...input.config,
+      bearer_token_env:
+        input.config?.bearer_token_env !== undefined
+          ? input.config.bearer_token_env
+          : input.config?.bearer_token_value?.trim()
+            ? defaultGatewayBearerEnvName(input.name ?? id)
+            : input.config?.bearer_token_env,
+    },
+  })
+
+  const payload: Record<string, unknown> = {
+    name: id,
+    patch,
+  }
+  const bearerTokenValue = input.config?.bearer_token_value?.trim()
+  if (bearerTokenValue) {
+    payload.bearer_token_value = bearerTokenValue
+  }
+  return payload
 }
 
 export function exposurePolicyFromConfig(config: BackendGatewayConfigView): ExposurePolicy {

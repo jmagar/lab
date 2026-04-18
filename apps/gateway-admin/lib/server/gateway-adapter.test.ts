@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildGatewayCreatePayload,
   buildGatewayPatch,
+  buildGatewayUpdatePayload,
   exposurePolicyFromConfig,
   gatewayInputToSpec,
   normalizeGateway,
@@ -62,6 +64,49 @@ test('normalizeGateway maps backend views into UI gateway shape', () => {
     },
   ])
   assert.deepEqual(gateway.discovery.prompts, [{ name: 'prompt-one' }])
+})
+
+test('buildGatewayCreatePayload generates an auth env var when a bearer token is pasted', () => {
+  const payload = buildGatewayCreatePayload({
+    name: 'github',
+    transport: 'http',
+    config: {
+      url: 'https://api.githubcopilot.com/mcp/',
+      bearer_token_value: 'ghp_secret',
+    },
+  })
+
+  assert.deepEqual(payload, {
+    spec: {
+      name: 'github',
+      url: 'https://api.githubcopilot.com/mcp/',
+      command: null,
+      args: [],
+      bearer_token_env: 'GITHUB_AUTH_HEADER',
+      proxy_resources: false,
+      expose_tools: null,
+    },
+    bearer_token_value: 'ghp_secret',
+  })
+})
+
+test('buildGatewayUpdatePayload clears auth when bearer_token_env is blanked', () => {
+  const payload = buildGatewayUpdatePayload('github', {
+    transport: 'http',
+    config: {
+      bearer_token_env: '',
+    },
+  })
+
+  assert.deepEqual(payload, {
+    name: 'github',
+    patch: {
+      url: null,
+      command: null,
+      args: [],
+      bearer_token_env: null,
+    },
+  })
 })
 
 test('normalizeGateway applies allowlist exposure patterns', () => {

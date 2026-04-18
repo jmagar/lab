@@ -17,8 +17,9 @@ import {
   type BackendGatewayView,
   type GatewayDiscoverySnapshot,
   buildGatewayPatch,
+  buildGatewayCreatePayload,
+  buildGatewayUpdatePayload,
   exposurePolicyFromConfig,
-  gatewayInputToSpec,
   humanizeProbeError,
   normalizeGateway,
   normalizeServerView,
@@ -230,7 +231,7 @@ export const gatewayApi = {
   async create(input: CreateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
     const view = await gatewayAction<BackendGatewayView>(
       'gateway.add',
-      confirmGatewayParams({ spec: gatewayInputToSpec(input) }),
+      confirmGatewayParams(buildGatewayCreatePayload(input)),
       signal,
     )
     return normalizeGatewayView(view, true, signal)
@@ -239,10 +240,7 @@ export const gatewayApi = {
   async update(id: string, input: UpdateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
     const view = await gatewayAction<BackendGatewayView>(
       'gateway.update',
-      confirmGatewayParams({
-        name: id,
-        patch: buildGatewayPatch(input),
-      }),
+      confirmGatewayParams(buildGatewayUpdatePayload(id, input)),
       signal,
     )
     return normalizeGatewayView(view, true, signal)

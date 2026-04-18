@@ -18,7 +18,8 @@ use crate::registry::ToolRegistry;
 use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
-    insert_upstream, load_gateway_config, remove_upstream, update_upstream, write_gateway_config,
+    default_gateway_bearer_env_name, insert_upstream, load_gateway_config, remove_upstream,
+    update_upstream, validate_bearer_token_env_name, write_gateway_config,
 };
 use super::params::GatewayUpdatePatch;
 use super::service_catalog::service_meta;
@@ -600,9 +601,28 @@ impl GatewayManager {
         })
     }
 
-    pub async fn add(&self, spec: UpstreamConfig) -> Result<GatewayView, ToolError> {
+    pub async fn add(
+        &self,
+        mut spec: UpstreamConfig,
+        bearer_token_value: Option<String>,
+    ) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
-        insert_upstream(&mut cfg, spec.clone())?;
+
+        if let Some(token_value) = bearer_token_value.as_deref().map(str::trim)
+            && !token_value.is_empty()
+        {
+            let env_name =
+                resolve_gateway_bearer_env_name(&spec.name, spec.bearer_token_env.as_deref())?;
+            spec.bearer_token_env = Some(env_name);
+            insert_upstream(&mut cfg, spec.clone())?;
+            self.persist_gateway_bearer_token(
+                spec.bearer_token_env.as_deref().expect("env name"),
+                token_value,
+            )
+            .await?;
+        } else {
+            insert_upstream(&mut cfg, spec.clone())?;
+        }
         self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&spec.name).await
@@ -612,10 +632,34 @@ impl GatewayManager {
         &self,
         name: &str,
         patch: GatewayUpdatePatch,
+        bearer_token_value: Option<String>,
     ) -> Result<GatewayView, ToolError> {
+        let mut patch = patch;
         let mut cfg = self.config.read().await.clone();
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
-        update_upstream(&mut cfg, name, patch)?;
+
+        if let Some(token_value) = bearer_token_value.as_deref().map(str::trim)
+            && !token_value.is_empty()
+        {
+            let explicit_env = patch
+                .bearer_token_env
+                .as_ref()
+                .and_then(|value| value.as_deref());
+            let env_name = resolve_gateway_bearer_env_name(&updated_name, explicit_env)?;
+            patch.bearer_token_env = Some(Some(env_name));
+            update_upstream(&mut cfg, name, patch.clone())?;
+            self.persist_gateway_bearer_token(
+                patch
+                    .bearer_token_env
+                    .as_ref()
+                    .and_then(|value| value.as_deref())
+                    .expect("env name"),
+                token_value,
+            )
+            .await?;
+        } else {
+            update_upstream(&mut cfg, name, patch)?;
+        }
         self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&updated_name).await
@@ -855,6 +899,48 @@ impl GatewayManager {
         crate::tui::services::lab_env_path()
     }
 
+    async fn persist_gateway_bearer_token(
+        &self,
+        env_name: &str,
+        token_value: &str,
+    ) -> Result<(), ToolError> {
+        validate_bearer_token_env_name(env_name)?;
+
+        let auth_header = normalize_gateway_bearer_token(token_value);
+        let env_path = self.env_path();
+        let creds = [ServiceCreds {
+            service: "gateway".to_string(),
+            url: None,
+            secret: Some(auth_header),
+            env_field: env_name.to_string(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
+        }];
+
+        if !env_is_up_to_date(&env_path, &creds) {
+            drop(backup_env(&env_path).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to back up env file: {e}"),
+            })?);
+            write_env(&env_path, &creds, true).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to write env file: {e}"),
+            })?;
+        }
+
+        dotenvy::from_path_override(&env_path).map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!(
+                "failed to refresh process env from {}: {e}",
+                env_path.display()
+            ),
+        })?;
+
+        Ok(())
+    }
+
     async fn persist_config(&self, cfg: LabConfig) -> Result<(), ToolError> {
         let path = self.path.clone();
         let cfg_clone = cfg.clone();
@@ -866,6 +952,28 @@ impl GatewayManager {
             })??;
         *self.config.write().await = cfg;
         Ok(())
+    }
+}
+
+fn resolve_gateway_bearer_env_name(
+    gateway_name: &str,
+    explicit_env_name: Option<&str>,
+) -> Result<String, ToolError> {
+    match explicit_env_name.map(str::trim) {
+        Some(name) if !name.is_empty() => {
+            validate_bearer_token_env_name(name)?;
+            Ok(name.to_string())
+        }
+        _ => Ok(default_gateway_bearer_env_name(gateway_name)),
+    }
+}
+
+fn normalize_gateway_bearer_token(token_value: &str) -> String {
+    let trimmed = token_value.trim();
+    if trimmed.starts_with("Bearer ") {
+        trimmed.to_string()
+    } else {
+        format!("Bearer {trimmed}")
     }
 }
 
@@ -932,11 +1040,10 @@ async fn server_view_from_upstream(
     upstream: &UpstreamConfig,
 ) -> ServerView {
     let summary = upstream_summary(pool, &upstream.name).await;
-    let last_error =
-        operator_visible_upstream_error(match pool {
-            Some(pool) => pool.upstream_last_error(&upstream.name).await,
-            None => None,
-        });
+    let last_error = operator_visible_upstream_error(match pool {
+        Some(pool) => pool.upstream_last_error(&upstream.name).await,
+        None => None,
+    });
     let connected = summary.exposed_tool_count > 0
         || summary.exposed_resource_count > 0
         || summary.exposed_prompt_count > 0;
@@ -1398,6 +1505,40 @@ mod tests {
             .expect("url field");
         assert!(!url.present);
         assert_eq!(url.value_preview, None);
+    }
+
+    #[tokio::test]
+    async fn add_with_bearer_token_value_writes_env_and_references_generated_env_var() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let gateway = manager
+            .add(
+                UpstreamConfig {
+                    name: "github".to_string(),
+                    url: Some("https://api.githubcopilot.com/mcp/".to_string()),
+                    bearer_token_env: None,
+                    command: None,
+                    args: Vec::new(),
+                    proxy_resources: false,
+                    expose_tools: None,
+                },
+                Some("ghp_secret".to_string()),
+            )
+            .await
+            .expect("add gateway");
+
+        assert_eq!(
+            gateway.config.bearer_token_env.as_deref(),
+            Some("GITHUB_AUTH_HEADER")
+        );
+
+        let values = read_env_values(&dir.path().join(".env")).expect("read env");
+        assert_eq!(
+            values.get("GITHUB_AUTH_HEADER").map(String::as_str),
+            Some("Bearer ghp_secret")
+        );
     }
 
     #[tokio::test]

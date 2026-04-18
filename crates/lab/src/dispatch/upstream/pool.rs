@@ -1475,8 +1475,13 @@ async fn connect_http_upstream(
     let mut transport_config = transport_config;
     if let Some(ref env_name) = config.bearer_token_env {
         if let Ok(token) = std::env::var(env_name) {
+            let token = token.trim();
             if !token.is_empty() {
-                transport_config.auth_header = Some(token);
+                transport_config.auth_header = Some(if token.starts_with("Bearer ") {
+                    token.to_string()
+                } else {
+                    format!("Bearer {token}")
+                });
             }
         } else {
             tracing::warn!(
