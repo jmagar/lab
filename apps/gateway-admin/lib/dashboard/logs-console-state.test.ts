@@ -3,9 +3,13 @@ import assert from 'node:assert/strict'
 
 import {
   buildLogSearchQuery,
+  getDefaultSelectedEventId,
   matchesLogFilters,
   matchesVisibleLogEvent,
   mergeTimelineEvents,
+  resolveExpandedEventId,
+  resolveSelectedEvent,
+  toggleExpandedEventId,
 } from './logs-console-state.ts'
 import type { LogEvent, LogFilterState } from '../types/logs.ts'
 
@@ -164,4 +168,43 @@ test('mergeTimelineEvents breaks equal timestamps by event identifier', () => {
     merged.map((event) => event.event_id),
     ['evt-a', 'evt-b'],
   )
+})
+
+test('getDefaultSelectedEventId returns the newest visible event', () => {
+  const events = [
+    eventWith({ event_id: 'evt-1', ts: 10 }),
+    eventWith({ event_id: 'evt-2', ts: 20 }),
+    eventWith({ event_id: 'evt-3', ts: 30 }),
+  ]
+
+  assert.equal(getDefaultSelectedEventId(events), 'evt-3')
+  assert.equal(getDefaultSelectedEventId([]), null)
+})
+
+test('resolveSelectedEvent falls back to the newest event when the current selection is missing', () => {
+  const events = [
+    eventWith({ event_id: 'evt-1', ts: 10, message: 'older' }),
+    eventWith({ event_id: 'evt-2', ts: 20, message: 'newer' }),
+  ]
+
+  assert.equal(resolveSelectedEvent(events, 'evt-1')?.message, 'older')
+  assert.equal(resolveSelectedEvent(events, 'missing')?.message, 'newer')
+  assert.equal(resolveSelectedEvent([], 'missing'), null)
+})
+
+test('toggleExpandedEventId opens the requested row and closes it on a second click', () => {
+  assert.equal(toggleExpandedEventId(null, 'evt-1'), 'evt-1')
+  assert.equal(toggleExpandedEventId('evt-1', 'evt-1'), null)
+  assert.equal(toggleExpandedEventId('evt-1', 'evt-2'), 'evt-2')
+})
+
+test('resolveExpandedEventId clears expansion when the expanded row is no longer visible', () => {
+  const events = [
+    eventWith({ event_id: 'evt-1', ts: 10 }),
+    eventWith({ event_id: 'evt-2', ts: 20 }),
+  ]
+
+  assert.equal(resolveExpandedEventId(events, 'evt-1'), 'evt-1')
+  assert.equal(resolveExpandedEventId(events, 'missing'), null)
+  assert.equal(resolveExpandedEventId([], 'evt-1'), null)
 })
