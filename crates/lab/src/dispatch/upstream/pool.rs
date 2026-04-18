@@ -17,7 +17,10 @@ use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
+use dashmap::DashMap;
+
 use crate::config::UpstreamConfig;
+use crate::oauth::upstream::manager::UpstreamOauthManager;
 
 use super::types;
 use super::types::{
@@ -40,6 +43,10 @@ const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Default maximum response size from upstream servers (10 MB).
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
+
+/// Subject used when looking up stored OAuth credentials at connect time.
+/// All homelab connections use a single implicit user identity.
+const DEFAULT_SUBJECT: &str = "default";
 
 /// Read the max response size from env or use the default.
 fn max_response_bytes() -> usize {
@@ -218,6 +225,9 @@ pub struct UpstreamPool {
     connections: Arc<RwLock<HashMap<String, UpstreamConnection>>>,
     /// Names of upstreams that have `proxy_resources=true`.
     resource_upstreams: Arc<RwLock<Vec<String>>>,
+    /// Per-upstream OAuth managers, keyed by upstream name.
+    /// `None` when the server was started without OAuth support.
+    oauth_managers: Option<Arc<DashMap<String, UpstreamOauthManager>>>,
 }
 
 /// A live connection to an upstream MCP server.
@@ -242,7 +252,20 @@ impl UpstreamPool {
             catalog: Arc::new(RwLock::new(HashMap::new())),
             connections: Arc::new(RwLock::new(HashMap::new())),
             resource_upstreams: Arc::new(RwLock::new(Vec::new())),
+            oauth_managers: None,
         }
+    }
+
+    /// Attach OAuth managers so the pool can authenticate OAuth-protected upstreams.
+    ///
+    /// Must be called before `discover_all` for OAuth upstreams to connect successfully.
+    #[must_use]
+    pub fn with_oauth_managers(
+        mut self,
+        managers: Arc<DashMap<String, UpstreamOauthManager>>,
+    ) -> Self {
+        self.oauth_managers = Some(managers);
+        self
     }
 
     /// Connect to all configured upstreams in parallel and discover their tools.
@@ -283,6 +306,7 @@ impl UpstreamPool {
 
         let mut futures = FuturesUnordered::new();
         let mut processed_names = std::collections::HashSet::new();
+        let oauth_managers = self.oauth_managers.clone();
 
         for config in configs {
             // Skip duplicates (only process the first occurrence of each name).
@@ -303,9 +327,15 @@ impl UpstreamPool {
             }
 
             let config = config.clone();
+            let oauth_managers = oauth_managers.clone();
             futures.push(async move {
                 let name = config.name.clone();
-                match tokio::time::timeout(DISCOVERY_TIMEOUT, connect_upstream(&config)).await {
+                match tokio::time::timeout(
+                    DISCOVERY_TIMEOUT,
+                    connect_upstream(&config, oauth_managers.as_deref()),
+                )
+                .await
+                {
                     Ok(Ok((conn, tools))) => {
                         let (
                             resource_count,
@@ -1107,9 +1137,10 @@ fn validate_upstream_config(config: &UpstreamConfig) -> Result<(), String> {
 /// Connect to a single upstream MCP server and discover its tools.
 async fn connect_upstream(
     config: &UpstreamConfig,
+    oauth_managers: Option<&DashMap<String, UpstreamOauthManager>>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     if let Some(ref url) = config.url {
-        connect_http_upstream(url, config).await
+        connect_http_upstream(url, config, oauth_managers).await
     } else if let Some(ref command) = config.command {
         connect_stdio_upstream(command, &config.args, config).await
     } else {
@@ -1121,10 +1152,35 @@ async fn connect_upstream(
 async fn connect_http_upstream(
     url: &str,
     config: &UpstreamConfig,
+    oauth_managers: Option<&DashMap<String, UpstreamOauthManager>>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
-    let mut transport_config = StreamableHttpClientTransportConfig::with_uri(url);
+    let transport_config = StreamableHttpClientTransportConfig::with_uri(url);
 
-    // Set bearer token from env var if configured
+    // OAuth path: when the upstream declares oauth config, build an AuthClient.
+    if config.oauth.is_some() {
+        let manager = oauth_managers
+            .and_then(|m| m.get(&config.name))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "upstream {} requires OAuth but no manager is registered",
+                    config.name
+                )
+            })?;
+
+        let auth_client = manager
+            .build_auth_client(DEFAULT_SUBJECT)
+            .await
+            .map_err(|e| anyhow::anyhow!("oauth_required: {e}"))?;
+
+        let worker = StreamableHttpClientWorker::new(auth_client, transport_config);
+        let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(worker).await?;
+        let peer = service.peer().clone();
+        let tools = peer.list_all_tools().await?;
+        return Ok((UpstreamConnection { _service: service, peer }, tools));
+    }
+
+    // Non-OAuth path: optionally inject a static bearer token from env.
+    let mut transport_config = transport_config;
     if let Some(ref env_name) = config.bearer_token_env {
         if let Ok(token) = std::env::var(env_name) {
             if !token.is_empty() {
@@ -1142,16 +1198,9 @@ async fn connect_http_upstream(
     let worker = StreamableHttpClientWorker::new(reqwest::Client::new(), transport_config);
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(worker).await?;
     let peer = service.peer().clone();
-
-    // Discover tools
     let tools = peer.list_all_tools().await?;
 
-    let conn = UpstreamConnection {
-        _service: service,
-        peer,
-    };
-
-    Ok((conn, tools))
+    Ok((UpstreamConnection { _service: service, peer }, tools))
 }
 
 /// Connect to a stdio upstream MCP server (child process).
@@ -1219,6 +1268,7 @@ mod tests {
             args: vec![],
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -1233,6 +1283,7 @@ mod tests {
             args: vec![],
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -1248,6 +1299,7 @@ mod tests {
                 args: vec![],
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             };
             assert!(
                 validate_upstream_config(&config).is_err(),
@@ -1266,6 +1318,7 @@ mod tests {
             args: vec![],
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
         assert!(validate_upstream_config(&config).is_ok());
     }
@@ -1280,6 +1333,7 @@ mod tests {
             args: vec!["--port".into(), "8080".into()],
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
         assert!(validate_upstream_config(&config).is_ok());
     }
@@ -1294,6 +1348,7 @@ mod tests {
             args: vec![],
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -1308,6 +1363,7 @@ mod tests {
             args: vec![],
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
         assert!(validate_upstream_config(&config).is_err());
     }
