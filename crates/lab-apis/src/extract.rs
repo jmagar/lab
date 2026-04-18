@@ -23,7 +23,6 @@
 
 pub mod client;
 pub mod error;
-pub mod fleet;
 pub mod inventory;
 pub mod parsers;
 pub mod probe;

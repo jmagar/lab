@@ -13,6 +13,10 @@ import { Button } from '@/components/ui/button'
 import { fetchLogs, fetchLogStats } from '@/lib/api/logs-client'
 import { connectLogStream } from '@/lib/api/logs-stream'
 import {
+  AURORA_PAGE_FRAME,
+  AURORA_PAGE_SHELL,
+} from '@/components/logs/log-theme'
+import {
   buildLogSearchQuery,
   resolveExpandedEventId,
   resolveSelectedEvent,
@@ -320,7 +324,8 @@ export function LogConsole() {
         )}
       />
 
-      <div className="flex-1 space-y-6 bg-[#07131c] p-6 text-[#e5f2f8]">
+      <div className={`relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary ${AURORA_PAGE_SHELL}`}>
+        <div className={AURORA_PAGE_FRAME}>
         <LogToolbar
           filters={filters}
           windowPreset={windowPreset}
@@ -344,7 +349,7 @@ export function LogConsole() {
           }}
         />
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_384px]">
           <LogTimeline
             events={events}
             isLoading={isLoading}
@@ -369,6 +374,7 @@ export function LogConsole() {
           />
 
           <LogEventInspector event={selectedEvent} />
+        </div>
         </div>
       </div>
     </>

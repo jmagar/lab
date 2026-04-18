@@ -485,3 +485,72 @@ test('normalizeGateway humanizes auth failures for operator-facing UI', () => {
   )
   assert.equal(gateway.warnings[0]?.code, 'auth_required')
 })
+
+test('normalizeGateway ignores resource discovery method-not-found for health and warnings', () => {
+  const gateway = normalizeGateway(
+    {
+      config: {
+        name: 'chrome-dev-tools',
+        command: 'npx',
+        args: ['chrome-devtools-mcp'],
+        proxy_resources: true,
+      },
+      runtime: {
+        name: 'chrome-dev-tools',
+        tool_count: 29,
+        resource_count: 0,
+        prompt_count: 0,
+      },
+    },
+    {
+      connected: true,
+      healthy: true,
+      last_error: 'failed to list resources from upstream: Mcp error: -32601: Method not found',
+    },
+    {
+      tools: [],
+      resources: [],
+      prompts: [],
+    }
+  )
+
+  assert.equal(
+    gateway.status.last_error,
+    undefined
+  )
+  assert.equal(gateway.status.connected, true)
+  assert.equal(gateway.status.healthy, true)
+  assert.deepEqual(gateway.warnings, [])
+})
+
+test('normalizeServerView ignores custom gateway resource discovery method-not-found warnings', () => {
+  const gateway = normalizeServerView({
+    id: 'claude-in-mobile',
+    name: 'claude-in-mobile',
+    source: 'custom_gateway',
+    configured: true,
+    enabled: true,
+    connected: true,
+    discovered_tool_count: 81,
+    exposed_tool_count: 81,
+    discovered_resource_count: 0,
+    exposed_resource_count: 0,
+    discovered_prompt_count: 0,
+    exposed_prompt_count: 0,
+    warnings: [
+      {
+        code: 'connection_error',
+        message: 'failed to list resources from upstream: Mcp error: -32601: Method not found',
+      },
+    ],
+    config_summary: {
+      transport: 'stdio',
+      target: 'npx',
+    },
+  })
+
+  assert.equal(gateway.status.connected, true)
+  assert.equal(gateway.status.healthy, true)
+  assert.equal(gateway.status.last_error, undefined)
+  assert.deepEqual(gateway.warnings, [])
+})

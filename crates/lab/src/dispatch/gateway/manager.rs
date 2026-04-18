@@ -734,12 +734,10 @@ async fn server_view_from_upstream(
 ) -> ServerView {
     let summary = upstream_summary(pool, &upstream.name).await;
     let last_error = match pool {
-        Some(pool) => pool.upstream_last_error(&upstream.name).await,
+        Some(pool) => pool.upstream_tool_last_error(&upstream.name).await,
         None => None,
     };
-    let connected =
-        summary.exposed_tool_count + summary.exposed_resource_count + summary.exposed_prompt_count
-            > 0;
+    let connected = summary.exposed_tool_count > 0;
 
     ServerView {
         id: upstream.name.clone(),
@@ -1042,7 +1040,7 @@ async fn runtime_view(
         exposed_tool_count: summary.exposed_tool_count,
         exposed_resource_count: summary.exposed_resource_count,
         exposed_prompt_count: summary.exposed_prompt_count,
-        last_error: pool.upstream_last_error(name).await,
+        last_error: pool.upstream_tool_last_error(name).await,
     }
 }
 
@@ -1499,5 +1497,75 @@ mod tests {
             runtime.last_error.as_deref(),
             Some("stdio handshake failed")
         );
+    }
+
+    #[tokio::test]
+    async fn runtime_view_ignores_prompt_and_resource_only_errors() {
+        let pool = UpstreamPool::new();
+        let upstream_name: Arc<str> = Arc::from("partial-upstream");
+        let entry = crate::dispatch::upstream::types::UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            prompt_count: 3,
+            resource_count: 2,
+            tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            resource_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: Some(std::time::Instant::now()),
+            resource_unhealthy_since: Some(std::time::Instant::now()),
+            tool_last_error: None,
+            prompt_last_error: Some("prompt listing unsupported".to_string()),
+            resource_last_error: Some("resource listing unsupported".to_string()),
+        };
+
+        pool.insert_entry_for_tests("partial-upstream", entry).await;
+
+        let runtime = runtime_view(Some(&pool), "partial-upstream", None).await;
+        assert_eq!(runtime.last_error, None);
+    }
+
+    #[tokio::test]
+    async fn custom_gateway_connected_uses_exposed_tools_only() {
+        let pool = UpstreamPool::new();
+        let upstream = UpstreamConfig {
+            name: "partial-upstream".to_string(),
+            url: Some("http://127.0.0.1:9001/mcp".to_string()),
+            bearer_token_env: None,
+            command: None,
+            args: Vec::new(),
+            proxy_resources: true,
+            expose_tools: None,
+        };
+        let upstream_name: Arc<str> = Arc::from("partial-upstream");
+        let entry = crate::dispatch::upstream::types::UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            prompt_count: 4,
+            resource_count: 2,
+            tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            resource_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: None,
+            resource_unhealthy_since: None,
+            tool_last_error: None,
+            prompt_last_error: None,
+            resource_last_error: None,
+        };
+
+        pool.insert_entry_for_tests("partial-upstream", entry).await;
+
+        let view = server_view_from_upstream(Some(&pool), &upstream).await;
+        assert!(!view.connected);
+        assert!(view.warnings.is_empty());
+        assert_eq!(view.exposed_resource_count, 2);
+        assert_eq!(view.exposed_prompt_count, 4);
     }
 }

@@ -34,6 +34,7 @@ pub fn require_system() -> Result<Arc<LogSystem>, ToolError> {
 }
 
 #[doc(hidden)]
+#[cfg(test)]
 pub fn clear_installed_log_system_for_test() {
     let slot = installed_slot();
     let mut w = slot.write().expect("installed log system lock poisoned");
@@ -83,6 +84,7 @@ pub async fn bootstrap_store_backed_log_system(
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
 #[doc(hidden)]
+#[cfg(test)]
 pub async fn bootstrap_running_log_system_for_test(
     queue_capacity: usize,
 ) -> anyhow::Result<Arc<LogSystem>> {
@@ -91,6 +93,7 @@ pub async fn bootstrap_running_log_system_for_test(
 }
 
 #[doc(hidden)]
+#[cfg(test)]
 pub fn bootstrap_log_system_for_test() -> anyhow::Result<Arc<LogSystem>> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -98,6 +101,7 @@ pub fn bootstrap_log_system_for_test() -> anyhow::Result<Arc<LogSystem>> {
     rt.block_on(bootstrap_running_log_system_for_test(16))
 }
 
+#[cfg(test)]
 fn unique_test_store_path() -> PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
     let unique = SystemTime::now()

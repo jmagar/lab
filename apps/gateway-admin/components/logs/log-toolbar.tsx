@@ -12,6 +12,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { LOG_LEVELS, LOG_SUBSYSTEMS, type LogFilterState, type LogLevel, type LogStoreStats, type LogStreamStatus, type LogSubsystem } from '@/lib/types/logs'
+import {
+  AURORA_CONTROL_SURFACE,
+  AURORA_DISPLAY_NUMBER,
+  AURORA_MEDIUM_PANEL,
+  AURORA_MUTED_LABEL,
+  controlTone,
+  pillTone,
+} from '@/components/logs/log-theme'
+import { cn } from '@/lib/utils'
 
 interface LogToolbarProps {
   filters: LogFilterState
@@ -89,17 +98,17 @@ export function LogToolbar({
               ? (streamStatus.paused ? `${streamStatus.buffered} buffered` : 'Receiving SSE')
               : (streamStatus.error ?? 'Disconnected')
           }
-          accent={streamStatus.connected ? 'text-emerald-300' : 'text-rose-300'}
+          accent={streamStatus.connected ? 'text-aurora-accent-primary' : 'text-aurora-error'}
         />
       </div>
 
-      <div className="rounded-[1.35rem] border border-[#2a556d] bg-[linear-gradient(180deg,rgba(20,44,60,0.18),transparent_30%),linear-gradient(180deg,rgba(17,38,53,0.98),rgba(15,33,46,0.98))] p-4 shadow-[0_12px_24px_rgba(0,0,0,0.18)]">
-        <div className="flex flex-col gap-3">
+      <div className={`${AURORA_MEDIUM_PANEL} p-4 sm:p-5`}>
+        <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <label className="relative min-w-[240px] flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[#90a9b9]" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
               <Input
-                className="border-[#2b5770] bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] pl-9 text-[#e5f2f8] placeholder:text-[#90a9b9] shadow-[0_8px_16px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.035)]"
+                className={cn(AURORA_CONTROL_SURFACE, 'pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
                 placeholder="Search message, action, request id"
                 value={filters.text}
                 onChange={(event) => {
@@ -112,7 +121,7 @@ export function LogToolbar({
             </label>
 
             <Select value={windowPreset} onValueChange={onWindowPresetChange}>
-              <SelectTrigger className="w-[150px] border-[#2b5770] bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-[#e5f2f8] shadow-[0_8px_16px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.035)]">
+              <SelectTrigger className={cn(AURORA_CONTROL_SURFACE, 'w-[150px] text-aurora-text-primary')}>
                 <SelectValue placeholder="Window" />
               </SelectTrigger>
               <SelectContent>
@@ -133,7 +142,7 @@ export function LogToolbar({
                 })
               }}
             >
-              <SelectTrigger className="w-[130px] border-[#2b5770] bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-[#e5f2f8] shadow-[0_8px_16px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.035)]">
+              <SelectTrigger className={cn(AURORA_CONTROL_SURFACE, 'w-[130px] text-aurora-text-primary')}>
                 <SelectValue placeholder="Limit" />
               </SelectTrigger>
               <SelectContent>
@@ -145,27 +154,27 @@ export function LogToolbar({
               </SelectContent>
             </Select>
 
-            <Button variant="outline" className="border-[#2b5770] bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-[#d6eaf3] shadow-[0_8px_16px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.035)] hover:bg-[#17364b] hover:text-[#edf9ff]" onClick={onTogglePause}>
+            <Button variant="outline" className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')} onClick={onTogglePause}>
               {streamStatus.paused ? <PlayCircle className="size-4" /> : <PauseCircle className="size-4" />}
               {streamStatus.paused ? 'Resume' : 'Pause'}
             </Button>
 
             <Button
               variant="outline"
-              className="border-[#2b5770] bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-[#d6eaf3] shadow-[0_8px_16px_rgba(0,0,0,0.16),inset_0_1px_0_rgba(255,255,255,0.035)] hover:bg-[#17364b] hover:text-[#edf9ff]"
+              className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')}
               onClick={onJumpToNewest}
               disabled={streamStatus.atLiveEdge && streamStatus.buffered === 0}
             >
               Jump to newest
             </Button>
 
-            <Button variant="outline" className="border-[#29b6f6]/35 bg-[linear-gradient(180deg,rgba(13,32,45,0.98),rgba(10,24,34,0.98))] text-[#67cbfa] shadow-[0_0_0_1px_rgba(41,182,246,0.18),0_0_16px_rgba(41,182,246,0.08)] hover:bg-[#17364b] hover:text-[#edf9ff]" onClick={onRefresh} disabled={isRefreshing}>
+            <Button variant="outline" className={cn(controlTone('accent'), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')} onClick={onRefresh} disabled={isRefreshing}>
               <RefreshCw className="size-4" />
               {isRefreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
           </div>
 
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <FilterGroup<LogLevel>
               label="Levels"
               values={LOG_LEVELS}
@@ -192,7 +201,7 @@ export function LogToolbar({
           </div>
 
           {streamStatus.error ? (
-            <div className="rounded-lg border border-[#c78490]/35 bg-[#4b2630]/22 px-3 py-2 text-sm text-[#f2c8d0]">
+            <div className="rounded-[0.95rem] border border-aurora-error/28 bg-[rgba(76,42,52,0.18)] px-3 py-2 text-sm text-[#efd6dd] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
               {streamStatus.error}
             </div>
           ) : null}
@@ -214,10 +223,10 @@ function MetricCard({
   accent?: string
 }) {
   return (
-    <div className="rounded-[1.35rem] border border-[#2a556d] bg-[linear-gradient(180deg,rgba(20,44,60,0.18),transparent_30%),linear-gradient(180deg,rgba(17,38,53,0.98),rgba(15,33,46,0.98))] p-4 shadow-[0_12px_24px_rgba(0,0,0,0.18)]">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#90a9b9]">{label}</p>
-      <p className={`font-display mt-2 text-3xl font-semibold tracking-[-0.04em] tabular-nums ${accent ?? ''}`}>{value}</p>
-      <p className="mt-1 text-sm text-[#90a9b9]">{detail}</p>
+    <div className={cn(AURORA_MEDIUM_PANEL, 'flex h-full flex-col justify-between p-4')}>
+      <p className={AURORA_MUTED_LABEL}>{label}</p>
+      <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-[2rem] leading-none font-semibold', accent ?? '')}>{value}</p>
+      <p className="mt-2 text-sm text-aurora-text-muted">{detail}</p>
     </div>
   )
 }
@@ -235,7 +244,9 @@ function FilterGroup<T extends string>({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#90a9b9]">{label}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={AURORA_MUTED_LABEL}>{label}</p>
+      </div>
       <div className="flex flex-wrap gap-2">
         {values.map((value) => {
           const active = selected.includes(value)
@@ -244,22 +255,18 @@ function FilterGroup<T extends string>({
               type="button"
               key={value}
               aria-pressed={active}
-              className={`inline-flex min-h-[38px] items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-[border-color,background,color,box-shadow,transform] hover:-translate-y-px ${
-                active
-                  ? 'border-[#29b6f6]/35 bg-[linear-gradient(180deg,rgba(13,32,45,0.98),rgba(10,24,34,0.98))] text-[#edf9ff] shadow-[0_0_0_1px_rgba(41,182,246,0.18),0_0_16px_rgba(41,182,246,0.08)]'
-                  : 'border-[#2b5770] bg-[linear-gradient(180deg,rgba(10,23,32,0.94),rgba(9,20,28,0.98))] text-[#b9ced9] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]'
-              }`}
+              className={`inline-flex min-h-[38px] items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium tracking-[-0.01em] transition-[border-color,background,color,box-shadow,transform] hover:-translate-y-px ${pillTone(active)}`}
               onClick={() => onToggle(value)}
             >
               <span
-                className={`relative h-[18px] w-[18px] shrink-0 rounded-full border ${
+                className={`relative h-[17px] w-[17px] shrink-0 rounded-full border ${
                   active
-                    ? 'border-[#67cbfa]/70 bg-[linear-gradient(180deg,rgba(41,182,246,0.18),rgba(12,41,56,0.94))]'
-                    : 'border-[#2b5b74] bg-[linear-gradient(180deg,rgba(9,20,28,0.96),rgba(7,15,22,0.98))]'
+                    ? 'border-aurora-accent-strong/60 bg-[linear-gradient(180deg,rgba(41,182,246,0.16),rgba(12,41,56,0.94))]'
+                    : 'border-aurora-border-strong bg-[linear-gradient(180deg,rgba(9,20,28,0.94),rgba(7,15,22,0.98))]'
                 }`}
               >
                 {active ? (
-                  <span className="absolute inset-[4px] rounded-full bg-[linear-gradient(180deg,#8bddff,#29b6f6)] shadow-[0_0_10px_rgba(41,182,246,0.34)]" />
+                  <span className="absolute inset-[4px] rounded-full bg-[linear-gradient(180deg,#a5e6ff,#29b6f6)] shadow-[0_0_8px_rgba(41,182,246,0.24)]" />
                 ) : null}
               </span>
               <span className="capitalize">{value}</span>
