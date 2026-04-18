@@ -326,20 +326,15 @@ impl_tool_error_from!(
     Api(api) => api.kind()
 );
 
-impl_tool_error_from!(
-    "deploy",
-    lab_apis::deploy::DeployError,
-    ValidationFailed { .. } => "validation_failed",
-    SshUnreachable { .. } => "ssh_unreachable",
-    BuildFailed { .. } => "build_failed",
-    PreflightFailed { .. } => "preflight_failed",
-    TransferFailed { .. } => "transfer_failed",
-    InstallFailed { .. } => "install_failed",
-    RestartFailed { .. } => "restart_failed",
-    VerifyFailed { .. } => "verify_failed",
-    PartialFailure { .. } => "partial_failure",
-    Conflict { .. } => "conflict",
-    ArchMismatch { .. } => "arch_mismatch",
-    IntegrityMismatch { .. } => "integrity_mismatch",
-    AuthFailed { .. } => "auth_failed"
-);
+// Deploy uses a hand-rolled impl instead of the macro so it can call
+// `redacted_message()` rather than `Display` (which includes host/reason detail
+// that must not escape to MCP or HTTP envelopes).
+#[cfg(feature = "deploy")]
+impl From<lab_apis::deploy::DeployError> for ToolError {
+    fn from(e: lab_apis::deploy::DeployError) -> Self {
+        Self::Sdk {
+            sdk_kind: e.kind().to_string(),
+            message: e.redacted_message(),
+        }
+    }
+}

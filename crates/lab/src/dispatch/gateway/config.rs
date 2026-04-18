@@ -272,14 +272,14 @@ pub(crate) fn default_gateway_bearer_env_name(name: &str) -> String {
         .collect::<Vec<_>>()
         .join("_");
 
-    format!(
-        "{}_AUTH_HEADER",
-        if normalized.is_empty() {
-            "GATEWAY"
-        } else {
-            &normalized
-        }
-    )
+    let base = if normalized.is_empty() {
+        "GATEWAY".to_string()
+    } else if normalized.starts_with(|ch: char| ch.is_ascii_digit()) {
+        format!("LAB_GW_{normalized}")
+    } else {
+        normalized
+    };
+    format!("{base}_AUTH_HEADER")
 }
 
 fn looks_like_raw_bearer_token(value: &str) -> bool {

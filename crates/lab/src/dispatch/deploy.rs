@@ -20,4 +20,4 @@ pub mod runner;
 #[allow(unused_imports)]
 pub use catalog::ACTIONS;
 #[allow(unused_imports)]
-pub use dispatch::{dispatch, dispatch_with_runner};
+pub use dispatch::{dispatch, dispatch_mcp, dispatch_with_runner};

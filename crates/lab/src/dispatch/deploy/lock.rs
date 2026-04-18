@@ -5,9 +5,12 @@
 //! acquires wait up to a caller-chosen timeout, after which they return
 //! `DeployError::Conflict`.
 
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use lab_apis::deploy::DeployError;
-use std::sync::Arc;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
 /// Advisory lock registry keyed by SSH alias.
@@ -19,22 +22,29 @@ pub struct HostLockRegistry {
 impl HostLockRegistry {
     /// Acquire an advisory lock on `host`, waiting up to `timeout` before
     /// surfacing `Conflict`.
-    pub async fn acquire(
+    ///
+    /// Returns `Pin<Box<dyn Future + Send + 'static>>` so callers can await
+    /// it inside `Box::pin(... + 'static)` contexts without HRTB failures
+    /// (Rust issue #100013). All `&self` access is synchronous; only owned
+    /// values are captured by the returned future.
+    pub fn acquire(
         &self,
         host: &str,
         timeout: std::time::Duration,
-    ) -> Result<OwnedMutexGuard<()>, DeployError> {
+    ) -> Pin<Box<dyn Future<Output = Result<OwnedMutexGuard<()>, DeployError>> + Send + 'static>>
+    {
         let mutex = self
             .inner
             .entry(host.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone();
-        match tokio::time::timeout(timeout, mutex.lock_owned()).await {
-            Ok(guard) => Ok(guard),
-            Err(_) => Err(DeployError::Conflict {
-                host: host.to_string(),
-            }),
-        }
+        let host = host.to_string();
+        Box::pin(async move {
+            match tokio::time::timeout(timeout, mutex.lock_owned()).await {
+                Ok(guard) => Ok(guard),
+                Err(_) => Err(DeployError::Conflict { host }),
+            }
+        })
     }
 }
 

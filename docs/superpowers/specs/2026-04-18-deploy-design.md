@@ -2,8 +2,11 @@
 
 ## Decision
 
-Add a new synthetic non-HTTP service named `deploy` that rolls out the local
-`lab` binary to one, many, or all SSH-discovered devices.
+Complete and fix the partially-implemented synthetic non-HTTP service named
+`deploy` that rolls out the local `lab` binary to one, many, or all
+SSH-discovered devices. The service skeleton (dispatch layer, types, error
+taxonomy, CLI shim, and MCP adapter) exists in the codebase; this spec
+describes the remaining work needed to make the execution pipeline functional.
 
 `deploy` follows the same architectural pattern as `extract`:
 
@@ -43,7 +46,7 @@ thin CLI wrapper around ad hoc shell commands.
 ### In scope for v1
 
 - build the local `lab` release binary once with
-  `cargo build --release --all-features`
+  `cargo build --release --all-features -p lab`
 - resolve one or more rollout targets from SSH aliases plus lab-defined groups
 - support `all` targets
 - run per-host standard preflight checks
@@ -286,7 +289,7 @@ Required registration and metadata updates:
 V1 builds exactly one local artifact:
 
 ```bash
-cargo build --release --all-features
+cargo build --release --all-features -p lab
 ```
 
 The output artifact is the local host build product. Hosts that do not match

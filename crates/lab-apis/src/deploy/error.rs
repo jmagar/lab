@@ -99,7 +99,7 @@ impl DeployError {
                 "architecture mismatch between build host and target".into()
             }
             Self::IntegrityMismatch { .. } => "artifact integrity check failed on target".into(),
-            Self::AuthFailed { reason } => format!("authorization failed: {reason}"),
+            Self::AuthFailed { .. } => "authentication failed".into(),
         }
     }
 }

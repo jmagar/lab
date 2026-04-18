@@ -82,7 +82,7 @@ test('buildGatewayCreatePayload generates an auth env var when a bearer token is
       url: 'https://api.githubcopilot.com/mcp/',
       command: null,
       args: [],
-      bearer_token_env: 'GITHUB_AUTH_HEADER',
+      bearer_token_env: 'LAB_GW_GITHUB_AUTH_HEADER',
       proxy_resources: false,
       expose_tools: null,
     },

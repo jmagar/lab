@@ -50,13 +50,30 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     })
 }
 
-/// Path under the workspace `target/release/` directory.
-pub fn expected_artifact_path(bin: &str) -> PathBuf {
+/// Path under the workspace `target/release/` directory for a given target triple.
+///
+/// When `target_triple` contains `"windows"`, appends `.exe` — required for
+/// cross-compilation targets even when the *build host* is not Windows.
+/// Never use `cfg!(target_os)` here; this is about the *target*, not the host.
+pub fn expected_artifact_path_for(bin: &str, target_triple: &str) -> PathBuf {
+    let name = if target_triple.contains("windows") {
+        format!("{bin}.exe")
+    } else {
+        bin.to_string()
+    };
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
-        .map(|p| p.join("target").join("release").join(bin))
-        .unwrap_or_else(|| PathBuf::from("target").join("release").join(bin))
+        .map(|p| p.join("target").join("release").join(&name))
+        .unwrap_or_else(|| PathBuf::from("target").join("release").join(&name))
+}
+
+/// Path under the workspace `target/release/` directory (host triple).
+///
+/// Delegates to `expected_artifact_path_for` using the current host triple.
+/// Use `expected_artifact_path_for` directly when cross-compiling.
+pub fn expected_artifact_path(bin: &str) -> PathBuf {
+    expected_artifact_path_for(bin, &detect_host_triple())
 }
 
 /// Blocking SHA-256 of a file; call from `spawn_blocking`.
@@ -90,20 +107,28 @@ pub fn check_disk_space(available: u64, required: u64) -> Result<(), DeployError
 }
 
 fn estimate_free_bytes() -> Result<u64, DeployError> {
+    // Use POSIX-compatible `df -k` (kilobytes) — works on Linux, BSD, and macOS.
+    // Output format: Filesystem 1K-blocks Used Available Capacity Mounted-on
+    // "Available" is column index 3 (0-based), in 1 KiB units.
     let out = std::process::Command::new("df")
-        .arg("--output=avail")
-        .arg("-B1")
+        .arg("-k")
         .arg(".")
         .output();
     if let Ok(o) = out {
         if o.status.success() {
             if let Some(line) = String::from_utf8_lossy(&o.stdout).lines().nth(1) {
-                if let Ok(n) = line.trim().parse::<u64>() {
-                    return Ok(n);
+                let mut fields = line.split_whitespace();
+                // Skip: Filesystem, 1K-blocks, Used; take Available
+                if let Some(avail_kib) = fields.nth(3) {
+                    if let Ok(kib) = avail_kib.parse::<u64>() {
+                        return Ok(kib.saturating_mul(1024));
+                    }
                 }
             }
         }
     }
+    // df unavailable or unparseable — skip the disk check rather than blocking.
+    tracing::warn!("could not determine free disk space; skipping preflight disk check");
     Ok(u64::MAX)
 }
 
@@ -138,8 +163,19 @@ mod tests {
 
     #[test]
     fn build_target_path_matches_cargo_layout() {
-        let p = expected_artifact_path("lab");
+        // On non-Windows hosts `expected_artifact_path` must not add .exe.
+        let p = expected_artifact_path_for("lab", "x86_64-unknown-linux-gnu");
         assert!(p.ends_with("target/release/lab"), "got {}", p.display());
+    }
+
+    #[test]
+    fn windows_target_appends_exe_suffix() {
+        let p = expected_artifact_path_for("lab", "x86_64-pc-windows-msvc");
+        assert!(
+            p.ends_with("target/release/lab.exe"),
+            "got {}",
+            p.display()
+        );
     }
 
     #[test]

@@ -32,7 +32,19 @@ impl IntoResponse for ToolError {
             | "upstream_error"
             | "oauth_resource_mismatch"
             | "oauth_issuer_mismatch"
-            | "oauth_unsupported_method" => StatusCode::BAD_GATEWAY,
+            | "oauth_unsupported_method"
+            // Deploy-specific kinds (feature-gated service, HTTP surface pending).
+            // Registered here so status codes are correct when the HTTP route is wired.
+            | "ssh_unreachable"
+            | "build_failed"
+            | "preflight_failed"
+            | "transfer_failed"
+            | "install_failed"
+            | "restart_failed"
+            | "verify_failed"
+            | "arch_mismatch"
+            | "integrity_mismatch" => StatusCode::BAD_GATEWAY,
+            "conflict" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // Serialize self directly — byte-identical to the MCP error envelope.

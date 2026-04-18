@@ -36,5 +36,5 @@ export function defaultGatewayBearerEnvName(name: string): string {
     .replace(/_+/g, '_')
     .toUpperCase()
 
-  return `${normalized || 'GATEWAY'}_AUTH_HEADER`
+  return `LAB_GW_${normalized || 'GATEWAY'}_AUTH_HEADER`
 }

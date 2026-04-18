@@ -163,7 +163,7 @@ The master's `LogQuery` now supports two new filter fields:
 - `source_node_ids: string[]` — filter by originating node label
 - `source_kinds: string[]` — filter by source type (`syslog`, `local`, …)
 
-These are available in the CLI (`--source-node-id` / `--source-kind` not yet wired to CLI args — use MCP or API), MCP `logs.search`, and `POST /v1/logs`.
+These are available via MCP `logs.search` and `POST /v1/logs`. The CLI does not yet expose `--source-node-id` or `--source-kind` flags; use MCP or the HTTP API to filter by source.
 
 ### Wire format
 

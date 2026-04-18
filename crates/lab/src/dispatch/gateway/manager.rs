@@ -608,6 +608,14 @@ impl GatewayManager {
     ) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
 
+        // Trim and validate bearer_token_env unconditionally so whitespace typos
+        // are caught before they silently fail env-var lookup later.
+        if let Some(ref env_name) = spec.bearer_token_env {
+            let trimmed = env_name.trim().to_string();
+            validate_bearer_token_env_name(&trimmed)?;
+            spec.bearer_token_env = Some(trimmed);
+        }
+
         if let Some(token_value) = bearer_token_value.as_deref().map(str::trim)
             && !token_value.is_empty()
         {
@@ -638,14 +646,42 @@ impl GatewayManager {
         let mut cfg = self.config.read().await.clone();
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
 
+        // Trim and validate bearer_token_env unconditionally so whitespace typos
+        // are caught before they silently fail env-var lookup later.
+        if let Some(Some(ref env_name)) = patch.bearer_token_env {
+            let trimmed = env_name.trim().to_string();
+            validate_bearer_token_env_name(&trimmed)?;
+            patch.bearer_token_env = Some(Some(trimmed));
+        }
+
         if let Some(token_value) = bearer_token_value.as_deref().map(str::trim)
             && !token_value.is_empty()
         {
-            let explicit_env = patch
+            // Resolve env var name: prefer patch > existing config > error.
+            // Auto-generation is intentionally not used here — callers must be
+            // explicit so the stored env name is predictable and auditable.
+            let env_name = if let Some(env) = patch
                 .bearer_token_env
                 .as_ref()
-                .and_then(|value| value.as_deref());
-            let env_name = resolve_gateway_bearer_env_name(&updated_name, explicit_env)?;
+                .and_then(|value| value.as_deref())
+            {
+                env.to_string()
+            } else if let Some(existing_env) = cfg
+                .upstream
+                .iter()
+                .find(|u| u.name == name)
+                .and_then(|u| u.bearer_token_env.as_deref())
+            {
+                existing_env.to_string()
+            } else {
+                return Err(ToolError::InvalidParam {
+                    message: "bearer_token_env is required when providing bearer_token_value: \
+                              set bearer_token_env in the patch or ensure the existing gateway \
+                              already has one configured"
+                        .to_string(),
+                    param: "bearer_token_env".to_string(),
+                });
+            };
             patch.bearer_token_env = Some(Some(env_name));
             update_upstream(&mut cfg, name, patch.clone())?;
             self.persist_gateway_bearer_token(
@@ -970,8 +1006,8 @@ fn resolve_gateway_bearer_env_name(
 
 fn normalize_gateway_bearer_token(token_value: &str) -> String {
     let trimmed = token_value.trim();
-    if trimmed.starts_with("Bearer ") {
-        trimmed.to_string()
+    if trimmed.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("bearer ")) {
+        format!("Bearer {}", &trimmed[7..])
     } else {
         format!("Bearer {trimmed}")
     }

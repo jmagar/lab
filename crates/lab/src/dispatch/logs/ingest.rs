@@ -85,7 +85,10 @@ impl IngestHandle {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.counters.record_drop();
-                Ok(())
+                Err(ToolError::Sdk {
+                    sdk_kind: "rate_limited".to_string(),
+                    message: "log ingest queue is full; event dropped".to_string(),
+                })
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 Err(ToolError::internal_message("log ingest channel closed"))

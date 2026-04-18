@@ -1,0 +1,295 @@
+//! Syslog forwarding logic: reads journald or /var/log/syslog and batches
+//! events to the master log ingest endpoint.
+//!
+//! This module is the shared dispatch-layer implementation; the CLI shim in
+//! `cli/logs.rs` does only arg parsing and delegates here.
+
+use anyhow::{Context, Result};
+use serde_json::{Value, json};
+
+use crate::device::master_client::MasterClient;
+use super::types::RawLogEvent;
+
+/// Configuration for a syslog forward session.
+///
+/// Constructed by the CLI from parsed `ForwardArgs`, but defined here so any
+/// surface (CLI, future API) can build and pass it without duplicating the
+/// field set.
+pub struct ForwardConfig {
+    pub master_url: String,
+    pub token: Option<String>,
+    pub node_id: String,
+    pub batch_size: usize,
+    pub syslog_only: bool,
+}
+
+/// Resolve the node ID from the environment or hostname.
+pub fn resolve_node_id(explicit: Option<String>) -> String {
+    explicit
+        .or_else(|| std::env::var("LAB_NODE_ID").ok().filter(|s| !s.is_empty()))
+        .unwrap_or_else(hostname_fallback)
+}
+
+fn hostname_fallback() -> String {
+    std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Return `true` when `journalctl` is available on `PATH`.
+pub fn journald_available() -> bool {
+    std::process::Command::new("journalctl")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Run the forward loop, choosing journald or syslog file based on config.
+pub async fn run(config: ForwardConfig) -> Result<std::process::ExitCode> {
+    let client = MasterClient::with_bearer_token(config.master_url, config.token)?;
+    tracing::info!(node_id = config.node_id.as_str(), "starting syslog forward");
+
+    if !config.syslog_only && journald_available() {
+        forward_journald(&client, &config.node_id, config.batch_size).await
+    } else {
+        forward_syslog_file(&client, &config.node_id, config.batch_size).await
+    }
+}
+
+async fn forward_journald(
+    client: &MasterClient,
+    node_id: &str,
+    batch_size: usize,
+) -> Result<std::process::ExitCode> {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    use tokio::sync::mpsc;
+    use tokio::time::{Duration, interval};
+
+    let mut child = Command::new("journalctl")
+        // --lines=100 picks up recent history immediately before following new entries.
+        .args(["--follow", "--output=json", "--lines=100"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("failed to spawn journalctl")?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .context("failed to capture journalctl stdout")?;
+
+    // Blocking reader → async channel bridge so we can select! with a flush timer.
+    let (tx, mut rx) = mpsc::channel::<Option<String>>(256);
+
+    tokio::task::spawn_blocking(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(l) => {
+                    if tx.blocking_send(Some(l)).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        // Signal EOF.
+        drop(tx.blocking_send(None));
+    });
+
+    let mut batch: Vec<RawLogEvent> = Vec::with_capacity(batch_size);
+    let mut flush_tick = interval(Duration::from_secs(2));
+    flush_tick.tick().await; // consume the immediate first tick
+
+    loop {
+        tokio::select! {
+            msg = rx.recv() => {
+                match msg {
+                    Some(Some(line)) => {
+                        batch.push(parse_journald_line(&line));
+                        if batch.len() >= batch_size {
+                            flush_batch(client, node_id, &mut batch).await?;
+                        }
+                    }
+                    // EOF or channel closed — flush and exit.
+                    _ => {
+                        if !batch.is_empty() {
+                            flush_batch(client, node_id, &mut batch).await?;
+                        }
+                        return Ok(std::process::ExitCode::SUCCESS);
+                    }
+                }
+            }
+            _ = flush_tick.tick() => {
+                if !batch.is_empty() {
+                    flush_batch(client, node_id, &mut batch).await?;
+                }
+            }
+        }
+    }
+}
+
+fn parse_journald_line(line: &str) -> RawLogEvent {
+    let Ok(obj) = serde_json::from_str::<Value>(line) else {
+        return RawLogEvent {
+            message: line.to_string(),
+            source_kind: Some("syslog".to_string()),
+            ..default_raw_event()
+        };
+    };
+
+    let message = obj
+        .get("MESSAGE")
+        .and_then(|v| v.as_str())
+        .unwrap_or(line)
+        .to_string();
+
+    // journald PRIORITY: 0=emerg 1=alert 2=crit 3=err 4=warning 5=notice 6=info 7=debug
+    let level = obj.get("PRIORITY").and_then(|v| v.as_str()).map(|p| {
+        match p {
+            "0" | "1" | "2" | "3" => "error",
+            "4" => "warn",
+            "5" | "6" => "info",
+            "7" => "debug",
+            _ => "info",
+        }
+        .to_string()
+    });
+
+    // __REALTIME_TIMESTAMP is microseconds since epoch.
+    let ts = obj
+        .get("__REALTIME_TIMESTAMP")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<i64>().ok())
+        .map(|us| us / 1000); // convert to ms
+
+    let upstream_event_id = obj
+        .get("_MACHINE_ID")
+        .zip(obj.get("__CURSOR"))
+        .and_then(|(mid, cur)| Some(format!("{}:{}", mid.as_str()?, cur.as_str()?)));
+
+    let unit = obj
+        .get("_SYSTEMD_UNIT")
+        .or_else(|| obj.get("UNIT"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    RawLogEvent {
+        message,
+        level,
+        ts,
+        source_kind: Some("syslog".to_string()),
+        ingest_path: Some("journald".to_string()),
+        upstream_event_id,
+        action: unit,
+        ..default_raw_event()
+    }
+}
+
+async fn forward_syslog_file(
+    client: &MasterClient,
+    node_id: &str,
+    batch_size: usize,
+) -> Result<std::process::ExitCode> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader, Seek, SeekFrom};
+    use tokio::time::{Duration, sleep};
+
+    let path = "/var/log/syslog";
+    let mut file = File::open(path).with_context(|| format!("cannot open {path}"))?;
+    // Tail from the end.
+    file.seek(SeekFrom::End(0))?;
+
+    let mut reader = BufReader::new(file);
+    let mut batch: Vec<RawLogEvent> = Vec::with_capacity(batch_size);
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        let n = reader
+            .read_line(&mut line)
+            .context("error reading syslog")?;
+        if n == 0 {
+            if !batch.is_empty() {
+                flush_batch(client, node_id, &mut batch).await?;
+            }
+            sleep(Duration::from_millis(250)).await;
+            continue;
+        }
+
+        let event = parse_syslog_line(line.trim_end());
+        batch.push(event);
+
+        if batch.len() >= batch_size {
+            flush_batch(client, node_id, &mut batch).await?;
+        }
+    }
+}
+
+fn parse_syslog_line(line: &str) -> RawLogEvent {
+    // Best-effort RFC 3164 parse: "Mon DD HH:MM:SS host tag: message"
+    // We don't do strict validation — just extract what we can.
+    let message = line.splitn(4, ' ').nth(3).unwrap_or(line).to_string();
+    RawLogEvent {
+        message,
+        source_kind: Some("syslog".to_string()),
+        ingest_path: Some("syslog_file".to_string()),
+        ..default_raw_event()
+    }
+}
+
+fn default_raw_event() -> RawLogEvent {
+    RawLogEvent {
+        ts: None,
+        level: None,
+        subsystem: Some("syslog".to_string()),
+        surface: Some("core_runtime".to_string()),
+        action: None,
+        message: String::new(),
+        request_id: None,
+        session_id: None,
+        correlation_id: None,
+        trace_id: None,
+        span_id: None,
+        instance: None,
+        auth_flow: None,
+        outcome_kind: None,
+        fields_json: Value::Object(Default::default()),
+        source_kind: None,
+        source_node_id: None,
+        source_device_id: None,
+        ingest_path: None,
+        upstream_event_id: None,
+    }
+}
+
+async fn flush_batch(
+    client: &MasterClient,
+    node_id: &str,
+    batch: &mut Vec<RawLogEvent>,
+) -> Result<()> {
+    let payload = json!({
+        "node_id": node_id,
+        "events": std::mem::take(batch),
+    });
+    match client.post_log_ingest(&payload).await {
+        Ok(resp) => {
+            tracing::debug!(
+                node_id,
+                accepted = resp.get("accepted").and_then(|v| v.as_u64()),
+                dropped = resp.get("dropped").and_then(|v| v.as_u64()),
+                "flushed log batch"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(node_id, error = %e, "failed to flush log batch; events lost");
+        }
+    }
+    Ok(())
+}

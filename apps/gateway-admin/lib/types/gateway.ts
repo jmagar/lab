@@ -7,9 +7,13 @@ export interface GatewayConfig {
   command?: string
   args?: string[]
   bearer_token_env?: string
-  bearer_token_value?: string
   proxy_resources?: boolean
   expose_tools?: string[]
+}
+
+/** Extended config for create/update payloads only. `bearer_token_value` is write-only and never returned by the API. */
+export interface GatewayWriteConfig extends GatewayConfig {
+  bearer_token_value?: string
 }
 
 export interface GatewayStatus {
@@ -90,13 +94,13 @@ export interface Gateway {
 export interface CreateGatewayInput {
   name: string
   transport: TransportType
-  config: GatewayConfig
+  config: GatewayWriteConfig
 }
 
 export interface UpdateGatewayInput {
   name?: string
   transport?: TransportType
-  config?: Partial<GatewayConfig>
+  config?: Partial<GatewayWriteConfig>
 }
 
 export interface TestGatewayResult {

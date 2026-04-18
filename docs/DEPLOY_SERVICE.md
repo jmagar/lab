@@ -1,5 +1,12 @@
 # Deploy Service
 
+> **Implementation status:** The `deploy` service skeleton is wired — types,
+> dispatch layer, CLI shim, and MCP adapter exist — but the V1 execution
+> pipeline (`plan`, `run`, `rollback`) is not yet connected to a live SSH
+> runner. Invoking those actions currently returns `internal_error` from the
+> `NoopRunner` placeholder. `config.list` and the built-in `help`/`schema`
+> actions are fully functional. The live runner wiring is the tracked follow-up.
+
 The `deploy` service is a synthetic service that pushes the local `lab`
 release binary to one or more SSH targets with end-to-end integrity
 verification, atomic install, and a timestamped backup of the previous

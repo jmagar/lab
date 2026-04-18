@@ -41,6 +41,16 @@ pub fn clear_installed_log_system_for_test() {
     *w = None;
 }
 
+// ── Feature flags ─────────────────────────────────────────────────────────────
+
+static INGEST_ENABLED: OnceLock<bool> = OnceLock::new();
+
+pub fn is_ingest_enabled() -> bool {
+    *INGEST_ENABLED.get_or_init(|| {
+        env_non_empty("LAB_LOGS_INGEST_ENABLED").as_deref() == Some("true")
+    })
+}
+
 // ── Bootstraps ────────────────────────────────────────────────────────────────
 
 pub async fn bootstrap_running_log_system(

@@ -14,6 +14,7 @@ use tracing::{error, info, warn};
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::error::ToolError;
+use crate::dispatch::logs::client::is_ingest_enabled;
 use crate::dispatch::logs::types::{PeerIngestRequest, PeerIngestResponse};
 
 pub fn routes(_state: AppState) -> Router<AppState> {
@@ -173,7 +174,7 @@ async fn ingest_peer_events(
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
 
-    if std::env::var("LAB_LOGS_INGEST_ENABLED").as_deref() != Ok("true") {
+    if !is_ingest_enabled() {
         return Err(ToolError::Sdk {
             sdk_kind: "not_found".to_string(),
             message:
@@ -209,21 +210,69 @@ async fn ingest_peer_events(
         }
         match logs_system.try_ingest(event) {
             Ok(()) => accepted += 1,
-            Err(_) => dropped += 1,
+            Err(ref e) if e.kind() == "rate_limited" => dropped += 1,
+            Err(e) => {
+                // Channel closed or other fatal ingest error — abort early.
+                error!(
+                    surface = "api",
+                    service = "logs",
+                    action = ACTION,
+                    request_id = request_id.as_deref(),
+                    node_id = req.node_id.as_str(),
+                    kind = e.kind(),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    "dispatch error"
+                );
+                return Err(e);
+            }
         }
     }
 
-    info!(
-        surface = "api",
-        service = "logs",
-        action = ACTION,
-        request_id = request_id.as_deref(),
-        node_id = req.node_id.as_str(),
-        accepted,
-        dropped,
-        elapsed_ms = start.elapsed().as_millis(),
-        "dispatch ok"
-    );
+    if accepted == 0 && dropped > 0 {
+        // All events were dropped due to a full ingest queue. Return 429 so
+        // peers apply back-pressure and retry rather than silently losing data.
+        warn!(
+            surface = "api",
+            service = "logs",
+            action = ACTION,
+            request_id = request_id.as_deref(),
+            node_id = req.node_id.as_str(),
+            dropped,
+            elapsed_ms = start.elapsed().as_millis(),
+            "dispatch warn: all events dropped (queue full)"
+        );
+        return Err(ToolError::Sdk {
+            sdk_kind: "rate_limited".to_string(),
+            message: format!(
+                "log ingest queue is full; all {dropped} event(s) dropped — retry after backoff"
+            ),
+        });
+    }
+
+    if dropped > 0 {
+        warn!(
+            surface = "api",
+            service = "logs",
+            action = ACTION,
+            request_id = request_id.as_deref(),
+            node_id = req.node_id.as_str(),
+            accepted,
+            dropped,
+            elapsed_ms = start.elapsed().as_millis(),
+            "dispatch ok (partial: some events dropped due to queue full)"
+        );
+    } else {
+        info!(
+            surface = "api",
+            service = "logs",
+            action = ACTION,
+            request_id = request_id.as_deref(),
+            node_id = req.node_id.as_str(),
+            accepted,
+            elapsed_ms = start.elapsed().as_millis(),
+            "dispatch ok"
+        );
+    }
 
     Ok(Json(PeerIngestResponse { accepted, dropped }))
 }

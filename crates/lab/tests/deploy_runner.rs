@@ -260,13 +260,8 @@ async fn max_parallel_bounds_concurrency() {
                     .in_flight
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                     + 1;
-                let cur_max = self
-                    .max_seen
-                    .load(std::sync::atomic::Ordering::SeqCst);
-                if prev > cur_max {
-                    self.max_seen
-                        .store(prev, std::sync::atomic::Ordering::SeqCst);
-                }
+                self.max_seen
+                    .fetch_max(prev, std::sync::atomic::Ordering::SeqCst);
                 // small yield so peers can overlap
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }

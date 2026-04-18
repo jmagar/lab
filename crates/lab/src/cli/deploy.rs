@@ -77,11 +77,12 @@ impl DeployArgs {
     }
 }
 
-/// Execute a deploy CLI invocation against a concrete runner.
-pub async fn run<R>(args: DeployArgs, format: OutputFormat, runner: &R) -> Result<()>
-where
-    R: deploy::runner::DeployRunner,
-{
+/// Execute a deploy CLI invocation against the concrete `DefaultRunner`.
+pub async fn run(
+    args: DeployArgs,
+    format: OutputFormat,
+    runner: &deploy::runner::DefaultRunner,
+) -> Result<()> {
     let (action, params) = match args.cmd {
         DeployCmd::ConfigList => ("config.list", json!({})),
         DeployCmd::Plan { targets } => ("plan", json!({ "targets": targets })),

@@ -211,12 +211,20 @@ pub const ACTIONS: &[ActionSpec] = &[
         description: "Add a gateway and reconcile runtime state",
         destructive: true,
         returns: "GatewayView",
-        params: &[ParamSpec {
-            name: "spec",
-            ty: "json",
-            required: true,
-            description: "Gateway config payload to persist",
-        }],
+        params: &[
+            ParamSpec {
+                name: "spec",
+                ty: "json",
+                required: true,
+                description: "Gateway config payload to persist",
+            },
+            ParamSpec {
+                name: "bearer_token_value",
+                ty: "string",
+                required: false,
+                description: "Write-only: raw bearer token to store securely. Never returned on reads. Requires bearer_token_env in spec to name the env var.",
+            },
+        ],
     },
     ActionSpec {
         name: "gateway.update",
@@ -230,6 +238,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "json",
                 required: true,
                 description: "Partial gateway update payload",
+            },
+            ParamSpec {
+                name: "bearer_token_value",
+                ty: "string",
+                required: false,
+                description: "Write-only: raw bearer token to store securely. Never returned on reads. Requires bearer_token_env in patch or existing config.",
             },
         ],
     },

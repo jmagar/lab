@@ -1,6 +1,6 @@
 //! Action catalog for the `deploy` service.
 
-use lab_apis::core::action::ActionSpec;
+use lab_apis::core::action::{ActionSpec, ParamSpec};
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -14,7 +14,12 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "schema",
         description: "Per-action JSON schema",
         destructive: false,
-        params: &[],
+        params: &[ParamSpec {
+            name: "action",
+            ty: "string",
+            required: true,
+            description: "Action name to describe",
+        }],
         returns: "Schema",
     },
     ActionSpec {
@@ -28,21 +33,66 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "plan",
         description: "Dry-run: resolve targets, hash local artifact, show what would happen",
         destructive: false,
-        params: &[],
+        params: &[
+            ParamSpec {
+                name: "targets",
+                ty: "string[]",
+                required: true,
+                description: "SSH host aliases to include in the plan",
+            },
+        ],
         returns: "DeployPlan",
     },
     ActionSpec {
         name: "run",
         description: "Build, transfer, install, restart, verify on targets (destructive)",
         destructive: true,
-        params: &[],
+        params: &[
+            ParamSpec {
+                name: "targets",
+                ty: "string[]",
+                required: true,
+                description: "SSH host aliases to deploy to",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive operation",
+            },
+            ParamSpec {
+                name: "max_parallel",
+                ty: "integer",
+                required: false,
+                description: "Maximum number of hosts to work on concurrently",
+            },
+            ParamSpec {
+                name: "fail_fast",
+                ty: "boolean",
+                required: false,
+                description: "Abort remaining hosts on the first failure",
+            },
+        ],
         returns: "DeployRunSummary",
     },
     ActionSpec {
         name: "rollback",
         description: "Restore the most recent timestamped backup on the specified targets (destructive)",
         destructive: true,
-        params: &[],
+        params: &[
+            ParamSpec {
+                name: "targets",
+                ty: "string[]",
+                required: true,
+                description: "SSH host aliases to roll back",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive operation",
+            },
+        ],
         returns: "DeployRunSummary",
     },
 ];

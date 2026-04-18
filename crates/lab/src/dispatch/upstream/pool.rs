@@ -1477,11 +1477,13 @@ async fn connect_http_upstream(
         if let Ok(token) = std::env::var(env_name) {
             let token = token.trim();
             if !token.is_empty() {
-                transport_config.auth_header = Some(if token.starts_with("Bearer ") {
-                    token.to_string()
-                } else {
-                    format!("Bearer {token}")
-                });
+                transport_config.auth_header = Some(
+                    if token.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("bearer ")) {
+                        format!("Bearer {}", &token[7..])
+                    } else {
+                        format!("Bearer {token}")
+                    },
+                );
             }
         } else {
             tracing::warn!(

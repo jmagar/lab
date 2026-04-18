@@ -263,7 +263,9 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Apprise(args) => apprise::run(args, format).await,
         #[cfg(feature = "deploy")]
         Command::Deploy(args) => {
-            let runner = crate::dispatch::deploy::runner::NoopRunner;
+            let deploy_prefs = config.deploy.clone().unwrap_or_default();
+            let runner =
+                crate::dispatch::deploy::runner::build_default_runner(deploy_prefs);
             deploy::run(args, format, &runner)
                 .await
                 .map(|()| ExitCode::SUCCESS)

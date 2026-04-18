@@ -511,7 +511,7 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
   }
 
   if (config.bearer_token_env !== undefined) {
-    patch.bearer_token_env = config.bearer_token_env || null
+    patch.bearer_token_env = config.bearer_token_env?.trim() || null
   }
 
   if (config.proxy_resources !== undefined) {
@@ -535,7 +535,7 @@ export function buildGatewayUpdatePayload(
       ...input.config,
       bearer_token_env:
         input.config?.bearer_token_env !== undefined
-          ? input.config.bearer_token_env
+          ? input.config.bearer_token_env?.trim()
           : input.config?.bearer_token_value?.trim()
             ? defaultGatewayBearerEnvName(input.name ?? id)
             : input.config?.bearer_token_env,

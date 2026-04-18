@@ -15,10 +15,13 @@
 //! Every other `io.run(&[...])` call uses per-token argv and interpolates no
 //! untrusted strings.
 
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
-use lab_apis::core::ssh::{SshHostTarget, SshSession};
+use lab_apis::core::ssh::{SshHostTarget, SshSession, shell_quote};
 use lab_apis::deploy::{
     DeployError, DeployHostResult, DeployPlan, DeployRequest, DeployRunSummary, DeployStage,
 };
@@ -32,17 +35,10 @@ use super::lock::HostLockRegistry;
 use super::params;
 
 /// Surface-neutral deploy orchestrator used by CLI and MCP adapters.
-///
-/// All methods are `async fn in trait` (Rust 1.75+). Callers must not add
-/// `Send` bounds on these futures in generic code — the trait deliberately
-/// does not expose them, per the `async-trait`-free convention in this
-/// repo. In practice the futures produced by `DefaultRunner` are `Send`,
-/// so `tokio::spawn` works when the concrete type is visible.
-#[allow(async_fn_in_trait)]
 pub trait DeployRunner: Send + Sync {
-    async fn plan(&self, req: &DeployRequest) -> Result<DeployPlan, ToolError>;
-    async fn run(&self, req: &DeployRequest) -> Result<DeployRunSummary, ToolError>;
-    async fn rollback(&self, req: &DeployRequest) -> Result<DeployRunSummary, ToolError>;
+    async fn plan(&self, req: DeployRequest) -> Result<DeployPlan, ToolError>;
+    async fn run(&self, req: DeployRequest) -> Result<DeployRunSummary, ToolError>;
+    async fn rollback(&self, req: DeployRequest) -> Result<DeployRunSummary, ToolError>;
     async fn config_list(&self) -> Result<Value, ToolError>;
 }
 
@@ -143,15 +139,18 @@ pub struct PreflightOutcome {
 /// Preflight: architecture match + canary write + sha256 skip probe.
 ///
 /// The canary-write check uses `sh -c` deliberately. `remote_path` is
-/// allowlist-validated upstream (`params::validate_remote_path`) and the
-/// canary filename is a fixed pattern with no user data — the shell
-/// exception is documented in the module header.
+/// allowlist-validated via `params::validate_remote_path` at the top of this
+/// function and the canary filename is a fixed pattern — the path is also
+/// shell-single-quote-escaped before interpolation.
 pub async fn preflight<I: HostIo>(
     io: &I,
     remote_path: &str,
     local_triple: &str,
     local_sha256: &str,
 ) -> Result<PreflightOutcome, DeployError> {
+    // 0) Validate remote_path against the allowlist before any shell use.
+    params::validate_remote_path(remote_path)?;
+
     // 1) Architecture match.
     let (code, stdout, stderr) = io.run_argv(&["uname", "-m"]).await?;
     if code != 0 {
@@ -179,9 +178,12 @@ pub async fn preflight<I: HostIo>(
         })?
         .to_string_lossy()
         .into_owned();
-    // Canary lives under a fixed filename; no user data interpolated.
+    // Canary lives under a fixed filename.  The parent dir is derived from
+    // the allowlist-validated remote_path but we still single-quote-escape
+    // the interpolated paths for defense-in-depth.
     let canary = format!("{parent}/.lab.deploy.canary.$$");
-    let probe = format!("touch '{canary}' && rm -f -- '{canary}'");
+    let sq_canary = shell_quote(&canary);
+    let probe = format!("touch {sq_canary} && rm -f -- {sq_canary}");
     let (code, _stdout, stderr) = io.run_argv(&["sh", "-c", &probe]).await?;
     if code != 0 {
         return Err(DeployError::PreflightFailed {
@@ -304,13 +306,17 @@ pub async fn restart<I: HostIo>(
 
     let user_scope = matches!(scope, Some(ServiceScope::User));
 
-    // systemctl [--user] restart <unit>
-    let mut restart_argv: Vec<&str> = vec!["systemctl"];
-    if user_scope {
-        restart_argv.push("--user");
+    fn systemctl_argv<'a>(user_scope: bool, subcommand: &'a str, unit: &'a str) -> Vec<&'a str> {
+        let mut v = vec!["systemctl"];
+        if user_scope {
+            v.push("--user");
+        }
+        v.push(subcommand);
+        v.push(unit);
+        v
     }
-    restart_argv.push("restart");
-    restart_argv.push(unit);
+
+    let restart_argv = systemctl_argv(user_scope, "restart", unit);
     let (code, _stdout, stderr) = io.run_argv(&restart_argv).await?;
     if code != 0 {
         return Err(DeployError::RestartFailed {
@@ -319,14 +325,8 @@ pub async fn restart<I: HostIo>(
         });
     }
 
-    // systemctl [--user] is-active --wait <unit>
-    let mut wait_argv: Vec<&str> = vec!["systemctl"];
-    if user_scope {
-        wait_argv.push("--user");
-    }
-    wait_argv.push("is-active");
+    let mut wait_argv = systemctl_argv(user_scope, "is-active", unit);
     wait_argv.push("--wait");
-    wait_argv.push(unit);
     let (code, _stdout, stderr) = io.run_argv(&wait_argv).await?;
     if code != 0 {
         return Err(DeployError::RestartFailed {
@@ -354,13 +354,25 @@ fn triple_to_arch(triple: &str) -> String {
     triple.split('-').next().unwrap_or(triple).to_string()
 }
 
+/// Normalize common architecture aliases to canonical Rust triple arch names.
+///
+/// This handles cases like Docker/OCI image platforms (`amd64`, `arm64`)
+/// which differ from `uname -m` / Rust triple names (`x86_64`, `aarch64`).
+fn normalize_arch(arch: &str) -> &str {
+    match arch {
+        "amd64" | "x64" => "x86_64",
+        "arm64" => "aarch64",
+        other => other,
+    }
+}
+
 /// Compare `uname -m` output to the architecture from a Rust target triple.
 ///
-/// `uname -m` yields `x86_64`, `aarch64`, `armv7l`, `i686`, etc. Rust triples
-/// use the same arch prefix, so an equality check is sufficient; we do not
-/// substring-match because `aarch64` would otherwise match `aarch64be`.
+/// Normalizes known aliases (e.g. `amd64` → `x86_64`, `arm64` → `aarch64`)
+/// before comparing so that cross-platform CI and OCI-derived arch strings
+/// do not cause spurious mismatches.
 fn arch_matches(local: &str, remote: &str) -> bool {
-    local == remote
+    normalize_arch(local) == normalize_arch(remote)
 }
 
 fn backup_timestamp() -> String {
@@ -370,6 +382,33 @@ fn backup_timestamp() -> String {
         .map(|d| d.as_secs())
         .unwrap_or_default()
         .to_string()
+}
+
+// ── AssertSend ────────────────────────────────────────────────────────────
+//
+// Rust issue #100013: the compiler generates `for<'a> &'a T: Send` (HRTB)
+// constraints for async fn futures that borrow parameters across await points.
+// Even when T: Sync (so &T: Send holds for any specific lifetime), the
+// compiler cannot prove the HRTB form, causing false-positive errors.
+//
+// AssertSend wraps a future and unsafely marks it as Send. It is used only at
+// the Box::pin boundaries in run_impl and rollback_impl, where every captured
+// type in the async call graph (HostJob, SshHostIo, BuildOutcome,
+// HostLockRegistry) is genuinely Send + Sync. The unsafety is justified by
+// the structural guarantee that no non-Send type reaches those futures.
+#[repr(transparent)]
+struct AssertSend<F>(F);
+
+// SAFETY: see comment above — all types reachable from the wrapped future
+// are Send + Sync. This impl works around Rust issue #100013.
+unsafe impl<F: Future> Send for AssertSend<F> {}
+
+impl<F: Future> Future for AssertSend<F> {
+    type Output = F::Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+        // SAFETY: repr(transparent) + we never move F out of the Pin.
+        unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0).poll(cx) }
+    }
 }
 
 // ── DefaultRunner ──────────────────────────────────────────────────────────
@@ -470,49 +509,107 @@ impl DefaultRunner {
     }
 }
 
+// Thin trait delegation — keeps async fn in trait semantics without
+// the HRTB Send limitation that blocks Box::pin in the MCP registry.
+// Actual implementations live as inherent pub async fn methods below.
 impl DeployRunner for DefaultRunner {
-    async fn plan(&self, req: &DeployRequest) -> Result<DeployPlan, ToolError> {
-        // Resolve targets against the inventory; reject unknown aliases early.
+    async fn plan(&self, req: DeployRequest) -> Result<DeployPlan, ToolError> {
+        self.plan_impl(req).await
+    }
+
+    async fn run(&self, req: DeployRequest) -> Result<DeployRunSummary, ToolError> {
+        self.run_impl(req).await
+    }
+
+    async fn rollback(&self, req: DeployRequest) -> Result<DeployRunSummary, ToolError> {
+        self.rollback_impl(req).await
+    }
+
+    async fn config_list(&self) -> Result<Value, ToolError> {
+        self.config_list_impl()
+    }
+}
+
+// Inherent implementations — called directly by dispatch_with_runner so the
+// future type is concrete (not an RPITIT from a trait), making Send provable.
+//
+// IMPORTANT: all `&self` accesses must occur BEFORE any `.await` point.
+// Borrowing `self` across an await creates lifetime-parameterised captures
+// that fail the higher-ranked Send check required by `Box::pin` in the MCP
+// registry (Rust issue #100013). Extract all needed values synchronously,
+// then hand off only owned / Arc values to the async work.
+impl DefaultRunner {
+    pub fn plan_impl(
+        &self,
+        req: DeployRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<DeployPlan, ToolError>> + Send + 'static>> {
+        // --- sync: all self access before creating the future ---
         for alias in &req.targets {
             if self.resolve_target(alias).is_none() {
-                return Err(DeployError::ValidationFailed {
+                let err: Result<DeployPlan, ToolError> = Err(DeployError::ValidationFailed {
                     field: "targets".into(),
                     reason: format!("unknown SSH alias: {alias}"),
                 }
                 .into());
+                return Box::pin(async move { err });
             }
         }
-
-        // Hash the existing artifact if present — do NOT run cargo build here.
-        let artifact = build::expected_artifact_path("lab");
-        let artifact_sha256 = if matches!(artifact.try_exists(), Ok(true)) {
-            let p = artifact.clone();
-            tokio::task::spawn_blocking(move || build::sha256_file_blocking(&p))
-                .await
-                .map_err(|e| ToolError::internal_message(format!("sha256 join: {e}")))?
-                .ok()
-        } else {
-            None
-        };
-
         let canary_hosts: Vec<String> = self.canary_set().into_iter().collect();
         let max_parallel = req
             .max_parallel
             .or_else(|| self.effective_max_parallel())
             .unwrap_or(1)
             .max(1);
-        Ok(DeployPlan {
-            artifact_path: artifact.to_string_lossy().into_owned(),
-            artifact_sha256,
-            hosts: req.targets.clone(),
-            max_parallel,
-            canary_hosts,
+
+        // --- async: only owned values, no &self ---
+        Box::pin(async move {
+            let artifact = build::expected_artifact_path("lab");
+            let artifact_sha256 = if matches!(artifact.try_exists(), Ok(true)) {
+                let p = artifact.clone();
+                tokio::task::spawn_blocking(move || build::sha256_file_blocking(&p))
+                    .await
+                    .map_err(|e| ToolError::internal_message(format!("sha256 join: {e}")))?
+                    .ok()
+            } else {
+                None
+            };
+            Ok(DeployPlan {
+                artifact_path: artifact.to_string_lossy().into_owned(),
+                artifact_sha256,
+                hosts: req.targets.clone(),
+                max_parallel,
+                canary_hosts,
+            })
         })
     }
 
-    async fn run(&self, req: &DeployRequest) -> Result<DeployRunSummary, ToolError> {
+    pub fn run_impl(
+        &self,
+        req: DeployRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<DeployRunSummary, ToolError>> + Send + 'static>> {
         use tracing::Instrument;
 
+        // --- sync: all self access before creating the future ---
+        for alias in &req.targets {
+            if self.resolve_target(alias).is_none() {
+                let err: Result<DeployRunSummary, ToolError> =
+                    Err(DeployError::ValidationFailed {
+                        field: "targets".into(),
+                        reason: format!("unknown SSH alias: {alias}"),
+                    }
+                    .into());
+                return Box::pin(async move { err });
+            }
+        }
+        let max_parallel = req
+            .max_parallel
+            .or_else(|| self.effective_max_parallel())
+            .unwrap_or(1)
+            .max(1) as usize;
+        let (canary, rest) = self.partition_canary(&req.targets);
+        let canary_jobs = self.build_jobs(&canary);
+        let rest_jobs = self.build_jobs(&rest);
+        let locks = self.locks.clone();
         let run_id = uuid::Uuid::new_v4().to_string();
         let span = tracing::info_span!(
             "deploy.run",
@@ -521,89 +618,85 @@ impl DeployRunner for DefaultRunner {
             surface = "dispatch",
         );
 
-        async move {
-            // Resolve all targets before we do anything expensive.
-            for alias in &req.targets {
-                if self.resolve_target(alias).is_none() {
-                    return Err(DeployError::ValidationFailed {
-                        field: "targets".into(),
-                        reason: format!("unknown SSH alias: {alias}"),
+        // --- async: only owned / Arc values, no &self ---
+        // AssertSend: see module-level comment on the AssertSend struct.
+        Box::pin(AssertSend(
+            async move {
+                let build_outcome = Arc::new(build::build_release().await?);
+                tracing::info!(
+                    artifact_sha256 = %build_outcome.sha256,
+                    size_bytes = build_outcome.size_bytes,
+                    "deploy.build.ok"
+                );
+
+                let mut all_results: Vec<DeployHostResult> = Vec::new();
+
+                if !canary_jobs.is_empty() {
+                    let canary_results = DefaultRunner::run_jobs(
+                        canary_jobs,
+                        build_outcome.clone(),
+                        1,
+                        req.fail_fast,
+                        run_id.clone(),
+                        locks.clone(),
+                    )
+                    .await;
+                    let any_failed = canary_results.iter().any(|r| !r.succeeded);
+                    all_results.extend(canary_results);
+                    if req.fail_fast && any_failed {
+                        for host in &rest {
+                            all_results.push(aborted_result(host));
+                        }
+                        return Ok(summarize(run_id, build_outcome.sha256.clone(), all_results));
                     }
-                    .into());
                 }
-            }
 
-            let build_outcome = Arc::new(build::build_release().await?);
-            tracing::info!(
-                artifact_sha256 = %build_outcome.sha256,
-                size_bytes = build_outcome.size_bytes,
-                "deploy.build.ok"
-            );
-
-            let max_parallel = req
-                .max_parallel
-                .or_else(|| self.effective_max_parallel())
-                .unwrap_or(1)
-                .max(1) as usize;
-
-            let (canary, rest) = self.partition_canary(&req.targets);
-            let canary_jobs = self.build_jobs(&canary);
-            let rest_jobs = self.build_jobs(&rest);
-
-            let mut all_results: Vec<DeployHostResult> = Vec::new();
-
-            // Canary first, sequentially.
-            if !canary_jobs.is_empty() {
-                let canary_results = Self::run_jobs(
-                    canary_jobs,
-                    build_outcome.clone(),
-                    1,
-                    req.fail_fast,
-                    run_id.clone(),
-                    self.locks.clone(),
-                )
-                .await;
-                let any_failed = canary_results.iter().any(|r| !r.succeeded);
-                all_results.extend(canary_results);
-                if req.fail_fast && any_failed {
-                    for host in &rest {
-                        all_results.push(aborted_result(host));
-                    }
-                    return Ok(summarize(
-                        run_id,
-                        build_outcome.sha256.clone(),
-                        all_results,
-                    ));
+                if !rest_jobs.is_empty() {
+                    let rest_results = DefaultRunner::run_jobs(
+                        rest_jobs,
+                        build_outcome.clone(),
+                        max_parallel,
+                        req.fail_fast,
+                        run_id.clone(),
+                        locks,
+                    )
+                    .await;
+                    all_results.extend(rest_results);
                 }
-            }
 
-            // Rest at configured concurrency.
-            if !rest_jobs.is_empty() {
-                let rest_results = Self::run_jobs(
-                    rest_jobs,
-                    build_outcome.clone(),
-                    max_parallel,
-                    req.fail_fast,
-                    run_id.clone(),
-                    self.locks.clone(),
-                )
-                .await;
-                all_results.extend(rest_results);
+                Ok(summarize(run_id, build_outcome.sha256.clone(), all_results))
             }
-
-            Ok(summarize(
-                run_id,
-                build_outcome.sha256.clone(),
-                all_results,
-            ))
-        }
-        .instrument(span)
-        .await
+            .instrument(span),
+        ))
     }
 
-    async fn rollback(&self, req: &DeployRequest) -> Result<DeployRunSummary, ToolError> {
+    pub fn rollback_impl(
+        &self,
+        req: DeployRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<DeployRunSummary, ToolError>> + Send + 'static>> {
         use tracing::Instrument;
 
+        // --- sync: collect all per-host data from self before creating the future ---
+        struct HostRollback {
+            host: String,
+            target: Option<SshHostTarget>,
+            remote_path: String,
+            unit: Option<String>,
+            scope: Option<ServiceScope>,
+        }
+        let host_data: Vec<HostRollback> = req
+            .targets
+            .iter()
+            .map(|host| HostRollback {
+                target: self.resolve_target(host).cloned(),
+                remote_path: self.effective_remote_path(host),
+                unit: self.effective_unit(host),
+                scope: self.effective_scope(host),
+                host: host.clone(),
+            })
+            .collect();
+        let locks = self.locks.clone();
+        let max_parallel = self.effective_max_parallel().unwrap_or(1).max(1) as usize;
         let run_id = uuid::Uuid::new_v4().to_string();
         let span = tracing::info_span!(
             "deploy.rollback",
@@ -612,39 +705,64 @@ impl DeployRunner for DefaultRunner {
             surface = "dispatch",
         );
 
-        async move {
-            let mut results = Vec::with_capacity(req.targets.len());
-            for host in &req.targets {
-                let target = match self.resolve_target(host) {
-                    Some(t) => t.clone(),
-                    None => {
-                        results.push(DeployHostResult {
-                            host: host.clone(),
-                            reached_stage: DeployStage::Resolve,
-                            succeeded: false,
-                            skipped_transfer: false,
-                            transferred_bytes: None,
-                            error_kind: Some("validation_failed".into()),
-                            stage_timings_ms: Default::default(),
-                        });
-                        continue;
-                    }
-                };
-                let io = SshHostIo::new(host.clone(), target);
-                let remote_path = self.effective_remote_path(host);
-                let unit = self.effective_unit(host);
-                let scope = self.effective_scope(host);
-                let res = rollback_one_host(&io, host, &remote_path, unit.as_deref(), scope).await;
-                results.push(res);
-            }
+        // --- async: only owned / Arc values, no &self ---
+        // AssertSend: see module-level comment on the AssertSend struct.
+        Box::pin(AssertSend(
+            async move {
+                use futures::stream::{self, StreamExt};
 
-            Ok(summarize(run_id, String::new(), results))
-        }
-        .instrument(span)
-        .await
+                let results = stream::iter(host_data)
+                    .map(|data| {
+                        let locks = locks.clone();
+                        async move {
+                            let Some(target) = data.target else {
+                                return DeployHostResult {
+                                    host: data.host,
+                                    reached_stage: DeployStage::Resolve,
+                                    succeeded: false,
+                                    skipped_transfer: false,
+                                    transferred_bytes: None,
+                                    error_kind: Some("validation_failed".into()),
+                                    stage_timings_ms: Default::default(),
+                                };
+                            };
+                            let lock_timeout = std::time::Duration::from_secs(60);
+                            let _guard = match locks.acquire(&data.host, lock_timeout).await {
+                                Ok(g) => g,
+                                Err(e) => {
+                                    return DeployHostResult {
+                                        host: data.host,
+                                        reached_stage: DeployStage::Resolve,
+                                        succeeded: false,
+                                        skipped_transfer: false,
+                                        transferred_bytes: None,
+                                        error_kind: Some(e.kind().to_string()),
+                                        stage_timings_ms: Default::default(),
+                                    };
+                                }
+                            };
+                            let io = SshHostIo::new(data.host.clone(), target);
+                            rollback_one_host(
+                                &io,
+                                &data.host,
+                                &data.remote_path,
+                                data.unit.as_deref(),
+                                data.scope,
+                            )
+                            .await
+                        }
+                    })
+                    .buffer_unordered(max_parallel)
+                    .collect::<Vec<_>>()
+                    .await;
+
+                Ok(summarize(run_id, String::new(), results))
+            }
+            .instrument(span),
+        ))
     }
 
-    async fn config_list(&self) -> Result<Value, ToolError> {
+    pub fn config_list_impl(&self) -> Result<Value, ToolError> {
         let hosts: Vec<&str> = self.ssh_inventory.iter().map(|h| h.alias.as_str()).collect();
         let overrides: Vec<&String> = self.config.hosts.keys().collect();
         Ok(json!({
@@ -653,6 +771,49 @@ impl DeployRunner for DefaultRunner {
             "overrides": overrides,
         }))
     }
+}
+
+/// Build a `DefaultRunner` from the loaded config and `~/.ssh/config`
+/// inventory.
+///
+/// Failures loading the SSH inventory are treated as non-fatal — they
+/// produce an empty inventory (useful so `config.list` still works) and
+/// log a warning. Both CLI and MCP surfaces call this at dispatch time
+/// rather than at startup, keeping the construction surface-neutral.
+pub fn build_default_runner(config: crate::config::DeployPreferences) -> DefaultRunner {
+    let inventory = lab_apis::extract::inventory::load_ssh_inventory()
+        .unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "deploy: could not load ~/.ssh/config inventory");
+            Vec::new()
+        });
+    DefaultRunner::new(
+        config,
+        Arc::new(inventory),
+        Arc::new(HostLockRegistry::default()),
+    )
+}
+
+/// Process-global `DefaultRunner` initialised once at first MCP dispatch.
+///
+/// The MCP registry dispatch closure must return a `'static`-compatible
+/// future, so the runner must live in a static rather than a local.
+/// CLI dispatch owns its runner directly (config is threaded in), so
+/// only the MCP path uses this slot.
+static MCP_RUNNER: std::sync::OnceLock<DefaultRunner> = std::sync::OnceLock::new();
+
+/// Return a reference to the process-global `DefaultRunner`, initialising
+/// it from on-disk config and `~/.ssh/config` on first call.
+///
+/// Config load failures are non-fatal: the runner is built with default
+/// preferences so that `help` / `schema` / `config.list` still work.
+pub fn mcp_runner() -> &'static DefaultRunner {
+    MCP_RUNNER.get_or_init(|| {
+        let prefs = crate::config::load_toml(&crate::config::toml_candidates())
+            .ok()
+            .and_then(|cfg| cfg.deploy)
+            .unwrap_or_default();
+        build_default_runner(prefs)
+    })
 }
 
 /// Parameters for a single-host run, pre-resolved so the orchestrator can
@@ -704,7 +865,7 @@ impl DefaultRunner {
         let stop = Arc::new(AtomicBool::new(false));
 
         stream::iter(jobs)
-            .map(|job| {
+            .map(move |job| {
                 let stop = stop.clone();
                 let build = build.clone();
                 let run_id = run_id.clone();
@@ -848,7 +1009,7 @@ pub async fn run_host_pipeline<I: HostIo>(
         }
         Err(e) => {
             timings.insert("preflight".into(), t.elapsed().as_millis());
-            return host_err(host, DeployStage::Preflight, e, timings);
+            return host_err(host, DeployStage::Preflight, e, timings, false);
         }
     };
     let skipped_transfer = pre.skip_transfer;
@@ -867,6 +1028,7 @@ pub async fn run_host_pipeline<I: HostIo>(
                         reason: format!("open artifact: {e}"),
                     },
                     timings,
+                    false,
                 );
             }
         };
@@ -878,7 +1040,7 @@ pub async fn run_host_pipeline<I: HostIo>(
                 }
                 Err(e) => {
                     timings.insert("transfer".into(), t.elapsed().as_millis());
-                    return host_err(host, DeployStage::Install, e, timings);
+                    return host_err(host, DeployStage::Install, e, timings, false);
                 }
             };
         transferred_bytes = Some(outcome.bytes);
@@ -888,7 +1050,9 @@ pub async fn run_host_pipeline<I: HostIo>(
     let t = Instant::now();
     if let Err(e) = restart(io, unit, scope).await {
         timings.insert("restart".into(), t.elapsed().as_millis());
-        return host_err(host, DeployStage::Restart, e, timings);
+        // skipped_transfer carries the actual preflight outcome: if transfer
+        // was already skipped before restart failed, report that faithfully.
+        return host_err(host, DeployStage::Restart, e, timings, skipped_transfer);
     }
     timings.insert("restart".into(), t.elapsed().as_millis());
 
@@ -896,7 +1060,7 @@ pub async fn run_host_pipeline<I: HostIo>(
     let t = Instant::now();
     if let Err(e) = verify(io, remote_path).await {
         timings.insert("verify".into(), t.elapsed().as_millis());
-        return host_err(host, DeployStage::Verify, e, timings);
+        return host_err(host, DeployStage::Verify, e, timings, skipped_transfer);
     }
     timings.insert("verify".into(), t.elapsed().as_millis());
 
@@ -922,6 +1086,11 @@ async fn rollback_one_host<I: HostIo>(
         std::collections::BTreeMap::new();
     use std::time::Instant;
 
+    // Validate remote_path against the allowlist before any shell use.
+    if let Err(e) = params::validate_remote_path(remote_path) {
+        return host_err(host, DeployStage::Resolve, e, timings, false);
+    }
+
     // Find the most recent .bak.<ts> file in the parent directory.
     let parent = match Path::new(remote_path).parent() {
         Some(p) => p.to_string_lossy().into_owned(),
@@ -934,6 +1103,7 @@ async fn rollback_one_host<I: HostIo>(
                     reason: "no parent".into(),
                 },
                 timings,
+                false,
             );
         }
     };
@@ -943,12 +1113,16 @@ async fn rollback_one_host<I: HostIo>(
         .unwrap_or_else(|| "lab".to_string());
 
     let t = Instant::now();
-    let pattern = format!("{parent}/{binary}.bak.*");
+    // shell_quote parent and binary so any (theoretically allowlisted)
+    // special characters in the path do not break the shell command.
+    let sq_parent = shell_quote(&parent);
+    let sq_binary = shell_quote(&binary);
+    let pattern = format!("{sq_parent}/{sq_binary}.bak.*");
     // ls -1 <pattern> | sort | tail -n1
     let cmd = format!("ls -1 {pattern} 2>/dev/null | sort | tail -n1");
     let (code, stdout, stderr) = match io.run_argv(&["sh", "-c", &cmd]).await {
         Ok(v) => v,
-        Err(e) => return host_err(host, DeployStage::Resolve, e, timings),
+        Err(e) => return host_err(host, DeployStage::Resolve, e, timings, false),
     };
     if code != 0 || stdout.trim().is_empty() {
         timings.insert("rollback.find".into(), t.elapsed().as_millis());
@@ -960,6 +1134,7 @@ async fn rollback_one_host<I: HostIo>(
                 reason: format!("no backup found under {parent}: {}", stderr.trim()),
             },
             timings,
+            false,
         );
     }
     let backup = stdout.trim().to_string();
@@ -968,7 +1143,7 @@ async fn rollback_one_host<I: HostIo>(
     let t = Instant::now();
     let (code, _stdout, stderr) = match io.run_argv(&["mv", "--", &backup, remote_path]).await {
         Ok(v) => v,
-        Err(e) => return host_err(host, DeployStage::Install, e, timings),
+        Err(e) => return host_err(host, DeployStage::Install, e, timings, false),
     };
     timings.insert("rollback.restore".into(), t.elapsed().as_millis());
     if code != 0 {
@@ -980,6 +1155,7 @@ async fn rollback_one_host<I: HostIo>(
                 reason: format!("rollback rename: {}", stderr.trim()),
             },
             timings,
+            false,
         );
     }
 
@@ -989,7 +1165,7 @@ async fn rollback_one_host<I: HostIo>(
     let t = Instant::now();
     if let Err(e) = restart(io, unit, scope).await {
         timings.insert("rollback.restart".into(), t.elapsed().as_millis());
-        return host_err(host, DeployStage::Restart, e, timings);
+        return host_err(host, DeployStage::Restart, e, timings, false);
     }
     timings.insert("rollback.restart".into(), t.elapsed().as_millis());
 
@@ -1009,6 +1185,7 @@ fn host_err(
     reached: DeployStage,
     err: DeployError,
     timings: std::collections::BTreeMap<String, u128>,
+    skipped_transfer: bool,
 ) -> DeployHostResult {
     tracing::warn!(
         host = %host,
@@ -1021,7 +1198,7 @@ fn host_err(
         host: host.to_string(),
         reached_stage: reached,
         succeeded: false,
-        skipped_transfer: false,
+        skipped_transfer,
         transferred_bytes: None,
         error_kind: Some(err.kind().to_string()),
         stage_timings_ms: timings,
@@ -1065,19 +1242,19 @@ fn summarize(
 pub struct NoopRunner;
 
 impl DeployRunner for NoopRunner {
-    async fn plan(&self, _req: &DeployRequest) -> Result<DeployPlan, ToolError> {
+    async fn plan(&self, _req: DeployRequest) -> Result<DeployPlan, ToolError> {
         Err(ToolError::internal_message(
             "deploy runner is not wired on this build",
         ))
     }
 
-    async fn run(&self, _req: &DeployRequest) -> Result<DeployRunSummary, ToolError> {
+    async fn run(&self, _req: DeployRequest) -> Result<DeployRunSummary, ToolError> {
         Err(ToolError::internal_message(
             "deploy runner is not wired on this build",
         ))
     }
 
-    async fn rollback(&self, _req: &DeployRequest) -> Result<DeployRunSummary, ToolError> {
+    async fn rollback(&self, _req: DeployRequest) -> Result<DeployRunSummary, ToolError> {
         Err(ToolError::internal_message(
             "deploy runner is not wired on this build",
         ))
@@ -1474,5 +1651,32 @@ mod tests_restart_verify {
         let io = RecordingIo::new();
         io.push_run(RunResp::ok("lab 0.3.4\n"));
         verify(&io, "/usr/local/bin/lab").await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests_arch {
+    use super::*;
+
+    #[test]
+    fn arch_aliases_normalize_correctly() {
+        // canonical names are unchanged
+        assert_eq!(normalize_arch("x86_64"), "x86_64");
+        assert_eq!(normalize_arch("aarch64"), "aarch64");
+        assert_eq!(normalize_arch("i686"), "i686");
+        // Docker/OCI aliases
+        assert_eq!(normalize_arch("amd64"), "x86_64");
+        assert_eq!(normalize_arch("x64"), "x86_64");
+        assert_eq!(normalize_arch("arm64"), "aarch64");
+    }
+
+    #[test]
+    fn arch_matches_handles_aliases() {
+        assert!(arch_matches("x86_64", "amd64"));
+        assert!(arch_matches("amd64", "x86_64"));
+        assert!(arch_matches("aarch64", "arm64"));
+        assert!(arch_matches("arm64", "aarch64"));
+        assert!(!arch_matches("x86_64", "aarch64"));
+        assert!(!arch_matches("amd64", "arm64"));
     }
 }

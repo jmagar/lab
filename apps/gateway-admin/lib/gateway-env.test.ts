@@ -39,9 +39,19 @@ test('validateBearerTokenEnvName rejects invalid env var syntax', () => {
 })
 
 test('defaultGatewayBearerEnvName normalizes gateway names', () => {
-  assert.equal(defaultGatewayBearerEnvName('github'), 'GITHUB_AUTH_HEADER')
+  assert.equal(defaultGatewayBearerEnvName('github'), 'LAB_GW_GITHUB_AUTH_HEADER')
   assert.equal(
     defaultGatewayBearerEnvName('github-copilot remote'),
-    'GITHUB_COPILOT_REMOTE_AUTH_HEADER',
+    'LAB_GW_GITHUB_COPILOT_REMOTE_AUTH_HEADER',
   )
+})
+
+test('defaultGatewayBearerEnvName produces valid env var name when gateway name starts with digit', () => {
+  assert.equal(defaultGatewayBearerEnvName('1password'), 'LAB_GW_1PASSWORD_AUTH_HEADER')
+  assert.match(defaultGatewayBearerEnvName('1password'), /^[A-Za-z_]/)
+})
+
+test('defaultGatewayBearerEnvName falls back to GATEWAY when name is empty or all-special', () => {
+  assert.equal(defaultGatewayBearerEnvName(''), 'LAB_GW_GATEWAY_AUTH_HEADER')
+  assert.equal(defaultGatewayBearerEnvName('---'), 'LAB_GW_GATEWAY_AUTH_HEADER')
 })

@@ -230,6 +230,27 @@ pub enum SshError {
     Io(String),
 }
 
+/// Quote a string for embedding in a POSIX `sh` single-quoted context.
+///
+/// Wraps `s` in single quotes and replaces any embedded `'` with `'\''` so
+/// the result is safe for `sh -c '…'` command construction.  This is the only
+/// quoting helper permitted in this module; all remote path and argv
+/// interpolation must go through it.
+///
+/// # Examples
+/// ```
+/// # use lab_apis::core::ssh::shell_quote;
+/// assert_eq!(shell_quote("foo"),          "'foo'");
+/// assert_eq!(shell_quote("foo bar"),      "'foo bar'");
+/// assert_eq!(shell_quote("foo's"),        "'foo'\\''s'");
+/// assert_eq!(shell_quote("foo;rm -rf /"), "'foo;rm -rf /'");
+/// ```
+pub fn shell_quote(s: &str) -> String {
+    // Replace every ' with '\'' (end-quote, literal-quote, re-open-quote).
+    let escaped = s.replace('\'', r"'\''");
+    format!("'{escaped}'")
+}
+
 /// A reusable `ssh` invocation target backed by `tokio::process::Command`.
 ///
 /// `SshSession` does not maintain a long-lived connection itself — each
@@ -238,11 +259,14 @@ pub enum SshError {
 /// the second+ connection to a given host reuses the kernel-side control
 /// socket, avoiding the handshake cost.
 ///
-/// **Never** calls `sh -c` for `run_command` — arguments are passed to
-/// `.arg()` one token at a time. A single documented exception exists in
+/// **Remote shell behaviour.** OpenSSH concatenates all trailing argv tokens
+/// with spaces and hands the result to the remote user's default shell.
+/// `run_command` therefore shell-quotes every element via [`shell_quote`]
+/// before passing it, making separate-arg safety an illusion that must be
+/// actively enforced at this layer. A single documented exception exists in
 /// `upload_stream`: remote redirect must go through `sh -c "cat > '...'"`
-/// because OpenSSH does not expose a redirect primitive. The quoted path is
-/// allowlist-validated by the caller (see
+/// because OpenSSH does not expose a redirect primitive; the path is
+/// shell-quoted and allowlist-validated by the caller (see
 /// `crates/lab/src/dispatch/deploy/params.rs::validate_remote_path`).
 #[derive(Debug, Clone)]
 pub struct SshSession {
@@ -299,8 +323,13 @@ impl SshSession {
         args
     }
 
-    /// Run `argv` on the remote host. Arguments are forwarded one-per-token
-    /// to `ssh`, never assembled into a shell string.
+    /// Run `argv` on the remote host.
+    ///
+    /// OpenSSH concatenates all trailing tokens with spaces and hands the
+    /// resulting string to the remote shell, so every element of `argv` is
+    /// shell-quoted via [`shell_quote`] before it reaches the network. This
+    /// prevents command injection when paths or arguments contain spaces,
+    /// single quotes, semicolons, or other shell metacharacters.
     ///
     /// Returns `(exit_code, stdout, stderr)`. A nonzero exit code is not an
     /// `Err` — the caller is expected to decide whether the nonzero exit is
@@ -315,7 +344,7 @@ impl SshSession {
         }
         cmd.arg(self.connect_target());
         for a in argv {
-            cmd.arg(a);
+            cmd.arg(shell_quote(a));
         }
         let output = cmd
             .output()
@@ -349,8 +378,11 @@ impl SshSession {
         use std::process::Stdio;
         use tokio::io::AsyncWriteExt;
 
-        // Single-quote the path; allowlist-validated upstream so this is safe.
-        let redirect = format!("cat > '{remote_path}'");
+        // Shell-quote the path so embedded single quotes do not break the
+        // `sh -c` context.  The path is also allowlist-validated upstream
+        // (`validate_remote_path`), providing defence in depth.
+        let quoted = shell_quote(remote_path);
+        let redirect = format!("cat > {quoted}");
         let mut cmd = tokio::process::Command::new("ssh");
         for a in self.base_args() {
             cmd.arg(a);
@@ -361,17 +393,28 @@ impl SshSession {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| SshError::Spawn(e.to_string()))?;
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| SshError::Io("ssh stdin missing".into()))?;
-        let bytes = tokio::io::copy(&mut reader, &mut stdin)
-            .await
-            .map_err(|e| SshError::Io(e.to_string()))?;
-        stdin
-            .shutdown()
-            .await
-            .map_err(|e| SshError::Io(e.to_string()))?;
+
+        // Helper: kill + reap the child before returning an error so we never
+        // leave zombie processes behind on early exit paths below.
+        macro_rules! reap_and_fail {
+            ($child:expr, $err:expr) => {{
+                $child.kill().await.ok();
+                $child.wait().await.ok();
+                return Err($err);
+            }};
+        }
+
+        let mut stdin = match child.stdin.take() {
+            Some(s) => s,
+            None => reap_and_fail!(child, SshError::Io("ssh stdin missing".into())),
+        };
+        let bytes = match tokio::io::copy(&mut reader, &mut stdin).await {
+            Ok(n) => n,
+            Err(e) => reap_and_fail!(child, SshError::Io(e.to_string())),
+        };
+        if let Err(e) = stdin.shutdown().await {
+            reap_and_fail!(child, SshError::Io(e.to_string()));
+        }
         drop(stdin);
         let out = child
             .wait_with_output()
@@ -416,6 +459,32 @@ impl SshSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_quote_plain() {
+        assert_eq!(shell_quote("foo"), "'foo'");
+    }
+
+    #[test]
+    fn shell_quote_with_spaces() {
+        assert_eq!(shell_quote("foo bar"), "'foo bar'");
+    }
+
+    #[test]
+    fn shell_quote_with_single_quote() {
+        assert_eq!(shell_quote("foo's"), "'foo'\\''s'");
+    }
+
+    #[test]
+    fn shell_quote_injection_attempt() {
+        assert_eq!(shell_quote("foo;rm -rf /"), "'foo;rm -rf /'");
+    }
+
+    #[test]
+    fn shell_quote_path_with_embedded_quote() {
+        // e.g. a path like /opt/it's-fine/bin
+        assert_eq!(shell_quote("/opt/it's-fine/bin"), "'/opt/it'\\''s-fine/bin'");
+    }
 
     #[test]
     fn parses_host_alias_hostname_user_port() {
