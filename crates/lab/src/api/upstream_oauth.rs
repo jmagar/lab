@@ -138,6 +138,7 @@ async fn start(
     Extension(auth): Extension<crate::api::oauth::AuthContext>,
     Json(body): Json<StartRequest>,
 ) -> Result<Json<StartResponse>, ToolError> {
+    let started = std::time::Instant::now();
     require_master(&state)?;
     let manager = state
         .gateway_manager
@@ -145,7 +146,25 @@ async fn start(
         .ok_or_else(|| ToolError::internal_message("gateway manager not wired"))?;
     let begin =
         crate::dispatch::gateway::oauth::begin_authorization(&manager, &body.upstream, &auth.sub)
-            .await?;
+            .await
+            .inspect_err(|error| {
+                warn!(
+                    surface = "api",
+                    service = "upstream_oauth",
+                    action = "start",
+                    elapsed_ms = started.elapsed().as_millis(),
+                    kind = error.kind(),
+                    "upstream oauth start failed"
+                );
+            })?;
+    info!(
+        surface = "api",
+        service = "upstream_oauth",
+        action = "start",
+        elapsed_ms = started.elapsed().as_millis(),
+        upstream = %body.upstream,
+        "upstream oauth authorization started"
+    );
     Ok(Json(StartResponse {
         authorization_url: begin.authorization_url,
     }))
@@ -156,13 +175,32 @@ async fn status(
     Query(query): Query<StatusQuery>,
     Extension(auth): Extension<crate::api::oauth::AuthContext>,
 ) -> Result<Json<crate::dispatch::gateway::oauth::UpstreamOauthStatusView>, ToolError> {
+    let started = std::time::Instant::now();
     require_master(&state)?;
     let manager = state
         .gateway_manager
         .clone()
         .ok_or_else(|| ToolError::internal_message("gateway manager not wired"))?;
-    let status =
-        crate::dispatch::gateway::oauth::status(&manager, &query.upstream, &auth.sub).await?;
+    let status = crate::dispatch::gateway::oauth::status(&manager, &query.upstream, &auth.sub)
+        .await
+        .inspect_err(|error| {
+            warn!(
+                surface = "api",
+                service = "upstream_oauth",
+                action = "status",
+                elapsed_ms = started.elapsed().as_millis(),
+                kind = error.kind(),
+                "upstream oauth status failed"
+            );
+        })?;
+    info!(
+        surface = "api",
+        service = "upstream_oauth",
+        action = "status",
+        elapsed_ms = started.elapsed().as_millis(),
+        upstream = %query.upstream,
+        "upstream oauth status retrieved"
+    );
     Ok(Json(status))
 }
 
@@ -171,11 +209,16 @@ async fn clear(
     Query(query): Query<ClearQuery>,
     Extension(auth): Extension<crate::api::oauth::AuthContext>,
 ) -> impl IntoResponse {
+    let started = std::time::Instant::now();
     if let Err(error) = require_master(&state) {
         return error.into_response();
     }
     if query.confirm != Some(true) {
-        return (StatusCode::BAD_REQUEST, "confirmation_required").into_response();
+        return ToolError::Sdk {
+            sdk_kind: "confirmation_required".to_string(),
+            message: "set ?confirm=true to clear upstream oauth credentials".to_string(),
+        }
+        .into_response();
     }
     let manager = match state.gateway_manager.clone() {
         Some(manager) => manager,
@@ -184,9 +227,24 @@ async fn clear(
     if let Err(error) =
         crate::dispatch::gateway::oauth::clear(&manager, &query.upstream, &auth.sub).await
     {
+        warn!(
+            surface = "api",
+            service = "upstream_oauth",
+            action = "clear",
+            elapsed_ms = started.elapsed().as_millis(),
+            kind = error.kind(),
+            "upstream oauth clear failed"
+        );
         return error.into_response();
     }
-    info!(surface = "api", service = "upstream_oauth", action = "clear", upstream = %query.upstream, "upstream oauth credentials cleared");
+    info!(
+        surface = "api",
+        service = "upstream_oauth",
+        action = "clear",
+        elapsed_ms = started.elapsed().as_millis(),
+        upstream = %query.upstream,
+        "upstream oauth credentials cleared"
+    );
     (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response()
 }
 
@@ -195,6 +253,7 @@ async fn callback(
     Query(query): Query<CallbackQuery>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
+    let started = std::time::Instant::now();
     if let Err(error) = require_master(&state) {
         return error.into_response();
     }
@@ -232,6 +291,7 @@ async fn callback(
             surface = "api",
             service = "upstream_oauth",
             action = "callback",
+            elapsed_ms = started.elapsed().as_millis(),
             upstream = %query.upstream,
             kind = error.kind(),
             "upstream oauth callback failed"
@@ -242,6 +302,7 @@ async fn callback(
             surface = "api",
             service = "upstream_oauth",
             action = "callback",
+            elapsed_ms = started.elapsed().as_millis(),
             upstream = %query.upstream,
             "upstream oauth callback completed"
         );
@@ -364,14 +425,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let body = body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
-        assert_eq!(
-            String::from_utf8(body.to_vec()).unwrap(),
-            "confirmation_required"
-        );
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["kind"], "confirmation_required");
     }
 
     fn test_auth_context() -> AuthContext {
