@@ -47,7 +47,7 @@ test('log timeline uses display headers and strong lifted panel styling', () => 
   )
 
   assert.match(markup, /font-display/)
-  assert.match(markup, /shadow-\[0_20px_38px_rgba\(0,0,0,0\.26\)\]/)
+  assert.match(markup, /bg-aurora-panel-strong/)
   assert.match(markup, /Live edge/)
 })
 
@@ -61,5 +61,5 @@ test('log inspector uses display headers and stronger elevated metadata panels',
   assert.match(markup, /font-display/)
   assert.match(markup, /Primary message/)
   assert.match(markup, /Metadata JSON/)
-  assert.match(markup, /shadow-\[0_20px_38px_rgba\(0,0,0,0\.26\)\]/)
+  assert.match(markup, /bg-aurora-panel-strong/)
 })

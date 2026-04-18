@@ -834,6 +834,15 @@ impl UpstreamPool {
             .map(ToOwned::to_owned)
     }
 
+    /// Return the last tools-capability error for an upstream, if any.
+    pub async fn upstream_tool_last_error(&self, upstream_name: &str) -> Option<String> {
+        let catalog = self.catalog.read().await;
+        let entry = catalog.get(upstream_name)?;
+        entry
+            .last_error_for(UpstreamCapability::Tools)
+            .map(ToOwned::to_owned)
+    }
+
     #[cfg(test)]
     pub async fn insert_entry_for_tests(&self, name: &str, entry: UpstreamEntry) {
         self.catalog.write().await.insert(name.to_string(), entry);
@@ -1912,6 +1921,60 @@ mod tests {
         pool.record_success_for("github", UpstreamCapability::Resources)
             .await;
         assert_eq!(pool.upstream_last_error("github").await, None);
+    }
+
+    #[tokio::test]
+    async fn upstream_tool_last_error_ignores_non_tool_failures() {
+        let pool = UpstreamPool::new();
+        let upstream_name: Arc<str> = Arc::from("github");
+        let entry = UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: ToolExposurePolicy::All,
+            prompt_count: 0,
+            resource_count: 0,
+            tool_health: UpstreamHealth::Healthy,
+            prompt_health: UpstreamHealth::Healthy,
+            resource_health: UpstreamHealth::Healthy,
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: None,
+            resource_unhealthy_since: None,
+            tool_last_error: None,
+            prompt_last_error: None,
+            resource_last_error: None,
+        };
+
+        pool.catalog
+            .write()
+            .await
+            .insert("github".to_string(), entry);
+
+        pool.record_failure_for(
+            "github",
+            UpstreamCapability::Resources,
+            "resource listing returned 401 unauthorized",
+        )
+        .await;
+        pool.record_failure_for(
+            "github",
+            UpstreamCapability::Prompts,
+            "prompt listing returned 501 unsupported",
+        )
+        .await;
+
+        assert_eq!(pool.upstream_tool_last_error("github").await, None);
+
+        pool.record_failure_for(
+            "github",
+            UpstreamCapability::Tools,
+            "tool listing returned 500 internal error",
+        )
+        .await;
+
+        assert_eq!(
+            pool.upstream_tool_last_error("github").await.as_deref(),
+            Some("tool listing returned 500 internal error")
+        );
     }
 
     #[test]

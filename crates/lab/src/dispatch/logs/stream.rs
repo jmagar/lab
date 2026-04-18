@@ -18,7 +18,7 @@ impl StreamHub {
     /// Publish an event to all live subscribers. Non-blocking; if there are
     /// no subscribers, `send` returns `Err(SendError)` which we swallow.
     pub fn publish(&self, event: LogEvent) {
-        let _ = self.sender.send(event);
+        drop(self.sender.send(event));
     }
 
     /// Create a new receiver. Filtering is applied on the receiver side so

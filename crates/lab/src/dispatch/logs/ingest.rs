@@ -53,11 +53,13 @@ pub struct IngestHandle {
     /// Inline write-through path used by `submit` (await). The store and hub
     /// are owned by the LogSystem and shared with the writer task, so this is
     /// a cheap Arc clone.
+    #[cfg(test)]
     inline: Option<(Arc<LogStore>, Arc<StreamHub>)>,
     counters: Arc<IngestCounters>,
 }
 
 impl IngestHandle {
+    #[cfg(test)]
     pub async fn submit(&self, raw: RawLogEvent) -> Result<(), ToolError> {
         // Await-path: persist inline so callers see their write before returning.
         // Non-await callers (the tracing layer) use `try_submit` instead.
@@ -94,6 +96,7 @@ impl IngestHandle {
 pub fn readonly_handle(counters: Arc<IngestCounters>) -> IngestHandle {
     IngestHandle {
         tx: None,
+        #[cfg(test)]
         inline: None,
         counters,
     }
@@ -108,6 +111,7 @@ pub fn spawn_writer(
     let counters = Arc::new(IngestCounters::new());
     let handle = IngestHandle {
         tx: Some(tx),
+        #[cfg(test)]
         inline: Some((Arc::clone(&store), Arc::clone(&hub))),
         counters: Arc::clone(&counters),
     };
@@ -294,7 +298,7 @@ where
             upstream_event_id: None,
         };
 
-        let _ = system.try_ingest(raw);
+        drop(system.try_ingest(raw));
     }
 }
 
