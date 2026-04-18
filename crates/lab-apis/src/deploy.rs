@@ -13,9 +13,7 @@ pub mod error;
 pub mod types;
 
 pub use error::DeployError;
-pub use types::{
-    DeployHostResult, DeployPlan, DeployRequest, DeployRunSummary, DeployStage,
-};
+pub use types::{DeployHostResult, DeployPlan, DeployRequest, DeployRunSummary, DeployStage};
 
 use crate::core::plugin::{Category, PluginMeta};
 

@@ -139,11 +139,7 @@ mod tests {
     #[test]
     fn build_target_path_matches_cargo_layout() {
         let p = expected_artifact_path("lab");
-        assert!(
-            p.ends_with("target/release/lab"),
-            "got {}",
-            p.display()
-        );
+        assert!(p.ends_with("target/release/lab"), "got {}", p.display());
     }
 
     #[test]

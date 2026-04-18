@@ -75,7 +75,5 @@ pub fn reject_headless_bypass(params: &Value, ctx: McpContext) -> Result<(), Too
 /// Read the current MCP context, falling back to `Cli` when the task-local
 /// has not been scoped.
 pub fn current_context() -> McpContext {
-    MCP_CONTEXT
-        .try_with(|c| *c)
-        .unwrap_or(McpContext::Cli)
+    MCP_CONTEXT.try_with(|c| *c).unwrap_or(McpContext::Cli)
 }

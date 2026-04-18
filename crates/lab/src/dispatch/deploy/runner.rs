@@ -16,20 +16,19 @@ pub trait DeployRunner: Send + Sync {
     fn plan(
         &self,
         req: &DeployRequest,
-    ) -> impl std::future::Future<Output = Result<DeployPlan, ToolError>> + Send;
+    ) -> impl Future<Output = Result<DeployPlan, ToolError>> + Send;
 
     fn run(
         &self,
         req: &DeployRequest,
-    ) -> impl std::future::Future<Output = Result<DeployRunSummary, ToolError>> + Send;
+    ) -> impl Future<Output = Result<DeployRunSummary, ToolError>> + Send;
 
     fn rollback(
         &self,
         req: &DeployRequest,
-    ) -> impl std::future::Future<Output = Result<DeployRunSummary, ToolError>> + Send;
+    ) -> impl Future<Output = Result<DeployRunSummary, ToolError>> + Send;
 
-    fn config_list(&self)
-    -> impl std::future::Future<Output = Result<Value, ToolError>> + Send;
+    fn config_list(&self) -> impl Future<Output = Result<Value, ToolError>> + Send;
 }
 
 /// Low-level primitive the runner uses to talk to a single host. The real
@@ -39,12 +38,12 @@ pub trait HostIo: Send + Sync {
     fn run_argv(
         &self,
         argv: &[&str],
-    ) -> impl std::future::Future<Output = Result<(i32, String, String), DeployError>> + Send;
+    ) -> impl Future<Output = Result<(i32, String, String), DeployError>> + Send;
 
     fn sha256_remote(
         &self,
         remote_path: &str,
-    ) -> impl std::future::Future<Output = Result<Option<String>, DeployError>> + Send;
+    ) -> impl Future<Output = Result<Option<String>, DeployError>> + Send;
 }
 
 /// Placeholder runner for bringup. Real orchestration lands in a follow-up

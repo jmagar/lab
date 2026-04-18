@@ -83,10 +83,7 @@ Host backup
         assert_eq!(hosts[0].alias, "media");
         assert_eq!(hosts[0].hostname, None);
         assert_eq!(hosts[1].alias, "backup");
-        assert_eq!(
-            hosts[1].hostname.as_deref(),
-            Some("backup.example.ts.net")
-        );
+        assert_eq!(hosts[1].hostname.as_deref(), Some("backup.example.ts.net"));
     }
 
     #[test]

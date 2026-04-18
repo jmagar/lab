@@ -27,6 +27,8 @@ pub mod apprise;
 pub mod arcane;
 #[cfg(feature = "bytestash")]
 pub mod bytestash;
+#[cfg(feature = "deploy")]
+pub mod deploy;
 #[cfg(feature = "gotify")]
 pub mod gotify;
 #[cfg(feature = "linkding")]
@@ -192,6 +194,9 @@ pub enum Command {
     /// Apprise notification dispatcher.
     #[cfg(feature = "apprise")]
     Apprise(apprise::AppriseArgs),
+    /// Deploy the local lab release binary to SSH targets.
+    #[cfg(feature = "deploy")]
+    Deploy(deploy::DeployArgs),
 }
 
 /// Dispatch a parsed [`Cli`] to the correct handler.
@@ -256,5 +261,12 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Tei(args) => tei::run(args, format).await,
         #[cfg(feature = "apprise")]
         Command::Apprise(args) => apprise::run(args, format).await,
+        #[cfg(feature = "deploy")]
+        Command::Deploy(args) => {
+            let runner = crate::dispatch::deploy::runner::NoopRunner;
+            deploy::run(args, format, &runner)
+                .await
+                .map(|()| ExitCode::SUCCESS)
+        }
     }
 }
