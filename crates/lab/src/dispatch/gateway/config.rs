@@ -191,6 +191,12 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
         });
     }
 
+    // Reject mutually-exclusive auth shapes (bearer_token_env + oauth).
+    upstream.validate().map_err(|e| ToolError::InvalidParam {
+        message: e.to_string(),
+        param: "bearer_token_env".to_string(),
+    })?;
+
     match (&upstream.url, &upstream.command) {
         (Some(_), Some(_)) => Err(ToolError::InvalidParam {
             message: "gateway must not set both `url` and `command`".to_string(),

@@ -281,7 +281,7 @@ async fn build_auth_client(base_uri: &str) -> Result<AuthClient<reqwest::Client>
     // whole spike is meaningless because AuthClient would skip injection.
     match manager.get_access_token().await {
         Ok(t) if t == SEEDED_ACCESS_TOKEN => {}
-        Ok(other) => anyhow::bail!("expected seeded token, got '{other}'"),
+        Ok(_other) => anyhow::bail!("expected seeded token, got <unexpected token>"),
         Err(AuthError::AuthorizationRequired) => {
             anyhow::bail!("manager says no creds — credential store seeding is broken");
         }

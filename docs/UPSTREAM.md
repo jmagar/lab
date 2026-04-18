@@ -200,9 +200,13 @@ that changes an upstream's `client_id` evicts cached entries with a stale
 where a config edit would otherwise keep old credentials attached to a new
 upstream definition.
 
-The global upstream pool (discovery, circuit breaker, catalog merging)
-remains unchanged and continues to apply to OAuth and static-bearer upstreams
-identically.
+OAuth-tagged upstreams are excluded from the global pool's startup discovery
+(`discover_all`), because discovery requires an authenticated subject that is
+not available at startup. They appear as unhealthy in the startup catalog and
+are not included in the merged tool list until an operator completes the OAuth
+flow. The circuit breaker and catalog merging infrastructure applies to
+static-bearer upstreams; OAuth upstreams are connected per-request, not
+pooled.
 
 ### Refresh Semantics
 

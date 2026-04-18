@@ -423,7 +423,7 @@ upstream 'acme' has both bearer_token_env and oauth configured — pick one
 | (per `client_secret_env`) | — | OAuth client secret for a preregistered confidential upstream, named in config. |
 
 **Key rotation procedure:** rotate by (1) generating a new key, (2) clearing
-all persisted upstream OAuth credentials (`POST /v1/gateway/oauth/clear?confirm=true`
+all persisted upstream OAuth credentials (`POST /v1/gateway/oauth/clear?upstream=<name>&confirm=true`
 per upstream, or remove rows from `upstream_oauth_credentials`), (3) updating
 `LAB_OAUTH_ENCRYPTION_KEY` in `~/.lab/.env`, (4) restarting `lab`, (5) asking
 each user to re-authorize each upstream. Decryption under the wrong key

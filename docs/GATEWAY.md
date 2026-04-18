@@ -137,16 +137,16 @@ session and the master-only middleware; non-master sessions get `403`.
 | `POST` | `/v1/gateway/oauth/start` | Begin authorization for the caller's subject. Body `{ "upstream": "<name>" }`. Returns `{ "authorization_url": "..." }` (JSON only — no browser-redirect mode). |
 | `GET` | `/auth/upstream/callback` | Authorization-code callback. Validates the authenticated session, atomically takes the pending state row (bound to `(upstream, subject)`), exchanges the code, persists encrypted credentials, redirects to `/gateway/oauth/result?upstream=<name>&status=<ok\|fail>`. |
 | `GET` | `/v1/gateway/oauth/status?upstream=<name>` | Returns `{ "authenticated": bool, "upstream": "<name>", "expires_within_5m": bool }`. Deliberately omits subject and raw expiry timestamp to avoid enumeration and fingerprinting. |
-| `POST` | `/v1/gateway/oauth/clear?confirm=true` | Destructive. Without `?confirm=true` returns `400` `confirmation_required`. With confirm, deletes credentials + evicts the cached `AuthClient`. In-flight requests complete naturally under the old credential (graceful drain by Rust ownership — not a designed protocol). |
+| `POST` | `/v1/gateway/oauth/clear?upstream=<name>&confirm=true` | Destructive. Requires both `upstream` (the upstream name) and `confirm=true` as query parameters. Without `confirm=true`, returns `422` with JSON `{ "kind": "confirmation_required", ... }`. With confirm, deletes persisted credentials and evicts the cached `AuthClient`. In-flight requests complete naturally under the old credential (graceful drain by Rust ownership — not a designed protocol). |
 
 Callback security invariants (enforced in code, spec-required):
 
 - No authenticated session → `oauth_state_invalid` (no subject derivation from
   the `state` parameter is permitted).
 - Subject is derived from the session, not the state row.
-- The `upstream` query parameter is validated against the pending state row's
-  upstream name (the SQL PK already enforces this; the handler enforces it
-  again in code).
+- The `upstream` query parameter is forwarded to the manager, which enforces it
+  against the pending state row's upstream name via the SQL primary key
+  (`(upstream_name, csrf_token)`).
 - `state` is matched via a single `DELETE ... RETURNING` to prevent replay
   across connection-pool races.
 - The result page HTML-escapes the operator-controlled `upstream` name.
