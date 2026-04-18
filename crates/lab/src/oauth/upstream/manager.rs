@@ -455,14 +455,6 @@ fn url_origin(s: &str) -> Option<String> {
     }
 }
 
-/// Return the lowercased host of a URL, or `None` if the URL is invalid or hostless.
-#[allow(dead_code)]
-fn url_host(s: &str) -> Option<String> {
-    url::Url::parse(s)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
-}
-
 fn extract_state_param(url: &str) -> Option<String> {
     let parsed = url::Url::parse(url).ok()?;
     parsed

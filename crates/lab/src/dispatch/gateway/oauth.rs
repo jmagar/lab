@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::gateway::manager::GatewayManager;
-use crate::oauth::upstream::types::{BeginAuthorization, OauthError};
+use crate::oauth::upstream::types::BeginAuthorization;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct UpstreamOauthStatusView {
@@ -49,9 +49,3 @@ pub async fn clear(
     manager.clear_upstream_credentials(upstream, subject).await
 }
 
-pub fn tool_error_from_oauth(error: OauthError) -> ToolError {
-    ToolError::Sdk {
-        sdk_kind: error.kind().to_string(),
-        message: error.to_string(),
-    }
-}

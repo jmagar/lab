@@ -114,8 +114,8 @@ async fn run_wiremock_spike() -> Result<()> {
     let mcp_call_counter = Arc::new(AtomicUsize::new(0));
     let token_endpoint_counter = Arc::new(AtomicUsize::new(0));
 
-    // Step 1 check — first MCP call returns 200 with JSON, and asserts the
-    // bearer header is present.
+    // Step 1 check — asserts the seeded bearer token is sent, then returns 401
+    // to drive the re-authorization path (token is treated as expired/invalid).
     let mcp_counter_ok = mcp_call_counter.clone();
     Mock::given(method("POST"))
         .and(path("/mcp"))
@@ -125,7 +125,7 @@ async fn run_wiremock_spike() -> Result<()> {
         ))
         .respond_with(move |_req: &wiremock::Request| {
             mcp_counter_ok.fetch_add(1, Ordering::SeqCst);
-            ResponseTemplate::new(401) // we advance to the 401 path on first call
+            ResponseTemplate::new(401)
                 .insert_header("www-authenticate", r#"Bearer error="invalid_token""#)
         })
         .up_to_n_times(1)
