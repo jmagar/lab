@@ -50,16 +50,6 @@ function toggleValue<T extends string>(current: T[], value: T): T[] {
     : [...current, value]
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-  return `${bytes} B`
-}
-
 export function LogToolbar({
   filters,
   windowPreset,
@@ -86,9 +76,15 @@ export function LogToolbar({
           detail="Current line window"
         />
         <MetricCard
-          label="Dropped"
+          label="Dropped events"
           value={stats ? String(stats.dropped_event_count) : '...'}
-          detail={stats ? formatBytes(stats.on_disk_bytes) : 'Loading stats'}
+          detail={
+            stats
+              ? (stats.dropped_event_count > 0
+                ? `${stats.dropped_event_count} dropped from live stream`
+                : 'No drops observed')
+              : 'Loading stats'
+          }
         />
         <MetricCard
           label="Stream"
@@ -106,8 +102,9 @@ export function LogToolbar({
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <label className="relative min-w-[240px] flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
+              <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
               <Input
+                aria-label="Search log events"
                 className={cn(AURORA_CONTROL_SURFACE, 'pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
                 placeholder="Search message, action, request id"
                 value={filters.text}

@@ -906,6 +906,14 @@ fn empty_upstream_summary() -> UpstreamCachedSummary {
     UpstreamCachedSummary::default()
 }
 
+fn is_nonessential_capability_error(message: &str) -> bool {
+    message.contains("Method not found") || message.contains("-32601")
+}
+
+fn operator_visible_upstream_error(message: Option<String>) -> Option<String> {
+    message.filter(|message| !is_nonessential_capability_error(message))
+}
+
 async fn upstream_summary(
     pool: Option<&UpstreamPool>,
     upstream_name: &str,
@@ -924,11 +932,14 @@ async fn server_view_from_upstream(
     upstream: &UpstreamConfig,
 ) -> ServerView {
     let summary = upstream_summary(pool, &upstream.name).await;
-    let last_error = match pool {
-        Some(pool) => pool.upstream_tool_last_error(&upstream.name).await,
-        None => None,
-    };
-    let connected = summary.exposed_tool_count > 0;
+    let last_error =
+        operator_visible_upstream_error(match pool {
+            Some(pool) => pool.upstream_last_error(&upstream.name).await,
+            None => None,
+        });
+    let connected = summary.exposed_tool_count > 0
+        || summary.exposed_resource_count > 0
+        || summary.exposed_prompt_count > 0;
 
     ServerView {
         id: upstream.name.clone(),
@@ -1231,7 +1242,7 @@ async fn runtime_view(
         exposed_tool_count: summary.exposed_tool_count,
         exposed_resource_count: summary.exposed_resource_count,
         exposed_prompt_count: summary.exposed_prompt_count,
-        last_error: pool.upstream_tool_last_error(name).await,
+        last_error: operator_visible_upstream_error(pool.upstream_last_error(name).await),
     }
 }
 
@@ -1758,7 +1769,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runtime_view_ignores_prompt_and_resource_only_errors() {
+    async fn runtime_view_preserves_non_benign_prompt_and_resource_errors() {
         let pool = UpstreamPool::new();
         let upstream_name: Arc<str> = Arc::from("partial-upstream");
         let entry = crate::dispatch::upstream::types::UpstreamEntry {
@@ -1785,11 +1796,84 @@ mod tests {
         pool.insert_entry_for_tests("partial-upstream", entry).await;
 
         let runtime = runtime_view(Some(&pool), "partial-upstream", None).await;
-        assert_eq!(runtime.last_error, None);
+        assert_eq!(
+            runtime.last_error.as_deref(),
+            Some("resource listing unsupported")
+        );
+
+        let server = server_view_from_upstream(
+            Some(&pool),
+            &UpstreamConfig {
+                name: "partial-upstream".to_string(),
+                url: Some("http://127.0.0.1:8080/mcp".to_string()),
+                bearer_token_env: None,
+                command: None,
+                args: Vec::new(),
+                proxy_resources: true,
+                expose_tools: None,
+            },
+        )
+        .await;
+
+        assert_eq!(server.warnings.len(), 1);
+        assert_eq!(server.warnings[0].message, "resource listing unsupported");
     }
 
     #[tokio::test]
-    async fn custom_gateway_connected_uses_exposed_tools_only() {
+    async fn runtime_view_ignores_method_not_found_capability_errors() {
+        let pool = UpstreamPool::new();
+        let upstream_name: Arc<str> = Arc::from("partial-upstream");
+        let entry = crate::dispatch::upstream::types::UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            prompt_count: 1,
+            resource_count: 1,
+            tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            resource_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: Some(std::time::Instant::now()),
+            resource_unhealthy_since: Some(std::time::Instant::now()),
+            tool_last_error: None,
+            prompt_last_error: Some(
+                "failed to list prompts from upstream: Mcp error: -32601: Method not found"
+                    .to_string(),
+            ),
+            resource_last_error: Some(
+                "failed to list resources from upstream: Mcp error: -32601: Method not found"
+                    .to_string(),
+            ),
+        };
+
+        pool.insert_entry_for_tests("partial-upstream", entry).await;
+
+        let runtime = runtime_view(Some(&pool), "partial-upstream", None).await;
+        assert_eq!(runtime.last_error, None);
+
+        let server = server_view_from_upstream(
+            Some(&pool),
+            &UpstreamConfig {
+                name: "partial-upstream".to_string(),
+                url: Some("http://127.0.0.1:8080/mcp".to_string()),
+                bearer_token_env: None,
+                command: None,
+                args: Vec::new(),
+                proxy_resources: true,
+                expose_tools: None,
+            },
+        )
+        .await;
+
+        assert!(server.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn custom_gateway_connected_includes_resources_and_prompts() {
         let pool = UpstreamPool::new();
         let upstream = UpstreamConfig {
             name: "partial-upstream".to_string(),
@@ -1821,7 +1905,7 @@ mod tests {
         pool.insert_entry_for_tests("partial-upstream", entry).await;
 
         let view = server_view_from_upstream(Some(&pool), &upstream).await;
-        assert!(!view.connected);
+        assert!(view.connected);
         assert!(view.warnings.is_empty());
         assert_eq!(view.exposed_resource_count, 2);
         assert_eq!(view.exposed_prompt_count, 4);

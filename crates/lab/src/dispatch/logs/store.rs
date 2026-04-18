@@ -75,7 +75,8 @@ impl LogStore {
             .await
     }
 
-    #[cfg(test)]
+    #[doc(hidden)]
+    #[allow(dead_code)]
     pub async fn run_maintenance(&self) -> Result<(), ToolError> {
         let retention = self.retention;
         self.blocking("maintenance", move |c| run_maintenance(c, retention))
@@ -101,7 +102,7 @@ impl LogStore {
 }
 
 #[doc(hidden)]
-#[cfg(test)]
+#[allow(dead_code)]
 pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, ToolError> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let unique = SystemTime::now()
@@ -362,7 +363,7 @@ fn content_bytes(conn: &Connection) -> Result<u64, rusqlite::Error> {
 
 // ── Maintenance ───────────────────────────────────────────────────────────────
 
-#[cfg(test)]
+#[allow(dead_code)]
 fn run_maintenance(conn: &Connection, retention: LogRetention) -> Result<(), rusqlite::Error> {
     let now_ms = super::ingest::now_ms();
     let age_ms = i64::try_from(retention.max_age_days)

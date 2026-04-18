@@ -433,12 +433,13 @@ export function normalizeGateway(
 
 export function probeStatusFromRuntime(runtime: BackendGatewayRuntimeView): GatewayProbeStatus {
   const toolCount = runtime.tool_count
+  const connectedCount = toolCount + runtime.resource_count + runtime.prompt_count
   const rawLastError = runtime.last_error?.trim() || undefined
   const lastError = rawLastError && !isNonEssentialCapabilityError(rawLastError)
     ? rawLastError
     : undefined
 
-  if (toolCount > 0) {
+  if (connectedCount > 0) {
     return {
       connected: true,
       healthy: !lastError,

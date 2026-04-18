@@ -179,7 +179,8 @@ pub struct LogEvent {
 
 impl LogEvent {
     #[must_use]
-    #[cfg(test)]
+    #[doc(hidden)]
+    #[allow(dead_code)]
     pub fn fixture() -> Self {
         Self {
             event_id: "evt-fixture".to_string(),
@@ -390,7 +391,8 @@ pub struct LogSystem {
 }
 
 impl LogSystem {
-    #[cfg(test)]
+    #[doc(hidden)]
+    #[allow(dead_code)]
     pub async fn ingest(&self, raw: RawLogEvent) -> Result<(), ToolError> {
         self.ingest.submit(raw).await
     }

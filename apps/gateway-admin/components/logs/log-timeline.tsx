@@ -81,6 +81,7 @@ export function LogTimeline({
           events.map((event) => {
             const selected = event.event_id === selectedEventId
             const expanded = event.event_id === expandedEventId
+            const detailsId = `log-event-details-${event.event_id}`
 
             return (
               <div
@@ -90,54 +91,57 @@ export function LogTimeline({
                   selected && 'bg-[rgba(41,182,246,0.12)] shadow-[inset_2px_0_0_#29b6f6]',
                 )}
               >
-                <div
-                  className={`${AURORA_TAIL_ROW} px-5 py-3 transition-colors hover:bg-[rgba(7,17,26,0.52)]`}
-                  onClick={() => onSelectEvent(event.event_id)}
-                  onKeyDown={(keyEvent) => {
-                    if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
-                      keyEvent.preventDefault()
-                      onSelectEvent(event.event_id)
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="font-mono text-xs leading-5 text-aurora-text-muted">
-                    {timestampFormatter.format(new Date(event.ts))}
-                  </div>
-                  <div className={`font-mono text-sm font-semibold ${AURORA_LEVEL_TEXT[event.level]}`}>
-                    {event.level.toUpperCase()}
-                  </div>
-                  <div className="font-mono text-sm text-aurora-text-muted">{event.subsystem}</div>
-                  <div className="min-w-0">
-                    <button
-                      type="button"
-                      className="flex w-full items-start gap-2 text-left"
-                      onClick={(clickEvent) => {
-                        clickEvent.stopPropagation()
-                        onSelectEvent(event.event_id)
-                        onToggleExpanded(event.event_id)
-                      }}
-                    >
-                      {expanded ? (
-                        <ChevronDown className="mt-0.5 size-4 shrink-0 text-aurora-text-muted" />
-                      ) : (
-                        <ChevronRight className="mt-0.5 size-4 shrink-0 text-aurora-text-muted" />
-                      )}
+                <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-stretch gap-2 px-5 py-3 transition-colors hover:bg-[rgba(7,17,26,0.52)]">
+                  <button
+                    type="button"
+                    className={`${AURORA_TAIL_ROW} min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/45 focus-visible:ring-inset`}
+                    onClick={() => onSelectEvent(event.event_id)}
+                  >
+                    <div className="font-mono text-xs leading-5 text-aurora-text-muted">
+                      {timestampFormatter.format(new Date(event.ts))}
+                    </div>
+                    <div className={`font-mono text-sm font-semibold ${AURORA_LEVEL_TEXT[event.level]}`}>
+                      {event.level.toUpperCase()}
+                    </div>
+                    <div className="font-mono text-sm text-aurora-text-muted">{event.subsystem}</div>
+                    <div className="min-w-0">
                       <span
                         className={cn(
-                          'min-w-0 font-mono text-sm text-aurora-text-primary',
+                          'block min-w-0 font-mono text-sm text-aurora-text-primary',
                           expanded ? 'whitespace-pre-wrap break-words leading-6' : 'truncate',
                         )}
                       >
                         {event.message}
                       </span>
-                    </button>
-                  </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center self-start rounded-full border border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-aurora-text-muted shadow-[0_8px_16px_rgba(0,0,0,0.16),var(--aurora-highlight-medium)] transition-colors hover:bg-[rgba(7,17,26,0.64)] hover:text-aurora-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/45"
+                    aria-controls={detailsId}
+                    aria-expanded={expanded}
+                    aria-label={expanded ? 'Collapse log details' : 'Expand log details'}
+                    onClick={() => {
+                      onSelectEvent(event.event_id)
+                      onToggleExpanded(event.event_id)
+                    }}
+                  >
+                    {expanded ? (
+                      <ChevronDown aria-hidden="true" className="size-4" />
+                    ) : (
+                      <ChevronRight aria-hidden="true" className="size-4" />
+                    )}
+                  </button>
                 </div>
 
                 {expanded ? (
-                  <div className={`${AURORA_TAIL_ROW} px-5 pb-4`}>
+                  <div
+                    id={detailsId}
+                    aria-label="Expanded log message"
+                    className={`${AURORA_TAIL_ROW} px-5 pb-4`}
+                    role="region"
+                  >
                     <div />
                     <div />
                     <div />

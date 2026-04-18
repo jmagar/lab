@@ -254,7 +254,7 @@ export function GatewayListContent() {
                 </div>
               </div>
             </div>
-          </div>
+          </section>
 
           <GatewayFilters
             search={search}

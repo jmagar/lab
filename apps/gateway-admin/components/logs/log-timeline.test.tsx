@@ -49,6 +49,9 @@ test('log timeline uses display headers and strong lifted panel styling', () => 
   assert.match(markup, /font-display/)
   assert.match(markup, /bg-aurora-panel-strong/)
   assert.match(markup, /Live edge/)
+  assert.match(markup, /aria-expanded="false"/)
+  assert.match(markup, /aria-controls="log-event-details-evt_1"/)
+  assert.match(markup, /aria-label="Expand log details"/)
 })
 
 test('log inspector uses display headers and stronger elevated metadata panels', () => {

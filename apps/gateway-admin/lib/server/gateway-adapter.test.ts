@@ -414,6 +414,21 @@ test('probeStatusFromRuntime marks zero-capability gateways unhealthy', () => {
   )
 })
 
+test('probeStatusFromRuntime treats resource and prompt only gateways as connected', () => {
+  assert.deepEqual(
+    probeStatusFromRuntime({
+      name: 'fixture-resources',
+      tool_count: 0,
+      resource_count: 2,
+      prompt_count: 1,
+    }),
+    {
+      connected: true,
+      healthy: true,
+    }
+  )
+})
+
 test('normalizeGateway turns specific probe failures into actionable warnings', () => {
   const gateway = normalizeGateway(
     {
