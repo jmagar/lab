@@ -100,3 +100,30 @@ export const elevationTiers = [
     className: 'shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]',
   },
 ] as const
+
+export const environmentOptions = [
+  { value: 'preview', label: 'Preview cluster' },
+  { value: 'prod', label: 'Production' },
+  { value: 'edge', label: 'Edge canary' },
+] as const
+
+export const pillFilterOptions = [
+  'Healthy only',
+  'Warnings',
+  'Protected routes',
+  'Paused rollouts',
+] as const
+
+export const accessModeOptions = [
+  { value: 'session', label: 'Session auth' },
+  { value: 'token', label: 'Bearer token' },
+  { value: 'mock', label: 'Mock data' },
+] as const
+
+export const feedbackModes = [
+  'loading',
+  'empty',
+  'success',
+  'warning',
+  'error',
+] as const

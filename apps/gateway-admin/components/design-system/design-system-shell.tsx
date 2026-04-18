@@ -6,6 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { ControlsSection } from './controls-section'
+import { FeedbackSection } from './feedback-section'
 import { FoundationsSection } from './foundations-section'
 
 const sectionHeadings = [
@@ -45,7 +47,13 @@ export function DesignSystemShell() {
           <div className="xl:col-span-2">
             <FoundationsSection />
           </div>
-          {sectionHeadings.filter((heading) => heading !== 'Theme Foundations').map((heading) => (
+          <div className="xl:col-span-2">
+            <ControlsSection />
+          </div>
+          <div className="xl:col-span-2">
+            <FeedbackSection />
+          </div>
+          {sectionHeadings.filter((heading) => !['Theme Foundations', 'Controls', 'Feedback'].includes(heading)).map((heading) => (
             <Card key={heading} className="h-full">
               <CardHeader className="border-b">
                 <CardTitle>{heading}</CardTitle>
