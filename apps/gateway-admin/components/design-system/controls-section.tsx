@@ -36,10 +36,10 @@ import {
 import { useDemoAsync } from './demo-state'
 
 export function ControlsSection() {
-  const [environment, setEnvironment] = useState(environmentOptions[0].value)
+  const [environment, setEnvironment] = useState<string>(environmentOptions[0].value)
   const [query, setQuery] = useState('gateway.status:healthy')
   const [notes, setNotes] = useState('Roll out the refreshed admin affordances behind a hidden route.')
-  const [accessMode, setAccessMode] = useState(accessModeOptions[0].value)
+  const [accessMode, setAccessMode] = useState<string>(accessModeOptions[0].value)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [notifyOwners, setNotifyOwners] = useState(true)
   const [pillFilters, setPillFilters] = useState<string[]>([
