@@ -69,6 +69,7 @@ utoipa-scalar.workspace      = true
 
 [dev-dependencies]
 wiremock.workspace           = true
+oauth2                       = { version = "5.0", default-features = false }
 
 [lib]
 path = "src/lib.rs"
