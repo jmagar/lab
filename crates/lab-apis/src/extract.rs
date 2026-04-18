@@ -11,7 +11,7 @@
 //!
 //! ```no_run
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
-//! use lab_apis::extract::ExtractClient;
+//! use lab_apis::extract::{ExtractClient, ScanTarget, Uri};
 //!
 //! let client = ExtractClient::new();
 //! let target: lab_apis::extract::Uri = "squirts:/mnt/appdata".parse()?;

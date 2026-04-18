@@ -19,7 +19,6 @@ use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use lab_apis::core::ssh::{SshHostTarget, SshSession, shell_quote};
 use lab_apis::deploy::{
@@ -47,24 +46,30 @@ pub trait DeployRunner: Send + Sync {
 /// The production implementation is `SshHostIo` backed by `SshSession`.
 /// Tests substitute a recording fake that captures the op stream and
 /// returns scripted responses without touching the network.
+///
+/// All methods are sync fns returning `'static` futures. This avoids
+/// higher-ranked trait bound (HRTB) errors in `Box::pin(async move { … } +
+/// Send + 'static)` contexts (Rust issue #100013). Implementations must do
+/// all `&self` work synchronously and capture only owned values in the
+/// returned future.
 pub trait HostIo: Send + Sync {
     fn run_argv(
         &self,
         argv: &[&str],
-    ) -> impl Future<Output = Result<(i32, String, String), DeployError>> + Send;
+    ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), DeployError>> + Send + 'static>>;
 
-    fn upload_stream<'a, R>(
-        &'a self,
-        remote_path: &'a str,
+    fn upload_stream<R>(
+        &self,
+        remote_path: &str,
         reader: R,
-    ) -> impl Future<Output = Result<u64, DeployError>> + Send + 'a
+    ) -> Pin<Box<dyn Future<Output = Result<u64, DeployError>> + Send + 'static>>
     where
-        R: tokio::io::AsyncRead + Unpin + Send + 'a;
+        R: tokio::io::AsyncRead + Unpin + Send + 'static;
 
     fn sha256_remote(
         &self,
         remote_path: &str,
-    ) -> impl Future<Output = Result<Option<String>, DeployError>> + Send;
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, DeployError>> + Send + 'static>>;
 }
 
 /// Production `HostIo` impl backed by `lab_apis::core::ssh::SshSession`.
@@ -87,42 +92,48 @@ impl SshHostIo {
 }
 
 impl HostIo for SshHostIo {
-    async fn run_argv(
+    fn run_argv(
         &self,
         argv: &[&str],
-    ) -> Result<(i32, String, String), DeployError> {
-        self.session
-            .run_command(argv)
-            .await
-            .map_err(|e| DeployError::SshUnreachable {
-                host: format!("{}: {e}", self.host),
+    ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), DeployError>> + Send + 'static>> {
+        let fut = self.session.run_command(argv);
+        let host = self.host.clone();
+        Box::pin(async move {
+            fut.await.map_err(|e| DeployError::SshUnreachable {
+                host: format!("{host}: {e}"),
             })
+        })
     }
 
-    async fn upload_stream<'a, R>(
-        &'a self,
-        remote_path: &'a str,
+    fn upload_stream<R>(
+        &self,
+        remote_path: &str,
         reader: R,
-    ) -> Result<u64, DeployError>
+    ) -> Pin<Box<dyn Future<Output = Result<u64, DeployError>> + Send + 'static>>
     where
-        R: tokio::io::AsyncRead + Unpin + Send + 'a,
+        R: tokio::io::AsyncRead + Unpin + Send + 'static,
     {
-        self.session
-            .upload_stream(remote_path, reader)
-            .await
-            .map_err(|e| DeployError::TransferFailed {
-                host: self.host.clone(),
+        let fut = self.session.upload_stream(remote_path, reader);
+        let host = self.host.clone();
+        Box::pin(async move {
+            fut.await.map_err(|e| DeployError::TransferFailed {
+                host,
                 reason: e.to_string(),
             })
+        })
     }
 
-    async fn sha256_remote(&self, remote_path: &str) -> Result<Option<String>, DeployError> {
-        self.session
-            .sha256_remote(remote_path)
-            .await
-            .map_err(|e| DeployError::SshUnreachable {
-                host: format!("{}: {e}", self.host),
+    fn sha256_remote(
+        &self,
+        remote_path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<String>, DeployError>> + Send + 'static>> {
+        let fut = self.session.sha256_remote(remote_path);
+        let host = self.host.clone();
+        Box::pin(async move {
+            fut.await.map_err(|e| DeployError::SshUnreachable {
+                host: format!("{host}: {e}"),
             })
+        })
     }
 }
 
@@ -142,14 +153,17 @@ pub struct PreflightOutcome {
 /// allowlist-validated via `params::validate_remote_path` at the top of this
 /// function and the canary filename is a fixed pattern — the path is also
 /// shell-single-quote-escaped before interpolation.
-pub async fn preflight<I: HostIo>(
-    io: &I,
-    remote_path: &str,
-    local_triple: &str,
-    local_sha256: &str,
+///
+/// Takes `Arc<I>` and owned strings so the resulting future holds only
+/// `Send` values across await points (no HRTB via Rust issue #100013).
+pub async fn preflight<I: HostIo + 'static>(
+    io: Arc<I>,
+    remote_path: String,
+    local_triple: String,
+    local_sha256: String,
 ) -> Result<PreflightOutcome, DeployError> {
     // 0) Validate remote_path against the allowlist before any shell use.
-    params::validate_remote_path(remote_path)?;
+    params::validate_remote_path(&remote_path)?;
 
     // 1) Architecture match.
     let (code, stdout, stderr) = io.run_argv(&["uname", "-m"]).await?;
@@ -160,7 +174,7 @@ pub async fn preflight<I: HostIo>(
         });
     }
     let remote_arch = stdout.trim().to_string();
-    let local_arch = triple_to_arch(local_triple);
+    let local_arch = triple_to_arch(&local_triple);
     if !arch_matches(&local_arch, &remote_arch) {
         return Err(DeployError::ArchMismatch {
             host: "?".into(),
@@ -170,7 +184,7 @@ pub async fn preflight<I: HostIo>(
     }
 
     // 2) Writable install dir (canary touch + rm).
-    let parent = Path::new(remote_path)
+    let parent = Path::new(&remote_path)
         .parent()
         .ok_or_else(|| DeployError::PreflightFailed {
             host: "?".into(),
@@ -193,9 +207,9 @@ pub async fn preflight<I: HostIo>(
     }
 
     // 3) Remote sha256 probe — when it matches, transfer is skipped.
-    let remote_sha = io.sha256_remote(remote_path).await?;
+    let remote_sha = io.sha256_remote(&remote_path).await?;
     Ok(PreflightOutcome {
-        skip_transfer: remote_sha.as_deref() == Some(local_sha256),
+        skip_transfer: remote_sha.as_deref() == Some(local_sha256.as_str()),
     })
 }
 
@@ -214,14 +228,17 @@ pub struct TransferOutcome {
 /// 3. `sha256sum <.new>` must equal `local_sha256` — else remove and abort
 /// 4. if `<remote_path>` exists, `mv -- <current> <remote_path>.bak.<ts>`
 /// 5. `mv -- <.new> <remote_path>` (atomic on same filesystem)
-pub async fn transfer_and_install<I: HostIo, R>(
-    io: &I,
-    remote_path: &str,
-    local_sha256: &str,
+///
+/// Takes `Arc<I>` and owned strings so the resulting future holds only
+/// `Send` values across await points (no HRTB via Rust issue #100013).
+pub async fn transfer_and_install<I: HostIo + 'static, R>(
+    io: Arc<I>,
+    remote_path: String,
+    local_sha256: String,
     reader: R,
 ) -> Result<TransferOutcome, DeployError>
 where
-    R: tokio::io::AsyncRead + Unpin + Send,
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
     let partial = format!("{remote_path}.new.partial");
     let staged = format!("{remote_path}.new");
@@ -254,10 +271,10 @@ where
 
     // 4) backup existing (only if present)
     let backup = format!("{remote_path}.bak.{}", backup_timestamp());
-    let maybe_existing = io.sha256_remote(remote_path).await?;
+    let maybe_existing = io.sha256_remote(&remote_path).await?;
     let backup_path = if maybe_existing.is_some() {
         let (code, _stdout, stderr) = io
-            .run_argv(&["mv", "--", remote_path, &backup])
+            .run_argv(&["mv", "--", &remote_path, &backup])
             .await?;
         if code != 0 {
             return Err(DeployError::InstallFailed {
@@ -271,7 +288,7 @@ where
     };
 
     // 5) atomic swap .new -> remote_path
-    let (code, _stdout, stderr) = io.run_argv(&["mv", "--", &staged, remote_path]).await?;
+    let (code, _stdout, stderr) = io.run_argv(&["mv", "--", &staged, &remote_path]).await?;
     if code != 0 {
         return Err(DeployError::InstallFailed {
             host: "?".into(),
@@ -294,29 +311,33 @@ pub struct RestartOutcome {
 /// When `unit` is `None`, returns `skipped = true` without running any
 /// remote command. Unit names are validated against
 /// `params::validate_service_name` before any `systemctl` call.
-pub async fn restart<I: HostIo>(
-    io: &I,
-    unit: Option<&str>,
+///
+/// Takes `Arc<I>` and an owned `unit` string so the resulting future holds
+/// only `Send` values across await points (no HRTB via Rust issue #100013).
+pub async fn restart<I: HostIo + 'static>(
+    io: Arc<I>,
+    unit: Option<String>,
     scope: Option<ServiceScope>,
 ) -> Result<RestartOutcome, DeployError> {
     let Some(unit) = unit else {
         return Ok(RestartOutcome { skipped: true });
     };
-    params::validate_service_name(unit)?;
+    params::validate_service_name(&unit)?;
 
     let user_scope = matches!(scope, Some(ServiceScope::User));
 
-    fn systemctl_argv<'a>(user_scope: bool, subcommand: &'a str, unit: &'a str) -> Vec<&'a str> {
-        let mut v = vec!["systemctl"];
+    fn systemctl_argv(user_scope: bool, subcommand: &str, unit: &str) -> Vec<String> {
+        let mut v: Vec<String> = vec!["systemctl".into()];
         if user_scope {
-            v.push("--user");
+            v.push("--user".into());
         }
-        v.push(subcommand);
-        v.push(unit);
+        v.push(subcommand.to_string());
+        v.push(unit.to_string());
         v
     }
 
-    let restart_argv = systemctl_argv(user_scope, "restart", unit);
+    let restart_args = systemctl_argv(user_scope, "restart", &unit);
+    let restart_argv: Vec<&str> = restart_args.iter().map(String::as_str).collect();
     let (code, _stdout, stderr) = io.run_argv(&restart_argv).await?;
     if code != 0 {
         return Err(DeployError::RestartFailed {
@@ -325,8 +346,11 @@ pub async fn restart<I: HostIo>(
         });
     }
 
-    let mut wait_argv = systemctl_argv(user_scope, "is-active", unit);
-    wait_argv.push("--wait");
+    let mut wait_args = systemctl_argv(user_scope, "is-active", &unit);
+    // Insert --wait before the unit name (last element) per systemctl convention.
+    let unit_pos = wait_args.len() - 1;
+    wait_args.insert(unit_pos, "--wait".into());
+    let wait_argv: Vec<&str> = wait_args.iter().map(String::as_str).collect();
     let (code, _stdout, stderr) = io.run_argv(&wait_argv).await?;
     if code != 0 {
         return Err(DeployError::RestartFailed {
@@ -338,8 +362,14 @@ pub async fn restart<I: HostIo>(
 }
 
 /// Verify the newly installed binary by running `<remote_path> --version`.
-pub async fn verify<I: HostIo>(io: &I, remote_path: &str) -> Result<(), DeployError> {
-    let (code, _stdout, stderr) = io.run_argv(&[remote_path, "--version"]).await?;
+///
+/// Takes `Arc<I>` and an owned `remote_path` string so the resulting future
+/// holds only `Send` values across await points (no HRTB via Rust issue #100013).
+pub async fn verify<I: HostIo + 'static>(
+    io: Arc<I>,
+    remote_path: String,
+) -> Result<(), DeployError> {
+    let (code, _stdout, stderr) = io.run_argv(&[remote_path.as_str(), "--version"]).await?;
     if code != 0 {
         return Err(DeployError::VerifyFailed {
             host: "?".into(),
@@ -384,32 +414,6 @@ fn backup_timestamp() -> String {
         .to_string()
 }
 
-// ── AssertSend ────────────────────────────────────────────────────────────
-//
-// Rust issue #100013: the compiler generates `for<'a> &'a T: Send` (HRTB)
-// constraints for async fn futures that borrow parameters across await points.
-// Even when T: Sync (so &T: Send holds for any specific lifetime), the
-// compiler cannot prove the HRTB form, causing false-positive errors.
-//
-// AssertSend wraps a future and unsafely marks it as Send. It is used only at
-// the Box::pin boundaries in run_impl and rollback_impl, where every captured
-// type in the async call graph (HostJob, SshHostIo, BuildOutcome,
-// HostLockRegistry) is genuinely Send + Sync. The unsafety is justified by
-// the structural guarantee that no non-Send type reaches those futures.
-#[repr(transparent)]
-struct AssertSend<F>(F);
-
-// SAFETY: see comment above — all types reachable from the wrapped future
-// are Send + Sync. This impl works around Rust issue #100013.
-unsafe impl<F: Future> Send for AssertSend<F> {}
-
-impl<F: Future> Future for AssertSend<F> {
-    type Output = F::Output;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
-        // SAFETY: repr(transparent) + we never move F out of the Pin.
-        unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0).poll(cx) }
-    }
-}
 
 // ── DefaultRunner ──────────────────────────────────────────────────────────
 
@@ -619,8 +623,7 @@ impl DefaultRunner {
         );
 
         // --- async: only owned / Arc values, no &self ---
-        // AssertSend: see module-level comment on the AssertSend struct.
-        Box::pin(AssertSend(
+        Box::pin(
             async move {
                 let build_outcome = Arc::new(build::build_release().await?);
                 tracing::info!(
@@ -667,7 +670,7 @@ impl DefaultRunner {
                 Ok(summarize(run_id, build_outcome.sha256.clone(), all_results))
             }
             .instrument(span),
-        ))
+        )
     }
 
     pub fn rollback_impl(
@@ -706,8 +709,7 @@ impl DefaultRunner {
         );
 
         // --- async: only owned / Arc values, no &self ---
-        // AssertSend: see module-level comment on the AssertSend struct.
-        Box::pin(AssertSend(
+        Box::pin(
             async move {
                 use futures::stream::{self, StreamExt};
 
@@ -741,12 +743,12 @@ impl DefaultRunner {
                                     };
                                 }
                             };
-                            let io = SshHostIo::new(data.host.clone(), target);
+                            let io = Arc::new(SshHostIo::new(data.host.clone(), target));
                             rollback_one_host(
-                                &io,
-                                &data.host,
-                                &data.remote_path,
-                                data.unit.as_deref(),
+                                io,
+                                data.host,
+                                data.remote_path,
+                                data.unit,
                                 data.scope,
                             )
                             .await
@@ -759,7 +761,7 @@ impl DefaultRunner {
                 Ok(summarize(run_id, String::new(), results))
             }
             .instrument(span),
-        ))
+        )
     }
 
     pub fn config_list_impl(&self) -> Result<Value, ToolError> {
@@ -879,7 +881,7 @@ impl DefaultRunner {
                         host = %job.host,
                         run_id = %run_id,
                     );
-                    let res = run_single_job(&job, &build, &locks).instrument(span).await;
+                    let res = run_single_job(job, build, locks).instrument(span).await;
                     if fail_fast && !res.succeeded {
                         stop.store(true, Ordering::SeqCst);
                     }
@@ -930,17 +932,10 @@ where
                     host = %host,
                     run_id = %run_id,
                 );
-                let io = io_factory(&host);
-                let res = run_host_pipeline(
-                    &io,
-                    &host,
-                    &remote_path,
-                    unit.as_deref(),
-                    scope,
-                    &build,
-                )
-                .instrument(span)
-                .await;
+                let io = Arc::new(io_factory(&host));
+                let res = run_host_pipeline(io, host.clone(), remote_path, unit, scope, build)
+                    .instrument(span)
+                    .await;
                 if fail_fast && !res.succeeded {
                     stop.store(true, Ordering::SeqCst);
                 }
@@ -953,12 +948,16 @@ where
 }
 
 /// Drive a fully-resolved single-host job: acquire lock, walk stages.
+///
+/// Takes all arguments by value so the resulting future does not hold any
+/// borrowed references across await points, which would trigger HRTB errors
+/// in `Box::pin(…+Send+'static)` contexts (Rust issue #100013).
 async fn run_single_job(
-    job: &HostJob,
-    build: &BuildOutcome,
-    locks: &HostLockRegistry,
+    job: HostJob,
+    build: Arc<BuildOutcome>,
+    locks: Arc<HostLockRegistry>,
 ) -> DeployHostResult {
-    let io = SshHostIo::new(job.host.clone(), job.target.clone());
+    let io = Arc::new(SshHostIo::new(job.host.clone(), job.target.clone()));
     let lock_timeout = std::time::Duration::from_secs(60);
     let _guard = match locks.acquire(&job.host, lock_timeout).await {
         Ok(g) => g,
@@ -975,10 +974,10 @@ async fn run_single_job(
         }
     };
     run_host_pipeline(
-        &io,
-        &job.host,
-        &job.remote_path,
-        job.unit.as_deref(),
+        io,
+        job.host,
+        job.remote_path,
+        job.unit,
         job.scope,
         build,
     )
@@ -986,13 +985,13 @@ async fn run_single_job(
 }
 
 
-pub async fn run_host_pipeline<I: HostIo>(
-    io: &I,
-    host: &str,
-    remote_path: &str,
-    unit: Option<&str>,
+pub async fn run_host_pipeline<I: HostIo + 'static>(
+    io: Arc<I>,
+    host: String,
+    remote_path: String,
+    unit: Option<String>,
     scope: Option<ServiceScope>,
-    build: &BuildOutcome,
+    build: Arc<BuildOutcome>,
 ) -> DeployHostResult {
     use std::time::Instant;
 
@@ -1002,14 +1001,21 @@ pub async fn run_host_pipeline<I: HostIo>(
 
     // Preflight
     let t = Instant::now();
-    let pre = match preflight(io, remote_path, &build.target_triple, &build.sha256).await {
+    let pre = match preflight(
+        io.clone(),
+        remote_path.clone(),
+        build.target_triple.clone(),
+        build.sha256.clone(),
+    )
+    .await
+    {
         Ok(p) => {
             timings.insert("preflight".into(), t.elapsed().as_millis());
             p
         }
         Err(e) => {
             timings.insert("preflight".into(), t.elapsed().as_millis());
-            return host_err(host, DeployStage::Preflight, e, timings, false);
+            return host_err(&host, DeployStage::Preflight, e, timings, false);
         }
     };
     let skipped_transfer = pre.skip_transfer;
@@ -1022,7 +1028,7 @@ pub async fn run_host_pipeline<I: HostIo>(
             Err(e) => {
                 timings.insert("transfer".into(), t.elapsed().as_millis());
                 return host_err(
-                    host,
+                    &host,
                     DeployStage::Transfer,
                     DeployError::BuildFailed {
                         reason: format!("open artifact: {e}"),
@@ -1033,14 +1039,16 @@ pub async fn run_host_pipeline<I: HostIo>(
             }
         };
         let outcome =
-            match transfer_and_install(io, remote_path, &build.sha256, reader).await {
+            match transfer_and_install(io.clone(), remote_path.clone(), build.sha256.clone(), reader)
+                .await
+            {
                 Ok(o) => {
                     timings.insert("transfer".into(), t.elapsed().as_millis());
                     o
                 }
                 Err(e) => {
                     timings.insert("transfer".into(), t.elapsed().as_millis());
-                    return host_err(host, DeployStage::Install, e, timings, false);
+                    return host_err(&host, DeployStage::Install, e, timings, false);
                 }
             };
         transferred_bytes = Some(outcome.bytes);
@@ -1048,24 +1056,24 @@ pub async fn run_host_pipeline<I: HostIo>(
 
     // Restart
     let t = Instant::now();
-    if let Err(e) = restart(io, unit, scope).await {
+    if let Err(e) = restart(io.clone(), unit, scope).await {
         timings.insert("restart".into(), t.elapsed().as_millis());
         // skipped_transfer carries the actual preflight outcome: if transfer
         // was already skipped before restart failed, report that faithfully.
-        return host_err(host, DeployStage::Restart, e, timings, skipped_transfer);
+        return host_err(&host, DeployStage::Restart, e, timings, skipped_transfer);
     }
     timings.insert("restart".into(), t.elapsed().as_millis());
 
     // Verify
     let t = Instant::now();
-    if let Err(e) = verify(io, remote_path).await {
+    if let Err(e) = verify(io, remote_path.clone()).await {
         timings.insert("verify".into(), t.elapsed().as_millis());
-        return host_err(host, DeployStage::Verify, e, timings, skipped_transfer);
+        return host_err(&host, DeployStage::Verify, e, timings, skipped_transfer);
     }
     timings.insert("verify".into(), t.elapsed().as_millis());
 
     DeployHostResult {
-        host: host.to_string(),
+        host,
         reached_stage: DeployStage::Verify,
         succeeded: true,
         skipped_transfer,
@@ -1075,11 +1083,11 @@ pub async fn run_host_pipeline<I: HostIo>(
     }
 }
 
-async fn rollback_one_host<I: HostIo>(
-    io: &I,
-    host: &str,
-    remote_path: &str,
-    unit: Option<&str>,
+async fn rollback_one_host<I: HostIo + 'static>(
+    io: Arc<I>,
+    host: String,
+    remote_path: String,
+    unit: Option<String>,
     scope: Option<ServiceScope>,
 ) -> DeployHostResult {
     let mut timings: std::collections::BTreeMap<String, u128> =
@@ -1087,16 +1095,16 @@ async fn rollback_one_host<I: HostIo>(
     use std::time::Instant;
 
     // Validate remote_path against the allowlist before any shell use.
-    if let Err(e) = params::validate_remote_path(remote_path) {
-        return host_err(host, DeployStage::Resolve, e, timings, false);
+    if let Err(e) = params::validate_remote_path(&remote_path) {
+        return host_err(&host, DeployStage::Resolve, e, timings, false);
     }
 
     // Find the most recent .bak.<ts> file in the parent directory.
-    let parent = match Path::new(remote_path).parent() {
+    let parent = match Path::new(&remote_path).parent() {
         Some(p) => p.to_string_lossy().into_owned(),
         None => {
             return host_err(
-                host,
+                &host,
                 DeployStage::Resolve,
                 DeployError::ValidationFailed {
                     field: "remote_path".into(),
@@ -1107,7 +1115,7 @@ async fn rollback_one_host<I: HostIo>(
             );
         }
     };
-    let binary = Path::new(remote_path)
+    let binary = Path::new(&remote_path)
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "lab".to_string());
@@ -1122,12 +1130,12 @@ async fn rollback_one_host<I: HostIo>(
     let cmd = format!("ls -1 {pattern} 2>/dev/null | sort | tail -n1");
     let (code, stdout, stderr) = match io.run_argv(&["sh", "-c", &cmd]).await {
         Ok(v) => v,
-        Err(e) => return host_err(host, DeployStage::Resolve, e, timings, false),
+        Err(e) => return host_err(&host, DeployStage::Resolve, e, timings, false),
     };
     if code != 0 || stdout.trim().is_empty() {
         timings.insert("rollback.find".into(), t.elapsed().as_millis());
         return host_err(
-            host,
+            &host,
             DeployStage::Resolve,
             DeployError::ValidationFailed {
                 field: "backup".into(),
@@ -1141,17 +1149,17 @@ async fn rollback_one_host<I: HostIo>(
     timings.insert("rollback.find".into(), t.elapsed().as_millis());
 
     let t = Instant::now();
-    let (code, _stdout, stderr) = match io.run_argv(&["mv", "--", &backup, remote_path]).await {
+    let (code, _stdout, stderr) = match io.run_argv(&["mv", "--", &backup, &remote_path]).await {
         Ok(v) => v,
-        Err(e) => return host_err(host, DeployStage::Install, e, timings, false),
+        Err(e) => return host_err(&host, DeployStage::Install, e, timings, false),
     };
     timings.insert("rollback.restore".into(), t.elapsed().as_millis());
     if code != 0 {
         return host_err(
-            host,
+            &host,
             DeployStage::Install,
             DeployError::InstallFailed {
-                host: host.to_string(),
+                host: host.clone(),
                 reason: format!("rollback rename: {}", stderr.trim()),
             },
             timings,
@@ -1165,12 +1173,12 @@ async fn rollback_one_host<I: HostIo>(
     let t = Instant::now();
     if let Err(e) = restart(io, unit, scope).await {
         timings.insert("rollback.restart".into(), t.elapsed().as_millis());
-        return host_err(host, DeployStage::Restart, e, timings, false);
+        return host_err(&host, DeployStage::Restart, e, timings, false);
     }
     timings.insert("rollback.restart".into(), t.elapsed().as_millis());
 
     DeployHostResult {
-        host: host.to_string(),
+        host,
         reached_stage: DeployStage::Verify,
         succeeded: true,
         skipped_transfer: false,
@@ -1330,65 +1338,63 @@ pub mod test_support {
     }
 
     impl HostIo for RecordingIo {
-        async fn run_argv(
+        fn run_argv(
             &self,
             argv: &[&str],
-        ) -> Result<(i32, String, String), DeployError> {
+        ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), DeployError>> + Send + 'static>> {
             let joined = argv.join(",");
-            self.log
-                .lock()
-                .unwrap()
-                .push(format!("run:{joined}"));
-            let resp = self
-                .run_queue
-                .lock()
-                .unwrap()
-                .drain(..1)
-                .next()
-                .unwrap_or_else(|| RunResp::ok(""));
-            Ok((resp.code, resp.stdout, resp.stderr))
+            let log = self.log.clone();
+            let run_queue = self.run_queue.clone();
+            Box::pin(async move {
+                log.lock().unwrap().push(format!("run:{joined}"));
+                let resp = run_queue
+                    .lock()
+                    .unwrap()
+                    .drain(..1)
+                    .next()
+                    .unwrap_or_else(|| RunResp::ok(""));
+                Ok((resp.code, resp.stdout, resp.stderr))
+            })
         }
 
-        async fn upload_stream<'a, R>(
-            &'a self,
-            remote_path: &'a str,
-            mut reader: R,
-        ) -> Result<u64, DeployError>
-        where
-            R: AsyncRead + Unpin + Send + 'a,
-        {
-            self.log
-                .lock()
-                .unwrap()
-                .push(format!("upload:{remote_path}"));
-            let mut buf = Vec::new();
-            let bytes = reader
-                .read_to_end(&mut buf)
-                .await
-                .map_err(|e| DeployError::TransferFailed {
-                    host: "?".into(),
-                    reason: e.to_string(),
-                })? as u64;
-            self.upload_bytes.lock().unwrap().push(bytes);
-            Ok(bytes)
-        }
-
-        async fn sha256_remote(
+        fn upload_stream<R>(
             &self,
             remote_path: &str,
-        ) -> Result<Option<String>, DeployError> {
-            self.log
-                .lock()
-                .unwrap()
-                .push(format!("sha256:{remote_path}"));
-            let val = self
-                .sha_queue
-                .lock()
-                .unwrap()
-                .drain(..1)
-                .next()
-                .flatten();
-            Ok(val)
+            mut reader: R,
+        ) -> Pin<Box<dyn Future<Output = Result<u64, DeployError>> + Send + 'static>>
+        where
+            R: AsyncRead + Unpin + Send + 'static,
+        {
+            let remote_path = remote_path.to_string();
+            let log = self.log.clone();
+            let upload_bytes = self.upload_bytes.clone();
+            Box::pin(async move {
+                log.lock().unwrap().push(format!("upload:{remote_path}"));
+                let mut buf = Vec::new();
+                let bytes = reader
+                    .read_to_end(&mut buf)
+                    .await
+                    .map_err(|e| DeployError::TransferFailed {
+                        host: "?".into(),
+                        reason: e.to_string(),
+                    })? as u64;
+                upload_bytes.lock().unwrap().push(bytes);
+                Ok(bytes)
+            })
+        }
+
+        fn sha256_remote(
+            &self,
+            remote_path: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<String>, DeployError>> + Send + 'static>> {
+            let remote_path = remote_path.to_string();
+            let log = self.log.clone();
+            let sha_queue = self.sha_queue.clone();
+            Box::pin(async move {
+                log.lock().unwrap().push(format!("sha256:{remote_path}"));
+                let val = sha_queue.lock().unwrap().drain(..1).next().flatten();
+                Ok(val)
+            })
         }
     }
 }
@@ -1400,58 +1406,83 @@ mod tests_preflight {
 
     #[tokio::test]
     async fn rejects_arch_mismatch() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("aarch64\n"));
-        let err = preflight(&io, "/usr/local/bin/lab", "x86_64-unknown-linux-gnu", "abc123")
-            .await
-            .unwrap_err();
+        let err = preflight(
+            io,
+            "/usr/local/bin/lab".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "abc123".to_string(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.kind(), "arch_mismatch");
     }
 
     #[tokio::test]
     async fn reports_skip_when_remote_sha_matches() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("x86_64\n"));
         io.push_run(RunResp::ok("")); // canary
         io.push_sha(Some("abc123".to_string()));
-        let res = preflight(&io, "/usr/local/bin/lab", "x86_64-unknown-linux-gnu", "abc123")
-            .await
-            .unwrap();
+        let res = preflight(
+            io,
+            "/usr/local/bin/lab".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "abc123".to_string(),
+        )
+        .await
+        .unwrap();
         assert!(res.skip_transfer);
     }
 
     #[tokio::test]
     async fn does_not_skip_when_remote_sha_differs() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("x86_64\n"));
         io.push_run(RunResp::ok(""));
         io.push_sha(Some("deadbeef".to_string()));
-        let res = preflight(&io, "/usr/local/bin/lab", "x86_64-unknown-linux-gnu", "abc123")
-            .await
-            .unwrap();
+        let res = preflight(
+            io,
+            "/usr/local/bin/lab".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "abc123".to_string(),
+        )
+        .await
+        .unwrap();
         assert!(!res.skip_transfer);
     }
 
     #[tokio::test]
     async fn rejects_non_writable_install_dir() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("x86_64\n"));
         io.push_run(RunResp::fail(1, "permission denied"));
-        let err = preflight(&io, "/usr/local/bin/lab", "x86_64-unknown-linux-gnu", "abc123")
-            .await
-            .unwrap_err();
+        let err = preflight(
+            io,
+            "/usr/local/bin/lab".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "abc123".to_string(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.kind(), "preflight_failed");
     }
 
     #[tokio::test]
     async fn canary_write_goes_to_parent_not_binary_path() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("x86_64\n"));
         io.push_run(RunResp::ok(""));
         io.push_sha(None);
-        let _ = preflight(&io, "/usr/local/bin/lab", "x86_64-unknown-linux-gnu", "abc123")
-            .await
-            .unwrap();
+        let _ = preflight(
+            io.clone(),
+            "/usr/local/bin/lab".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+            "abc123".to_string(),
+        )
+        .await
+        .unwrap();
         let ops = io.ops();
         // Second op is the canary sh -c; assert the path targets the parent dir.
         let probe = ops
@@ -1470,7 +1501,7 @@ mod tests_transfer_install {
 
     #[tokio::test]
     async fn transfer_streams_to_partial_then_renames_and_swaps() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         // mv partial -> staged
         io.push_run(RunResp::ok(""));
         // sha256 of staged (matches)
@@ -1483,9 +1514,9 @@ mod tests_transfer_install {
         io.push_run(RunResp::ok(""));
 
         let outcome = transfer_and_install(
-            &io,
-            "/usr/local/bin/lab",
-            "abc123",
+            io.clone(),
+            "/usr/local/bin/lab".to_string(),
+            "abc123".to_string(),
             tokio::io::empty(),
         )
         .await
@@ -1523,7 +1554,7 @@ mod tests_transfer_install {
 
     #[tokio::test]
     async fn integrity_mismatch_aborts_before_swap() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         // mv partial -> staged ok
         io.push_run(RunResp::ok(""));
         // sha256 of staged differs from local
@@ -1532,9 +1563,9 @@ mod tests_transfer_install {
         io.push_run(RunResp::ok(""));
 
         let err = transfer_and_install(
-            &io,
-            "/usr/local/bin/lab",
-            "abc123",
+            io.clone(),
+            "/usr/local/bin/lab".to_string(),
+            "abc123".to_string(),
             tokio::io::empty(),
         )
         .await
@@ -1557,16 +1588,16 @@ mod tests_transfer_install {
 
     #[tokio::test]
     async fn no_backup_when_target_absent() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("")); // mv partial -> staged
         io.push_sha(Some("abc123".into())); // staged sha matches
         io.push_sha(None); // existing binary absent
         io.push_run(RunResp::ok("")); // final swap
 
         let outcome = transfer_and_install(
-            &io,
-            "/usr/local/bin/lab",
-            "abc123",
+            io,
+            "/usr/local/bin/lab".to_string(),
+            "abc123".to_string(),
             tokio::io::empty(),
         )
         .await
@@ -1582,19 +1613,19 @@ mod tests_restart_verify {
 
     #[tokio::test]
     async fn skips_restart_when_unit_is_none() {
-        let io = RecordingIo::new();
-        let r = restart(&io, None, None).await.unwrap();
+        let io = Arc::new(RecordingIo::new());
+        let r = restart(io.clone(), None, None).await.unwrap();
         assert!(r.skipped);
         assert!(io.ops().is_empty());
     }
 
     #[tokio::test]
     async fn restart_system_scope_uses_systemctl() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("")); // restart
         io.push_run(RunResp::ok("active\n")); // is-active --wait
 
-        restart(&io, Some("lab"), Some(ServiceScope::System))
+        restart(io.clone(), Some("lab".to_string()), Some(ServiceScope::System))
             .await
             .unwrap();
         let ops = io.ops();
@@ -1607,11 +1638,11 @@ mod tests_restart_verify {
 
     #[tokio::test]
     async fn restart_user_scope_uses_systemctl_user() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok(""));
         io.push_run(RunResp::ok(""));
 
-        restart(&io, Some("lab-worker"), Some(ServiceScope::User))
+        restart(io.clone(), Some("lab-worker".to_string()), Some(ServiceScope::User))
             .await
             .unwrap();
         let ops = io.ops();
@@ -1627,17 +1658,17 @@ mod tests_restart_verify {
 
     #[tokio::test]
     async fn restart_rejects_invalid_unit_names() {
-        let io = RecordingIo::new();
-        let err = restart(&io, Some("bad;unit"), None).await.unwrap_err();
+        let io = Arc::new(RecordingIo::new());
+        let err = restart(io.clone(), Some("bad;unit".to_string()), None).await.unwrap_err();
         assert_eq!(err.kind(), "validation_failed");
         assert!(io.ops().is_empty(), "must fail before emitting any command");
     }
 
     #[tokio::test]
     async fn verify_runs_version_and_rejects_nonzero_exit() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::fail(1, "unknown flag"));
-        let err = verify(&io, "/usr/local/bin/lab").await.unwrap_err();
+        let err = verify(io.clone(), "/usr/local/bin/lab".to_string()).await.unwrap_err();
         assert_eq!(err.kind(), "verify_failed");
         let ops = io.ops();
         assert!(
@@ -1648,9 +1679,9 @@ mod tests_restart_verify {
 
     #[tokio::test]
     async fn verify_accepts_zero_exit() {
-        let io = RecordingIo::new();
+        let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("lab 0.3.4\n"));
-        verify(&io, "/usr/local/bin/lab").await.unwrap();
+        verify(io, "/usr/local/bin/lab".to_string()).await.unwrap();
     }
 }
 

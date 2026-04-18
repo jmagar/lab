@@ -334,10 +334,15 @@ impl SshSession {
     /// Returns `(exit_code, stdout, stderr)`. A nonzero exit code is not an
     /// `Err` — the caller is expected to decide whether the nonzero exit is
     /// a failure.
-    pub async fn run_command(
+    ///
+    /// Returns a `'static` future by doing all `&self` work synchronously
+    /// (building the `Command`) before returning. This avoids higher-ranked
+    /// trait bound (HRTB) errors in `Box::pin(async move { ... } + Send +
+    /// 'static)` contexts (Rust issue #100013).
+    pub fn run_command(
         &self,
         argv: &[&str],
-    ) -> Result<(i32, String, String), SshError> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String, String), SshError>> + Send + 'static>> {
         let mut cmd = tokio::process::Command::new("ssh");
         for a in self.base_args() {
             cmd.arg(a);
@@ -346,14 +351,16 @@ impl SshSession {
         for a in argv {
             cmd.arg(shell_quote(a));
         }
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| SshError::Spawn(e.to_string()))?;
-        let code = output.status.code().unwrap_or(-1);
-        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        Ok((code, stdout, stderr))
+        Box::pin(async move {
+            let output = cmd
+                .output()
+                .await
+                .map_err(|e| SshError::Spawn(e.to_string()))?;
+            let code = output.status.code().unwrap_or(-1);
+            let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            Ok((code, stdout, stderr))
+        })
     }
 
     /// Stream `reader` into a file at `remote_path` on the target.
@@ -367,16 +374,19 @@ impl SshSession {
     /// quoting safe.
     ///
     /// Returns the number of bytes copied into the child's stdin.
-    pub async fn upload_stream<R>(
+    ///
+    /// Returns a `'static` future by doing all `&self` work synchronously
+    /// (building the `Command`) before returning. `R` must be `'static` so
+    /// the captured reader can live in the returned future.
+    pub fn upload_stream<R>(
         &self,
         remote_path: &str,
         mut reader: R,
-    ) -> Result<u64, SshError>
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u64, SshError>> + Send + 'static>>
     where
-        R: tokio::io::AsyncRead + Unpin + Send,
+        R: tokio::io::AsyncRead + Unpin + Send + 'static,
     {
         use std::process::Stdio;
-        use tokio::io::AsyncWriteExt;
 
         // Shell-quote the path so embedded single quotes do not break the
         // `sh -c` context.  The path is also allowlist-validated upstream
@@ -392,43 +402,48 @@ impl SshSession {
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-        let mut child = cmd.spawn().map_err(|e| SshError::Spawn(e.to_string()))?;
 
-        // Helper: kill + reap the child before returning an error so we never
-        // leave zombie processes behind on early exit paths below.
-        macro_rules! reap_and_fail {
-            ($child:expr, $err:expr) => {{
-                $child.kill().await.ok();
-                $child.wait().await.ok();
-                return Err($err);
-            }};
-        }
+        Box::pin(async move {
+            use tokio::io::AsyncWriteExt;
 
-        let mut stdin = match child.stdin.take() {
-            Some(s) => s,
-            None => reap_and_fail!(child, SshError::Io("ssh stdin missing".into())),
-        };
-        let bytes = match tokio::io::copy(&mut reader, &mut stdin).await {
-            Ok(n) => n,
-            Err(e) => reap_and_fail!(child, SshError::Io(e.to_string())),
-        };
-        if let Err(e) = stdin.shutdown().await {
-            reap_and_fail!(child, SshError::Io(e.to_string()));
-        }
-        drop(stdin);
-        let out = child
-            .wait_with_output()
-            .await
-            .map_err(|e| SshError::Io(e.to_string()))?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            return Err(SshError::Io(format!(
-                "remote cat failed ({}): {}",
-                out.status.code().unwrap_or(-1),
-                stderr.trim()
-            )));
-        }
-        Ok(bytes)
+            let mut child = cmd.spawn().map_err(|e| SshError::Spawn(e.to_string()))?;
+
+            let mut stdin = match child.stdin.take() {
+                Some(s) => s,
+                None => {
+                    child.kill().await.ok();
+                    child.wait().await.ok();
+                    return Err(SshError::Io("ssh stdin missing".into()));
+                }
+            };
+            let bytes = match tokio::io::copy(&mut reader, &mut stdin).await {
+                Ok(n) => n,
+                Err(e) => {
+                    child.kill().await.ok();
+                    child.wait().await.ok();
+                    return Err(SshError::Io(e.to_string()));
+                }
+            };
+            if let Err(e) = stdin.shutdown().await {
+                child.kill().await.ok();
+                child.wait().await.ok();
+                return Err(SshError::Io(e.to_string()));
+            }
+            drop(stdin);
+            let out = child
+                .wait_with_output()
+                .await
+                .map_err(|e| SshError::Io(e.to_string()))?;
+            if !out.status.success() {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                return Err(SshError::Io(format!(
+                    "remote cat failed ({}): {}",
+                    out.status.code().unwrap_or(-1),
+                    stderr.trim()
+                )));
+            }
+            Ok(bytes)
+        })
     }
 
     /// Probe `sha256sum <path>` on the remote host.
@@ -436,23 +451,24 @@ impl SshSession {
     /// Returns `Ok(Some(hex))` when the probe succeeds, `Ok(None)` when the
     /// file is absent or the tool exits nonzero, and `Err` only when the
     /// `ssh` spawn itself fails.
-    pub async fn sha256_remote(&self, remote_path: &str) -> Result<Option<String>, SshError> {
-        let (code, stdout, _stderr) = self
-            .run_command(&["sha256sum", remote_path])
-            .await?;
-        if code != 0 {
-            return Ok(None);
-        }
-        // sha256sum output: "<hex>  <path>\n"
-        let hex = stdout
-            .split_whitespace()
-            .next()
-            .map(str::to_string);
-        // Must be 64 lowercase hex chars; reject anything else.
-        let ok = hex.as_ref().is_some_and(|h| {
-            h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())
-        });
-        Ok(if ok { hex } else { None })
+    pub fn sha256_remote(
+        &self,
+        remote_path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<String>, SshError>> + Send + 'static>> {
+        let fut = self.run_command(&["sha256sum", remote_path]);
+        Box::pin(async move {
+            let (code, stdout, _stderr) = fut.await?;
+            if code != 0 {
+                return Ok(None);
+            }
+            // sha256sum output: "<hex>  <path>\n"
+            let hex = stdout.split_whitespace().next().map(str::to_string);
+            // Must be 64 lowercase hex chars; reject anything else.
+            let ok = hex
+                .as_ref()
+                .is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()));
+            Ok(if ok { hex } else { None })
+        })
     }
 }
 

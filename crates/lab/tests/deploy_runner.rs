@@ -129,40 +129,46 @@ impl TimedIo {
 }
 
 impl HostIo for TimedIo {
-    async fn run_argv(
+    fn run_argv(
         &self,
         argv: &[&str],
-    ) -> Result<(i32, String, String), lab_apis::deploy::DeployError> {
-        {
-            let mut s = self.started_at.lock().unwrap();
-            if s.is_none() {
-                *s = Some(Instant::now());
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String, String), lab_apis::deploy::DeployError>> + Send + 'static>> {
+        let started_at = self.started_at.clone();
+        let finished_at = self.finished_at.clone();
+        let delay = self.delay;
+        let inner_fut = self.inner.run_argv(argv);
+        Box::pin(async move {
+            {
+                let mut s = started_at.lock().unwrap();
+                if s.is_none() {
+                    *s = Some(Instant::now());
+                }
             }
-        }
-        if !self.delay.is_zero() {
-            tokio::time::sleep(self.delay).await;
-        }
-        let res = self.inner.run_argv(argv).await;
-        *self.finished_at.lock().unwrap() = Some(Instant::now());
-        res
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            let res = inner_fut.await;
+            *finished_at.lock().unwrap() = Some(Instant::now());
+            res
+        })
     }
 
-    async fn upload_stream<'a, R>(
-        &'a self,
-        remote_path: &'a str,
-        reader: R,
-    ) -> Result<u64, lab_apis::deploy::DeployError>
-    where
-        R: tokio::io::AsyncRead + Unpin + Send + 'a,
-    {
-        self.inner.upload_stream(remote_path, reader).await
-    }
-
-    async fn sha256_remote(
+    fn upload_stream<R>(
         &self,
         remote_path: &str,
-    ) -> Result<Option<String>, lab_apis::deploy::DeployError> {
-        self.inner.sha256_remote(remote_path).await
+        reader: R,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u64, lab_apis::deploy::DeployError>> + Send + 'static>>
+    where
+        R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    {
+        self.inner.upload_stream(remote_path, reader)
+    }
+
+    fn sha256_remote(
+        &self,
+        remote_path: &str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<String>, lab_apis::deploy::DeployError>> + Send + 'static>> {
+        self.inner.sha256_remote(remote_path)
     }
 }
 
@@ -245,48 +251,43 @@ async fn max_parallel_bounds_concurrency() {
         max_seen: Arc<std::sync::atomic::AtomicUsize>,
     }
     impl HostIo for ConcIo {
-        async fn run_argv(
+        fn run_argv(
             &self,
             argv: &[&str],
-        ) -> Result<(i32, String, String), lab_apis::deploy::DeployError> {
-            // bump on first call per-host (uname); decrement at the very end
-            // is tricky, so instead we bump only on the verify call so we
-            // observe the stage span — but simpler: bump on first uname,
-            // decrement on verify.
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String, String), lab_apis::deploy::DeployError>> + Send + 'static>> {
+            let in_flight = self.in_flight.clone();
+            let max_seen = self.max_seen.clone();
+            let inner_fut = self.inner.run_argv(argv);
             let is_first = argv == ["uname", "-m"];
             let is_last = argv.len() == 2 && argv[1] == "--version";
-            if is_first {
-                let prev = self
-                    .in_flight
-                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                    + 1;
-                self.max_seen
-                    .fetch_max(prev, std::sync::atomic::Ordering::SeqCst);
-                // small yield so peers can overlap
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-            let r = self.inner.run_argv(argv).await;
-            if is_last {
-                self.in_flight
-                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-            }
-            r
+            Box::pin(async move {
+                if is_first {
+                    let prev = in_flight.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    max_seen.fetch_max(prev, std::sync::atomic::Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                let r = inner_fut.await;
+                if is_last {
+                    in_flight.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                }
+                r
+            })
         }
-        async fn upload_stream<'a, R>(
-            &'a self,
-            p: &'a str,
-            r: R,
-        ) -> Result<u64, lab_apis::deploy::DeployError>
-        where
-            R: tokio::io::AsyncRead + Unpin + Send + 'a,
-        {
-            self.inner.upload_stream(p, r).await
-        }
-        async fn sha256_remote(
+        fn upload_stream<R>(
             &self,
             p: &str,
-        ) -> Result<Option<String>, lab_apis::deploy::DeployError> {
-            self.inner.sha256_remote(p).await
+            r: R,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u64, lab_apis::deploy::DeployError>> + Send + 'static>>
+        where
+            R: tokio::io::AsyncRead + Unpin + Send + 'static,
+        {
+            self.inner.upload_stream(p, r)
+        }
+        fn sha256_remote(
+            &self,
+            p: &str,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<String>, lab_apis::deploy::DeployError>> + Send + 'static>> {
+            self.inner.sha256_remote(p)
         }
     }
 
