@@ -1039,6 +1039,14 @@ impl ServerHandler for LabMcpServer {
                         let (result, kind, counts_as_failure) =
                             normalize_upstream_result(&service, upstream_action, result);
                         let outcome = if counts_as_failure || kind != "ok" {
+                            tracing::warn!(
+                                surface = "mcp",
+                                service = upstream_name,
+                                action = upstream_action,
+                                elapsed_ms,
+                                kind,
+                                "upstream dispatch error"
+                            );
                             DispatchLogOutcome::Failure {
                                 level: if counts_as_failure {
                                     LoggingLevel::Error
@@ -1048,6 +1056,13 @@ impl ServerHandler for LabMcpServer {
                                 kind,
                             }
                         } else {
+                            tracing::info!(
+                                surface = "mcp",
+                                service = upstream_name,
+                                action = upstream_action,
+                                elapsed_ms,
+                                "upstream dispatch ok"
+                            );
                             DispatchLogOutcome::Success
                         };
                         self.emit_dispatch_notification(
@@ -1062,6 +1077,14 @@ impl ServerHandler for LabMcpServer {
                     }
                     Err(e) => {
                         let elapsed_ms = start.elapsed().as_millis();
+                        tracing::warn!(
+                            surface = "mcp",
+                            service = upstream_name,
+                            action = upstream_action,
+                            elapsed_ms,
+                            kind = "upstream_error",
+                            "upstream dispatch error"
+                        );
                         let envelope = build_error(
                             &service,
                             upstream_action,

@@ -553,19 +553,35 @@ impl UpstreamPool {
         let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
             .await
             .map_err(|error| error.to_string())?;
-        let result = conn
-            .peer
-            .call_tool(params)
-            .await
-            .map_err(|error| format!("upstream call failed: {error}"))?;
-        let response_size = estimate_response_size(&result);
-        let max_bytes = max_response_bytes();
-        if response_size > max_bytes {
-            return Err(format!(
-                "upstream response too large ({response_size} bytes, max {max_bytes})"
-            ));
+        match conn.peer.call_tool(params).await {
+            Ok(result) => {
+                let response_size = estimate_response_size(&result);
+                let max_bytes = max_response_bytes();
+                if response_size > max_bytes {
+                    self.record_failure_for(
+                        &config.name,
+                        UpstreamCapability::Tools,
+                        format!("response too large: {response_size} bytes"),
+                    )
+                    .await;
+                    return Err(format!(
+                        "upstream response too large ({response_size} bytes, max {max_bytes})"
+                    ));
+                }
+                self.record_success_for(&config.name, UpstreamCapability::Tools)
+                    .await;
+                Ok(result)
+            }
+            Err(error) => {
+                self.record_failure_for(
+                    &config.name,
+                    UpstreamCapability::Tools,
+                    format!("upstream call failed: {error}"),
+                )
+                .await;
+                Err(format!("upstream call failed: {error}"))
+            }
         }
-        Ok(result)
     }
 
     /// Return the names of upstreams currently routable for a capability.
@@ -1086,12 +1102,36 @@ impl UpstreamPool {
         let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
             .await
             .map_err(|error| error.to_string())?;
-        let result = conn
+        let result = match conn
             .peer
             .read_resource(rmcp::model::ReadResourceRequestParams::new(original_uri))
             .await
-            .map_err(|error| format!("upstream resource read failed: {error}"))?;
-        Ok(normalize_resource_result_uri(result, uri))
+        {
+            Ok(result) => {
+                self.record_success_for(&config.name, UpstreamCapability::Resources)
+                    .await;
+                Ok(normalize_resource_result_uri(result, uri))
+            }
+            Err(error) => {
+                self.record_failure_for(
+                    &config.name,
+                    UpstreamCapability::Resources,
+                    format!("upstream resource read failed: {error}"),
+                )
+                .await;
+                Err(format!("upstream resource read failed: {error}"))
+            }
+        };
+        if let Ok(ref r) = result {
+            let response_size = serde_json::to_string(r).map_or(0, |s| s.len());
+            let max_bytes = max_response_bytes();
+            if response_size > max_bytes {
+                return Err(format!(
+                    "upstream resource response too large ({response_size} bytes, max {max_bytes})"
+                ));
+            }
+        }
+        result
     }
 
     /// Fetch prompts from all healthy upstreams and merge them, returning both the
@@ -1295,10 +1335,22 @@ impl UpstreamPool {
         let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
             .await
             .map_err(|error| error.to_string())?;
-        conn.peer
-            .get_prompt(params)
-            .await
-            .map_err(|error| format!("upstream prompt get failed: {error}"))
+        match conn.peer.get_prompt(params).await {
+            Ok(result) => {
+                self.record_success_for(&config.name, UpstreamCapability::Prompts)
+                    .await;
+                Ok(result)
+            }
+            Err(error) => {
+                self.record_failure_for(
+                    &config.name,
+                    UpstreamCapability::Prompts,
+                    format!("upstream prompt get failed: {error}"),
+                )
+                .await;
+                Err(format!("upstream prompt get failed: {error}"))
+            }
+        }
     }
 }
 

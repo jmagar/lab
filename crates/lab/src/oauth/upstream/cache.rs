@@ -75,12 +75,16 @@ impl OauthClientCache {
         subject: &str,
     ) -> Result<Arc<AuthClient<reqwest::Client>>, OauthError> {
         self.get_or_insert_with(config, subject, || async {
-            let manager = self.managers.get(&config.name).ok_or_else(|| {
-                OauthError::Internal(format!(
-                    "no oauth manager registered for upstream '{}'",
-                    config.name
-                ))
-            })?;
+            let manager = self
+                .managers
+                .get(&config.name)
+                .map(|r| r.clone())
+                .ok_or_else(|| {
+                    OauthError::Internal(format!(
+                        "no oauth manager registered for upstream '{}'",
+                        config.name
+                    ))
+                })?;
             let auth_client = manager.build_auth_client(subject).await?;
             Ok(Arc::new(auth_client))
         })

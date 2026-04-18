@@ -653,6 +653,26 @@ impl GatewayManager {
                 cache.evict_upstream(&upstream.name);
             }
         }
+        // Reconcile the upstream_oauth_managers map from the new config.
+        // Remove managers for OAuth upstreams no longer present; warn about
+        // new OAuth upstreams that require a restart to get a manager.
+        if let Some(managers) = &self.upstream_oauth_managers {
+            let new_oauth_names: std::collections::HashSet<&str> = cfg
+                .upstream
+                .iter()
+                .filter(|u| u.oauth.is_some())
+                .map(|u| u.name.as_str())
+                .collect();
+            managers.retain(|name, _| new_oauth_names.contains(name.as_str()));
+            for name in &new_oauth_names {
+                if !managers.contains_key(*name) {
+                    tracing::warn!(
+                        upstream = name,
+                        "new oauth upstream added via reload but no manager available; restart required"
+                    );
+                }
+            }
+        }
         let before = snapshot_from_pool(self.runtime.current_pool().await).await;
         let fresh_pool = if cfg.upstream.is_empty() {
             None

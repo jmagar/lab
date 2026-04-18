@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Extension, Query, State},
-    http::{HeaderMap, Request, StatusCode, request::Parts},
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
 };
@@ -71,15 +71,16 @@ fn require_master(state: &AppState) -> Result<(), ToolError> {
 
 async fn callback_subject(
     state: &AppState,
-    parts: &Parts,
+    auth: Option<crate::api::oauth::AuthContext>,
+    headers: &HeaderMap,
 ) -> Result<String, ToolError> {
-    if let Some(auth) = crate::api::oauth::auth_context(parts) {
-        return Ok(auth.sub.clone());
+    if let Some(auth) = auth {
+        return Ok(auth.sub);
     }
 
     if let Some(auth_state) = state.oauth_state.as_ref()
         && let Some(session_id) = lab_auth::session::read_cookie(
-            &parts.headers,
+            headers,
             lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
         )
     {
@@ -251,6 +252,7 @@ async fn clear(
 async fn callback(
     State(state): State<AppState>,
     Query(query): Query<CallbackQuery>,
+    auth: Option<Extension<crate::api::oauth::AuthContext>>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
     let started = std::time::Instant::now();
@@ -262,9 +264,7 @@ async fn callback(
         Some(manager) => manager,
         None => return ToolError::internal_message("gateway manager not wired").into_response(),
     };
-    let mut parts = Request::new(()).into_parts().0;
-    parts.headers = headers;
-    let subject = match callback_subject(&state, &parts).await {
+    let subject = match callback_subject(&state, auth.map(|e| e.0), &headers).await {
         Ok(subject) => subject,
         Err(error) => return error.into_response(),
     };
@@ -314,13 +314,10 @@ async fn callback(
         .append_pair("status", status);
 
     if let Err(error) = result {
-        let mut response = Redirect::to(redirect_url.as_str()).into_response();
-        response.headers_mut().insert(
-            "x-lab-oauth-error-kind",
-            axum::http::HeaderValue::from_str(error.kind())
-                .unwrap_or_else(|_| axum::http::HeaderValue::from_static("internal_error")),
-        );
-        return response;
+        redirect_url
+            .query_pairs_mut()
+            .append_pair("error_kind", error.kind());
+        return Redirect::to(redirect_url.as_str()).into_response();
     }
 
     Redirect::to(redirect_url.as_str()).into_response()
