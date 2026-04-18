@@ -30,7 +30,6 @@
 
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use lab_auth::sqlite::SqliteStore;
 use lab_auth::types::UpstreamOauthCredentialRow;
 use rmcp::transport::auth::{AuthorizationMetadata, OAuthClientConfig};
@@ -56,19 +55,6 @@ pub struct UpstreamOauthManager {
     locks: Arc<RefreshLocks>,
     /// Cached AS metadata (fetched once per upstream, shared across subjects).
     metadata_cache: Arc<RwLock<Option<AuthorizationMetadata>>>,
-    /// Per-subject dynamic client registration cache: `subject → (client_id, client_secret)`.
-    ///
-    /// Dynamic registration (RFC 7591) must run exactly once per upstream — the AS
-    /// assigns a `client_id` that must be reused for the token exchange and all
-    /// subsequent refreshes. Without this cache, `complete_authorization_callback`
-    /// and `build_auth_client` would each re-register, receiving a different
-    /// `client_id` than the one used to initiate the flow.
-    ///
-    /// The cache is populated by `begin_authorization` and consulted by
-    /// `configured_authorization_manager`. After the first successful token exchange,
-    /// the `client_id` is also persisted in the credential row so the cache is only
-    /// needed during the initial authorization window.
-    dynamic_client_ids: Arc<DashMap<String, (String, Option<String>)>>,
 }
 
 impl UpstreamOauthManager {
@@ -90,7 +76,6 @@ impl UpstreamOauthManager {
             redirect_uri: Arc::new(redirect_uri),
             locks: Arc::new(RefreshLocks::new()),
             metadata_cache: Arc::new(RwLock::new(None)),
-            dynamic_client_ids: Arc::new(DashMap::new()),
         }
     }
 
@@ -201,7 +186,10 @@ impl UpstreamOauthManager {
             .await
             .map_err(|e| OauthError::Internal(e.to_string()))?;
 
-        self.dynamic_client_ids.remove(subject);
+        self.sqlite
+            .delete_dynamic_client_registration(&self.upstream.name, subject)
+            .await
+            .map_err(|e| OauthError::Internal(e.to_string()))?;
 
         info!(
             upstream = %self.upstream.name,
@@ -439,13 +427,12 @@ impl UpstreamOauthManager {
                 Ok(cfg)
             }
             UpstreamOauthRegistration::Dynamic => {
-                // Dynamic registration (RFC 7591) must run exactly once per upstream.
-                // Priority order:
-                //   1. Stored credential row — has the client_id from the first
-                //      registration, persisted after the token exchange completes.
-                //   2. In-memory cache — holds the client_id assigned during
-                //      `begin_authorization` before credentials are stored.
-                //   3. Call `register_client` — only on the very first invocation.
+                // Dynamic registration (RFC 7591) must run exactly once per (upstream, subject).
+                // The AS assigns a client_id that must be reused across restarts. Priority:
+                //   1. Stored credential row — client_id persisted after token exchange.
+                //   2. Dynamic client registration row — client_id persisted between
+                //      begin_authorization and the callback, survives server restarts.
+                //   3. Call register_client — only on the very first invocation.
 
                 // 1. Stored credentials
                 if let Some(row) = self
@@ -460,14 +447,14 @@ impl UpstreamOauthManager {
                     return Ok(cfg);
                 }
 
-                // 2. In-memory registration cache (populated during begin_authorization)
-                if let Some(entry) = self.dynamic_client_ids.get(subject) {
-                    let (client_id, client_secret) = entry.clone();
-                    let mut cfg =
-                        OAuthClientConfig::new(client_id, self.redirect_uri.as_str());
-                    if let Some(secret) = client_secret {
-                        cfg = cfg.with_client_secret(secret);
-                    }
+                // 2. Persisted dynamic registration (survives restarts)
+                if let Some(client_id) = self
+                    .sqlite
+                    .find_dynamic_client_registration(&self.upstream.name, subject)
+                    .await
+                    .map_err(|e| OauthError::Internal(e.to_string()))?
+                {
+                    let mut cfg = OAuthClientConfig::new(client_id, self.redirect_uri.as_str());
                     cfg = cfg.with_scopes(scopes.iter().map(|s| s.to_string()).collect());
                     return Ok(cfg);
                 }
@@ -478,10 +465,14 @@ impl UpstreamOauthManager {
                     .await
                     .map_err(|e| OauthError::Internal(format!("dynamic registration: {e}")))?;
 
-                self.dynamic_client_ids.insert(
-                    subject.to_string(),
-                    (cfg.client_id.clone(), cfg.client_secret.clone()),
-                );
+                self.sqlite
+                    .save_dynamic_client_registration(
+                        &self.upstream.name,
+                        subject,
+                        &cfg.client_id,
+                    )
+                    .await
+                    .map_err(|e| OauthError::Internal(e.to_string()))?;
 
                 Ok(cfg)
             }

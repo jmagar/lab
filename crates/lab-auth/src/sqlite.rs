@@ -599,6 +599,71 @@ impl SqliteStore {
         .await
     }
 
+    pub async fn save_dynamic_client_registration(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+        client_id: &str,
+    ) -> Result<(), AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        let client_id = client_id.to_string();
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO upstream_oauth_dynamic_clients (upstream_name, subject, client_id, created_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(upstream_name, subject) DO UPDATE SET
+                    client_id = excluded.client_id,
+                    created_at = excluded.created_at",
+                params![upstream_name, subject, client_id, now],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_dynamic_client_registration(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+    ) -> Result<Option<String>, AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT client_id
+                 FROM upstream_oauth_dynamic_clients
+                 WHERE upstream_name = ?1 AND subject = ?2",
+                params![upstream_name, subject],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
+    pub async fn delete_dynamic_client_registration(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+    ) -> Result<(), AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM upstream_oauth_dynamic_clients
+                 WHERE upstream_name = ?1 AND subject = ?2",
+                params![upstream_name, subject],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
     async fn with_conn<T, F>(&self, op: F) -> Result<T, AuthError>
     where
         T: Send + 'static,
@@ -725,6 +790,13 @@ fn open_connection(path: &Path) -> Result<Connection, AuthError> {
             created_at      INTEGER NOT NULL,
             expires_at      INTEGER NOT NULL,
             PRIMARY KEY (upstream_name, subject, csrf_token)
+        ) WITHOUT ROWID;
+        CREATE TABLE IF NOT EXISTS upstream_oauth_dynamic_clients (
+            upstream_name   TEXT NOT NULL,
+            subject         TEXT NOT NULL,
+            client_id       TEXT NOT NULL,
+            created_at      INTEGER NOT NULL,
+            PRIMARY KEY (upstream_name, subject)
         ) WITHOUT ROWID;",
     )
     .map_err(sqlite_error)?;
@@ -1213,6 +1285,68 @@ mod tests {
             .unwrap();
         assert_eq!(fetched.client_id, "client-rotated");
         assert_eq!(fetched.token_blob, vec![9, 9, 9]);
+    }
+
+    #[tokio::test]
+    async fn dynamic_client_registration_round_trip() {
+        let store = temp_store().await;
+
+        // Nothing stored yet.
+        assert!(
+            store
+                .find_dynamic_client_registration("acme", "alice")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // Save and retrieve.
+        store
+            .save_dynamic_client_registration("acme", "alice", "client-dyn-1")
+            .await
+            .unwrap();
+        let found = store
+            .find_dynamic_client_registration("acme", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found, "client-dyn-1");
+
+        // Upsert with a new client_id (server re-registered).
+        store
+            .save_dynamic_client_registration("acme", "alice", "client-dyn-2")
+            .await
+            .unwrap();
+        let found2 = store
+            .find_dynamic_client_registration("acme", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found2, "client-dyn-2");
+
+        // Delete and confirm gone; other subjects unaffected.
+        store
+            .save_dynamic_client_registration("acme", "bob", "client-dyn-bob")
+            .await
+            .unwrap();
+        store
+            .delete_dynamic_client_registration("acme", "alice")
+            .await
+            .unwrap();
+        assert!(
+            store
+                .find_dynamic_client_registration("acme", "alice")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .find_dynamic_client_registration("acme", "bob")
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]
