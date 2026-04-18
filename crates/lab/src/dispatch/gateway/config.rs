@@ -268,6 +268,7 @@ mod tests {
                     args: Vec::new(),
                     proxy_resources: false,
                     expose_tools: None,
+                    oauth: None,
                 },
                 UpstreamConfig {
                     name: "b".to_string(),
@@ -277,6 +278,7 @@ mod tests {
                     args: vec!["server.js".to_string()],
                     proxy_resources: false,
                     expose_tools: None,
+                    oauth: None,
                 },
             ],
             ..LabConfig::default()
@@ -322,6 +324,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: true,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect("insert");
@@ -494,6 +497,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect_err("duplicate should fail");
@@ -514,6 +518,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }],
             ..LabConfig::default()
         };
@@ -535,6 +540,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }],
             ..LabConfig::default()
         };
@@ -555,6 +561,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect_err("invalid scheme");
@@ -574,6 +581,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect_err("bind-all should be rejected");

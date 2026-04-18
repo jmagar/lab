@@ -165,11 +165,24 @@ Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
   normalized: lowercase scheme + host, normalized percent-encoding, default
   port elided, trailing slash preserved as configured) is sent on **both** the
   authorization request and the token request, byte-identical between the
-  two. Mismatched `aud` claims on the returned token surface as
-  `oauth_resource_mismatch`.
-- **Issuer binding.** After AS metadata discovery, the `metadata.issuer` value
-  is normalized and compared byte-for-byte against the discovered AS URL.
-  Mismatch surfaces as `oauth_issuer_mismatch` (RFC 8414 §3.3).
+  two. Canonicalization runs at config-validation time so the stored URL and
+  the `resource` wire value are the same string. Mismatched `aud` claims on
+  the returned token surface as `oauth_resource_mismatch`.
+
+  **Known gap (upstream).** rmcp 1.4's refresh path does not re-emit the
+  `resource` parameter on the `refresh_token` grant. Most authorization
+  servers continue to honor the audience bound at initial exchange, so this
+  is acceptable in practice today, but an AS that requires `resource` on
+  every token-endpoint call will reject refreshes. Tracked for follow-up
+  once rmcp exposes a refresh hook we can extend.
+- **Issuer binding.** After AS metadata discovery, `metadata.issuer` is
+  required — missing `issuer` surfaces as `oauth_issuer_mismatch`. The
+  `authorization_endpoint`, `token_endpoint`, and (when present)
+  `registration_endpoint` hosts must match the issuer host; any drift
+  surfaces as `oauth_issuer_mismatch` (RFC 8414 §3.3). Because rmcp's
+  discover_metadata does not report which discovery URL succeeded, `lab`
+  does not compare the issuer against the discovered AS URL directly;
+  it enforces endpoint/issuer host consistency instead.
 - **No Google reuse.** Outbound upstream OAuth is distinct from the inbound
   `lab-auth` Google provider used for user login to `lab`. They do not share
   code, clients, or tokens.
@@ -196,17 +209,19 @@ identically.
 Refresh is single-flight per `(upstream_name, subject)` using a `tokio::sync::Mutex`
 keyed on the pair, with an LRU cap to bound memory on long-running processes.
 
-Two paths run the refresh:
+Today the manager runs **proactive refresh only**:
 
 - **Proactive:** before dispatching a request, if the cached access token is
   less than 30 seconds from expiry, refresh under the per-key lock first.
-- **Reactive (401):** on a 401 response, take the per-key lock, re-read the
-  credential (another task may have already refreshed), refresh if still
-  expired, persist the rotated refresh token **before** releasing the lock,
-  then retry — **but only for idempotent methods** (`GET`/`HEAD`/`OPTIONS`).
-  Non-idempotent methods (`POST`, including MCP `tool_call`) surface the
-  original 401 as `oauth_needs_reauth` without retry, because a retry could
-  double-execute a destructive tool call.
+- **Reactive (401):** **deferred.** MCP traffic flows through rmcp's
+  `StreamableHttpClientWorker`, which hides the raw HTTP response from the
+  gateway, so a 401 on an MCP call currently surfaces as a generic transport
+  error rather than `oauth_needs_reauth`. Operators recover by calling
+  `POST /v1/gateway/oauth/start` to re-authorize. When this is wired, only
+  idempotent methods (`GET`/`HEAD`/`OPTIONS`) will retry after refresh;
+  non-idempotent methods (`POST`, including MCP `tool_call`) will surface
+  the original 401 as `oauth_needs_reauth` without retry, because a retry
+  could double-execute a destructive tool call.
 
 On `invalid_grant` (refresh token revoked or rotated twice), `lab` deletes
 the persisted credential and returns `oauth_needs_reauth` to the caller. The
@@ -220,7 +235,8 @@ A caller sees `oauth_needs_reauth` in any of these situations:
 - the refresh token was rejected with `invalid_grant`
 - decryption of the stored `token_blob` failed (operator rotated
   `LAB_OAUTH_ENCRYPTION_KEY`)
-- a 401 arrived on a non-idempotent request and retry is not safe
+- (future, once reactive 401 is wired) a 401 arrived on a non-idempotent
+  request and retry is not safe
 
 Recovery is identical in all cases: start a new authorization via
 `POST /v1/gateway/oauth/start`.

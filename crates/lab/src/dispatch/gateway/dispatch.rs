@@ -232,6 +232,7 @@ mod tests {
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }])
             .await;
 
@@ -262,6 +263,7 @@ mod tests {
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }])
             .await;
 
@@ -290,6 +292,7 @@ mod tests {
                 args: vec!["mcp".to_string()],
                 proxy_resources: true,
                 expose_tools: Some(vec!["scrape".to_string()]),
+                oauth: None,
             }])
             .await;
 
@@ -698,6 +701,7 @@ mod tests {
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }])
             .await;
 
@@ -800,6 +804,7 @@ mod tests {
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }])
             .await;
 

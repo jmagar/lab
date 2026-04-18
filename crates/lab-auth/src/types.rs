@@ -151,3 +151,69 @@ pub struct BrowserLoginStateRow {
     pub created_at: i64,
     pub expires_at: i64,
 }
+
+/// Persisted upstream OAuth credential row.
+///
+/// The encrypted `token_blob` is chacha20poly1305(token_response_json) sealed with a
+/// fresh 12-byte nonce per write. `access_token_expires_at` is denormalized for cheap
+/// pruning in `cleanup_expired`. `refresh_token_present` enables dropping access-only
+/// stale rows while keeping rows that still have a refresh token for re-use (SEC-9).
+///
+/// `Debug` is implemented manually with redaction — never derive it.
+#[derive(Clone)]
+pub struct UpstreamOauthCredentialRow {
+    pub upstream_name: String,
+    pub subject: String,
+    pub client_id: String,
+    pub granted_scopes_json: String,
+    pub token_blob: Vec<u8>,
+    pub token_blob_nonce: Vec<u8>,
+    pub token_received_at: i64,
+    pub access_token_expires_at: i64,
+    pub refresh_token_present: bool,
+}
+
+impl std::fmt::Debug for UpstreamOauthCredentialRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpstreamOauthCredentialRow")
+            .field("upstream_name", &self.upstream_name)
+            .field("subject", &"<redacted>")
+            .field("client_id", &self.client_id)
+            .field("token_blob", &"<redacted>")
+            .field("token_blob_nonce", &"<redacted>")
+            .field("access_token_expires_at", &self.access_token_expires_at)
+            .field("refresh_token_present", &self.refresh_token_present)
+            .finish()
+    }
+}
+
+/// Short-lived upstream OAuth state row. Holds the CSRF token and PKCE verifier
+/// between `/authorize` redirect and `/callback` redemption.
+///
+/// `expires_at - created_at` MUST NOT exceed 600 seconds. The persistence helper
+/// rejects violations.
+///
+/// `Debug` is implemented manually with redaction — never derive it (pkce_verifier
+/// is sensitive).
+#[derive(Clone)]
+pub struct UpstreamOauthStateRow {
+    pub upstream_name: String,
+    pub subject: String,
+    pub csrf_token: String,
+    pub pkce_verifier: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+impl std::fmt::Debug for UpstreamOauthStateRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpstreamOauthStateRow")
+            .field("upstream_name", &self.upstream_name)
+            .field("subject", &"<redacted>")
+            .field("csrf_token", &"<redacted>")
+            .field("pkce_verifier", &"<redacted>")
+            .field("created_at", &self.created_at)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}

@@ -35,7 +35,7 @@ use lab_auth::sqlite::SqliteStore;
 use rmcp::transport::auth::{AuthorizationMetadata, OAuthClientConfig};
 use rmcp::transport::{AuthClient, AuthorizationManager};
 use tokio::sync::{Mutex, RwLock};
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::config::{UpstreamConfig, UpstreamOauthRegistration};
 use crate::oauth::upstream::encryption::EncryptionKey;
@@ -320,14 +320,19 @@ impl UpstreamOauthManager {
     }
 
     fn upstream_url(&self) -> Result<Arc<String>, OauthError> {
-        self.upstream
-            .url
-            .clone()
-            .map(Arc::new)
-            .ok_or_else(|| OauthError::Internal("upstream has no url".to_string()))
+        let canonical = self
+            .upstream
+            .canonical_url()
+            .ok_or_else(|| OauthError::Internal("upstream has no url".to_string()))?
+            .map_err(|e| OauthError::Internal(format!("invalid upstream url: {e}")))?;
+        Ok(Arc::new(canonical))
     }
 
     /// Fetch AS metadata, caching the result for subsequent calls.
+    ///
+    /// Enforces issuer binding per RFC 8414: `issuer` MUST be present and the
+    /// `authorization_endpoint` + `token_endpoint` MUST share its host. Rejects
+    /// silent issuer drift between the first and subsequent discovery calls.
     async fn get_or_discover_metadata(
         &self,
         manager: &mut AuthorizationManager,
@@ -344,24 +349,61 @@ impl UpstreamOauthManager {
             .await
             .map_err(|e| OauthError::Internal(format!("discover metadata: {e}")))?;
 
+        self.verify_issuer_binding(&metadata)?;
+
         *self.metadata_cache.write().await = Some(metadata.clone());
         Ok(metadata)
     }
 
-    fn verify_s256(&self, methods: &Option<Vec<String>>) -> Result<(), OauthError> {
-        if let Some(methods) = methods {
-            if !methods.iter().any(|m| m == "S256") {
-                return Err(OauthError::UnsupportedMethod(format!(
-                    "AS does not support S256 PKCE; advertised methods: {methods:?}"
+    /// RFC 8414 §3 issuer binding: `issuer` must be present, and every
+    /// non-jwks endpoint host must match the issuer host. This is the
+    /// scope-6b approximation of duplicating rmcp's discovery — we don't
+    /// track which URL succeeded, but we refuse metadata whose endpoints
+    /// disagree on host.
+    fn verify_issuer_binding(
+        &self,
+        metadata: &AuthorizationMetadata,
+    ) -> Result<(), OauthError> {
+        let issuer_raw = metadata.issuer.as_deref().ok_or_else(|| {
+            OauthError::IssuerMismatch(format!(
+                "AS metadata for upstream '{}' is missing required `issuer` claim",
+                self.upstream.name
+            ))
+        })?;
+        let issuer_host = url_host(issuer_raw).ok_or_else(|| {
+            OauthError::IssuerMismatch(format!("issuer `{issuer_raw}` is not a valid URL"))
+        })?;
+        for (label, endpoint) in [
+            ("authorization_endpoint", Some(metadata.authorization_endpoint.as_str())),
+            ("token_endpoint", Some(metadata.token_endpoint.as_str())),
+            ("registration_endpoint", metadata.registration_endpoint.as_deref()),
+        ] {
+            let Some(endpoint) = endpoint else { continue };
+            let Some(host) = url_host(endpoint) else {
+                return Err(OauthError::IssuerMismatch(format!(
+                    "{label} `{endpoint}` is not a valid URL"
+                )));
+            };
+            if host != issuer_host {
+                return Err(OauthError::IssuerMismatch(format!(
+                    "{label} host `{host}` does not match issuer host `{issuer_host}`"
                 )));
             }
-        } else {
-            warn!(
-                upstream = %self.upstream.name,
-                "AS did not advertise code_challenge_methods_supported; proceeding with S256"
-            );
         }
         Ok(())
+    }
+
+    fn verify_s256(&self, methods: &Option<Vec<String>>) -> Result<(), OauthError> {
+        match methods {
+            Some(methods) if methods.iter().any(|m| m == "S256") => Ok(()),
+            Some(methods) => Err(OauthError::UnsupportedMethod(format!(
+                "AS does not advertise S256 PKCE; advertised methods: {methods:?}"
+            ))),
+            None => Err(OauthError::UnsupportedMethod(
+                "AS did not advertise code_challenge_methods_supported; S256 is required"
+                    .to_string(),
+            )),
+        }
     }
 
     async fn resolve_client_config(
@@ -392,11 +434,25 @@ impl UpstreamOauthManager {
                 .register_client("lab", self.redirect_uri.as_str(), scopes)
                 .await
                 .map_err(|e| OauthError::Internal(format!("dynamic registration: {e}"))),
-            UpstreamOauthRegistration::ClientMetadataDocument { .. } => Err(OauthError::Internal(
-                "ClientMetadataDocument registration is not yet supported".to_string(),
-            )),
+            UpstreamOauthRegistration::ClientMetadataDocument { url } => {
+                // Client ID Metadata Document (CIMD): the metadata-document URL
+                // *is* the client identifier. No registration_endpoint call is
+                // issued — the AS fetches the document itself when it first sees
+                // the client_id. We construct the OAuth client locally.
+                url::Url::parse(url).map_err(|e| {
+                    OauthError::Internal(format!("invalid client_metadata_document url: {e}"))
+                })?;
+                let cfg = OAuthClientConfig::new(url.clone(), self.redirect_uri.as_str())
+                    .with_scopes(scopes.iter().map(|s| s.to_string()).collect());
+                Ok(cfg)
+            }
         }
     }
+}
+
+/// Return the lowercased host of a URL, or `None` if the URL is invalid or hostless.
+fn url_host(s: &str) -> Option<String> {
+    url::Url::parse(s).ok().and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
 }
 
 /// Extract the `state` query parameter from an authorization URL.

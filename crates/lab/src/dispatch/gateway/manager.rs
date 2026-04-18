@@ -1102,6 +1102,7 @@ mod tests {
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }])
             .await;
 
