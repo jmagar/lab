@@ -30,6 +30,7 @@
 
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use lab_auth::sqlite::SqliteStore;
 use lab_auth::types::UpstreamOauthCredentialRow;
 use rmcp::transport::auth::{AuthorizationMetadata, OAuthClientConfig};
@@ -55,6 +56,19 @@ pub struct UpstreamOauthManager {
     locks: Arc<RefreshLocks>,
     /// Cached AS metadata (fetched once per upstream, shared across subjects).
     metadata_cache: Arc<RwLock<Option<AuthorizationMetadata>>>,
+    /// Per-subject dynamic client registration cache: `subject → (client_id, client_secret)`.
+    ///
+    /// Dynamic registration (RFC 7591) must run exactly once per upstream — the AS
+    /// assigns a `client_id` that must be reused for the token exchange and all
+    /// subsequent refreshes. Without this cache, `complete_authorization_callback`
+    /// and `build_auth_client` would each re-register, receiving a different
+    /// `client_id` than the one used to initiate the flow.
+    ///
+    /// The cache is populated by `begin_authorization` and consulted by
+    /// `configured_authorization_manager`. After the first successful token exchange,
+    /// the `client_id` is also persisted in the credential row so the cache is only
+    /// needed during the initial authorization window.
+    dynamic_client_ids: Arc<DashMap<String, (String, Option<String>)>>,
 }
 
 impl UpstreamOauthManager {
@@ -76,6 +90,7 @@ impl UpstreamOauthManager {
             redirect_uri: Arc::new(redirect_uri),
             locks: Arc::new(RefreshLocks::new()),
             metadata_cache: Arc::new(RwLock::new(None)),
+            dynamic_client_ids: Arc::new(DashMap::new()),
         }
     }
 
@@ -131,7 +146,7 @@ impl UpstreamOauthManager {
             .map(String::as_str)
             .collect();
 
-        let client_cfg = self.resolve_client_config(&mut manager, &scopes).await?;
+        let client_cfg = self.resolve_client_config(&mut manager, subject, &scopes).await?;
         manager
             .configure_client(client_cfg)
             .map_err(|e| OauthError::Internal(format!("configure client: {e}")))?;
@@ -185,6 +200,8 @@ impl UpstreamOauthManager {
             .delete_upstream_oauth_credentials(&self.upstream.name, subject)
             .await
             .map_err(|e| OauthError::Internal(e.to_string()))?;
+
+        self.dynamic_client_ids.remove(subject);
 
         info!(
             upstream = %self.upstream.name,
@@ -282,7 +299,7 @@ impl UpstreamOauthManager {
             .iter()
             .map(String::as_str)
             .collect();
-        let client_cfg = self.resolve_client_config(&mut manager, &scopes).await?;
+        let client_cfg = self.resolve_client_config(&mut manager, subject, &scopes).await?;
         manager
             .configure_client(client_cfg)
             .map_err(|e| OauthError::Internal(format!("configure client: {e}")))?;
@@ -392,6 +409,7 @@ impl UpstreamOauthManager {
     async fn resolve_client_config(
         &self,
         manager: &mut AuthorizationManager,
+        subject: &str,
         scopes: &[&str],
     ) -> Result<OAuthClientConfig, OauthError> {
         let oauth_cfg = self.oauth_config()?;
@@ -420,10 +438,53 @@ impl UpstreamOauthManager {
                 cfg = cfg.with_scopes(scopes.iter().map(|s| s.to_string()).collect());
                 Ok(cfg)
             }
-            UpstreamOauthRegistration::Dynamic => manager
-                .register_client("lab", self.redirect_uri.as_str(), scopes)
-                .await
-                .map_err(|e| OauthError::Internal(format!("dynamic registration: {e}"))),
+            UpstreamOauthRegistration::Dynamic => {
+                // Dynamic registration (RFC 7591) must run exactly once per upstream.
+                // Priority order:
+                //   1. Stored credential row — has the client_id from the first
+                //      registration, persisted after the token exchange completes.
+                //   2. In-memory cache — holds the client_id assigned during
+                //      `begin_authorization` before credentials are stored.
+                //   3. Call `register_client` — only on the very first invocation.
+
+                // 1. Stored credentials
+                if let Some(row) = self
+                    .sqlite
+                    .find_upstream_oauth_credentials(&self.upstream.name, subject)
+                    .await
+                    .map_err(|e| OauthError::Internal(e.to_string()))?
+                {
+                    let mut cfg =
+                        OAuthClientConfig::new(row.client_id, self.redirect_uri.as_str());
+                    cfg = cfg.with_scopes(scopes.iter().map(|s| s.to_string()).collect());
+                    return Ok(cfg);
+                }
+
+                // 2. In-memory registration cache (populated during begin_authorization)
+                if let Some(entry) = self.dynamic_client_ids.get(subject) {
+                    let (client_id, client_secret) = entry.clone();
+                    let mut cfg =
+                        OAuthClientConfig::new(client_id, self.redirect_uri.as_str());
+                    if let Some(secret) = client_secret {
+                        cfg = cfg.with_client_secret(secret);
+                    }
+                    cfg = cfg.with_scopes(scopes.iter().map(|s| s.to_string()).collect());
+                    return Ok(cfg);
+                }
+
+                // 3. Register with the AS — first call only
+                let cfg = manager
+                    .register_client("lab", self.redirect_uri.as_str(), scopes)
+                    .await
+                    .map_err(|e| OauthError::Internal(format!("dynamic registration: {e}")))?;
+
+                self.dynamic_client_ids.insert(
+                    subject.to_string(),
+                    (cfg.client_id.clone(), cfg.client_secret.clone()),
+                );
+
+                Ok(cfg)
+            }
             UpstreamOauthRegistration::ClientMetadataDocument { url } => {
                 // Client ID Metadata Document (CIMD): the metadata-document URL
                 // *is* the client identifier. No registration_endpoint call is
