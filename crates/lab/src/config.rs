@@ -131,6 +131,11 @@ impl UpstreamConfig {
                 name: self.name.clone(),
             });
         }
+        if self.oauth.is_some() && self.url.is_none() {
+            return Err(ConfigError::MissingOauthUrl {
+                name: self.name.clone(),
+            });
+        }
         if let Some(raw) = self.url.as_deref() {
             let canonical =
                 canonicalize_upstream_url(raw).map_err(|_| ConfigError::InvalidUrl {
@@ -181,6 +186,8 @@ pub enum ConfigError {
     ConflictingAuth { name: String },
     #[error("upstream '{name}' has invalid url: {url}")]
     InvalidUrl { name: String, url: String },
+    #[error("upstream '{name}' has oauth configured but no url — oauth requires an HTTP url")]
+    MissingOauthUrl { name: String },
 }
 
 /// Outbound OAuth configuration for an upstream MCP server.

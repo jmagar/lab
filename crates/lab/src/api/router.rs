@@ -435,7 +435,7 @@ pub fn build_router(
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
         .merge(v1_protected);
-    if state.gateway_manager.is_some() {
+    if is_master && state.gateway_manager.is_some() {
         let gateway_oauth_routes = Router::new().nest(
             "/v1/gateway/oauth",
             crate::api::upstream_oauth::gateway_routes(state.clone()),

@@ -111,11 +111,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
     let device_role = device_runtime.role();
 
+    let stdio_mode = should_run_stdio(transport, args.command.as_ref());
     let gateway_runtime = GatewayRuntimeHandle::default();
     let bearer_token = http_token();
     let auth_config =
         resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
-    let upstream_oauth_runtime = build_upstream_oauth_runtime(config, &auth_config).await?;
+    let upstream_oauth_runtime = if stdio_mode {
+        None
+    } else {
+        build_upstream_oauth_runtime(config, &auth_config).await?
+    };
     if !config.upstream.is_empty() {
         let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
         if let Some((_, cache)) = &upstream_oauth_runtime {
@@ -151,7 +156,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     )
     .await?;
 
-    if should_run_stdio(transport, args.command.as_ref()) {
+    if stdio_mode {
         return run_stdio(
             Arc::new(registry),
             Arc::clone(&gateway_manager),

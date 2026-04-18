@@ -194,7 +194,8 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
     // Reject mutually-exclusive auth shapes (bearer_token_env + oauth) and
     // invalid URLs. Route param attribution by error variant.
     upstream.validate().map_err(|e| match e {
-        crate::config::ConfigError::InvalidUrl { .. } => ToolError::InvalidParam {
+        crate::config::ConfigError::InvalidUrl { .. }
+        | crate::config::ConfigError::MissingOauthUrl { .. } => ToolError::InvalidParam {
             message: e.to_string(),
             param: "url".to_string(),
         },
