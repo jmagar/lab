@@ -7,6 +7,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
+import { AURORA_STRONG_PANEL } from './gateway-theme'
 
 interface TableSkeletonProps {
   rows?: number
@@ -14,47 +16,49 @@ interface TableSkeletonProps {
 
 export function GatewayTableSkeleton({ rows = 5 }: TableSkeletonProps) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[200px]">Name</TableHead>
-          <TableHead className="w-[100px]">Transport</TableHead>
-          <TableHead className="w-[100px]">Status</TableHead>
-          <TableHead className="w-[140px]">Tools</TableHead>
-          <TableHead className="w-[100px]">Warnings</TableHead>
-          <TableHead className="w-[120px]"></TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {Array.from({ length: rows }).map((_, i) => (
-          <TableRow key={i}>
-            <TableCell>
-              <Skeleton className="h-5 w-32" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-16" />
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-20" />
-            </TableCell>
-            <TableCell>
-              <div className="flex gap-2">
-                <Skeleton className="h-5 w-12" />
-                <Skeleton className="h-5 w-12" />
-              </div>
-            </TableCell>
-            <TableCell>
-              <Skeleton className="h-5 w-8" />
-            </TableCell>
-            <TableCell>
-              <div className="flex justify-end gap-1">
-                <Skeleton className="size-8 rounded-md" />
-                <Skeleton className="size-8 rounded-md" />
-              </div>
-            </TableCell>
+    <div className={cn(AURORA_STRONG_PANEL, 'overflow-hidden')}>
+      <Table>
+        <TableHeader>
+          <TableRow className="border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] hover:bg-[rgba(7,17,26,0.48)]">
+            <TableHead className="w-[200px] text-aurora-text-muted">Name</TableHead>
+            <TableHead className="w-[100px] text-aurora-text-muted">Transport</TableHead>
+            <TableHead className="w-[100px] text-aurora-text-muted">Status</TableHead>
+            <TableHead className="w-[140px] text-aurora-text-muted">Tools</TableHead>
+            <TableHead className="w-[100px] text-aurora-text-muted">Warnings</TableHead>
+            <TableHead className="w-[120px]" />
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: rows }).map((_, i) => (
+            <TableRow key={i} className="border-t border-aurora-border-strong/70">
+              <TableCell>
+                <Skeleton className="h-5 w-32 bg-[#173245]" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-5 w-16 bg-[#173245]" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-5 w-20 bg-[#173245]" />
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-2">
+                  <Skeleton className="h-5 w-12 bg-[#173245]" />
+                  <Skeleton className="h-5 w-12 bg-[#173245]" />
+                </div>
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-5 w-8 bg-[#173245]" />
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end gap-1">
+                  <Skeleton className="size-8 rounded-md bg-[#173245]" />
+                  <Skeleton className="size-8 rounded-md bg-[#173245]" />
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   )
 }
