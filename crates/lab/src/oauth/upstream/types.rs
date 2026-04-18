@@ -1,5 +1,6 @@
 //! Shared types for outbound upstream OAuth.
 
+use axum::http::StatusCode;
 use thiserror::Error;
 
 /// Stable error kinds for upstream OAuth flows.
@@ -31,7 +32,7 @@ pub enum OauthError {
     UnsupportedMethod(String),
 
     /// Internal / configuration errors that are not caller-recoverable.
-    #[error("upstream_oauth internal error: {0}")]
+    #[error("internal_error: {0}")]
     Internal(String),
 }
 
@@ -45,6 +46,17 @@ impl OauthError {
             Self::IssuerMismatch(_) => "oauth_issuer_mismatch",
             Self::UnsupportedMethod(_) => "oauth_unsupported_method",
             Self::Internal(_) => "internal_error",
+        }
+    }
+
+    pub fn http_status(&self) -> StatusCode {
+        match self {
+            Self::NeedsReauth(_) => StatusCode::UNAUTHORIZED,
+            Self::StateInvalid(_) => StatusCode::BAD_REQUEST,
+            Self::ResourceMismatch(_) | Self::IssuerMismatch(_) | Self::UnsupportedMethod(_) => {
+                StatusCode::BAD_GATEWAY
+            }
+            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

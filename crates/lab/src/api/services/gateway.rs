@@ -130,7 +130,7 @@ mod tests {
 
         let added = post_gateway(app.clone(), json!({
             "action":"gateway.add",
-            "params":{"spec":{"name":"fixture-http","url":"http://127.0.0.1:9001","bearer_token_env":"FIXTURE_HTTP_TOKEN"}}
+            "params":{"confirm":true,"spec":{"name":"fixture-http","url":"http://127.0.0.1:9001","bearer_token_env":"FIXTURE_HTTP_TOKEN"}}
         }))
         .await;
         assert_eq!(added.status(), StatusCode::OK);
@@ -139,7 +139,7 @@ mod tests {
             app.clone(),
             json!({
                 "action":"gateway.update",
-                "params":{"name":"fixture-http","patch":{"proxy_resources":true}}
+                "params":{"confirm":true,"name":"fixture-http","patch":{"proxy_resources":true}}
             }),
         )
         .await;
@@ -147,12 +147,16 @@ mod tests {
 
         let removed = post_gateway(
             app.clone(),
-            json!({"action":"gateway.remove","params":{"name":"fixture-http"}}),
+            json!({"action":"gateway.remove","params":{"confirm":true,"name":"fixture-http"}}),
         )
         .await;
         assert_eq!(removed.status(), StatusCode::OK);
 
-        let reloaded = post_gateway(app, json!({"action":"gateway.reload","params":{}})).await;
+        let reloaded = post_gateway(
+            app,
+            json!({"action":"gateway.reload","params":{"confirm":true}}),
+        )
+        .await;
         assert_eq!(reloaded.status(), StatusCode::OK);
     }
 

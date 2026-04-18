@@ -112,8 +112,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let device_role = device_runtime.role();
 
     let gateway_runtime = GatewayRuntimeHandle::default();
+    let bearer_token = http_token();
+    let auth_config =
+        resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
+    let upstream_oauth_runtime = build_upstream_oauth_runtime(config, &auth_config).await?;
     if !config.upstream.is_empty() {
-        let pool = Arc::new(crate::dispatch::upstream::pool::UpstreamPool::new());
+        let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
+        if let Some((_, cache)) = &upstream_oauth_runtime {
+            pool_builder = pool_builder.with_oauth_client_cache(cache.clone());
+        }
+        let pool = Arc::new(pool_builder);
         pool.discover_all(&config.upstream).await;
         gateway_runtime.swap(Some(pool)).await;
     }
@@ -126,6 +134,11 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         gateway_runtime.clone(),
     )
     .with_service_clients(service_clients);
+    if let Some((managers, cache)) = upstream_oauth_runtime {
+        gateway_manager = gateway_manager
+            .with_upstream_oauth_managers(managers)
+            .with_oauth_client_cache(cache);
+    }
     gateway_manager.set_notifier(CatalogChangeNotifier::new(notify_tx));
     let gateway_manager = Arc::new(gateway_manager);
     gateway_manager.seed_config(config.clone()).await;
@@ -152,9 +165,6 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         anyhow::bail!("HTTP host cannot be empty — set LAB_MCP_HTTP_HOST or mcp.host in config");
     }
 
-    let bearer_token = http_token();
-    let auth_config =
-        resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
     crate::mcp::server::verify_upstream_subject_resolution_support()
         .context("verify upstream OAuth subject-resolution wiring")?;
     let auth_configured = bearer_token.is_some() || matches!(auth_config.mode, AuthMode::OAuth);
@@ -218,6 +228,75 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         matches!(transport, Transport::Http),
     )
     .await
+}
+
+async fn build_upstream_oauth_runtime(
+    config: &LabConfig,
+    auth_config: &lab_auth::config::AuthConfig,
+) -> Result<
+    Option<(
+        Arc<dashmap::DashMap<String, crate::oauth::upstream::manager::UpstreamOauthManager>>,
+        crate::oauth::upstream::cache::OauthClientCache,
+    )>,
+> {
+    if !config
+        .upstream
+        .iter()
+        .any(|upstream| upstream.oauth.is_some())
+    {
+        return Ok(None);
+    }
+
+    let public_url = auth_config
+        .public_url
+        .as_ref()
+        .context("LAB_PUBLIC_URL is required when upstream oauth is configured")?;
+    anyhow::ensure!(
+        public_url.scheme() == "https",
+        "LAB_PUBLIC_URL must be absolute https:// when upstream oauth is configured"
+    );
+
+    let encryption_key = std::env::var("LAB_OAUTH_ENCRYPTION_KEY")
+        .context("LAB_OAUTH_ENCRYPTION_KEY is required when upstream oauth is configured")?;
+    let encryption_key = crate::oauth::upstream::encryption::load_key(&encryption_key)
+        .map_err(|error| anyhow::anyhow!("invalid LAB_OAUTH_ENCRYPTION_KEY: {error}"))?;
+    let sqlite = lab_auth::sqlite::SqliteStore::open(auth_config.sqlite_path.clone())
+        .await
+        .context("open sqlite store for upstream oauth")?;
+    let redirect_uri = build_upstream_oauth_callback_uri(public_url)?;
+
+    let managers = Arc::new(dashmap::DashMap::new());
+    for upstream in config
+        .upstream
+        .iter()
+        .filter(|upstream| upstream.oauth.is_some())
+    {
+        managers.insert(
+            upstream.name.clone(),
+            crate::oauth::upstream::manager::UpstreamOauthManager::new(
+                sqlite.clone(),
+                encryption_key.clone(),
+                upstream.clone(),
+                redirect_uri.clone(),
+            ),
+        );
+    }
+    let cache = crate::oauth::upstream::cache::OauthClientCache::new(Arc::clone(&managers));
+    Ok(Some((managers, cache)))
+}
+
+fn build_upstream_oauth_callback_uri(public_url: &url::Url) -> Result<String> {
+    let mut redirect_uri = public_url.clone();
+    let base_path = redirect_uri.path().trim_end_matches('/');
+    let next_path = if base_path.is_empty() {
+        "/auth/upstream/callback".to_string()
+    } else {
+        format!("{base_path}/auth/upstream/callback")
+    };
+    redirect_uri.set_path(&next_path);
+    redirect_uri.set_query(None);
+    redirect_uri.set_fragment(None);
+    Ok(redirect_uri.to_string())
 }
 
 fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf> {

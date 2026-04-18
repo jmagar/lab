@@ -14,8 +14,8 @@
 //! the pool does not need a reference to the gateway and the gateway does
 //! not need to know how the pool uses the clients.
 
-use std::sync::Arc;
 use std::future::Future;
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use rmcp::transport::AuthClient;
@@ -315,12 +315,7 @@ mod tests {
         let old = cfg("acme", "id-1");
         let new = cfg("acme", "id-2");
         let old_fingerprint = registration_fingerprint(&old).expect("old fingerprint");
-        cache.insert_for_tests(
-            "acme",
-            "alice",
-            &old_fingerprint,
-            dummy_auth_client().await,
-        );
+        cache.insert_for_tests("acme", "alice", &old_fingerprint, dummy_auth_client().await);
 
         let rebuilt = Arc::new(AtomicUsize::new(0));
         let client = cache

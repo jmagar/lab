@@ -1234,7 +1234,10 @@ url = "https://acme.example.com/.well-known/oauth-client"
 
         let upstream = &cfg.upstream[0];
         let oauth = upstream.oauth.as_ref().expect("oauth present");
-        assert!(matches!(oauth.mode, UpstreamOauthMode::AuthorizationCodePkce));
+        assert!(matches!(
+            oauth.mode,
+            UpstreamOauthMode::AuthorizationCodePkce
+        ));
         assert_eq!(oauth.scopes.as_deref(), Some(&["mcp".to_string()][..]));
         match &oauth.registration {
             UpstreamOauthRegistration::ClientMetadataDocument { url } => {

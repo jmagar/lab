@@ -545,6 +545,30 @@ impl SqliteStore {
         .await
     }
 
+    pub async fn find_upstream_oauth_state_subject(
+        &self,
+        upstream_name: &str,
+        csrf_token: &str,
+        now: i64,
+    ) -> Result<Option<String>, AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let csrf_token = csrf_token.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT subject
+                 FROM upstream_oauth_state
+                 WHERE upstream_name = ?1
+                   AND csrf_token = ?2
+                   AND expires_at > ?3",
+                params![upstream_name, csrf_token, now],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
     /// Atomic take-once via `DELETE ... RETURNING`.
     pub async fn take_upstream_oauth_state(
         &self,
@@ -813,9 +837,7 @@ fn row_to_upstream_oauth_credentials(
     })
 }
 
-fn row_to_upstream_oauth_state(
-    row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<UpstreamOauthStateRow> {
+fn row_to_upstream_oauth_state(row: &rusqlite::Row<'_>) -> rusqlite::Result<UpstreamOauthStateRow> {
     Ok(UpstreamOauthStateRow {
         upstream_name: row.get(0)?,
         subject: row.get(1)?,
@@ -1083,10 +1105,7 @@ mod tests {
         assert_eq!(fetched.token_blob, row.token_blob);
         assert_eq!(fetched.token_blob_nonce, row.token_blob_nonce);
         assert_eq!(fetched.token_received_at, row.token_received_at);
-        assert_eq!(
-            fetched.access_token_expires_at,
-            row.access_token_expires_at
-        );
+        assert_eq!(fetched.access_token_expires_at, row.access_token_expires_at);
         assert_eq!(fetched.refresh_token_present, row.refresh_token_present);
     }
 
@@ -1104,7 +1123,10 @@ mod tests {
         );
         let a_some = matches!(a, Ok(Some(_)));
         let b_some = matches!(b, Ok(Some(_)));
-        assert!(a_some ^ b_some, "exactly one take should win: a={a:?} b={b:?}");
+        assert!(
+            a_some ^ b_some,
+            "exactly one take should win: a={a:?} b={b:?}"
+        );
     }
 
     #[tokio::test]
@@ -1147,14 +1169,8 @@ mod tests {
         row1.subject = "alice".to_string();
         let mut row2 = sample_upstream_credentials();
         row2.subject = "bob".to_string();
-        store
-            .upsert_upstream_oauth_credentials(row1)
-            .await
-            .unwrap();
-        store
-            .upsert_upstream_oauth_credentials(row2)
-            .await
-            .unwrap();
+        store.upsert_upstream_oauth_credentials(row1).await.unwrap();
+        store.upsert_upstream_oauth_credentials(row2).await.unwrap();
 
         store
             .delete_upstream_oauth_credentials("acme", "alice")
@@ -1181,18 +1197,12 @@ mod tests {
     async fn sqlite_store_upsert_overwrites_existing_credentials() {
         let store = temp_store().await;
         let row1 = sample_upstream_credentials();
-        store
-            .upsert_upstream_oauth_credentials(row1)
-            .await
-            .unwrap();
+        store.upsert_upstream_oauth_credentials(row1).await.unwrap();
 
         let mut row2 = sample_upstream_credentials();
         row2.client_id = "client-rotated".to_string();
         row2.token_blob = vec![9, 9, 9];
-        store
-            .upsert_upstream_oauth_credentials(row2)
-            .await
-            .unwrap();
+        store.upsert_upstream_oauth_credentials(row2).await.unwrap();
 
         let fetched = store
             .find_upstream_oauth_credentials("acme", "alice")

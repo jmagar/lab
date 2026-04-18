@@ -29,6 +29,10 @@ use rmcp::transport::auth::{
 
 use crate::oauth::upstream::encryption::{self, EncryptionKey};
 
+fn credential_aad(upstream_name: &str, subject: &str, client_id: &str) -> Vec<u8> {
+    format!("upstream={upstream_name}\0subject={subject}\0client_id={client_id}").into_bytes()
+}
+
 fn now_unix() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -69,9 +73,7 @@ impl CredentialStore for SqliteCredentialStore {
         &'life0 self,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<Option<StoredCredentials>, AuthError>>
-                + Send
-                + 'async_trait,
+            dyn Future<Output = Result<Option<StoredCredentials>, AuthError>> + Send + 'async_trait,
         >,
     >
     where
@@ -89,8 +91,9 @@ impl CredentialStore for SqliteCredentialStore {
                 return Ok(None);
             };
 
+            let aad = credential_aad(&row.upstream_name, &row.subject, &row.client_id);
             let plaintext =
-                encryption::open(&self.key, &row.token_blob, &row.token_blob_nonce)
+                encryption::open_with_aad(&self.key, &row.token_blob, &row.token_blob_nonce, &aad)
                     .map_err(|_| AuthError::AuthorizationRequired)?;
 
             let creds: StoredCredentials = serde_json::from_slice(&plaintext)
@@ -113,11 +116,11 @@ impl CredentialStore for SqliteCredentialStore {
 
             let (access_token_expires_at, refresh_token_present) =
                 if let Some(ref token) = credentials.token_response {
-                    let expires_in = token
-                        .expires_in()
-                        .map(|d| d.as_secs())
-                        .unwrap_or(3600) as i64;
-                    (token_received_at + expires_in, token.refresh_token().is_some())
+                    let expires_in = token.expires_in().map(|d| d.as_secs()).unwrap_or(3600) as i64;
+                    (
+                        token_received_at + expires_in,
+                        token.refresh_token().is_some(),
+                    )
                 } else {
                     (0, false)
                 };
@@ -125,11 +128,12 @@ impl CredentialStore for SqliteCredentialStore {
             let granted_scopes_json = serde_json::to_string(&credentials.granted_scopes)
                 .map_err(|e| AuthError::InternalError(format!("serialize scopes: {e}")))?;
 
-            let plaintext = serde_json::to_vec(&credentials).map_err(|e| {
-                AuthError::InternalError(format!("serialize credentials: {e}"))
-            })?;
+            let plaintext = serde_json::to_vec(&credentials)
+                .map_err(|e| AuthError::InternalError(format!("serialize credentials: {e}")))?;
 
-            let (token_blob, token_blob_nonce) = encryption::seal(&self.key, &plaintext);
+            let aad = credential_aad(&self.upstream_name, &self.subject, &credentials.client_id);
+            let (token_blob, token_blob_nonce) =
+                encryption::seal_with_aad(&self.key, &plaintext, &aad);
 
             let row = UpstreamOauthCredentialRow {
                 upstream_name: self.upstream_name.clone(),
@@ -240,12 +244,7 @@ impl StateStore for SqliteStateStore {
             let now = now_unix();
             let row = self
                 .store
-                .take_upstream_oauth_state(
-                    &self.upstream_name,
-                    &self.subject,
-                    csrf_token,
-                    now,
-                )
+                .take_upstream_oauth_state(&self.upstream_name, &self.subject, csrf_token, now)
                 .await
                 .map_err(|e| AuthError::InternalError(e.to_string()))?;
 

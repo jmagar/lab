@@ -237,11 +237,7 @@ async fn token_exchange_carries_canonical_resource_indicator() {
         .await
         .expect("exchange");
 
-    let recorded = h
-        .mock
-        .received_requests()
-        .await
-        .expect("record enabled");
+    let recorded = h.mock.received_requests().await.expect("record enabled");
     let token_req = recorded
         .iter()
         .find(|r| r.method.as_str() == "POST" && r.url.path() == "/token")
@@ -278,7 +274,10 @@ async fn issuer_endpoint_host_mismatch_returns_issuer_mismatch() {
     h.mount_metadata(
         Some("https://good.example"),
         Some(&["S256"]),
-        Some(("https://evil.example/authorize", "https://evil.example/token")),
+        Some((
+            "https://evil.example/authorize",
+            "https://evil.example/token",
+        )),
     )
     .await;
     let m = h.manager(h.upstream_cfg(preregistered()));
@@ -297,9 +296,11 @@ async fn cimd_registration_uses_metadata_url_as_client_id() {
     h.mount_metadata(Some(&h.as_url()), Some(&["S256"]), None)
         .await;
     let cimd_url = "https://lab.example/.well-known/oauth-client-metadata";
-    let m = h.manager(h.upstream_cfg(UpstreamOauthRegistration::ClientMetadataDocument {
-        url: cimd_url.into(),
-    }));
+    let m = h.manager(
+        h.upstream_cfg(UpstreamOauthRegistration::ClientMetadataDocument {
+            url: cimd_url.into(),
+        }),
+    );
 
     let begin = m.begin_authorization("alice").await.expect("begin");
     let u = Url::parse(&begin.authorization_url).unwrap();
@@ -308,4 +309,28 @@ async fn cimd_registration_uses_metadata_url_as_client_id() {
         .find(|(k, _)| k == "client_id")
         .map(|(_, v)| v.into_owned());
     assert_eq!(client_id.as_deref(), Some(cimd_url));
+}
+
+#[tokio::test]
+async fn subject_lookup_survives_restart_for_saved_state() {
+    let h = Harness::new().await;
+    h.mount_no_resource_metadata().await;
+    h.mount_metadata(Some(&h.as_url()), Some(&["S256"]), None)
+        .await;
+    let manager = h.manager(h.upstream_cfg(preregistered()));
+
+    let begin = manager.begin_authorization("alice").await.expect("begin");
+    let authorize_url = Url::parse(&begin.authorization_url).unwrap();
+    let state = authorize_url
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .map(|(_, v)| v.into_owned())
+        .expect("state");
+
+    let restarted_manager = h.manager(h.upstream_cfg(preregistered()));
+    let subject = restarted_manager
+        .subject_for_state(&state)
+        .await
+        .expect("lookup");
+    assert_eq!(subject.as_deref(), Some("alice"));
 }

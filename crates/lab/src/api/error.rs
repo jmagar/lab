@@ -23,8 +23,16 @@ impl IntoResponse for ToolError {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             "confirmation_required" => StatusCode::UNPROCESSABLE_ENTITY,
+            "oauth_needs_reauth" => StatusCode::UNAUTHORIZED,
+            "oauth_state_invalid" => StatusCode::BAD_REQUEST,
+            "forbidden" => StatusCode::FORBIDDEN,
             "unknown_action" | "unknown_subaction" | "unknown_instance" => StatusCode::BAD_REQUEST,
-            "network_error" | "server_error" | "upstream_error" => StatusCode::BAD_GATEWAY,
+            "network_error"
+            | "server_error"
+            | "upstream_error"
+            | "oauth_resource_mismatch"
+            | "oauth_issuer_mismatch"
+            | "oauth_unsupported_method" => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // Serialize self directly — byte-identical to the MCP error envelope.

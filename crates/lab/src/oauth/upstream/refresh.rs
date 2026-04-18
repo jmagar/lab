@@ -18,10 +18,7 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use rmcp::transport::{AuthError, AuthorizationManager};
 use tokio::sync::Mutex;
-
-use crate::oauth::upstream::types::OauthError;
 
 /// Per-`(upstream_name, subject)` mutex pool.
 ///
@@ -44,33 +41,4 @@ impl RefreshLocks {
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone()
     }
-}
-
-/// Proactively refresh the access token for `(upstream_name, subject)` if it is near
-/// expiry, using a per-pair mutex to prevent concurrent refresh storms.
-///
-/// Returns the current access token (possibly just refreshed).
-///
-/// On `AuthError::AuthorizationRequired` (no credentials, or refresh token rejected),
-/// maps to `OauthError::NeedsReauth` so callers can surface a re-authorization prompt.
-pub async fn refresh_if_stale(
-    auth_manager: &Mutex<AuthorizationManager>,
-    locks: &RefreshLocks,
-    upstream_name: &str,
-    subject: &str,
-) -> Result<String, OauthError> {
-    let lock = locks.acquire(upstream_name, subject);
-    let _guard = lock.lock().await;
-
-    auth_manager
-        .lock()
-        .await
-        .get_access_token()
-        .await
-        .map_err(|e| match e {
-            AuthError::AuthorizationRequired => {
-                OauthError::NeedsReauth("access token expired and refresh failed".to_string())
-            }
-            other => OauthError::Internal(other.to_string()),
-        })
 }

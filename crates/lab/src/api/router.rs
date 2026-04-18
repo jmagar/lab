@@ -309,13 +309,6 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         {
             v1 = v1.nest("/logs", services::logs::routes(state.clone()));
         }
-
-        if state.upstream_oauth.is_some() {
-            v1 = v1.nest(
-                "/upstream-oauth/:name",
-                services::upstream_oauth::routes(state.clone()),
-            );
-        }
     }
 
     macro_rules! mount_if_enabled {
@@ -442,6 +435,34 @@ pub fn build_router(
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
         .merge(v1_protected);
+    if state.gateway_manager.is_some() {
+        let gateway_oauth_routes = Router::new().nest(
+            "/v1/gateway/oauth",
+            crate::api::upstream_oauth::gateway_routes(state.clone()),
+        );
+        let gateway_oauth_routes = if needs_auth && !state.web_ui_auth_disabled {
+            let auth_state_for_gateway = auth_state.clone();
+            let static_token_for_gateway = static_token.clone();
+            let resource_url_for_gateway = resource_url.clone();
+            gateway_oauth_routes.layer(axum::middleware::from_fn(
+                move |request: Request<Body>, next: Next| {
+                    authenticate_request(
+                        request,
+                        next,
+                        static_token_for_gateway.clone(),
+                        auth_state_for_gateway.clone(),
+                        resource_url_for_gateway.clone(),
+                        true,
+                    )
+                },
+            ))
+        } else {
+            gateway_oauth_routes
+        };
+        router = router
+            .merge(gateway_oauth_routes)
+            .merge(crate::api::upstream_oauth::browser_routes(state.clone()));
+    }
     if let Some(mcp) = mcp_protected.filter(|_| is_master) {
         router = router.merge(mcp);
     }
@@ -607,6 +628,7 @@ async fn service_actions(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::sync::Arc;
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode, header};
@@ -1205,6 +1227,50 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(header.contains("resource_metadata="));
+    }
+
+    #[tokio::test]
+    async fn gateway_oauth_routes_require_auth() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = Arc::new(crate::dispatch::gateway::manager::GatewayManager::new(
+            tempdir.path().join("gateway.toml"),
+            crate::dispatch::gateway::manager::GatewayRuntimeHandle::default(),
+        ));
+        let state = AppState::new().with_gateway_manager(manager);
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/gateway/oauth/status?upstream=test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn browser_oauth_callback_bypasses_bearer_auth() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = Arc::new(crate::dispatch::gateway::manager::GatewayManager::new(
+            tempdir.path().join("gateway.toml"),
+            crate::dispatch::gateway::manager::GatewayRuntimeHandle::default(),
+        ));
+        let state = AppState::new().with_gateway_manager(manager);
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/auth/upstream/callback?upstream=test&state=csrf&code=authcode")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

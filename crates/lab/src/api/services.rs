@@ -9,7 +9,6 @@ pub mod helpers;
 pub mod extract;
 pub mod gateway;
 pub mod logs;
-pub mod upstream_oauth;
 
 #[cfg(feature = "radarr")]
 pub mod radarr;

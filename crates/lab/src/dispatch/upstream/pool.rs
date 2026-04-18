@@ -9,7 +9,10 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
-use rmcp::model::{CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult};
+use rmcp::model::{
+    CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, Prompt,
+    ReadResourceResult, Resource,
+};
 use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransportConfig, StreamableHttpClientWorker,
 };
@@ -506,6 +509,65 @@ impl UpstreamPool {
             .collect()
     }
 
+    pub async fn subject_scoped_tools(
+        &self,
+        configs: &[UpstreamConfig],
+        subject: &str,
+    ) -> Vec<(String, Vec<rmcp::model::Tool>)> {
+        let mut futures = FuturesUnordered::new();
+        let oauth_client_cache = self.oauth_client_cache.clone();
+        for config in configs.iter().filter(|config| config.oauth.is_some()) {
+            let config = config.clone();
+            let subject = subject.to_string();
+            let oauth_client_cache = oauth_client_cache.clone();
+            futures.push(async move {
+                let result =
+                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
+                        .await;
+                (config.name.clone(), result)
+            });
+        }
+
+        let mut discovered = Vec::new();
+        while let Some((name, result)) = futures.next().await {
+            match result {
+                Ok((_conn, tools)) => discovered.push((name, tools)),
+                Err(error) => {
+                    tracing::warn!(
+                        upstream = %name,
+                        error = %error,
+                        "subject-scoped upstream tool discovery failed"
+                    );
+                }
+            }
+        }
+        discovered
+    }
+
+    pub async fn subject_scoped_call_tool(
+        &self,
+        config: &UpstreamConfig,
+        subject: &str,
+        params: CallToolRequestParams,
+    ) -> Result<CallToolResult, String> {
+        let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
+            .await
+            .map_err(|error| error.to_string())?;
+        let result = conn
+            .peer
+            .call_tool(params)
+            .await
+            .map_err(|error| format!("upstream call failed: {error}"))?;
+        let response_size = estimate_response_size(&result);
+        let max_bytes = max_response_bytes();
+        if response_size > max_bytes {
+            return Err(format!(
+                "upstream response too large ({response_size} bytes, max {max_bytes})"
+            ));
+        }
+        Ok(result)
+    }
+
     /// Return the names of upstreams currently routable for a capability.
     pub async fn routable_upstream_names(&self, capability: UpstreamCapability) -> Vec<String> {
         let catalog = self.catalog.read().await;
@@ -890,6 +952,55 @@ impl UpstreamPool {
         resources
     }
 
+    pub async fn subject_scoped_resources(
+        &self,
+        configs: &[UpstreamConfig],
+        subject: &str,
+    ) -> Vec<Resource> {
+        let mut futures = FuturesUnordered::new();
+        let oauth_client_cache = self.oauth_client_cache.clone();
+        for config in configs
+            .iter()
+            .filter(|config| config.oauth.is_some() && config.proxy_resources)
+        {
+            let config = config.clone();
+            let subject = subject.to_string();
+            let oauth_client_cache = oauth_client_cache.clone();
+            futures.push(async move {
+                let result =
+                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
+                        .await
+                        .map(|(conn, _)| conn);
+                (config.name.clone(), result)
+            });
+        }
+
+        let mut resources = Vec::new();
+        while let Some((name, result)) = futures.next().await {
+            let Ok(conn) = result else {
+                continue;
+            };
+            match conn.peer.list_resources(None).await {
+                Ok(result) => {
+                    for mut resource in result.resources {
+                        let original_uri = resource.uri.clone();
+                        resource.uri = format!("lab://upstream/{name}/{original_uri}");
+                        resources.push(resource);
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        upstream = %name,
+                        error = %error,
+                        "subject-scoped upstream resource discovery failed"
+                    );
+                }
+            }
+        }
+
+        resources
+    }
+
     /// Read a resource from an upstream, given a prefixed URI.
     ///
     /// Expects URIs in the form `lab://upstream/{name}/{original_uri}`.
@@ -962,6 +1073,27 @@ impl UpstreamPool {
         Some(result)
     }
 
+    pub async fn subject_scoped_read_resource(
+        &self,
+        config: &UpstreamConfig,
+        subject: &str,
+        uri: &str,
+    ) -> Result<ReadResourceResult, String> {
+        let prefix = format!("lab://upstream/{}/", config.name);
+        let original_uri = uri
+            .strip_prefix(&prefix)
+            .ok_or_else(|| "resource uri does not match upstream".to_string())?;
+        let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
+            .await
+            .map_err(|error| error.to_string())?;
+        let result = conn
+            .peer
+            .read_resource(rmcp::model::ReadResourceRequestParams::new(original_uri))
+            .await
+            .map_err(|error| format!("upstream resource read failed: {error}"))?;
+        Ok(normalize_resource_result_uri(result, uri))
+    }
+
     /// Fetch prompts from all healthy upstreams and merge them, returning both the
     /// deduplicated prompt list and the ownership map (prompt_name -> upstream_name).
     ///
@@ -1027,6 +1159,48 @@ impl UpstreamPool {
         prompts
     }
 
+    pub async fn subject_scoped_prompts(
+        &self,
+        configs: &[UpstreamConfig],
+        subject: &str,
+        builtin_names: &[&str],
+    ) -> Vec<Prompt> {
+        let mut futures = FuturesUnordered::new();
+        let oauth_client_cache = self.oauth_client_cache.clone();
+        for config in configs.iter().filter(|config| config.oauth.is_some()) {
+            let config = config.clone();
+            let subject = subject.to_string();
+            let oauth_client_cache = oauth_client_cache.clone();
+            futures.push(async move {
+                let result =
+                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
+                        .await
+                        .map(|(conn, _)| conn);
+                (config.name.clone(), result)
+            });
+        }
+
+        let mut upstream_prompts = Vec::new();
+        while let Some((name, result)) = futures.next().await {
+            let Ok(conn) = result else {
+                continue;
+            };
+            match conn.peer.list_prompts(None).await {
+                Ok(result) => upstream_prompts.push((name, result.prompts)),
+                Err(error) => {
+                    tracing::warn!(
+                        upstream = %name,
+                        error = %error,
+                        "subject-scoped upstream prompt discovery failed"
+                    );
+                }
+            }
+        }
+
+        let (prompts, _) = merge_upstream_prompts(builtin_names, upstream_prompts);
+        prompts
+    }
+
     /// Build prompt ownership map: prompt_name -> upstream_name.
     ///
     /// Makes M RPCs (one per healthy upstream), not M*N. Use this when you need
@@ -1043,6 +1217,44 @@ impl UpstreamPool {
     pub async fn find_prompt_owner(&self, prompt_name: &str) -> Option<String> {
         let (_, owners) = self.collect_upstream_prompts(&[]).await;
         owners.get(prompt_name).cloned()
+    }
+
+    pub async fn subject_scoped_prompt_owner(
+        &self,
+        configs: &[UpstreamConfig],
+        subject: &str,
+        prompt_name: &str,
+    ) -> Option<String> {
+        let mut futures = FuturesUnordered::new();
+        let oauth_client_cache = self.oauth_client_cache.clone();
+        for config in configs.iter().filter(|config| config.oauth.is_some()) {
+            let config = config.clone();
+            let subject = subject.to_string();
+            let oauth_client_cache = oauth_client_cache.clone();
+            let target_prompt = prompt_name.to_string();
+            futures.push(async move {
+                let result =
+                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
+                        .await
+                        .map(|(conn, _)| conn);
+                (config.name.clone(), target_prompt, result)
+            });
+        }
+
+        while let Some((name, target_prompt, result)) = futures.next().await {
+            let Ok(conn) = result else {
+                continue;
+            };
+            if let Ok(result) = conn.peer.list_prompts(None).await
+                && result
+                    .prompts
+                    .iter()
+                    .any(|prompt| prompt.name == target_prompt)
+            {
+                return Some(name);
+            }
+        }
+        None
     }
 
     /// Proxy a get-prompt request to a specific upstream.
@@ -1072,6 +1284,21 @@ impl UpstreamPool {
                 Some(Err(format!("upstream prompt get failed: {e}")))
             }
         }
+    }
+
+    pub async fn subject_scoped_get_prompt(
+        &self,
+        config: &UpstreamConfig,
+        subject: &str,
+        params: GetPromptRequestParams,
+    ) -> Result<GetPromptResult, String> {
+        let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
+            .await
+            .map_err(|error| error.to_string())?;
+        conn.peer
+            .get_prompt(params)
+            .await
+            .map_err(|error| format!("upstream prompt get failed: {error}"))
     }
 }
 
@@ -1174,7 +1401,13 @@ async fn connect_http_upstream(
         let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(worker).await?;
         let peer = service.peer().clone();
         let tools = peer.list_all_tools().await?;
-        return Ok((UpstreamConnection { _service: service, peer }, tools));
+        return Ok((
+            UpstreamConnection {
+                _service: service,
+                peer,
+            },
+            tools,
+        ));
     }
 
     // Non-OAuth path: optionally inject a static bearer token from env.
@@ -1198,7 +1431,13 @@ async fn connect_http_upstream(
     let peer = service.peer().clone();
     let tools = peer.list_all_tools().await?;
 
-    Ok((UpstreamConnection { _service: service, peer }, tools))
+    Ok((
+        UpstreamConnection {
+            _service: service,
+            peer,
+        },
+        tools,
+    ))
 }
 
 /// Connect to a stdio upstream MCP server (child process).
@@ -1399,7 +1638,11 @@ mod tests {
         .await
         .expect_err("missing subject should fail");
 
-        assert!(error.to_string().contains("requires an authenticated subject"));
+        assert!(
+            error
+                .to_string()
+                .contains("requires an authenticated subject")
+        );
     }
 
     #[tokio::test]
@@ -1414,7 +1657,11 @@ mod tests {
         .await
         .expect_err("missing cache should fail");
 
-        assert!(error.to_string().contains("no auth client cache is registered"));
+        assert!(
+            error
+                .to_string()
+                .contains("no auth client cache is registered")
+        );
     }
 
     #[test]

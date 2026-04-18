@@ -30,16 +30,16 @@
 
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use lab_auth::sqlite::SqliteStore;
+use lab_auth::types::UpstreamOauthCredentialRow;
 use rmcp::transport::auth::{AuthorizationMetadata, OAuthClientConfig};
 use rmcp::transport::{AuthClient, AuthorizationManager};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::config::{UpstreamConfig, UpstreamOauthRegistration};
 use crate::oauth::upstream::encryption::EncryptionKey;
-use crate::oauth::upstream::refresh::{RefreshLocks, refresh_if_stale};
+use crate::oauth::upstream::refresh::RefreshLocks;
 use crate::oauth::upstream::store::{SqliteCredentialStore, SqliteStateStore};
 use crate::oauth::upstream::types::{BeginAuthorization, OauthError};
 
@@ -55,14 +55,6 @@ pub struct UpstreamOauthManager {
     locks: Arc<RefreshLocks>,
     /// Cached AS metadata (fetched once per upstream, shared across subjects).
     metadata_cache: Arc<RwLock<Option<AuthorizationMetadata>>>,
-    /// In-flight authorization managers keyed by subject (begin → complete window).
-    pending: Arc<DashMap<String, Arc<Mutex<AuthorizationManager>>>>,
-    /// CSRF token → subject reverse index for callback routing.
-    ///
-    /// The OAuth callback only carries the CSRF token (`state` param); this map
-    /// lets the callback handler find the subject without a database round-trip.
-    /// Entries are removed when `complete_authorization_callback` succeeds.
-    csrf_to_subject: Arc<DashMap<String, String>>,
 }
 
 impl UpstreamOauthManager {
@@ -84,8 +76,6 @@ impl UpstreamOauthManager {
             redirect_uri: Arc::new(redirect_uri),
             locks: Arc::new(RefreshLocks::new()),
             metadata_cache: Arc::new(RwLock::new(None)),
-            pending: Arc::new(DashMap::new()),
-            csrf_to_subject: Arc::new(DashMap::new()),
         }
     }
 
@@ -125,8 +115,7 @@ impl UpstreamOauthManager {
             &self.upstream.name,
             subject,
         );
-        let state_store =
-            SqliteStateStore::new(self.sqlite.clone(), &self.upstream.name, subject);
+        let state_store = SqliteStateStore::new(self.sqlite.clone(), &self.upstream.name, subject);
         manager.set_credential_store(cred_store);
         manager.set_state_store(state_store);
 
@@ -142,9 +131,7 @@ impl UpstreamOauthManager {
             .map(String::as_str)
             .collect();
 
-        let client_cfg = self
-            .resolve_client_config(&mut manager, &scopes)
-            .await?;
+        let client_cfg = self.resolve_client_config(&mut manager, &scopes).await?;
         manager
             .configure_client(client_cfg)
             .map_err(|e| OauthError::Internal(format!("configure client: {e}")))?;
@@ -153,13 +140,9 @@ impl UpstreamOauthManager {
             .get_authorization_url(&scopes)
             .await
             .map_err(|e| OauthError::Internal(format!("get authorization url: {e}")))?;
-
-        if let Some(csrf) = extract_state_param(&authorization_url) {
-            self.csrf_to_subject.insert(csrf, subject.to_string());
-        }
-
-        self.pending
-            .insert(subject.to_string(), Arc::new(Mutex::new(manager)));
+        let _csrf = extract_state_param(&authorization_url).ok_or_else(|| {
+            OauthError::Internal("authorization url missing required state parameter".to_string())
+        })?;
 
         info!(
             upstream = %self.upstream.name,
@@ -172,34 +155,20 @@ impl UpstreamOauthManager {
 
     /// Complete the authorization callback.
     ///
-    /// Exchanges the authorization code for tokens, verifies the CSRF token, and
-    /// persists the encrypted credentials.  Requires that `begin_authorization` was
-    /// called first for this `(upstream, subject)` pair.
+    /// Exchanges the authorization code for tokens and persists the encrypted
+    /// credentials. Completion is reconstructed from persisted PKCE state rather
+    /// than an in-memory pending map, so callbacks remain valid across restarts.
     pub async fn complete_authorization_callback(
         &self,
         subject: &str,
         code: &str,
         csrf_token: &str,
     ) -> Result<(), OauthError> {
-        let manager_arc = self
-            .pending
-            .get(subject)
-            .map(|v| v.clone())
-            .ok_or_else(|| {
-                OauthError::StateInvalid(
-                    "no pending authorization; call begin_authorization first".to_string(),
-                )
-            })?;
-
-        manager_arc
-            .lock()
-            .await
+        self.configured_authorization_manager(subject)
+            .await?
             .exchange_code_for_token(code, csrf_token)
             .await
             .map_err(map_auth_error)?;
-
-        self.pending.remove(subject);
-        self.csrf_to_subject.retain(|_, v| v != subject);
 
         info!(
             upstream = %self.upstream.name,
@@ -210,40 +179,12 @@ impl UpstreamOauthManager {
         Ok(())
     }
 
-    /// Complete the authorization callback using the CSRF token to resolve the subject.
-    ///
-    /// Used by the callback HTTP route where the subject is not in the URL path —
-    /// the CSRF token carried in the `state` query param is used to look up the
-    /// subject from the in-memory index populated by `begin_authorization`.
-    pub async fn complete_authorization_callback_by_csrf(
-        &self,
-        code: &str,
-        csrf_token: &str,
-    ) -> Result<(), OauthError> {
-        let subject = self
-            .csrf_to_subject
-            .get(csrf_token)
-            .map(|v| v.clone())
-            .ok_or_else(|| {
-                OauthError::StateInvalid(
-                    "CSRF token not found; authorization may have expired or never started"
-                        .to_string(),
-                )
-            })?;
-
-        self.complete_authorization_callback(&subject, code, csrf_token)
-            .await
-    }
-
     /// Delete all stored credentials for `subject` and evict any cached state.
     pub async fn clear_credentials(&self, subject: &str) -> Result<(), OauthError> {
         self.sqlite
             .delete_upstream_oauth_credentials(&self.upstream.name, subject)
             .await
             .map_err(|e| OauthError::Internal(e.to_string()))?;
-
-        self.pending.remove(subject);
-        self.csrf_to_subject.retain(|_, v| v != subject);
 
         info!(
             upstream = %self.upstream.name,
@@ -265,26 +206,10 @@ impl UpstreamOauthManager {
         &self,
         subject: &str,
     ) -> Result<AuthClient<reqwest::Client>, OauthError> {
-        let upstream_url = self.upstream_url()?;
+        let lock = self.locks.acquire(&self.upstream.name, subject);
+        let _guard = lock.lock().await;
 
-        let mut manager = AuthorizationManager::new(upstream_url.as_str())
-            .await
-            .map_err(|e| OauthError::Internal(format!("create auth manager: {e}")))?;
-
-        let cred_store = SqliteCredentialStore::new(
-            self.sqlite.clone(),
-            self.key.clone(),
-            &self.upstream.name,
-            subject,
-        );
-        let state_store =
-            SqliteStateStore::new(self.sqlite.clone(), &self.upstream.name, subject);
-        manager.set_credential_store(cred_store);
-        manager.set_state_store(state_store);
-
-        let metadata = self.get_or_discover_metadata(&mut manager).await?;
-        manager.set_metadata(metadata);
-
+        let mut manager = self.configured_authorization_manager(subject).await?;
         let initialized = manager
             .initialize_from_store()
             .await
@@ -297,20 +222,72 @@ impl UpstreamOauthManager {
             )));
         }
 
-        let manager_mutex = Mutex::new(manager);
-        refresh_if_stale(
-            &manager_mutex,
-            &self.locks,
-            &self.upstream.name,
-            subject,
-        )
-        .await?;
-
-        let manager = manager_mutex.into_inner();
+        manager.get_access_token().await.map_err(map_auth_error)?;
         Ok(AuthClient::new(reqwest::Client::new(), manager))
     }
 
+    pub async fn credential_row(
+        &self,
+        subject: &str,
+    ) -> Result<Option<UpstreamOauthCredentialRow>, OauthError> {
+        self.sqlite
+            .find_upstream_oauth_credentials(&self.upstream.name, subject)
+            .await
+            .map_err(|e| OauthError::Internal(e.to_string()))
+    }
+
+    #[allow(dead_code)]
+    pub async fn subject_for_state(&self, csrf_token: &str) -> Result<Option<String>, OauthError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| OauthError::Internal(format!("system clock error: {error}")))?
+            .as_secs() as i64;
+        self.sqlite
+            .find_upstream_oauth_state_subject(&self.upstream.name, csrf_token, now)
+            .await
+            .map_err(|e| OauthError::Internal(e.to_string()))
+    }
+
     // ---- private helpers ----
+
+    async fn configured_authorization_manager(
+        &self,
+        subject: &str,
+    ) -> Result<AuthorizationManager, OauthError> {
+        let upstream_url = self.upstream_url()?;
+        let oauth_cfg = self.oauth_config()?;
+
+        let mut manager = AuthorizationManager::new(upstream_url.as_str())
+            .await
+            .map_err(|e| OauthError::Internal(format!("create auth manager: {e}")))?;
+
+        let cred_store = SqliteCredentialStore::new(
+            self.sqlite.clone(),
+            self.key.clone(),
+            &self.upstream.name,
+            subject,
+        );
+        let state_store = SqliteStateStore::new(self.sqlite.clone(), &self.upstream.name, subject);
+        manager.set_credential_store(cred_store);
+        manager.set_state_store(state_store);
+
+        let metadata = self.get_or_discover_metadata(&mut manager).await?;
+        self.verify_s256(&metadata.code_challenge_methods_supported)?;
+        manager.set_metadata(metadata);
+
+        let scopes: Vec<&str> = oauth_cfg
+            .scopes
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let client_cfg = self.resolve_client_config(&mut manager, &scopes).await?;
+        manager
+            .configure_client(client_cfg)
+            .map_err(|e| OauthError::Internal(format!("configure client: {e}")))?;
+        Ok(manager)
+    }
 
     fn oauth_config(&self) -> Result<&crate::config::UpstreamOauthConfig, OauthError> {
         self.upstream
@@ -360,10 +337,7 @@ impl UpstreamOauthManager {
     /// scope-6b approximation of duplicating rmcp's discovery — we don't
     /// track which URL succeeded, but we refuse metadata whose endpoints
     /// disagree on host.
-    fn verify_issuer_binding(
-        &self,
-        metadata: &AuthorizationMetadata,
-    ) -> Result<(), OauthError> {
+    fn verify_issuer_binding(&self, metadata: &AuthorizationMetadata) -> Result<(), OauthError> {
         let issuer_raw = metadata.issuer.as_deref().ok_or_else(|| {
             OauthError::IssuerMismatch(format!(
                 "AS metadata for upstream '{}' is missing required `issuer` claim",
@@ -374,9 +348,15 @@ impl UpstreamOauthManager {
             OauthError::IssuerMismatch(format!("issuer `{issuer_raw}` is not a valid URL"))
         })?;
         for (label, endpoint) in [
-            ("authorization_endpoint", Some(metadata.authorization_endpoint.as_str())),
+            (
+                "authorization_endpoint",
+                Some(metadata.authorization_endpoint.as_str()),
+            ),
             ("token_endpoint", Some(metadata.token_endpoint.as_str())),
-            ("registration_endpoint", metadata.registration_endpoint.as_deref()),
+            (
+                "registration_endpoint",
+                metadata.registration_endpoint.as_deref(),
+            ),
         ] {
             let Some(endpoint) = endpoint else { continue };
             let Some(host) = url_host(endpoint) else {
@@ -422,8 +402,7 @@ impl UpstreamOauthManager {
                     .and_then(|var| std::env::var(var).ok())
                     .filter(|v| !v.is_empty());
 
-                let mut cfg =
-                    OAuthClientConfig::new(client_id.clone(), self.redirect_uri.as_str());
+                let mut cfg = OAuthClientConfig::new(client_id.clone(), self.redirect_uri.as_str());
                 if let Some(s) = secret {
                     cfg = cfg.with_client_secret(s);
                 }
@@ -452,10 +431,11 @@ impl UpstreamOauthManager {
 
 /// Return the lowercased host of a URL, or `None` if the URL is invalid or hostless.
 fn url_host(s: &str) -> Option<String> {
-    url::Url::parse(s).ok().and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+    url::Url::parse(s)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
 }
 
-/// Extract the `state` query parameter from an authorization URL.
 fn extract_state_param(url: &str) -> Option<String> {
     let parsed = url::Url::parse(url).ok()?;
     parsed
