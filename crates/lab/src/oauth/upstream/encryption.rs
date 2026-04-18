@@ -29,6 +29,8 @@ pub enum EncryptionError {
     DecryptionFailed,
     #[error("invalid key: {0}")]
     InvalidKey(String),
+    #[error("encryption failed")]
+    EncryptionFailed,
 }
 
 /// Load a 32-byte key from a base64-encoded string (e.g. `LAB_OAUTH_ENCRYPTION_KEY`).
@@ -56,11 +58,18 @@ pub fn load_key(base64_str: &str) -> Result<EncryptionKey, EncryptionError> {
 ///
 /// A fresh random 12-byte nonce is generated internally on every call.
 /// The caller MUST persist the returned nonce alongside the ciphertext.
-pub fn seal(key: &EncryptionKey, plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
+pub fn seal(
+    key: &EncryptionKey,
+    plaintext: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), EncryptionError> {
     seal_with_aad(key, plaintext, &[])
 }
 
-pub fn seal_with_aad(key: &EncryptionKey, plaintext: &[u8], aad: &[u8]) -> (Vec<u8>, Vec<u8>) {
+pub fn seal_with_aad(
+    key: &EncryptionKey,
+    plaintext: &[u8],
+    aad: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), EncryptionError> {
     let cipher = ChaCha20Poly1305::new(&key.0);
     let mut nonce_bytes = [0u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
@@ -74,9 +83,9 @@ pub fn seal_with_aad(key: &EncryptionKey, plaintext: &[u8], aad: &[u8]) -> (Vec<
                 aad,
             },
         )
-        .expect("chacha20poly1305 encryption is infallible for valid key+nonce");
+        .map_err(|_| EncryptionError::EncryptionFailed)?;
 
-    (ciphertext, nonce_bytes.to_vec())
+    Ok((ciphertext, nonce_bytes.to_vec()))
 }
 
 /// Decrypt `ciphertext` using `key` and `nonce`.
@@ -130,7 +139,7 @@ mod tests {
     fn round_trip_plaintext() {
         let key = test_key();
         let plaintext = b"hello, world";
-        let (ct, nonce) = seal(&key, plaintext);
+        let (ct, nonce) = seal(&key, plaintext).unwrap();
         let pt = open(&key, &ct, &nonce).unwrap();
         assert_eq!(pt, plaintext);
     }
@@ -143,14 +152,14 @@ mod tests {
             &[1u8; 32],
         ))
         .unwrap();
-        let (ct, nonce) = seal(&key1, b"secret");
+        let (ct, nonce) = seal(&key1, b"secret").unwrap();
         assert!(open(&key2, &ct, &nonce).is_err());
     }
 
     #[test]
     fn wrong_nonce_fails_decryption() {
         let key = test_key();
-        let (ct, _) = seal(&key, b"secret");
+        let (ct, _) = seal(&key, b"secret").unwrap();
         let bad_nonce = vec![0u8; 12];
         assert!(open(&key, &ct, &bad_nonce).is_err());
     }
@@ -158,8 +167,8 @@ mod tests {
     #[test]
     fn two_seals_produce_different_nonces() {
         let key = test_key();
-        let (_, nonce1) = seal(&key, b"same plaintext");
-        let (_, nonce2) = seal(&key, b"same plaintext");
+        let (_, nonce1) = seal(&key, b"same plaintext").unwrap();
+        let (_, nonce2) = seal(&key, b"same plaintext").unwrap();
         assert_ne!(nonce1, nonce2, "nonce reuse detected");
     }
 
@@ -179,7 +188,7 @@ mod tests {
         let key = test_key();
         let aad = b"upstream=test\0subject=alice\0client=lab-client";
         let plaintext = b"hello, world";
-        let (ct, nonce) = seal_with_aad(&key, plaintext, aad);
+        let (ct, nonce) = seal_with_aad(&key, plaintext, aad).unwrap();
         let pt = open_with_aad(&key, &ct, &nonce, aad).unwrap();
         assert_eq!(pt, plaintext);
     }
@@ -187,7 +196,7 @@ mod tests {
     #[test]
     fn wrong_aad_fails_decryption() {
         let key = test_key();
-        let (ct, nonce) = seal_with_aad(&key, b"secret", b"alice");
+        let (ct, nonce) = seal_with_aad(&key, b"secret", b"alice").unwrap();
         assert!(open_with_aad(&key, &ct, &nonce, b"bob").is_err());
     }
 }

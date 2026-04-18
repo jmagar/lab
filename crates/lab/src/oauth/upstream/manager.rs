@@ -308,17 +308,18 @@ impl UpstreamOauthManager {
     /// Fetch AS metadata, caching the result for subsequent calls.
     ///
     /// Enforces issuer binding per RFC 8414: `issuer` MUST be present and the
-    /// `authorization_endpoint` + `token_endpoint` MUST share its host. Rejects
+    /// `authorization_endpoint` + `token_endpoint` MUST share its origin. Rejects
     /// silent issuer drift between the first and subsequent discovery calls.
+    ///
+    /// Uses a single write-lock acquisition to avoid a TOCTOU race between a
+    /// read-lock check and a subsequent write-lock cache update.
     async fn get_or_discover_metadata(
         &self,
         manager: &mut AuthorizationManager,
     ) -> Result<AuthorizationMetadata, OauthError> {
-        {
-            let cached = self.metadata_cache.read().await;
-            if let Some(meta) = cached.clone() {
-                return Ok(meta);
-            }
+        let mut cache = self.metadata_cache.write().await;
+        if let Some(meta) = cache.clone() {
+            return Ok(meta);
         }
 
         let metadata = manager
@@ -328,15 +329,15 @@ impl UpstreamOauthManager {
 
         self.verify_issuer_binding(&metadata)?;
 
-        *self.metadata_cache.write().await = Some(metadata.clone());
+        *cache = Some(metadata.clone());
         Ok(metadata)
     }
 
     /// RFC 8414 §3 issuer binding: `issuer` must be present, and every
-    /// non-jwks endpoint host must match the issuer host. This is the
-    /// scope-6b approximation of duplicating rmcp's discovery — we don't
-    /// track which URL succeeded, but we refuse metadata whose endpoints
-    /// disagree on host.
+    /// non-jwks endpoint origin (scheme + host + port) must match the
+    /// issuer origin. This is stricter than a host-only check: it rejects
+    /// endpoints served over a different scheme (e.g. http vs https) or
+    /// on a different port, which a host-only comparison would miss.
     fn verify_issuer_binding(&self, metadata: &AuthorizationMetadata) -> Result<(), OauthError> {
         let issuer_raw = metadata.issuer.as_deref().ok_or_else(|| {
             OauthError::IssuerMismatch(format!(
@@ -344,7 +345,9 @@ impl UpstreamOauthManager {
                 self.upstream.name
             ))
         })?;
-        let issuer_host = url_host(issuer_raw).ok_or_else(|| {
+        // Normalize the issuer: strip trailing slashes for a canonical form.
+        let issuer_normalized = issuer_raw.trim_end_matches('/');
+        let issuer_origin = url_origin(issuer_normalized).ok_or_else(|| {
             OauthError::IssuerMismatch(format!("issuer `{issuer_raw}` is not a valid URL"))
         })?;
         for (label, endpoint) in [
@@ -359,14 +362,14 @@ impl UpstreamOauthManager {
             ),
         ] {
             let Some(endpoint) = endpoint else { continue };
-            let Some(host) = url_host(endpoint) else {
+            let Some(origin) = url_origin(endpoint) else {
                 return Err(OauthError::IssuerMismatch(format!(
                     "{label} `{endpoint}` is not a valid URL"
                 )));
             };
-            if host != issuer_host {
+            if origin != issuer_origin {
                 return Err(OauthError::IssuerMismatch(format!(
-                    "{label} host `{host}` does not match issuer host `{issuer_host}`"
+                    "{label} origin `{origin}` does not match issuer origin `{issuer_origin}`"
                 )));
             }
         }
@@ -397,10 +400,18 @@ impl UpstreamOauthManager {
                 client_id,
                 client_secret_env,
             } => {
-                let secret = client_secret_env
-                    .as_deref()
-                    .and_then(|var| std::env::var(var).ok())
-                    .filter(|v| !v.is_empty());
+                let secret = match client_secret_env.as_deref() {
+                    None => None,
+                    Some(var) => {
+                        let val = std::env::var(var).unwrap_or_default();
+                        if val.is_empty() {
+                            return Err(OauthError::Internal(format!(
+                                "client_secret_env '{var}' is configured but env var '{var}' is not set or is empty"
+                            )));
+                        }
+                        Some(val)
+                    }
+                };
 
                 let mut cfg = OAuthClientConfig::new(client_id.clone(), self.redirect_uri.as_str());
                 if let Some(s) = secret {
@@ -429,7 +440,23 @@ impl UpstreamOauthManager {
     }
 }
 
+/// Return the normalized origin (scheme + "://" + lowercased host + optional explicit port)
+/// of a URL, or `None` if the URL is invalid or has no host.
+///
+/// This is stricter than a host-only comparison: it rejects URLs that share a host
+/// but differ in scheme or port (e.g. http vs https, or :80 vs :8080).
+fn url_origin(s: &str) -> Option<String> {
+    let u = url::Url::parse(s).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    let scheme = u.scheme();
+    match u.port() {
+        Some(port) => Some(format!("{scheme}://{host}:{port}")),
+        None => Some(format!("{scheme}://{host}")),
+    }
+}
+
 /// Return the lowercased host of a URL, or `None` if the URL is invalid or hostless.
+#[allow(dead_code)]
 fn url_host(s: &str) -> Option<String> {
     url::Url::parse(s)
         .ok()

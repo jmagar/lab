@@ -133,7 +133,8 @@ impl CredentialStore for SqliteCredentialStore {
 
             let aad = credential_aad(&self.upstream_name, &self.subject, &credentials.client_id);
             let (token_blob, token_blob_nonce) =
-                encryption::seal_with_aad(&self.key, &plaintext, &aad);
+                encryption::seal_with_aad(&self.key, &plaintext, &aad)
+                    .map_err(|e| AuthError::InternalError(format!("encrypt credentials: {e}")))?;
 
             let row = UpstreamOauthCredentialRow {
                 upstream_name: self.upstream_name.clone(),
