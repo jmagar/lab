@@ -325,3 +325,21 @@ impl_tool_error_from!(
     lab_apis::arcane::ArcaneError,
     Api(api) => api.kind()
 );
+
+impl_tool_error_from!(
+    "deploy",
+    lab_apis::deploy::DeployError,
+    ValidationFailed { .. } => "validation_failed",
+    SshUnreachable { .. } => "ssh_unreachable",
+    BuildFailed { .. } => "build_failed",
+    PreflightFailed { .. } => "preflight_failed",
+    TransferFailed { .. } => "transfer_failed",
+    InstallFailed { .. } => "install_failed",
+    RestartFailed { .. } => "restart_failed",
+    VerifyFailed { .. } => "verify_failed",
+    PartialFailure { .. } => "partial_failure",
+    Conflict { .. } => "conflict",
+    ArchMismatch { .. } => "arch_mismatch",
+    IntegrityMismatch { .. } => "integrity_mismatch",
+    AuthFailed { .. } => "auth_failed"
+);
