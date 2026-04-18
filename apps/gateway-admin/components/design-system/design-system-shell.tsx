@@ -11,6 +11,7 @@ import { DataDisplaySection } from './data-display-section'
 import { FeedbackSection } from './feedback-section'
 import { FoundationsSection } from './foundations-section'
 import { NavigationSection } from './navigation-section'
+import { PatternsSection } from './patterns-section'
 
 const sectionHeadings = [
   'Theme Foundations',
@@ -61,7 +62,10 @@ export function DesignSystemShell() {
           <div className="xl:col-span-2">
             <DataDisplaySection />
           </div>
-          {sectionHeadings.filter((heading) => !['Theme Foundations', 'Controls', 'Feedback', 'Navigation', 'Data Display'].includes(heading)).map((heading) => (
+          <div className="xl:col-span-2">
+            <PatternsSection />
+          </div>
+          {sectionHeadings.filter((heading) => !['Theme Foundations', 'Controls', 'Feedback', 'Navigation', 'Data Display', 'Application Patterns'].includes(heading)).map((heading) => (
             <Card key={heading} className="h-full">
               <CardHeader className="border-b">
                 <CardTitle>{heading}</CardTitle>
