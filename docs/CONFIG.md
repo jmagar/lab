@@ -343,12 +343,91 @@ proxy_resources = false
 
 `expose_tools` is optional. When present, it limits which discovered upstream tools are republished by the gateway. Entries support exact names and simple `*` wildcards.
 
+### Upstream OAuth (authorization_code + PKCE)
+
+An upstream MCP server that advertises OAuth Protected Resource Metadata can be
+authenticated per-user via an `[upstream.oauth]` block instead of a shared
+bearer token. `oauth` and `bearer_token_env` are **mutually exclusive** — setting
+both is a config-validation error.
+
+Shared shape:
+
+```toml
+[upstream.oauth]
+mode = "authorization_code_pkce"   # only supported mode today
+scopes = ["mcp"]                    # optional; omit to let RMCP auto-select
+
+[upstream.oauth.registration]
+strategy = "..."                    # client_metadata_document | preregistered | dynamic
+```
+
+Client ID Metadata Document (preferred per the MCP authorization spec):
+
+```toml
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.oauth]
+mode = "authorization_code_pkce"
+scopes = ["mcp"]
+
+[upstream.oauth.registration]
+strategy = "client_metadata_document"
+url = "https://acme.example.com/.well-known/oauth-client"
+```
+
+Preregistered public client (no `client_secret`):
+
+```toml
+[upstream.oauth.registration]
+strategy = "preregistered"
+client_id = "lab-public-client"
+```
+
+Preregistered confidential client (`client_secret` named by env var):
+
+```toml
+[upstream.oauth.registration]
+strategy = "preregistered"
+client_id = "lab-confidential-client"
+client_secret_env = "ACME_UPSTREAM_CLIENT_SECRET"
+```
+
+Dynamic Client Registration (RFC 7591):
+
+```toml
+[upstream.oauth.registration]
+strategy = "dynamic"
+```
+
+Dynamic registration may require an initial access token; supply it via env
+(documented in [UPSTREAM.md](./UPSTREAM.md)). DCR-issued credentials are
+persisted alongside tokens and reused on restart.
+
+Setting `oauth` and `bearer_token_env` on the same upstream produces a
+validation error at startup and rejects gateway mutations that would create the
+same conflict:
+
+```text
+upstream 'acme' has both bearer_token_env and oauth configured — pick one
+```
+
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LAB_UPSTREAM_MAX_RESPONSE_BYTES` | 10485760 | Maximum response size from upstream servers. |
+| `LAB_OAUTH_ENCRYPTION_KEY` | — | **Required when any upstream has `[upstream.oauth]` set.** Base64-encoded 32-byte key used with chacha20poly1305 to encrypt persisted upstream OAuth token responses at rest. Loaded once at startup; startup fails fast if missing, not decodable, or not exactly 32 bytes. Generate with `openssl rand -base64 32`. |
 | (per `bearer_token_env`) | — | Bearer token for each upstream, named in config. |
+| (per `client_secret_env`) | — | OAuth client secret for a preregistered confidential upstream, named in config. |
+
+**Key rotation procedure:** rotate by (1) generating a new key, (2) clearing
+all persisted upstream OAuth credentials (`POST /v1/gateway/oauth/clear?confirm=true`
+per upstream, or remove rows from `upstream_oauth_credentials`), (3) updating
+`LAB_OAUTH_ENCRYPTION_KEY` in `~/.lab/.env`, (4) restarting `lab`, (5) asking
+each user to re-authorize each upstream. Decryption under the wrong key
+surfaces as `oauth_needs_reauth`, never as an internal error.
 
 ## Transport and Session Configuration
 

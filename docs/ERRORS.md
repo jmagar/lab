@@ -102,6 +102,65 @@ The following kinds are emitted exclusively by the HTTP surface. MCP handles the
 
 Do not invent new kinds casually. If a new cross-service kind is needed, update the owning docs and all public surfaces together.
 
+### Upstream OAuth Kinds
+
+The upstream OAuth (outbound) surface adds five stable kinds for operator- and user-facing failures in the authorization-code + PKCE flow against OAuth-protected upstream MCP servers. Full flow documented in [UPSTREAM.md](./UPSTREAM.md).
+
+#### `oauth_needs_reauth`
+
+**When:** The persisted upstream OAuth credential can no longer be used to obtain a valid access token, and the user must re-initiate authorization. Concrete triggers:
+
+- the authorization server returned `invalid_grant` on refresh (refresh token revoked, rotated twice, or otherwise invalidated)
+- the encrypted `token_blob` failed to decrypt (for example after `LAB_OAUTH_ENCRYPTION_KEY` rotation)
+- a 401 was received on a non-idempotent request and retry is not safe
+- no persisted credential exists yet for the `(upstream, subject)` pair
+
+**Surface:** MCP proxied calls, `/mcp`, hosted UI, `/v1/gateway/oauth/status`.
+
+**Resolution:** Start a fresh authorization via `POST /v1/gateway/oauth/start`.
+
+**Status code:** `401 Unauthorized`.
+
+#### `oauth_state_invalid`
+
+**When:** The callback at `/auth/upstream/callback` cannot match the `state` parameter to a live pending-state row for the authenticated subject and requested upstream. Causes: missing session, replayed `state`, expired state (>10 min), cross-subject attempt, or cross-upstream-name attempt.
+
+**Surface:** `/auth/upstream/callback` only.
+
+**Resolution:** Re-initiate authorization.
+
+**Status code:** `400 Bad Request`.
+
+#### `oauth_resource_mismatch`
+
+**When:** The authorization server refused the RFC 8707 `resource` parameter, or the returned access token's `aud` claim does not match the canonical upstream MCP URL.
+
+**Surface:** Upstream OAuth manager (begin / callback / build_auth_client).
+
+**Resolution:** Operator must verify the upstream MCP server URL in config and the AS registration match.
+
+**Status code:** `502 Bad Gateway`.
+
+#### `oauth_issuer_mismatch`
+
+**When:** The AS metadata document's `issuer` value does not byte-equal the discovered AS URL after RFC 3986 §6.2.2 normalization.
+
+**Surface:** Upstream OAuth manager (discovery).
+
+**Resolution:** Operator must contact the upstream AS owner; this is an RFC 8414 §3.3 violation.
+
+**Status code:** `502 Bad Gateway`.
+
+#### `oauth_unsupported_method`
+
+**When:** The upstream AS metadata omits `code_challenge_methods_supported` (RFC 7636 absence implies `plain`-only) or advertises only `plain`. `lab` refuses to fall back from S256.
+
+**Surface:** Upstream OAuth manager (discovery).
+
+**Resolution:** The upstream AS must advertise `S256`. No workaround.
+
+**Status code:** `502 Bad Gateway`.
+
 ## Wrapping Rules
 
 Service-specific errors must:
@@ -197,6 +256,11 @@ Default mapping expectations:
 - `network_error` -> `502 Bad Gateway`
 - `server_error` -> `502 Bad Gateway`
 - `upstream_error` -> `502 Bad Gateway`
+- `oauth_needs_reauth` -> `401 Unauthorized`
+- `oauth_state_invalid` -> `400 Bad Request`
+- `oauth_resource_mismatch` -> `502 Bad Gateway`
+- `oauth_issuer_mismatch` -> `502 Bad Gateway`
+- `oauth_unsupported_method` -> `502 Bad Gateway`
 - `internal_error` -> `500 Internal Server Error`
 
 ## Device Runtime Notes

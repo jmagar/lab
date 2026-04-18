@@ -126,6 +126,119 @@ If the named env var is not set, the connection proceeds without auth (HTTP upst
 
 Changing a bearer-token env var does not hot-apply by itself. Use `gateway.reload` when you want the live pool to re-read `bearer_token_env`.
 
+## Upstream OAuth (authorization_code + PKCE)
+
+OAuth-protected upstream MCP servers are authenticated per `lab` user rather
+than by a shared bearer token. Configuration shape and examples live in
+[CONFIG.md — Upstream OAuth](./CONFIG.md#upstream-oauth-authorization_code--pkce).
+Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
+
+### Scope
+
+- HTTP upstream transport only. Stdio upstreams cannot use OAuth in this phase
+  because stdio sessions do not carry a stable authenticated subject.
+- When the client transport is stdio, OAuth-tagged upstreams are filtered out
+  of the merged catalog and are not callable. Only built-in and static-bearer
+  upstreams are visible.
+- `/mcp` over HTTP and the hosted web UI are the supported call surfaces.
+
+### Flow
+
+1. Operator runs `POST /v1/gateway/oauth/start { "upstream": "<name>" }`; the
+   server returns a JSON `{ "authorization_url": "..." }` body.
+2. Browser navigates to that URL; the upstream AS authenticates the user.
+3. AS redirects to `/auth/upstream/callback?code=...&state=...&upstream=<name>`
+   on the same origin as `LAB_PUBLIC_URL`.
+4. `lab` validates the authenticated session, atomically takes the pending
+   state row (`DELETE ... RETURNING`), exchanges the code for tokens, encrypts
+   the token response with chacha20poly1305, and persists it keyed by
+   `(upstream_name, subject)`.
+5. Subsequent `/mcp` and UI requests find the persisted credential and proxy
+   through a per-`(upstream, subject)` `AuthClient` cached in the gateway.
+
+### Spec-Aligned Invariants
+
+- **PKCE S256-only.** The AS metadata must advertise `S256` in
+  `code_challenge_methods_supported`. Missing or `plain`-only metadata is
+  refused with `oauth_unsupported_method`; `lab` never falls back to `plain`.
+- **RFC 8707 `resource`.** The canonical upstream MCP URL (RFC 3986 §6.2.2
+  normalized: lowercase scheme + host, normalized percent-encoding, default
+  port elided, trailing slash preserved as configured) is sent on **both** the
+  authorization request and the token request, byte-identical between the
+  two. Mismatched `aud` claims on the returned token surface as
+  `oauth_resource_mismatch`.
+- **Issuer binding.** After AS metadata discovery, the `metadata.issuer` value
+  is normalized and compared byte-for-byte against the discovered AS URL.
+  Mismatch surfaces as `oauth_issuer_mismatch` (RFC 8414 §3.3).
+- **No Google reuse.** Outbound upstream OAuth is distinct from the inbound
+  `lab-auth` Google provider used for user login to `lab`. They do not share
+  code, clients, or tokens.
+
+### Per-`(upstream, subject)` Client Cache
+
+The gateway maintains a `DashMap<(upstream_name, subject), AuthClient>`
+built atomically per key. Two subjects calling the same OAuth upstream get
+two isolated `AuthClient` instances; one subject's tokens are never visible
+to another.
+
+The cache stores the `client_id` each entry was built with. A `gateway.reload`
+that changes an upstream's `client_id` evicts cached entries with a stale
+`client_id`; subsequent calls rebuild them. This closes a silent re-bind gap
+where a config edit would otherwise keep old credentials attached to a new
+upstream definition.
+
+The global upstream pool (discovery, circuit breaker, catalog merging)
+remains unchanged and continues to apply to OAuth and static-bearer upstreams
+identically.
+
+### Refresh Semantics
+
+Refresh is single-flight per `(upstream_name, subject)` using a `tokio::sync::Mutex`
+keyed on the pair, with an LRU cap to bound memory on long-running processes.
+
+Two paths run the refresh:
+
+- **Proactive:** before dispatching a request, if the cached access token is
+  less than 30 seconds from expiry, refresh under the per-key lock first.
+- **Reactive (401):** on a 401 response, take the per-key lock, re-read the
+  credential (another task may have already refreshed), refresh if still
+  expired, persist the rotated refresh token **before** releasing the lock,
+  then retry — **but only for idempotent methods** (`GET`/`HEAD`/`OPTIONS`).
+  Non-idempotent methods (`POST`, including MCP `tool_call`) surface the
+  original 401 as `oauth_needs_reauth` without retry, because a retry could
+  double-execute a destructive tool call.
+
+On `invalid_grant` (refresh token revoked or rotated twice), `lab` deletes
+the persisted credential and returns `oauth_needs_reauth` to the caller. The
+user re-initiates authorization.
+
+### `oauth_needs_reauth` Triggers
+
+A caller sees `oauth_needs_reauth` in any of these situations:
+
+- no credential exists yet for `(upstream, subject)`
+- the refresh token was rejected with `invalid_grant`
+- decryption of the stored `token_blob` failed (operator rotated
+  `LAB_OAUTH_ENCRYPTION_KEY`)
+- a 401 arrived on a non-idempotent request and retry is not safe
+
+Recovery is identical in all cases: start a new authorization via
+`POST /v1/gateway/oauth/start`.
+
+### Token-At-Rest Encryption
+
+Persisted token responses are sealed with chacha20poly1305 AEAD. A fresh 12-byte
+nonce is generated on every `seal()` call; the refresh upsert stores the new
+nonce and must never preserve the previous one. The key is loaded once at
+startup from `LAB_OAUTH_ENCRYPTION_KEY`; see [CONFIG.md](./CONFIG.md#environment-variables-2)
+for rotation.
+
+### Prior Art
+
+The per-`(upstream, subject)` cache shape mirrors widely-deployed multi-tenant
+OAuth proxies: Composio's `entity_id:app_slug`, Cloudflare's
+`workers-oauth-provider`, and Pipedream Connect's per-user upstream grants.
+
 ## Discovery
 
 At startup, lab connects to all configured upstreams in parallel. Each upstream gets a 15-second timeout for connection and tool discovery (`list_tools()`).

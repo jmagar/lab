@@ -124,6 +124,47 @@ POST /v1/gateway
 { "action": "gateway.update", "params": { "confirm": true, "name": "remote-lab", "patch": { "proxy_resources": true } } }
 ```
 
+## Upstream OAuth Routes
+
+For upstreams configured with `[upstream.oauth]` (see
+[CONFIG.md](./CONFIG.md#upstream-oauth-authorization_code--pkce) and
+[UPSTREAM.md](./UPSTREAM.md#upstream-oauth-authorization_code--pkce)), the
+gateway mounts four master-only HTTP routes. All four require an authenticated
+session and the master-only middleware; non-master sessions get `403`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/v1/gateway/oauth/start` | Begin authorization for the caller's subject. Body `{ "upstream": "<name>" }`. Returns `{ "authorization_url": "..." }` (JSON only — no browser-redirect mode). |
+| `GET` | `/auth/upstream/callback` | Authorization-code callback. Validates the authenticated session, atomically takes the pending state row (bound to `(upstream, subject)`), exchanges the code, persists encrypted credentials, redirects to `/gateway/oauth/result?upstream=<name>&status=<ok\|fail>`. |
+| `GET` | `/v1/gateway/oauth/status?upstream=<name>` | Returns `{ "authenticated": bool, "upstream": "<name>", "expires_within_5m": bool }`. Deliberately omits subject and raw expiry timestamp to avoid enumeration and fingerprinting. |
+| `POST` | `/v1/gateway/oauth/clear?confirm=true` | Destructive. Without `?confirm=true` returns `400` `confirmation_required`. With confirm, deletes credentials + evicts the cached `AuthClient`. In-flight requests complete naturally under the old credential (graceful drain by Rust ownership — not a designed protocol). |
+
+Callback security invariants (enforced in code, spec-required):
+
+- No authenticated session → `oauth_state_invalid` (no subject derivation from
+  the `state` parameter is permitted).
+- Subject is derived from the session, not the state row.
+- The `upstream` query parameter is validated against the pending state row's
+  upstream name (the SQL PK already enforces this; the handler enforces it
+  again in code).
+- `state` is matched via a single `DELETE ... RETURNING` to prevent replay
+  across connection-pool races.
+- The result page HTML-escapes the operator-controlled `upstream` name.
+
+### Reload And Credential Lifecycle
+
+- `gateway.reload` evicts cached `AuthClient` entries for upstreams removed
+  from the new config. It does **not** delete persisted credential rows —
+  re-adding the upstream (and re-authorizing, if `client_id` changed) picks
+  them up. If `client_id` changed for an upstream still present in config,
+  the cache entry is evicted on next lookup (cached entries carry their
+  `built_with_client_id` and refuse reuse on mismatch).
+- `clear_credentials` is the only way to invalidate a persisted credential.
+  It evicts the cache entry and deletes the row; in-flight `Arc<AuthClient>`
+  holders complete naturally under the old token.
+- Expired access-only credential rows (no refresh token) are pruned by the
+  60-second `cleanup_expired` background task, alongside expired PKCE state.
+
 ## Limitations
 
 - `gateway.reload` is the only action that promises to pick up changed bearer-token env vars.
