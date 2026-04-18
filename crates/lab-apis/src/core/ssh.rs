@@ -217,6 +217,202 @@ impl SshOptions {
     }
 }
 
+/// Errors produced by `SshSession` operations.
+///
+/// These are deliberately coarse — the dispatch layer maps them into
+/// `DeployError` variants with host context, so `SshError` only needs to
+/// preserve the transport-level failure shape.
+#[derive(Debug, thiserror::Error)]
+pub enum SshError {
+    #[error("ssh spawn failed: {0}")]
+    Spawn(String),
+    #[error("ssh io: {0}")]
+    Io(String),
+}
+
+/// A reusable `ssh` invocation target backed by `tokio::process::Command`.
+///
+/// `SshSession` does not maintain a long-lived connection itself — each
+/// `run_command`, `upload_stream`, and `sha256_remote` spawns a fresh `ssh`
+/// process. `SshOptions::hardened()` enables ControlMaster/ControlPersist so
+/// the second+ connection to a given host reuses the kernel-side control
+/// socket, avoiding the handshake cost.
+///
+/// **Never** calls `sh -c` for `run_command` — arguments are passed to
+/// `.arg()` one token at a time. A single documented exception exists in
+/// `upload_stream`: remote redirect must go through `sh -c "cat > '...'"`
+/// because OpenSSH does not expose a redirect primitive. The quoted path is
+/// allowlist-validated by the caller (see
+/// `crates/lab/src/dispatch/deploy/params.rs::validate_remote_path`).
+#[derive(Debug, Clone)]
+pub struct SshSession {
+    pub target: SshHostTarget,
+    pub options: SshOptions,
+}
+
+impl SshSession {
+    /// Construct a session pointed at `target` with hardened defaults.
+    #[must_use]
+    pub fn new(target: SshHostTarget) -> Self {
+        Self {
+            target,
+            options: SshOptions::hardened(),
+        }
+    }
+
+    /// Construct a session with explicit options.
+    #[must_use]
+    pub const fn with_options(target: SshHostTarget, options: SshOptions) -> Self {
+        Self { target, options }
+    }
+
+    /// Render the `[user@]hostname` connect target.
+    fn connect_target(&self) -> String {
+        let host = self
+            .target
+            .hostname
+            .as_deref()
+            .unwrap_or(self.target.alias.as_str());
+        if let Some(user) = self.target.user.as_deref() {
+            format!("{user}@{host}")
+        } else {
+            host.to_string()
+        }
+    }
+
+    /// Collect `-o…` flags + `-p <port>` + `-i <identity>` from `options`
+    /// and `target`.
+    fn base_args(&self) -> Vec<String> {
+        let mut args = self.options.to_openssh_args();
+        if let Some(port) = self.target.port {
+            args.push("-p".into());
+            args.push(port.to_string());
+        }
+        if let Some(id) = self.target.identity_file.as_deref() {
+            args.push("-i".into());
+            args.push(id.to_string());
+        }
+        // Reject any attempt to pass a BatchMode-disabling option through
+        // target fields. `SshOptions::hardened()` keeps interactive prompts
+        // off via ControlPersist; callers need no password tty.
+        args.push("-oBatchMode=yes".into());
+        args
+    }
+
+    /// Run `argv` on the remote host. Arguments are forwarded one-per-token
+    /// to `ssh`, never assembled into a shell string.
+    ///
+    /// Returns `(exit_code, stdout, stderr)`. A nonzero exit code is not an
+    /// `Err` — the caller is expected to decide whether the nonzero exit is
+    /// a failure.
+    pub async fn run_command(
+        &self,
+        argv: &[&str],
+    ) -> Result<(i32, String, String), SshError> {
+        let mut cmd = tokio::process::Command::new("ssh");
+        for a in self.base_args() {
+            cmd.arg(a);
+        }
+        cmd.arg(self.connect_target());
+        for a in argv {
+            cmd.arg(a);
+        }
+        let output = cmd
+            .output()
+            .await
+            .map_err(|e| SshError::Spawn(e.to_string()))?;
+        let code = output.status.code().unwrap_or(-1);
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        Ok((code, stdout, stderr))
+    }
+
+    /// Stream `reader` into a file at `remote_path` on the target.
+    ///
+    /// **Shell exception.** This is the only `SshSession` path that emits a
+    /// `sh -c` subshell — OpenSSH has no native "write stdin to file"
+    /// primitive, so we invoke `sh -c "cat > '<remote_path>'"` on the remote
+    /// side. `remote_path` must be allowlist-validated by the caller
+    /// (`deploy`'s `validate_remote_path` only permits `/usr/local/bin/` and
+    /// `/opt/lab/bin/` prefixes, and rejects `..`), which makes the single
+    /// quoting safe.
+    ///
+    /// Returns the number of bytes copied into the child's stdin.
+    pub async fn upload_stream<R>(
+        &self,
+        remote_path: &str,
+        mut reader: R,
+    ) -> Result<u64, SshError>
+    where
+        R: tokio::io::AsyncRead + Unpin + Send,
+    {
+        use std::process::Stdio;
+        use tokio::io::AsyncWriteExt;
+
+        // Single-quote the path; allowlist-validated upstream so this is safe.
+        let redirect = format!("cat > '{remote_path}'");
+        let mut cmd = tokio::process::Command::new("ssh");
+        for a in self.base_args() {
+            cmd.arg(a);
+        }
+        cmd.arg(self.connect_target());
+        cmd.arg("sh").arg("-c").arg(&redirect);
+        cmd.stdin(Stdio::piped());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        let mut child = cmd.spawn().map_err(|e| SshError::Spawn(e.to_string()))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| SshError::Io("ssh stdin missing".into()))?;
+        let bytes = tokio::io::copy(&mut reader, &mut stdin)
+            .await
+            .map_err(|e| SshError::Io(e.to_string()))?;
+        stdin
+            .shutdown()
+            .await
+            .map_err(|e| SshError::Io(e.to_string()))?;
+        drop(stdin);
+        let out = child
+            .wait_with_output()
+            .await
+            .map_err(|e| SshError::Io(e.to_string()))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(SshError::Io(format!(
+                "remote cat failed ({}): {}",
+                out.status.code().unwrap_or(-1),
+                stderr.trim()
+            )));
+        }
+        Ok(bytes)
+    }
+
+    /// Probe `sha256sum <path>` on the remote host.
+    ///
+    /// Returns `Ok(Some(hex))` when the probe succeeds, `Ok(None)` when the
+    /// file is absent or the tool exits nonzero, and `Err` only when the
+    /// `ssh` spawn itself fails.
+    pub async fn sha256_remote(&self, remote_path: &str) -> Result<Option<String>, SshError> {
+        let (code, stdout, _stderr) = self
+            .run_command(&["sha256sum", remote_path])
+            .await?;
+        if code != 0 {
+            return Ok(None);
+        }
+        // sha256sum output: "<hex>  <path>\n"
+        let hex = stdout
+            .split_whitespace()
+            .next()
+            .map(str::to_string);
+        // Must be 64 lowercase hex chars; reject anything else.
+        let ok = hex.as_ref().is_some_and(|h| {
+            h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())
+        });
+        Ok(if ok { hex } else { None })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,5 +466,50 @@ mod tests {
         assert!(args.iter().any(|a| a == "-oForwardAgent=no"));
         assert!(args.iter().any(|a| a == "-oStrictHostKeyChecking=yes"));
         assert!(args.iter().any(|a| a == "-oControlMaster=auto"));
+    }
+
+    #[test]
+    fn session_connect_target_uses_user_and_hostname_when_present() {
+        let t = SshHostTarget {
+            alias: "mini1".into(),
+            hostname: Some("10.0.0.11".into()),
+            user: Some("deploy".into()),
+            port: None,
+            identity_file: None,
+        };
+        let s = SshSession::new(t);
+        assert_eq!(s.connect_target(), "deploy@10.0.0.11");
+    }
+
+    #[test]
+    fn session_connect_target_falls_back_to_alias_without_hostname() {
+        let t = SshHostTarget {
+            alias: "mini1".into(),
+            hostname: None,
+            user: None,
+            port: None,
+            identity_file: None,
+        };
+        let s = SshSession::new(t);
+        assert_eq!(s.connect_target(), "mini1");
+    }
+
+    #[test]
+    fn session_base_args_include_port_and_identity_and_batchmode() {
+        let t = SshHostTarget {
+            alias: "mini1".into(),
+            hostname: Some("10.0.0.11".into()),
+            user: Some("deploy".into()),
+            port: Some(2222),
+            identity_file: Some("~/.ssh/id_ed25519".into()),
+        };
+        let s = SshSession::new(t);
+        let args = s.base_args();
+        // port appears as two tokens so ssh parses it as `-p <n>`
+        let idx = args.iter().position(|a| a == "-p").expect("-p present");
+        assert_eq!(args[idx + 1], "2222");
+        let ii = args.iter().position(|a| a == "-i").expect("-i present");
+        assert_eq!(args[ii + 1], "~/.ssh/id_ed25519");
+        assert!(args.iter().any(|a| a == "-oBatchMode=yes"));
     }
 }
