@@ -21,4 +21,8 @@ test('design system shell renders all primary section headings', () => {
   assert.match(markup, /Navigation/)
   assert.match(markup, /Data Display/)
   assert.match(markup, /Application Patterns/)
+  assert.match(markup, /Aurora page background/)
+  assert.match(markup, /Display 1/)
+  assert.match(markup, /Radius 3/)
+  assert.match(markup, /Tier 2 lift/)
 })
