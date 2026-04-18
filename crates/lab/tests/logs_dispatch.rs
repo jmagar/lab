@@ -125,6 +125,45 @@ fn subsystem_enum_includes_local_master_taxonomy() {
     );
 }
 
+#[test]
+fn local_logs_resolvers_honor_config_and_documented_defaults() {
+    let mut config = lab::config::LabConfig::default();
+    config.local_logs = Some(lab::config::LocalLogsPreferences {
+        store_path: Some(std::path::PathBuf::from("/tmp/lab-local-logs-config.db")),
+        retention_days: Some(11),
+        max_bytes: Some(12_345),
+        queue_capacity: Some(77),
+        subscriber_capacity: Some(55),
+    });
+
+    assert_eq!(
+        lab::dispatch::logs::client::resolve_store_path(Some(&config)),
+        std::path::PathBuf::from("/tmp/lab-local-logs-config.db")
+    );
+
+    let retention = lab::dispatch::logs::client::resolve_retention(Some(&config));
+    assert_eq!(retention.max_age_days, 11);
+    assert_eq!(retention.max_bytes, 12_345);
+    assert_eq!(
+        lab::dispatch::logs::client::resolve_queue_capacity(Some(&config)),
+        77
+    );
+    assert_eq!(
+        lab::dispatch::logs::client::resolve_subscriber_capacity(Some(&config)),
+        55
+    );
+
+    let empty = lab::config::LabConfig::default();
+    assert_eq!(
+        lab::dispatch::logs::client::resolve_queue_capacity(Some(&empty)),
+        1024
+    );
+    assert_eq!(
+        lab::dispatch::logs::client::resolve_subscriber_capacity(Some(&empty)),
+        256
+    );
+}
+
 #[tokio::test]
 async fn store_search_filters_by_subsystem_and_level() {
     let store =

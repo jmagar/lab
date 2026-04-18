@@ -68,6 +68,14 @@ impl DeviceRuntimeClient {
         .await
     }
 
+    pub async fn post_log_ingest<T: serde::Serialize + Sync>(
+        &self,
+        payload: &T,
+    ) -> Result<serde_json::Value, ApiError> {
+        self.with_timeout(self.http.post_json("/v1/logs/ingest", payload))
+            .await
+    }
+
     pub async fn search_logs(
         &self,
         device_id: &str,

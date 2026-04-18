@@ -199,6 +199,18 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
         sql.push_str(" AND correlation_id = ?");
         args.push(corr.clone().into());
     }
+    append_in_clause(
+        &mut sql,
+        &mut args,
+        "source_node_id",
+        q.source_node_ids.iter().cloned(),
+    );
+    append_in_clause(
+        &mut sql,
+        &mut args,
+        "source_kind",
+        q.source_kinds.iter().cloned(),
+    );
     if let Some(text) = &q.text {
         sql.push_str(
             " AND (message LIKE ? OR IFNULL(request_id,'') LIKE ? OR IFNULL(session_id,'') LIKE ? OR IFNULL(correlation_id,'') LIKE ?)",

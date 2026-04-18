@@ -26,4 +26,6 @@ CREATE INDEX IF NOT EXISTS idx_log_events_ts         ON log_events(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_log_events_level_ts   ON log_events(level, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_log_events_subsys_ts  ON log_events(subsystem, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_log_events_request_id ON log_events(request_id);
-CREATE INDEX IF NOT EXISTS idx_log_events_session_id ON log_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_log_events_session_id    ON log_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_log_events_source_node   ON log_events(source_node_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_log_events_source_kind   ON log_events(source_kind, ts DESC);

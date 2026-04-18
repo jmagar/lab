@@ -9,19 +9,16 @@ This is separate from fleet device log search:
 
 ## Scope
 
-The v1 scope is the current master process only.
-
 Included:
 
 - persistent indexed local history across restarts
 - bounded search and tail access from CLI, MCP, and API
 - true live streaming over HTTP SSE
 - one shared normalized event model across adapters
+- fleet-wide peer syslog ingestion (v2 — see [Fleet Syslog](#fleet-syslog-ingestion) below)
 
 Not included:
 
-- fleet-wide device aggregation
-- remote syslog ingestion
 - long-lived MCP streaming
 
 ## Surface Map
@@ -32,6 +29,7 @@ CLI:
 - `lab logs local tail`
 - `lab logs local stats`
 - `lab logs local stream` — rejected with guidance; use `GET /v1/logs/stream` or `lab logs local tail`
+- `lab logs forward` — peer syslog forwarder; reads journald or `/var/log/syslog` and batches to master
 
 MCP:
 
@@ -43,6 +41,7 @@ HTTP:
 
 - `POST /v1/logs`
 - `GET /v1/logs/stream`
+- `POST /v1/logs/ingest` — peer batch endpoint; requires `LAB_LOGS_INGEST_ENABLED=true` on master
 
 Web UI:
 
@@ -58,7 +57,7 @@ The shared `LogSystem` runtime owns:
 - retention enforcement
 - the in-process live subscriber hub used by SSE
 
-`main.rs` and `lab serve` bootstrap the long-lived runtime once. One-shot CLI commands open the same on-disk store for bounded queries instead of constructing their own partial live runtime.
+`main.rs` owns tracing setup and attaches the ingest layer once. `lab serve` bootstraps the long-lived `LogSystem` runtime once and wires it into the shared HTTP/MCP state. One-shot CLI commands open the same on-disk store for bounded queries instead of constructing their own partial live runtime.
 
 ## Query And Streaming Rules
 
@@ -110,16 +109,79 @@ The local store and SSE stream must not expose:
 
 See [OBSERVABILITY.md](./OBSERVABILITY.md) for the canonical redaction policy.
 
-## Future Fleet And Syslog Seams
+## Fleet Syslog Ingestion
 
-The normalized event model keeps these reserved fields intentionally:
+All peer nodes (running the same `lab` binary) can forward their local syslog to the master.
 
-- `source_kind`
-- `source_node_id`
-- `source_device_id`
-- `ingest_path`
-- `upstream_event_id`
+### Master config
 
-These are not accidental over-abstraction.
+Enable the ingest endpoint on the master:
 
-They exist so future remote device and syslog ingestion can reuse the same store, search, and UI contracts without schema churn or a breaking API redesign.
+```bash
+LAB_LOGS_INGEST_ENABLED=true
+```
+
+Auth uses the same shared bearer token already in use for `lab serve`:
+
+```bash
+LAB_MCP_HTTP_TOKEN=<token>
+```
+
+### Peer config
+
+On each peer node:
+
+```bash
+LAB_MASTER_URL=http://<master-host>:<port>   # required
+LAB_MASTER_TOKEN=<token>                     # falls back to LAB_MCP_HTTP_TOKEN
+LAB_NODE_ID=<hostname-or-label>              # falls back to $(hostname)
+```
+
+### Running the forwarder
+
+```bash
+lab logs forward
+```
+
+Reads journald (`journalctl --follow --output=json`) by default, falls back to
+`/var/log/syslog` if `journalctl` is not available, or if `--syslog-only` is passed.
+
+Options:
+
+```
+--master-url     Override LAB_MASTER_URL
+--master-token   Override LAB_MASTER_TOKEN
+--node-id        Override LAB_NODE_ID
+--batch-size     Events per POST (default 200)
+--syslog-only    Skip journald, read /var/log/syslog directly
+```
+
+### Searching across nodes
+
+The master's `LogQuery` now supports two new filter fields:
+
+- `source_node_ids: string[]` — filter by originating node label
+- `source_kinds: string[]` — filter by source type (`syslog`, `local`, …)
+
+These are available in the CLI (`--source-node-id` / `--source-kind` not yet wired to CLI args — use MCP or API), MCP `logs.search`, and `POST /v1/logs`.
+
+### Wire format
+
+Peer events arrive via `POST /v1/logs/ingest` with:
+
+```json
+{ "node_id": "my-server", "events": [<RawLogEvent>] }
+```
+
+The master stamps `source_node_id` from `node_id` (overrides any self-reported field) and
+routes every event through `canonicalize()` before persistence — redaction is always enforced.
+
+### Reserved event fields
+
+The normalized event model retains these fields for fleet/syslog provenance:
+
+- `source_kind` — `"syslog"`, `"local"`, etc.
+- `source_node_id` — the forwarding node label
+- `source_device_id` — optional hardware/device identity
+- `ingest_path` — `"journald"`, `"syslog_file"`, `"tracing"`, etc.
+- `upstream_event_id` — cursor from the origin log stream (e.g. journald cursor)

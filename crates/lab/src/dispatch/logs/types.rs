@@ -64,6 +64,7 @@ pub enum Subsystem {
     AuthMcp,
     AuthUpstream,
     CoreRuntime,
+    Syslog,
 }
 
 impl Subsystem {
@@ -80,6 +81,7 @@ impl Subsystem {
             Self::AuthMcp => "auth_mcp",
             Self::AuthUpstream => "auth_upstream",
             Self::CoreRuntime => "core_runtime",
+            Self::Syslog => "syslog",
         }
     }
 
@@ -95,6 +97,7 @@ impl Subsystem {
             "auth_mcp" => Self::AuthMcp,
             "auth_upstream" => Self::AuthUpstream,
             "core_runtime" => Self::CoreRuntime,
+            "syslog" => Self::Syslog,
             _ => return None,
         })
     }
@@ -276,6 +279,10 @@ pub struct LogQuery {
     #[serde(default)]
     pub correlation_id: Option<String>,
     #[serde(default)]
+    pub source_node_ids: Vec<String>,
+    #[serde(default)]
+    pub source_kinds: Vec<String>,
+    #[serde(default)]
     pub limit: Option<usize>,
 }
 
@@ -326,6 +333,24 @@ pub struct LogStoreStats {
     pub total_event_count: u64,
     pub dropped_event_count: u64,
     pub retention: LogRetention,
+}
+
+// ── Peer ingest ──────────────────────────────────────────────────────────────
+
+/// Batch of raw events forwarded from a peer node via `POST /v1/logs/ingest`.
+///
+/// The `node_id` field overrides `source_node_id` on every event so the master
+/// can trust the node identity from the request, not from self-reported event fields.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PeerIngestRequest {
+    pub node_id: String,
+    pub events: Vec<RawLogEvent>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PeerIngestResponse {
+    pub accepted: usize,
+    pub dropped: usize,
 }
 
 // ── Stream ───────────────────────────────────────────────────────────────────

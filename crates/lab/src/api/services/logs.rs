@@ -14,11 +14,13 @@ use tracing::{error, info, warn};
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::error::ToolError;
+use crate::dispatch::logs::types::{PeerIngestRequest, PeerIngestResponse};
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/", post(handle))
         .route("/stream", get(stream_logs))
+        .route("/ingest", post(ingest_peer_events))
 }
 
 async fn handle(
@@ -158,4 +160,70 @@ async fn stream_logs(
     );
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+async fn ingest_peer_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<PeerIngestRequest>,
+) -> Result<Json<PeerIngestResponse>, ToolError> {
+    const ACTION: &str = "logs.ingest";
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+
+    if std::env::var("LAB_LOGS_INGEST_ENABLED").as_deref() != Ok("true") {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message:
+                "peer log ingest is not enabled on this node; set LAB_LOGS_INGEST_ENABLED=true"
+                    .to_string(),
+        });
+    }
+
+    let logs_system = state.logs_system.clone().ok_or_else(|| {
+        ToolError::internal_message("local log system is not wired into API state")
+    })?;
+
+    let total = req.events.len();
+    info!(
+        surface = "api",
+        service = "logs",
+        action = ACTION,
+        request_id = request_id.as_deref(),
+        node_id = req.node_id.as_str(),
+        count = total,
+        "dispatch start"
+    );
+    let start = std::time::Instant::now();
+
+    let mut accepted = 0usize;
+    let mut dropped = 0usize;
+
+    for mut event in req.events {
+        // The master always controls node identity — never trust self-reported field.
+        event.source_node_id = Some(req.node_id.clone());
+        if event.source_kind.is_none() {
+            event.source_kind = Some("syslog".to_string());
+        }
+        match logs_system.try_ingest(event) {
+            Ok(()) => accepted += 1,
+            Err(_) => dropped += 1,
+        }
+    }
+
+    info!(
+        surface = "api",
+        service = "logs",
+        action = ACTION,
+        request_id = request_id.as_deref(),
+        node_id = req.node_id.as_str(),
+        accepted,
+        dropped,
+        elapsed_ms = start.elapsed().as_millis(),
+        "dispatch ok"
+    );
+
+    Ok(Json(PeerIngestResponse { accepted, dropped }))
 }

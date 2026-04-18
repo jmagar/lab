@@ -119,7 +119,7 @@ fn unique_test_store_path() -> PathBuf {
 const DEFAULT_DB_PATH_REL: &str = ".lab/logs.db";
 
 pub fn resolve_store_path(config: Option<&LabConfig>) -> PathBuf {
-    if let Some(env) = env_non_empty("LAB_LOGS_STORE_PATH") {
+    if let Some(env) = env_non_empty("LAB_LOCAL_LOGS_STORE_PATH") {
         return PathBuf::from(env);
     }
     if let Some(cfg) = config.and_then(|c| c.local_logs.as_ref()) {
@@ -147,33 +147,33 @@ pub fn resolve_retention(config: Option<&LabConfig>) -> LogRetention {
         .unwrap_or_default();
 
     LogRetention {
-        max_age_days: env_non_empty("LAB_LOGS_RETENTION_DAYS")
+        max_age_days: env_non_empty("LAB_LOCAL_LOGS_RETENTION_DAYS")
             .and_then(|s| s.parse().ok())
             .unwrap_or(base.max_age_days),
-        max_bytes: env_non_empty("LAB_LOGS_MAX_BYTES")
+        max_bytes: env_non_empty("LAB_LOCAL_LOGS_MAX_BYTES")
             .and_then(|s| s.parse().ok())
             .unwrap_or(base.max_bytes),
     }
 }
 
 pub fn resolve_queue_capacity(config: Option<&LabConfig>) -> usize {
-    env_non_empty("LAB_LOGS_QUEUE_CAPACITY")
+    env_non_empty("LAB_LOCAL_LOGS_QUEUE_CAPACITY")
         .and_then(|s| s.parse().ok())
         .or_else(|| {
             config
                 .and_then(|c| c.local_logs.as_ref())
                 .and_then(|c| c.queue_capacity)
         })
-        .unwrap_or(4096)
+        .unwrap_or(1024)
 }
 
 pub fn resolve_subscriber_capacity(config: Option<&LabConfig>) -> usize {
-    env_non_empty("LAB_LOGS_SUBSCRIBER_CAPACITY")
+    env_non_empty("LAB_LOCAL_LOGS_SUBSCRIBER_CAPACITY")
         .and_then(|s| s.parse().ok())
         .or_else(|| {
             config
                 .and_then(|c| c.local_logs.as_ref())
                 .and_then(|c| c.subscriber_capacity)
         })
-        .unwrap_or(1024)
+        .unwrap_or(256)
 }
