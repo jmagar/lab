@@ -1,86 +1,76 @@
-//! Refresh-on-401 coordination for upstream MCP OAuth clients.
+//! Single-flight refresh coordination for upstream OAuth clients.
 //!
-//! # Task 0 Spike Findings (2026-04-17)
+//! `RefreshLocks` prevents concurrent callers for the same `(upstream, subject)` pair
+//! from issuing simultaneous token refresh requests against the authorization server.
+//! One caller wins the lock and executes `get_access_token()` (which internally handles
+//! proactive refresh); all others wait and then return the already-refreshed token.
 //!
-//! **rmcp version verified:** `1.4.0` (workspace `Cargo.toml` line ~53), built
-//! with the `auth` and `transport-streamable-http-client-reqwest` features.
+//! **Scope:** This module handles *proactive* refresh triggered before making an MCP call.
+//! Reactive 401-retry logic is wired in Task 4 (`dispatch/gateway/`).
 //!
-//! **Integration path confirmed:** **Plan A — `AuthClient<reqwest::Client>`
-//! auto-injects the bearer token.**
+//! ## rmcp refresh semantics
 //!
-//! Confirmed by inspecting
-//! `rmcp-1.4.0/src/transport/common/auth/streamable_http_client.rs`:
-//!
-//! ```text
-//! impl<C> StreamableHttpClient for AuthClient<C>
-//! where C: StreamableHttpClient + Send + Sync,
-//! {
-//!     async fn post_message(&self, …, mut auth_token: Option<String>, …) {
-//!         if auth_token.is_none() {
-//!             auth_token = Some(self.get_access_token().await?);
-//!         }
-//!         self.http_client.post_message(uri, message, session_id,
-//!             auth_token, custom_headers).await
-//!     }
-//!     // delete_session and get_stream follow the same pattern
-//! }
-//! ```
-//!
-//! Because `reqwest::Client` itself implements `StreamableHttpClient` (in
-//! `rmcp-1.4.0/src/transport/common/reqwest/streamable_http_client.rs`),
-//! `AuthClient<reqwest::Client>` is a drop-in `StreamableHttpClient` we can
-//! pass to `StreamableHttpClientTransport::with_client(...)`. Downstream code
-//! sends `auth_token: None`; `AuthClient` fills it in via
-//! `AuthorizationManager::get_access_token()`.
-//!
-//! ## Refresh semantics (read carefully — this drives Task 2)
-//!
-//! `AuthorizationManager::get_access_token()` (auth.rs L1238) ONLY refreshes
-//! when the LOCAL CLOCK says the token has less than `REFRESH_BUFFER_SECS`
-//! (30 s) remaining. It does **not** react to a 401 from the resource server.
-//!
-//! Concretely, if the upstream MCP server responds 401 while our locally
-//! cached token still looks valid (or has no `expires_in` at all):
-//!   - `AuthClient::post_message` returns the 401 wrapped in
-//!     `StreamableHttpError::AuthRequired` (if the server emitted a
-//!     `WWW-Authenticate: Bearer` header) or some other transport error.
-//!   - **rmcp does not automatically call `auth_manager.refresh_token()`.**
-//!   - **rmcp does not automatically retry the request.**
-//!
-//! `AuthorizationManager::refresh_token()` is therefore **manual**. Task 2
-//! must supply the refresh-on-401 loop around `AuthClient`.
-//!
-//! ## Implications for Task 2
-//!
-//! Task 2 must implement (sketch, do not treat as final):
-//! 1. A `RefreshCoordinator` that wraps `AuthClient<reqwest::Client>` and,
-//!    on `StreamableHttpError::AuthRequired` / HTTP 401, calls
-//!    `auth_manager.refresh_token()` once, then retries the call exactly
-//!    once. Second 401 → propagate.
-//! 2. If `refresh_token()` fails with `AuthError::AuthorizationRequired`
-//!    (no refresh token, refresh token revoked, etc.), surface the
-//!    reauthorization prompt to the operator — a stored credential is now
-//!    useless.
-//! 3. Per-(upstream, subject) serialization: hold an `AuthorizationManager`
-//!    behind a `Mutex` or single-flight gate so concurrent MCP calls from
-//!    the same subject don't trigger parallel refreshes against the AS.
-//!
-//! ## Why NOT Plan B
-//!
-//! Plan B (a custom `StreamableHttpClient` wrapper that calls
-//! `auth_manager.get_access_token()` before each request and passes
-//! `auth_header: Some(format!("Bearer {token}"))`) is strictly inferior:
-//! `AuthClient` already does exactly this, and is kept in sync with upstream
-//! rmcp changes. The spike (`crates/lab/examples/spike_rmcp_auth_client.rs`)
-//! drives a wiremock upstream, asserts that the bearer header is injected
-//! without any explicit `auth_header` arg, and asserts that a 401 is NOT
-//! followed by an automatic refresh.
-//!
-//! # Task 2 hand-off
-//!
-//! When Task 2 picks this up:
-//! - Wire `pub mod upstream;` into `crates/lab/src/oauth.rs`.
-//! - Replace this stub with the real `RefreshCoordinator` implementation.
-//! - Keep the header docblock above (trim the Task 0 framing, keep the
-//!   rmcp refresh-semantics facts) so future readers don't have to relearn
-//!   the 401 behavior.
+//! `AuthorizationManager::get_access_token()` refreshes the token when fewer than 30 s
+//! remain before expiry.  It does **not** react to 401 responses from the resource server.
+//! A 401 with a locally-still-valid token requires an explicit `refresh_token()` call
+//! followed by a retry — that is the Task 4 responsibility.
+
+use std::sync::Arc;
+
+use dashmap::DashMap;
+use rmcp::transport::{AuthError, AuthorizationManager};
+use tokio::sync::Mutex;
+
+use crate::oauth::upstream::types::OauthError;
+
+/// Per-`(upstream_name, subject)` mutex pool.
+///
+/// Entries are created lazily on first access and are never removed (the number of
+/// distinct `(upstream, subject)` pairs is bounded by the number of configured upstreams
+/// times the number of users, which is small in a homelab context).
+#[derive(Default)]
+pub struct RefreshLocks(DashMap<(String, String), Arc<Mutex<()>>>);
+
+impl RefreshLocks {
+    pub fn new() -> Self {
+        Self(DashMap::new())
+    }
+
+    /// Return the mutex for `(upstream_name, subject)`, creating it if absent.
+    pub fn acquire(&self, upstream_name: &str, subject: &str) -> Arc<Mutex<()>> {
+        let key = (upstream_name.to_string(), subject.to_string());
+        self.0
+            .entry(key)
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+}
+
+/// Proactively refresh the access token for `(upstream_name, subject)` if it is near
+/// expiry, using a per-pair mutex to prevent concurrent refresh storms.
+///
+/// Returns the current access token (possibly just refreshed).
+///
+/// On `AuthError::AuthorizationRequired` (no credentials, or refresh token rejected),
+/// maps to `OauthError::NeedsReauth` so callers can surface a re-authorization prompt.
+pub async fn refresh_if_stale(
+    auth_manager: &Mutex<AuthorizationManager>,
+    locks: &RefreshLocks,
+    upstream_name: &str,
+    subject: &str,
+) -> Result<String, OauthError> {
+    let lock = locks.acquire(upstream_name, subject);
+    let _guard = lock.lock().await;
+
+    auth_manager
+        .lock()
+        .await
+        .get_access_token()
+        .await
+        .map_err(|e| match e {
+            AuthError::AuthorizationRequired => {
+                OauthError::NeedsReauth("access token expired and refresh failed".to_string())
+            }
+            other => OauthError::Internal(other.to_string()),
+        })
+}

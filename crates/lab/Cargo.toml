@@ -53,6 +53,8 @@ subtle                       = "2"
 indexmap                     = { version = "2", features = ["serde"] }
 secrecy                      = "0.8"
 sha2                         = "0.10"
+chacha20poly1305             = "0.10"
+dashmap                      = "6"
 tokio-util                   = { version = "0.7", features = ["rt"] }
 strip-ansi-escapes           = "0.2"
 
@@ -67,9 +69,10 @@ tower-http.workspace         = true
 utoipa.workspace             = true
 utoipa-scalar.workspace      = true
 
+oauth2                       = { version = "5.0", default-features = false }
+
 [dev-dependencies]
 wiremock.workspace           = true
-oauth2                       = { version = "5.0", default-features = false }
 
 [lib]
 path = "src/lib.rs"
