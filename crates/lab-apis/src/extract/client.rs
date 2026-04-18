@@ -933,6 +933,7 @@ mod tests {
                 vec![SshHostTarget {
                     alias: "media-node".to_owned(),
                     hostname: Some("media.example.ts.net".to_owned()),
+                    ..Default::default()
                 }],
                 |_| async { Ok(host.clone()) },
                 |url| async move { Ok(Some(VerifiedEndpoint { url, status: 200 })) },
@@ -987,6 +988,7 @@ mod tests {
                 vec![SshHostTarget {
                     alias: "media-node".to_owned(),
                     hostname: Some("media.example.ts.net".to_owned()),
+                    ..Default::default()
                 }],
                 |_| async { Ok(host.clone()) },
                 |_url| async { Ok(None) },
@@ -1035,6 +1037,7 @@ mod tests {
                 vec![SshHostTarget {
                     alias: "media-node".to_owned(),
                     hostname: Some("media.example.ts.net".to_owned()),
+                    ..Default::default()
                 }],
                 |_| async { Ok(host.clone()) },
                 |url| async move { Ok(Some(VerifiedEndpoint { url, status: 200 })) },
@@ -1090,6 +1093,7 @@ mod tests {
                 vec![SshHostTarget {
                     alias: "media-node".to_owned(),
                     hostname: Some("media.example.ts.net".to_owned()),
+                    ..Default::default()
                 }],
                 |_| async { Ok(host.clone()) },
                 move |url| {
@@ -1201,6 +1205,7 @@ mod tests {
                 vec![SshHostTarget {
                     alias: "media-node".to_owned(),
                     hostname: Some("media.example.ts.net".to_owned()),
+                    ..Default::default()
                 }],
                 |_| async { Ok(host.clone()) },
                 |_url| async { Ok(None) },
