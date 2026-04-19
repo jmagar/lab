@@ -8,8 +8,8 @@ description: Git add all, commit with Claude, and push to current/new feature br
 - Current branch: !`git branch --show-current`
 - Git status: !`git status --short`
 - Remote info: !`git remote -v | head -1`
-- Change scope: !`git diff --stat HEAD`
-- Recent commits: !`git log --oneline -5`
+- Change scope: !`git rev-parse --verify HEAD > /dev/null 2>&1 && git diff --stat HEAD || echo "(no commits yet)"`
+- Recent commits: !`git rev-parse --verify HEAD > /dev/null 2>&1 && git log --oneline -5 || echo "(no commits yet)"`
 
 ## Your task
 

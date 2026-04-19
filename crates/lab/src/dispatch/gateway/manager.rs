@@ -621,13 +621,9 @@ impl GatewayManager {
         {
             let env_name =
                 resolve_gateway_bearer_env_name(&spec.name, spec.bearer_token_env.as_deref())?;
-            spec.bearer_token_env = Some(env_name);
+            spec.bearer_token_env = Some(env_name.clone());
             insert_upstream(&mut cfg, spec.clone())?;
-            self.persist_gateway_bearer_token(
-                spec.bearer_token_env.as_deref().expect("env name"),
-                token_value,
-            )
-            .await?;
+            self.persist_gateway_bearer_token(&env_name, token_value).await?;
         } else {
             insert_upstream(&mut cfg, spec.clone())?;
         }
@@ -682,17 +678,9 @@ impl GatewayManager {
                     param: "bearer_token_env".to_string(),
                 });
             };
-            patch.bearer_token_env = Some(Some(env_name));
-            update_upstream(&mut cfg, name, patch.clone())?;
-            self.persist_gateway_bearer_token(
-                patch
-                    .bearer_token_env
-                    .as_ref()
-                    .and_then(|value| value.as_deref())
-                    .expect("env name"),
-                token_value,
-            )
-            .await?;
+            patch.bearer_token_env = Some(Some(env_name.clone()));
+            update_upstream(&mut cfg, name, patch)?;
+            self.persist_gateway_bearer_token(&env_name, token_value).await?;
         } else {
             update_upstream(&mut cfg, name, patch)?;
         }

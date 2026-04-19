@@ -55,22 +55,31 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     })
 }
 
-/// Path under the workspace `target/release/` directory for a given target triple.
+/// Path where cargo places the binary for `target_triple`.
 ///
-/// When `target_triple` contains `"windows"`, appends `.exe` — required for
-/// cross-compilation targets even when the *build host* is not Windows.
-/// Never use `cfg!(target_os)` here; this is about the *target*, not the host.
+/// - **Host triple** (`target_triple == detect_host_triple()`): `target/release/<bin>`
+/// - **Cross-compilation target**: `target/<triple>/release/<bin>`
+/// - When `target_triple` contains `"windows"`, `.exe` is appended even on a
+///   non-Windows build host. Never use `cfg!(target_os)` here — this is about
+///   the *target*, not the host.
 pub fn expected_artifact_path_for(bin: &str, target_triple: &str) -> PathBuf {
     let name = if target_triple.contains("windows") {
         format!("{bin}.exe")
     } else {
         bin.to_string()
     };
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
-        .map(|p| p.join("target").join("release").join(&name))
-        .unwrap_or_else(|| PathBuf::from("target").join("release").join(&name))
+        .map(|p| p.join("target"))
+        .unwrap_or_else(|| PathBuf::from("target"));
+    // Cargo places the artifact under `target/<triple>/release/` only when
+    // cross-compiling (i.e., the target differs from the host triple).
+    if target_triple == detect_host_triple() {
+        workspace.join("release").join(&name)
+    } else {
+        workspace.join(target_triple).join("release").join(&name)
+    }
 }
 
 /// Path under the workspace `target/release/` directory (host triple).
@@ -168,9 +177,25 @@ mod tests {
 
     #[test]
     fn build_target_path_matches_cargo_layout() {
-        // On non-Windows hosts `expected_artifact_path` must not add .exe.
-        let p = expected_artifact_path_for("lab", "x86_64-unknown-linux-gnu");
+        // Host triple → target/release/<bin> (no triple in path).
+        let host = detect_host_triple();
+        let p = expected_artifact_path_for("lab", &host);
         assert!(p.ends_with("target/release/lab"), "got {}", p.display());
+    }
+
+    #[test]
+    fn cross_target_path_includes_triple() {
+        // A cross-compilation target that differs from the host must include
+        // the triple so cargo's output directory layout is matched correctly.
+        let host = detect_host_triple();
+        let cross = if host.contains("x86_64") {
+            "aarch64-unknown-linux-gnu"
+        } else {
+            "x86_64-unknown-linux-gnu"
+        };
+        let p = expected_artifact_path_for("lab", cross);
+        let expected = format!("target/{cross}/release/lab");
+        assert!(p.ends_with(&expected), "got {}", p.display());
     }
 
     #[test]

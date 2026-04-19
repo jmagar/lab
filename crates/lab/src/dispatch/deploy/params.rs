@@ -56,6 +56,7 @@ pub fn parse_run(params: &Value) -> Result<DeployRequest, DeployError> {
         max_parallel: params
             .get("max_parallel")
             .and_then(Value::as_u64)
+            .filter(|&n| n >= 1) // 0 would mean "no parallelism", treat as absent
             .map(|n| n.min(u64::from(u32::MAX)) as u32),
         fail_fast: params
             .get("fail_fast")

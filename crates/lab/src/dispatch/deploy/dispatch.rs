@@ -134,8 +134,13 @@ pub fn dispatch_mcp(
 }
 
 /// Dispatch against a concrete `DefaultRunner`. This is the entry point the
-/// CLI and MCP surfaces go through once startup has built the runner from
-/// config.
+/// CLI surface goes through once startup has built the runner from config.
+///
+/// Differs from `dispatch_mcp` in calling convention: this is an `async fn`
+/// that can take a non-`'static` `runner` reference, while `dispatch_mcp`
+/// returns a `Pin<Box<dyn Future + 'static>>` to satisfy the MCP macro's
+/// `Box::pin` wrapper without HRTB (Rust issue #100013). Both functions share
+/// the same auth/validation logic via `validate_deploy_action`.
 pub async fn dispatch_with_runner(
     action: &str,
     params_v: Value,

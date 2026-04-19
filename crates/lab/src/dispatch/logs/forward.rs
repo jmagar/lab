@@ -107,7 +107,7 @@ async fn forward_journald(
     let mut flush_tick = interval(Duration::from_secs(2));
     flush_tick.tick().await; // consume the immediate first tick
 
-    loop {
+    let exit_ok = loop {
         tokio::select! {
             msg = rx.recv() => {
                 match msg {
@@ -117,12 +117,22 @@ async fn forward_journald(
                             flush_batch(client, node_id, &mut batch).await?;
                         }
                     }
-                    // EOF or channel closed — flush and exit.
+                    // EOF or channel closed — flush, then collect child exit status.
                     _ => {
                         if !batch.is_empty() {
                             flush_batch(client, node_id, &mut batch).await?;
                         }
-                        return Ok(std::process::ExitCode::SUCCESS);
+                        let status = tokio::task::spawn_blocking(move || child.wait())
+                            .await
+                            .map_err(|e| anyhow::anyhow!("join: {e}"))??;
+                        if !status.success() {
+                            tracing::warn!(
+                                node_id,
+                                code = status.code(),
+                                "journalctl exited with non-zero status"
+                            );
+                        }
+                        break status.success();
                     }
                 }
             }
@@ -132,7 +142,13 @@ async fn forward_journald(
                 }
             }
         }
-    }
+    };
+
+    Ok(if exit_ok {
+        std::process::ExitCode::SUCCESS
+    } else {
+        std::process::ExitCode::FAILURE
+    })
 }
 
 fn parse_journald_line(line: &str) -> RawLogEvent {
@@ -199,12 +215,14 @@ async fn forward_syslog_file(
 ) -> Result<std::process::ExitCode> {
     use std::fs::File;
     use std::io::{BufRead, BufReader, Seek, SeekFrom};
+    use std::os::unix::fs::MetadataExt;
     use tokio::time::{Duration, sleep};
 
     let path = "/var/log/syslog";
+
     let mut file = File::open(path).with_context(|| format!("cannot open {path}"))?;
-    // Tail from the end.
     file.seek(SeekFrom::End(0))?;
+    let mut inode = file.metadata().map(|m| m.ino()).unwrap_or(0);
 
     let mut reader = BufReader::new(file);
     let mut batch: Vec<RawLogEvent> = Vec::with_capacity(batch_size);
@@ -215,10 +233,36 @@ async fn forward_syslog_file(
         let n = reader
             .read_line(&mut line)
             .context("error reading syslog")?;
+
         if n == 0 {
+            // No new data — flush any partial batch, check rotation, then wait.
             if !batch.is_empty() {
                 flush_batch(client, node_id, &mut batch).await?;
             }
+
+            // Check for file rotation or truncation (logrotate copytruncate).
+            let rotated = tokio::task::spawn_blocking({
+                let inode_now = inode;
+                move || -> bool {
+                    let Ok(meta) = std::fs::metadata(path) else { return false };
+                    meta.ino() != inode_now || meta.len() == 0
+                }
+            })
+            .await
+            .unwrap_or(false);
+
+            if rotated {
+                let new_file = tokio::task::spawn_blocking(move || {
+                    File::open(path).with_context(|| format!("cannot reopen {path}"))
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("join: {e}"))??;
+                inode = new_file.metadata().map(|m| m.ino()).unwrap_or(0);
+                reader = BufReader::new(new_file);
+                tracing::info!(node_id, "syslog file rotated; reopened");
+                continue;
+            }
+
             sleep(Duration::from_millis(250)).await;
             continue;
         }
@@ -232,10 +276,25 @@ async fn forward_syslog_file(
     }
 }
 
+/// Skip `n` whitespace-delimited tokens and return the rest of the string.
+///
+/// Handles RFC 3164 double-space dates like "Nov  2 10:30:00" (day < 10).
+fn skip_whitespace_tokens<'a>(s: &'a str, n: usize) -> &'a str {
+    let mut rest = s;
+    for _ in 0..n {
+        rest = rest.trim_start_matches(|c: char| !c.is_ascii_whitespace());
+        rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    }
+    rest
+}
+
 fn parse_syslog_line(line: &str) -> RawLogEvent {
     // Best-effort RFC 3164 parse: "Mon DD HH:MM:SS host tag: message"
-    // We don't do strict validation — just extract what we can.
-    let message = line.splitn(4, ' ').nth(3).unwrap_or(line).to_string();
+    // RFC 3164 uses a single space between fields, but some syslogd
+    // implementations emit "Nov  2" (double space before single-digit days).
+    // Skip 3 whitespace token groups so double spaces are absorbed correctly.
+    let rest = skip_whitespace_tokens(line, 3);
+    let message = (if rest.is_empty() { line } else { rest }).to_string();
     RawLogEvent {
         message,
         source_kind: Some("syslog".to_string()),
@@ -274,9 +333,11 @@ async fn flush_batch(
     node_id: &str,
     batch: &mut Vec<RawLogEvent>,
 ) -> Result<()> {
+    // Take ownership so we can return events to the batch on failure.
+    let events = std::mem::take(batch);
     let payload = json!({
         "node_id": node_id,
-        "events": std::mem::take(batch),
+        "events": &events,
     });
     match client.post_log_ingest(&payload).await {
         Ok(resp) => {
@@ -288,7 +349,9 @@ async fn flush_batch(
             );
         }
         Err(e) => {
-            tracing::warn!(node_id, error = %e, "failed to flush log batch; events lost");
+            // Restore events so the next flush attempt can retry them.
+            tracing::warn!(node_id, error = %e, events = events.len(), "failed to flush log batch; will retry");
+            *batch = events;
         }
     }
     Ok(())

@@ -33,12 +33,16 @@ pub fn dispatch(
 ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + 'static>> {
     let runner: &'static DefaultRunner = deploy::client::static_runner();
     let action = action.to_owned();
+    // The scope must wrap the *call* to dispatch_mcp, not just its returned
+    // future. dispatch_mcp does synchronous validation (authz context check)
+    // before constructing the async block, so the task-local must be set
+    // before dispatch_mcp's body runs (Rust issue #100013 workaround — the
+    // sync pre-work is done inside the scope here, not outside it).
     Box::pin(async move {
         deploy::authz::MCP_CONTEXT
-            .scope(
-                McpContext::McpElicited,
-                deploy::dispatch_mcp(action, params, runner),
-            )
+            .scope(McpContext::McpElicited, async move {
+                deploy::dispatch_mcp(action, params, runner).await
+            })
             .await
     })
 }

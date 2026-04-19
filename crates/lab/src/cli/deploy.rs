@@ -4,7 +4,7 @@
 //! `rollback`) require `-y` / `--yes` / `--no-confirm` on a non-TTY, or
 //! will prompt interactively when stdin is a TTY.
 
-use std::io::{BufRead as _, IsTerminal as _};
+use std::io::IsTerminal as _;
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};

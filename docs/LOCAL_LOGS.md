@@ -148,7 +148,7 @@ Reads journald (`journalctl --follow --output=json`) by default, falls back to
 
 Options:
 
-```
+```text
 --master-url     Override LAB_MASTER_URL
 --master-token   Override LAB_MASTER_TOKEN
 --node-id        Override LAB_NODE_ID

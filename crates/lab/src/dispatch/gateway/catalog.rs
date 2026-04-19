@@ -222,7 +222,7 @@ pub const ACTIONS: &[ActionSpec] = &[
                 name: "bearer_token_value",
                 ty: "string",
                 required: false,
-                description: "Write-only: raw bearer token to store securely. Never returned on reads. Requires bearer_token_env in spec to name the env var.",
+                description: "Write-only: raw bearer token to store securely. Never returned on reads. If bearer_token_env is omitted from the spec, a default env var name is derived from the gateway name.",
             },
         ],
     },
