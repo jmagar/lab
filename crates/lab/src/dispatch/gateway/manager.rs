@@ -954,13 +954,27 @@ impl GatewayManager {
             })?;
         }
 
-        dotenvy::from_path_override(&env_path).map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".to_string(),
-            message: format!(
-                "failed to refresh process env from {}: {e}",
-                env_path.display()
-            ),
-        })?;
+        // dotenvy::from_path_override calls std::env::set_var, which mutates
+        // global process state. This is inherently racy in a multi-threaded
+        // Tokio runtime. Running it on the blocking thread pool keeps it off
+        // the async executor, but does not eliminate the race with concurrent
+        // std::env::var calls. A proper fix would require a shared env map
+        // (e.g. Arc<RwLock<HashMap>>) threaded into every client that reads
+        // env vars — tracked as a follow-up improvement.
+        let env_path_clone = env_path.clone();
+        tokio::task::spawn_blocking(move || dotenvy::from_path_override(&env_path_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("env reload task panicked: {e}"),
+            })?
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!(
+                    "failed to refresh process env from {}: {e}",
+                    env_path.display()
+                ),
+            })?;
 
         Ok(())
     }

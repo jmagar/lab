@@ -25,8 +25,15 @@ use serde_json::Value;
 /// 4. Confirm-flag check — `confirm` must be `true` for destructive actions.
 fn validate_deploy_action(action: &str, params_v: &Value) -> Result<DeployRequest, ToolError> {
     authz::require_deploy_token()?;
-    let req = params::parse_run(params_v).map_err(ToolError::from)?;
-    authz::reject_headless_bypass(params_v, authz::current_context())?;
+    let mut req = params::parse_run(params_v).map_err(ToolError::from)?;
+    let ctx = authz::current_context();
+    authz::reject_headless_bypass(params_v, ctx)?;
+    // After a successful elicitation exchange the client has confirmed the
+    // action interactively — mark the request confirmed so the gate below
+    // passes even when the caller did not include "confirm": true in params.
+    if matches!(ctx, authz::McpContext::McpElicited) {
+        req.confirm = true;
+    }
     if !req.confirm {
         return Err(DeployError::ValidationFailed {
             field: "confirm".into(),
@@ -38,10 +45,11 @@ fn validate_deploy_action(action: &str, params_v: &Value) -> Result<DeployReques
 }
 
 /// Top-level dispatch without an attached runner — handles `help` / `schema`
-/// and rejects any real action because orchestration requires runtime state
-/// that must be injected by the caller (see `dispatch_with_runner`).
-// Kept as a surface-neutral fallback entry point; not yet wired to any adapter.
-#[allow(dead_code)]
+/// and returns `internal_error` for any action that requires the runner.
+///
+/// Follows the standard dispatch.rs contract: `help` and `schema` work
+/// unconditionally; every other action signals that it needs a runner without
+/// running auth or param validation (authentication is the runner's concern).
 pub async fn dispatch(action: &str, params_v: Value) -> Result<Value, ToolError> {
     match action {
         "help" => Ok(help_payload("deploy", ACTIONS)),
@@ -57,23 +65,21 @@ pub async fn dispatch(action: &str, params_v: Value) -> Result<Value, ToolError>
                     hint: None,
                 });
             }
-            authz::require_deploy_token()?;
-            if other == "config.list" {
-                // Without a runner we have nothing to enumerate; surface a
-                // clear internal_error rather than fabricating an empty list.
-                return Err(ToolError::internal_message(
-                    "deploy runner is not wired into this dispatch entry point",
-                ));
-            }
-            let req = params::parse_run(&params_v).map_err(ToolError::from)?;
-            let _ = authz::reject_headless_bypass(&params_v, authz::current_context())?;
-            Err(ToolError::internal_message(format!(
-                "deploy runner is not wired; parsed {} target(s)",
-                req.targets.len()
-            )))
+            Err(ToolError::internal_message(
+                "deploy actions require a runner; use dispatch_with_runner or dispatch_mcp",
+            ))
         }
     }
 }
+
+// `dispatch_mcp` and `dispatch_with_runner` cannot be merged into a single
+// function because they have incompatible calling conventions:
+// - `dispatch_mcp` returns `Pin<Box<dyn Future + 'static>>` to satisfy the
+//   `dispatch_fn!` macro's `Box::pin` wrapper without HRTB errors.
+// - `dispatch_with_runner` is an `async fn` that can hold a non-`'static`
+//   runner reference.
+// Both share auth/validation logic via `validate_deploy_action` to prevent
+// drift. Any new check or feature must go in that helper, not either function.
 
 /// MCP-specific entry point: sync fn returning a `'static` boxed future so
 /// the `dispatch_fn!` macro's `Box::pin` wrapper encloses a future with no

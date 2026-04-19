@@ -53,6 +53,7 @@ export function FeedbackSection() {
             <Button
               key={mode}
               variant="outline"
+              aria-pressed={mode === activeMode}
               className={cn(
                 controlTone(mode === activeMode ? 'accent' : 'default'),
                 'rounded-full px-3 py-1.5 text-sm capitalize hover:bg-[#17364b] hover:text-aurora-text-primary',

@@ -84,13 +84,13 @@ export function FoundationsSection() {
           <section className="space-y-3">
             <p className={AURORA_MUTED_LABEL}>Elevation</p>
             <div className="grid gap-3 md:grid-cols-2">
-              {elevationTiers.map((tier, index) => (
+              {elevationTiers.map((tier) => (
                 <div
                   key={tier.label}
                   className={cn(
                     'rounded-[1.35rem] border border-aurora-border-strong bg-aurora-panel-medium px-4 py-5',
                     tier.className,
-                    index === 1 ? 'bg-aurora-panel-strong' : '',
+                    tier.emphasized ? 'bg-aurora-panel-strong' : '',
                   )}
                 >
                   <p className={cn(AURORA_DISPLAY_NUMBER, 'text-xl text-aurora-text-primary')}>

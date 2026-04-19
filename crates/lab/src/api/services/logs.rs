@@ -226,10 +226,24 @@ async fn ingest_peer_events(
     let mut accepted = 0usize;
     let mut dropped = 0usize;
 
+    const ALLOWED_SOURCE_KINDS: &[&str] = &["syslog", "journald", "application", "peer"];
+
     for mut event in req.events {
         // The master always controls node identity — never trust self-reported field.
         event.source_node_id = Some(req.node_id.clone());
-        if event.source_kind.is_none() {
+        // Constrain source_kind to the known allowlist so peers cannot spoof
+        // system-level kinds (e.g., "audit") that would be indistinguishable
+        // from locally-generated entries.
+        if let Some(ref kind) = event.source_kind {
+            if !ALLOWED_SOURCE_KINDS.contains(&kind.as_str()) {
+                return Err(ToolError::InvalidParam {
+                    message: format!(
+                        "source_kind `{kind}` is not allowed; valid: {ALLOWED_SOURCE_KINDS:?}"
+                    ),
+                    param: "events[].source_kind".to_string(),
+                });
+            }
+        } else {
             event.source_kind = Some("syslog".to_string());
         }
         match logs_system.try_ingest(event) {

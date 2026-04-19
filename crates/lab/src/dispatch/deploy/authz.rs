@@ -76,8 +76,15 @@ pub fn reject_headless_bypass(params: &Value, ctx: McpContext) -> Result<(), Too
     Ok(())
 }
 
-/// Read the current MCP context, falling back to `Cli` when the task-local
-/// has not been scoped.
+/// Read the current MCP context, falling back to `HeadlessNoElicitation` when
+/// the task-local has not been scoped.
+///
+/// Fails closed: an unscoped call is treated as the most restricted context
+/// so that a surface that forgets to call `MCP_CONTEXT.scope(...)` before
+/// dispatching a destructive action is refused rather than silently granted
+/// operator-level trust.
 pub fn current_context() -> McpContext {
-    MCP_CONTEXT.try_with(|c| *c).unwrap_or(McpContext::Cli)
+    MCP_CONTEXT
+        .try_with(|c| *c)
+        .unwrap_or(McpContext::HeadlessNoElicitation)
 }

@@ -198,7 +198,7 @@ export function GatewayListContent() {
         }
       />
 
-      <div className={`relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary ${AURORA_PAGE_SHELL}`}>
+      <div className={cn('relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary', AURORA_PAGE_SHELL)}>
         <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
           <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

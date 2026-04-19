@@ -335,7 +335,7 @@ export function GatewayTable({
                           size="icon"
                           className={cn(
                             gatewayActionTone(),
-                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:group-hover:opacity-100',
+                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
                           )}
                           onClick={() => handleAction(gateway, 'test', onTest)}
                           disabled={isLoading(gateway.id, 'test')}
@@ -350,7 +350,7 @@ export function GatewayTable({
                           size="icon"
                           className={cn(
                             gatewayActionTone(),
-                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:group-hover:opacity-100',
+                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
                           )}
                           onClick={() => handleAction(gateway, 'reload', onReload)}
                           disabled={isLoading(gateway.id, 'reload')}

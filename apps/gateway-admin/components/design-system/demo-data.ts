@@ -95,11 +95,13 @@ export const elevationTiers = [
     label: 'Tier 1 lift',
     description: 'Default panels and cards with medium emphasis.',
     className: 'shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
+    emphasized: false,
   },
   {
     label: 'Tier 2 lift',
     description: 'Pinned inspectors and hero surfaces with stronger separation.',
     className: 'shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]',
+    emphasized: true,
   },
 ] as const
 

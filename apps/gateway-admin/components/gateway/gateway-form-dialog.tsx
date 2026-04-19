@@ -567,6 +567,7 @@ export function GatewayFormDialog({
                           <Input
                             id="bearer-token-value"
                             type="password"
+                            autoComplete="new-password"
                             value={bearerTokenValue}
                             onChange={(event) => setBearerTokenValue(event.target.value)}
                             placeholder="ghp_..."

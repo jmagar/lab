@@ -66,16 +66,19 @@ async fn forward_journald(
     node_id: &str,
     batch_size: usize,
 ) -> Result<std::process::ExitCode> {
-    use std::io::{BufRead, BufReader};
-    use std::process::{Command, Stdio};
-    use tokio::sync::mpsc;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::{Child, Command};
     use tokio::time::{Duration, interval};
 
-    let mut child = Command::new("journalctl")
+    // tokio::process::Command is used so kill_on_drop(true) terminates the
+    // journalctl process if this future is dropped (e.g., on channel close or
+    // early return), preventing an orphaned --follow process.
+    let mut child: Child = Command::new("journalctl")
         // --lines=100 picks up recent history immediately before following new entries.
         .args(["--follow", "--output=json", "--lines=100"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
         .spawn()
         .context("failed to spawn journalctl")?;
 
@@ -84,24 +87,7 @@ async fn forward_journald(
         .take()
         .context("failed to capture journalctl stdout")?;
 
-    // Blocking reader → async channel bridge so we can select! with a flush timer.
-    let (tx, mut rx) = mpsc::channel::<Option<String>>(256);
-
-    tokio::task::spawn_blocking(move || {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            match line {
-                Ok(l) => {
-                    if tx.blocking_send(Some(l)).is_err() {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-        // Signal EOF.
-        drop(tx.blocking_send(None));
-    });
+    let mut lines = BufReader::new(stdout).lines();
 
     let mut batch: Vec<RawLogEvent> = Vec::with_capacity(batch_size);
     let mut flush_tick = interval(Duration::from_secs(2));
@@ -109,22 +95,23 @@ async fn forward_journald(
 
     let exit_ok = loop {
         tokio::select! {
-            msg = rx.recv() => {
-                match msg {
-                    Some(Some(line)) => {
-                        batch.push(parse_journald_line(&line));
+            line = lines.next_line() => {
+                match line {
+                    Ok(Some(l)) => {
+                        batch.push(parse_journald_line(&l));
                         if batch.len() >= batch_size {
                             flush_batch(client, node_id, &mut batch).await?;
                         }
                     }
-                    // EOF or channel closed — flush, then collect child exit status.
+                    // EOF or read error — flush, then collect child exit status.
                     _ => {
                         if !batch.is_empty() {
                             flush_batch(client, node_id, &mut batch).await?;
                         }
-                        let status = tokio::task::spawn_blocking(move || child.wait())
+                        let status = child
+                            .wait()
                             .await
-                            .map_err(|e| anyhow::anyhow!("join: {e}"))??;
+                            .map_err(|e| anyhow::anyhow!("journalctl wait: {e}"))?;
                         if !status.success() {
                             tracing::warn!(
                                 node_id,

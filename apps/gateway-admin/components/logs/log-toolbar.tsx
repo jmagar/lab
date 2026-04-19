@@ -198,7 +198,7 @@ export function LogToolbar({
           </div>
 
           {streamStatus.error ? (
-            <div className="rounded-[0.95rem] border border-aurora-error/28 bg-[rgba(76,42,52,0.18)] px-3 py-2 text-sm text-[#efd6dd] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div role="alert" className="rounded-[0.95rem] border border-aurora-error/28 bg-[rgba(76,42,52,0.18)] px-3 py-2 text-sm text-[#efd6dd] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
               {streamStatus.error}
             </div>
           ) : null}

@@ -186,17 +186,22 @@ fn build_search_query(args: LocalSearchArgs) -> LogQuery {
 /// Parse clap `ForwardArgs` into a `ForwardConfig` and delegate to the
 /// shared dispatch-layer implementation. The CLI owns only arg parsing here.
 async fn run_forward(args: ForwardArgs, _config: &LabConfig) -> Result<ExitCode> {
+    // clap's `env = "..."` populates Some("") when the var is set to an empty
+    // string, bypassing env_non_empty's empty-string filter. Filter here so
+    // the or_else fallback fires correctly.
     let master_url = args
         .master_url
+        .filter(|v| !v.is_empty())
         .or_else(|| env_non_empty("LAB_MASTER_URL"))
         .context("LAB_MASTER_URL is not set; pass --master-url or set the env var")?;
 
     let token = args
         .master_token
+        .filter(|v| !v.is_empty())
         .or_else(|| env_non_empty("LAB_MASTER_TOKEN"))
         .or_else(|| env_non_empty("LAB_MCP_HTTP_TOKEN"));
 
-    let node_id = resolve_node_id(args.node_id);
+    let node_id = resolve_node_id(args.node_id.filter(|v| !v.is_empty()));
 
     crate::dispatch::logs::forward::run(ForwardConfig {
         master_url,

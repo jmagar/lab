@@ -109,6 +109,7 @@ export function PatternsSection() {
               <label className="relative">
                 <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
                 <Input
+                  aria-label="Search gateways"
                   defaultValue="plex"
                   className={cn(AURORA_MESSAGE_SURFACE, 'pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
                 />

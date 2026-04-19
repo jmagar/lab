@@ -15,6 +15,9 @@ pub mod runner;
 pub mod ssh_session;
 pub mod stages;
 
+// Re-exported for surfaces (CLI, MCP, API) that import from this module.
+// `unused_imports` is allowed because each surface uses a subset depending on
+// which entry point it calls — unused arms appear in narrow feature builds.
 #[allow(unused_imports)]
 pub use catalog::ACTIONS;
 #[allow(unused_imports)]

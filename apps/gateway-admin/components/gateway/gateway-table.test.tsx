@@ -59,5 +59,6 @@ test('gateway table uses aurora lifted surfaces and muted operational pills', ()
   assert.match(markup, /text-aurora-text-primary/)
   assert.match(markup, /text-aurora-warn/)
   assert.match(markup, />14\/18</)
+  // Intentionally uppercase: catches legacy pill labels that were rendered as TOOLS/RESOURCES/PROMPTS before the MCP capability rename
   assert.doesNotMatch(markup, /TOOLS|RESOURCES|PROMPTS/)
 })

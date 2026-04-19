@@ -286,12 +286,23 @@ pub(crate) fn default_gateway_bearer_env_name(name: &str) -> String {
 }
 
 fn looks_like_raw_bearer_token(value: &str) -> bool {
+    // Common token prefixes: reject values that are clearly raw secrets rather
+    // than env var names. is_valid_env_var_name catches most others (spaces,
+    // hyphens, colons), but JWTs (eyJ...) and some API keys can pass that check.
     value.starts_with("Bearer ")
+        || value.starts_with("Token ")
+        || value.starts_with("Basic ")
         || value.starts_with("ghp_")
         || value.starts_with("github_pat_")
         || value.starts_with("ghu_")
         || value.starts_with("ghs_")
         || value.starts_with("ghr_")
+        || value.starts_with("eyJ") // JWT header (base64url of {"alg":...})
+        || value.starts_with("sk-") // OpenAI and similar
+        || value.starts_with("xoxb-") // Slack bot token
+        || value.starts_with("xoxp-") // Slack user token
+        || value.starts_with("glpat-") // GitLab PAT
+        || value.starts_with("AKIA") // AWS Access Key ID
 }
 
 fn is_valid_env_var_name(value: &str) -> bool {

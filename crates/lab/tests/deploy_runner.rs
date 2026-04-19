@@ -299,7 +299,7 @@ async fn max_parallel_bounds_concurrency() {
     let f = factory.clone();
     let counter_c = counter.clone();
     let max_seen_c = max_seen.clone();
-    let _results = orchestrate_with_io(
+    let results = orchestrate_with_io(
         vec![
             ("h1".into(), None, None, "/usr/local/bin/lab".into()),
             ("h2".into(), None, None, "/usr/local/bin/lab".into()),
@@ -319,7 +319,14 @@ async fn max_parallel_bounds_concurrency() {
     )
     .await;
 
+    assert_eq!(results.len(), 5, "all 5 hosts must complete");
+    assert!(
+        results.iter().all(|r| r.succeeded),
+        "all hosts must succeed: {results:?}"
+    );
+
     let observed = max_seen.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(observed > 0, "no host pipeline was observed; orchestration may not have run");
     assert!(
         observed <= 2,
         "max_parallel=2 but observed {observed} concurrent hosts"

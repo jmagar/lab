@@ -433,6 +433,47 @@ impl DefaultRunner {
     }
 }
 
+/// Read `~/.ssh/config` and return the parsed fleet inventory.
+///
+/// File and env I/O lives here in the `lab` crate, not in `lab-apis`.
+/// `lab_apis::core::ssh::parse_ssh_config` is the pure parser; this
+/// function supplies the contents.
+fn load_deploy_inventory() -> Vec<SshHostTarget> {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => {
+            tracing::warn!("deploy: $HOME not set; SSH inventory will be empty");
+            return Vec::new();
+        }
+    };
+    let path = std::path::PathBuf::from(home).join(".ssh").join("config");
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            tracing::warn!(error = %e, path = %path.display(), "deploy: could not read ~/.ssh/config");
+            return Vec::new();
+        }
+    };
+
+    // Read denylist from env (comma-separated), defaulting to github.com.
+    const DEFAULT_DENYLIST: &[&str] = &["github.com"];
+    let denylist_raw = std::env::var("LAB_EXTRACT_SSH_DENYLIST").ok();
+    let denylist: std::collections::BTreeSet<String> = match denylist_raw.as_deref() {
+        Some(raw) if !raw.is_empty() => raw
+            .split(',')
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        _ => DEFAULT_DENYLIST.iter().map(|s| s.to_ascii_lowercase()).collect(),
+    };
+
+    lab_apis::core::ssh::parse_ssh_config(&contents)
+        .into_iter()
+        .filter(|t| !denylist.contains(&t.alias.to_ascii_lowercase()))
+        .collect()
+}
+
 /// Build a `DefaultRunner` from the loaded config and `~/.ssh/config`
 /// inventory.
 ///
@@ -441,11 +482,7 @@ impl DefaultRunner {
 /// log a warning. Both CLI and MCP surfaces call this at dispatch time
 /// rather than at startup, keeping the construction surface-neutral.
 pub fn build_default_runner(config: crate::config::DeployPreferences) -> DefaultRunner {
-    let inventory = lab_apis::extract::inventory::load_ssh_inventory()
-        .unwrap_or_else(|err| {
-            tracing::warn!(error = %err, "deploy: could not load ~/.ssh/config inventory");
-            Vec::new()
-        });
+    let inventory = load_deploy_inventory();
     DefaultRunner::new(
         config,
         Arc::new(inventory),

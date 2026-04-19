@@ -39,7 +39,7 @@ export function EmptyState({
       {action && (
         <Button
           onClick={action.onClick}
-          className={cn(gatewayActionTone('accent'), 'mt-6 border px-4 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary')}
+          className={cn(gatewayActionTone('accent'), 'mt-6 border px-4 text-aurora-text-primary hover:bg-[var(--aurora-panel-strong-top)] hover:text-aurora-text-primary')}
         >
           <Plus className="mr-2 size-4" />
           {action.label}

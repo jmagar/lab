@@ -44,20 +44,12 @@ async fn help_lists_run_and_rollback() {
     assert!(names.contains(&"rollback"));
 }
 
-#[test]
-fn run_missing_targets_returns_validation_failed() {
-    // When the token is set via env_override, the next gate is param parsing,
-    // which must reject an empty targets array as validation_failed.
-    use std::collections::HashMap;
-    let mut overrides = HashMap::new();
-    overrides.insert("LAB_DEPLOY_TOKEN".to_string(), "test-token".into());
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let err = lab::dispatch::helpers::with_env_override(overrides, || {
-        rt.block_on(deploy::dispatch("run", json!({ "confirm": true })))
-    })
-    .unwrap_err();
-    assert_eq!(err.kind(), "validation_failed");
+#[tokio::test]
+async fn run_returns_internal_error_without_runner() {
+    // dispatch() (no-runner entry point) immediately surfaces internal_error for
+    // any action that requires the runner, without running auth or param validation.
+    let err = deploy::dispatch("run", json!({ "confirm": true }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), "internal_error");
 }

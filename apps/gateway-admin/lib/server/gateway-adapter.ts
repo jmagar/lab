@@ -439,8 +439,7 @@ export function normalizeGateway(
 }
 
 export function probeStatusFromRuntime(runtime: BackendGatewayRuntimeView): GatewayProbeStatus {
-  const toolCount = runtime.tool_count
-  const connectedCount = toolCount + runtime.resource_count + runtime.prompt_count
+  const connectedCount = runtime.tool_count + runtime.resource_count + runtime.prompt_count
   const rawLastError = runtime.last_error?.trim() || undefined
   const lastError = rawLastError && !isNonEssentialCapabilityError(rawLastError)
     ? rawLastError
@@ -457,7 +456,7 @@ export function probeStatusFromRuntime(runtime: BackendGatewayRuntimeView): Gate
   return {
     connected: false,
     healthy: false,
-    last_error: lastError ?? 'No tools were discovered from this gateway.',
+    last_error: lastError ?? 'No capabilities (tools, resources, or prompts) were discovered from this gateway.',
   }
 }
 
