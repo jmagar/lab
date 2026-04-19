@@ -31,7 +31,7 @@ pub fn dispatch(
     action: &str,
     params: Value,
 ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + 'static>> {
-    let runner: &'static DefaultRunner = deploy::runner::mcp_runner();
+    let runner: &'static DefaultRunner = deploy::client::static_runner();
     let action = action.to_owned();
     Box::pin(async move {
         deploy::authz::MCP_CONTEXT
@@ -51,7 +51,7 @@ pub async fn dispatch_with_context(
     params: Value,
     ctx: McpContext,
 ) -> Result<Value, ToolError> {
-    let runner: &'static DefaultRunner = deploy::runner::mcp_runner();
+    let runner: &'static DefaultRunner = deploy::client::static_runner();
     deploy::authz::MCP_CONTEXT
         .scope(ctx, deploy::dispatch_mcp(action.to_owned(), params, runner))
         .await

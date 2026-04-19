@@ -12,6 +12,7 @@
 pub mod authz;
 pub mod build;
 pub mod catalog;
+pub mod client;
 pub mod dispatch;
 pub mod lock;
 pub mod params;

@@ -265,7 +265,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Deploy(args) => {
             let deploy_prefs = config.deploy.clone().unwrap_or_default();
             let runner =
-                crate::dispatch::deploy::runner::build_default_runner(deploy_prefs);
+                crate::dispatch::deploy::client::build_runner(deploy_prefs);
             deploy::run(args, format, &runner)
                 .await
                 .map(|()| ExitCode::SUCCESS)
