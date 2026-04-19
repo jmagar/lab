@@ -1,8 +1,9 @@
 //! SQLite-backed persistence for captured log events.
 //!
 //! Single writer (the async writer task in `ingest`), many readers. WAL mode
-//! + shared `Mutex<Connection>` inside `spawn_blocking` keeps the API async
-//! without dragging in `sqlx`.
+//! + split `write_conn`/`read_conn` mutexes inside `spawn_blocking` keeps the
+//! API async without dragging in `sqlx`. WAL allows concurrent readers, so
+//! separating the two mutexes lets reads proceed independently of writes.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -23,53 +24,72 @@ const SELECT_COLS: &str = "event_id, ts, level, subsystem, surface, action, mess
      source_kind, source_node_id, source_device_id, ingest_path, upstream_event_id";
 
 pub struct LogStore {
-    conn: Arc<Mutex<Connection>>,
+    /// Exclusive connection for writes (INSERT, DELETE, VACUUM).
+    write_conn: Arc<Mutex<Connection>>,
+    /// Separate connection for reads (SELECT). WAL mode allows this to proceed
+    /// concurrently with writes without contending on `write_conn`.
+    read_conn: Arc<Mutex<Connection>>,
     retention: LogRetention,
 }
 
 impl LogStore {
     pub async fn open(path: PathBuf, retention: LogRetention) -> Result<Self, ToolError> {
-        let conn = tokio::task::spawn_blocking(move || -> Result<Connection, rusqlite::Error> {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
-            let conn = Connection::open_with_flags(&path, flags)?;
-            conn.pragma_update(None, "journal_mode", "WAL")?;
-            conn.pragma_update(None, "synchronous", "NORMAL")?;
-            conn.pragma_update(None, "temp_store", "MEMORY")?;
-            conn.pragma_update(None, "mmap_size", 134_217_728_i64)?;
-            migrate(&conn)?;
-            Ok(conn)
-        })
-        .await
-        .map_err(|e| ToolError::internal_message(format!("log store open join: {e}")))?
-        .map_err(|e| ToolError::internal_message(format!("log store open: {e}")))?;
+        let (write_conn, read_conn) =
+            tokio::task::spawn_blocking(
+                move || -> Result<(Connection, Connection), rusqlite::Error> {
+                    if let Some(parent) = path.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    let rw_flags =
+                        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+
+                    // Write connection — owns schema init and WAL configuration.
+                    let wc = Connection::open_with_flags(&path, rw_flags)?;
+                    wc.pragma_update(None, "journal_mode", "WAL")?;
+                    wc.pragma_update(None, "synchronous", "NORMAL")?;
+                    wc.pragma_update(None, "temp_store", "MEMORY")?;
+                    wc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+                    migrate(&wc)?;
+
+                    // Read connection — opened after schema is applied.
+                    let rc = Connection::open_with_flags(&path, rw_flags)?;
+                    rc.pragma_update(None, "journal_mode", "WAL")?;
+                    rc.pragma_update(None, "temp_store", "MEMORY")?;
+                    rc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+                    rc.pragma_update(None, "query_only", "true")?;
+
+                    Ok((wc, rc))
+                },
+            )
+            .await
+            .map_err(|e| ToolError::internal_message(format!("log store open join: {e}")))?
+            .map_err(|e| ToolError::internal_message(format!("log store open: {e}")))?;
 
         Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
+            write_conn: Arc::new(Mutex::new(write_conn)),
+            read_conn: Arc::new(Mutex::new(read_conn)),
             retention,
         })
     }
 
     pub async fn insert(&self, event: &LogEvent) -> Result<(), ToolError> {
         let event = event.clone();
-        self.blocking("insert", move |c| insert_event(c, &event))
+        self.blocking_write("insert", move |c| insert_event(c, &event))
             .await
     }
 
     pub async fn search(&self, query: LogQuery) -> Result<LogSearchResult, ToolError> {
-        self.blocking("search", move |c| run_search(c, &query))
+        self.blocking_read("search", move |c| run_search(c, &query))
             .await
     }
 
     pub async fn tail(&self, req: LogTailRequest) -> Result<LogTailResult, ToolError> {
-        self.blocking("tail", move |c| run_tail(c, &req)).await
+        self.blocking_read("tail", move |c| run_tail(c, &req)).await
     }
 
     pub async fn stats(&self) -> Result<LogStoreStats, ToolError> {
         let retention = self.retention;
-        self.blocking("stats", move |c| run_stats(c, retention))
+        self.blocking_read("stats", move |c| run_stats(c, retention))
             .await
     }
 
@@ -77,22 +97,40 @@ impl LogStore {
     #[allow(dead_code)]
     pub async fn run_maintenance(&self) -> Result<(), ToolError> {
         let retention = self.retention;
-        self.blocking("maintenance", move |c| run_maintenance(c, retention))
+        self.blocking_write("maintenance", move |c| run_maintenance(c, retention))
             .await
     }
 
-    /// Run a `Connection`-using closure on the blocking pool. Wraps the
-    /// repeated `spawn_blocking → lock → double map_err` pattern.
-    async fn blocking<T, F>(&self, label: &'static str, f: F) -> Result<T, ToolError>
+    /// Run a write closure on the blocking pool using the dedicated write connection.
+    async fn blocking_write<T, F>(&self, label: &'static str, f: F) -> Result<T, ToolError>
     where
         T: Send + 'static,
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error> + Send + 'static,
     {
-        let conn = Arc::clone(&self.conn);
+        let conn = Arc::clone(&self.write_conn);
         tokio::task::spawn_blocking(move || {
             let c = conn
                 .lock()
-                .map_err(|_| ToolError::internal_message("log store mutex poisoned"))?;
+                .map_err(|_| ToolError::internal_message("log store write mutex poisoned"))?;
+            f(&c).map_err(|e| ToolError::internal_message(format!("log store {label}: {e}")))
+        })
+        .await
+        .map_err(|e| ToolError::internal_message(format!("log store {label} join: {e}")))?
+    }
+
+    /// Run a read closure on the blocking pool using the dedicated read connection.
+    /// The read connection is opened with `query_only=true` and does not contend
+    /// with `write_conn`, allowing WAL-mode concurrency.
+    async fn blocking_read<T, F>(&self, label: &'static str, f: F) -> Result<T, ToolError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, rusqlite::Error> + Send + 'static,
+    {
+        let conn = Arc::clone(&self.read_conn);
+        tokio::task::spawn_blocking(move || {
+            let c = conn
+                .lock()
+                .map_err(|_| ToolError::internal_message("log store read mutex poisoned"))?;
             f(&c).map_err(|e| ToolError::internal_message(format!("log store {label}: {e}")))
         })
         .await
