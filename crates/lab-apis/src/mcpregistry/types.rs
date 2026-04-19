@@ -180,13 +180,25 @@ pub struct Package {
     #[serde(rename = "runtimeHint", skip_serializing_if = "Option::is_none")]
     pub runtime_hint: Option<String>,
     /// Arguments passed to the runtime command.
-    #[serde(rename = "runtimeArguments", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "runtimeArguments",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub runtime_arguments: Vec<serde_json::Value>,
     /// Arguments passed to the package binary.
-    #[serde(rename = "packageArguments", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "packageArguments",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub package_arguments: Vec<serde_json::Value>,
     /// Environment variables for the package runtime.
-    #[serde(rename = "environmentVariables", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "environmentVariables",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub environment_variables: Vec<serde_json::Value>,
     /// SHA-256 hash of the package file for integrity verification.
     #[serde(rename = "fileSha256", skip_serializing_if = "Option::is_none")]

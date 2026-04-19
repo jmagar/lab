@@ -113,7 +113,7 @@ impl AuthState {
     }
 
     /// Rate-limit guard for `/authorize` and `/browser_login` endpoints.
-    pub fn check_authorize_rate_limit(&self) -> Result<(), crate::error::AuthError> {
+    pub fn check_authorize_rate_limit(&self) -> Result<(), AuthError> {
         if self.authorize_limiter.try_acquire() {
             Ok(())
         } else {
@@ -125,7 +125,7 @@ impl AuthState {
     }
 
     /// Rate-limit guard for `/register` endpoint.
-    pub fn check_register_rate_limit(&self) -> Result<(), crate::error::AuthError> {
+    pub fn check_register_rate_limit(&self) -> Result<(), AuthError> {
         if self.register_limiter.try_acquire() {
             Ok(())
         } else {
@@ -137,9 +137,7 @@ impl AuthState {
     }
 
     /// Rejects new OAuth state rows when the pending count exceeds `max_pending_oauth_states`.
-    pub async fn ensure_pending_oauth_state_capacity(
-        &self,
-    ) -> Result<(), crate::error::AuthError> {
+    pub async fn ensure_pending_oauth_state_capacity(&self) -> Result<(), AuthError> {
         let count = self.store.count_pending_oauth_states().await?;
         if count >= self.config.max_pending_oauth_states {
             return Err(AuthError::RateLimited {

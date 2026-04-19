@@ -120,7 +120,8 @@ async fn run_install(args: InstallArgs, format: OutputFormat) -> Result<ExitCode
             anyhow!(
                 "server '{}' has no remote transport URLs — cannot install as HTTP gateway.\n\
                  Tip: check `lab mcpregistry action server.get name={}` for package-only servers.",
-                args.name, args.name
+                args.name,
+                args.name
             )
         })?
         .to_string();
@@ -219,7 +220,7 @@ fn check_ip_not_private(ip: std::net::IpAddr, url: &str) -> Result<()> {
                 || o[0] == 10                                             // 10.0.0.0/8
                 || (o[0] == 172 && o[1] >= 16 && o[1] <= 31)            // 172.16.0.0/12
                 || (o[0] == 192 && o[1] == 168)                          // 192.168.0.0/16
-                || (o[0] == 169 && o[1] == 254)                          // 169.254.0.0/16 link-local / IMDS
+                || (o[0] == 169 && o[1] == 254) // 169.254.0.0/16 link-local / IMDS
         }
         std::net::IpAddr::V6(v6) => v6.is_loopback(), // ::1/128
     };

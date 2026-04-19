@@ -20,7 +20,11 @@ pub const REGISTRY_DEFAULT_URL: &str = "https://registry.modelcontextprotocol.io
 /// This preserves RFC 3986 unreserved characters (including hyphens and dots that
 /// appear in reverse-DNS server names) while correctly percent-encoding `/` so that
 /// names like `io.github.user/my-server` survive path-segment round-trips.
-const PATH_SEGMENT: AsciiSet = NON_ALPHANUMERIC.remove(b'-').remove(b'.').remove(b'_').remove(b'~');
+const PATH_SEGMENT: AsciiSet = NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
 
 /// Client for the official MCP Registry at <https://registry.modelcontextprotocol.io>.
 ///
@@ -120,7 +124,10 @@ impl McpRegistryClient {
     ///
     /// # Errors
     /// Returns [`RegistryError::Api`] on HTTP or decode failure.
-    pub async fn validate(&self, server_json: &ServerJSON) -> Result<ValidationResult, RegistryError> {
+    pub async fn validate(
+        &self,
+        server_json: &ServerJSON,
+    ) -> Result<ValidationResult, RegistryError> {
         Ok(self.http.post_json("/v0.1/validate", server_json).await?)
     }
 
@@ -177,7 +184,10 @@ mod tests {
             .await;
 
         let client = make_client(&server.uri());
-        let result = client.list_servers(ListServersParams::default()).await.unwrap();
+        let result = client
+            .list_servers(ListServersParams::default())
+            .await
+            .unwrap();
         assert_eq!(result.servers.len(), 1);
         assert_eq!(result.metadata.count, 1);
         assert_eq!(result.servers[0].server.name, "io.github.user/weather");
@@ -259,7 +269,9 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path_regex(r"^/v0\.1/servers/.+/versions/latest$"))
-            .respond_with(ResponseTemplate::new(301).insert_header("Location", "http://evil.internal/"))
+            .respond_with(
+                ResponseTemplate::new(301).insert_header("Location", "http://evil.internal/"),
+            )
             .mount(&server)
             .await;
 
@@ -296,7 +308,10 @@ mod tests {
             .await;
 
         let client = make_client(&server.uri());
-        let result = client.list_versions("io.github.user/weather").await.unwrap();
+        let result = client
+            .list_versions("io.github.user/weather")
+            .await
+            .unwrap();
         assert_eq!(result.servers.len(), 1);
     }
 
@@ -314,7 +329,10 @@ mod tests {
 
         let client = make_client(&server.uri());
         let server_json = ServerJSON {
-            schema: Some("https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json".into()),
+            schema: Some(
+                "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
+                    .into(),
+            ),
             name: "io.github.user/weather".into(),
             description: "Weather MCP server".into(),
             version: "1.0.0".into(),
@@ -355,7 +373,10 @@ mod tests {
             .await;
 
         let client = make_client(&server.uri());
-        let result = client.get_server("io.github.user/weather", "latest").await.unwrap();
+        let result = client
+            .get_server("io.github.user/weather", "latest")
+            .await
+            .unwrap();
         let official = result
             .meta
             .as_ref()
@@ -387,7 +408,10 @@ mod tests {
 
         let client = make_client(&server.uri());
         let result = client.get_server("io.github.user/weather", "latest").await;
-        assert!(result.is_ok(), "unknown fields should be silently ignored: {result:?}");
+        assert!(
+            result.is_ok(),
+            "unknown fields should be silently ignored: {result:?}"
+        );
     }
 
     #[tokio::test]

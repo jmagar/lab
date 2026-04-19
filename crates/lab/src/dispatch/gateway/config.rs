@@ -354,16 +354,12 @@ fn check_ip_not_private_tool(ip: std::net::IpAddr, url: &str) -> Result<(), Tool
                 || o[0] == 10                             // 10.0.0.0/8
                 || (o[0] == 172 && o[1] >= 16 && o[1] <= 31) // 172.16.0.0/12
                 || (o[0] == 192 && o[1] == 168)          // 192.168.0.0/16
-                || (o[0] == 169 && o[1] == 254)          // 169.254.0.0/16 link-local
+                || (o[0] == 169 && o[1] == 254) // 169.254.0.0/16 link-local
         }
         std::net::IpAddr::V6(v6) => {
             let s = v6.segments();
-            let is_ipv4_mapped = s[0] == 0
-                && s[1] == 0
-                && s[2] == 0
-                && s[3] == 0
-                && s[4] == 0
-                && s[5] == 0xffff;
+            let is_ipv4_mapped =
+                s[0] == 0 && s[1] == 0 && s[2] == 0 && s[3] == 0 && s[4] == 0 && s[5] == 0xffff;
             if is_ipv4_mapped {
                 // Check the embedded IPv4 address for private ranges.
                 let v4 = std::net::Ipv4Addr::new(
@@ -381,7 +377,7 @@ fn check_ip_not_private_tool(ip: std::net::IpAddr, url: &str) -> Result<(), Tool
             } else {
                 v6.is_loopback()                           // ::1/128
                     || (s[0] & 0xfe00) == 0xfc00           // fc00::/7 ULA
-                    || (s[0] & 0xffc0) == 0xfe80           // fe80::/10 link-local
+                    || (s[0] & 0xffc0) == 0xfe80 // fe80::/10 link-local
             }
         }
     };
