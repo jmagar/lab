@@ -15,8 +15,6 @@ use super::types::{
 };
 use crate::dispatch::error::ToolError;
 
-const SCHEMA_SQL: &str = include_str!("store_schema.sql");
-
 /// Column list shared by search + tail. Kept in sync with
 /// `row_to_event`'s `row.get(...)` names.
 const SELECT_COLS: &str = "event_id, ts, level, subsystem, surface, action, message,
@@ -41,7 +39,7 @@ impl LogStore {
             conn.pragma_update(None, "synchronous", "NORMAL")?;
             conn.pragma_update(None, "temp_store", "MEMORY")?;
             conn.pragma_update(None, "mmap_size", 134_217_728_i64)?;
-            conn.execute_batch(SCHEMA_SQL)?;
+            migrate(&conn)?;
             Ok(conn)
         })
         .await
@@ -112,6 +110,29 @@ pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, To
     let path =
         std::env::temp_dir().join(format!("lab-logs-test-{}-{unique}.db", std::process::id()));
     LogStore::open(path, retention).await
+}
+
+// ── Schema migration ──────────────────────────────────────────────────────────
+
+/// Apply pending schema migrations using PRAGMA user_version as the version
+/// counter. Each `if version < N` block is a single, idempotent migration step.
+///
+/// Rules:
+/// - Only bump `user_version` **after** the DDL succeeds.
+/// - Keep version numbers consecutive and never reuse them.
+/// - Future columns: `if version < 2 { conn.execute_batch("ALTER TABLE ...")?; ... }`
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version < 1 {
+        conn.execute_batch(include_str!("store_schema.sql"))?;
+        conn.pragma_update(None, "user_version", 1)?;
+    }
+    // Future migrations:
+    // if version < 2 {
+    //     conn.execute_batch("ALTER TABLE log_events ADD COLUMN new_col TEXT;")?;
+    //     conn.pragma_update(None, "user_version", 2)?;
+    // }
+    Ok(())
 }
 
 // ── Insert ────────────────────────────────────────────────────────────────────
