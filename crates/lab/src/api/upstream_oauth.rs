@@ -13,6 +13,7 @@ use crate::dispatch::error::ToolError;
 
 pub fn gateway_routes(_state: AppState) -> Router<AppState> {
     Router::new()
+        .route("/upstreams", get(upstreams))
         .route("/start", post(start))
         .route("/status", get(status))
         .route("/clear", post(clear))
@@ -56,6 +57,29 @@ struct ResultQuery {
 #[derive(Debug, Serialize)]
 struct StartResponse {
     authorization_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct UpstreamEntry {
+    name: String,
+}
+
+async fn upstreams(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<crate::api::oauth::AuthContext>,
+) -> Result<Json<Vec<UpstreamEntry>>, ToolError> {
+    require_master(&state)?;
+    let manager = state
+        .gateway_manager
+        .clone()
+        .ok_or_else(|| ToolError::internal_message("gateway manager not wired"))?;
+    let configs = manager.oauth_upstream_configs().await;
+    Ok(Json(
+        configs
+            .into_iter()
+            .map(|c| UpstreamEntry { name: c.name })
+            .collect(),
+    ))
 }
 
 fn require_master(state: &AppState) -> Result<(), ToolError> {

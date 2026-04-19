@@ -31,6 +31,20 @@ fn tokens_equal(a: &str, b: &str) -> bool {
     a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
+fn percent_encode_path(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~' | b'/' | b'?') {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push(char::from_digit((b >> 4) as u32, 16).unwrap().to_ascii_uppercase());
+            out.push(char::from_digit((b & 0xf) as u32, 16).unwrap().to_ascii_uppercase());
+        }
+    }
+    out
+}
+
 fn parse_bearer_token(header_value: &str) -> Option<String> {
     let mut parts = header_value.split_whitespace();
     let scheme = parts.next()?;
@@ -214,7 +228,7 @@ async fn authenticate_request(
     }
 
     if allow_session_cookie
-        && let Some(auth_state) = auth_state
+        && let Some(auth_state) = auth_state.as_ref()
         && let Some(session_id) = lab_auth::session::read_cookie(
             request.headers(),
             lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
@@ -254,6 +268,28 @@ async fn authenticate_request(
         }
     }
 
+    // For browser GET requests with no bearer token and no valid session cookie,
+    // redirect to /auth/login so the Google OAuth flow can establish a session.
+    // Only fires on v1 routes (allow_session_cookie=true); the MCP endpoint uses bearer-only.
+    if allow_session_cookie
+        && auth_state.is_some()
+        && *request.method() == Method::GET
+        && request
+            .headers()
+            .get(header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|accept| accept.contains("text/html"))
+    {
+        let return_to = request
+            .uri()
+            .path_and_query()
+            .map(|pq| pq.as_str())
+            .unwrap_or("/");
+        let encoded = percent_encode_path(return_to);
+        let login_url = format!("/auth/login?return_to={encoded}");
+        return Ok(axum::response::Redirect::to(&login_url).into_response());
+    }
+
     Ok(auth_error_response(
         if allow_session_cookie {
             "missing bearer token or session cookie"
@@ -279,6 +315,8 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
     if is_master {
         v1 = v1
             .route("/{service}/actions", get(service_actions))
+            // upstream oauth must be nested before /gateway so its more-specific prefix wins
+            .nest("/gateway/oauth", crate::api::upstream_oauth::gateway_routes(state.clone()))
             .nest("/gateway", services::gateway::routes(state.clone()))
             .route(
                 "/openapi.json",
@@ -389,7 +427,7 @@ pub fn build_router(
     let static_token_for_v1 = static_token.clone();
     let resource_url_for_v1 = resource_url.clone();
     let v1_protected = if needs_auth && !state.web_ui_auth_disabled {
-        v1_router.layer(axum::middleware::from_fn(
+        v1_router.route_layer(axum::middleware::from_fn(
             move |request: Request<Body>, next: Next| {
                 authenticate_request(
                     request,
@@ -410,7 +448,7 @@ pub fn build_router(
     let resource_url_for_mcp = resource_url.clone();
     let mcp_protected = mcp_router.map(|mcp| {
         if needs_auth {
-            mcp.layer(axum::middleware::from_fn(
+            mcp.route_layer(axum::middleware::from_fn(
                 move |request: Request<Body>, next: Next| {
                     authenticate_request(
                         request,
@@ -435,33 +473,8 @@ pub fn build_router(
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
         .merge(v1_protected);
-    if is_master && state.gateway_manager.is_some() {
-        let gateway_oauth_routes = Router::new().nest(
-            "/v1/gateway/oauth",
-            crate::api::upstream_oauth::gateway_routes(state.clone()),
-        );
-        let gateway_oauth_routes = if needs_auth && !state.web_ui_auth_disabled {
-            let auth_state_for_gateway = auth_state.clone();
-            let static_token_for_gateway = static_token.clone();
-            let resource_url_for_gateway = resource_url.clone();
-            gateway_oauth_routes.layer(axum::middleware::from_fn(
-                move |request: Request<Body>, next: Next| {
-                    authenticate_request(
-                        request,
-                        next,
-                        static_token_for_gateway.clone(),
-                        auth_state_for_gateway.clone(),
-                        resource_url_for_gateway.clone(),
-                        true,
-                    )
-                },
-            ))
-        } else {
-            gateway_oauth_routes
-        };
-        router = router
-            .merge(gateway_oauth_routes)
-            .merge(crate::api::upstream_oauth::browser_routes(state.clone()));
+    if is_master {
+        router = router.merge(crate::api::upstream_oauth::browser_routes(state.clone()));
     }
     if let Some(mcp) = mcp_protected.filter(|_| is_master) {
         router = router.merge(mcp);
