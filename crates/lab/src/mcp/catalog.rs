@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -6,10 +7,6 @@ use super::server::LabMcpServer;
 use crate::dispatch::upstream::pool::UpstreamPool;
 use crate::mcp::prompts::list_all as list_builtin_prompts;
 
-#[cfg(test)]
-use std::collections::BTreeSet;
-
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CatalogSnapshot {
     pub(crate) tools: BTreeSet<String>,
@@ -67,7 +64,6 @@ impl LabMcpServer {
             .collect()
     }
 
-    #[cfg(test)]
     pub(crate) async fn builtin_resource_identifiers(&self) -> BTreeSet<String> {
         let mut resources = BTreeSet::from(["lab://catalog".to_string()]);
         for svc in self.registry.services() {
@@ -121,7 +117,6 @@ impl LabMcpServer {
         Ok(serde_json::to_value(entry.actions)?)
     }
 
-    #[cfg(test)]
     pub(crate) async fn snapshot_catalog(&self) -> CatalogSnapshot {
         let mut tools = BTreeSet::new();
         for svc in self.registry.services() {

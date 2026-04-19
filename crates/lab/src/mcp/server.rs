@@ -3,7 +3,6 @@
 //! Extracted from `cli/serve.rs` so that both the stdio and HTTP transports
 //! can share the same handler logic.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -1120,12 +1119,7 @@ impl ServerHandler for LabMcpServer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CatalogSnapshot {
-    tools: BTreeSet<String>,
-    resources: BTreeSet<String>,
-    prompts: BTreeSet<String>,
-}
+use crate::mcp::catalog::CatalogSnapshot;
 
 impl LabMcpServer {
     fn request_subject<'a>(&self, context: &'a RequestContext<RoleServer>) -> Option<&'a str> {
@@ -1146,48 +1140,6 @@ impl LabMcpServer {
         match &self.gateway_manager {
             Some(manager) => manager.oauth_upstream_config(upstream_name).await,
             None => None,
-        }
-    }
-
-    async fn snapshot_catalog(&self) -> CatalogSnapshot {
-        let mut tools = BTreeSet::new();
-        for svc in self.registry.services() {
-            if self.service_visible_on_mcp(svc.name).await {
-                tools.insert(svc.name.to_string());
-            }
-        }
-
-        if let Some(pool) = self.current_upstream_pool().await {
-            for tool in pool.healthy_tools().await {
-                let name = tool.tool.name.to_string();
-                if !tools.contains(&name) {
-                    tools.insert(name);
-                }
-            }
-        }
-
-        let resources = if let Some(pool) = self.current_upstream_pool().await {
-            pool.routable_upstream_names(UpstreamCapability::Resources)
-                .await
-                .into_iter()
-                .collect()
-        } else {
-            BTreeSet::new()
-        };
-
-        let prompts = if let Some(pool) = self.current_upstream_pool().await {
-            pool.routable_upstream_names(UpstreamCapability::Prompts)
-                .await
-                .into_iter()
-                .collect()
-        } else {
-            BTreeSet::new()
-        };
-
-        CatalogSnapshot {
-            tools,
-            resources,
-            prompts,
         }
     }
 

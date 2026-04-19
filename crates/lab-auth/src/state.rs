@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use tracing::info;
 use url::Url;
@@ -9,12 +11,63 @@ use crate::google::GoogleProvider;
 use crate::jwt::SigningKeys;
 use crate::sqlite::SqliteStore;
 
+/// Simple token-bucket rate limiter (shared across clones via Arc).
+#[derive(Clone)]
+struct RateLimiter {
+    inner: Arc<Mutex<RateLimiterInner>>,
+}
+
+struct RateLimiterInner {
+    /// Tokens available in the bucket.
+    tokens: f64,
+    /// Maximum tokens (burst size = 1 per-request burst means max = 1).
+    max_tokens: f64,
+    /// Refill rate in tokens per second.
+    refill_rate: f64,
+    /// Last refill time.
+    last_refill: Instant,
+}
+
+impl RateLimiter {
+    fn new(requests_per_minute: u32) -> Self {
+        let rate = requests_per_minute as f64 / 60.0;
+        // Burst = requests_per_minute: allows consuming the full per-minute quota
+        // immediately, then refills at `rate` tokens/second.
+        let max_tokens = requests_per_minute.max(1) as f64;
+        Self {
+            inner: Arc::new(Mutex::new(RateLimiterInner {
+                tokens: max_tokens,
+                max_tokens,
+                refill_rate: rate,
+                last_refill: Instant::now(),
+            })),
+        }
+    }
+
+    /// Try to consume one token. Returns `true` if allowed, `false` if rate-limited.
+    fn try_acquire(&self) -> bool {
+        let mut inner = self.inner.lock().expect("rate limiter lock");
+        let now = Instant::now();
+        let elapsed = now.duration_since(inner.last_refill).as_secs_f64();
+        inner.tokens = (inner.tokens + elapsed * inner.refill_rate).min(inner.max_tokens);
+        inner.last_refill = now;
+        if inner.tokens >= 1.0 {
+            inner.tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AuthState {
     pub config: Arc<AuthConfig>,
     pub store: SqliteStore,
     pub signing_keys: Arc<SigningKeys>,
     pub google: Arc<GoogleProvider>,
+    authorize_limiter: RateLimiter,
+    register_limiter: RateLimiter,
 }
 
 impl AuthState {
@@ -47,24 +100,40 @@ impl AuthState {
             "lab-auth state initialized"
         );
 
+        let authorize_limiter = RateLimiter::new(config.authorize_requests_per_minute);
+        let register_limiter = RateLimiter::new(config.register_requests_per_minute);
         Ok(Self {
             config: Arc::new(config),
             store,
             signing_keys: Arc::new(signing_keys),
             google: Arc::new(google),
+            authorize_limiter,
+            register_limiter,
         })
     }
 
     /// Rate-limit guard for `/authorize` and `/browser_login` endpoints.
-    /// Currently a no-op placeholder — returns Ok(()) unconditionally.
     pub fn check_authorize_rate_limit(&self) -> Result<(), crate::error::AuthError> {
-        Ok(())
+        if self.authorize_limiter.try_acquire() {
+            Ok(())
+        } else {
+            Err(AuthError::RateLimited {
+                message: "authorize rate limit exceeded".to_string(),
+                retry_after_ms: 60_000,
+            })
+        }
     }
 
     /// Rate-limit guard for `/register` endpoint.
-    /// Currently a no-op placeholder — returns Ok(()) unconditionally.
     pub fn check_register_rate_limit(&self) -> Result<(), crate::error::AuthError> {
-        Ok(())
+        if self.register_limiter.try_acquire() {
+            Ok(())
+        } else {
+            Err(AuthError::RateLimited {
+                message: "register rate limit exceeded".to_string(),
+                retry_after_ms: 60_000,
+            })
+        }
     }
 
     /// Rejects new OAuth state rows when the pending count exceeds `max_pending_oauth_states`.
@@ -73,7 +142,7 @@ impl AuthState {
     ) -> Result<(), crate::error::AuthError> {
         let count = self.store.count_pending_oauth_states().await?;
         if count >= self.config.max_pending_oauth_states {
-            return Err(crate::error::AuthError::RateLimited {
+            return Err(AuthError::RateLimited {
                 message: "too many pending authorization requests".to_string(),
                 retry_after_ms: 5_000,
             });
@@ -88,11 +157,15 @@ impl AuthState {
         signing_keys: SigningKeys,
         google: GoogleProvider,
     ) -> Self {
+        let authorize_limiter = RateLimiter::new(config.authorize_requests_per_minute);
+        let register_limiter = RateLimiter::new(config.register_requests_per_minute);
         Self {
             config: Arc::new(config),
             store,
             signing_keys: Arc::new(signing_keys),
             google: Arc::new(google),
+            authorize_limiter,
+            register_limiter,
         }
     }
 }
@@ -145,6 +218,9 @@ mod tests {
             access_token_ttl: Duration::from_secs(3600),
             refresh_token_ttl: Duration::from_secs(3600),
             auth_code_ttl: Duration::from_secs(300),
+            register_requests_per_minute: 10,
+            authorize_requests_per_minute: 20,
+            max_pending_oauth_states: 1024,
         })
         .await
         .expect("auth state");
