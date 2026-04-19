@@ -255,6 +255,13 @@ pub fn build_default_registry() -> ToolRegistry {
         actions = crate::dispatch::linkding::ACTIONS,
         dispatch = dispatch_fn!(crate::dispatch::linkding::dispatch)
     );
+    register_service!(
+        reg,
+        "mcpregistry",
+        mcpregistry,
+        actions = crate::dispatch::mcpregistry::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::mcpregistry::dispatch)
+    );
     register_service!(reg, "memos", memos);
 
     register_service!(
@@ -334,6 +341,8 @@ pub fn service_meta(name: &str) -> Option<&'static PluginMeta> {
         "tailscale" => Some(&lab_apis::tailscale::META),
         #[cfg(feature = "linkding")]
         "linkding" => Some(&lab_apis::linkding::META),
+        #[cfg(feature = "mcpregistry")]
+        "mcpregistry" => Some(&lab_apis::mcpregistry::META),
         #[cfg(feature = "memos")]
         "memos" => Some(&lab_apis::memos::META),
         #[cfg(feature = "bytestash")]

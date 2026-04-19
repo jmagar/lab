@@ -17,6 +17,8 @@ pub mod lab_admin;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 pub mod logs;
+#[cfg(feature = "mcpregistry")]
+pub mod mcpregistry;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "openai")]

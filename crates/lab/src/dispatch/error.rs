@@ -326,6 +326,24 @@ impl_tool_error_from!(
     Api(api) => api.kind()
 );
 
+// mcpregistry has an InvalidInput variant in addition to the standard Api wrapper.
+#[cfg(feature = "mcpregistry")]
+impl From<lab_apis::mcpregistry::error::RegistryError> for ToolError {
+    fn from(e: lab_apis::mcpregistry::error::RegistryError) -> Self {
+        use lab_apis::mcpregistry::error::RegistryError;
+        match e {
+            RegistryError::InvalidInput { ref message } => Self::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: message.clone(),
+            },
+            RegistryError::Api(ref api) => Self::Sdk {
+                sdk_kind: api.kind().to_string(),
+                message: e.to_string(),
+            },
+        }
+    }
+}
+
 // Deploy uses a hand-rolled impl instead of the macro so it can call
 // `redacted_message()` rather than `Display` (which includes host/reason detail
 // that must not escape to MCP or HTTP envelopes).
