@@ -39,10 +39,10 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Maximum number of results to return (default: 10, max: 100)",
             },
             ParamSpec {
-                name: "offset",
-                ty: "integer",
+                name: "cursor",
+                ty: "string",
                 required: false,
-                description: "Pagination offset",
+                description: "Pagination cursor from a previous response metadata.nextCursor field",
             },
         ],
     },
