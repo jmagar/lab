@@ -2,8 +2,33 @@
 
 use std::time::{Duration, Instant};
 
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reqwest::{Client, RequestBuilder, Response, Url};
 use tracing::{Level, event};
+
+/// RFC 3986 §3.3 PATH_SEGMENT encode set.
+///
+/// Encodes everything except unreserved chars (ALPHA, DIGIT, `-`, `.`, `_`, `~`)
+/// and sub-delimiters (`!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`)
+/// and `:`, `@`. Crucially this encodes `/`, `?`, `#`, `[`, `]`, and `%`,
+/// preventing a caller-supplied string from escaping its intended segment.
+const PATH_SEGMENT: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'<')
+    .add(b'>')
+    .add(b'`')
+    .add(b'#')
+    .add(b'%')
+    .add(b'/')
+    .add(b'?')
+    .add(b'[')
+    .add(b'\\')
+    .add(b']')
+    .add(b'^')
+    .add(b'{')
+    .add(b'|')
+    .add(b'}');
 
 use crate::core::auth::Auth;
 use crate::core::error::ApiError;
@@ -134,31 +159,23 @@ impl HttpClient {
     /// Percent-encode a single path segment so it is safe to interpolate into a
     /// URL path.
     ///
-    /// Uses the `url` crate's `path_segments_mut()` API, which applies the
-    /// RFC 3986 §3.3 PATH_SEGMENT encode set. Crucially, `/`, `?`, `#`, and
-    /// `%` are encoded, which prevents a caller-supplied string from escaping
-    /// its intended segment.
+    /// Applies the RFC 3986 §3.3 PATH_SEGMENT encode set: encodes `/`, `?`,
+    /// `#`, `%`, `[`, `]`, and control/space characters while preserving
+    /// unreserved chars and sub-delimiters. Unlike `Url::path_segments_mut()`,
+    /// this does **not** drop `.` or `..` segments.
     ///
     /// # Example
     ///
     /// ```rust
     /// # use lab_apis::core::HttpClient;
     /// let encoded = HttpClient::encode_path_segment("hello/world?foo=bar");
-    /// // '/' becomes %2F, '?' becomes %3F, '=' becomes %3D
+    /// // '/' becomes %2F, '?' becomes %3F
     /// assert!(!encoded.contains('/'));
     /// assert!(!encoded.contains('?'));
     /// ```
     #[must_use]
     pub fn encode_path_segment(s: &str) -> String {
-        // Build a scratch URL and push the segment through path_segments_mut(),
-        // which applies the correct RFC 3986 PATH_SEGMENT encode set without
-        // requiring the percent-encoding crate as a direct dependency.
-        let mut base = Url::parse("http://x").expect("static base url is valid");
-        base.path_segments_mut()
-            .expect("http scheme always has a path")
-            .push(s);
-        // The URL path is now "/<encoded-segment>". Strip the leading "/".
-        base.path().trim_start_matches('/').to_string()
+        utf8_percent_encode(s, PATH_SEGMENT).to_string()
     }
 
     fn apply_auth(&self, req: RequestBuilder) -> RequestBuilder {

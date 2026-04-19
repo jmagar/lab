@@ -143,6 +143,8 @@ mod tests {
                     name: "tool.call".to_string(),
                     description: "Call upstream tool".to_string(),
                     destructive: false,
+                    params: vec![],
+                    returns: String::new(),
                 }],
             }],
         };

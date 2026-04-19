@@ -155,6 +155,12 @@ impl ToolRegistry {
     /// - `status == "stub"` requires an empty action slice.
     pub fn register(&mut self, service: RegisteredService) {
         debug_assert!(
+            service.status == "available" || service.status == "stub",
+            "service '{}': unknown status '{}'; expected \"available\" or \"stub\"",
+            service.name,
+            service.status,
+        );
+        debug_assert!(
             (service.status == "available") == !service.actions.is_empty(),
             "service '{}': status '{}' is inconsistent with actions.len() == {}; \
              'available' requires non-empty ACTIONS, 'stub' requires empty ACTIONS",

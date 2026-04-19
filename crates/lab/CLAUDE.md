@@ -26,13 +26,15 @@ Two files loaded in order: `~/.lab/.env` (secrets, `dotenvy`) then `config.toml`
 
 `scan_instances(prefix)` parses multi-instance env vars as `{PREFIX}_{LABEL}_{SUFFIX}`. Recognized suffixes: `URL`, `API_KEY`, `TOKEN`, `USERNAME`, `PASSWORD`. Any other suffix is silently ignored.
 
-## Catalog Registration — 3 Required Locations
+## MCP/Catalog Registration — 3 Required Locations
 
-Adding a new service requires touching all three or it silently disappears from one surface:
+To expose a new service via MCP and the `lab://catalog` resource, touch all three or it silently disappears from the MCP surface:
 
 1. `mcp/registry.rs` — `register_service!(reg, "<service>", <module>)` inside `build_default_registry()`
 2. `mcp/services.rs` — module declaration (`pub mod <service>;`)
 3. `mcp/services/<service>.rs` — the dispatch file itself (must export `ACTIONS` and `dispatch`)
+
+Full new-service onboarding (CLI, API, TUI, dispatch layer) is covered in the root `CLAUDE.md` "Adding a New Service" checklist.
 
 `build_catalog()` in `catalog.rs` is registry-driven: it iterates `registry.services()` and reads `svc.actions` directly. There is no `actions_for()` match arm and no separate catalog step — registering the service in `mcp/registry.rs` is sufficient for catalog coverage.
 
