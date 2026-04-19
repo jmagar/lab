@@ -49,6 +49,13 @@ use super::build::{self, BuildOutcome};
 use super::lock::HostLockRegistry;
 use super::params;
 
+/// Default per-host lock-acquire timeout for deploy and rollback operations.
+///
+/// 300 s (5 min) is intentionally generous: a large binary transfer over a
+/// slow link can take 2–3 minutes. Set `DEPLOY_LOCK_TIMEOUT_SECS` or wire
+/// `DeployDefaults::lock_timeout_secs` (future bead) to override at runtime.
+const DEFAULT_LOCK_TIMEOUT_SECS: u64 = 300;
+
 /// Surface-neutral deploy orchestrator used by CLI and MCP adapters.
 pub trait DeployRunner: Send + Sync {
     async fn plan(&self, req: DeployRequest) -> Result<DeployPlan, ToolError>;
@@ -748,7 +755,7 @@ impl DefaultRunner {
                                     stage_timings_ms: Default::default(),
                                 };
                             };
-                            let lock_timeout = std::time::Duration::from_secs(60);
+                            let lock_timeout = std::time::Duration::from_secs(DEFAULT_LOCK_TIMEOUT_SECS);
                             let _guard = match locks.acquire(&data.host, lock_timeout).await {
                                 Ok(g) => g,
                                 Err(e) => {
@@ -978,7 +985,7 @@ async fn run_single_job(
     locks: Arc<HostLockRegistry>,
 ) -> DeployHostResult {
     let io = Arc::new(SshHostIo::new(job.host.clone(), job.target.clone()));
-    let lock_timeout = std::time::Duration::from_secs(60);
+    let lock_timeout = std::time::Duration::from_secs(DEFAULT_LOCK_TIMEOUT_SECS);
     let _guard = match locks.acquire(&job.host, lock_timeout).await {
         Ok(g) => g,
         Err(e) => {
