@@ -5,13 +5,19 @@ export interface ServiceActionError extends Error {
   code?: string
 }
 
+interface ActionErrorBody {
+  kind?: string
+  code?: string
+  message?: string
+}
+
 type ActionErrorFactory<TError extends ServiceActionError> = (
   message: string,
   status: number,
   code?: string,
 ) => TError
 
-function isAbortError(error: unknown): boolean {
+export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
     ? error.name === 'AbortError'
     : error instanceof Error && error.name === 'AbortError'
@@ -22,7 +28,7 @@ async function parseActionResponse<T, TError extends ServiceActionError>(
   createError: ActionErrorFactory<TError>,
 ): Promise<T> {
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }))
+    const error: ActionErrorBody = await (response.json() as Promise<ActionErrorBody>).catch(() => ({ message: 'An error occurred' } satisfies ActionErrorBody))
     throw createError(
       error.message || 'An error occurred',
       response.status,

@@ -154,7 +154,7 @@ pub struct BrowserLoginStateRow {
 
 /// Persisted upstream OAuth credential row.
 ///
-/// The encrypted `token_blob` is chacha20poly1305(token_response_json) sealed with a
+/// The encrypted `token_blob` is `chacha20poly1305(token_response_json)` sealed with a
 /// fresh 12-byte nonce per write. `access_token_expires_at` is denormalized for cheap
 /// pruning in `cleanup_expired`. `refresh_token_present` enables dropping access-only
 /// stale rows while keeping rows that still have a refresh token for re-use (SEC-9).
@@ -179,8 +179,10 @@ impl std::fmt::Debug for UpstreamOauthCredentialRow {
             .field("upstream_name", &self.upstream_name)
             .field("subject", &"<redacted>")
             .field("client_id", &self.client_id)
+            .field("granted_scopes_json", &self.granted_scopes_json)
             .field("token_blob", &"<redacted>")
             .field("token_blob_nonce", &"<redacted>")
+            .field("token_received_at", &self.token_received_at)
             .field("access_token_expires_at", &self.access_token_expires_at)
             .field("refresh_token_present", &self.refresh_token_present)
             .finish()
@@ -193,7 +195,7 @@ impl std::fmt::Debug for UpstreamOauthCredentialRow {
 /// `expires_at - created_at` MUST NOT exceed 600 seconds. The persistence helper
 /// rejects violations.
 ///
-/// `Debug` is implemented manually with redaction — never derive it (pkce_verifier
+/// `Debug` is implemented manually with redaction — never derive it (`pkce_verifier`
 /// is sensitive).
 #[derive(Clone)]
 pub struct UpstreamOauthStateRow {

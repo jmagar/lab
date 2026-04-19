@@ -131,7 +131,9 @@ impl UpstreamOauthManager {
             .map(String::as_str)
             .collect();
 
-        let client_cfg = self.resolve_client_config(&mut manager, subject, &scopes).await?;
+        let client_cfg = self
+            .resolve_client_config(&mut manager, subject, &scopes)
+            .await?;
         manager
             .configure_client(client_cfg)
             .map_err(|e| OauthError::Internal(format!("configure client: {e}")))?;
@@ -287,7 +289,9 @@ impl UpstreamOauthManager {
             .iter()
             .map(String::as_str)
             .collect();
-        let client_cfg = self.resolve_client_config(&mut manager, subject, &scopes).await?;
+        let client_cfg = self
+            .resolve_client_config(&mut manager, subject, &scopes)
+            .await?;
         manager
             .configure_client(client_cfg)
             .map_err(|e| OauthError::Internal(format!("configure client: {e}")))?;
@@ -441,8 +445,7 @@ impl UpstreamOauthManager {
                     .await
                     .map_err(|e| OauthError::Internal(e.to_string()))?
                 {
-                    let mut cfg =
-                        OAuthClientConfig::new(row.client_id, self.redirect_uri.as_str());
+                    let mut cfg = OAuthClientConfig::new(row.client_id, self.redirect_uri.as_str());
                     cfg = cfg.with_scopes(scopes.iter().map(|s| s.to_string()).collect());
                     return Ok(cfg);
                 }
@@ -466,11 +469,7 @@ impl UpstreamOauthManager {
                     .map_err(|e| OauthError::Internal(format!("dynamic registration: {e}")))?;
 
                 self.sqlite
-                    .save_dynamic_client_registration(
-                        &self.upstream.name,
-                        subject,
-                        &cfg.client_id,
-                    )
+                    .save_dynamic_client_registration(&self.upstream.name, subject, &cfg.client_id)
                     .await
                     .map_err(|e| OauthError::Internal(e.to_string()))?;
 

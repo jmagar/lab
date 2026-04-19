@@ -179,6 +179,7 @@ Commands:
 - `lab logs local search [--subsystem <name>] [--level <level>] [--text <needle>] [--limit <n>]`
 - `lab logs local tail [--after-ts <unix_ms>] [--since-event-id <id>] [--limit <n>]`
 - `lab logs local stats`
+- `lab logs local stream` — exits with guidance to use `GET /v1/logs/stream` or `lab logs local tail`
 
 Rules:
 

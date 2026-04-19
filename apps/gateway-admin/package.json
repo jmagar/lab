@@ -9,7 +9,7 @@
     "start": "python3 -m http.server 3000 -d out",
     "preview": "python3 -m http.server 3000 -d out",
     "lint": "eslint .",
-    "test": "node --test --experimental-strip-types lib/server/**/*.test.ts lib/api/**/*.test.ts lib/dashboard/**/*.test.ts components/setup/**/*.test.tsx",
+    "test": "tsx --test lib/server/**/*.test.ts lib/api/**/*.test.ts lib/dashboard/**/*.test.ts components/**/*.test.tsx",
     "test:browser": "node --test --experimental-strip-types lib/browser/**/*.test.ts"
   },
   "dependencies": {

@@ -263,6 +263,36 @@ Default mapping expectations:
 - `oauth_unsupported_method` -> `502 Bad Gateway`
 - `internal_error` -> `500 Internal Server Error`
 
+## Deploy Service Kinds
+
+The `deploy` service (feature-gated) adds the following stable kinds, all
+surfaced via `DeployError::kind()` in `lab-apis/src/deploy/error.rs`:
+
+| `kind` | HTTP status | Meaning |
+|--------|-------------|---------|
+| `validation_failed` | 422 | Bad input (host alias, remote_path allowlist, etc.). _(shared kind)_ |
+| `auth_failed` | 401 | `LAB_DEPLOY_TOKEN` missing or headless `confirm: true` rejected. _(shared kind)_ |
+| `ssh_unreachable` | 502 | SSH connection or auth failed for a target. |
+| `build_failed` | 502 | Local `cargo build --release --all-features -p lab` failed. |
+| `preflight_failed` | 502 | Remote arch probe, writable-dir check, or sha256 probe failed. |
+| `transfer_failed` | 502 | Streaming the artifact to the remote failed. |
+| `install_failed` | 502 | Atomic rename/backup on the remote failed. |
+| `restart_failed` | 502 | `systemctl restart` or `is-active --wait` failed. |
+| `verify_failed` | 502 | Post-install `lab --version` probe failed. |
+| `partial_failure` | — | Multi-host run where some hosts failed; returned as HTTP 200 with `ok=false` in the body, not as an error response. |
+| `conflict` | 409 | Another deploy is in progress for the same host. |
+| `arch_mismatch` | 502 | Remote `uname -m` differs from local build triple. |
+| `integrity_mismatch` | 502 | Remote sha256 of staged artifact differs from local. |
+
+The deploy-specific kinds (`ssh_unreachable`, `build_failed`, `preflight_failed`,
+`transfer_failed`, `install_failed`, `restart_failed`, `verify_failed`,
+`arch_mismatch`, `integrity_mismatch`, `conflict`) are registered in
+`api/error.rs::IntoResponse` so they map to the correct HTTP status codes
+when the deploy HTTP surface is wired.
+
+MCP envelopes carry the redacted message from `DeployError::redacted_message()`;
+the full structured detail is logged at WARN locally.
+
 ## Device Runtime Notes
 
 The device runtime uses the same shared taxonomy.

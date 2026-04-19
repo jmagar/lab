@@ -1,0 +1,268 @@
+import type { LogEvent } from '@/lib/types/logs'
+
+export const auroraColorTokens = [
+  {
+    label: 'Aurora page background',
+    value: '#07131c',
+    className: 'bg-aurora-page-bg',
+    textClassName: 'text-aurora-text-primary',
+  },
+  {
+    label: 'Aurora panel medium',
+    value: '#102330',
+    className: 'bg-aurora-panel-medium',
+    textClassName: 'text-aurora-text-primary',
+  },
+  {
+    label: 'Aurora control surface',
+    value: '#0c1a24',
+    className: 'bg-aurora-control-surface',
+    textClassName: 'text-aurora-text-primary',
+  },
+  {
+    label: 'Aurora accent',
+    value: '#29b6f6',
+    className: 'bg-aurora-accent-primary',
+    textClassName: 'text-[#06253a]',
+  },
+  {
+    label: 'Aurora warn',
+    value: '#c6a36b',
+    className: 'bg-aurora-warn',
+    textClassName: 'text-[#2f2110]',
+  },
+  {
+    label: 'Aurora error',
+    value: '#c78490',
+    className: 'bg-aurora-error',
+    textClassName: 'text-[#311319]',
+  },
+] as const
+
+export const typeRamp = [
+  {
+    label: 'Display 1',
+    className: 'font-display text-4xl font-semibold tracking-[-0.05em] text-aurora-text-primary',
+    preview: '72',
+  },
+  {
+    label: 'Display 2',
+    className: 'font-display text-3xl font-semibold tracking-[-0.04em] text-aurora-text-primary',
+    preview: 'Gateway Fleet',
+  },
+  {
+    label: 'Metric Display',
+    className: 'font-display text-2xl font-semibold tracking-[-0.05em] text-aurora-accent-strong tabular-nums',
+    preview: '189',
+  },
+  {
+    label: 'Body',
+    className: 'text-base text-aurora-text-primary',
+    preview: 'Default interface copy tuned for readable admin panels.',
+  },
+  {
+    label: 'Control',
+    className: 'text-sm font-medium text-aurora-text-primary',
+    preview: 'Primary action',
+  },
+  {
+    label: 'Dense Data',
+    className: 'font-mono text-xs leading-6 text-aurora-text-muted',
+    preview: 'gateway.request.start',
+  },
+  {
+    label: 'Eyebrow',
+    className: 'text-[11px] font-medium uppercase tracking-[0.18em] text-aurora-text-muted',
+    preview: 'Sandbox heading',
+  },
+] as const
+
+export const spacingScale = [
+  { label: 'Space 2', value: '0.5rem' },
+  { label: 'Space 4', value: '1rem' },
+  { label: 'Space 6', value: '1.5rem' },
+  { label: 'Space 8', value: '2rem' },
+] as const
+
+export const radiusScale = [
+  { label: 'Radius 1', className: 'rounded-md', value: '0.625rem' },
+  { label: 'Radius 2', className: 'rounded-xl', value: '0.875rem' },
+  { label: 'Radius 3', className: 'rounded-[1.4rem]', value: '1.4rem' },
+] as const
+
+export const elevationTiers = [
+  {
+    label: 'Tier 1 lift',
+    description: 'Default panels and cards with medium emphasis.',
+    className: 'shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
+    emphasized: false,
+  },
+  {
+    label: 'Tier 2 lift',
+    description: 'Pinned inspectors and hero surfaces with stronger separation.',
+    className: 'shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]',
+    emphasized: true,
+  },
+] as const
+
+export const environmentOptions = [
+  { value: 'preview', label: 'Preview cluster' },
+  { value: 'prod', label: 'Production' },
+  { value: 'edge', label: 'Edge canary' },
+] as const
+
+export const pillFilterOptions = [
+  'Healthy only',
+  'Warnings',
+  'Protected routes',
+  'Paused rollouts',
+] as const
+
+export const accessModeOptions = [
+  { value: 'session', label: 'Session auth' },
+  { value: 'token', label: 'Bearer token' },
+  { value: 'mock', label: 'Mock data' },
+] as const
+
+export const feedbackModes = [
+  'loading',
+  'empty',
+  'success',
+  'warning',
+  'error',
+] as const
+
+export const navigationTabs = [
+  'Overview',
+  'Policies',
+  'Logs',
+] as const
+
+export const sidebarPreviewItems = [
+  { label: 'Overview', active: false },
+  { label: 'Gateways', active: true },
+  { label: 'Logs', active: false },
+] as const
+
+export const metricCards = [
+  { label: 'Connected gateways', value: '18', detail: 'Across preview and prod clusters' },
+  { label: 'Warnings', value: '4', detail: 'Need operator review before rollout' },
+  { label: 'Published tools', value: '73', detail: 'Visible to downstream clients' },
+] as const
+
+export const denseRows = [
+  {
+    gateway: 'plex-prod',
+    transport: 'streamable_http',
+    tools: '18 exposed',
+    health: 'Healthy',
+  },
+  {
+    gateway: 'edge-lab',
+    transport: 'stdio',
+    tools: '9 exposed',
+    health: 'Warning',
+  },
+  {
+    gateway: 'preview-ssh',
+    transport: 'sse',
+    tools: '24 exposed',
+    health: 'Healthy',
+  },
+] as const
+
+export const keyValueBlocks = [
+  { label: 'Gateway ID', value: 'gw_01HZZP7D4JQY' },
+  { label: 'Last deploy', value: '2026-04-17 22:14 EDT' },
+  { label: 'Operator', value: 'labby-admin@example.com' },
+  { label: 'Auth mode', value: 'Session auth' },
+] as const
+
+export const fakeLogEvents: LogEvent[] = [
+  {
+    event_id: 'evt_01',
+    ts: 1776483600000,
+    level: 'info',
+    subsystem: 'gateway',
+    surface: 'web',
+    action: 'gateway.reload',
+    message: 'Gateway toolbar preview refreshed from local demo data.',
+    request_id: 'req_local_01',
+    session_id: 'session_design_system',
+    correlation_id: 'corr_local_01',
+    trace_id: null,
+    span_id: null,
+    instance: 'preview',
+    auth_flow: 'session',
+    outcome_kind: 'ok',
+    fields_json: {
+      route: '/design-system',
+      mode: 'local-demo',
+      visibleGateways: 18,
+    },
+    source_kind: 'preview',
+    source_node_id: null,
+    source_device_id: null,
+    ingest_path: null,
+    upstream_event_id: null,
+  },
+  {
+    event_id: 'evt_02',
+    ts: 1776483660000,
+    level: 'warn',
+    subsystem: 'api',
+    surface: 'web',
+    action: 'gateway.publish',
+    message: 'One gateway remains disconnected in the sample fleet snapshot.',
+    request_id: 'req_local_02',
+    session_id: 'session_design_system',
+    correlation_id: 'corr_local_02',
+    trace_id: null,
+    span_id: null,
+    instance: 'preview',
+    auth_flow: 'session',
+    outcome_kind: 'warning',
+    fields_json: {
+      disconnected: ['edge-lab'],
+      recommendedAction: 'Review transport settings',
+    },
+    source_kind: 'preview',
+    source_node_id: null,
+    source_device_id: null,
+    ingest_path: null,
+    upstream_event_id: null,
+  },
+  {
+    event_id: 'evt_03',
+    ts: 1776483720000,
+    level: 'error',
+    subsystem: 'auth_webui',
+    surface: 'web',
+    action: 'session.refresh',
+    message: 'Auth fallback card demonstrates an expired local session state.',
+    request_id: 'req_local_03',
+    session_id: null,
+    correlation_id: 'corr_local_03',
+    trace_id: null,
+    span_id: null,
+    instance: 'preview',
+    auth_flow: 'bearer',
+    outcome_kind: 'error',
+    fields_json: {
+      reason: 'Preview token missing',
+      recovery: 'Sign in again',
+    },
+    source_kind: 'preview',
+    source_node_id: null,
+    source_device_id: null,
+    ingest_path: null,
+    upstream_event_id: null,
+  },
+]
+
+export const toolbarSummaryChips = [
+  { label: '18 configured', tone: 'default' },
+  { label: '14 healthy', tone: 'success' },
+  { label: '4 warnings', tone: 'warning' },
+  { label: '73 tools', tone: 'info' },
+] as const

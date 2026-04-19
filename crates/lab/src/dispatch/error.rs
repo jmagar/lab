@@ -325,3 +325,16 @@ impl_tool_error_from!(
     lab_apis::arcane::ArcaneError,
     Api(api) => api.kind()
 );
+
+// Deploy uses a hand-rolled impl instead of the macro so it can call
+// `redacted_message()` rather than `Display` (which includes host/reason detail
+// that must not escape to MCP or HTTP envelopes).
+#[cfg(feature = "deploy")]
+impl From<lab_apis::deploy::DeployError> for ToolError {
+    fn from(e: lab_apis::deploy::DeployError) -> Self {
+        Self::Sdk {
+            sdk_kind: e.kind().to_string(),
+            message: e.redacted_message(),
+        }
+    }
+}

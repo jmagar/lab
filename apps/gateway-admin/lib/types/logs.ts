@@ -11,6 +11,7 @@ export const LOG_SUBSYSTEMS = [
   'auth_mcp',
   'auth_upstream',
   'core_runtime',
+  'syslog',
 ] as const
 
 export type LogLevel = (typeof LOG_LEVELS)[number]
@@ -52,6 +53,8 @@ export interface LogSearchQuery {
   request_id?: string
   session_id?: string
   correlation_id?: string
+  source_node_ids?: string[]
+  source_kinds?: string[]
   limit?: number
 }
 

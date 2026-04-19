@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildGatewayCreatePayload,
   buildGatewayPatch,
+  buildGatewayUpdatePayload,
   exposurePolicyFromConfig,
   gatewayInputToSpec,
   normalizeGateway,
@@ -62,6 +64,49 @@ test('normalizeGateway maps backend views into UI gateway shape', () => {
     },
   ])
   assert.deepEqual(gateway.discovery.prompts, [{ name: 'prompt-one' }])
+})
+
+test('buildGatewayCreatePayload generates an auth env var when a bearer token is pasted', () => {
+  const payload = buildGatewayCreatePayload({
+    name: 'github',
+    transport: 'http',
+    config: {
+      url: 'https://api.githubcopilot.com/mcp/',
+      bearer_token_value: 'ghp_secret',
+    },
+  })
+
+  assert.deepEqual(payload, {
+    spec: {
+      name: 'github',
+      url: 'https://api.githubcopilot.com/mcp/',
+      command: null,
+      args: [],
+      bearer_token_env: 'LAB_GW_GITHUB_AUTH_HEADER',
+      proxy_resources: false,
+      expose_tools: null,
+    },
+    bearer_token_value: 'ghp_secret',
+  })
+})
+
+test('buildGatewayUpdatePayload clears auth when bearer_token_env is blanked', () => {
+  const payload = buildGatewayUpdatePayload('github', {
+    transport: 'http',
+    config: {
+      bearer_token_env: '',
+    },
+  })
+
+  assert.deepEqual(payload, {
+    name: 'github',
+    patch: {
+      url: null,
+      command: null,
+      args: [],
+      bearer_token_env: null,
+    },
+  })
 })
 
 test('normalizeGateway applies allowlist exposure patterns', () => {
@@ -414,6 +459,21 @@ test('probeStatusFromRuntime marks zero-capability gateways unhealthy', () => {
   )
 })
 
+test('probeStatusFromRuntime treats resource and prompt only gateways as connected', () => {
+  assert.deepEqual(
+    probeStatusFromRuntime({
+      name: 'fixture-resources',
+      tool_count: 0,
+      resource_count: 2,
+      prompt_count: 1,
+    }),
+    {
+      connected: true,
+      healthy: true,
+    }
+  )
+})
+
 test('normalizeGateway turns specific probe failures into actionable warnings', () => {
   const gateway = normalizeGateway(
     {
@@ -484,4 +544,73 @@ test('normalizeGateway humanizes auth failures for operator-facing UI', () => {
     'Authentication is required by https://swag.tootie.tv/mcp. Configure `bearer_token_env` with a valid upstream token, then reload this gateway.'
   )
   assert.equal(gateway.warnings[0]?.code, 'auth_required')
+})
+
+test('normalizeGateway ignores resource discovery method-not-found for health and warnings', () => {
+  const gateway = normalizeGateway(
+    {
+      config: {
+        name: 'chrome-dev-tools',
+        command: 'npx',
+        args: ['chrome-devtools-mcp'],
+        proxy_resources: true,
+      },
+      runtime: {
+        name: 'chrome-dev-tools',
+        tool_count: 29,
+        resource_count: 0,
+        prompt_count: 0,
+      },
+    },
+    {
+      connected: true,
+      healthy: true,
+      last_error: 'failed to list resources from upstream: Mcp error: -32601: Method not found',
+    },
+    {
+      tools: [],
+      resources: [],
+      prompts: [],
+    }
+  )
+
+  assert.equal(
+    gateway.status.last_error,
+    undefined
+  )
+  assert.equal(gateway.status.connected, true)
+  assert.equal(gateway.status.healthy, true)
+  assert.deepEqual(gateway.warnings, [])
+})
+
+test('normalizeServerView ignores custom gateway resource discovery method-not-found warnings', () => {
+  const gateway = normalizeServerView({
+    id: 'claude-in-mobile',
+    name: 'claude-in-mobile',
+    source: 'custom_gateway',
+    configured: true,
+    enabled: true,
+    connected: true,
+    discovered_tool_count: 81,
+    exposed_tool_count: 81,
+    discovered_resource_count: 0,
+    exposed_resource_count: 0,
+    discovered_prompt_count: 0,
+    exposed_prompt_count: 0,
+    warnings: [
+      {
+        code: 'connection_error',
+        message: 'failed to list resources from upstream: Mcp error: -32601: Method not found',
+      },
+    ],
+    config_summary: {
+      transport: 'stdio',
+      target: 'npx',
+    },
+  })
+
+  assert.equal(gateway.status.connected, true)
+  assert.equal(gateway.status.healthy, true)
+  assert.equal(gateway.status.last_error, undefined)
+  assert.deepEqual(gateway.warnings, [])
 })

@@ -1,6 +1,17 @@
 import type { Metadata, Viewport } from 'next'
+import { Inter, Manrope } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+})
+
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-manrope',
+})
 
 export const metadata: Metadata = {
   title: 'Labby',
@@ -38,7 +49,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="font-sans antialiased bg-background">
+      <body className={`${inter.variable} ${manrope.variable} bg-background font-sans antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

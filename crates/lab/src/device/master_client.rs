@@ -53,6 +53,13 @@ impl MasterClient {
         self.inner.fetch_device(device_id).await.map_err(Into::into)
     }
 
+    pub async fn post_log_ingest(&self, payload: &serde_json::Value) -> Result<serde_json::Value> {
+        self.inner
+            .post_log_ingest(payload)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn search_logs(&self, device_id: &str, query: &str) -> Result<serde_json::Value> {
         self.inner
             .search_logs(device_id, query)

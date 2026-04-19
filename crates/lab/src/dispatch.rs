@@ -5,6 +5,8 @@ pub mod arcane;
 #[cfg(feature = "bytestash")]
 pub mod bytestash;
 pub mod clients;
+#[cfg(feature = "deploy")]
+pub mod deploy;
 pub mod error;
 pub mod extract;
 pub mod gateway;

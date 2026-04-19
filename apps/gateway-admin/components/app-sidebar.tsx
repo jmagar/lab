@@ -34,7 +34,7 @@ import {
 } from '@/lib/auth/session-presenter'
 import { logoutBrowserSession, useBrowserSession } from '@/lib/auth/session'
 
-const navigation = [
+export const primarySidebarNavigation = [
   {
     title: 'Overview',
     url: '/',
@@ -62,7 +62,7 @@ const navigation = [
   },
 ]
 
-const secondaryNavigation = [
+export const secondarySidebarNavigation = [
   {
     title: 'Settings',
     url: '/settings',
@@ -109,7 +109,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigation.map((item) => (
+              {primarySidebarNavigation.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
                     <Link href={item.url}>
@@ -127,7 +127,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Support</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {secondaryNavigation.map((item) => (
+              {secondarySidebarNavigation.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
                     <Link href={item.url}>

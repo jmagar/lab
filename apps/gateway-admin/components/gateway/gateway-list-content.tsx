@@ -19,7 +19,18 @@ import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { TestResultPanel } from './test-result-panel'
 import { useGateways, useGatewayMutations } from '@/lib/hooks/use-gateways'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
-import { getErrorMessage } from '@/lib/utils'
+import { cn, getErrorMessage } from '@/lib/utils'
+import {
+  AURORA_DISPLAY_NUMBER,
+  AURORA_DISPLAY_TITLE,
+  AURORA_MEDIUM_PANEL,
+  AURORA_MUTED_LABEL,
+  AURORA_PAGE_FRAME,
+  AURORA_PAGE_SHELL,
+  AURORA_STRONG_PANEL,
+  AURORA_GATEWAY_STAT,
+  gatewayActionTone,
+} from './gateway-theme'
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
@@ -177,85 +188,101 @@ export function GatewayListContent() {
           { label: 'Gateways' }
         ]}
         actions={
-          <Button onClick={handleCreate}>
+          <Button
+            onClick={handleCreate}
+            className={cn(gatewayActionTone('accent'), 'border px-4 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary')}
+          >
             <Plus className="size-4 mr-2" />
             Add Gateway
           </Button>
         }
       />
 
-      <div className="flex-1 p-6 space-y-6">
-        <div className="rounded-xl border bg-card/80 p-3 shadow-sm shadow-black/5">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
-              <Cable className="size-4 text-muted-foreground" />
-              <span className="tabular-nums">{summary.total}</span>
-              <span className="text-muted-foreground">configured</span>
+      <div className={cn('relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary', AURORA_PAGE_SHELL)}>
+        <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className={AURORA_GATEWAY_STAT}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className={AURORA_MUTED_LABEL}>Configured</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-text-primary')}>{summary.total}</p>
+                  </div>
+                  <Cable className="size-5 text-aurora-text-muted" />
+                </div>
+              </div>
+              <div className={AURORA_GATEWAY_STAT}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className={AURORA_MUTED_LABEL}>Healthy</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-accent-strong')}>{summary.healthy}</p>
+                  </div>
+                  <Activity className="size-5 text-aurora-accent-strong" />
+                </div>
+              </div>
+              <div className={AURORA_GATEWAY_STAT}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className={AURORA_MUTED_LABEL}>Disconnected</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-warn')}>{summary.disconnected}</p>
+                  </div>
+                  <TriangleAlert className="size-5 text-aurora-warn" />
+                </div>
+              </div>
+              <div className={AURORA_GATEWAY_STAT}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className={AURORA_MUTED_LABEL}>Discovered tools</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-text-primary')}>{summary.tools}</p>
+                  </div>
+                  <Wrench className="size-5 text-aurora-accent-primary" />
+                </div>
+              </div>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
-              <Activity className="size-4 text-emerald-500" />
-              <span className="tabular-nums">{summary.healthy}</span>
-              <span className="text-muted-foreground">healthy</span>
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
-              <TriangleAlert className="size-4 text-amber-500" />
-              <span className="tabular-nums">{summary.disconnected}</span>
-              <span className="text-muted-foreground">disconnected</span>
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium">
-              <Wrench className="size-4 text-primary" />
-              <span className="tabular-nums">{summary.tools}</span>
-              <span className="text-muted-foreground">tools</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {summary.warnings} warning{summary.warnings === 1 ? '' : 's'} across all gateways.
-            </p>
-          </div>
-        </div>
+          </section>
 
-        {/* Filters */}
-        <GatewayFilters
-          search={search}
-          onSearchChange={setSearch}
-          healthFilter={healthFilter}
-          onHealthFilterChange={setHealthFilter}
-          connectionFilter={connectionFilter}
-          onConnectionFilterChange={setConnectionFilter}
-          typeFilter={typeFilter}
-          onTypeFilterChange={setTypeFilter}
-        />
+          <GatewayFilters
+            search={search}
+            onSearchChange={setSearch}
+            healthFilter={healthFilter}
+            onHealthFilterChange={setHealthFilter}
+            connectionFilter={connectionFilter}
+            onConnectionFilterChange={setConnectionFilter}
+            typeFilter={typeFilter}
+            onTypeFilterChange={setTypeFilter}
+          />
 
-        {/* Content */}
-        <div className="rounded-lg border bg-card">
-          {isLoading ? (
-            <GatewayTableSkeleton />
-          ) : error ? (
-            <div className="p-8 text-center">
-              <p className="text-destructive">Failed to load gateways</p>
-              <p className="text-sm text-muted-foreground mt-1">{error.message}</p>
-            </div>
-          ) : filteredGateways.length === 0 ? (
-            gateways?.length === 0 ? (
-              <EmptyState
-                title="No gateways configured"
-                description="Get started by adding your first MCP gateway connection to manage upstream gateway tools."
-                action={{ label: 'Add Gateway', onClick: handleCreate }}
-              />
+          <div>
+            {isLoading ? (
+              <GatewayTableSkeleton />
+            ) : error ? (
+              <div className={cn(AURORA_STRONG_PANEL, 'p-8 text-center')}>
+                <p className="text-aurora-error">Failed to load gateways</p>
+                <p className="mt-1 text-sm text-aurora-text-muted">{error.message}</p>
+              </div>
+            ) : filteredGateways.length === 0 ? (
+              gateways?.length === 0 ? (
+                <EmptyState
+                  title="No gateways configured"
+                  description="Get started by adding your first MCP gateway connection to manage upstream gateway tools."
+                  action={{ label: 'Add Gateway', onClick: handleCreate }}
+                />
+              ) : (
+                <EmptyState
+                  title="No matching gateways"
+                  description="Try adjusting your filters to find what you&apos;re looking for."
+                />
+              )
             ) : (
-              <EmptyState
-                title="No matching gateways"
-                description="Try adjusting your filters to find what you&apos;re looking for."
+              <GatewayTable
+                gateways={filteredGateways}
+                onEdit={handleEdit}
+                onTest={handleTest}
+                onReload={handleReload}
+                onDelete={setDeleteGateway}
               />
-            )
-          ) : (
-            <GatewayTable
-              gateways={filteredGateways}
-              onEdit={handleEdit}
-              onTest={handleTest}
-              onReload={handleReload}
-              onDelete={setDeleteGateway}
-            />
-          )}
+            )}
+          </div>
         </div>
       </div>
 

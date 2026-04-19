@@ -58,6 +58,10 @@ dashmap                      = "6"
 tokio-util                   = { version = "0.7", features = ["rt"] }
 strip-ansi-escapes           = "0.2"
 
+# optional — deploy feature
+hex                          = { version = "0.4", optional = true }
+regex                        = { version = "1", optional = true }
+
 rmcp.workspace               = true
 jsonwebtoken.workspace       = true
 rusqlite.workspace          = true
@@ -111,10 +115,17 @@ openai      = ["lab-apis/openai"]
 qdrant      = ["lab-apis/qdrant"]
 tei         = ["lab-apis/tei"]
 
+# deploy — push the local lab release binary to SSH targets
+deploy      = ["lab-apis/deploy", "dep:hex", "dep:regex"]
+
 # internal admin / onboarding tooling
 # Intentionally local-only — no lab-apis counterpart, lab_admin performs
 # filesystem audits only and has no external HTTP service to wrap.
 lab-admin   = []
+
+# Expose test-only helpers (RecordingIo, orchestrate_with_io) to external
+# integration-test crates.  Never enable in production builds.
+test-utils  = []
 
 all         = [
   "lab-apis/all",
@@ -140,6 +151,7 @@ all         = [
   "qdrant",
   "tei",
   "lab-admin",
+  "deploy",
 ]
 
 [lints]

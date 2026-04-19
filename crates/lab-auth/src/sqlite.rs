@@ -694,6 +694,7 @@ fn open_connections(path: &Path, count: usize) -> Result<Vec<Connection>, AuthEr
     (0..count).map(|_| open_connection(path)).collect()
 }
 
+#[allow(clippy::too_many_lines)]
 fn open_connection(path: &Path) -> Result<Connection, AuthError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
@@ -825,6 +826,7 @@ fn validate_or_reopen_connection(conn: &mut Connection, path: &Path) -> Result<(
         .map_err(sqlite_error)
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn sqlite_error(error: rusqlite::Error) -> AuthError {
     AuthError::Storage(format!("sqlite error: {error}"))
 }

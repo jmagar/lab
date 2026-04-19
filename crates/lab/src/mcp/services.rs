@@ -4,6 +4,8 @@
 //! `pub async fn dispatch(action: &str, params: Value) -> Result<Value>`.
 //! See `radarr.rs` for the reference implementation.
 
+#[cfg(feature = "deploy")]
+pub mod deploy;
 pub mod extract;
 pub mod gateway;
 pub mod logs;

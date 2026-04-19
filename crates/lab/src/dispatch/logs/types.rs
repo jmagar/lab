@@ -64,6 +64,7 @@ pub enum Subsystem {
     AuthMcp,
     AuthUpstream,
     CoreRuntime,
+    Syslog,
 }
 
 impl Subsystem {
@@ -80,6 +81,7 @@ impl Subsystem {
             Self::AuthMcp => "auth_mcp",
             Self::AuthUpstream => "auth_upstream",
             Self::CoreRuntime => "core_runtime",
+            Self::Syslog => "syslog",
         }
     }
 
@@ -95,6 +97,7 @@ impl Subsystem {
             "auth_mcp" => Self::AuthMcp,
             "auth_upstream" => Self::AuthUpstream,
             "core_runtime" => Self::CoreRuntime,
+            "syslog" => Self::Syslog,
             _ => return None,
         })
     }
@@ -179,6 +182,8 @@ pub struct LogEvent {
 
 impl LogEvent {
     #[must_use]
+    #[doc(hidden)]
+    #[allow(dead_code)]
     pub fn fixture() -> Self {
         Self {
             event_id: "evt-fixture".to_string(),
@@ -274,6 +279,10 @@ pub struct LogQuery {
     #[serde(default)]
     pub correlation_id: Option<String>,
     #[serde(default)]
+    pub source_node_ids: Vec<String>,
+    #[serde(default)]
+    pub source_kinds: Vec<String>,
+    #[serde(default)]
     pub limit: Option<usize>,
 }
 
@@ -324,6 +333,24 @@ pub struct LogStoreStats {
     pub total_event_count: u64,
     pub dropped_event_count: u64,
     pub retention: LogRetention,
+}
+
+// ── Peer ingest ──────────────────────────────────────────────────────────────
+
+/// Batch of raw events forwarded from a peer node via `POST /v1/logs/ingest`.
+///
+/// The `node_id` field overrides `source_node_id` on every event so the master
+/// can trust the node identity from the request, not from self-reported event fields.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PeerIngestRequest {
+    pub node_id: String,
+    pub events: Vec<RawLogEvent>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PeerIngestResponse {
+    pub accepted: usize,
+    pub dropped: usize,
 }
 
 // ── Stream ───────────────────────────────────────────────────────────────────
@@ -386,9 +413,18 @@ pub struct LogSystem {
     pub(super) hub: Arc<super::stream::StreamHub>,
     pub(super) ingest: super::ingest::IngestHandle,
     pub(super) counters: Arc<super::ingest::IngestCounters>,
+    pub(super) maintenance_task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for LogSystem {
+    fn drop(&mut self) {
+        self.maintenance_task.abort();
+    }
 }
 
 impl LogSystem {
+    #[doc(hidden)]
+    #[allow(dead_code)]
     pub async fn ingest(&self, raw: RawLogEvent) -> Result<(), ToolError> {
         self.ingest.submit(raw).await
     }

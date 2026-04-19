@@ -296,6 +296,7 @@ pub fn build_default_registry() -> ToolRegistry {
     register_service!(reg, "qdrant", qdrant);
     register_service!(reg, "tei", tei);
     register_service!(reg, "apprise", apprise);
+    register_service!(reg, "deploy", deploy);
 
     #[cfg(feature = "lab-admin")]
     if lab_admin_enabled() {
@@ -357,6 +358,8 @@ pub fn service_meta(name: &str) -> Option<&'static PluginMeta> {
         "tei" => Some(&lab_apis::tei::META),
         #[cfg(feature = "apprise")]
         "apprise" => Some(&lab_apis::apprise::META),
+        #[cfg(feature = "deploy")]
+        "deploy" => Some(&lab_apis::deploy::META),
         _ => None,
     }
 }
@@ -541,7 +544,10 @@ mod tests {
         let only_in_registry: Vec<&&str> = registry_services
             .iter()
             // lab_admin is MCP-only: no HTTP route by design (runtime opt-in via LAB_ADMIN_ENABLED=1)
-            .filter(|n| !http_router_services.contains(**n) && **n != "lab_admin")
+            // deploy is MCP+CLI-only for V1; HTTP API surface is deferred (see docs/DEPLOY_SERVICE.md)
+            .filter(|n| {
+                !http_router_services.contains(**n) && **n != "lab_admin" && **n != "deploy"
+            })
             .collect();
         let only_in_router: Vec<&&str> = http_router_services
             .iter()

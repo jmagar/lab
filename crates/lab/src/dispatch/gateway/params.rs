@@ -49,6 +49,8 @@ pub struct GatewayTestParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayAddParams {
     pub spec: UpstreamConfig,
+    #[serde(default)]
+    pub bearer_token_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -90,6 +92,8 @@ where
 pub struct GatewayUpdateParams {
     pub name: String,
     pub patch: GatewayUpdatePatch,
+    #[serde(default)]
+    pub bearer_token_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
