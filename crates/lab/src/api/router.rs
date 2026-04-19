@@ -38,8 +38,16 @@ fn percent_encode_path(s: &str) -> String {
             out.push(b as char);
         } else {
             out.push('%');
-            out.push(char::from_digit((b >> 4) as u32, 16).unwrap().to_ascii_uppercase());
-            out.push(char::from_digit((b & 0xf) as u32, 16).unwrap().to_ascii_uppercase());
+            out.push(
+                char::from_digit((b >> 4) as u32, 16)
+                    .unwrap()
+                    .to_ascii_uppercase(),
+            );
+            out.push(
+                char::from_digit((b & 0xf) as u32, 16)
+                    .unwrap()
+                    .to_ascii_uppercase(),
+            );
         }
     }
     out
@@ -316,7 +324,10 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         v1 = v1
             .route("/{service}/actions", get(service_actions))
             // upstream oauth must be nested before /gateway so its more-specific prefix wins
-            .nest("/gateway/oauth", crate::api::upstream_oauth::gateway_routes(state.clone()))
+            .nest(
+                "/gateway/oauth",
+                crate::api::upstream_oauth::gateway_routes(state.clone()),
+            )
             .nest("/gateway", services::gateway::routes(state.clone()))
             .route(
                 "/openapi.json",
