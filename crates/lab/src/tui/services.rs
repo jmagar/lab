@@ -221,6 +221,12 @@ impl LabServicesState {
         self.env_cache = load_env_vars();
     }
 
+    /// Reload the enabled-services set from `.mcp.json`.
+    /// Call after the user returns from an editor session that may have toggled services.
+    pub fn reload_enabled_services(&mut self) {
+        self.enabled_services = seed_enabled_services(self.mcp_json_path.as_deref());
+    }
+
     /// Update health results from a completed health check pass.
     ///
     /// Replaces the map wholesale so stale entries for removed services are cleared.

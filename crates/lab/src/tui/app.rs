@@ -128,6 +128,7 @@ fn tui_main(tx: &mpsc::Sender<AppEvent>, rx: &mpsc::Receiver<AppEvent>) -> Resul
                 Ok(t) => {
                     terminal = t;
                     app.services.reload_env_cache();
+                    app.services.reload_enabled_services();
                     app.dirty = true;
                 }
                 Err(e) => {
