@@ -519,6 +519,8 @@ mod tests {
             s.insert(lab_apis::tailscale::META.name);
             #[cfg(feature = "linkding")]
             s.insert(lab_apis::linkding::META.name);
+            #[cfg(feature = "mcpregistry")]
+            s.insert(lab_apis::mcpregistry::META.name);
             #[cfg(feature = "memos")]
             s.insert(lab_apis::memos::META.name);
             #[cfg(feature = "bytestash")]
