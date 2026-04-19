@@ -6,7 +6,23 @@
 //! this crate substitute a recording `HostIo` mock for fast orchestration
 //! coverage without a live SSH server.
 //!
-//! Shell-exception audit. Only two code paths construct a `sh -c` command:
+//! # `host='?'` sentinel convention
+//!
+//! Stage functions (`preflight`, `transfer_and_install`, `restart`, `verify`)
+//! do not know which host alias the caller used — they operate on a generic
+//! `HostIo`. When these functions construct a [`lab_apis::deploy::DeployError`]
+//! variant that carries a `host` field they fill it with the string `"?"` as a
+//! sentinel meaning "not yet resolved". The sentinel is then replaced by the
+//! real host alias at the call site via [`host_err`], which receives the
+//! resolved `host: &str` and constructs the final [`DeployHostResult`].
+//!
+//! Callers that forget to route errors through `host_err` will emit `host='?'`
+//! in production logs. A [`debug_assert!`] inside `host_err` catches this
+//! class of bug during tests (see [`host_err`] docs).
+//!
+//! # Shell-exception audit
+//!
+//! Only two code paths construct a `sh -c` command:
 //!
 //! * `preflight`'s canary-write probe — the canary path is derived from
 //!   `remote_path`, which is allowlist-validated in `params::validate_remote_path`.
@@ -1192,6 +1208,42 @@ async fn rollback_one_host<I: HostIo + 'static>(
     }
 }
 
+/// Returns `true` when `err` still carries the unresolved `'?'` sentinel host
+/// value that stage functions emit. Any variant without a `host` field is also
+/// considered "unresolved" for assertion purposes.
+///
+/// Used exclusively by the `debug_assert!` in [`host_err`].
+fn err_has_sentinel_host(err: &DeployError) -> bool {
+    match err {
+        DeployError::SshUnreachable { host }
+        | DeployError::PreflightFailed { host, .. }
+        | DeployError::TransferFailed { host, .. }
+        | DeployError::InstallFailed { host, .. }
+        | DeployError::RestartFailed { host, .. }
+        | DeployError::VerifyFailed { host, .. }
+        | DeployError::Conflict { host }
+        | DeployError::ArchMismatch { host, .. }
+        | DeployError::IntegrityMismatch { host } => host == "?",
+        // Variants without a `host` field are not subject to the sentinel rule.
+        DeployError::ValidationFailed { .. }
+        | DeployError::BuildFailed { .. }
+        | DeployError::PartialFailure { .. }
+        | DeployError::AuthFailed { .. } => true,
+    }
+}
+
+/// Emit a WARN log for a per-host stage failure and build the corresponding
+/// [`DeployHostResult`].
+///
+/// ## Sentinel contract
+///
+/// Stage functions fill `host` fields on [`DeployError`] with the literal
+/// string `"?"` as a placeholder (see module-level docs). This function
+/// receives the resolved `host` alias and uses it for the result and log.
+///
+/// A [`debug_assert!`] fires in test/debug builds if the error already has a
+/// *non-`?`* host, which would indicate a double-wrap or a direct construction
+/// that bypassed the sentinel convention.
 fn host_err(
     host: &str,
     reached: DeployStage,
@@ -1199,6 +1251,11 @@ fn host_err(
     timings: std::collections::BTreeMap<String, u128>,
     skipped_transfer: bool,
 ) -> DeployHostResult {
+    debug_assert!(
+        err_has_sentinel_host(&err),
+        "host_err called with already-resolved host in error '{}' — double-wrap?",
+        err,
+    );
     tracing::warn!(
         host = %host,
         reached_stage = ?reached,
