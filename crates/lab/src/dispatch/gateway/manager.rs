@@ -2211,7 +2211,7 @@ mod tests {
             &LabConfig {
                 upstream: vec![UpstreamConfig {
                     name: "kept".to_string(),
-                    url: Some("http://127.0.0.1:7001".to_string()),
+                    url: Some("https://fixture.example.com:7001".to_string()),
                     bearer_token_env: None,
                     command: None,
                     args: Vec::new(),

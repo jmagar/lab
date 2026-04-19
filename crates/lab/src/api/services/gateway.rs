@@ -130,7 +130,7 @@ mod tests {
 
         let added = post_gateway(app.clone(), json!({
             "action":"gateway.add",
-            "params":{"confirm":true,"spec":{"name":"fixture-http","url":"http://127.0.0.1:9001","bearer_token_env":"FIXTURE_HTTP_TOKEN"}}
+            "params":{"confirm":true,"spec":{"name":"fixture-http","url":"https://fixture.example.com/mcp","bearer_token_env":"FIXTURE_HTTP_TOKEN"}}
         }))
         .await;
         assert_eq!(added.status(), StatusCode::OK);
