@@ -59,6 +59,7 @@ qdrant      = []
 tei         = []
 apprise     = []
 deploy      = []
+mcpregistry = []
 servarr     = []
 test-utils  = []
 all = [
@@ -67,7 +68,7 @@ all = [
     "memos", "bytestash", "paperless",
     "arcane", "unraid", "unifi",
     "gotify", "openai", "qdrant", "tei", "apprise",
-    "deploy",
+    "deploy", "mcpregistry",
 ]
 
 [[test]]
