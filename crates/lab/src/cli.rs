@@ -65,6 +65,7 @@ pub mod tei;
 pub mod unifi;
 #[cfg(feature = "unraid")]
 pub mod unraid;
+// [lab-scaffold: cli-modules]
 
 use std::process::ExitCode;
 
@@ -197,6 +198,7 @@ pub enum Command {
     /// Deploy the local lab release binary to SSH targets.
     #[cfg(feature = "deploy")]
     Deploy(deploy::DeployArgs),
+    // [lab-scaffold: cli-variants]
 }
 
 /// Dispatch a parsed [`Cli`] to the correct handler.
@@ -269,5 +271,6 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
                 .await
                 .map(|()| ExitCode::SUCCESS)
         }
+        // [lab-scaffold: cli-dispatch]
     }
 }

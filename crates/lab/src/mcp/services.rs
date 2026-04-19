@@ -72,3 +72,4 @@ pub mod tei;
 
 #[cfg(feature = "apprise")]
 pub mod apprise;
+// [lab-scaffold: mcp-services]
