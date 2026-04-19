@@ -68,6 +68,7 @@ export function GatewayFormDialog({
   const isEditing = !!gateway
   const isLabGateway = gateway?.source === 'lab_service'
   const prevOpenRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const { data: supportedServices } = useSupportedServices()
   const { testGateway, saveServiceConfig, enableVirtualServer, disableVirtualServer } =
     useGatewayMutations()
@@ -248,6 +249,7 @@ export function GatewayFormDialog({
   })
 
   const handleTest = async () => {
+    if (isSaving) return
     if (!gateway || gateway.source === 'lab_service') {
       toast.info('Save and enable the gateway first, then test from the detail page.')
       return
@@ -255,9 +257,13 @@ export function GatewayFormDialog({
 
     if (!validateCustom()) return
 
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     setIsTesting(true)
     try {
       const result = await testGateway(gateway.id)
+      if (controller.signal.aborted) return
       if (result.severity === 'warning') {
         toast.warning(result.detail || result.message)
       } else if (result.success) {
@@ -266,6 +272,7 @@ export function GatewayFormDialog({
         toast.error(`Connection failed: ${result.error || result.message}`)
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       toast.error(getErrorMessage(error, 'Failed to test connection'))
     } finally {
       setIsTesting(false)
@@ -295,10 +302,16 @@ export function GatewayFormDialog({
   }
 
   const handleSave = async () => {
+    if (isTesting) return
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     setIsSaving(true)
     try {
       if (mode === 'lab') {
         const saved = await handleSaveLab()
+        if (controller.signal.aborted) return
         if (!saved) {
           return
         }
@@ -309,9 +322,11 @@ export function GatewayFormDialog({
 
       if (!validateCustom()) return
       await onSave(buildInput())
+      if (controller.signal.aborted) return
       toast.success(isEditing ? 'Gateway updated successfully' : 'Gateway created successfully')
       onOpenChange(false)
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
       toast.error(
         getErrorMessage(
           error,
@@ -328,7 +343,12 @@ export function GatewayFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen) {
+        abortControllerRef.current?.abort()
+      }
+      onOpenChange(nextOpen)
+    }}>
         <DialogContent className="sm:max-w-[680px]">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
@@ -625,7 +645,7 @@ export function GatewayFormDialog({
               type="button"
               variant="outline"
               onClick={handleTest}
-              disabled={isTesting}
+              disabled={isTesting || isSaving}
               className="mr-auto"
             >
               {isTesting ? (
@@ -639,7 +659,7 @@ export function GatewayFormDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button onClick={handleSave} disabled={isSaving || isTesting}>
             {isSaving && <Loader2 className="size-4 mr-2 animate-spin" />}
             {mode === 'lab'
               ? isEditing
