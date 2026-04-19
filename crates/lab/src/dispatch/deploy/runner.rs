@@ -841,6 +841,11 @@ static MCP_RUNNER: std::sync::OnceLock<DefaultRunner> = std::sync::OnceLock::new
 ///
 /// Config load failures are non-fatal: the runner is built with default
 /// preferences so that `help` / `schema` / `config.list` still work.
+///
+/// **Restart required to pick up config changes.** `MCP_RUNNER` is
+/// initialised once via `OnceLock` on first MCP dispatch. Changes to
+/// `~/.ssh/config` or deploy preferences in `config.toml` are not
+/// reflected until the `lab` process is restarted.
 pub fn mcp_runner() -> &'static DefaultRunner {
     MCP_RUNNER.get_or_init(|| {
         let prefs = crate::config::load_toml(&crate::config::toml_candidates())

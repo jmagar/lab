@@ -24,7 +24,9 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "config.list",
-        description: "Show resolved deploy hosts and defaults",
+        description: "Lists the current deploy configuration. Note: configuration is loaded \
+                      once at startup — restart the lab process to pick up changes to \
+                      ~/.ssh/config or deploy preferences.",
         destructive: false,
         params: &[],
         returns: "ConfigListing",

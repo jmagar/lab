@@ -25,6 +25,11 @@ pub fn build_runner(config: crate::config::DeployPreferences) -> DefaultRunner {
 /// preferences so that `help` / `schema` / `config.list` still work.
 /// Only the MCP path uses this static — CLI dispatch owns its runner
 /// directly (config is threaded in from `cli.rs`).
+///
+/// **Restart required to pick up config changes.** The underlying
+/// `MCP_RUNNER` is a `OnceLock` initialised on first call. Changes to
+/// `~/.ssh/config` or deploy preferences are not reflected until the
+/// `lab` process is restarted.
 pub fn static_runner() -> &'static DefaultRunner {
     super::runner::mcp_runner()
 }
