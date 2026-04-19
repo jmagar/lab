@@ -21,6 +21,10 @@ LAB_MCP_TRANSPORT=stdio lab serve
 
 No network listener is opened. No host, port, or auth configuration is needed.
 
+This default is contractual: code, CLI help, tests, and operator docs must all
+agree that `stdio` is the default transport unless changed intentionally in one
+coordinated update.
+
 ## Streamable HTTP (Default)
 
 The HTTP transport mounts the MCP protocol at `/mcp` inside the axum HTTP server, alongside the
@@ -98,6 +102,11 @@ Auth methods (see [OAUTH.md](./OAUTH.md) for details):
 - **OAuth mode** via `LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, and Google client credentials.
 - Both can be active simultaneously. Static bearer is checked first.
 - If neither auth method is configured, the router permits local loopback requests only; non-loopback binds are rejected by the safety gate below.
+
+Auth-adjacent routes mounted on this server, including `/auth/session`,
+`/auth/logout`, `/authorize`, `/auth/google/callback`, and `/token`, remain
+part of the same request-id and structured-error contract even when their
+payloads are not normal `/v1/{service}` dispatches.
 
 ### Safety Gate
 

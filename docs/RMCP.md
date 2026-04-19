@@ -60,6 +60,7 @@ The baseline posture is:
 | `client` | required in practice | `lab` must be able to act as an outbound MCP client and gateway |
 | `auth` | required | needed for outbound OAuth MCP clients and protected HTTP MCP deployments |
 | `transport-streamable-http-client` | required in practice | required for outbound MCP gateway/client work over HTTP |
+| logging capability | required in practice | `lab` emits sanitized RMCP log notifications when the client negotiates logging |
 
 Notes:
 
@@ -77,7 +78,8 @@ Notes:
 Rules:
 
 - both transports expose the same server behavior
-- stdio remains the default local transport
+- `lab serve` defaults to HTTP unless CLI, env, or config selects stdio
+- stdio remains available for explicit local child-process sessions via `lab serve mcp --stdio`
 - HTTP MCP is mounted inside the Axum application under a dedicated MCP path such as `/mcp`
 - the Axum API continues to own non-MCP HTTP routes such as `/health`, `/ready`, and `/v1/...`
 - HTTP transport configuration must not fork the catalog or discovery model
@@ -115,6 +117,13 @@ Rules:
 - continue to dispatch service operations through `action` + `params`
 - do not explode the tool list into one tool per endpoint or one tool per action
 - prompts and resources may be richer than tools, but they must still derive from the same shared catalog and dispatch ownership model
+
+Prompt and resource operations must carry the same observability posture as tool
+dispatch:
+
+- structured dispatch logs for list/read/get operations
+- stable error-kind handling where applicable
+- request correlation preserved through the surrounding caller context
 
 ## Handler and Macro Contract
 
@@ -187,6 +196,31 @@ Rules:
 
 - outbound RMCP client and auth support are first-class capabilities because `lab` must connect to and proxy other MCP servers
 - if outbound MCP clients are added, their credentials and token lifecycle must still follow `lab`'s own config and secret-handling rules
+
+## Logging Capability Contract
+
+`lab` implements RMCP logging capability as a first-class server feature.
+
+Rules:
+
+- advertise logging capability in server info when available
+- honor negotiated log level handling where RMCP supports it
+- map negotiated levels onto the same dispatch outcome vocabulary used by local
+  tracing (`success -> info`, caller/user errors -> warning, internal/upstream
+  failures -> error)
+- emit sanitized log notifications only; never send tokens, cookies, auth
+  headers, raw credential-bearing URLs, or secret env values
+- reuse the same action/service/upstream context and redaction rules that apply
+  to local structured logs
+- logging notifications supplement local tracing; they do not replace required
+  server-side observability
+
+Current implementation notes:
+
+- prompt/resource/tool read paths do not recompute catalog snapshots or fan out
+  list-changed notifications on every request
+- gateway-driven upstream catalog changes are propagated through the dedicated
+  peer notifier instead of piggybacking on ordinary request traffic
 
 ## Resource and Prompt Ownership
 

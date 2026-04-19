@@ -248,3 +248,141 @@ test('gatewayApi.setExposurePolicy sends confirm=true when updating a gateway co
     },
   )
 })
+
+test('gatewayApi.list does not refresh browser session for non-csrf validation errors', async () => {
+  __setBrowserSessionStateForTests({
+    status: 'authenticated',
+    user: { sub: 'browser-user', email: 'browser@example.com' },
+    expiresAt: 123,
+    csrfToken: 'csrf-old',
+    loginAvailable: true,
+  })
+
+  const urls: string[] = []
+  globalThis.fetch = (async (input) => {
+    const url = String(input)
+    urls.push(url)
+
+    if (url === '/v1/gateway') {
+      return new Response(
+        JSON.stringify({
+          kind: 'validation_failed',
+          message: 'missing required parameter `name`',
+        }),
+        {
+          status: 422,
+          headers: {
+            'content-type': 'application/json',
+            'x-request-id': 'req-gateway-validation-1',
+          },
+        },
+      )
+    }
+
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  await assert.rejects(
+    gatewayApi.list(),
+    (error: unknown) => {
+      assert.ok(error instanceof GatewayApiError)
+      assert.equal(error.code, 'validation_failed')
+      return true
+    },
+  )
+
+  assert.deepEqual(getBrowserSessionState(), {
+    status: 'authenticated',
+    user: { sub: 'browser-user', email: 'browser@example.com' },
+    expiresAt: 123,
+    csrfToken: 'csrf-old',
+    loginAvailable: true,
+  })
+  assert.deepEqual(urls, ['/v1/gateway'])
+})
+
+test('gatewayApi destructive mutations send confirm=true', async () => {
+  const actions: Array<{ action: string; params: Record<string, unknown> }> = []
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input)
+    if (url !== '/v1/gateway') {
+      throw new Error(`unexpected fetch: ${url}`)
+    }
+
+    const payload = JSON.parse(String(init?.body ?? '{}')) as {
+      action: string
+      params: Record<string, unknown>
+    }
+    actions.push(payload)
+
+    if (payload.action === 'gateway.get') {
+      return new Response(
+        JSON.stringify({
+          config: { name: 'plex', proxy_resources: false },
+          runtime: { tool_count: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    if (payload.action === 'gateway.add' || payload.action === 'gateway.update') {
+      return new Response(
+        JSON.stringify({
+          config: {
+            name: 'plex',
+            url: 'https://lab.example.com/mcp',
+            proxy_resources: false,
+          },
+          runtime: {
+            tool_count: 1,
+            resource_count: 0,
+            prompt_count: 0,
+            exposed_tool_count: 1,
+            exposed_resource_count: 0,
+            exposed_prompt_count: 0,
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    if (payload.action === 'gateway.remove' || payload.action === 'gateway.reload') {
+      return new Response('null', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+
+    if (
+      payload.action === 'gateway.discovered_tools' ||
+      payload.action === 'gateway.discovered_resources' ||
+      payload.action === 'gateway.discovered_prompts'
+    ) {
+      return new Response('[]', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+
+    throw new Error(`unexpected action: ${payload.action}`)
+  }) as typeof fetch
+
+  await gatewayApi.create({
+    name: 'plex',
+    transport: 'http',
+    config: { url: 'https://lab.example.com/mcp' },
+  })
+  await gatewayApi.update('plex', { name: 'plex-updated' })
+  await gatewayApi.remove('plex')
+  await gatewayApi.reload('plex')
+
+  const destructiveActions = actions.filter(({ action }) =>
+    ['gateway.add', 'gateway.update', 'gateway.remove', 'gateway.reload'].includes(action),
+  )
+
+  assert.equal(destructiveActions.length, 4)
+  for (const action of destructiveActions) {
+    assert.equal(action.params.confirm, true)
+  }
+})

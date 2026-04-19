@@ -27,6 +27,9 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 | `LAB_AUTH_ALLOWED_REDIRECT_URIS` | no | Comma-separated redirect URI patterns allowed for dynamic client registration in addition to loopback callbacks. |
 | `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
 | `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
+| `LAB_AUTH_REGISTER_REQUESTS_PER_MINUTE` | no | Process-local rate limit for `POST /register`. Defaults to `20`. |
+| `LAB_AUTH_AUTHORIZE_REQUESTS_PER_MINUTE` | no | Process-local rate limit for `/authorize` and browser login initiation. Defaults to `60`. |
+| `LAB_AUTH_MAX_PENDING_OAUTH_STATES` | no | Maximum non-expired pending authorization + browser-login states stored at once. Defaults to `1024`. |
 
 ## Startup Behavior
 
@@ -59,6 +62,8 @@ Registration rules in the initial launch:
 - loopback redirect URIs are always accepted
 - optional non-loopback redirect URI patterns can be allowed with `LAB_AUTH_ALLOWED_REDIRECT_URIS` or `[auth].allowed_client_redirect_uris`
 - unlisted public HTTPS redirect URIs are rejected
+- `POST /register`, `/authorize`, and hosted browser-login initiation are process-locally rate limited
+- new login/authorization state is rejected once the pending non-expired state cap is reached
 
 Flow summary:
 
@@ -97,6 +102,11 @@ Important constraints:
 
 - `relay-local` binds only to `127.0.0.1:<port>` on the browser machine
 - it forwards only the final callback request
+- it forwards only a callback-safe header allowlist; `Cookie`,
+  `Authorization`, and similar ambient credentials are stripped
+- it mirrors only a callback-safe response header allowlist; `Set-Cookie` and
+  other credential-bearing response headers are not relayed back through the
+  localhost helper
 - it does not mint tokens, store PKCE state, or complete the OAuth exchange itself
 - the real client listener must already be running and reachable before the callback arrives
 
@@ -199,6 +209,61 @@ Current constraints:
 - refresh grants are rejected if the local token is not backed by an upstream refresh token
 - refresh tokens do not rotate in this batch
 - `/revoke` is not implemented in this batch
+- successful and failed `/token` responses must send `Cache-Control: no-store`
+  and `Pragma: no-cache`
+
+### Auth Failure Semantics
+
+`lab` distinguishes unauthenticated callers from internal auth outages.
+
+Rules:
+
+- `/auth/session` returns an unauthenticated result only when the request truly
+  lacks a valid session
+- auth store, signing-key, provider, or persistence failures stay 5xx-class and
+  use canonical error envelopes
+- `/auth/logout` failures are surfaced as structured errors rather than being
+  treated as best-effort success
+- provider-facing logs must preserve stable `kind` classification when transport,
+  status, decode, or grant failures happen
+
+Browser-session introspection semantics:
+
+- `GET /auth/session` returns `200` with `authenticated: false` only for a true
+  logged-out outcome
+- the same payload includes `login_available` so browser clients can suppress
+  the hosted-login CTA when OAuth browser login is not configured
+- internal failures from session lookup, persistence, signing, or provider
+  coordination remain structured 5xx responses instead of collapsing into
+  `authenticated: false`
+
+### Frontend Expectations
+
+The web UI and server-side frontend adapter must treat auth state as a three-way
+ distinction:
+
+- `loading`
+- `unauthenticated`
+- `auth_error`
+
+They must also:
+
+- capture response `x-request-id` values on failures
+- avoid showing a hosted-login CTA unless hosted login is actually available
+- invalidate or refresh cached session state when later requests fail with
+  `auth_failed` or a CSRF-style `validation_failed` response
+- not treat unrelated validation failures as implicit logout/session-expiry events
+
+### OAuth Error Kinds
+
+Most auth-route failures use the canonical error envelope described in
+`docs/ERRORS.md`.
+
+Documented auth-specific exception:
+
+- `invalid_grant` remains a stable OAuth token/authorization error for
+  authorization-code and refresh-token redemption failures such as expired,
+  unknown, or mismatched grants
 
 ## RFC 9728 Protected Resource Metadata
 

@@ -268,6 +268,9 @@ Full details in [OAUTH.md](./OAUTH.md).
 | `LAB_AUTH_ACCESS_TOKEN_TTL_SECS` | no | Override lab-issued JWT access token lifetime. Defaults to `3600`. |
 | `LAB_AUTH_REFRESH_TOKEN_TTL_SECS` | no | Override refresh token lifetime. Defaults to `2592000` (30 days). |
 | `LAB_AUTH_CODE_TTL_SECS` | no | Override authorization code lifetime. Defaults to `300`. |
+| `LAB_AUTH_REGISTER_REQUESTS_PER_MINUTE` | no | Process-local rate limit for `POST /register`. Defaults to `20`. |
+| `LAB_AUTH_AUTHORIZE_REQUESTS_PER_MINUTE` | no | Process-local rate limit for `/authorize` and hosted browser-login initiation. Defaults to `60`. |
+| `LAB_AUTH_MAX_PENDING_OAUTH_STATES` | no | Maximum non-expired authorization and browser-login states kept in the auth store. Defaults to `1024`. |
 
 ### config.toml
 
@@ -282,6 +285,9 @@ google_scopes = ["openid", "email", "profile"]
 access_token_ttl_secs = 3600
 refresh_token_ttl_secs = 2592000
 auth_code_ttl_secs = 300
+register_requests_per_minute = 20
+authorize_requests_per_minute = 60
+max_pending_oauth_states = 1024
 ```
 
 Environment variables override `[auth]` values field-by-field.

@@ -161,6 +161,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gateway_destructive_routes_require_confirm() {
+        let response = post_gateway_fresh(json!({
+            "action":"gateway.add",
+            "params":{"spec":{"name":"fixture-http","url":"http://127.0.0.1:9001","bearer_token_env":"FIXTURE_HTTP_TOKEN"}}
+        }))
+        .await;
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
     async fn gateway_actions_endpoint_is_registered() {
         let response = get_gateway_actions(test_app()).await;
         assert_eq!(response.status(), StatusCode::OK);

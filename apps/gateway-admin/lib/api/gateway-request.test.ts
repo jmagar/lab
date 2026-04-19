@@ -27,7 +27,7 @@ test('gatewayRequestInit keeps credentialed requests when a token is present wit
 })
 
 test('gatewayHeaders omits authorization when no token is provided', () => {
-  __setBrowserSessionStateForTests({ status: 'unauthenticated' })
+  __setBrowserSessionStateForTests({ status: 'unauthenticated', loginAvailable: false })
   const headers = gatewayHeaders(undefined) as Record<string, string>
 
   assert.equal(headers['Content-Type'], 'application/json')
@@ -40,6 +40,7 @@ test('gatewayRequestInit keeps credentialed requests for session-auth setups', (
     user: { sub: 'browser-user', email: 'browser@example.com' },
     expiresAt: 42,
     csrfToken: 'csrf-123',
+    loginAvailable: true,
   })
   const init = gatewayRequestInit('gateway.list', {}, undefined)
 

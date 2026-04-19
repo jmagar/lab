@@ -22,6 +22,13 @@ changes rather than internal refactors.
   patterns for callback-relay style clients such as Codex.
 
 ### Changed
+- **Breaking (HTTP API):** `gateway.add`, `gateway.update`, `gateway.remove`, and
+  `gateway.reload` are now marked destructive. HTTP and MCP callers must include
+  `"confirm": true` in `params` or the request is rejected with
+  `kind: "confirmation_required"` (HTTP 422). The in-repo `gateway-admin` UI is
+  already updated; any third-party HTTP consumer must add the confirm flag. See
+  `docs/GATEWAY.md` for the updated contract and `docs/ERRORS.md` for the
+  envelope shape.
 - Changed the hosted OAuth flow to advertise and serve `lab` as the auth server
   directly instead of relying on the old external issuer/JWKS configuration.
 - Changed Google authorization requests to request offline access with consent

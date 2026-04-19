@@ -204,6 +204,10 @@ pub struct UpstreamEntry {
     pub prompt_count: usize,
     /// Last successfully discovered upstream resource count.
     pub resource_count: usize,
+    /// Cached upstream prompt names from the last successful list operation.
+    pub prompt_names: Vec<String>,
+    /// Cached upstream resource URIs from the last successful list operation.
+    pub resource_uris: Vec<String>,
     /// Current tool-discovery/tool-call health state.
     pub tool_health: UpstreamHealth,
     /// Current prompt capability health state.

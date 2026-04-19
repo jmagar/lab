@@ -179,20 +179,56 @@ async fn read_json_response<T: DeserializeOwned>(
     errors: GoogleRequestErrors,
 ) -> Result<T, AuthError> {
     let response = request.send().await.map_err(|error| {
+        let auth_error = AuthError::Network(format!("{}: {error}", errors.transport_context));
         trace.error(None, &error);
-        warn!(provider = "google", error = %error, "{}", errors.transport_log);
-        AuthError::Storage(format!("{}: {error}", errors.transport_context))
+        warn!(
+            provider = "google",
+            error = %error,
+            kind = auth_error.kind(),
+            "{}",
+            errors.transport_log
+        );
+        auth_error
     })?;
     let status = response.status();
+    let retry_after_ms = response
+        .headers()
+        .get(header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|seconds| seconds.saturating_mul(1_000));
     let response = response.error_for_status().map_err(|error| {
+        let auth_error = if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            AuthError::RateLimited {
+                message: format!("{}: {}", errors.status_context, status),
+                retry_after_ms: retry_after_ms.unwrap_or(1_000),
+            }
+        } else if status.is_server_error() {
+            AuthError::Server(format!("{}: {error}", errors.status_context))
+        } else {
+            AuthError::AuthFailed(format!("{}: {error}", errors.status_context))
+        };
         trace.error(Some(status), &error);
-        warn!(provider = "google", error = %error, "{}", errors.status_log);
-        AuthError::Storage(format!("{}: {error}", errors.status_context))
+        warn!(
+            provider = "google",
+            error = %error,
+            kind = auth_error.kind(),
+            "{}",
+            errors.status_log
+        );
+        auth_error
     })?;
     trace.finish(status);
     response.json::<T>().await.map_err(|error| {
-        warn!(provider = "google", error = %error, "{}", errors.decode_log);
-        AuthError::Storage(format!("{}: {error}", errors.decode_context))
+        let auth_error = AuthError::Decode(format!("{}: {error}", errors.decode_context));
+        warn!(
+            provider = "google",
+            error = %error,
+            kind = auth_error.kind(),
+            "{}",
+            errors.decode_log
+        );
+        auth_error
     })
 }
 

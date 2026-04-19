@@ -90,6 +90,14 @@ Every mutating action follows the same sequence:
 4. atomically swap the runtime handle
 5. notify connected MCP peers when tool/resource/prompt catalogs changed
 
+Observability requirements for that reconcile:
+
+- log intent before config mutation begins
+- log each phase transition (`config_write`, `pool_build`, `swap`, `notify`)
+- log outcome with success/failure and elapsed time
+- redact credential-bearing URLs, commands, args, and token-derived values in
+  both logs and returned management views
+
 ## Examples
 
 ### CLI

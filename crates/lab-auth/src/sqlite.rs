@@ -374,6 +374,28 @@ impl SqliteStore {
         .await
     }
 
+    pub async fn count_pending_oauth_states(&self) -> Result<usize, AuthError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let authorization_requests: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM authorization_requests WHERE expires_at > ?1",
+                    params![now],
+                    |row| row.get(0),
+                )
+                .map_err(sqlite_error)?;
+            let browser_login_states: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM browser_login_states WHERE expires_at > ?1",
+                    params![now],
+                    |row| row.get(0),
+                )
+                .map_err(sqlite_error)?;
+            Ok((authorization_requests + browser_login_states) as usize)
+        })
+        .await
+    }
+
     pub async fn take_browser_login_state(
         &self,
         state: &str,

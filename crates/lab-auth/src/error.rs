@@ -21,6 +21,15 @@ pub enum AuthError {
     #[error("{0}")]
     Validation(String),
 
+    #[error("{0}")]
+    Network(String),
+
+    #[error("{0}")]
+    Server(String),
+
+    #[error("{0}")]
+    Decode(String),
+
     #[error("{message}")]
     RateLimited {
         message: String,
@@ -43,6 +52,9 @@ impl AuthError {
             Self::InvalidGrant(_) => "invalid_grant",
             Self::AuthFailed(_) | Self::InvalidAccessToken => "auth_failed",
             Self::Validation(_) => "validation_failed",
+            Self::Network(_) => "network_error",
+            Self::Server(_) => "server_error",
+            Self::Decode(_) => "decode_error",
             Self::RateLimited { .. } => "rate_limited",
         }
     }
@@ -52,6 +64,8 @@ impl AuthError {
             Self::InvalidGrant(_) => StatusCode::BAD_REQUEST,
             Self::AuthFailed(_) | Self::InvalidAccessToken => StatusCode::UNAUTHORIZED,
             Self::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Network(_) | Self::Server(_) => StatusCode::BAD_GATEWAY,
+            Self::Decode(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Config(_) | Self::Storage(_) | Self::InsecurePermissions { .. } => {
                 StatusCode::INTERNAL_SERVER_ERROR

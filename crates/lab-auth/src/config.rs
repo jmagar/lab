@@ -13,6 +13,9 @@ const DEFAULT_KEY_NAME: &str = "auth-jwt.pem";
 const DEFAULT_ACCESS_TOKEN_TTL_SECS: u64 = 3600;
 const DEFAULT_REFRESH_TOKEN_TTL_SECS: u64 = 30 * 24 * 3600;
 const DEFAULT_AUTH_CODE_TTL_SECS: u64 = 300;
+const DEFAULT_REGISTER_REQUESTS_PER_MINUTE: u32 = 20;
+const DEFAULT_AUTHORIZE_REQUESTS_PER_MINUTE: u32 = 60;
+const DEFAULT_MAX_PENDING_OAUTH_STATES: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -79,6 +82,9 @@ pub struct AuthConfig {
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
     pub auth_code_ttl: Duration,
+    pub register_requests_per_minute: u32,
+    pub authorize_requests_per_minute: u32,
+    pub max_pending_oauth_states: usize,
 }
 
 impl Default for AuthConfig {
@@ -95,6 +101,9 @@ impl Default for AuthConfig {
             access_token_ttl: Duration::from_secs(DEFAULT_ACCESS_TOKEN_TTL_SECS),
             refresh_token_ttl: Duration::from_secs(DEFAULT_REFRESH_TOKEN_TTL_SECS),
             auth_code_ttl: Duration::from_secs(DEFAULT_AUTH_CODE_TTL_SECS),
+            register_requests_per_minute: DEFAULT_REGISTER_REQUESTS_PER_MINUTE,
+            authorize_requests_per_minute: DEFAULT_AUTHORIZE_REQUESTS_PER_MINUTE,
+            max_pending_oauth_states: DEFAULT_MAX_PENDING_OAUTH_STATES,
         }
     }
 }
@@ -133,6 +142,15 @@ impl AuthConfig {
             auth_code_ttl: Duration::from_secs(
                 read_u64(&vars, "LAB_AUTH_CODE_TTL_SECS")?.unwrap_or(DEFAULT_AUTH_CODE_TTL_SECS),
             ),
+            register_requests_per_minute: read_u32(&vars, "LAB_AUTH_REGISTER_REQUESTS_PER_MINUTE")?
+                .unwrap_or(DEFAULT_REGISTER_REQUESTS_PER_MINUTE),
+            authorize_requests_per_minute: read_u32(
+                &vars,
+                "LAB_AUTH_AUTHORIZE_REQUESTS_PER_MINUTE",
+            )?
+            .unwrap_or(DEFAULT_AUTHORIZE_REQUESTS_PER_MINUTE),
+            max_pending_oauth_states: read_usize(&vars, "LAB_AUTH_MAX_PENDING_OAUTH_STATES")?
+                .unwrap_or(DEFAULT_MAX_PENDING_OAUTH_STATES),
         };
 
         config.validate()?;
@@ -243,6 +261,30 @@ fn read_u64(vars: &HashMap<String, String>, key: &str) -> Result<Option<u64>, Au
         })
         .transpose()
         .map(Option::flatten)
+}
+
+fn read_u32(vars: &HashMap<String, String>, key: &str) -> Result<Option<u32>, AuthError> {
+    read_string(vars, key)
+        .map(|value| {
+            value.parse::<u32>().map(Some).map_err(|error| {
+                AuthError::Config(format!(
+                    "{key} must be an integer number of requests per minute: {error}"
+                ))
+            })
+        })
+        .transpose()
+        .map(|value| value.flatten())
+}
+
+fn read_usize(vars: &HashMap<String, String>, key: &str) -> Result<Option<usize>, AuthError> {
+    read_string(vars, key)
+        .map(|value| {
+            value.parse::<usize>().map(Some).map_err(|error| {
+                AuthError::Config(format!("{key} must be a positive integer: {error}"))
+            })
+        })
+        .transpose()
+        .map(|value| value.flatten())
 }
 
 #[cfg(test)]
