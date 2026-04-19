@@ -127,7 +127,11 @@ async fn run_install(args: InstallArgs, format: OutputFormat) -> Result<ExitCode
 
     // Step 3: SSRF validation before passing to gateway.add.
     // DNS TOCTOU: validated at call time; short-TTL rebind could bypass. Homelab threat model accepts this.
-    validate_registry_url(&url)?;
+    let url_for_check = url.clone();
+    tokio::task::spawn_blocking(move || validate_registry_url(&url_for_check))
+        .await
+        .context("SSRF validation task panicked")?
+        .context("registry URL failed SSRF validation")?;
 
     // Step 4: derive gateway name (last segment after `/`).
     let gateway_name = args.gateway_name.unwrap_or_else(|| {
