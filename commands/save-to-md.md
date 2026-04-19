@@ -1,16 +1,22 @@
 ---
-description: Save session documentation
+description: Save session documentation to a markdown file with full context — date, branch, HEAD, session ID, and git state pre-injected
 allowed-tools: Write, Read, Bash
 ---
 
 ## Context
 
-- Date: !`date +%Y-%m-%d`
+- Date: !`TZ=America/New_York date '+%Y-%m-%d %H:%M:%S EST'`
 - Repo: !`git remote get-url origin`
 - Branch: !`git branch --show-current`
 - HEAD: !`git rev-parse --short HEAD`
 - Recent commits: !`git log --oneline -5`
-- Files changed this session: !`git status --short`
+- Files currently dirty: !`git status --short`
+- Files in recent commits: !`git log --oneline --name-only -10`
+- Transcript: !`ls -t ~/.claude/projects/$(pwd | sed 's|/|-|g')/*.jsonl 2>/dev/null | head -1`
+- Active plan: !`cat .claude/current-plan 2>/dev/null || echo "none"`
+- Working directory: !`pwd`
+- Worktree: !`git worktree list | grep $(pwd) | head -1`
+- Active PR: !`gh pr view --json number,title,url 2>/dev/null || echo "none"`
 
 # Save Session Documentation
 
@@ -27,10 +33,17 @@ Path rules:
 Start the file with a metadata block populated from the injected context above:
 
 ```
-date: YYYY-MM-DD
+date: YYYY-MM-DD HH:MM:SS EST
 repo: <remote URL>
 branch: <current branch>
 head: <HEAD commit SHA>
+plan: <path/to/plan.md> (if applicable)
+agent: <Claude, Codex, Gemini, etc>
+session id: <UUID filename of the transcript, e.g. cef54ead-b02d-4c3e-a833-a8672fa20523>
+transcript: <full path to the .jsonl transcript file>
+working directory: <pwd>
+worktree: <worktree path if applicable, otherwise omit>
+pr: <PR number, title, and URL if applicable, otherwise omit>
 ```
 
 Then include these sections:
