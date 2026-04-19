@@ -48,4 +48,3 @@ pub async fn clear(
 ) -> Result<(), ToolError> {
     manager.clear_upstream_credentials(upstream, subject).await
 }
-

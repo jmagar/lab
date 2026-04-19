@@ -23,7 +23,7 @@ pub struct SshHostTarget {
     pub user: Option<String>,
     /// Port from the `Port` directive, when present.
     pub port: Option<u16>,
-    /// IdentityFile from the `IdentityFile` directive, when present.
+    /// `IdentityFile` from the `IdentityFile` directive, when present.
     pub identity_file: Option<String>,
 }
 

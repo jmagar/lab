@@ -40,6 +40,9 @@ pub async fn jwks(State(state): State<AuthState>) -> Json<crate::jwt::JwksDocume
 }
 
 pub(crate) fn public_base_url(state: &AuthState) -> String {
+    // Panicking on absent public_url is intentional: this is a programmer/operator
+    // error (misconfigured server). Callers are not expected to handle a missing URL.
+    #[allow(clippy::expect_used)]
     state
         .config
         .public_url

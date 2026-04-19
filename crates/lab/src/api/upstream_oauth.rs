@@ -103,10 +103,8 @@ async fn callback_subject(
     }
 
     if let Some(auth_state) = state.oauth_state.as_ref()
-        && let Some(session_id) = lab_auth::session::read_cookie(
-            headers,
-            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
-        )
+        && let Some(session_id) =
+            lab_auth::session::read_cookie(headers, lab_auth::session::BROWSER_SESSION_COOKIE_NAME)
     {
         let session = auth_state
             .store
