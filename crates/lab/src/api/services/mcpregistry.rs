@@ -1,12 +1,14 @@
 //! HTTP route group for the `mcpregistry` service.
 
-use axum::{Json, Router, extract::DefaultBodyLimit, extract::State, http::HeaderMap, routing::post};
+use axum::{
+    Json, Router, extract::DefaultBodyLimit, extract::State, http::HeaderMap, routing::post,
+};
 use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
-use crate::dispatch::mcpregistry::ACTIONS;
 use crate::dispatch::error::ToolError;
+use crate::dispatch::mcpregistry::ACTIONS;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()

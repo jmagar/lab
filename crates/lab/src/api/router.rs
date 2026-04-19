@@ -321,8 +321,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
     let mut v1 = Router::new().nest("/device", super::device::routes(state.clone()));
 
     if is_master {
-        v1 = v1
-            .route("/{service}/actions", get(service_actions));
+        v1 = v1.route("/{service}/actions", get(service_actions));
 
         // upstream oauth must be nested before /gateway so its more-specific prefix wins;
         // only mount when the gateway manager is present (oauth requires it).

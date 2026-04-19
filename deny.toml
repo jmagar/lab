@@ -1,6 +1,16 @@
 [advisories]
 unmaintained = "all"
 yanked = "deny"
+ignore = [
+    # rand: unsound when log+thread_rng features are used with a custom logger (no patch yet)
+    "RUSTSEC-2026-0097",
+    # rsa/rsa-der-parser: timing side-channel in RSA (no patch available upstream)
+    "RUSTSEC-2023-0071",
+    # webpki: URI name constraints ignored (no API impact for our usage)
+    "RUSTSEC-2026-0098",
+    # webpki: wildcard name constraint bypass (no API impact for our usage)
+    "RUSTSEC-2026-0099",
+]
 
 [licenses]
 allow = [

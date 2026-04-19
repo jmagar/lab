@@ -334,5 +334,4 @@ mod tests {
             assert!(!spec.destructive, "{action} should remain non-destructive");
         }
     }
-
 }
