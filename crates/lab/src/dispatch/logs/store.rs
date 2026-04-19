@@ -273,9 +273,9 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
     );
     if let Some(text) = &q.text {
         sql.push_str(
-            " AND (message LIKE ? OR IFNULL(request_id,'') LIKE ? OR IFNULL(session_id,'') LIKE ? OR IFNULL(correlation_id,'') LIKE ?)",
+            " AND (message LIKE ? ESCAPE '\\' OR IFNULL(request_id,'') LIKE ? ESCAPE '\\' OR IFNULL(session_id,'') LIKE ? ESCAPE '\\' OR IFNULL(correlation_id,'') LIKE ? ESCAPE '\\')",
         );
-        let like = format!("%{text}%");
+        let like = format!("%{}%", escape_like(text));
         args.push(like.clone().into());
         args.push(like.clone().into());
         args.push(like.clone().into());
@@ -293,6 +293,12 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
         events,
         next_cursor,
     })
+}
+
+/// Escape `%`, `_`, and `\` in a user-supplied string so they are treated as
+/// literals by a SQLite LIKE expression that uses `ESCAPE '\'`.
+fn escape_like(s: &str) -> String {
+    s.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_")
 }
 
 fn append_in_clause<I>(
