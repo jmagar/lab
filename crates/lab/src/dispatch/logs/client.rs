@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Duration;
 
 use super::ingest::{self, IngestCounters};
 use super::store::LogStore;
@@ -63,6 +64,33 @@ pub async fn bootstrap_running_log_system(
     let hub = Arc::new(StreamHub::new(subscriber_capacity));
     let (handle, counters) =
         ingest::spawn_writer(Arc::clone(&store), Arc::clone(&hub), queue_capacity);
+
+    // Run maintenance once at startup to apply retention limits from previous runs.
+    if let Err(err) = store.run_maintenance().await {
+        tracing::warn!(
+            target: "lab::dispatch::logs",
+            ?err,
+            "startup log maintenance failed"
+        );
+    }
+
+    // Spawn a periodic maintenance task that runs every hour.
+    let store_for_maintenance = Arc::clone(&store);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(3600));
+        interval.tick().await; // skip the first immediate tick (startup already ran)
+        loop {
+            interval.tick().await;
+            let s = Arc::clone(&store_for_maintenance);
+            if let Err(err) = s.run_maintenance().await {
+                tracing::warn!(
+                    target: "lab::dispatch::logs",
+                    ?err,
+                    "periodic log maintenance failed"
+                );
+            }
+        }
+    });
 
     let system = Arc::new(LogSystem {
         store,

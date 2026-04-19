@@ -419,5 +419,7 @@ fn run_maintenance(conn: &Connection, retention: LogRetention) -> Result<(), rus
             break;
         }
     }
+    // Checkpoint the WAL to reclaim pages and keep the WAL file small.
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
     Ok(())
 }
