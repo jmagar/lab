@@ -43,6 +43,19 @@ macro_rules! dispatch_fn {
 ///   `mcp::services::foo::dispatch`.
 /// - Override: `register_service!(reg, "foo", foo, actions = $expr, dispatch = $expr)` —
 ///   for migrated services whose catalog and/or dispatch live outside `mcp::services`.
+///
+/// # Consistency invariant
+///
+/// The `actions` slice and the `dispatch` function **must be kept in sync** by the author:
+///
+/// - If `ACTIONS` is non-empty (status `"available"`), the dispatch function **must** handle
+///   at least `"help"` and every action listed in `ACTIONS`, returning `Ok(Value)`.
+/// - If `ACTIONS` is empty (status `"stub"`), the dispatch function is never called by agents
+///   that filter on `status == "available"`, but it may still be invoked directly. A stub
+///   dispatch should return an `unknown_action` envelope for all inputs.
+///
+/// A debug-build runtime check is performed in [`ToolRegistry::register`]: it asserts that
+/// `status` is consistent with `actions.len()`.
 macro_rules! register_service {
     // Full override: custom actions expr and dispatch expr (for migrated services).
     ($reg:expr, $feature:literal, $svc:ident, actions = $actions:expr, dispatch = $dispatch:expr) => {
@@ -134,7 +147,21 @@ impl ToolRegistry {
     }
 
     /// Register a service. Duplicates are ignored (first registration wins).
+    ///
+    /// # Panics (debug builds only)
+    ///
+    /// Panics if `service.status` is inconsistent with `service.actions.len()`:
+    /// - `status == "available"` requires at least one action.
+    /// - `status == "stub"` requires an empty action slice.
     pub fn register(&mut self, service: RegisteredService) {
+        debug_assert!(
+            (service.status == "available") == !service.actions.is_empty(),
+            "service '{}': status '{}' is inconsistent with actions.len() == {}; \
+             'available' requires non-empty ACTIONS, 'stub' requires empty ACTIONS",
+            service.name,
+            service.status,
+            service.actions.len(),
+        );
         if !self.services.iter().any(|s| s.name == service.name) {
             self.services.push(service);
         }
