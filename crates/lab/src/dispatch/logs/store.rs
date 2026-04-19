@@ -90,12 +90,13 @@ impl LogStore {
     {
         let conn = Arc::clone(&self.conn);
         tokio::task::spawn_blocking(move || {
-            let c = conn.lock().expect("log store mutex poisoned");
-            f(&c)
+            let c = conn
+                .lock()
+                .map_err(|_| ToolError::internal_message("log store mutex poisoned"))?;
+            f(&c).map_err(|e| ToolError::internal_message(format!("log store {label}: {e}")))
         })
         .await
         .map_err(|e| ToolError::internal_message(format!("log store {label} join: {e}")))?
-        .map_err(|e| ToolError::internal_message(format!("log store {label}: {e}")))
     }
 }
 
