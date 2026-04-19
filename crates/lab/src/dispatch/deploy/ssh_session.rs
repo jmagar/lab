@@ -33,8 +33,12 @@ pub struct SshOptions {
 pub enum StrictHostKeyChecking {
     Yes,
     /// Disallowed by `hardened()`; exposed so callers can explicitly opt in.
+    // Not yet constructed: available for callers that need reduced host-key strictness.
+    #[allow(dead_code)]
     AcceptNew,
     /// Disallowed by `hardened()`; exposed so callers can explicitly opt in.
+    // Not yet constructed: available for callers that need reduced host-key strictness.
+    #[allow(dead_code)]
     No,
 }
 
@@ -151,6 +155,8 @@ impl SshSession {
     }
 
     /// Construct a session with explicit options.
+    // Not yet called outside tests; kept for callers that need non-hardened options.
+    #[allow(dead_code)]
     #[must_use]
     pub const fn with_options(target: SshHostTarget, options: SshOptions) -> Self {
         Self { target, options }

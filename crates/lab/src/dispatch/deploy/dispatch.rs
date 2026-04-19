@@ -40,6 +40,8 @@ fn validate_deploy_action(action: &str, params_v: &Value) -> Result<DeployReques
 /// Top-level dispatch without an attached runner — handles `help` / `schema`
 /// and rejects any real action because orchestration requires runtime state
 /// that must be injected by the caller (see `dispatch_with_runner`).
+// Kept as a surface-neutral fallback entry point; not yet wired to any adapter.
+#[allow(dead_code)]
 pub async fn dispatch(action: &str, params_v: Value) -> Result<Value, ToolError> {
     match action {
         "help" => Ok(help_payload("deploy", ACTIONS)),

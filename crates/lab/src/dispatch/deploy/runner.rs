@@ -243,6 +243,8 @@ pub async fn preflight<I: HostIo + 'static>(
 pub struct TransferOutcome {
     pub bytes: u64,
     /// Path of the `.bak.<ts>` file the previous binary (if any) was moved to.
+    // Kept for future log / rollback use; not yet read by any surface code.
+    #[allow(dead_code)]
     pub backup_path: Option<String>,
 }
 
@@ -328,6 +330,8 @@ where
 #[derive(Debug, Clone, Copy)]
 pub struct RestartOutcome {
     /// True when `unit` was `None` — no systemd action was taken.
+    // Kept for future status/log reporting; not yet read by any surface code.
+    #[allow(dead_code)]
     pub skipped: bool,
 }
 
