@@ -61,6 +61,7 @@ pub struct ServiceClients {
     pub arcane: Option<Arc<lab_apis::arcane::ArcaneClient>>,
     #[cfg(feature = "qbittorrent")]
     pub qbittorrent: Option<Arc<lab_apis::qbittorrent::QbittorrentClient>>,
+    // [lab-scaffold: state-fields]
 }
 
 impl ServiceClients {
@@ -112,6 +113,7 @@ impl ServiceClients {
             arcane: crate::dispatch::arcane::client_from_env().map(Arc::new),
             #[cfg(feature = "qbittorrent")]
             qbittorrent: crate::dispatch::qbittorrent::client_from_env().map(Arc::new),
+            // [lab-scaffold: state-from-env]
         }
     }
 
