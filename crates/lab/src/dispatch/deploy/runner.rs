@@ -64,7 +64,7 @@ const DEFAULT_LOCK_TIMEOUT_SECS: u64 = 300;
 
 /// Surface-neutral deploy orchestrator used by CLI and MCP adapters.
 // Kept for external test implementations; not yet used in production surface code.
-#[allow(dead_code)]
+#[allow(dead_code, async_fn_in_trait)]
 pub trait DeployRunner: Send + Sync {
     async fn plan(&self, req: DeployRequest) -> Result<DeployPlan, ToolError>;
     async fn run(&self, req: DeployRequest) -> Result<DeployRunSummary, ToolError>;

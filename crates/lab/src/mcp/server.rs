@@ -20,7 +20,6 @@ use tokio::sync::RwLock;
 
 use crate::config::DeviceRole;
 use crate::dispatch::gateway::manager::GatewayManager;
-use crate::dispatch::upstream::types::UpstreamCapability;
 use crate::mcp::elicitation::{ElicitResult, elicit_confirm};
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
