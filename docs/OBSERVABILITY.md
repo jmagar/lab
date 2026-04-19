@@ -289,6 +289,22 @@ Additional rules:
 - do not persist bearer tokens, cookies, authorization headers, or raw secret material in the local log store
 - do not fan out unredacted structured fields to live SSE subscribers
 
+### Upstream OAuth Redaction
+
+The outbound upstream OAuth flow (see [UPSTREAM.md](./UPSTREAM.md)) adds the following fields to the never-log list. They must not appear at any level, in dispatch events, request logs, tracing spans, error messages, or MCP notifications:
+
+- OAuth `code` (authorization code from the callback)
+- OAuth `state` (CSRF token)
+- PKCE `code_verifier`
+- `access_token`, `refresh_token`, and `id_token` from any token response
+- the raw `token_response_json` payload
+- `token_blob` ciphertext and `token_blob_nonce`
+- `client_secret` (from the `*_CLIENT_SECRET` env var named by `client_secret_env`)
+- `Authorization` headers constructed from upstream OAuth tokens
+- `LAB_OAUTH_ENCRYPTION_KEY`
+
+Credential and state row types implement `Debug` manually to enforce this; never `#[derive(Debug)]` on them.
+
 ## Level Rules
 
 Use these level conventions consistently:

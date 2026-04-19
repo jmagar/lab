@@ -13,6 +13,13 @@ pub struct Catalog {
     pub services: Vec<ServiceCatalog>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Transport {
+    Stdio,
+    Http,
+}
+
 /// Per-service slice of the discovery document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceCatalog {
@@ -27,6 +34,10 @@ pub struct ServiceCatalog {
     /// Filter on `status == "available"` to find services that are callable.
     /// `"stub"` means compiled-in but not yet dispatching real actions.
     pub status: String,
+    /// True when the service requires an authenticated HTTP request context and
+    /// therefore must be hidden from stdio catalogs.
+    #[serde(default)]
+    pub requires_http_subject: bool,
     /// List of actions exposed by the service.
     pub actions: Vec<ActionEntry>,
 }
@@ -53,6 +64,7 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
             description: svc.description.to_string(),
             category: svc.category.to_string(),
             status: svc.status.to_string(),
+            requires_http_subject: false,
             actions: svc
                 .actions
                 .iter()
@@ -66,4 +78,46 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
         .collect();
 
     Catalog { services }
+}
+
+#[must_use]
+pub fn actions_for(catalog: &Catalog, service: &str, transport: Transport) -> Vec<ActionEntry> {
+    let Some(entry) = catalog.services.iter().find(|entry| entry.name == service) else {
+        return Vec::new();
+    };
+
+    if matches!(transport, Transport::Stdio) && entry.requires_http_subject {
+        return Vec::new();
+    }
+
+    entry.actions.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_hides_oauth_upstreams_on_stdio() {
+        let catalog = Catalog {
+            services: vec![ServiceCatalog {
+                name: "oauth-upstream".to_string(),
+                description: "OAuth protected upstream".to_string(),
+                category: "Gateway".to_string(),
+                status: "available".to_string(),
+                requires_http_subject: true,
+                actions: vec![ActionEntry {
+                    name: "tool.call".to_string(),
+                    description: "Call upstream tool".to_string(),
+                    destructive: false,
+                }],
+            }],
+        };
+
+        assert!(actions_for(&catalog, "oauth-upstream", Transport::Stdio).is_empty());
+        assert_eq!(
+            actions_for(&catalog, "oauth-upstream", Transport::Http).len(),
+            1
+        );
+    }
 }

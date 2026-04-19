@@ -14,7 +14,8 @@
 //! use lab_apis::extract::ExtractClient;
 //!
 //! let client = ExtractClient::new();
-//! let report = client.scan("squirts:/mnt/appdata".parse()?).await?;
+//! let target: lab_apis::extract::Uri = "squirts:/mnt/appdata".parse()?;
+//! let report = client.scan(target).await?;
 //! for cred in report.creds {
 //!     println!("{}: {}", cred.service, cred.url.as_deref().unwrap_or("?"));
 //! }

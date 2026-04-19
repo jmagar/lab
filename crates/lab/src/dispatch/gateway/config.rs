@@ -191,6 +191,20 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
         });
     }
 
+    // Reject mutually-exclusive auth shapes and invalid URLs. Each ConfigError
+    // variant carries its own param attribution so the caller sees the right field.
+    upstream.validate().map_err(|e| match e {
+        crate::config::ConfigError::ConflictingAuth { .. } => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "bearer_token_env".to_string(),
+        },
+        crate::config::ConfigError::MissingOauthUrl { .. }
+        | crate::config::ConfigError::InvalidUrl { .. } => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "url".to_string(),
+        },
+    })?;
+
     match (&upstream.url, &upstream.command) {
         (Some(_), Some(_)) => Err(ToolError::InvalidParam {
             message: "gateway must not set both `url` and `command`".to_string(),
@@ -268,6 +282,7 @@ mod tests {
                     args: Vec::new(),
                     proxy_resources: false,
                     expose_tools: None,
+                    oauth: None,
                 },
                 UpstreamConfig {
                     name: "b".to_string(),
@@ -277,6 +292,7 @@ mod tests {
                     args: vec!["server.js".to_string()],
                     proxy_resources: false,
                     expose_tools: None,
+                    oauth: None,
                 },
             ],
             ..LabConfig::default()
@@ -322,6 +338,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: true,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect("insert");
@@ -494,6 +511,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect_err("duplicate should fail");
@@ -514,6 +532,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }],
             ..LabConfig::default()
         };
@@ -535,6 +554,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }],
             ..LabConfig::default()
         };
@@ -555,6 +575,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect_err("invalid scheme");
@@ -574,6 +595,7 @@ args = ["server.js"]
                 args: Vec::new(),
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .expect_err("bind-all should be rejected");

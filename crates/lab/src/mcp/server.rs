@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
+use axum::http::{self, request::Parts};
 use rmcp::model::{
     AnnotateAble, CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
     ElicitationAction, ElicitationSchema, GetPromptRequestParams, GetPromptResult,
@@ -66,6 +67,34 @@ pub struct LabMcpServer {
     pub logging_level: Arc<AtomicU8>,
 }
 
+pub fn verify_upstream_subject_resolution_support() -> anyhow::Result<()> {
+    let (parts, _) = http::Request::new(()).into_parts();
+    let auth = crate::api::oauth::AuthContext {
+        sub: "startup-self-test".to_string(),
+        scopes: Vec::new(),
+        issuer: "https://lab.example.com".to_string(),
+        via_session: false,
+        csrf_token: None,
+        email: None,
+    };
+
+    let mut extensions = rmcp::model::Extensions::new();
+    let mut parts = parts;
+    parts.extensions.insert(auth);
+    extensions.insert(parts);
+
+    if subject_from_extensions(&extensions) == Some("startup-self-test") {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "rmcp subject extraction self-test failed: RequestContext.extensions did not yield \
+         http::request::Parts/AuthContext. The current runtime expects rmcp 1.4 request \
+         extension propagation (Plan A). Wire the tokio::task_local fallback (Plan B) or pin \
+         a compatible rmcp version before starting."
+    );
+}
+
 impl ServerHandler for LabMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(
@@ -111,10 +140,23 @@ impl ServerHandler for LabMcpServer {
         let mut prompts = crate::mcp::prompts::list_all().prompts;
 
         if let Some(pool) = self.current_upstream_pool().await {
-            let builtin_names: Vec<&str> =
-                prompts.iter().map(|prompt| prompt.name.as_ref()).collect();
-            let upstream_prompts = pool.list_upstream_prompts(&builtin_names).await;
+            let builtin_names: Vec<String> = prompts
+                .iter()
+                .map(|prompt| prompt.name.to_string())
+                .collect();
+            let builtin_name_refs: Vec<&str> = builtin_names.iter().map(String::as_str).collect();
+            let upstream_prompts = pool.list_upstream_prompts(&builtin_name_refs).await;
             prompts.extend(upstream_prompts);
+            if let Some(subject) = self.request_subject(&context) {
+                let scoped_prompts = pool
+                    .subject_scoped_prompts(
+                        &self.oauth_upstream_configs().await,
+                        subject,
+                        &builtin_name_refs,
+                    )
+                    .await;
+                prompts.extend(scoped_prompts);
+            }
         }
 
         let elapsed_ms = start.elapsed().as_millis();
@@ -256,6 +298,74 @@ impl ServerHandler for LabMcpServer {
             return outcome;
         }
 
+        if let Some(subject) = self.request_subject(&context)
+            && let Some(pool) = self.current_upstream_pool().await
+        {
+            let configs = self.oauth_upstream_configs().await;
+            if let Some(upstream_name) = pool
+                .subject_scoped_prompt_owner(&configs, subject, &request.name)
+                .await
+                && let Some(config) = configs
+                    .into_iter()
+                    .find(|config| config.name == upstream_name)
+            {
+                let prompt_name = request.name.clone();
+                let outcome = match pool
+                    .subject_scoped_get_prompt(&config, subject, request)
+                    .await
+                {
+                    Ok(result) => {
+                        let elapsed_ms = start.elapsed().as_millis();
+                        tracing::info!(
+                            surface = "mcp",
+                            service = "lab",
+                            action = "get_prompt",
+                            upstream = %config.name,
+                            elapsed_ms,
+                            "subject-scoped prompt proxy ok"
+                        );
+                        self.emit_dispatch_notification(
+                            &context,
+                            "lab",
+                            "get_prompt",
+                            elapsed_ms,
+                            DispatchLogOutcome::Success,
+                        )
+                        .await;
+                        Ok(result)
+                    }
+                    Err(message) => {
+                        let elapsed_ms = start.elapsed().as_millis();
+                        tracing::warn!(
+                            surface = "mcp",
+                            service = "lab",
+                            action = "get_prompt",
+                            upstream = %config.name,
+                            elapsed_ms,
+                            kind = "upstream_error",
+                            "subject-scoped prompt proxy failed"
+                        );
+                        self.emit_dispatch_notification(
+                            &context,
+                            "lab",
+                            "get_prompt",
+                            elapsed_ms,
+                            DispatchLogOutcome::Failure {
+                                level: LoggingLevel::Warning,
+                                kind: "upstream_error",
+                            },
+                        )
+                        .await;
+                        Err(ErrorData::invalid_params(
+                            format!("upstream prompt `{prompt_name}` failed: {message}"),
+                            None,
+                        ))
+                    }
+                };
+                return outcome;
+            }
+        }
+
         let elapsed_ms = start.elapsed().as_millis();
         tracing::warn!(
             surface = "mcp",
@@ -310,6 +420,10 @@ impl ServerHandler for LabMcpServer {
 
         if let Some(pool) = self.current_upstream_pool().await {
             resources.extend(pool.list_upstream_resources().await);
+            if let Some(subject) = self.request_subject(&context) {
+                let configs = self.oauth_upstream_configs().await;
+                resources.extend(pool.subject_scoped_resources(&configs, subject).await);
+            }
         }
 
         let elapsed_ms = start.elapsed().as_millis();
@@ -428,6 +542,67 @@ impl ServerHandler for LabMcpServer {
             return outcome;
         }
 
+        if let Some(subject) = self.request_subject(&context)
+            && let Some(pool) = self.current_upstream_pool().await
+            && let Some(upstream_name) = uri
+                .strip_prefix("lab://upstream/")
+                .and_then(|rest| rest.split('/').next())
+            && let Some(config) = self.oauth_upstream_config(upstream_name).await
+        {
+            let outcome = match pool
+                .subject_scoped_read_resource(&config, subject, uri)
+                .await
+            {
+                Ok(result) => {
+                    let elapsed_ms = start.elapsed().as_millis();
+                    tracing::info!(
+                        surface = "mcp",
+                        service = "lab",
+                        action = "read_resource",
+                        upstream = %config.name,
+                        resource_uri = %uri,
+                        elapsed_ms,
+                        "subject-scoped resource proxy ok"
+                    );
+                    self.emit_dispatch_notification(
+                        &context,
+                        "lab",
+                        "read_resource",
+                        elapsed_ms,
+                        DispatchLogOutcome::Success,
+                    )
+                    .await;
+                    Ok(result)
+                }
+                Err(message) => {
+                    let elapsed_ms = start.elapsed().as_millis();
+                    tracing::warn!(
+                        surface = "mcp",
+                        service = "lab",
+                        action = "read_resource",
+                        upstream = %config.name,
+                        resource_uri = %uri,
+                        elapsed_ms,
+                        kind = "upstream_error",
+                        "subject-scoped resource proxy failed"
+                    );
+                    self.emit_dispatch_notification(
+                        &context,
+                        "lab",
+                        "read_resource",
+                        elapsed_ms,
+                        DispatchLogOutcome::Failure {
+                            level: LoggingLevel::Warning,
+                            kind: "upstream_error",
+                        },
+                    )
+                    .await;
+                    Err(ErrorData::invalid_params(message, None))
+                }
+            };
+            return outcome;
+        }
+
         let json = if uri == "lab://catalog" {
             self.catalog_json().await
         } else if let Some(service) = uri
@@ -524,6 +699,22 @@ impl ServerHandler for LabMcpServer {
                     continue;
                 }
                 tools.push(ut.tool);
+            }
+            if let Some(subject) = self.request_subject(&context) {
+                for (_upstream_name, upstream_tools) in pool
+                    .subject_scoped_tools(&self.oauth_upstream_configs().await, subject)
+                    .await
+                {
+                    for ut in upstream_tools {
+                        let tool_name = ut.name.as_ref();
+                        if builtin_names.contains(&tool_name)
+                            || tools.iter().any(|tool| tool.name.as_ref() == tool_name)
+                        {
+                            continue;
+                        }
+                        tools.push(ut);
+                    }
+                }
             }
         }
 
@@ -820,6 +1011,105 @@ impl ServerHandler for LabMcpServer {
             }
         }
 
+        if let Some(subject) = self.request_subject(&context)
+            && let Some(pool) = self.current_upstream_pool().await
+        {
+            let configs = self.oauth_upstream_configs().await;
+            let mut owner = None;
+            for (upstream_name, tools) in pool.subject_scoped_tools(&configs, subject).await {
+                if tools.iter().any(|tool| tool.name.as_ref() == service) {
+                    owner = Some(upstream_name);
+                    break;
+                }
+            }
+
+            if let Some(upstream_name) = owner
+                && let Some(config) = configs
+                    .into_iter()
+                    .find(|config| config.name == upstream_name)
+            {
+                let mut upstream_params = CallToolRequestParams::new(service.clone());
+                upstream_params.arguments = raw_arguments;
+                match pool
+                    .subject_scoped_call_tool(&config, subject, upstream_params)
+                    .await
+                {
+                    Ok(result) => {
+                        let elapsed_ms = start.elapsed().as_millis();
+                        let (result, kind, counts_as_failure) =
+                            normalize_upstream_result(&service, upstream_action, result);
+                        let outcome = if counts_as_failure || kind != "ok" {
+                            tracing::warn!(
+                                surface = "mcp",
+                                service = upstream_name,
+                                action = upstream_action,
+                                elapsed_ms,
+                                kind,
+                                "upstream dispatch error"
+                            );
+                            DispatchLogOutcome::Failure {
+                                level: if counts_as_failure {
+                                    LoggingLevel::Error
+                                } else {
+                                    LoggingLevel::Warning
+                                },
+                                kind,
+                            }
+                        } else {
+                            tracing::info!(
+                                surface = "mcp",
+                                service = upstream_name,
+                                action = upstream_action,
+                                elapsed_ms,
+                                "upstream dispatch ok"
+                            );
+                            DispatchLogOutcome::Success
+                        };
+                        self.emit_dispatch_notification(
+                            &context,
+                            &service,
+                            upstream_action,
+                            elapsed_ms,
+                            outcome,
+                        )
+                        .await;
+                        return Ok(result);
+                    }
+                    Err(e) => {
+                        let elapsed_ms = start.elapsed().as_millis();
+                        tracing::warn!(
+                            surface = "mcp",
+                            service = upstream_name,
+                            action = upstream_action,
+                            elapsed_ms,
+                            kind = "upstream_error",
+                            "upstream dispatch error"
+                        );
+                        let envelope = build_error(
+                            &service,
+                            upstream_action,
+                            "upstream_error",
+                            &format!("upstream `{upstream_name}` call failed: {e}"),
+                        );
+                        self.emit_dispatch_notification(
+                            &context,
+                            &service,
+                            upstream_action,
+                            elapsed_ms,
+                            DispatchLogOutcome::Failure {
+                                level: LoggingLevel::Error,
+                                kind: "upstream_error",
+                            },
+                        )
+                        .await;
+                        return Ok(CallToolResult::error(vec![Content::text(
+                            envelope.to_string(),
+                        )]));
+                    }
+                }
+            }
+        }
+
         // Neither built-in nor upstream.
         let elapsed_ms = start.elapsed().as_millis();
         let err = anyhow::anyhow!("service `{service}` has no dispatcher wired");
@@ -838,11 +1128,32 @@ struct CatalogSnapshot {
 }
 
 impl LabMcpServer {
+    fn request_subject<'a>(&self, context: &'a RequestContext<RoleServer>) -> Option<&'a str> {
+        subject_from_extensions(&context.extensions)
+    }
+
     async fn current_upstream_pool(
         &self,
     ) -> Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>> {
         match &self.gateway_manager {
             Some(manager) => manager.current_pool().await,
+            None => None,
+        }
+    }
+
+    async fn oauth_upstream_configs(&self) -> Vec<crate::config::UpstreamConfig> {
+        match &self.gateway_manager {
+            Some(manager) => manager.oauth_upstream_configs().await,
+            None => Vec::new(),
+        }
+    }
+
+    async fn oauth_upstream_config(
+        &self,
+        upstream_name: &str,
+    ) -> Option<crate::config::UpstreamConfig> {
+        match &self.gateway_manager {
+            Some(manager) => manager.oauth_upstream_config(upstream_name).await,
             None => None,
         }
     }
@@ -901,21 +1212,19 @@ impl LabMcpServer {
         }
 
         let catalog = crate::catalog::build_catalog(&self.registry);
-        let mut entry = catalog
-            .services
-            .into_iter()
-            .find(|entry| entry.name == service)
-            .ok_or_else(|| anyhow::anyhow!("unknown service: {service}"))?;
+        let mut actions =
+            crate::catalog::actions_for(&catalog, service, crate::catalog::Transport::Http);
+        if actions.is_empty() && !catalog.services.iter().any(|entry| entry.name == service) {
+            anyhow::bail!("unknown service: {service}");
+        }
 
         if let Some(allowed_actions) = self.allowed_mcp_actions(service).await
             && !allowed_actions.is_empty()
         {
-            entry
-                .actions
-                .retain(|action| allowed_actions.contains(&action.name));
+            actions.retain(|action| allowed_actions.contains(&action.name));
         }
 
-        Ok(serde_json::to_value(entry.actions)?)
+        Ok(serde_json::to_value(actions)?)
     }
 
     async fn snapshot_catalog(&self) -> CatalogSnapshot {
@@ -998,6 +1307,14 @@ impl LabMcpServer {
         *guard = alive;
         guard.extend(added_since_snapshot);
     }
+}
+
+fn subject_from_extensions(extensions: &rmcp::model::Extensions) -> Option<&str> {
+    let parts = extensions.get::<Parts>()?;
+    parts
+        .extensions
+        .get::<crate::api::oauth::AuthContext>()
+        .map(|auth| auth.sub.as_str())
 }
 
 /// Format the result of a dispatch operation into an MCP `CallToolResult`.
@@ -1496,5 +1813,28 @@ mod tests {
                 .iter()
                 .any(|action| action["name"] == "session.list")
         );
+    }
+
+    #[test]
+    fn server_reads_subject_scoped_upstream_pool_from_request_extensions() {
+        let mut parts = axum::http::Request::new(()).into_parts().0;
+        parts.extensions.insert(crate::api::oauth::AuthContext {
+            sub: "alice".to_string(),
+            scopes: vec!["lab".to_string()],
+            issuer: "https://lab.example.com".to_string(),
+            via_session: true,
+            csrf_token: None,
+            email: Some("alice@example.com".to_string()),
+        });
+
+        let mut extensions = rmcp::model::Extensions::new();
+        extensions.insert(parts);
+
+        assert_eq!(super::subject_from_extensions(&extensions), Some("alice"));
+    }
+
+    #[test]
+    fn upstream_subject_resolution_self_test_passes_for_plan_a() {
+        super::verify_upstream_subject_resolution_support().expect("self-test");
     }
 }

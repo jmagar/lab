@@ -116,6 +116,110 @@ pub struct UpstreamConfig {
     /// Optional allowlist of tool names/patterns to expose from this upstream.
     #[serde(default)]
     pub expose_tools: Option<Vec<String>>,
+    /// Optional outbound OAuth configuration. Mutually exclusive with
+    /// `bearer_token_env` — setting both is a config error.
+    #[serde(default)]
+    pub oauth: Option<UpstreamOauthConfig>,
+}
+
+impl UpstreamConfig {
+    /// Validate mutually-exclusive auth shapes. `bearer_token_env` and `oauth`
+    /// both configured is a config error.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.bearer_token_env.is_some() && self.oauth.is_some() {
+            return Err(ConfigError::ConflictingAuth {
+                name: self.name.clone(),
+            });
+        }
+        if self.oauth.is_some() && self.url.is_none() {
+            return Err(ConfigError::MissingOauthUrl {
+                name: self.name.clone(),
+            });
+        }
+        if let Some(raw) = self.url.as_deref() {
+            let canonical =
+                canonicalize_upstream_url(raw).map_err(|_| ConfigError::InvalidUrl {
+                    name: self.name.clone(),
+                    url: raw.to_string(),
+                })?;
+            // Only http:// and https:// are allowed for upstream MCP servers.
+            // Other schemes (file://, ftp://, etc.) are rejected at validation time
+            // rather than discovered at connection time.
+            let scheme = canonical.split("://").next().unwrap_or("");
+            if scheme != "http" && scheme != "https" {
+                return Err(ConfigError::InvalidUrl {
+                    name: self.name.clone(),
+                    url: raw.to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Return the RFC 3986 §6.2.2-canonical form of `url` used as the OAuth
+    /// `resource` indicator. The canonical string is the single source of truth
+    /// for the `resource` parameter sent to authorize, token, and (where rmcp
+    /// supports it) refresh endpoints. Returns `None` when no URL is set.
+    pub fn canonical_url(&self) -> Option<Result<String, ConfigError>> {
+        self.url.as_deref().map(|raw| {
+            canonicalize_upstream_url(raw).map_err(|_| ConfigError::InvalidUrl {
+                name: self.name.clone(),
+                url: raw.to_string(),
+            })
+        })
+    }
+}
+
+/// Canonicalize an upstream URL per RFC 3986 §6.2.2 (scheme/host lowercase,
+/// default port stripped, dot-segment removal, percent-encoding case
+/// normalization). Trailing slashes are preserved — they are semantically
+/// significant in HTTP paths.
+pub fn canonicalize_upstream_url(raw: &str) -> Result<String, url::ParseError> {
+    let parsed = url::Url::parse(raw.trim())?;
+    Ok(parsed.to_string())
+}
+
+/// Config-layer errors surfaced by `UpstreamConfig::validate` and sibling helpers.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    #[error("upstream '{name}' has both bearer_token_env and oauth configured — pick one")]
+    ConflictingAuth { name: String },
+    #[error("upstream '{name}' has invalid url: {url}")]
+    InvalidUrl { name: String, url: String },
+    #[error("upstream '{name}' has oauth configured but no url — oauth requires an HTTP url")]
+    MissingOauthUrl { name: String },
+}
+
+/// Outbound OAuth configuration for an upstream MCP server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpstreamOauthConfig {
+    pub mode: UpstreamOauthMode,
+    pub registration: UpstreamOauthRegistration,
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
+}
+
+/// Outbound OAuth mode. Currently only `authorization_code_pkce` is supported.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpstreamOauthMode {
+    AuthorizationCodePkce,
+}
+
+/// Outbound OAuth client-registration strategy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "strategy", rename_all = "snake_case")]
+pub enum UpstreamOauthRegistration {
+    ClientMetadataDocument {
+        url: String,
+    },
+    Preregistered {
+        client_id: String,
+        #[serde(default)]
+        client_secret_env: Option<String>,
+    },
+    Dynamic,
 }
 
 /// Persisted state for a Lab-backed virtual server shown in the gateway.
@@ -434,8 +538,17 @@ pub fn load_toml(candidates: &[PathBuf]) -> Result<LabConfig> {
     for path in candidates {
         match std::fs::read_to_string(path) {
             Ok(raw) => {
-                return toml::from_str::<LabConfig>(&raw)
-                    .with_context(|| format!("failed to parse {}", path.display()));
+                let cfg = toml::from_str::<LabConfig>(&raw)
+                    .with_context(|| format!("failed to parse {}", path.display()))?;
+                // Validate all upstream configs eagerly at startup so that
+                // invalid configuration (conflicting auth, bad URL scheme, etc.)
+                // is discovered immediately rather than at first OAuth attempt.
+                for upstream in &cfg.upstream {
+                    upstream
+                        .validate()
+                        .with_context(|| format!("invalid upstream config '{}'", upstream.name))?;
+                }
+                return Ok(cfg);
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
@@ -1125,5 +1238,155 @@ assets_dir = "/tmp/labby"
             env_is_up_to_date(&path, &[cred]),
             "quoted value in .env should match raw secret"
         );
+    }
+
+    #[test]
+    fn upstream_oauth_pkce_parses() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.oauth]
+mode = "authorization_code_pkce"
+scopes = ["mcp"]
+
+[upstream.oauth.registration]
+strategy = "client_metadata_document"
+url = "https://acme.example.com/.well-known/oauth-client"
+"#,
+        )
+        .expect("pkce config should parse");
+
+        let upstream = &cfg.upstream[0];
+        let oauth = upstream.oauth.as_ref().expect("oauth present");
+        assert!(matches!(
+            oauth.mode,
+            UpstreamOauthMode::AuthorizationCodePkce
+        ));
+        assert_eq!(oauth.scopes.as_deref(), Some(&["mcp".to_string()][..]));
+        match &oauth.registration {
+            UpstreamOauthRegistration::ClientMetadataDocument { url } => {
+                assert_eq!(url, "https://acme.example.com/.well-known/oauth-client");
+            }
+            other => panic!("unexpected registration: {other:?}"),
+        }
+        upstream.validate().expect("validate ok");
+    }
+
+    #[test]
+    fn upstream_oauth_preregistered_parses() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.oauth]
+mode = "authorization_code_pkce"
+
+[upstream.oauth.registration]
+strategy = "preregistered"
+client_id = "my-client"
+"#,
+        )
+        .expect("preregistered config should parse");
+
+        let upstream = &cfg.upstream[0];
+        let oauth = upstream.oauth.as_ref().unwrap();
+        match &oauth.registration {
+            UpstreamOauthRegistration::Preregistered {
+                client_id,
+                client_secret_env,
+            } => {
+                assert_eq!(client_id, "my-client");
+                assert!(client_secret_env.is_none());
+            }
+            other => panic!("unexpected registration: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn upstream_oauth_preregistered_with_secret_parses() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.oauth]
+mode = "authorization_code_pkce"
+
+[upstream.oauth.registration]
+strategy = "preregistered"
+client_id = "my-client"
+client_secret_env = "ACME_CLIENT_SECRET"
+"#,
+        )
+        .expect("preregistered+secret config should parse");
+
+        let upstream = &cfg.upstream[0];
+        let oauth = upstream.oauth.as_ref().unwrap();
+        match &oauth.registration {
+            UpstreamOauthRegistration::Preregistered {
+                client_id,
+                client_secret_env,
+            } => {
+                assert_eq!(client_id, "my-client");
+                assert_eq!(client_secret_env.as_deref(), Some("ACME_CLIENT_SECRET"));
+            }
+            other => panic!("unexpected registration: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn upstream_oauth_dynamic_parses() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.oauth]
+mode = "authorization_code_pkce"
+
+[upstream.oauth.registration]
+strategy = "dynamic"
+"#,
+        )
+        .expect("dynamic config should parse");
+
+        let upstream = &cfg.upstream[0];
+        let oauth = upstream.oauth.as_ref().unwrap();
+        assert!(matches!(
+            oauth.registration,
+            UpstreamOauthRegistration::Dynamic
+        ));
+    }
+
+    #[test]
+    fn upstream_oauth_conflicts_with_bearer_token_env() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+bearer_token_env = "ACME_TOKEN"
+
+[upstream.oauth]
+mode = "authorization_code_pkce"
+
+[upstream.oauth.registration]
+strategy = "dynamic"
+"#,
+        )
+        .expect("config parses; validation is a separate step");
+
+        let err = cfg.upstream[0].validate().unwrap_err();
+        match err {
+            ConfigError::ConflictingAuth { name } => assert_eq!(name, "acme"),
+            other => panic!("expected ConflictingAuth, got {other:?}"),
+        }
     }
 }
