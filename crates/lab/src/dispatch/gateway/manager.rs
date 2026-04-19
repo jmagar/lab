@@ -1695,6 +1695,7 @@ mod tests {
                 ],
                 proxy_resources: false,
                 expose_tools: None,
+                oauth: None,
             }])
             .await;
 
@@ -1721,6 +1722,7 @@ mod tests {
             args: Vec::new(),
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -1741,6 +1743,7 @@ mod tests {
             args: Vec::new(),
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -1765,6 +1768,7 @@ mod tests {
             ],
             proxy_resources: false,
             expose_tools: None,
+            oauth: None,
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -1866,6 +1870,7 @@ mod tests {
                     args: Vec::new(),
                     proxy_resources: false,
                     expose_tools: None,
+                    oauth: None,
                 },
                 Some("ghp_secret".to_string()),
             )
@@ -1874,12 +1879,12 @@ mod tests {
 
         assert_eq!(
             gateway.config.bearer_token_env.as_deref(),
-            Some("GITHUB_AUTH_HEADER")
+            Some("LAB_GW_GITHUB_AUTH_HEADER")
         );
 
         let values = read_env_values(&dir.path().join(".env")).expect("read env");
         assert_eq!(
-            values.get("GITHUB_AUTH_HEADER").map(String::as_str),
+            values.get("LAB_GW_GITHUB_AUTH_HEADER").map(String::as_str),
             Some("Bearer ghp_secret")
         );
     }
@@ -2264,6 +2269,8 @@ mod tests {
             exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
             prompt_count: 3,
             resource_count: 2,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
             prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
                 consecutive_failures: 1,
@@ -2297,6 +2304,7 @@ mod tests {
                 args: Vec::new(),
                 proxy_resources: true,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .await;
@@ -2315,6 +2323,8 @@ mod tests {
             exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
             prompt_count: 1,
             resource_count: 1,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
             prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
                 consecutive_failures: 1,
@@ -2351,6 +2361,7 @@ mod tests {
                 args: Vec::new(),
                 proxy_resources: true,
                 expose_tools: None,
+                oauth: None,
             },
         )
         .await;
@@ -2369,6 +2380,7 @@ mod tests {
             args: Vec::new(),
             proxy_resources: true,
             expose_tools: None,
+            oauth: None,
         };
         let upstream_name: Arc<str> = Arc::from("partial-upstream");
         let entry = crate::dispatch::upstream::types::UpstreamEntry {
@@ -2377,6 +2389,8 @@ mod tests {
             exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
             prompt_count: 4,
             resource_count: 2,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
             prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
             resource_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,

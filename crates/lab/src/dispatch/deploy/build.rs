@@ -202,8 +202,20 @@ mod tests {
 
     #[test]
     fn windows_target_appends_exe_suffix() {
-        let p = expected_artifact_path_for("lab", "x86_64-pc-windows-msvc");
-        assert!(p.ends_with("target/release/lab.exe"), "got {}", p.display());
+        let host = detect_host_triple();
+        let target = "x86_64-pc-windows-msvc";
+        let p = expected_artifact_path_for("lab", target);
+        if host == target {
+            // Running on Windows: no triple in path
+            assert!(p.ends_with("target/release/lab.exe"), "got {}", p.display());
+        } else {
+            // Cross-compiling: triple is included in path
+            assert!(
+                p.ends_with("target/x86_64-pc-windows-msvc/release/lab.exe"),
+                "got {}",
+                p.display()
+            );
+        }
     }
 
     #[test]

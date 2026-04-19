@@ -191,6 +191,11 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
         });
     }
 
+    // Validate bearer_token_env if present — reject raw token values.
+    if let Some(env_name) = &upstream.bearer_token_env {
+        validate_bearer_token_env_name(env_name)?;
+    }
+
     // Reject mutually-exclusive auth shapes and invalid URLs. Each ConfigError
     // variant carries its own param attribution so the caller sees the right field.
     upstream.validate().map_err(|e| match e {
@@ -714,11 +719,11 @@ args = ["server.js"]
     fn default_gateway_bearer_env_name_normalizes_gateway_names() {
         assert_eq!(
             default_gateway_bearer_env_name("github"),
-            "GITHUB_AUTH_HEADER"
+            "LAB_GW_GITHUB_AUTH_HEADER"
         );
         assert_eq!(
             default_gateway_bearer_env_name("github-copilot remote"),
-            "GITHUB_COPILOT_REMOTE_AUTH_HEADER"
+            "LAB_GW_GITHUB_COPILOT_REMOTE_AUTH_HEADER"
         );
     }
 }
