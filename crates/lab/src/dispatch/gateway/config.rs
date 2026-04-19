@@ -255,6 +255,11 @@ pub(crate) fn validate_bearer_token_env_name(value: &str) -> Result<(), ToolErro
     Ok(())
 }
 
+/// Derive a default bearer-token env var name from a gateway name.
+///
+/// Matches the TS `defaultGatewayBearerEnvName` helper in
+/// `apps/gateway-admin/lib/gateway-env.ts`: always prefixes with `LAB_GW_`
+/// so generated names are scoped and cannot collide with arbitrary system vars.
 pub(crate) fn default_gateway_bearer_env_name(name: &str) -> String {
     let normalized = name
         .trim()
@@ -272,14 +277,12 @@ pub(crate) fn default_gateway_bearer_env_name(name: &str) -> String {
         .collect::<Vec<_>>()
         .join("_");
 
-    let base = if normalized.is_empty() {
+    let inner = if normalized.is_empty() {
         "GATEWAY".to_string()
-    } else if normalized.starts_with(|ch: char| ch.is_ascii_digit()) {
-        format!("LAB_GW_{normalized}")
     } else {
         normalized
     };
-    format!("{base}_AUTH_HEADER")
+    format!("LAB_GW_{inner}_AUTH_HEADER")
 }
 
 fn looks_like_raw_bearer_token(value: &str) -> bool {

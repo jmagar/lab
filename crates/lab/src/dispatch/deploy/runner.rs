@@ -829,15 +829,19 @@ async fn rollback_one_host<I: HostIo + 'static>(
         );
     }
 
-    // Restart (best effort — rollback considers itself successful if the
-    // binary was swapped, regardless of restart outcome the caller can see
-    // the error via verify).
     let t = Instant::now();
-    if let Err(e) = restart(io, unit, scope).await {
+    if let Err(e) = restart(io.clone(), unit, scope).await {
         timings.insert("rollback.restart".into(), t.elapsed().as_millis());
         return host_err(&host, DeployStage::Restart, e, timings, false);
     }
     timings.insert("rollback.restart".into(), t.elapsed().as_millis());
+
+    let t = Instant::now();
+    if let Err(e) = verify(io, remote_path).await {
+        timings.insert("rollback.verify".into(), t.elapsed().as_millis());
+        return host_err(&host, DeployStage::Verify, e, timings, false);
+    }
+    timings.insert("rollback.verify".into(), t.elapsed().as_millis());
 
     DeployHostResult {
         host,
@@ -870,7 +874,8 @@ fn err_has_sentinel_host(err: &DeployError) -> bool {
         DeployError::ValidationFailed { .. }
         | DeployError::BuildFailed { .. }
         | DeployError::PartialFailure { .. }
-        | DeployError::AuthFailed { .. } => true,
+        | DeployError::AuthFailed { .. }
+        | DeployError::Api(_) => true,
     }
 }
 

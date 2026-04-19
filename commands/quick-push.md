@@ -62,7 +62,7 @@ If a `CHANGELOG.md` exists in the repo root:
 - Stage all changes with `git add .`
 - Create a meaningful commit message following the repo's conventions
 - Always include Claude's co-authorship trailer:
-  ```
+  ```text
   Co-authored-by: Claude <noreply@anthropic.com>
   ```
 - Push to remote:

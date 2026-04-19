@@ -32,7 +32,7 @@ Path rules:
 
 Start the file with a metadata block populated from the injected context above:
 
-```
+```yaml
 date: YYYY-MM-DD HH:MM:SS EST
 repo: <remote URL>
 branch: <current branch>

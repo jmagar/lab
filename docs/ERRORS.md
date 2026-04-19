@@ -270,7 +270,8 @@ surfaced via `DeployError::kind()` in `lab-apis/src/deploy/error.rs`:
 
 | `kind` | HTTP status | Meaning |
 |--------|-------------|---------|
-| `validation_failed` | 422 | Bad input (host alias, remote_path allowlist, etc.). Shares the standard `validation_failed → 422` mapping. |
+| `validation_failed` | 422 | Bad input (host alias, remote_path allowlist, etc.). _(shared kind)_ |
+| `auth_failed` | 401 | `LAB_DEPLOY_TOKEN` missing or headless `confirm: true` rejected. _(shared kind)_ |
 | `ssh_unreachable` | 502 | SSH connection or auth failed for a target. |
 | `build_failed` | 502 | Local `cargo build --release --all-features -p lab` failed. |
 | `preflight_failed` | 502 | Remote arch probe, writable-dir check, or sha256 probe failed. |
@@ -282,7 +283,6 @@ surfaced via `DeployError::kind()` in `lab-apis/src/deploy/error.rs`:
 | `conflict` | 409 | Another deploy is in progress for the same host. |
 | `arch_mismatch` | 502 | Remote `uname -m` differs from local build triple. |
 | `integrity_mismatch` | 502 | Remote sha256 of staged artifact differs from local. |
-| `auth_failed` | 401 | `LAB_DEPLOY_TOKEN` missing or headless `confirm: true` rejected. Shares the standard `auth_failed → 401` mapping. |
 
 The deploy-specific kinds (`ssh_unreachable`, `build_failed`, `preflight_failed`,
 `transfer_failed`, `install_failed`, `restart_failed`, `verify_failed`,

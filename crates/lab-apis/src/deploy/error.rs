@@ -6,6 +6,8 @@
 
 use thiserror::Error;
 
+use crate::core::ApiError;
+
 /// Errors surfaced by the deploy service.
 ///
 /// The `redacted_message()` helper is what escapes to the MCP/HTTP envelope;
@@ -55,6 +57,9 @@ pub enum DeployError {
 
     #[error("auth_failed: {reason}")]
     AuthFailed { reason: String },
+
+    #[error(transparent)]
+    Api(#[from] ApiError),
 }
 
 impl DeployError {
@@ -75,6 +80,7 @@ impl DeployError {
             Self::ArchMismatch { .. } => "arch_mismatch",
             Self::IntegrityMismatch { .. } => "integrity_mismatch",
             Self::AuthFailed { .. } => "auth_failed",
+            Self::Api(e) => e.kind(),
         }
     }
 
@@ -100,6 +106,7 @@ impl DeployError {
             }
             Self::IntegrityMismatch { .. } => "artifact integrity check failed on target".into(),
             Self::AuthFailed { .. } => "authentication failed".into(),
+            Self::Api(e) => e.to_string(),
         }
     }
 }
@@ -191,6 +198,10 @@ mod tests {
                     reason: "token".into(),
                 },
                 "auth_failed",
+            ),
+            (
+                DeployError::Api(ApiError::Internal("sdk failure".into())),
+                "internal_error",
             ),
         ] {
             assert_eq!(err.kind(), expected);

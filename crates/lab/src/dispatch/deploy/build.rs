@@ -36,22 +36,27 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
         return Err(DeployError::BuildFailed { reason: tail });
     }
     let path = expected_artifact_path("lab");
-    let metadata = std::fs::metadata(&path).map_err(|e| DeployError::BuildFailed {
-        reason: format!("stat artifact: {e}"),
-    })?;
-    let sha256 = tokio::task::spawn_blocking({
+    // Stat + sha256 + host-triple detection are all blocking I/O or subprocess
+    // calls; run them inside spawn_blocking to avoid stalling the async runtime.
+    let (metadata, sha256, target_triple) = tokio::task::spawn_blocking({
         let p = path.clone();
-        move || sha256_file_blocking(&p)
+        move || -> Result<_, DeployError> {
+            let meta = std::fs::metadata(&p).map_err(|e| DeployError::BuildFailed {
+                reason: format!("stat artifact: {e}"),
+            })?;
+            let sha256 = sha256_file_blocking(&p)?;
+            Ok((meta, sha256, detect_host_triple()))
+        }
     })
     .await
     .map_err(|e| DeployError::BuildFailed {
-        reason: format!("sha256 join: {e}"),
+        reason: format!("post-build join: {e}"),
     })??;
     Ok(BuildOutcome {
         path,
         sha256,
         size_bytes: metadata.len(),
-        target_triple: detect_host_triple(),
+        target_triple,
     })
 }
 

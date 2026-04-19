@@ -1039,7 +1039,13 @@ fn empty_upstream_summary() -> UpstreamCachedSummary {
 }
 
 fn is_nonessential_capability_error(message: &str) -> bool {
-    message.contains("Method not found") || message.contains("-32601")
+    // Only suppress the well-known optional-capability discovery failures
+    // (prompts/resources list not implemented). Broad "-32601" / "Method not
+    // found" matching would also hide real tool-call or handshake failures.
+    message.starts_with("failed to list prompts from upstream:")
+        || message.starts_with("failed to list resources from upstream:")
+        || message.starts_with("does not implement MCP prompts discovery")
+        || message.starts_with("does not implement MCP resources discovery")
 }
 
 fn operator_visible_upstream_error(message: Option<String>) -> Option<String> {
