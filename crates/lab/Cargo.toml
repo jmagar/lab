@@ -124,6 +124,10 @@ deploy      = ["lab-apis/deploy", "dep:dashmap", "dep:hex", "dep:regex"]
 # filesystem audits only and has no external HTTP service to wrap.
 lab-admin   = []
 
+# Expose test-only helpers (RecordingIo, orchestrate_with_io) to external
+# integration-test crates.  Never enable in production builds.
+test-utils  = []
+
 all         = [
   "lab-apis/all",
   "radarr",

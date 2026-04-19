@@ -57,6 +57,8 @@ use super::params;
 const DEFAULT_LOCK_TIMEOUT_SECS: u64 = 300;
 
 /// Surface-neutral deploy orchestrator used by CLI and MCP adapters.
+// Kept for external test implementations; not yet used in production surface code.
+#[allow(dead_code)]
 pub trait DeployRunner: Send + Sync {
     async fn plan(&self, req: DeployRequest) -> Result<DeployPlan, ToolError>;
     async fn run(&self, req: DeployRequest) -> Result<DeployRunSummary, ToolError>;
@@ -926,6 +928,10 @@ impl DefaultRunner {
 /// Takes an `io_factory` that produces a `HostIo` for each host, plus the
 /// stage knobs from the job. Tests use this to inject `RecordingIo`; the
 /// production path uses `SshHostIo` via `run_single_job`.
+///
+/// Gated to test and `test-utils` builds only — not part of the public
+/// production API.
+#[cfg(any(test, feature = "test-utils"))]
 pub async fn orchestrate_with_io<I, F>(
     hosts: Vec<(String, Option<String>, Option<ServiceScope>, String)>,
     build: Arc<BuildOutcome>,
