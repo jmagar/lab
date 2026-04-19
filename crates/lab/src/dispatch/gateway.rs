@@ -3,6 +3,7 @@ mod client;
 mod config;
 mod dispatch;
 pub mod manager;
+pub mod oauth;
 mod params;
 mod service_catalog;
 pub(crate) mod types;

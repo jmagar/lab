@@ -9,8 +9,10 @@ use tracing::warn;
 use crate::error::AuthError;
 use crate::types::{
     AuthorizationCodeRow, AuthorizationRequestRow, BrowserLoginStateRow, BrowserSessionRow,
-    RefreshTokenRow, RegisteredClient,
+    RefreshTokenRow, RegisteredClient, UpstreamOauthCredentialRow, UpstreamOauthStateRow,
 };
+
+const UPSTREAM_OAUTH_STATE_MAX_TTL_SECS: i64 = 600;
 use crate::util::{ensure_restrictive_permissions, now_unix, set_restrictive_permissions};
 
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
@@ -393,8 +395,9 @@ impl SqliteStore {
         .await
     }
 
-    /// Delete expired rows from `authorization_requests`, `authorization_codes`, and
-    /// `refresh_tokens`. Returns the total number of deleted rows.
+    /// Delete expired rows from all short-lived tables. Also drops upstream OAuth
+    /// credential rows whose access token has expired AND have no refresh token
+    /// available for re-use (SEC-9). Returns the total number of deleted rows.
     pub async fn cleanup_expired(&self) -> Result<u64, AuthError> {
         let now = now_unix();
         self.with_conn(move |conn| {
@@ -414,7 +417,249 @@ impl SqliteStore {
                     .map_err(sqlite_error)?;
                 total += deleted as u64;
             }
+            let deleted = conn
+                .execute(
+                    "DELETE FROM upstream_oauth_state WHERE expires_at <= ?1",
+                    params![now],
+                )
+                .map_err(sqlite_error)?;
+            total += deleted as u64;
+            let deleted = conn
+                .execute(
+                    "DELETE FROM upstream_oauth_credentials
+                     WHERE access_token_expires_at <= ?1 AND refresh_token_present = 0",
+                    params![now],
+                )
+                .map_err(sqlite_error)?;
+            total += deleted as u64;
             Ok(total)
+        })
+        .await
+    }
+
+    pub async fn upsert_upstream_oauth_credentials(
+        &self,
+        row: UpstreamOauthCredentialRow,
+    ) -> Result<(), AuthError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO upstream_oauth_credentials (
+                    upstream_name, subject, client_id, granted_scopes_json,
+                    token_blob, token_blob_nonce, token_received_at,
+                    access_token_expires_at, refresh_token_present
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT(upstream_name, subject) DO UPDATE SET
+                    client_id = excluded.client_id,
+                    granted_scopes_json = excluded.granted_scopes_json,
+                    token_blob = excluded.token_blob,
+                    token_blob_nonce = excluded.token_blob_nonce,
+                    token_received_at = excluded.token_received_at,
+                    access_token_expires_at = excluded.access_token_expires_at,
+                    refresh_token_present = excluded.refresh_token_present",
+                params![
+                    row.upstream_name,
+                    row.subject,
+                    row.client_id,
+                    row.granted_scopes_json,
+                    row.token_blob,
+                    row.token_blob_nonce,
+                    row.token_received_at,
+                    row.access_token_expires_at,
+                    i64::from(row.refresh_token_present),
+                ],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_upstream_oauth_credentials(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+    ) -> Result<Option<UpstreamOauthCredentialRow>, AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT upstream_name, subject, client_id, granted_scopes_json,
+                        token_blob, token_blob_nonce, token_received_at,
+                        access_token_expires_at, refresh_token_present
+                 FROM upstream_oauth_credentials
+                 WHERE upstream_name = ?1 AND subject = ?2",
+                params![upstream_name, subject],
+                row_to_upstream_oauth_credentials,
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
+    pub async fn delete_upstream_oauth_credentials(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+    ) -> Result<(), AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM upstream_oauth_credentials
+                 WHERE upstream_name = ?1 AND subject = ?2",
+                params![upstream_name, subject],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn save_upstream_oauth_state(
+        &self,
+        row: UpstreamOauthStateRow,
+    ) -> Result<(), AuthError> {
+        if row.expires_at <= row.created_at
+            || row.expires_at - row.created_at > UPSTREAM_OAUTH_STATE_MAX_TTL_SECS
+        {
+            return Err(AuthError::InvalidGrant(
+                "state TTL exceeds 600s".to_string(),
+            ));
+        }
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO upstream_oauth_state (
+                    upstream_name, subject, csrf_token, pkce_verifier, created_at, expires_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    row.upstream_name,
+                    row.subject,
+                    row.csrf_token,
+                    row.pkce_verifier,
+                    row.created_at,
+                    row.expires_at,
+                ],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_upstream_oauth_state_subject(
+        &self,
+        upstream_name: &str,
+        csrf_token: &str,
+        now: i64,
+    ) -> Result<Option<String>, AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let csrf_token = csrf_token.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT subject
+                 FROM upstream_oauth_state
+                 WHERE upstream_name = ?1
+                   AND csrf_token = ?2
+                   AND expires_at > ?3",
+                params![upstream_name, csrf_token, now],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
+    /// Atomic take-once via `DELETE ... RETURNING`.
+    pub async fn take_upstream_oauth_state(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+        csrf_token: &str,
+        now: i64,
+    ) -> Result<Option<UpstreamOauthStateRow>, AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        let csrf_token = csrf_token.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "DELETE FROM upstream_oauth_state
+                 WHERE upstream_name = ?1
+                   AND subject = ?2
+                   AND csrf_token = ?3
+                   AND expires_at > ?4
+                 RETURNING upstream_name, subject, csrf_token, pkce_verifier, created_at, expires_at",
+                params![upstream_name, subject, csrf_token, now],
+                row_to_upstream_oauth_state,
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
+    pub async fn save_dynamic_client_registration(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+        client_id: &str,
+    ) -> Result<(), AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        let client_id = client_id.to_string();
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO upstream_oauth_dynamic_clients (upstream_name, subject, client_id, created_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(upstream_name, subject) DO UPDATE SET
+                    client_id = excluded.client_id,
+                    created_at = excluded.created_at",
+                params![upstream_name, subject, client_id, now],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_dynamic_client_registration(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+    ) -> Result<Option<String>, AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT client_id
+                 FROM upstream_oauth_dynamic_clients
+                 WHERE upstream_name = ?1 AND subject = ?2",
+                params![upstream_name, subject],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
+    pub async fn delete_dynamic_client_registration(
+        &self,
+        upstream_name: &str,
+        subject: &str,
+    ) -> Result<(), AuthError> {
+        let upstream_name = upstream_name.to_string();
+        let subject = subject.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM upstream_oauth_dynamic_clients
+                 WHERE upstream_name = ?1 AND subject = ?2",
+                params![upstream_name, subject],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
         })
         .await
     }
@@ -524,7 +769,35 @@ fn open_connection(path: &Path) -> Result<Connection, AuthError> {
             provider_code_verifier TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL
-        );",
+        );
+        CREATE TABLE IF NOT EXISTS upstream_oauth_credentials (
+            upstream_name             TEXT NOT NULL,
+            subject                   TEXT NOT NULL,
+            client_id                 TEXT NOT NULL,
+            granted_scopes_json       TEXT NOT NULL,
+            token_blob                BLOB NOT NULL,
+            token_blob_nonce          BLOB NOT NULL,
+            token_received_at         INTEGER NOT NULL,
+            access_token_expires_at   INTEGER NOT NULL,
+            refresh_token_present     INTEGER NOT NULL,
+            PRIMARY KEY (upstream_name, subject)
+        ) WITHOUT ROWID;
+        CREATE TABLE IF NOT EXISTS upstream_oauth_state (
+            upstream_name   TEXT NOT NULL,
+            subject         TEXT NOT NULL,
+            csrf_token      TEXT NOT NULL,
+            pkce_verifier   TEXT NOT NULL,
+            created_at      INTEGER NOT NULL,
+            expires_at      INTEGER NOT NULL,
+            PRIMARY KEY (upstream_name, subject, csrf_token)
+        ) WITHOUT ROWID;
+        CREATE TABLE IF NOT EXISTS upstream_oauth_dynamic_clients (
+            upstream_name   TEXT NOT NULL,
+            subject         TEXT NOT NULL,
+            client_id       TEXT NOT NULL,
+            created_at      INTEGER NOT NULL,
+            PRIMARY KEY (upstream_name, subject)
+        ) WITHOUT ROWID;",
     )
     .map_err(sqlite_error)?;
 
@@ -621,11 +894,42 @@ fn row_to_browser_login_state(row: &rusqlite::Row<'_>) -> rusqlite::Result<Brows
     })
 }
 
+fn row_to_upstream_oauth_credentials(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<UpstreamOauthCredentialRow> {
+    let refresh_token_present: i64 = row.get(8)?;
+    Ok(UpstreamOauthCredentialRow {
+        upstream_name: row.get(0)?,
+        subject: row.get(1)?,
+        client_id: row.get(2)?,
+        granted_scopes_json: row.get(3)?,
+        token_blob: row.get(4)?,
+        token_blob_nonce: row.get(5)?,
+        token_received_at: row.get(6)?,
+        access_token_expires_at: row.get(7)?,
+        refresh_token_present: refresh_token_present != 0,
+    })
+}
+
+fn row_to_upstream_oauth_state(row: &rusqlite::Row<'_>) -> rusqlite::Result<UpstreamOauthStateRow> {
+    Ok(UpstreamOauthStateRow {
+        upstream_name: row.get(0)?,
+        subject: row.get(1)?,
+        csrf_token: row.get(2)?,
+        pkce_verifier: row.get(3)?,
+        created_at: row.get(4)?,
+        expires_at: row.get(5)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use crate::types::{AuthorizationCodeRow, BrowserSessionRow, RefreshTokenRow};
+    use crate::types::{
+        AuthorizationCodeRow, BrowserSessionRow, RefreshTokenRow, UpstreamOauthCredentialRow,
+        UpstreamOauthStateRow,
+    };
 
     use crate::util::now_unix;
 
@@ -824,6 +1128,225 @@ mod tests {
         assert_eq!(fetched.session_id, row.session_id);
         assert_eq!(fetched.subject, row.subject);
         assert_eq!(fetched.csrf_token, row.csrf_token);
+    }
+
+    fn sample_upstream_credentials() -> UpstreamOauthCredentialRow {
+        let now = now_unix();
+        UpstreamOauthCredentialRow {
+            upstream_name: "acme".to_string(),
+            subject: "alice".to_string(),
+            client_id: "client-xyz".to_string(),
+            granted_scopes_json: "[\"mcp\"]".to_string(),
+            token_blob: vec![1, 2, 3, 4],
+            token_blob_nonce: vec![0u8; 12],
+            token_received_at: now,
+            access_token_expires_at: now + 3600,
+            refresh_token_present: true,
+        }
+    }
+
+    fn sample_upstream_state() -> UpstreamOauthStateRow {
+        let now = now_unix();
+        UpstreamOauthStateRow {
+            upstream_name: "acme".to_string(),
+            subject: "alice".to_string(),
+            csrf_token: "csrf-1".to_string(),
+            pkce_verifier: "verifier-1".to_string(),
+            created_at: now,
+            expires_at: now + 300,
+        }
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_upsert_upstream_oauth_credentials_round_trip() {
+        let store = temp_store().await;
+        let row = sample_upstream_credentials();
+        store
+            .upsert_upstream_oauth_credentials(row.clone())
+            .await
+            .unwrap();
+
+        let fetched = store
+            .find_upstream_oauth_credentials("acme", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(fetched.upstream_name, row.upstream_name);
+        assert_eq!(fetched.subject, row.subject);
+        assert_eq!(fetched.client_id, row.client_id);
+        assert_eq!(fetched.granted_scopes_json, row.granted_scopes_json);
+        assert_eq!(fetched.token_blob, row.token_blob);
+        assert_eq!(fetched.token_blob_nonce, row.token_blob_nonce);
+        assert_eq!(fetched.token_received_at, row.token_received_at);
+        assert_eq!(fetched.access_token_expires_at, row.access_token_expires_at);
+        assert_eq!(fetched.refresh_token_present, row.refresh_token_present);
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_takes_upstream_oauth_state_only_once_under_race() {
+        let store = temp_store().await;
+        store
+            .save_upstream_oauth_state(sample_upstream_state())
+            .await
+            .unwrap();
+        let now = now_unix();
+        let (a, b) = tokio::join!(
+            store.take_upstream_oauth_state("acme", "alice", "csrf-1", now),
+            store.take_upstream_oauth_state("acme", "alice", "csrf-1", now),
+        );
+        let a_some = matches!(a, Ok(Some(_)));
+        let b_some = matches!(b, Ok(Some(_)));
+        assert!(
+            a_some ^ b_some,
+            "exactly one take should win: a={a:?} b={b:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_rejects_state_ttl_over_600s() {
+        let store = temp_store().await;
+        let mut row = sample_upstream_state();
+        row.created_at = 1_000;
+        row.expires_at = 1_000 + 601;
+        let err = store.save_upstream_oauth_state(row).await.unwrap_err();
+        assert!(err.to_string().contains("600"));
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_cleanup_expired_drops_state() {
+        let store = temp_store().await;
+        let now = now_unix();
+        let row = UpstreamOauthStateRow {
+            upstream_name: "acme".to_string(),
+            subject: "alice".to_string(),
+            csrf_token: "csrf-expired".to_string(),
+            pkce_verifier: "verifier-expired".to_string(),
+            created_at: now - 400,
+            expires_at: now - 10,
+        };
+        store.save_upstream_oauth_state(row).await.unwrap();
+
+        store.cleanup_expired().await.unwrap();
+
+        let fetched = store
+            .take_upstream_oauth_state("acme", "alice", "csrf-expired", now)
+            .await
+            .unwrap();
+        assert!(fetched.is_none(), "expired state should be gone");
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_credentials_isolated_per_subject() {
+        let store = temp_store().await;
+        let mut row1 = sample_upstream_credentials();
+        row1.subject = "alice".to_string();
+        let mut row2 = sample_upstream_credentials();
+        row2.subject = "bob".to_string();
+        store.upsert_upstream_oauth_credentials(row1).await.unwrap();
+        store.upsert_upstream_oauth_credentials(row2).await.unwrap();
+
+        store
+            .delete_upstream_oauth_credentials("acme", "alice")
+            .await
+            .unwrap();
+
+        assert!(
+            store
+                .find_upstream_oauth_credentials("acme", "alice")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .find_upstream_oauth_credentials("acme", "bob")
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_store_upsert_overwrites_existing_credentials() {
+        let store = temp_store().await;
+        let row1 = sample_upstream_credentials();
+        store.upsert_upstream_oauth_credentials(row1).await.unwrap();
+
+        let mut row2 = sample_upstream_credentials();
+        row2.client_id = "client-rotated".to_string();
+        row2.token_blob = vec![9, 9, 9];
+        store.upsert_upstream_oauth_credentials(row2).await.unwrap();
+
+        let fetched = store
+            .find_upstream_oauth_credentials("acme", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.client_id, "client-rotated");
+        assert_eq!(fetched.token_blob, vec![9, 9, 9]);
+    }
+
+    #[tokio::test]
+    async fn dynamic_client_registration_round_trip() {
+        let store = temp_store().await;
+
+        // Nothing stored yet.
+        assert!(
+            store
+                .find_dynamic_client_registration("acme", "alice")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // Save and retrieve.
+        store
+            .save_dynamic_client_registration("acme", "alice", "client-dyn-1")
+            .await
+            .unwrap();
+        let found = store
+            .find_dynamic_client_registration("acme", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found, "client-dyn-1");
+
+        // Upsert with a new client_id (server re-registered).
+        store
+            .save_dynamic_client_registration("acme", "alice", "client-dyn-2")
+            .await
+            .unwrap();
+        let found2 = store
+            .find_dynamic_client_registration("acme", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found2, "client-dyn-2");
+
+        // Delete and confirm gone; other subjects unaffected.
+        store
+            .save_dynamic_client_registration("acme", "bob", "client-dyn-bob")
+            .await
+            .unwrap();
+        store
+            .delete_dynamic_client_registration("acme", "alice")
+            .await
+            .unwrap();
+        assert!(
+            store
+                .find_dynamic_client_registration("acme", "alice")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .find_dynamic_client_registration("acme", "bob")
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]
