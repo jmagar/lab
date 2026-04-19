@@ -76,7 +76,7 @@ Per-service route modules under `services/` are `#[cfg(feature = "<service>")]`.
 mount_if_enabled!(v1, state, "radarr", "radarr", radarr);
 ```
 
-The macro expands to a `#[cfg(feature)]`-gated `router.nest()` call. All 21 services are registered this way — never write the expansion by hand.
+The macro expands to a `#[cfg(feature)]`-gated `router.nest()` call. All feature-gated services are registered this way — never write the expansion by hand.
 
 Never hard-link service handlers from the top-level router — always conditional.
 

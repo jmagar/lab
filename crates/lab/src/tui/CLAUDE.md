@@ -2,6 +2,10 @@
 
 The TUI is the **discovery, configuration, and installation UX** for `lab`. CLI is for automation, TUI is for humans browsing what's available and flipping things on/off.
 
+## Current State
+
+`run()` is a stub — the TUI is not yet functional end-to-end. `metadata.rs` currently only has `radarr` wired. The architecture below describes the intended design; implementation is in progress.
+
 ## Two tabs
 
 The TUI has two top-level tabs (see `docs/TUI.md` for full spec):
