@@ -45,6 +45,7 @@ impl LogStore {
 
                     // Write connection — owns schema init and WAL configuration.
                     let wc = Connection::open_with_flags(&path, rw_flags)?;
+                    wc.busy_timeout(std::time::Duration::from_millis(5_000))?;
                     wc.pragma_update(None, "journal_mode", "WAL")?;
                     wc.pragma_update(None, "synchronous", "NORMAL")?;
                     wc.pragma_update(None, "temp_store", "MEMORY")?;
@@ -53,6 +54,7 @@ impl LogStore {
 
                     // Read connection — opened after schema is applied.
                     let rc = Connection::open_with_flags(&path, rw_flags)?;
+                    rc.busy_timeout(std::time::Duration::from_millis(5_000))?;
                     rc.pragma_update(None, "journal_mode", "WAL")?;
                     rc.pragma_update(None, "temp_store", "MEMORY")?;
                     rc.pragma_update(None, "mmap_size", 134_217_728_i64)?;

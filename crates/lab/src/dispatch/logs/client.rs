@@ -74,15 +74,16 @@ pub async fn bootstrap_running_log_system(
         );
     }
 
-    // Spawn a periodic maintenance task that runs every hour.
+    // Spawn a periodic maintenance task that runs every hour. The JoinHandle
+    // is stored on LogSystem and aborted on drop so the task doesn't outlive
+    // the store it holds a reference to.
     let store_for_maintenance = Arc::clone(&store);
-    tokio::spawn(async move {
+    let maintenance_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(3600));
         interval.tick().await; // skip the first immediate tick (startup already ran)
         loop {
             interval.tick().await;
-            let s = Arc::clone(&store_for_maintenance);
-            if let Err(err) = s.run_maintenance().await {
+            if let Err(err) = store_for_maintenance.run_maintenance().await {
                 tracing::warn!(
                     target: "lab::dispatch::logs",
                     ?err,
@@ -97,6 +98,7 @@ pub async fn bootstrap_running_log_system(
         hub,
         ingest: handle,
         counters,
+        maintenance_task,
     });
     install(Arc::clone(&system));
     Ok(system)
@@ -116,6 +118,7 @@ pub async fn bootstrap_store_backed_log_system(
         hub,
         ingest: handle,
         counters,
+        maintenance_task: tokio::spawn(async {}), // no periodic maintenance for read-only bootstrap
     }))
 }
 

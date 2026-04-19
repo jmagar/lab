@@ -413,6 +413,13 @@ pub struct LogSystem {
     pub(super) hub: Arc<super::stream::StreamHub>,
     pub(super) ingest: super::ingest::IngestHandle,
     pub(super) counters: Arc<super::ingest::IngestCounters>,
+    pub(super) maintenance_task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for LogSystem {
+    fn drop(&mut self) {
+        self.maintenance_task.abort();
+    }
 }
 
 impl LogSystem {

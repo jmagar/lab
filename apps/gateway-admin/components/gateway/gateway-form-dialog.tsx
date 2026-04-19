@@ -29,6 +29,7 @@ import type {
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/utils'
 import { defaultGatewayBearerEnvName, validateBearerTokenEnvName } from '@/lib/gateway-env'
+import { isAbortError } from '@/lib/api/service-action-client'
 
 interface GatewayFormDialogProps {
   open: boolean
@@ -272,7 +273,7 @@ export function GatewayFormDialog({
         toast.error(`Connection failed: ${result.error || result.message}`)
       }
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
+      if (isAbortError(error)) return
       toast.error(getErrorMessage(error, 'Failed to test connection'))
     } finally {
       setIsTesting(false)
@@ -326,7 +327,7 @@ export function GatewayFormDialog({
       toast.success(isEditing ? 'Gateway updated successfully' : 'Gateway created successfully')
       onOpenChange(false)
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
+      if (isAbortError(error)) return
       toast.error(
         getErrorMessage(
           error,
