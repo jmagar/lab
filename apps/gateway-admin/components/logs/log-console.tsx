@@ -162,7 +162,11 @@ export function LogConsole() {
 
         const fetchedEvents = mergeTimelineEvents([], result.events, deferredFilters.limit)
         const fetchedEventIds = new Set(fetchedEvents.map((event) => event.event_id))
-        const uncoveredBufferedEvents = bufferedEventsRef.current.filter((event) => {
+        // Drain the ref atomically: capture any SSE events that arrived during the await,
+        // then reset it so they are not double-applied by subsequent state commits.
+        const bufferedSnapshot = bufferedEventsRef.current
+        bufferedEventsRef.current = []
+        const uncoveredBufferedEvents = bufferedSnapshot.filter((event) => {
           if (fetchedEventIds.has(event.event_id)) {
             return false
           }
