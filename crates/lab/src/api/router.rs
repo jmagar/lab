@@ -397,6 +397,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
         mount_if_enabled!(v1, state, "tei", "tei", tei);
         mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
+        // [lab-scaffold: api-routes]
     }
 
     v1

@@ -25,6 +25,7 @@ pub fn actions() -> &'static [ActionSpec] {
         all.extend_from_slice(switching::ACTIONS);
         all.extend_from_slice(dns::ACTIONS);
         all.extend_from_slice(traffic::ACTIONS);
+        // Vec::leak required: &'static [T] slices from sub-modules cannot be const-concatenated in stable Rust
         Vec::leak(all)
     });
     &ACTIONS
