@@ -462,7 +462,12 @@ impl UpstreamOauthManager {
                     return Ok(cfg);
                 }
 
-                // 3. Register with the AS — first call only
+                // 3. Register with the AS — first call only.
+                //    Two concurrent callers can both reach here if neither found
+                //    a persisted registration above. Save uses ON CONFLICT DO
+                //    UPDATE (last-writer-wins), so we read back the canonical
+                //    client_id from the DB rather than using cfg.client_id, which
+                //    may be from a losing concurrent write.
                 let cfg = manager
                     .register_client("lab", self.redirect_uri.as_str(), scopes)
                     .await
@@ -473,7 +478,23 @@ impl UpstreamOauthManager {
                     .await
                     .map_err(|e| OauthError::Internal(e.to_string()))?;
 
-                Ok(cfg)
+                // Read back the persisted value to use the DB-canonical client_id.
+                let canonical_client_id = self
+                    .sqlite
+                    .find_dynamic_client_registration(&self.upstream.name, subject)
+                    .await
+                    .map_err(|e| OauthError::Internal(e.to_string()))?
+                    .ok_or_else(|| {
+                        OauthError::Internal(
+                            "dynamic registration saved but read-back returned nothing".to_string(),
+                        )
+                    })?;
+
+                let mut canonical_cfg =
+                    OAuthClientConfig::new(canonical_client_id, self.redirect_uri.as_str());
+                canonical_cfg =
+                    canonical_cfg.with_scopes(scopes.iter().map(|s| s.to_string()).collect());
+                Ok(canonical_cfg)
             }
             UpstreamOauthRegistration::ClientMetadataDocument { url } => {
                 // Client ID Metadata Document (CIMD): the metadata-document URL

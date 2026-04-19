@@ -137,11 +137,11 @@ Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
 
 - HTTP upstream transport only. Stdio upstreams cannot use OAuth in this phase
   because stdio sessions do not carry a stable authenticated subject.
-- OAuth-tagged upstreams appear in the merged catalog regardless of transport.
-  Calling them without an active HTTP session returns `oauth_needs_reauth`.
-  The authorization initiation flow (`POST /v1/gateway/oauth/start`) requires an
-  HTTP session; stdio callers can see the catalog entries but cannot complete
-  the OAuth flow.
+- OAuth-tagged upstreams are attempted during startup discovery but fail unhealthy
+  because discovery requires an authenticated subject that is not available at
+  startup. They are **not** included in the merged tool list until an operator
+  completes the OAuth flow for their session. The authorization initiation flow
+  (`POST /v1/gateway/oauth/start`) requires an HTTP session.
 - `/mcp` over HTTP and the hosted web UI are the supported call surfaces.
 
 ### Flow
