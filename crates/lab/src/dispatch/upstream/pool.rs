@@ -11,7 +11,7 @@ use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, Prompt,
-    ReadResourceResult, Resource,
+    ReadResourceResult, Resource, ResourceContents,
 };
 use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransportConfig, StreamableHttpClientWorker,
@@ -165,8 +165,8 @@ async fn discover_capability_counts(
 /// Merge upstream prompts deterministically and return the winning owner for each prompt.
 fn merge_upstream_prompts(
     builtin_names: &[&str],
-    mut upstream_prompts: Vec<(String, Vec<rmcp::model::Prompt>)>,
-) -> (Vec<rmcp::model::Prompt>, HashMap<String, String>) {
+    mut upstream_prompts: Vec<(String, Vec<Prompt>)>,
+) -> (Vec<Prompt>, HashMap<String, String>) {
     upstream_prompts.sort_unstable_by(|left, right| left.0.cmp(&right.0));
 
     let mut prompts = Vec::new();
@@ -197,13 +197,13 @@ fn merge_upstream_prompts(
 
 /// Normalize a proxied resource read so its contents use the gateway URI.
 fn normalize_resource_result_uri(
-    mut result: rmcp::model::ReadResourceResult,
+    mut result: ReadResourceResult,
     gateway_uri: &str,
-) -> rmcp::model::ReadResourceResult {
+) -> ReadResourceResult {
     for content in &mut result.contents {
         match content {
-            rmcp::model::ResourceContents::TextResourceContents { uri, .. }
-            | rmcp::model::ResourceContents::BlobResourceContents { uri, .. } => {
+            ResourceContents::TextResourceContents { uri, .. }
+            | ResourceContents::BlobResourceContents { uri, .. } => {
                 *uri = gateway_uri.to_string();
             }
         }
@@ -937,7 +937,7 @@ impl UpstreamPool {
     /// List resources from all resource-proxy-enabled upstreams.
     ///
     /// Resources are prefixed with `lab://upstream/{name}/` to avoid collisions.
-    pub async fn list_upstream_resources(&self) -> Vec<rmcp::model::Resource> {
+    pub async fn list_upstream_resources(&self) -> Vec<Resource> {
         let peers = routable_upstream_peers(self, UpstreamCapability::Resources).await;
         if peers.is_empty() {
             return Vec::new();
@@ -1057,7 +1057,7 @@ impl UpstreamPool {
     pub async fn read_upstream_resource(
         &self,
         uri: &str,
-    ) -> Option<Result<rmcp::model::ReadResourceResult, String>> {
+    ) -> Option<Result<ReadResourceResult, String>> {
         let prefix = "lab://upstream/";
         let rest = uri.strip_prefix(prefix)?;
 
@@ -1181,7 +1181,7 @@ impl UpstreamPool {
     async fn collect_upstream_prompts(
         &self,
         builtin_names: &[&str],
-    ) -> (Vec<rmcp::model::Prompt>, HashMap<String, String>) {
+    ) -> (Vec<Prompt>, HashMap<String, String>) {
         let peers = routable_upstream_peers(self, UpstreamCapability::Prompts).await;
 
         // Issue RPCs in parallel. merge_upstream_prompts sorts internally,
@@ -1234,7 +1234,7 @@ impl UpstreamPool {
     }
 
     /// List prompts from all healthy upstreams, filtering built-in and cross-upstream collisions.
-    pub async fn list_upstream_prompts(&self, builtin_names: &[&str]) -> Vec<rmcp::model::Prompt> {
+    pub async fn list_upstream_prompts(&self, builtin_names: &[&str]) -> Vec<Prompt> {
         let (prompts, _) = self.collect_upstream_prompts(builtin_names).await;
         prompts
     }
@@ -1768,10 +1768,10 @@ mod tests {
 
     #[test]
     fn merge_upstream_prompts_is_deterministic() {
-        let left = rmcp::model::Prompt::new("shared", Some("left"), None);
-        let right = rmcp::model::Prompt::new("shared", Some("right"), None);
-        let left_only = rmcp::model::Prompt::new("left-only", Some("left-only"), None);
-        let right_only = rmcp::model::Prompt::new("right-only", Some("right-only"), None);
+        let left = Prompt::new("shared", Some("left"), None);
+        let right = Prompt::new("shared", Some("right"), None);
+        let left_only = Prompt::new("left-only", Some("left-only"), None);
+        let right_only = Prompt::new("right-only", Some("right-only"), None);
 
         let (prompts, owners) = merge_upstream_prompts(
             &["builtin"],
@@ -1790,9 +1790,9 @@ mod tests {
 
     #[test]
     fn normalize_resource_result_uri_rewrites_all_contents() {
-        let result = rmcp::model::ReadResourceResult::new(vec![
-            rmcp::model::ResourceContents::text("hello", "http://upstream/resource"),
-            rmcp::model::ResourceContents::blob("YWJj", "file:///tmp/upstream"),
+        let result = ReadResourceResult::new(vec![
+            ResourceContents::text("hello", "http://upstream/resource"),
+            ResourceContents::blob("YWJj", "file:///tmp/upstream"),
         ]);
 
         let normalized =
@@ -1802,8 +1802,8 @@ mod tests {
             .contents
             .iter()
             .map(|content| match content {
-                rmcp::model::ResourceContents::TextResourceContents { uri, .. }
-                | rmcp::model::ResourceContents::BlobResourceContents { uri, .. } => uri.as_str(),
+                ResourceContents::TextResourceContents { uri, .. }
+                | ResourceContents::BlobResourceContents { uri, .. } => uri.as_str(),
             })
             .collect();
 

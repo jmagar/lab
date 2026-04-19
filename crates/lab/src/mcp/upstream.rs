@@ -3,6 +3,7 @@ use serde_json::Value;
 
 use crate::mcp::envelope::{build_error, build_error_extra};
 
+#[allow(dead_code)]
 pub(crate) fn static_kind(s: &str) -> &'static str {
     match s {
         "unknown_action" => "unknown_action",
@@ -23,6 +24,7 @@ pub(crate) fn static_kind(s: &str) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn normalize_upstream_result(
     service: &str,
     action: &str,

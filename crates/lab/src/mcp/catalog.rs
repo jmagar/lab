@@ -14,6 +14,7 @@ pub(crate) struct CatalogSnapshot {
     pub(crate) prompts: BTreeSet<String>,
 }
 
+#[allow(dead_code)]
 pub(crate) fn upstream_name_for_uri(uri: &str) -> Option<&str> {
     let rest = uri.strip_prefix("lab://upstream/")?;
     let slash_pos = rest.find('/')?;
