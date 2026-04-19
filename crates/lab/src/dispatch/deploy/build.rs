@@ -16,7 +16,12 @@ pub struct BuildOutcome {
 
 /// Run `cargo build --release --all-features -p lab` and hash the output.
 pub async fn build_release() -> Result<BuildOutcome, DeployError> {
-    check_disk_space(estimate_free_bytes()?, 1_500_000_000)?;
+    let free = tokio::task::spawn_blocking(estimate_free_bytes)
+        .await
+        .map_err(|e| DeployError::BuildFailed {
+            reason: format!("disk-space check join: {e}"),
+        })??;
+    check_disk_space(free, 1_500_000_000)?;
     let output = tokio::process::Command::new("cargo")
         .args(["build", "--release", "--all-features", "-p", "lab"])
         .output()
