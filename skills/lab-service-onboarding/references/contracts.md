@@ -105,7 +105,7 @@ Must include `operation = "health"` in logs to be distinguishable from normal ac
 
 ### Allowed dependency direction
 
-```text
+```
 cli    → dispatch → lab-apis
 mcp    → dispatch → lab-apis
 api    → dispatch → lab-apis
@@ -138,7 +138,6 @@ api    → dispatch → lab-apis
 Result<serde_json::Value, ToolError>
 ```
 
-
 ### Catalog ownership
 
 `catalog.rs` is the single source. MCP, CLI, and API re-export or reference `ACTIONS`. Never copy the array — two lists drift and elicitation silently skips newly-added destructive actions.
@@ -160,7 +159,7 @@ Write the failing test **before** the implementation. This is mandatory, not opt
 
 ### Minimum test coverage per layer
 
-```text
+```
 lab-apis/         → wiremock-based unit tests (CI-safe)
 dispatch/         → no HTTP, test action matching + param validation
 mcp/services/     → catalog shape, destructive flags, envelope
@@ -171,12 +170,6 @@ cli/              → arg parsing, --json output shape
 ### Commands
 
 ```bash
-# Authoritative verification path (exercises all feature-gated surfaces):
-cargo build --workspace --all-features
-cargo test --workspace --all-features
-cargo test --workspace --tests --no-fail-fast --all-features
-
-# Scoped shortcuts (faster, but do not exercise feature-gated surfaces):
 just test                  # full workspace (cargo-nextest)
 cargo test -p lab-apis     # SDK only
 cargo test -p lab          # dispatch + adapters

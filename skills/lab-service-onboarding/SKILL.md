@@ -36,10 +36,11 @@ A service working on only one surface is not done.
 
 For new onboarding work, the expected order is:
 
-1. scaffold the service shape
-2. run the onboarding audit
-3. fix the remaining contract gaps
-4. finish with `cargo test --all-features` and the targeted smoke checks
+1. verify the upstream spec exists in `docs/upstream-api/` (create or refresh it if not)
+2. scaffold the service shape with `lab scaffold service`
+3. run the onboarding audit with `lab audit onboarding`
+4. fix the remaining contract gaps
+5. finish with `cargo test --all-features` and the targeted smoke checks
 
 ## Build Assumption
 
@@ -70,7 +71,7 @@ The upstream spec is the contract. If it does not exist, create or refresh it fi
 
 ### `lab-apis`
 
-```text
+```
 crates/lab-apis/src/<service>.rs
 crates/lab-apis/src/<service>/client.rs
 crates/lab-apis/src/<service>/types.rs
@@ -88,7 +89,7 @@ Rules:
 
 ### `lab`
 
-```text
+```
 crates/lab/src/dispatch/<service>.rs
 crates/lab/src/dispatch/<service>/catalog.rs
 crates/lab/src/dispatch/<service>/client.rs
@@ -262,11 +263,8 @@ Do not invent alternate wrappers or call `require_client()` in API handlers.
 
 ```rust
 // In crates/lab/src/dispatch/error.rs:
-impl_tool_error_from!(
-    "foo",
-    lab_apis::foo::error::FooError,
-    Api(api) => api.kind()
-);
+#[cfg(feature = "foo")]
+impl_tool_error_from!(lab_apis::foo::FooError);
 ```
 
 - do not place conversion impls in CLI, MCP, or API modules
@@ -390,19 +388,21 @@ The stub registration in `mcp/registry.rs` and `api/services.rs` may already exi
 
 Use this order:
 
-1. verify or add the upstream spec
-2. create `lab-apis` files
-3. implement client methods
-4. implement observability and health
-5. add feature gates
-6. create dispatch module
-7. wire CLI
-8. wire MCP
-9. wire API
-10. register everywhere
-11. update docs
-12. run unit tests
-13. run live CLI, MCP, API, and health verification
+1. verify or add the upstream spec in `docs/upstream-api/`
+2. scaffold the service shape with `lab scaffold service`
+3. run the onboarding audit with `lab audit onboarding`
+4. create `lab-apis` files
+5. implement client methods
+6. implement observability and health
+7. add feature gates
+8. create dispatch module
+9. wire CLI
+10. wire MCP
+11. wire API
+12. register everywhere
+13. update docs
+14. run unit tests
+15. run live CLI, MCP, API, and health verification
 
 ## When Updating This Skill
 
