@@ -34,6 +34,7 @@ pub fn actions() -> &'static [ActionSpec] {
         all.extend_from_slice(config::ACTIONS);
         all.extend_from_slice(wanted::ACTIONS);
         all.extend_from_slice(customformat::ACTIONS);
+        // Vec::leak required: &'static [T] slices from sub-modules cannot be const-concatenated in stable Rust
         Vec::leak(all)
     });
     &ACTIONS

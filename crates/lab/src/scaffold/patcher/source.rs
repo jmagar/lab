@@ -20,44 +20,62 @@ pub fn patch_dispatch_rs(name: &str, content: &str) -> Result<String> {
 }
 
 pub fn patch_cli_rs(name: &str, content: &str) -> Result<String> {
-    let content = insert_once(
-        content,
-        "pub mod serve;\n",
-        &format!("pub mod serve;\npub mod {name};\n"),
-    )?;
-    let service_variant = format!(
-        "    #[cfg(feature = \"{name}\")]\n    {service}({snake}::{service}Args),\n",
-        service = pascal_case(name),
-        snake = name,
-    );
-    let content = insert_once(
-        &content,
-        "    #[cfg(feature = \"apprise\")]\n    Apprise(apprise::AppriseArgs),\n",
-        &format!(
-            "{service_variant}    #[cfg(feature = \"apprise\")]\n    Apprise(apprise::AppriseArgs),\n"
-        ),
-    )?;
+    // Anchor 1: module declaration — insert before the stable marker comment.
+    let module_decl = format!("pub mod {name};\n");
+    let module_marker = "// [lab-scaffold: cli-modules]\n";
+    let content = if content.contains(&module_decl) {
+        content.to_string()
+    } else {
+        insert_once(
+            content,
+            module_marker,
+            &format!("#[cfg(feature = \"{name}\")]\n{module_decl}{module_marker}"),
+        )?
+    };
 
-    let dispatch_arm = format!(
-        "        #[cfg(feature = \"{name}\")]\n        Command::{service}(args) => {snake}::run(args, format).await,\n",
-        service = pascal_case(name),
-        snake = name,
+    // Anchor 2: enum variant — insert before the stable marker comment.
+    let service_pascal = pascal_case(name);
+    let service_variant = format!(
+        "    #[cfg(feature = \"{name}\")]\n    {service_pascal}({name}::{service_pascal}Args),\n",
     );
-    insert_once(
-        &content,
-        "        #[cfg(feature = \"apprise\")]\n        Command::Apprise(args) => apprise::run(args, format).await,\n",
-        &format!(
-            "{dispatch_arm}        #[cfg(feature = \"apprise\")]\n        Command::Apprise(args) => apprise::run(args, format).await,\n"
-        ),
-    )
+    let variants_marker = "    // [lab-scaffold: cli-variants]\n";
+    let content = if content.contains(&service_variant) {
+        content
+    } else {
+        insert_once(
+            &content,
+            variants_marker,
+            &format!("{service_variant}{variants_marker}"),
+        )?
+    };
+
+    // Anchor 3: dispatch arm — insert before the stable marker comment.
+    let dispatch_arm = format!(
+        "        #[cfg(feature = \"{name}\")]\n        Command::{service_pascal}(args) => {name}::run(args, format).await,\n",
+    );
+    let dispatch_marker = "        // [lab-scaffold: cli-dispatch]\n";
+    if content.contains(&dispatch_arm) {
+        Ok(content)
+    } else {
+        insert_once(
+            &content,
+            dispatch_marker,
+            &format!("{dispatch_arm}{dispatch_marker}"),
+        )
+    }
 }
 
-#[allow(clippy::unnecessary_wraps)]
 pub fn patch_mcp_services_rs(name: &str, content: &str) -> Result<String> {
-    Ok(insert_before_eof(
+    let module_decl = format!("pub mod {name};\n");
+    if content.contains(&module_decl) {
+        return Ok(content.to_string());
+    }
+    let marker = "// [lab-scaffold: mcp-services]\n";
+    insert_once(
         content,
-        &format!("\n#[cfg(feature = \"{name}\")]\npub mod {name};\n"),
-    ))
+        marker,
+        &format!("#[cfg(feature = \"{name}\")]\n{module_decl}{marker}"),
+    )
 }
 
 pub fn patch_mcp_registry_rs(name: &str, content: &str) -> Result<String> {
@@ -77,39 +95,37 @@ pub fn patch_api_services_rs(name: &str, content: &str) -> Result<String> {
 }
 
 pub fn patch_api_router_rs(name: &str, content: &str) -> Result<String> {
-    let insert = format!(
-        "    #[cfg(feature = \"{name}\")]\n    if state.registry.services().iter().any(|s| s.name == \"{name}\") {{\n        v1 = v1.nest(\"/{name}\", services::{name}::routes(state.clone()));\n    }}\n"
-    );
-    insert_once(
-        content,
-        "    let x_request_id = HeaderName::from_static(\"x-request-id\");",
-        &format!("{insert}    let x_request_id = HeaderName::from_static(\"x-request-id\");"),
-    )
+    let insert = format!("        mount_if_enabled!(v1, state, \"{name}\", \"{name}\", {name});\n");
+    if content.contains(&insert) {
+        return Ok(content.to_string());
+    }
+    let marker = "        // [lab-scaffold: api-routes]\n";
+    insert_once(content, marker, &format!("{insert}{marker}"))
 }
 
 pub fn patch_dispatch_clients_rs(name: &str, content: &str) -> Result<String> {
+    // Anchor 1: struct field — insert before the stable marker.
+    let service_type = pascal_case(name);
     let field = format!(
-        "    #[cfg(feature = \"{name}\")]\n    pub {name}: Option<Arc<lab_apis::{name}::{service_type}Client>>,",
-        service_type = pascal_case(name)
+        "    #[cfg(feature = \"{name}\")]\n    pub {name}: Option<Arc<lab_apis::{name}::{service_type}Client>>,\n",
     );
-    let content = insert_once(
-        content,
-        "    #[cfg(feature = \"prowlarr\")]\n    pub prowlarr: Option<Arc<lab_apis::prowlarr::ProwlarrClient>>,",
-        &format!(
-            "    #[cfg(feature = \"prowlarr\")]\n    pub prowlarr: Option<Arc<lab_apis::prowlarr::ProwlarrClient>>,\n{field}"
-        ),
-    )?;
+    let fields_marker = "    // [lab-scaffold: state-fields]\n";
+    let content = if content.contains(&field) {
+        content.to_string()
+    } else {
+        insert_once(content, fields_marker, &format!("{field}{fields_marker}"))?
+    };
 
+    // Anchor 2: from_env initializer — insert before the stable marker.
     let load = format!(
-        "            #[cfg(feature = \"{name}\")]\n            {name}: crate::dispatch::{name}::client_from_env().map(Arc::new),"
+        "            #[cfg(feature = \"{name}\")]\n            {name}: crate::dispatch::{name}::client_from_env().map(Arc::new),\n"
     );
-    insert_once(
-        &content,
-        "            #[cfg(feature = \"prowlarr\")]\n            prowlarr: crate::dispatch::prowlarr::client_from_env().map(Arc::new),",
-        &format!(
-            "            #[cfg(feature = \"prowlarr\")]\n            prowlarr: crate::dispatch::prowlarr::client_from_env().map(Arc::new),\n{load}"
-        ),
-    )
+    let from_env_marker = "            // [lab-scaffold: state-from-env]\n";
+    if content.contains(&load) {
+        Ok(content)
+    } else {
+        insert_once(&content, from_env_marker, &format!("{load}{from_env_marker}"))
+    }
 }
 
 fn insert_before_eof(content: &str, insert: &str) -> String {
