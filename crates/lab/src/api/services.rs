@@ -37,6 +37,8 @@ pub mod tailscale;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 
+#[cfg(feature = "mcpregistry")]
+pub mod mcpregistry;
 #[cfg(feature = "memos")]
 pub mod memos;
 

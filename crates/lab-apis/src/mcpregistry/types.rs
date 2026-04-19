@@ -55,7 +55,7 @@ impl ListServersParams {
 // ---------------------------------------------------------------------------
 
 /// Paginated list of MCP servers.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerListResponse {
     /// Page of server entries. JSON null is treated as an empty list.
     #[serde(default)]
@@ -65,7 +65,7 @@ pub struct ServerListResponse {
 }
 
 /// Pagination metadata attached to list responses.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     /// Number of items in the current page.
     pub count: i64,
@@ -75,7 +75,7 @@ pub struct Metadata {
 }
 
 /// A single server entry from the registry.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerResponse {
     /// Server configuration and metadata.
     pub server: ServerJSON,
@@ -85,7 +85,7 @@ pub struct ServerResponse {
 }
 
 /// Registry-managed per-response metadata.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseMeta {
     /// Official registry extensions.
     #[serde(rename = "io.modelcontextprotocol.registry/official")]
@@ -93,7 +93,7 @@ pub struct ResponseMeta {
 }
 
 /// Registry lifecycle extensions attached to a server version.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryExtensions {
     /// Whether this is the latest published version.
     #[serde(rename = "isLatest")]
@@ -234,7 +234,7 @@ pub struct Icon {
 // ---------------------------------------------------------------------------
 
 /// Result of POST /v0.1/validate.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResult {
     /// Whether the server JSON is valid.
     pub valid: bool,
@@ -244,7 +244,7 @@ pub struct ValidationResult {
 }
 
 /// A single validation issue.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationIssue {
     /// Human-readable description of the issue.
     pub message: String,
