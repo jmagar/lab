@@ -183,6 +183,30 @@ async fn ingest_peer_events(
         });
     }
 
+    const MAX_EVENTS_PER_BATCH: usize = 500;
+    const MAX_MESSAGE_BYTES: usize = 8_192;
+
+    if req.events.len() > MAX_EVENTS_PER_BATCH {
+        return Err(ToolError::InvalidParam {
+            message: format!(
+                "batch too large: {} events exceeds maximum of {MAX_EVENTS_PER_BATCH}",
+                req.events.len()
+            ),
+            param: "events".to_string(),
+        });
+    }
+
+    for event in &req.events {
+        if event.message.len() > MAX_MESSAGE_BYTES {
+            return Err(ToolError::InvalidParam {
+                message: format!(
+                    "event message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"
+                ),
+                param: "events[].message".to_string(),
+            });
+        }
+    }
+
     let logs_system = state.logs_system.clone().ok_or_else(|| {
         ToolError::internal_message("local log system is not wired into API state")
     })?;
