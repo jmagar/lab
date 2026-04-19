@@ -8,8 +8,34 @@ use super::catalog::ACTIONS;
 use super::params;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
-use lab_apis::deploy::DeployError;
+use lab_apis::deploy::{DeployError, DeployRequest};
 use serde_json::Value;
+
+/// Validate auth, parse params, and enforce the confirm flag for the `run`
+/// and `rollback` actions.
+///
+/// This is a **synchronous** helper intentionally — all work runs before any
+/// `Box::pin(async move { … })` block is constructed, keeping the lifetimes
+/// `'static`-clean and avoiding HRTB errors (Rust issue #100013).
+///
+/// Steps:
+/// 1. `require_deploy_token` — dedicated deploy token gate.
+/// 2. `parse_run` — coerce and validate params into a `DeployRequest`.
+/// 3. `reject_headless_bypass` — refuse headless `confirm: true` over MCP.
+/// 4. Confirm-flag check — `confirm` must be `true` for destructive actions.
+fn validate_deploy_action(action: &str, params_v: &Value) -> Result<DeployRequest, ToolError> {
+    authz::require_deploy_token()?;
+    let req = params::parse_run(params_v).map_err(ToolError::from)?;
+    authz::reject_headless_bypass(params_v, authz::current_context())?;
+    if !req.confirm {
+        return Err(DeployError::ValidationFailed {
+            field: "confirm".into(),
+            reason: format!("destructive deploy.{action} requires confirm=true"),
+        }
+        .into());
+    }
+    Ok(req)
+}
 
 /// Top-level dispatch without an attached runner — handles `help` / `schema`
 /// and rejects any real action because orchestration requires runtime state
@@ -81,46 +107,16 @@ pub fn dispatch_mcp(
             })
         }
         "run" => {
-            let auth = authz::require_deploy_token();
-            let req = auth.and_then(|_| params::parse_run(&params_v).map_err(ToolError::from));
-            let bypass = req
-                .as_ref()
-                .ok()
-                .map(|_| authz::reject_headless_bypass(&params_v, authz::current_context()));
+            let result = validate_deploy_action("run", &params_v);
             Box::pin(async move {
-                let req = req?;
-                if let Some(r) = bypass {
-                    r?;
-                }
-                if !req.confirm {
-                    return Err(DeployError::ValidationFailed {
-                        field: "confirm".into(),
-                        reason: "destructive deploy.run requires confirm=true".into(),
-                    }
-                    .into());
-                }
+                let req = result?;
                 to_json(runner.run_impl(req).await?)
             })
         }
         "rollback" => {
-            let auth = authz::require_deploy_token();
-            let req = auth.and_then(|_| params::parse_run(&params_v).map_err(ToolError::from));
-            let bypass = req
-                .as_ref()
-                .ok()
-                .map(|_| authz::reject_headless_bypass(&params_v, authz::current_context()));
+            let result = validate_deploy_action("rollback", &params_v);
             Box::pin(async move {
-                let req = req?;
-                if let Some(r) = bypass {
-                    r?;
-                }
-                if !req.confirm {
-                    return Err(DeployError::ValidationFailed {
-                        field: "confirm".into(),
-                        reason: "destructive deploy.rollback requires confirm=true".into(),
-                    }
-                    .into());
-                }
+                let req = result?;
                 to_json(runner.rollback_impl(req).await?)
             })
         }
@@ -159,29 +155,11 @@ pub async fn dispatch_with_runner(
             to_json(runner.plan_impl(req).await?)
         }
         "run" => {
-            authz::require_deploy_token()?;
-            let req = params::parse_run(&params_v).map_err(ToolError::from)?;
-            authz::reject_headless_bypass(&params_v, authz::current_context())?;
-            if !req.confirm {
-                return Err(DeployError::ValidationFailed {
-                    field: "confirm".into(),
-                    reason: "destructive deploy.run requires confirm=true".into(),
-                }
-                .into());
-            }
+            let req = validate_deploy_action("run", &params_v)?;
             to_json(runner.run_impl(req).await?)
         }
         "rollback" => {
-            authz::require_deploy_token()?;
-            let req = params::parse_run(&params_v).map_err(ToolError::from)?;
-            authz::reject_headless_bypass(&params_v, authz::current_context())?;
-            if !req.confirm {
-                return Err(DeployError::ValidationFailed {
-                    field: "confirm".into(),
-                    reason: "destructive deploy.rollback requires confirm=true".into(),
-                }
-                .into());
-            }
+            let req = validate_deploy_action("rollback", &params_v)?;
             to_json(runner.rollback_impl(req).await?)
         }
         other => Err(ToolError::UnknownAction {
