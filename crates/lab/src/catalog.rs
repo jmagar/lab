@@ -13,6 +13,7 @@ pub struct Catalog {
     pub services: Vec<ServiceCatalog>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Transport {
@@ -113,6 +114,7 @@ pub fn build_catalog(registry: &ToolRegistry) -> Catalog {
     Catalog { services }
 }
 
+#[allow(dead_code)]
 #[must_use]
 pub fn actions_for(catalog: &Catalog, service: &str, transport: Transport) -> Vec<ActionEntry> {
     let Some(entry) = catalog.services.iter().find(|entry| entry.name == service) else {
