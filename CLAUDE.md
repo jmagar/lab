@@ -19,6 +19,7 @@ Shared dispatch ownership and adapter direction are governed by `docs/DISPATCH.m
 - `crates/lab-apis/src/servarr/` — shared *arr primitives
 - `crates/lab-apis/src/extract/` — synthetic-service rules, `.env` merge algorithm
 - `crates/lab/src/dispatch/` — shared dispatch layer, required service layout, canonical templates
+- `crates/lab/src/dispatch/upstream/` — upstream MCP proxy pool, circuit breaker, layer contract
 - `crates/lab/src/mcp/` — dispatch, envelopes, elicitation, catalog
 - `crates/lab/src/cli/` — thin-shim pattern, destructive flags, batch commands
 - `crates/lab/src/tui/` — plugin manager UX, `.mcp.json` patching
@@ -130,7 +131,7 @@ radarr({ "action": "schema", "params": { "action": "movie.add" } })  // per-acti
 - **Built-in actions:** every tool accepts `help` and `schema` without declaring them.
 - **Discovery:** `lab://<service>/actions` MCP resource + global `lab.help` meta-tool + `lab://catalog` resource.
 - **Shared catalog.** `build_catalog()` is a single function feeding three surfaces: the `lab.help` MCP tool, the `lab://catalog` MCP resource, and the `lab help` CLI subcommand. Never duplicate catalog logic — extend the builder.
-- **Multi-instance services.** When `S_<LABEL>_URL` env vars exist, callers pass `params.instance: "<label>"`. Unknown labels return a structured `unknown_instance` envelope listing valid labels.
+- **Multi-instance services.** When `{SERVICE}_{LABEL}_URL` env vars exist, callers pass `params.instance: "<label>"`. Unknown labels return a structured `unknown_instance` envelope listing valid labels.
 
 ### Destructive actions
 
