@@ -20,7 +20,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use lab_apis::core::ssh::{SshHostTarget, SshSession, shell_quote};
+use super::ssh_session::{SshHostTarget, SshSession, shell_quote};
 use lab_apis::deploy::{
     DeployError, DeployHostResult, DeployPlan, DeployRequest, DeployRunSummary, DeployStage,
 };

@@ -16,6 +16,7 @@ pub mod dispatch;
 pub mod lock;
 pub mod params;
 pub mod runner;
+pub mod ssh_session;
 
 #[allow(unused_imports)]
 pub use catalog::ACTIONS;
