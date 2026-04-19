@@ -230,6 +230,9 @@ fn looks_secret(key: &str) -> bool {
         || k.contains("api_key")
         || k.contains("apikey")
         || k == "authorization"
+        || k.contains("cookie")
+        || k.contains("private_key")
+        || k.contains("credential")
 }
 
 // ── tracing Layer ────────────────────────────────────────────────────────────
