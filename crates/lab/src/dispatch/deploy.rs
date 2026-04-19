@@ -8,10 +8,12 @@ pub mod build;
 pub mod catalog;
 pub mod client;
 pub mod dispatch;
+pub mod host_io;
 pub mod lock;
 pub mod params;
 pub mod runner;
 pub mod ssh_session;
+pub mod stages;
 
 #[allow(unused_imports)]
 pub use catalog::ACTIONS;
