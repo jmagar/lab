@@ -277,7 +277,6 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
             deploy::run(args, format, &runner)
                 .await
                 .map(|()| ExitCode::SUCCESS)
-        }
-        // [lab-scaffold: cli-dispatch]
+        } // [lab-scaffold: cli-dispatch]
     }
 }
