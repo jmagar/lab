@@ -9,11 +9,10 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use axum::http::{self, request::Parts};
 use rmcp::model::{
-    AnnotateAble, CallToolRequestParams, CallToolResult, Content, CreateElicitationRequestParams,
-    ElicitationAction, ElicitationSchema, GetPromptRequestParams, GetPromptResult,
-    ListPromptsResult, ListResourcesResult, ListToolsResult, LoggingLevel, PaginatedRequestParams,
-    PrimitiveSchema, RawResource, ReadResourceRequestParams, ReadResourceResult, ResourceContents,
-    ServerCapabilities, ServerInfo, SetLevelRequestParams, Tool,
+    AnnotateAble, CallToolRequestParams, CallToolResult, Content, GetPromptRequestParams,
+    GetPromptResult, ListPromptsResult, ListResourcesResult, ListToolsResult, LoggingLevel,
+    PaginatedRequestParams, RawResource, ReadResourceRequestParams, ReadResourceResult,
+    ResourceContents, ServerCapabilities, ServerInfo, SetLevelRequestParams, Tool,
 };
 use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
@@ -23,6 +22,7 @@ use tokio::sync::RwLock;
 use crate::config::DeviceRole;
 use crate::dispatch::gateway::manager::GatewayManager;
 use crate::dispatch::upstream::types::UpstreamCapability;
+use crate::mcp::elicitation::{ElicitResult, elicit_confirm};
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
 use crate::mcp::error::DispatchError;
 use crate::mcp::error::canonical_kind;
@@ -1132,15 +1132,6 @@ impl LabMcpServer {
         subject_from_extensions(&context.extensions)
     }
 
-    async fn current_upstream_pool(
-        &self,
-    ) -> Option<Arc<crate::dispatch::upstream::pool::UpstreamPool>> {
-        match &self.gateway_manager {
-            Some(manager) => manager.current_pool().await,
-            None => None,
-        }
-    }
-
     async fn oauth_upstream_configs(&self) -> Vec<crate::config::UpstreamConfig> {
         match &self.gateway_manager {
             Some(manager) => manager.oauth_upstream_configs().await,
@@ -1156,75 +1147,6 @@ impl LabMcpServer {
             Some(manager) => manager.oauth_upstream_config(upstream_name).await,
             None => None,
         }
-    }
-
-    async fn service_visible_on_mcp(&self, service: &str) -> bool {
-        if matches!(self.device_role, Some(DeviceRole::NonMaster)) {
-            return false;
-        }
-        match &self.gateway_manager {
-            Some(manager) => manager.surface_enabled_for_service(service, "mcp").await,
-            None => true,
-        }
-    }
-
-    async fn action_allowed_on_mcp(&self, service: &str, action: &str) -> bool {
-        match &self.gateway_manager {
-            Some(manager) => {
-                manager
-                    .mcp_action_allowed_for_service(service, action)
-                    .await
-            }
-            None => true,
-        }
-    }
-
-    async fn allowed_mcp_actions(&self, service: &str) -> Option<Vec<String>> {
-        match &self.gateway_manager {
-            Some(manager) => manager.allowed_mcp_actions_for_service(service).await,
-            None => None,
-        }
-    }
-
-    async fn catalog_json(&self) -> anyhow::Result<Value> {
-        let mut catalog = crate::catalog::build_catalog(&self.registry);
-        let mut services = Vec::new();
-        for mut service in catalog.services {
-            if !self.service_visible_on_mcp(&service.name).await {
-                continue;
-            }
-            if let Some(allowed_actions) = self.allowed_mcp_actions(&service.name).await
-                && !allowed_actions.is_empty()
-            {
-                service
-                    .actions
-                    .retain(|action| allowed_actions.contains(&action.name));
-            }
-            services.push(service);
-        }
-        catalog.services = services;
-        Ok(serde_json::to_value(catalog)?)
-    }
-
-    async fn service_actions_json(&self, service: &str) -> anyhow::Result<Value> {
-        if !self.service_visible_on_mcp(service).await {
-            anyhow::bail!("unknown service: {service}");
-        }
-
-        let catalog = crate::catalog::build_catalog(&self.registry);
-        let mut actions =
-            crate::catalog::actions_for(&catalog, service, crate::catalog::Transport::Http);
-        if actions.is_empty() && !catalog.services.iter().any(|entry| entry.name == service) {
-            anyhow::bail!("unknown service: {service}");
-        }
-
-        if let Some(allowed_actions) = self.allowed_mcp_actions(service).await
-            && !allowed_actions.is_empty()
-        {
-            actions.retain(|action| allowed_actions.contains(&action.name));
-        }
-
-        Ok(serde_json::to_value(actions)?)
     }
 
     async fn snapshot_catalog(&self) -> CatalogSnapshot {
@@ -1371,75 +1293,6 @@ fn format_dispatch_result(
                 },
             )
         }
-    }
-}
-
-/// Outcome of an elicitation confirmation request.
-enum ElicitResult {
-    /// User confirmed the destructive action.
-    Confirmed,
-    /// User explicitly declined.
-    Declined,
-    /// User cancelled (closed the dialog without choosing).
-    Cancelled,
-    /// MCP client does not support the elicitation capability.
-    NotSupported,
-    /// The client advertised elicitation support, but the RPC failed.
-    Failed,
-}
-
-/// Ask the MCP client to confirm a destructive action via elicitation.
-///
-/// Sends a form with a single required `confirm: boolean` field.
-/// Returns `NotSupported` if the client's capabilities do not include elicitation.
-async fn elicit_confirm(
-    context: &RequestContext<RoleServer>,
-    service: &str,
-    action: &str,
-) -> ElicitResult {
-    if context.peer.supported_elicitation_modes().is_empty() {
-        return ElicitResult::NotSupported;
-    }
-
-    let Ok(schema) = ElicitationSchema::builder()
-        .required_property(
-            "confirm",
-            PrimitiveSchema::Boolean(rmcp::model::BooleanSchema::default()),
-        )
-        .build()
-    else {
-        return ElicitResult::NotSupported;
-    };
-
-    let params = CreateElicitationRequestParams::FormElicitationParams {
-        meta: None,
-        message: format!(
-            "Action `{service}.{action}` is destructive and cannot be undone. \
-             Set `confirm` to true to proceed."
-        ),
-        requested_schema: schema,
-    };
-
-    match context.peer.create_elicitation(params).await {
-        Ok(result) => match result.action {
-            ElicitationAction::Accept => {
-                // Check that the user actually set confirm = true in the response.
-                let confirmed = result
-                    .content
-                    .as_ref()
-                    .and_then(|v| v.get("confirm"))
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                if confirmed {
-                    ElicitResult::Confirmed
-                } else {
-                    ElicitResult::Declined
-                }
-            }
-            ElicitationAction::Decline => ElicitResult::Declined,
-            ElicitationAction::Cancel => ElicitResult::Cancelled,
-        },
-        Err(_) => ElicitResult::Failed,
     }
 }
 

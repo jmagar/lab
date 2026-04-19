@@ -447,6 +447,8 @@ impl UpstreamPool {
                         exposure_policy,
                         prompt_count,
                         resource_count,
+                        prompt_names: Vec::new(),
+                        resource_uris: Vec::new(),
                         tool_health: UpstreamHealth::Healthy,
                         prompt_health,
                         resource_health,
@@ -470,6 +472,8 @@ impl UpstreamPool {
                         exposure_policy: ToolExposurePolicy::All,
                         prompt_count: 0,
                         resource_count: 0,
+                        prompt_names: Vec::new(),
+                        resource_uris: Vec::new(),
                         tool_health: UpstreamHealth::Unhealthy {
                             consecutive_failures: 1,
                         },

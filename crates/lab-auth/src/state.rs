@@ -55,6 +55,32 @@ impl AuthState {
         })
     }
 
+    /// Rate-limit guard for `/authorize` and `/browser_login` endpoints.
+    /// Currently a no-op placeholder — returns Ok(()) unconditionally.
+    pub fn check_authorize_rate_limit(&self) -> Result<(), crate::error::AuthError> {
+        Ok(())
+    }
+
+    /// Rate-limit guard for `/register` endpoint.
+    /// Currently a no-op placeholder — returns Ok(()) unconditionally.
+    pub fn check_register_rate_limit(&self) -> Result<(), crate::error::AuthError> {
+        Ok(())
+    }
+
+    /// Rejects new OAuth state rows when the pending count exceeds `max_pending_oauth_states`.
+    pub async fn ensure_pending_oauth_state_capacity(
+        &self,
+    ) -> Result<(), crate::error::AuthError> {
+        let count = self.store.count_pending_oauth_states().await?;
+        if count >= self.config.max_pending_oauth_states {
+            return Err(crate::error::AuthError::RateLimited {
+                message: "too many pending authorization requests".to_string(),
+                retry_after_ms: 5_000,
+            });
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub fn for_tests(
         config: AuthConfig,
