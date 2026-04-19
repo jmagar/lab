@@ -146,6 +146,7 @@ impl GatewayManager {
         self.runtime.current_pool().await
     }
 
+    #[allow(dead_code)]
     #[must_use]
     pub fn oauth_client_cache(&self) -> Option<OauthClientCache> {
         self.oauth_client_cache.clone()
@@ -184,6 +185,7 @@ impl GatewayManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn evict_upstream_clients(&self, upstream: &str) {
         if let Some(cache) = &self.oauth_client_cache {
             cache.evict_upstream(upstream);

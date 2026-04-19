@@ -82,6 +82,7 @@ impl UpstreamOauthManager {
     /// Return `true` if persisted credentials exist for `subject`.
     ///
     /// Does not check whether the credentials are still valid.
+    #[allow(dead_code)]
     pub async fn has_credentials(&self, subject: &str) -> Result<bool, OauthError> {
         self.sqlite
             .find_upstream_oauth_credentials(&self.upstream.name, subject)

@@ -58,6 +58,7 @@ pub fn load_key(base64_str: &str) -> Result<EncryptionKey, EncryptionError> {
 ///
 /// A fresh random 12-byte nonce is generated internally on every call.
 /// The caller MUST persist the returned nonce alongside the ciphertext.
+#[allow(dead_code)]
 pub fn seal(key: &EncryptionKey, plaintext: &[u8]) -> Result<(Vec<u8>, Vec<u8>), EncryptionError> {
     seal_with_aad(key, plaintext, &[])
 }
@@ -90,6 +91,7 @@ pub fn seal_with_aad(
 /// On failure (wrong key, wrong nonce, or tampered ciphertext) returns
 /// `EncryptionError::DecryptionFailed`. Callers MUST surface this as
 /// `oauth_needs_reauth`, not `internal_error`.
+#[allow(dead_code)]
 pub fn open(
     key: &EncryptionKey,
     ciphertext: &[u8],

@@ -162,12 +162,14 @@ impl OauthClientCache {
     }
 
     /// Number of cached clients. Intended for tests and observability.
+    #[allow(dead_code)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.clients.len()
     }
 
     /// True when the cache holds no clients.
+    #[allow(dead_code)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.clients.is_empty()

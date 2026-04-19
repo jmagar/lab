@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use reqwest::Url;
 
 pub fn is_sensitive_key(key: &str) -> bool {
