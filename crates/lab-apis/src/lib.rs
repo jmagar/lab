@@ -109,3 +109,7 @@ pub mod tei;
 /// Apprise universal notification dispatcher client.
 #[cfg(feature = "apprise")]
 pub mod apprise;
+
+/// Deploy service — push local release binary to SSH targets.
+#[cfg(feature = "deploy")]
+pub mod deploy;

@@ -101,3 +101,38 @@ export function mergeTimelineEvents(
     // Keep the newest-N window stable even if a caller passes 0 or a negative limit.
     .slice(-Math.max(maxEntries, 1))
 }
+
+export function getDefaultSelectedEventId(events: LogEvent[]): string | null {
+  return events.at(-1)?.event_id ?? null
+}
+
+export function resolveSelectedEvent(
+  events: LogEvent[],
+  selectedEventId: string | null,
+): LogEvent | null {
+  if (events.length === 0) {
+    return null
+  }
+
+  return events.find((event) => event.event_id === selectedEventId) ?? events.at(-1) ?? null
+}
+
+export function toggleExpandedEventId(
+  expandedEventId: string | null,
+  targetEventId: string,
+): string | null {
+  return expandedEventId === targetEventId ? null : targetEventId
+}
+
+export function resolveExpandedEventId(
+  events: LogEvent[],
+  expandedEventId: string | null,
+): string | null {
+  if (!expandedEventId) {
+    return null
+  }
+
+  return events.some((event) => event.event_id === expandedEventId)
+    ? expandedEventId
+    : null
+}

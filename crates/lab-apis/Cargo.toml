@@ -58,6 +58,7 @@ openai      = []
 qdrant      = []
 tei         = []
 apprise     = []
+deploy      = []
 servarr     = []
 test-utils  = []
 all = [
@@ -66,6 +67,7 @@ all = [
     "memos", "bytestash", "paperless",
     "arcane", "unraid", "unifi",
     "gotify", "openai", "qdrant", "tei", "apprise",
+    "deploy",
 ]
 
 [[test]]

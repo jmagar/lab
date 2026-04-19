@@ -9,6 +9,7 @@ import type {
   UpdateGatewayInput,
 } from '../types/gateway'
 import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from '../api/tool-exposure-draft.ts'
+import { defaultGatewayBearerEnvName } from '../gateway-env.ts'
 
 export interface BackendSurfaceStateView {
   enabled?: boolean
@@ -102,6 +103,11 @@ export interface GatewayDiscoverySnapshot {
 
 const NOW = () => new Date().toISOString()
 
+const VALID_TRANSPORTS = ['http', 'stdio', 'lab_service'] as const satisfies readonly TransportType[]
+function isValidTransport(v: unknown): v is TransportType {
+  return typeof v === 'string' && (VALID_TRANSPORTS as readonly string[]).includes(v)
+}
+
 function inferTransport(config: BackendGatewayConfigView): TransportType {
   return config.command ? 'stdio' : 'http'
 }
@@ -183,6 +189,30 @@ function describeTarget(config: BackendGatewayConfigView): string {
   return config.command
 }
 
+function isMethodNotFound(lastError: string): boolean {
+  return lastError.includes('Method not found') || lastError.includes('-32601')
+}
+
+function isNonEssentialCapabilityError(lastError: string): boolean {
+  if (lastError.includes('does not implement MCP prompts discovery')) {
+    return true
+  }
+
+  if (lastError.includes('does not implement MCP resource discovery')) {
+    return true
+  }
+
+  if (lastError.includes('failed to list prompts from upstream:') && isMethodNotFound(lastError)) {
+    return true
+  }
+
+  if (lastError.includes('failed to list resources from upstream:') && isMethodNotFound(lastError)) {
+    return true
+  }
+
+  return false
+}
+
 function classifyWarning(lastError?: string) {
   if (!lastError) {
     return { code: 'connection_error', message: undefined }
@@ -190,10 +220,6 @@ function classifyWarning(lastError?: string) {
 
   if (lastError.includes('Authentication is required')) {
     return { code: 'auth_required', message: lastError }
-  }
-
-  if (lastError.includes('does not implement MCP prompts discovery')) {
-    return { code: 'partial_capability', message: lastError }
   }
 
   if (lastError.toLowerCase().includes('timed out')) {
@@ -208,6 +234,10 @@ export function humanizeProbeError(lastError: string | undefined, config: Backen
     return undefined
   }
 
+  if (isNonEssentialCapabilityError(lastError)) {
+    return undefined
+  }
+
   const target = describeTarget(config)
 
   if (lastError.includes('Auth required')) {
@@ -217,10 +247,6 @@ export function humanizeProbeError(lastError: string | undefined, config: Backen
   const urlMatch = lastError.match(/url \(([^)]+)\)/)
   if (urlMatch?.[1]) {
     return `Could not connect to ${urlMatch[1]}. The upstream did not complete the MCP initialize request. Verify the server is running, reachable, and speaking MCP.`
-  }
-
-  if (lastError.includes('failed to list prompts from upstream:') && lastError.includes('Method not found')) {
-    return `Connected to ${target}, but it does not implement MCP prompts discovery. Tools and resources may still work.`
   }
 
   if (lastError.includes('No such file or directory')) {
@@ -235,7 +261,7 @@ export function humanizeProbeError(lastError: string | undefined, config: Backen
 }
 
 function buildWarnings(probe: GatewayProbeStatus): GatewayWarning[] {
-  if (!probe.last_error) {
+  if (!probe.last_error || isNonEssentialCapabilityError(probe.last_error)) {
     return []
   }
 
@@ -254,13 +280,29 @@ export function normalizeServerView(
   view: BackendServerView,
   discovery?: BackendVirtualServiceDiscovery,
 ): Gateway {
-  const transport = (view.config_summary?.transport ?? 'http') as Gateway['transport']
+  const rawTransport = view.config_summary?.transport
+  const transport: TransportType = isValidTransport(rawTransport) ? rawTransport : 'http'
   const target = view.config_summary?.target ?? undefined
-  const warnings = (view.warnings ?? []).map((warning) => ({
-    code: warning.code,
-    message: warning.message,
-    timestamp: NOW(),
-  }))
+  const config: BackendGatewayConfigView = {
+    name: view.name,
+    ...(transport === 'http' ? { url: target } : {}),
+    ...(transport === 'stdio' ? { command: target } : {}),
+    proxy_resources: false,
+  }
+  const warnings = (view.warnings ?? []).map((warning) => {
+    if (isNonEssentialCapabilityError(warning.message)) {
+      return null
+    }
+
+    const message = humanizeProbeError(warning.message, config) ?? warning.message
+    const classified = classifyWarning(message)
+
+    return {
+      code: classified.code,
+      message,
+      timestamp: NOW(),
+    }
+  }).filter((warning): warning is GatewayWarning => warning !== null)
   const lastError = warnings[0]?.message
   const tools = discovery?.tools
     ?? (discovery?.tool_names ?? []).map((name) => ({
@@ -295,9 +337,9 @@ export function normalizeServerView(
     },
     transport,
     config: {
-      ...(transport === 'http' ? { url: target } : {}),
-      ...(transport === 'stdio' ? { command: target } : {}),
-      proxy_resources: false,
+      ...((transport === 'http' && target) ? { url: target } : {}),
+      ...((transport === 'stdio' && target) ? { command: target } : {}),
+      proxy_resources: config.proxy_resources,
     },
     status: {
       healthy: (view.connected ?? false) && warnings.length === 0,
@@ -369,7 +411,7 @@ export function normalizeGateway(
     status: {
       healthy: probe.healthy,
       connected: probe.connected,
-      last_error: humanizedError,
+      ...(humanizedError ? { last_error: humanizedError } : {}),
       discovered_tool_count: view.runtime.tool_count,
       exposed_tool_count: view.runtime.exposed_tool_count ?? tools.filter((tool) => tool.exposed).length,
       discovered_resource_count: view.runtime.resource_count,
@@ -397,10 +439,13 @@ export function normalizeGateway(
 }
 
 export function probeStatusFromRuntime(runtime: BackendGatewayRuntimeView): GatewayProbeStatus {
-  const capabilityCount = runtime.tool_count + runtime.resource_count + runtime.prompt_count
-  const lastError = runtime.last_error?.trim() || undefined
+  const connectedCount = runtime.tool_count + runtime.resource_count + runtime.prompt_count
+  const rawLastError = runtime.last_error?.trim() || undefined
+  const lastError = rawLastError && !isNonEssentialCapabilityError(rawLastError)
+    ? rawLastError
+    : undefined
 
-  if (capabilityCount > 0) {
+  if (connectedCount > 0) {
     return {
       connected: true,
       healthy: !lastError,
@@ -411,7 +456,7 @@ export function probeStatusFromRuntime(runtime: BackendGatewayRuntimeView): Gate
   return {
     connected: false,
     healthy: false,
-    last_error: lastError ?? 'No tools, resources, or prompts were discovered from this gateway.',
+    last_error: lastError ?? 'No capabilities (tools, resources, or prompts) were discovered from this gateway.',
   }
 }
 
@@ -425,6 +470,27 @@ export function gatewayInputToSpec(input: CreateGatewayInput) {
     proxy_resources: input.config.proxy_resources ?? false,
     expose_tools: input.config.expose_tools ?? null,
   }
+}
+
+export function buildGatewayCreatePayload(input: CreateGatewayInput) {
+  const spec = gatewayInputToSpec({
+    ...input,
+    config: {
+      ...input.config,
+      bearer_token_env:
+        input.config.bearer_token_env?.trim() ||
+        (input.config.bearer_token_value?.trim()
+          ? defaultGatewayBearerEnvName(input.name)
+          : undefined),
+    },
+  })
+
+  const payload: Record<string, unknown> = { spec }
+  const bearerTokenValue = input.config.bearer_token_value?.trim()
+  if (bearerTokenValue) {
+    payload.bearer_token_value = bearerTokenValue
+  }
+  return payload
 }
 
 export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; transport?: TransportType }) {
@@ -450,7 +516,7 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
   }
 
   if (config.bearer_token_env !== undefined) {
-    patch.bearer_token_env = config.bearer_token_env || null
+    patch.bearer_token_env = config.bearer_token_env?.trim() || null
   }
 
   if (config.proxy_resources !== undefined) {
@@ -462,6 +528,34 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
   }
 
   return patch
+}
+
+export function buildGatewayUpdatePayload(
+  id: string,
+  input: UpdateGatewayInput,
+) {
+  const patch = buildGatewayPatch({
+    ...input,
+    config: {
+      ...input.config,
+      bearer_token_env:
+        input.config?.bearer_token_env !== undefined
+          ? input.config.bearer_token_env?.trim()
+          : input.config?.bearer_token_value?.trim()
+            ? defaultGatewayBearerEnvName(input.name ?? id)
+            : input.config?.bearer_token_env,
+    },
+  })
+
+  const payload: Record<string, unknown> = {
+    name: id,
+    patch,
+  }
+  const bearerTokenValue = input.config?.bearer_token_value?.trim()
+  if (bearerTokenValue) {
+    payload.bearer_token_value = bearerTokenValue
+  }
+  return payload
 }
 
 export function exposurePolicyFromConfig(config: BackendGatewayConfigView): ExposurePolicy {

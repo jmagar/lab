@@ -68,6 +68,45 @@ pub struct LabConfig {
     /// Virtual MCP servers backed by canonically configured Lab services.
     #[serde(default)]
     pub virtual_servers: Vec<VirtualServerConfig>,
+    /// Deploy service preferences (feature-gated at the consumer level).
+    #[serde(default)]
+    pub deploy: Option<DeployPreferences>,
+}
+
+/// Deploy service preferences — defaults plus per-host overrides.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeployPreferences {
+    #[serde(default)]
+    pub defaults: Option<DeployDefaults>,
+    #[serde(default)]
+    pub hosts: BTreeMap<String, DeployHostOverride>,
+}
+
+/// Default policy applied to every deploy target unless overridden.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeployDefaults {
+    pub remote_path: Option<String>,
+    pub service: Option<String>,
+    pub service_scope: Option<ServiceScope>,
+    pub max_parallel: Option<u32>,
+    #[serde(default)]
+    pub canary_hosts: Vec<String>,
+}
+
+/// Per-host policy overrides for deploy.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeployHostOverride {
+    pub remote_path: Option<String>,
+    pub service: Option<String>,
+    pub service_scope: Option<ServiceScope>,
+}
+
+/// Systemd scope for the unit restarted by deploy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceScope {
+    System,
+    User,
 }
 
 /// Device runtime preferences.
@@ -1388,5 +1427,49 @@ strategy = "dynamic"
             ConfigError::ConflictingAuth { name } => assert_eq!(name, "acme"),
             other => panic!("expected ConflictingAuth, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_deploy_defaults_and_host_overrides() {
+        let raw = r#"
+[deploy.defaults]
+remote_path = "/usr/local/bin/lab"
+service = "lab"
+service_scope = "system"
+max_parallel = 4
+canary_hosts = ["mini1"]
+
+[deploy.hosts.mini2]
+remote_path = "/opt/lab/bin/lab"
+service = "lab-worker"
+service_scope = "user"
+"#;
+        let parsed: LabConfig = toml::from_str(raw).unwrap();
+        let d = parsed.deploy.expect("deploy present");
+        let defaults = d.defaults.expect("defaults present");
+        assert_eq!(defaults.remote_path.as_deref(), Some("/usr/local/bin/lab"));
+        assert_eq!(defaults.service.as_deref(), Some("lab"));
+        assert_eq!(defaults.service_scope, Some(ServiceScope::System));
+        assert_eq!(defaults.max_parallel, Some(4));
+        assert_eq!(defaults.canary_hosts, vec!["mini1".to_string()]);
+        let mini2 = d.hosts.get("mini2").expect("mini2 override");
+        assert_eq!(mini2.remote_path.as_deref(), Some("/opt/lab/bin/lab"));
+        assert_eq!(mini2.service_scope, Some(ServiceScope::User));
+    }
+
+    #[test]
+    fn deploy_config_absent_is_none_not_error() {
+        let raw = "[output]\n";
+        let parsed: LabConfig = toml::from_str(raw).unwrap();
+        assert!(parsed.deploy.is_none());
+    }
+
+    #[test]
+    fn deploy_max_parallel_defaults_to_one_for_safety_at_read_time() {
+        let raw = "[deploy.defaults]\nremote_path = \"/usr/local/bin/lab\"\n";
+        let parsed: LabConfig = toml::from_str(raw).unwrap();
+        let d = parsed.deploy.unwrap().defaults.unwrap();
+        // unset remains None; safe default applied at orchestrator entry
+        assert!(d.max_parallel.is_none());
     }
 }

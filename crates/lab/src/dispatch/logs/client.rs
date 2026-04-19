@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::Duration;
 
 use super::ingest::{self, IngestCounters};
 use super::store::LogStore;
@@ -34,10 +35,20 @@ pub fn require_system() -> Result<Arc<LogSystem>, ToolError> {
 }
 
 #[doc(hidden)]
+#[allow(dead_code)]
 pub fn clear_installed_log_system_for_test() {
     let slot = installed_slot();
     let mut w = slot.write().expect("installed log system lock poisoned");
     *w = None;
+}
+
+// ── Feature flags ─────────────────────────────────────────────────────────────
+
+static INGEST_ENABLED: OnceLock<bool> = OnceLock::new();
+
+pub fn is_ingest_enabled() -> bool {
+    *INGEST_ENABLED
+        .get_or_init(|| env_non_empty("LAB_LOGS_INGEST_ENABLED").as_deref() == Some("true"))
 }
 
 // ── Bootstraps ────────────────────────────────────────────────────────────────
@@ -53,11 +64,40 @@ pub async fn bootstrap_running_log_system(
     let (handle, counters) =
         ingest::spawn_writer(Arc::clone(&store), Arc::clone(&hub), queue_capacity);
 
+    // Run maintenance once at startup to apply retention limits from previous runs.
+    if let Err(err) = store.run_maintenance().await {
+        tracing::warn!(
+            target: "lab::dispatch::logs",
+            ?err,
+            "startup log maintenance failed"
+        );
+    }
+
+    // Spawn a periodic maintenance task that runs every hour. The JoinHandle
+    // is stored on LogSystem and aborted on drop so the task doesn't outlive
+    // the store it holds a reference to.
+    let store_for_maintenance = Arc::clone(&store);
+    let maintenance_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(3600));
+        interval.tick().await; // skip the first immediate tick (startup already ran)
+        loop {
+            interval.tick().await;
+            if let Err(err) = store_for_maintenance.run_maintenance().await {
+                tracing::warn!(
+                    target: "lab::dispatch::logs",
+                    ?err,
+                    "periodic log maintenance failed"
+                );
+            }
+        }
+    });
+
     let system = Arc::new(LogSystem {
         store,
         hub,
         ingest: handle,
         counters,
+        maintenance_task,
     });
     install(Arc::clone(&system));
     Ok(system)
@@ -77,12 +117,14 @@ pub async fn bootstrap_store_backed_log_system(
         hub,
         ingest: handle,
         counters,
+        maintenance_task: tokio::spawn(async {}), // no periodic maintenance for read-only bootstrap
     }))
 }
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
 #[doc(hidden)]
+#[allow(dead_code)]
 pub async fn bootstrap_running_log_system_for_test(
     queue_capacity: usize,
 ) -> anyhow::Result<Arc<LogSystem>> {
@@ -91,6 +133,7 @@ pub async fn bootstrap_running_log_system_for_test(
 }
 
 #[doc(hidden)]
+#[allow(dead_code)]
 pub fn bootstrap_log_system_for_test() -> anyhow::Result<Arc<LogSystem>> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -98,6 +141,7 @@ pub fn bootstrap_log_system_for_test() -> anyhow::Result<Arc<LogSystem>> {
     rt.block_on(bootstrap_running_log_system_for_test(16))
 }
 
+#[allow(dead_code)]
 fn unique_test_store_path() -> PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
     let unique = SystemTime::now()
@@ -115,7 +159,7 @@ fn unique_test_store_path() -> PathBuf {
 const DEFAULT_DB_PATH_REL: &str = ".lab/logs.db";
 
 pub fn resolve_store_path(config: Option<&LabConfig>) -> PathBuf {
-    if let Some(env) = env_non_empty("LAB_LOGS_STORE_PATH") {
+    if let Some(env) = env_non_empty("LAB_LOCAL_LOGS_STORE_PATH") {
         return PathBuf::from(env);
     }
     if let Some(cfg) = config.and_then(|c| c.local_logs.as_ref()) {
@@ -143,33 +187,33 @@ pub fn resolve_retention(config: Option<&LabConfig>) -> LogRetention {
         .unwrap_or_default();
 
     LogRetention {
-        max_age_days: env_non_empty("LAB_LOGS_RETENTION_DAYS")
+        max_age_days: env_non_empty("LAB_LOCAL_LOGS_RETENTION_DAYS")
             .and_then(|s| s.parse().ok())
             .unwrap_or(base.max_age_days),
-        max_bytes: env_non_empty("LAB_LOGS_MAX_BYTES")
+        max_bytes: env_non_empty("LAB_LOCAL_LOGS_MAX_BYTES")
             .and_then(|s| s.parse().ok())
             .unwrap_or(base.max_bytes),
     }
 }
 
 pub fn resolve_queue_capacity(config: Option<&LabConfig>) -> usize {
-    env_non_empty("LAB_LOGS_QUEUE_CAPACITY")
+    env_non_empty("LAB_LOCAL_LOGS_QUEUE_CAPACITY")
         .and_then(|s| s.parse().ok())
         .or_else(|| {
             config
                 .and_then(|c| c.local_logs.as_ref())
                 .and_then(|c| c.queue_capacity)
         })
-        .unwrap_or(4096)
+        .unwrap_or(1024)
 }
 
 pub fn resolve_subscriber_capacity(config: Option<&LabConfig>) -> usize {
-    env_non_empty("LAB_LOGS_SUBSCRIBER_CAPACITY")
+    env_non_empty("LAB_LOCAL_LOGS_SUBSCRIBER_CAPACITY")
         .and_then(|s| s.parse().ok())
         .or_else(|| {
             config
                 .and_then(|c| c.local_logs.as_ref())
                 .and_then(|c| c.subscriber_capacity)
         })
-        .unwrap_or(1024)
+        .unwrap_or(256)
 }

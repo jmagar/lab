@@ -1,8 +1,9 @@
 //! SQLite-backed persistence for captured log events.
 //!
 //! Single writer (the async writer task in `ingest`), many readers. WAL mode
-//! + shared `Mutex<Connection>` inside `spawn_blocking` keeps the API async
-//! without dragging in `sqlx`.
+//! + split `write_conn`/`read_conn` mutexes inside `spawn_blocking` keeps the
+//! API async without dragging in `sqlx`. WAL allows concurrent readers, so
+//! separating the two mutexes lets reads proceed independently of writes.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -15,8 +16,6 @@ use super::types::{
 };
 use crate::dispatch::error::ToolError;
 
-const SCHEMA_SQL: &str = include_str!("store_schema.sql");
-
 /// Column list shared by search + tail. Kept in sync with
 /// `row_to_event`'s `row.get(...)` names.
 const SELECT_COLS: &str = "event_id, ts, level, subsystem, surface, action, message,
@@ -25,81 +24,122 @@ const SELECT_COLS: &str = "event_id, ts, level, subsystem, surface, action, mess
      source_kind, source_node_id, source_device_id, ingest_path, upstream_event_id";
 
 pub struct LogStore {
-    conn: Arc<Mutex<Connection>>,
+    /// Exclusive connection for writes (INSERT, DELETE, VACUUM).
+    write_conn: Arc<Mutex<Connection>>,
+    /// Separate connection for reads (SELECT). WAL mode allows this to proceed
+    /// concurrently with writes without contending on `write_conn`.
+    read_conn: Arc<Mutex<Connection>>,
     retention: LogRetention,
 }
 
 impl LogStore {
     pub async fn open(path: PathBuf, retention: LogRetention) -> Result<Self, ToolError> {
-        let conn = tokio::task::spawn_blocking(move || -> Result<Connection, rusqlite::Error> {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
-            let conn = Connection::open_with_flags(&path, flags)?;
-            conn.pragma_update(None, "journal_mode", "WAL")?;
-            conn.pragma_update(None, "synchronous", "NORMAL")?;
-            conn.pragma_update(None, "temp_store", "MEMORY")?;
-            conn.pragma_update(None, "mmap_size", 134_217_728_i64)?;
-            conn.execute_batch(SCHEMA_SQL)?;
-            Ok(conn)
-        })
+        let (write_conn, read_conn) = tokio::task::spawn_blocking(
+            move || -> Result<(Connection, Connection), rusqlite::Error> {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                let rw_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+
+                // Write connection — owns schema init and WAL configuration.
+                let wc = Connection::open_with_flags(&path, rw_flags)?;
+                wc.busy_timeout(std::time::Duration::from_millis(5_000))?;
+                wc.pragma_update(None, "journal_mode", "WAL")?;
+                wc.pragma_update(None, "synchronous", "NORMAL")?;
+                wc.pragma_update(None, "temp_store", "MEMORY")?;
+                wc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+                migrate(&wc)?;
+
+                // Read connection — opened after schema is applied.
+                let rc = Connection::open_with_flags(&path, rw_flags)?;
+                rc.busy_timeout(std::time::Duration::from_millis(5_000))?;
+                rc.pragma_update(None, "journal_mode", "WAL")?;
+                rc.pragma_update(None, "temp_store", "MEMORY")?;
+                rc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+                rc.pragma_update(None, "query_only", "true")?;
+
+                Ok((wc, rc))
+            },
+        )
         .await
         .map_err(|e| ToolError::internal_message(format!("log store open join: {e}")))?
         .map_err(|e| ToolError::internal_message(format!("log store open: {e}")))?;
 
         Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
+            write_conn: Arc::new(Mutex::new(write_conn)),
+            read_conn: Arc::new(Mutex::new(read_conn)),
             retention,
         })
     }
 
     pub async fn insert(&self, event: &LogEvent) -> Result<(), ToolError> {
         let event = event.clone();
-        self.blocking("insert", move |c| insert_event(c, &event))
+        self.blocking_write("insert", move |c| insert_event(c, &event))
             .await
     }
 
     pub async fn search(&self, query: LogQuery) -> Result<LogSearchResult, ToolError> {
-        self.blocking("search", move |c| run_search(c, &query))
+        self.blocking_read("search", move |c| run_search(c, &query))
             .await
     }
 
     pub async fn tail(&self, req: LogTailRequest) -> Result<LogTailResult, ToolError> {
-        self.blocking("tail", move |c| run_tail(c, &req)).await
+        self.blocking_read("tail", move |c| run_tail(c, &req)).await
     }
 
     pub async fn stats(&self) -> Result<LogStoreStats, ToolError> {
         let retention = self.retention;
-        self.blocking("stats", move |c| run_stats(c, retention))
+        self.blocking_read("stats", move |c| run_stats(c, retention))
             .await
     }
 
+    #[doc(hidden)]
+    #[allow(dead_code)]
     pub async fn run_maintenance(&self) -> Result<(), ToolError> {
         let retention = self.retention;
-        self.blocking("maintenance", move |c| run_maintenance(c, retention))
+        self.blocking_write("maintenance", move |c| run_maintenance(c, retention))
             .await
     }
 
-    /// Run a `Connection`-using closure on the blocking pool. Wraps the
-    /// repeated `spawn_blocking → lock → double map_err` pattern.
-    async fn blocking<T, F>(&self, label: &'static str, f: F) -> Result<T, ToolError>
+    /// Run a write closure on the blocking pool using the dedicated write connection.
+    async fn blocking_write<T, F>(&self, label: &'static str, f: F) -> Result<T, ToolError>
     where
         T: Send + 'static,
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error> + Send + 'static,
     {
-        let conn = Arc::clone(&self.conn);
+        let conn = Arc::clone(&self.write_conn);
         tokio::task::spawn_blocking(move || {
-            let c = conn.lock().expect("log store mutex poisoned");
-            f(&c)
+            let c = conn
+                .lock()
+                .map_err(|_| ToolError::internal_message("log store write mutex poisoned"))?;
+            f(&c).map_err(|e| ToolError::internal_message(format!("log store {label}: {e}")))
         })
         .await
         .map_err(|e| ToolError::internal_message(format!("log store {label} join: {e}")))?
-        .map_err(|e| ToolError::internal_message(format!("log store {label}: {e}")))
+    }
+
+    /// Run a read closure on the blocking pool using the dedicated read connection.
+    /// The read connection is opened with `query_only=true` and does not contend
+    /// with `write_conn`, allowing WAL-mode concurrency.
+    async fn blocking_read<T, F>(&self, label: &'static str, f: F) -> Result<T, ToolError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, rusqlite::Error> + Send + 'static,
+    {
+        let conn = Arc::clone(&self.read_conn);
+        tokio::task::spawn_blocking(move || {
+            let c = conn
+                .lock()
+                .map_err(|_| ToolError::internal_message("log store read mutex poisoned"))?;
+            f(&c).map_err(|e| ToolError::internal_message(format!("log store {label}: {e}")))
+        })
+        .await
+        .map_err(|e| ToolError::internal_message(format!("log store {label} join: {e}")))?
     }
 }
 
 #[doc(hidden)]
+#[allow(dead_code)]
 pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, ToolError> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let unique = SystemTime::now()
@@ -109,6 +149,29 @@ pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, To
     let path =
         std::env::temp_dir().join(format!("lab-logs-test-{}-{unique}.db", std::process::id()));
     LogStore::open(path, retention).await
+}
+
+// ── Schema migration ──────────────────────────────────────────────────────────
+
+/// Apply pending schema migrations using PRAGMA user_version as the version
+/// counter. Each `if version < N` block is a single, idempotent migration step.
+///
+/// Rules:
+/// - Only bump `user_version` **after** the DDL succeeds.
+/// - Keep version numbers consecutive and never reuse them.
+/// - Future columns: `if version < 2 { conn.execute_batch("ALTER TABLE ...")?; ... }`
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version < 1 {
+        conn.execute_batch(include_str!("store_schema.sql"))?;
+        conn.pragma_update(None, "user_version", 1)?;
+    }
+    // Future migrations:
+    // if version < 2 {
+    //     conn.execute_batch("ALTER TABLE log_events ADD COLUMN new_col TEXT;")?;
+    //     conn.pragma_update(None, "user_version", 2)?;
+    // }
+    Ok(())
 }
 
 // ── Insert ────────────────────────────────────────────────────────────────────
@@ -196,11 +259,23 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
         sql.push_str(" AND correlation_id = ?");
         args.push(corr.clone().into());
     }
+    append_in_clause(
+        &mut sql,
+        &mut args,
+        "source_node_id",
+        q.source_node_ids.iter().cloned(),
+    );
+    append_in_clause(
+        &mut sql,
+        &mut args,
+        "source_kind",
+        q.source_kinds.iter().cloned(),
+    );
     if let Some(text) = &q.text {
         sql.push_str(
-            " AND (message LIKE ? OR IFNULL(request_id,'') LIKE ? OR IFNULL(session_id,'') LIKE ? OR IFNULL(correlation_id,'') LIKE ?)",
+            " AND (message LIKE ? ESCAPE '\\' OR IFNULL(request_id,'') LIKE ? ESCAPE '\\' OR IFNULL(session_id,'') LIKE ? ESCAPE '\\' OR IFNULL(correlation_id,'') LIKE ? ESCAPE '\\')",
         );
-        let like = format!("%{text}%");
+        let like = format!("%{}%", escape_like(text));
         args.push(like.clone().into());
         args.push(like.clone().into());
         args.push(like.clone().into());
@@ -218,6 +293,14 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
         events,
         next_cursor,
     })
+}
+
+/// Escape `%`, `_`, and `\` in a user-supplied string so they are treated as
+/// literals by a SQLite LIKE expression that uses `ESCAPE '\'`.
+fn escape_like(s: &str) -> String {
+    s.replace('\\', r"\\")
+        .replace('%', r"\%")
+        .replace('_', r"\_")
 }
 
 fn append_in_clause<I>(
@@ -360,6 +443,7 @@ fn content_bytes(conn: &Connection) -> Result<u64, rusqlite::Error> {
 
 // ── Maintenance ───────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn run_maintenance(conn: &Connection, retention: LogRetention) -> Result<(), rusqlite::Error> {
     let now_ms = super::ingest::now_ms();
     let age_ms = i64::try_from(retention.max_age_days)
@@ -382,5 +466,7 @@ fn run_maintenance(conn: &Connection, retention: LogRetention) -> Result<(), rus
             break;
         }
     }
+    // Checkpoint the WAL to reclaim pages and keep the WAL file small.
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
     Ok(())
 }

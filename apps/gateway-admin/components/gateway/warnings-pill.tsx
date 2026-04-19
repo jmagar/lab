@@ -24,7 +24,7 @@ export function WarningsPill({ warnings, className }: WarningsPillProps) {
         <TooltipTrigger asChild>
           <span
             className={cn(
-              'inline-flex items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning',
+              'inline-flex items-center gap-1.5 rounded-full border border-aurora-warn/28 bg-[linear-gradient(180deg,rgba(51,41,22,0.42),rgba(30,24,14,0.56))] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-aurora-warn shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]',
               className
             )}
           >
@@ -43,7 +43,7 @@ export function WarningsPill({ warnings, className }: WarningsPillProps) {
               </p>
             ))}
             {warnings.length > 3 && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-aurora-text-muted">
                 +{warnings.length - 3} more warnings
               </p>
             )}

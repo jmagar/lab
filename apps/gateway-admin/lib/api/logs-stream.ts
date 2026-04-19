@@ -58,6 +58,9 @@ export function connectLogStream(
   source.onerror = () => {
     if (source.readyState === EventSource.CLOSED) {
       handlers.onError?.('live stream disconnected')
+    } else {
+      // CONNECTING — browser is retrying automatically
+      handlers.onError?.('live stream reconnecting…')
     }
   }
 

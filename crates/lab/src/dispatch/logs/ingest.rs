@@ -53,11 +53,14 @@ pub struct IngestHandle {
     /// Inline write-through path used by `submit` (await). The store and hub
     /// are owned by the LogSystem and shared with the writer task, so this is
     /// a cheap Arc clone.
+    #[cfg_attr(not(test), allow(dead_code))]
+    #[allow(dead_code)]
     inline: Option<(Arc<LogStore>, Arc<StreamHub>)>,
     counters: Arc<IngestCounters>,
 }
 
 impl IngestHandle {
+    #[allow(dead_code)]
     pub async fn submit(&self, raw: RawLogEvent) -> Result<(), ToolError> {
         // Await-path: persist inline so callers see their write before returning.
         // Non-await callers (the tracing layer) use `try_submit` instead.
@@ -82,7 +85,10 @@ impl IngestHandle {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.counters.record_drop();
-                Ok(())
+                Err(ToolError::Sdk {
+                    sdk_kind: "rate_limited".to_string(),
+                    message: "log ingest queue is full; event dropped".to_string(),
+                })
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 Err(ToolError::internal_message("log ingest channel closed"))
@@ -224,6 +230,9 @@ fn looks_secret(key: &str) -> bool {
         || k.contains("api_key")
         || k.contains("apikey")
         || k == "authorization"
+        || k.contains("cookie")
+        || k.contains("private_key")
+        || k.contains("credential")
 }
 
 // ── tracing Layer ────────────────────────────────────────────────────────────
@@ -294,7 +303,7 @@ where
             upstream_event_id: None,
         };
 
-        let _ = system.try_ingest(raw);
+        drop(system.try_ingest(raw));
     }
 }
 

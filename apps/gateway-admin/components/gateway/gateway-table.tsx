@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { 
-  MoreHorizontal, 
-  Eye, 
-  Pencil, 
-  Play, 
-  RefreshCw, 
+import {
+  MoreHorizontal,
+  Eye,
+  Pencil,
+  Play,
+  RefreshCw,
   Trash2,
   FileText,
   MessageSquare,
@@ -30,12 +30,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import { TransportBadge } from './transport-badge'
 import { WarningsPill } from './warnings-pill'
 import type { Gateway } from '@/lib/types/gateway'
 import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { buildGatewayEndpointPreview } from '@/lib/api/gateway-mobile'
 import { SurfaceRatio } from './surface-ratio'
+import {
+  AURORA_DISPLAY_TITLE,
+  AURORA_MUTED_LABEL,
+  AURORA_STRONG_PANEL,
+  AURORA_GATEWAY_CARD,
+  AURORA_GATEWAY_DISABLED_ROW,
+  AURORA_GATEWAY_MUTED_CARD,
+  AURORA_GATEWAY_ROW,
+  AURORA_GATEWAY_SUBTLE_SURFACE,
+  gatewayActionTone,
+  gatewayStatusTone,
+} from './gateway-theme'
 
 interface GatewayTableProps {
   gateways: Gateway[]
@@ -76,11 +89,16 @@ export function GatewayTable({
         {gateways.map((gateway) => {
           const supportsProbeControls = gateway.source !== 'lab_service'
           const isDisabled = gateway.source === 'lab_service' && !(gateway.enabled ?? true)
+          const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
 
           return (
             <article
               key={gateway.id}
-              className={isDisabled ? 'rounded-xl border bg-muted/20 p-4 text-muted-foreground' : 'rounded-xl border bg-card p-4'}
+              className={cn(
+                isDisabled ? AURORA_GATEWAY_MUTED_CARD : AURORA_GATEWAY_CARD,
+                'p-4 text-aurora-text-primary',
+                isDisabled && 'text-[#8ea4b3]',
+              )}
             >
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1 space-y-3">
@@ -89,21 +107,25 @@ export function GatewayTable({
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <Link
                           href={gatewayDetailHref(gateway.id)}
-                          className="min-w-0 max-w-full text-base font-semibold break-words hover:underline underline-offset-4"
+                          className={cn(
+                            AURORA_DISPLAY_TITLE,
+                            'min-w-0 max-w-full break-words text-base font-semibold text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
+                          )}
                         >
                           {gateway.name}
                         </Link>
                         {isDisabled && (
-                          <Badge variant="secondary" className="text-[10px] uppercase">
+                          <Badge className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] text-[10px] uppercase tracking-[0.16em] text-aurora-text-muted">
                             Disabled
                           </Badge>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span
-                          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                          className={cn('size-2 rounded-full', statusTone.dot)}
                           aria-hidden="true"
                         />
+                        <span className={cn(AURORA_MUTED_LABEL, 'tracking-[0.14em]', statusTone.text)}>{statusTone.label}</span>
                         <TransportBadge transport={gateway.transport} />
                         <WarningsPill warnings={gateway.warnings} />
                       </div>
@@ -111,7 +133,11 @@ export function GatewayTable({
 
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-8 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={cn(gatewayActionTone(), 'size-9 shrink-0 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                        >
                           <MoreHorizontal className="size-4" />
                           <span className="sr-only">More actions</span>
                         </Button>
@@ -152,7 +178,7 @@ export function GatewayTable({
                     </DropdownMenu>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-3">
+                  <div className={cn(AURORA_GATEWAY_SUBTLE_SURFACE, 'flex flex-wrap items-center gap-2 p-3')}>
                     <SurfaceRatio
                       icon={Wrench}
                       label="Tools"
@@ -174,7 +200,7 @@ export function GatewayTable({
                   </div>
 
                   {gateway.status.last_error && (
-                    <p className="line-clamp-2 break-words text-xs text-warning">{gateway.status.last_error}</p>
+                    <p className="line-clamp-2 break-words text-xs text-aurora-warn">{gateway.status.last_error}</p>
                   )}
 
                   <div className="flex flex-wrap items-center gap-2">
@@ -182,7 +208,7 @@ export function GatewayTable({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8"
+                        className={cn(gatewayActionTone(), 'h-9 hover:bg-[#17364b] hover:text-aurora-text-primary')}
                         onClick={() => handleAction(gateway, 'test', onTest)}
                         disabled={isLoading(gateway.id, 'test')}
                       >
@@ -194,7 +220,7 @@ export function GatewayTable({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-8"
+                        className={cn(gatewayActionTone(), 'h-9 hover:bg-[#17364b] hover:text-aurora-text-primary')}
                         onClick={() => handleAction(gateway, 'reload', onReload)}
                         disabled={isLoading(gateway.id, 'reload')}
                       >
@@ -202,7 +228,12 @@ export function GatewayTable({
                         Reload
                       </Button>
                     )}
-                    <Button asChild variant="ghost" size="sm" className="h-8 px-2">
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className={cn(gatewayActionTone('accent'), 'h-9 px-3 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                    >
                       <Link href={gatewayDetailHref(gateway.id)}>
                         View
                       </Link>
@@ -215,152 +246,169 @@ export function GatewayTable({
         })}
       </div>
 
-      <div className="hidden md:block">
+      <div className={cn(AURORA_STRONG_PANEL, 'hidden overflow-hidden md:block')}>
         <Table className="table-fixed">
           <TableHeader>
-            <TableRow>
-              <TableHead className="w-[62%]">Gateway</TableHead>
-              <TableHead className="w-[26%]">Surfaces</TableHead>
-              <TableHead className="w-[116px] text-right">Actions</TableHead>
+            <TableRow className="border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] hover:bg-[rgba(7,17,26,0.48)]">
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[62%] px-6 py-4')}>Gateway</TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[26%] px-4 py-4')}>Surfaces</TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[116px] px-6 py-4 text-right')}>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {gateways.map((gateway) => {
               const supportsProbeControls = gateway.source !== 'lab_service'
               const endpointPreview = buildGatewayEndpointPreview(gateway)
+              const isDisabled = gateway.source === 'lab_service' && !(gateway.enabled ?? true)
+              const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
 
               return (
-              <TableRow
-                key={gateway.id}
-                className={gateway.source === 'lab_service' && !(gateway.enabled ?? true) ? 'group bg-muted/20 text-muted-foreground' : 'group'}
-              >
-                <TableCell className="w-[62%] align-top whitespace-normal">
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span
-                        className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                        aria-hidden="true"
-                      />
-                      <Link 
-                        href={gatewayDetailHref(gateway.id)}
-                        className="min-w-0 max-w-full font-medium break-words hover:underline underline-offset-4"
-                      >
-                        {gateway.name}
-                      </Link>
-                      {gateway.source === 'lab_service' && !(gateway.enabled ?? true) && (
-                        <Badge variant="secondary" className="text-[10px] uppercase">
-                          Disabled
-                        </Badge>
-                      )}
-                      <TransportBadge transport={gateway.transport} />
-                      <WarningsPill warnings={gateway.warnings} />
-                    </div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                      <span className="truncate" title={endpointPreview}>
-                        {endpointPreview}
-                      </span>
-                      <span className="tabular-nums">
-                        {gateway.source === 'lab_service' && !(gateway.enabled ?? true) ? 'deactivated' : 'active'}
-                      </span>
-                    </div>
-                    {gateway.status.last_error && (
-                      <p className="line-clamp-2 break-words text-xs text-warning">{gateway.status.last_error}</p>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="align-top">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <SurfaceRatio
-                      icon={Wrench}
-                      label="Tools"
-                      exposed={gateway.status.exposed_tool_count}
-                      total={gateway.status.discovered_tool_count}
-                    />
-                    <SurfaceRatio
-                      icon={FileText}
-                      label="Resources"
-                      exposed={gateway.status.exposed_resource_count}
-                      total={gateway.status.discovered_resource_count}
-                    />
-                    <SurfaceRatio
-                      icon={MessageSquare}
-                      label="Prompts"
-                      exposed={gateway.status.exposed_prompt_count}
-                      total={gateway.status.discovered_prompt_count}
-                    />
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    {supportsProbeControls && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
-                        onClick={() => handleAction(gateway, 'test', onTest)}
-                        disabled={isLoading(gateway.id, 'test')}
-                      >
-                        <Play className={`size-4 ${isLoading(gateway.id, 'test') ? 'animate-pulse' : ''}`} />
-                        <span className="sr-only">Test connection</span>
-                      </Button>
-                    )}
-                    {supportsProbeControls && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
-                        onClick={() => handleAction(gateway, 'reload', onReload)}
-                        disabled={isLoading(gateway.id, 'reload')}
-                      >
-                        <RefreshCw className={`size-4 ${isLoading(gateway.id, 'reload') ? 'animate-spin' : ''}`} />
-                        <span className="sr-only">Reload gateway</span>
-                      </Button>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-8">
-                          <MoreHorizontal className="size-4" />
-                          <span className="sr-only">More actions</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={gatewayDetailHref(gateway.id)}>
-                            <Eye className="size-4 mr-2" />
-                            View details
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onEdit(gateway)}>
-                          <Pencil className="size-4 mr-2" />
-                          Edit gateway
-                        </DropdownMenuItem>
-                        {supportsProbeControls && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => onTest(gateway)}>
-                              <Play className="size-4 mr-2" />
-                              Test connection
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onReload(gateway)}>
-                              <RefreshCw className="size-4 mr-2" />
-                              Reload gateway
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          onClick={() => onDelete(gateway)}
-                          className="text-destructive focus:text-destructive"
+                <TableRow
+                  key={gateway.id}
+                  className={cn('group', isDisabled ? AURORA_GATEWAY_DISABLED_ROW : AURORA_GATEWAY_ROW)}
+                >
+                  <TableCell className="w-[62%] px-6 py-4 align-top whitespace-normal">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span
+                          className={cn('size-2 rounded-full', statusTone.dot)}
+                          aria-hidden="true"
+                        />
+                        <span className={cn(AURORA_MUTED_LABEL, 'tracking-[0.14em]', statusTone.text)}>{statusTone.label}</span>
+                        <Link
+                          href={gatewayDetailHref(gateway.id)}
+                          className={cn(
+                            AURORA_DISPLAY_TITLE,
+                            'min-w-0 max-w-full break-words font-medium text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
+                          )}
                         >
-                          <Trash2 className="size-4 mr-2" />
-                          {gateway.source === 'lab_service' ? 'Disable gateway' : 'Remove gateway'}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )})}
+                          {gateway.name}
+                        </Link>
+                        {isDisabled && (
+                          <Badge className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] text-[10px] uppercase tracking-[0.16em] text-aurora-text-muted">
+                            Disabled
+                          </Badge>
+                        )}
+                        <TransportBadge transport={gateway.transport} />
+                        <WarningsPill warnings={gateway.warnings} />
+                      </div>
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-aurora-text-muted">
+                        <span className="truncate text-[#c8d9e3]" title={endpointPreview}>
+                          {endpointPreview}
+                        </span>
+                        <span className="tabular-nums">
+                          {isDisabled ? 'deactivated' : 'active'}
+                        </span>
+                      </div>
+                      {gateway.status.last_error && (
+                        <p className="line-clamp-2 break-words text-xs text-aurora-warn">{gateway.status.last_error}</p>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-4 align-top">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SurfaceRatio
+                        icon={Wrench}
+                        label="Tools"
+                        exposed={gateway.status.exposed_tool_count}
+                        total={gateway.status.discovered_tool_count}
+                      />
+                      <SurfaceRatio
+                        icon={FileText}
+                        label="Resources"
+                        exposed={gateway.status.exposed_resource_count}
+                        total={gateway.status.discovered_resource_count}
+                      />
+                      <SurfaceRatio
+                        icon={MessageSquare}
+                        label="Prompts"
+                        exposed={gateway.status.exposed_prompt_count}
+                        total={gateway.status.discovered_prompt_count}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {supportsProbeControls && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={cn(
+                            gatewayActionTone(),
+                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
+                          )}
+                          onClick={() => handleAction(gateway, 'test', onTest)}
+                          disabled={isLoading(gateway.id, 'test')}
+                        >
+                          <Play className={`size-4 ${isLoading(gateway.id, 'test') ? 'animate-pulse' : ''}`} />
+                          <span className="sr-only">Test connection</span>
+                        </Button>
+                      )}
+                      {supportsProbeControls && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={cn(
+                            gatewayActionTone(),
+                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
+                          )}
+                          onClick={() => handleAction(gateway, 'reload', onReload)}
+                          disabled={isLoading(gateway.id, 'reload')}
+                        >
+                          <RefreshCw className={`size-4 ${isLoading(gateway.id, 'reload') ? 'animate-spin' : ''}`} />
+                          <span className="sr-only">Reload gateway</span>
+                        </Button>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className={cn(gatewayActionTone(), 'size-9 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                          >
+                            <MoreHorizontal className="size-4" />
+                            <span className="sr-only">More actions</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link href={gatewayDetailHref(gateway.id)}>
+                              <Eye className="mr-2 size-4" />
+                              View details
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onEdit(gateway)}>
+                            <Pencil className="mr-2 size-4" />
+                            Edit gateway
+                          </DropdownMenuItem>
+                          {supportsProbeControls && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => onTest(gateway)}>
+                                <Play className="mr-2 size-4" />
+                                Test connection
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onReload(gateway)}>
+                                <RefreshCw className="mr-2 size-4" />
+                                Reload gateway
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => onDelete(gateway)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            {gateway.source === 'lab_service' ? 'Disable gateway' : 'Remove gateway'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>

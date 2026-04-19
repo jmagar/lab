@@ -1,0 +1,443 @@
+# Labby Design System Contract
+
+**Status:** Active  
+**Scope:** `apps/gateway-admin` web UI  
+**Mode:** Dark mode only  
+**Primary reference sandbox:** `/design-system`
+
+## Purpose
+
+This document is the root-level source of truth for the Labby web UI design system.
+
+It defines the visual and interaction contract that new pages, refactors, and component work must follow. The goal is to keep Labby consistent as a premium control plane: clean, modern, and operator-friendly without feeling glossy, intimidating, or over-styled.
+
+This contract is implementation-facing. It exists so product pages do not drift into one-off styling decisions.
+
+Related documents:
+
+- [Aurora Dark Theme Spec](./superpowers/specs/2026-04-17-aurora-dark-theme-spec.md)
+- [Design System Page Plan](./superpowers/plans/2026-04-17-design-system-page.md)
+
+## Product Direction
+
+Labby uses the `Aurora` dark theme language.
+
+Aurora should feel:
+
+- premium, but not glossy
+- modern, but not flashy
+- calm, but not dull
+- dense enough for operator workflows, but not daunting
+
+Aurora should avoid:
+
+- bright neon dark-mode styling
+- heavy gradient fills for standard controls
+- high-alert warning and error colors used by default
+- a field of identical flat cards
+- decorative motion that competes with operational data
+
+## Typography
+
+Labby uses a split typography system.
+
+- Display family: `Manrope`
+- Working UI family: `Inter`
+
+### `Manrope` Usage
+
+Use `Manrope` for:
+
+- page titles
+- section headers
+- top-level metric numbers
+
+### `Inter` Usage
+
+Use `Inter` for:
+
+- navigation labels
+- buttons and controls
+- forms
+- tables
+- logs and dense operational rows
+- metadata and inspectors
+- body copy
+
+### Typography Ramp
+
+#### Display 1
+
+- family: `Manrope`
+- size: `34px`
+- line-height: `1.04`
+- weight: `800`
+- tracking: `-0.045em`
+- use: major page titles
+
+#### Display 2
+
+- family: `Manrope`
+- size: `19px`
+- line-height: `1.12`
+- weight: `700`
+- tracking: `-0.02em`
+- use: section headers
+
+#### Metric Display
+
+- family: `Manrope`
+- size: `28px`
+- line-height: `1`
+- weight: `800`
+- tracking: `-0.04em`
+- use: top-level metric numbers
+- use tabular numerals when possible
+
+#### Body
+
+- family: `Inter`
+- size: `14px`
+- line-height: `1.55`
+- weight: `400`
+- use: standard copy, helper text
+
+#### Control
+
+- family: `Inter`
+- size: `13px`
+- line-height: `1.2`
+- weight: `500` to `600`
+- use: buttons, inputs, selects, pills
+
+#### Dense Data
+
+- family: `Inter` or mono where required
+- size: `12px` to `13px`
+- line-height: `1.35` to `1.5`
+- use: tables, logs, inspectors
+
+#### Eyebrow
+
+- family: `Inter`
+- size: `10px` to `11px`
+- line-height: `1`
+- weight: `700`
+- tracking: `0.14em` to `0.18em`
+- use uppercase
+
+## Color Contract
+
+All new page and component styling should use semantic Aurora tokens rather than embedded one-off hex values.
+
+### Base Surfaces
+
+- `--aurora-page-bg: #07131c`
+- `--aurora-nav-bg: #07111a`
+- `--aurora-panel-medium: #102330`
+- `--aurora-panel-medium-top: rgba(20, 44, 60, 0.18)`
+- `--aurora-panel-strong: #13293a`
+- `--aurora-panel-strong-top: #173245`
+- `--aurora-control-surface: #0c1a24`
+- `--aurora-control-surface-top: rgba(18, 40, 56, 0.96)`
+
+### Borders And Text
+
+- `--aurora-border-default: #1d3d4e`
+- `--aurora-border-strong: #24536c`
+- `--aurora-text-primary: #e6f4fb`
+- `--aurora-text-muted: #90a9b9`
+
+### Accent Family
+
+- `--aurora-accent-primary: #29b6f6`
+- `--aurora-accent-strong: #67cbfa`
+- `--aurora-accent-deep: #1c7fac`
+
+### State Colors
+
+- `--aurora-warn: #c6a36b`
+- `--aurora-error: #c78490`
+- `--aurora-focus-ring: rgba(41, 182, 246, 0.34)`
+- `--aurora-active-glow: 0 0 0 1px rgba(41, 182, 246, 0.18), 0 0 16px rgba(41, 182, 246, 0.08)`
+
+### Status Guidance
+
+Status accents must stay muted and integrated into the Aurora family.
+
+- success/live should read clear, not neon
+- warning should read informational before alarming
+- error should read serious without becoming the loudest surface on the page by default
+
+## Elevation And Surface Contract
+
+Aurora uses noticeable lift with tiers.
+
+### Tier 0
+
+- the page canvas
+- deepest navy surface
+- should clearly sit behind all working UI
+
+### Tier 1
+
+Use for:
+
+- toolbars
+- header control strips
+- secondary support panels
+
+Supporting tokens:
+
+- `--aurora-shadow-medium: 0 12px 24px rgba(0, 0, 0, 0.18)`
+- `--aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.035)`
+
+### Tier 2
+
+Use for:
+
+- primary data panels
+- inspectors
+- strong metric surfaces
+- main stream containers
+
+Supporting tokens:
+
+- `--aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.26)`
+- `--aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.05)`
+
+### Rule
+
+Do not flatten major surfaces into a single visual plane. Toolbar/header layers should be calmer than main content layers.
+
+## Radius Contract
+
+Aurora uses a fixed radius scale.
+
+- Radius 1: `14px`
+- Radius 2: `18px`
+- Radius 3: `22px`
+- Pill: `999px`
+
+Use:
+
+- Radius 1 for dense controls and small buttons
+- Radius 2 for inline cards and metadata blocks
+- Radius 3 for major panels, toolbars, and inspectors
+- Pill for filter chips and compact state badges
+
+## Spacing Contract
+
+Aurora uses a compact operator spacing system.
+
+- `4px` for micro alignment and icon gaps
+- `8px` for tight internal spacing
+- `10px` for compact control grouping
+- `12px` for default control padding and short stacks
+- `16px` for standard card/panel padding
+- `20px` for major group spacing
+- `24px` for section separation
+
+### Rule
+
+Favor compact clarity over large breathable marketing spacing. Labby is an operational UI.
+
+## Active, Hover, And Focus Rules
+
+Aurora uses restrained active states.
+
+State should be communicated through:
+
+- border change
+- text emphasis
+- indicator dots or check marks
+- slight surface deepening
+- subtle outer glow
+
+Aurora should avoid:
+
+- glossy selected fills
+- bright radial sheen
+- full-accent flooded control backgrounds for standard selection
+
+### Focus
+
+Interactive elements must present a clear focus-visible treatment using the shared Aurora focus ring language.
+
+### Motion
+
+Motion should be minimal and functional.
+
+Allow:
+
+- hover transitions
+- expand/collapse transitions
+- loading and progress indicators
+
+Avoid:
+
+- decorative ambient motion
+- large animated glows
+- animated gradients in normal control states
+
+## Component Contract
+
+### Buttons
+
+Labby uses a button hierarchy:
+
+- primary
+- secondary
+- outline
+- ghost
+- destructive
+
+Rules:
+
+- primary actions should use the Aurora accent family with restrained fill and clear contrast
+- secondary and outline actions should rely on surface, border, and text hierarchy rather than louder color
+- destructive actions should remain clearly distinct, but still muted within Aurora
+- buttons should not introduce one-off shadows, radii, or typography
+
+### Pills And Multi-Select Filters
+
+Pill-style checkbox controls are part of the system.
+
+Rules:
+
+- default state should stay flat and calm
+- selected state should use border emphasis, a subtle glow, and a clear internal indicator
+- selected pills should not use bright sheen or heavy filled gradients
+
+### Inputs And Selects
+
+Rules:
+
+- use Aurora control surfaces
+- keep borders and focus states consistent with the shared token system
+- validation states must layer on top of the control contract rather than replace it with unrelated styling
+
+### Status Badges
+
+Status badges should be compact and quiet.
+
+Rules:
+
+- badges should reinforce meaning without becoming the main visual event
+- keep warning and error badges muted
+- do not use highly saturated fills for routine status display
+
+### Tables And Dense Data
+
+Labby supports dense operational views.
+
+Rules:
+
+- favor scanability over decorative row styling
+- keep row heights compact and consistent
+- use truncation by default where scanability matters
+- allow wrapping only when the interaction clearly calls for expansion
+- use mono only where value alignment or log readability benefits from it
+
+### Panels And Inspectors
+
+Rules:
+
+- inspectors should use Tier 2 lift
+- secondary support panels should use Tier 1 lift unless they are the primary interaction surface
+- avoid mixing many panel languages on a single page
+
+### Empty, Loading, Success, Warning, Error States
+
+Rules:
+
+- these states must feel like part of the same product, not separate illustration cards
+- empty states should stay concise and operational
+- loading states should be understated
+- success/warning/error states should communicate clearly without breaking palette discipline
+
+## Page-Level Patterns
+
+### Logs
+
+The logs page establishes the first Aurora reference implementation for:
+
+- dense tail-style data presentation
+- lifted toolbar plus stronger stream/inspector surfaces
+- structured operator panels
+- restrained control states
+
+### Gateways
+
+The Gateways page should align with the same Aurora principles while preserving its dense table workflow:
+
+- Aurora summary strip
+- Aurora filters and pills
+- Tiered panel hierarchy
+- calmer status accents
+
+### Design System Sandbox
+
+`/design-system` is the interactive implementation reference for the current web UI.
+
+It should remain:
+
+- reachable by direct URL only
+- excluded from the primary sidebar
+- safe to interact with using local fake state
+- broad enough to exercise the UI patterns currently used in the app
+
+Its sections should cover:
+
+- foundations
+- controls
+- feedback
+- navigation
+- data display
+- application patterns
+
+## Accessibility And Interaction
+
+The design system must preserve usability under keyboard and assistive interaction.
+
+Minimum rules:
+
+- all interactive controls require visible focus treatment
+- contrast must remain readable on dark surfaces
+- pill filters and custom controls must remain understandable without relying on color alone
+- destructive actions must stay explicit in both label and style
+- dense views must preserve clear hit targets and readable text sizing
+
+## Responsive Rules
+
+Labby is desktop-first but must remain usable on narrower screens.
+
+Rules:
+
+- preserve the same system language on mobile rather than inventing alternate styling
+- allow inspectors and secondary panels to collapse into sheets or drawers
+- prioritize operational readability over perfectly preserving desktop density
+
+## Engineering Rules
+
+When implementing or refactoring UI:
+
+- use shared semantic tokens before adding new hardcoded values
+- prefer extending shared component recipes over page-local one-offs
+- keep display typography to the approved display moments
+- do not introduce alternate dark themes on a per-page basis
+- update `/design-system` when adding or materially changing a shared interaction pattern
+- treat this document as the stable contract and dated exploration docs as supporting material
+
+## Approval Rule
+
+A page is not considered aligned with the design system unless it satisfies all of the following:
+
+- uses the Aurora token system
+- follows the typography split correctly
+- uses the approved elevation hierarchy
+- uses restrained active states
+- preserves operator-first density and readability
+- does not introduce an incompatible component language
+
+When in doubt, update the contract and the `/design-system` sandbox together rather than letting implementation drift.

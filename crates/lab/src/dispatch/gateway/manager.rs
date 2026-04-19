@@ -18,7 +18,8 @@ use crate::registry::ToolRegistry;
 use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
-    insert_upstream, load_gateway_config, remove_upstream, update_upstream, write_gateway_config,
+    default_gateway_bearer_env_name, insert_upstream, load_gateway_config, remove_upstream,
+    update_upstream, validate_bearer_token_env_name, write_gateway_config,
 };
 use super::params::GatewayUpdatePatch;
 use super::service_catalog::service_meta;
@@ -600,9 +601,33 @@ impl GatewayManager {
         })
     }
 
-    pub async fn add(&self, spec: UpstreamConfig) -> Result<GatewayView, ToolError> {
+    pub async fn add(
+        &self,
+        mut spec: UpstreamConfig,
+        bearer_token_value: Option<String>,
+    ) -> Result<GatewayView, ToolError> {
         let mut cfg = self.config.read().await.clone();
-        insert_upstream(&mut cfg, spec.clone())?;
+
+        // Trim and validate bearer_token_env unconditionally so whitespace typos
+        // are caught before they silently fail env-var lookup later.
+        if let Some(ref env_name) = spec.bearer_token_env {
+            let trimmed = env_name.trim().to_string();
+            validate_bearer_token_env_name(&trimmed)?;
+            spec.bearer_token_env = Some(trimmed);
+        }
+
+        if let Some(token_value) = bearer_token_value.as_deref().map(str::trim)
+            && !token_value.is_empty()
+        {
+            let env_name =
+                resolve_gateway_bearer_env_name(&spec.name, spec.bearer_token_env.as_deref())?;
+            spec.bearer_token_env = Some(env_name.clone());
+            insert_upstream(&mut cfg, spec.clone())?;
+            self.persist_gateway_bearer_token(&env_name, token_value)
+                .await?;
+        } else {
+            insert_upstream(&mut cfg, spec.clone())?;
+        }
         self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&spec.name).await
@@ -612,10 +637,55 @@ impl GatewayManager {
         &self,
         name: &str,
         patch: GatewayUpdatePatch,
+        bearer_token_value: Option<String>,
     ) -> Result<GatewayView, ToolError> {
+        let mut patch = patch;
         let mut cfg = self.config.read().await.clone();
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
-        update_upstream(&mut cfg, name, patch)?;
+
+        // Trim and validate bearer_token_env unconditionally so whitespace typos
+        // are caught before they silently fail env-var lookup later.
+        if let Some(Some(ref env_name)) = patch.bearer_token_env {
+            let trimmed = env_name.trim().to_string();
+            validate_bearer_token_env_name(&trimmed)?;
+            patch.bearer_token_env = Some(Some(trimmed));
+        }
+
+        if let Some(token_value) = bearer_token_value.as_deref().map(str::trim)
+            && !token_value.is_empty()
+        {
+            // Resolve env var name: prefer patch > existing config > error.
+            // Auto-generation is intentionally not used here — callers must be
+            // explicit so the stored env name is predictable and auditable.
+            let env_name = if let Some(env) = patch
+                .bearer_token_env
+                .as_ref()
+                .and_then(|value| value.as_deref())
+            {
+                env.to_string()
+            } else if let Some(existing_env) = cfg
+                .upstream
+                .iter()
+                .find(|u| u.name == name)
+                .and_then(|u| u.bearer_token_env.as_deref())
+            {
+                existing_env.to_string()
+            } else {
+                return Err(ToolError::InvalidParam {
+                    message: "bearer_token_env is required when providing bearer_token_value: \
+                              set bearer_token_env in the patch or ensure the existing gateway \
+                              already has one configured"
+                        .to_string(),
+                    param: "bearer_token_env".to_string(),
+                });
+            };
+            patch.bearer_token_env = Some(Some(env_name.clone()));
+            update_upstream(&mut cfg, name, patch)?;
+            self.persist_gateway_bearer_token(&env_name, token_value)
+                .await?;
+        } else {
+            update_upstream(&mut cfg, name, patch)?;
+        }
         self.persist_config(cfg).await?;
         let _ = self.reload().await?;
         self.get(&updated_name).await
@@ -855,6 +925,62 @@ impl GatewayManager {
         crate::tui::services::lab_env_path()
     }
 
+    async fn persist_gateway_bearer_token(
+        &self,
+        env_name: &str,
+        token_value: &str,
+    ) -> Result<(), ToolError> {
+        validate_bearer_token_env_name(env_name)?;
+
+        let auth_header = normalize_gateway_bearer_token(token_value);
+        let env_path = self.env_path();
+        let creds = [ServiceCreds {
+            service: "gateway".to_string(),
+            url: None,
+            secret: Some(auth_header),
+            env_field: env_name.to_string(),
+            source_host: None,
+            probe_host: None,
+            runtime: None,
+            url_verified: false,
+        }];
+
+        if !env_is_up_to_date(&env_path, &creds) {
+            drop(backup_env(&env_path).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to back up env file: {e}"),
+            })?);
+            write_env(&env_path, &creds, true).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to write env file: {e}"),
+            })?;
+        }
+
+        // dotenvy::from_path_override calls std::env::set_var, which mutates
+        // global process state. This is inherently racy in a multi-threaded
+        // Tokio runtime. Running it on the blocking thread pool keeps it off
+        // the async executor, but does not eliminate the race with concurrent
+        // std::env::var calls. A proper fix would require a shared env map
+        // (e.g. Arc<RwLock<HashMap>>) threaded into every client that reads
+        // env vars — tracked as a follow-up improvement.
+        let env_path_clone = env_path.clone();
+        tokio::task::spawn_blocking(move || dotenvy::from_path_override(&env_path_clone))
+            .await
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("env reload task panicked: {e}"),
+            })?
+            .map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!(
+                    "failed to refresh process env from {}: {e}",
+                    env_path.display()
+                ),
+            })?;
+
+        Ok(())
+    }
+
     async fn persist_config(&self, cfg: LabConfig) -> Result<(), ToolError> {
         let path = self.path.clone();
         let cfg_clone = cfg.clone();
@@ -866,6 +992,31 @@ impl GatewayManager {
             })??;
         *self.config.write().await = cfg;
         Ok(())
+    }
+}
+
+fn resolve_gateway_bearer_env_name(
+    gateway_name: &str,
+    explicit_env_name: Option<&str>,
+) -> Result<String, ToolError> {
+    match explicit_env_name.map(str::trim) {
+        Some(name) if !name.is_empty() => {
+            validate_bearer_token_env_name(name)?;
+            Ok(name.to_string())
+        }
+        _ => Ok(default_gateway_bearer_env_name(gateway_name)),
+    }
+}
+
+fn normalize_gateway_bearer_token(token_value: &str) -> String {
+    let trimmed = token_value.trim();
+    if trimmed
+        .get(..7)
+        .is_some_and(|s| s.eq_ignore_ascii_case("bearer "))
+    {
+        format!("Bearer {}", &trimmed[7..])
+    } else {
+        format!("Bearer {trimmed}")
     }
 }
 
@@ -906,6 +1057,20 @@ fn empty_upstream_summary() -> UpstreamCachedSummary {
     UpstreamCachedSummary::default()
 }
 
+fn is_nonessential_capability_error(message: &str) -> bool {
+    // Only suppress the well-known optional-capability discovery failures
+    // (prompts/resources list not implemented). Broad "-32601" / "Method not
+    // found" matching would also hide real tool-call or handshake failures.
+    message.starts_with("failed to list prompts from upstream:")
+        || message.starts_with("failed to list resources from upstream:")
+        || message.starts_with("does not implement MCP prompts discovery")
+        || message.starts_with("does not implement MCP resources discovery")
+}
+
+fn operator_visible_upstream_error(message: Option<String>) -> Option<String> {
+    message.filter(|message| !is_nonessential_capability_error(message))
+}
+
 async fn upstream_summary(
     pool: Option<&UpstreamPool>,
     upstream_name: &str,
@@ -924,13 +1089,13 @@ async fn server_view_from_upstream(
     upstream: &UpstreamConfig,
 ) -> ServerView {
     let summary = upstream_summary(pool, &upstream.name).await;
-    let last_error = match pool {
+    let last_error = operator_visible_upstream_error(match pool {
         Some(pool) => pool.upstream_last_error(&upstream.name).await,
         None => None,
-    };
-    let connected =
-        summary.exposed_tool_count + summary.exposed_resource_count + summary.exposed_prompt_count
-            > 0;
+    });
+    let connected = summary.exposed_tool_count > 0
+        || summary.exposed_resource_count > 0
+        || summary.exposed_prompt_count > 0;
 
     ServerView {
         id: upstream.name.clone(),
@@ -1233,7 +1398,7 @@ async fn runtime_view(
         exposed_tool_count: summary.exposed_tool_count,
         exposed_resource_count: summary.exposed_resource_count,
         exposed_prompt_count: summary.exposed_prompt_count,
-        last_error: pool.upstream_last_error(name).await,
+        last_error: operator_visible_upstream_error(pool.upstream_last_error(name).await),
     }
 }
 
@@ -1389,6 +1554,40 @@ mod tests {
             .expect("url field");
         assert!(!url.present);
         assert_eq!(url.value_preview, None);
+    }
+
+    #[tokio::test]
+    async fn add_with_bearer_token_value_writes_env_and_references_generated_env_var() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let gateway = manager
+            .add(
+                UpstreamConfig {
+                    name: "github".to_string(),
+                    url: Some("https://api.githubcopilot.com/mcp/".to_string()),
+                    bearer_token_env: None,
+                    command: None,
+                    args: Vec::new(),
+                    proxy_resources: false,
+                    expose_tools: None,
+                },
+                Some("ghp_secret".to_string()),
+            )
+            .await
+            .expect("add gateway");
+
+        assert_eq!(
+            gateway.config.bearer_token_env.as_deref(),
+            Some("GITHUB_AUTH_HEADER")
+        );
+
+        let values = read_env_values(&dir.path().join(".env")).expect("read env");
+        assert_eq!(
+            values.get("GITHUB_AUTH_HEADER").map(String::as_str),
+            Some("Bearer ghp_secret")
+        );
     }
 
     #[tokio::test]
@@ -1757,5 +1956,148 @@ mod tests {
         assert_eq!(cache.len(), 1);
         manager.reload().await.expect("reload");
         assert!(cache.is_empty());
+    }
+
+    #[tokio::test]
+    async fn runtime_view_preserves_non_benign_prompt_and_resource_errors() {
+        let pool = UpstreamPool::new();
+        let upstream_name: Arc<str> = Arc::from("partial-upstream");
+        let entry = crate::dispatch::upstream::types::UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            prompt_count: 3,
+            resource_count: 2,
+            tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            resource_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: Some(std::time::Instant::now()),
+            resource_unhealthy_since: Some(std::time::Instant::now()),
+            tool_last_error: None,
+            prompt_last_error: Some("prompt listing unsupported".to_string()),
+            resource_last_error: Some("resource listing unsupported".to_string()),
+        };
+
+        pool.insert_entry_for_tests("partial-upstream", entry).await;
+
+        let runtime = runtime_view(Some(&pool), "partial-upstream", None).await;
+        assert_eq!(
+            runtime.last_error.as_deref(),
+            Some("resource listing unsupported")
+        );
+
+        let server = server_view_from_upstream(
+            Some(&pool),
+            &UpstreamConfig {
+                name: "partial-upstream".to_string(),
+                url: Some("http://127.0.0.1:8080/mcp".to_string()),
+                bearer_token_env: None,
+                command: None,
+                args: Vec::new(),
+                proxy_resources: true,
+                expose_tools: None,
+            },
+        )
+        .await;
+
+        assert_eq!(server.warnings.len(), 1);
+        assert_eq!(server.warnings[0].message, "resource listing unsupported");
+    }
+
+    #[tokio::test]
+    async fn runtime_view_ignores_method_not_found_capability_errors() {
+        let pool = UpstreamPool::new();
+        let upstream_name: Arc<str> = Arc::from("partial-upstream");
+        let entry = crate::dispatch::upstream::types::UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            prompt_count: 1,
+            resource_count: 1,
+            tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            resource_health: crate::dispatch::upstream::types::UpstreamHealth::Unhealthy {
+                consecutive_failures: 1,
+            },
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: Some(std::time::Instant::now()),
+            resource_unhealthy_since: Some(std::time::Instant::now()),
+            tool_last_error: None,
+            prompt_last_error: Some(
+                "failed to list prompts from upstream: Mcp error: -32601: Method not found"
+                    .to_string(),
+            ),
+            resource_last_error: Some(
+                "failed to list resources from upstream: Mcp error: -32601: Method not found"
+                    .to_string(),
+            ),
+        };
+
+        pool.insert_entry_for_tests("partial-upstream", entry).await;
+
+        let runtime = runtime_view(Some(&pool), "partial-upstream", None).await;
+        assert_eq!(runtime.last_error, None);
+
+        let server = server_view_from_upstream(
+            Some(&pool),
+            &UpstreamConfig {
+                name: "partial-upstream".to_string(),
+                url: Some("http://127.0.0.1:8080/mcp".to_string()),
+                bearer_token_env: None,
+                command: None,
+                args: Vec::new(),
+                proxy_resources: true,
+                expose_tools: None,
+            },
+        )
+        .await;
+
+        assert!(server.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn custom_gateway_connected_includes_resources_and_prompts() {
+        let pool = UpstreamPool::new();
+        let upstream = UpstreamConfig {
+            name: "partial-upstream".to_string(),
+            url: Some("http://127.0.0.1:9001/mcp".to_string()),
+            bearer_token_env: None,
+            command: None,
+            args: Vec::new(),
+            proxy_resources: true,
+            expose_tools: None,
+        };
+        let upstream_name: Arc<str> = Arc::from("partial-upstream");
+        let entry = crate::dispatch::upstream::types::UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools: HashMap::new(),
+            exposure_policy: crate::dispatch::upstream::types::ToolExposurePolicy::All,
+            prompt_count: 4,
+            resource_count: 2,
+            tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            resource_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: None,
+            resource_unhealthy_since: None,
+            tool_last_error: None,
+            prompt_last_error: None,
+            resource_last_error: None,
+        };
+
+        pool.insert_entry_for_tests("partial-upstream", entry).await;
+
+        let view = server_view_from_upstream(Some(&pool), &upstream).await;
+        assert!(view.connected);
+        assert!(view.warnings.is_empty());
+        assert_eq!(view.exposed_resource_count, 2);
+        assert_eq!(view.exposed_prompt_count, 4);
     }
 }

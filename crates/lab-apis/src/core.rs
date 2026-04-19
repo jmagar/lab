@@ -21,6 +21,10 @@ pub mod plugin;
 /// `ServiceClient` trait — common surface every service implements.
 pub mod traits;
 
+/// Shared SSH primitives (host config parsing, hardened options) used by
+/// `extract` and `deploy`.
+pub mod ssh;
+
 // Convenience re-exports so service modules can `use crate::core::{Auth, HttpClient, ApiError, ...}`.
 pub use action::{ActionSpec, ParamSpec};
 pub use auth::Auth;

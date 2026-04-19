@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FieldGroup, Field, FieldLabel, FieldDescription } from '@/components/ui/field'
@@ -27,6 +28,8 @@ import type {
 } from '@/lib/types/gateway'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/utils'
+import { defaultGatewayBearerEnvName, validateBearerTokenEnvName } from '@/lib/gateway-env'
+import { isAbortError } from '@/lib/api/service-action-client'
 
 interface GatewayFormDialogProps {
   open: boolean
@@ -36,6 +39,8 @@ interface GatewayFormDialogProps {
 }
 
 type FormMode = 'custom' | 'lab'
+type GatewayAuthMode = 'none' | 'bearer'
+type GatewayAuthSource = 'paste' | 'env'
 
 function valuePreview(fieldName: string, preview?: string | null) {
   return preview ?? (fieldName.endsWith('_URL') ? 'http://localhost' : '')
@@ -64,6 +69,7 @@ export function GatewayFormDialog({
   const isEditing = !!gateway
   const isLabGateway = gateway?.source === 'lab_service'
   const prevOpenRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const { data: supportedServices } = useSupportedServices()
   const { testGateway, saveServiceConfig, enableVirtualServer, disableVirtualServer } =
     useGatewayMutations()
@@ -74,7 +80,10 @@ export function GatewayFormDialog({
   const [url, setUrl] = useState('')
   const [command, setCommand] = useState('')
   const [args, setArgs] = useState('')
+  const [authMode, setAuthMode] = useState<GatewayAuthMode>('none')
+  const [authSource, setAuthSource] = useState<GatewayAuthSource>('paste')
   const [bearerTokenEnv, setBearerTokenEnv] = useState('')
+  const [bearerTokenValue, setBearerTokenValue] = useState('')
   const [proxyResources, setProxyResources] = useState(true)
 
   const [selectedService, setSelectedService] = useState('')
@@ -109,7 +118,10 @@ export function GatewayFormDialog({
         setUrl(gateway.config.url || '')
         setCommand(gateway.config.command || '')
         setArgs(gateway.config.args?.join(' ') || '')
+        setAuthMode(gateway.config.bearer_token_env ? 'bearer' : 'none')
+        setAuthSource(gateway.config.bearer_token_env ? 'env' : 'paste')
         setBearerTokenEnv(gateway.config.bearer_token_env || '')
+        setBearerTokenValue('')
         setProxyResources(gateway.config.proxy_resources ?? true)
       }
       } else {
@@ -119,7 +131,10 @@ export function GatewayFormDialog({
         setUrl(emptyCustomState.url)
       setCommand(emptyCustomState.command)
       setArgs(emptyCustomState.args)
+      setAuthMode('none')
+      setAuthSource('paste')
       setBearerTokenEnv(emptyCustomState.bearerTokenEnv)
+      setBearerTokenValue('')
       setProxyResources(emptyCustomState.proxyResources)
       setSelectedService('')
       setServiceValues({})
@@ -166,6 +181,30 @@ export function GatewayFormDialog({
       newErrors.command = 'Command is required'
     }
 
+    if (authMode === 'bearer') {
+      if (authSource === 'env') {
+        if (!bearerTokenEnv.trim()) {
+          newErrors.bearerTokenEnv = 'Environment variable name is required'
+        } else {
+          const bearerTokenEnvError = validateBearerTokenEnvName(bearerTokenEnv)
+          if (bearerTokenEnvError) {
+            newErrors.bearerTokenEnv = bearerTokenEnvError
+          }
+        }
+      } else {
+        if (!bearerTokenValue.trim()) {
+          newErrors.bearerTokenValue = 'Bearer token is required'
+        }
+
+        if (bearerTokenEnv.trim()) {
+          const bearerTokenEnvError = validateBearerTokenEnvName(bearerTokenEnv)
+          if (bearerTokenEnvError) {
+            newErrors.bearerTokenEnv = bearerTokenEnvError
+          }
+        }
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -196,12 +235,22 @@ export function GatewayFormDialog({
             command,
             args: args.trim() ? args.split(/\s+/) : undefined,
           }),
-      bearer_token_env: bearerTokenEnv || undefined,
+      bearer_token_env:
+        authMode === 'none'
+          ? ''
+          : authSource === 'env'
+            ? bearerTokenEnv
+            : bearerTokenEnv || undefined,
+      bearer_token_value:
+        authMode === 'bearer' && authSource === 'paste'
+          ? bearerTokenValue
+          : undefined,
       proxy_resources: proxyResources,
     },
   })
 
   const handleTest = async () => {
+    if (isSaving) return
     if (!gateway || gateway.source === 'lab_service') {
       toast.info('Save and enable the gateway first, then test from the detail page.')
       return
@@ -209,9 +258,13 @@ export function GatewayFormDialog({
 
     if (!validateCustom()) return
 
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     setIsTesting(true)
     try {
       const result = await testGateway(gateway.id)
+      if (controller.signal.aborted) return
       if (result.severity === 'warning') {
         toast.warning(result.detail || result.message)
       } else if (result.success) {
@@ -220,6 +273,7 @@ export function GatewayFormDialog({
         toast.error(`Connection failed: ${result.error || result.message}`)
       }
     } catch (error) {
+      if (isAbortError(error)) return
       toast.error(getErrorMessage(error, 'Failed to test connection'))
     } finally {
       setIsTesting(false)
@@ -249,10 +303,16 @@ export function GatewayFormDialog({
   }
 
   const handleSave = async () => {
+    if (isTesting) return
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     setIsSaving(true)
     try {
       if (mode === 'lab') {
         const saved = await handleSaveLab()
+        if (controller.signal.aborted) return
         if (!saved) {
           return
         }
@@ -263,9 +323,11 @@ export function GatewayFormDialog({
 
       if (!validateCustom()) return
       await onSave(buildInput())
+      if (controller.signal.aborted) return
       toast.success(isEditing ? 'Gateway updated successfully' : 'Gateway created successfully')
       onOpenChange(false)
     } catch (error) {
+      if (isAbortError(error)) return
       toast.error(
         getErrorMessage(
           error,
@@ -282,7 +344,12 @@ export function GatewayFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen) {
+        abortControllerRef.current?.abort()
+      }
+      onOpenChange(nextOpen)
+    }}>
         <DialogContent className="sm:max-w-[680px]">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
@@ -441,15 +508,118 @@ export function GatewayFormDialog({
             </Tabs>
 
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="bearer-token">Bearer Token Env</FieldLabel>
-                <Input
-                  id="bearer-token"
-                  value={bearerTokenEnv}
-                  onChange={(event) => setBearerTokenEnv(event.target.value)}
-                  placeholder="MY_API_TOKEN"
-                />
-                <FieldDescription>Environment variable containing the auth token</FieldDescription>
+              <Field className="space-y-4">
+                <div className="space-y-1">
+                  <FieldLabel>Authentication</FieldLabel>
+                  <FieldDescription>
+                    Choose how this gateway should authenticate upstream requests.
+                  </FieldDescription>
+                </div>
+
+                <RadioGroup value={authMode} onValueChange={(value) => setAuthMode(value as GatewayAuthMode)}>
+                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-none">
+                    <RadioGroupItem value="none" id="auth-none" />
+                    <div className="space-y-1">
+                      <span className="font-medium text-sm">No auth</span>
+                      <p className="text-sm text-muted-foreground">
+                        Use this when the upstream does not require an Authorization header.
+                      </p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-bearer">
+                    <RadioGroupItem value="bearer" id="auth-bearer" />
+                    <div className="space-y-1">
+                      <span className="font-medium text-sm">Bearer token</span>
+                      <p className="text-sm text-muted-foreground">
+                        Recommended for GitHub and other remote HTTP MCP servers.
+                      </p>
+                    </div>
+                  </label>
+                </RadioGroup>
+
+                {authMode === 'bearer' && (
+                  <div className="space-y-4 rounded-xl border p-4">
+                    <RadioGroup value={authSource} onValueChange={(value) => setAuthSource(value as GatewayAuthSource)}>
+                      <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" htmlFor="auth-source-paste">
+                        <RadioGroupItem value="paste" id="auth-source-paste" />
+                        <div className="space-y-1">
+                          <span className="font-medium text-sm">Paste token</span>
+                          <p className="text-sm text-muted-foreground">
+                            Paste the secret here and Labby will store it in <code>~/.lab/.env</code> for you.
+                          </p>
+                        </div>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" htmlFor="auth-source-env">
+                        <RadioGroupItem value="env" id="auth-source-env" />
+                        <div className="space-y-1">
+                          <span className="font-medium text-sm">Use existing env var</span>
+                          <p className="text-sm text-muted-foreground">
+                            Reference an existing environment variable instead of entering a secret here.
+                          </p>
+                        </div>
+                      </label>
+                    </RadioGroup>
+
+                    {authSource === 'paste' ? (
+                      <FieldGroup>
+                        <Field>
+                          <FieldLabel htmlFor="bearer-token-value">Bearer token</FieldLabel>
+                          <Input
+                            id="bearer-token-value"
+                            type="password"
+                            autoComplete="new-password"
+                            value={bearerTokenValue}
+                            onChange={(event) => setBearerTokenValue(event.target.value)}
+                            placeholder="ghp_..."
+                            className={errors.bearerTokenValue ? 'border-destructive' : ''}
+                          />
+                          {errors.bearerTokenValue ? (
+                            <p className="text-sm text-destructive">{errors.bearerTokenValue}</p>
+                          ) : (
+                            <FieldDescription>
+                              Paste the token only. Labby will add the <code>Bearer</code> prefix automatically if needed.
+                            </FieldDescription>
+                          )}
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="bearer-token-env-override">Env var name</FieldLabel>
+                          <Input
+                            id="bearer-token-env-override"
+                            value={bearerTokenEnv}
+                            onChange={(event) => setBearerTokenEnv(event.target.value)}
+                            placeholder={defaultGatewayBearerEnvName(name || 'gateway')}
+                            className={errors.bearerTokenEnv ? 'border-destructive' : ''}
+                          />
+                          {errors.bearerTokenEnv ? (
+                            <p className="text-sm text-destructive">{errors.bearerTokenEnv}</p>
+                          ) : (
+                            <FieldDescription>
+                              Optional. Leave blank to let Labby generate an env var name automatically.
+                            </FieldDescription>
+                          )}
+                        </Field>
+                      </FieldGroup>
+                    ) : (
+                      <Field>
+                        <FieldLabel htmlFor="bearer-token-env">Bearer token env var</FieldLabel>
+                        <Input
+                          id="bearer-token-env"
+                          value={bearerTokenEnv}
+                          onChange={(event) => setBearerTokenEnv(event.target.value)}
+                          placeholder={defaultGatewayBearerEnvName(name || 'gateway')}
+                          className={errors.bearerTokenEnv ? 'border-destructive' : ''}
+                        />
+                        {errors.bearerTokenEnv ? (
+                          <p className="text-sm text-destructive">{errors.bearerTokenEnv}</p>
+                        ) : (
+                          <FieldDescription>
+                            Enter the env var name only. The env var value can be a bare token or a full <code>Bearer ...</code> header.
+                          </FieldDescription>
+                        )}
+                      </Field>
+                    )}
+                  </div>
+                )}
               </Field>
             </FieldGroup>
 
@@ -477,7 +647,7 @@ export function GatewayFormDialog({
               type="button"
               variant="outline"
               onClick={handleTest}
-              disabled={isTesting}
+              disabled={isTesting || isSaving}
               className="mr-auto"
             >
               {isTesting ? (
@@ -491,7 +661,7 @@ export function GatewayFormDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button onClick={handleSave} disabled={isSaving || isTesting}>
             {isSaving && <Loader2 className="size-4 mr-2 animate-spin" />}
             {mode === 'lab'
               ? isEditing

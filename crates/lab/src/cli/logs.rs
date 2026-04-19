@@ -1,17 +1,18 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 
 use crate::cli::helpers::run_action_command;
 use crate::config::LabConfig;
-use crate::device::master_client::MasterClient;
+use crate::dispatch::helpers::env_non_empty;
 use crate::dispatch::logs::client::{
     bootstrap_store_backed_log_system, resolve_retention, resolve_store_path,
 };
 use crate::dispatch::logs::dispatch::dispatch_with_system;
+use crate::dispatch::logs::forward::{ForwardConfig, resolve_node_id};
 use crate::dispatch::logs::types::{LogQuery, LogSystem, LogTailRequest};
 use crate::output::{OutputFormat, print};
 
@@ -27,6 +28,27 @@ pub enum LogsCommand {
     Search { device: String, query: String },
     /// Search or inspect the local-master runtime log store.
     Local(LocalLogsArgs),
+    /// Forward this node's syslog to the master log store (peer mode).
+    Forward(ForwardArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ForwardArgs {
+    /// Override the master base URL (default: LAB_MASTER_URL).
+    #[arg(long, env = "LAB_MASTER_URL")]
+    pub master_url: Option<String>,
+    /// Override the bearer token (default: LAB_MASTER_TOKEN or LAB_MCP_HTTP_TOKEN).
+    #[arg(long, env = "LAB_MASTER_TOKEN")]
+    pub master_token: Option<String>,
+    /// Node ID to stamp on every forwarded event (default: LAB_NODE_ID or hostname).
+    #[arg(long, env = "LAB_NODE_ID")]
+    pub node_id: Option<String>,
+    /// How many events to batch per request (default 200).
+    #[arg(long, default_value = "200")]
+    pub batch_size: usize,
+    /// Skip journald and read directly from /var/log/syslog.
+    #[arg(long)]
+    pub syslog_only: bool,
 }
 
 #[derive(Debug, Args)]
@@ -91,11 +113,12 @@ pub async fn run(args: LogsArgs, format: OutputFormat, config: &LabConfig) -> Re
             Ok(ExitCode::SUCCESS)
         }
         LogsCommand::Local(local) => run_local(local, format, config).await,
+        LogsCommand::Forward(args) => run_forward(args, config).await,
     }
 }
 
 pub async fn search_logs(config: &LabConfig, device_id: &str, query: &str) -> Result<Value> {
-    MasterClient::from_config(config, None)?
+    crate::device::master_client::MasterClient::from_config(config, None)?
         .search_logs(device_id, query)
         .await
 }
@@ -154,8 +177,40 @@ fn build_search_query(args: LocalSearchArgs) -> LogQuery {
         request_id: args.request_id,
         session_id: args.session_id,
         correlation_id: args.correlation_id,
+        source_node_ids: vec![],
+        source_kinds: vec![],
         limit: args.limit,
     }
+}
+
+/// Parse clap `ForwardArgs` into a `ForwardConfig` and delegate to the
+/// shared dispatch-layer implementation. The CLI owns only arg parsing here.
+async fn run_forward(args: ForwardArgs, _config: &LabConfig) -> Result<ExitCode> {
+    // clap's `env = "..."` populates Some("") when the var is set to an empty
+    // string, bypassing env_non_empty's empty-string filter. Filter here so
+    // the or_else fallback fires correctly.
+    let master_url = args
+        .master_url
+        .filter(|v| !v.is_empty())
+        .or_else(|| env_non_empty("LAB_MASTER_URL"))
+        .context("LAB_MASTER_URL is not set; pass --master-url or set the env var")?;
+
+    let token = args
+        .master_token
+        .filter(|v| !v.is_empty())
+        .or_else(|| env_non_empty("LAB_MASTER_TOKEN"))
+        .or_else(|| env_non_empty("LAB_MCP_HTTP_TOKEN"));
+
+    let node_id = resolve_node_id(args.node_id.filter(|v| !v.is_empty()));
+
+    crate::dispatch::logs::forward::run(ForwardConfig {
+        master_url,
+        token,
+        node_id,
+        batch_size: args.batch_size,
+        syslog_only: args.syslog_only,
+    })
+    .await
 }
 
 #[cfg(test)]

@@ -58,10 +58,7 @@ pub fn load_key(base64_str: &str) -> Result<EncryptionKey, EncryptionError> {
 ///
 /// A fresh random 12-byte nonce is generated internally on every call.
 /// The caller MUST persist the returned nonce alongside the ciphertext.
-pub fn seal(
-    key: &EncryptionKey,
-    plaintext: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>), EncryptionError> {
+pub fn seal(key: &EncryptionKey, plaintext: &[u8]) -> Result<(Vec<u8>, Vec<u8>), EncryptionError> {
     seal_with_aad(key, plaintext, &[])
 }
 
