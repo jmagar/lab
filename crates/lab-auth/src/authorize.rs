@@ -25,6 +25,8 @@ pub async fn browser_login(
     State(state): State<AuthState>,
     Query(query): Query<BrowserLoginQuery>,
 ) -> Result<Response, AuthError> {
+    state.check_authorize_rate_limit()?;
+    state.ensure_pending_oauth_state_capacity().await?;
     let return_to = sanitize_return_to(&state, query.return_to.as_deref());
     let provider_code_verifier = random_token(32)?;
     let provider_code_challenge =
@@ -66,6 +68,7 @@ pub async fn register_client(
     State(state): State<AuthState>,
     Json(request): Json<ClientRegistrationRequest>,
 ) -> Result<Json<ClientRegistrationResponse>, AuthError> {
+    state.check_register_rate_limit()?;
     if request.redirect_uris.is_empty() {
         warn!("oauth register rejected: no redirect URIs provided");
         return Err(AuthError::Validation(
@@ -108,6 +111,8 @@ pub async fn authorize(
     State(state): State<AuthState>,
     Query(query): Query<AuthorizeQuery>,
 ) -> Result<Response, AuthError> {
+    state.check_authorize_rate_limit()?;
+    state.ensure_pending_oauth_state_capacity().await?;
     validate_response_type(&query.response_type)?;
     validate_resource(&state, query.resource.as_deref())?;
     let scope = validate_scope(&query.scope)?;
@@ -595,6 +600,50 @@ pub mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
+    #[tokio::test]
+    async fn register_is_rate_limited_after_configured_burst() {
+        let mut config = test_auth_config();
+        config.register_requests_per_minute = 1;
+        let app = router(test_auth_state_with_config(config).await);
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/register")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "redirect_uris": ["http://127.0.0.1:7777/callback"]
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/register")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "redirect_uris": ["http://127.0.0.1:8888/callback"]
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
     #[test]
     fn wildcard_redirect_patterns_support_leading_and_infix_matches() {
         assert!(wildcard_matches(
@@ -660,6 +709,46 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn authorize_is_rate_limited_after_configured_burst() {
+        let mut config = test_auth_config();
+        config.authorize_requests_per_minute = 1;
+        let state = test_auth_state_with_config(config).await;
+        state
+            .store
+            .register_client(RegisteredClient {
+                client_id: "client".to_string(),
+                redirect_uris: vec!["http://127.0.0.1:7777/callback".to_string()],
+                created_at: now_unix(),
+            })
+            .await
+            .unwrap();
+        let app = router(state);
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/authorize?response_type=code&client_id=client&redirect_uri=http://127.0.0.1:7777/callback&state=abc&scope=lab&code_challenge=pkce&code_challenge_method=S256")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::FOUND);
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .uri("/authorize?response_type=code&client_id=client&redirect_uri=http://127.0.0.1:7777/callback&state=def&scope=lab&code_challenge=pkce&code_challenge_method=S256")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
     async fn browser_login_starts_upstream_flow_and_persists_return_to_state() {
         let state = test_auth_state().await;
         let app = router(state.clone());
@@ -694,6 +783,36 @@ pub mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(stored.return_to, "/gateways/?tab=lab");
+    }
+
+    #[tokio::test]
+    async fn browser_login_rejects_when_pending_oauth_state_cap_is_reached() {
+        let mut config = test_auth_config();
+        config.max_pending_oauth_states = 1;
+        let state = test_auth_state_with_config(config).await;
+        state
+            .store
+            .insert_browser_login_state(crate::types::BrowserLoginStateRow {
+                state: "existing-login".to_string(),
+                return_to: "/".to_string(),
+                provider_code_verifier: "provider-verifier".to_string(),
+                created_at: now_unix(),
+                expires_at: now_unix() + 300,
+            })
+            .await
+            .unwrap();
+
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/login?return_to=%2Fgateways%2F")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 
     #[tokio::test]

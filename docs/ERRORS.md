@@ -60,6 +60,20 @@ Additional MCP-only flow-control cases may include:
 - `elicitation_declined`
 - `elicitation_unsupported`
 
+### Auth Protocol Exception
+
+`invalid_grant` is a documented auth-route exception for OAuth protocol
+failures. It is emitted by the auth server for invalid, expired, reused, or
+mismatched authorization codes and refresh tokens.
+
+- surface: HTTP auth routes only
+- status: `400 Bad Request`
+- contract owner: `docs/OAUTH.md`
+
+This kind does not replace the canonical shared SDK taxonomy for service
+dispatch. It exists because OAuth token endpoints have a protocol-level error
+vocabulary that callers expect.
+
 ### HTTP-Only Dispatcher Kinds
 
 The following kinds are emitted exclusively by the HTTP surface. MCP handles the same guard differently (via elicitation), and CLI handles it via `--yes` / `-y`.
@@ -239,6 +253,15 @@ Rules:
 - HTTP and MCP must agree on the semantic kind
 - HTTP may use transport-appropriate status codes, but the JSON body remains structured
 - HTTP must not invent a second vocabulary for the same failure class
+- auth/session/logout/token routes must either use this envelope directly or
+  document a protocol-required exception in the owning auth docs
+
+Auth-specific rule:
+
+- session-store, database, provider, and signing-key failures are internal
+  failures, not "logged out" outcomes
+- handlers must not downgrade store/provider outages into successful
+  unauthenticated responses
 
 ## HTTP Status Mapping
 
@@ -253,6 +276,7 @@ Default mapping expectations:
 - `unknown_action` -> `400 Bad Request`
 - `unknown_instance` -> `400 Bad Request`
 - `confirmation_required` -> `422 Unprocessable Entity`
+- `invalid_grant` -> `400 Bad Request`
 - `network_error` -> `502 Bad Gateway`
 - `server_error` -> `502 Bad Gateway`
 - `upstream_error` -> `502 Bad Gateway`

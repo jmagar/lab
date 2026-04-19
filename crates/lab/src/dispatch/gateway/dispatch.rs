@@ -216,6 +216,19 @@ mod tests {
         assert!(names.contains(&"gateway.discovered_tools"));
         assert!(names.contains(&"gateway.discovered_resources"));
         assert!(names.contains(&"gateway.discovered_prompts"));
+
+        for name in [
+            "gateway.add",
+            "gateway.update",
+            "gateway.remove",
+            "gateway.reload",
+        ] {
+            let spec = ACTIONS
+                .iter()
+                .find(|spec| spec.name == name)
+                .expect("action");
+            assert!(spec.destructive, "{name} must be destructive");
+        }
     }
 
     fn test_manager() -> GatewayManager {
@@ -327,6 +340,8 @@ mod tests {
                     .expect("policy"),
                 prompt_count: 3,
                 resource_count: 4,
+                prompt_names: Vec::new(),
+                resource_uris: Vec::new(),
                 tool_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
                 prompt_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
                 resource_health: crate::dispatch::upstream::types::UpstreamHealth::Healthy,
