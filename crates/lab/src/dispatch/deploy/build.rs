@@ -129,10 +129,7 @@ fn estimate_free_bytes() -> Result<u64, DeployError> {
     // Use POSIX-compatible `df -k` (kilobytes) — works on Linux, BSD, and macOS.
     // Output format: Filesystem 1K-blocks Used Available Capacity Mounted-on
     // "Available" is column index 3 (0-based), in 1 KiB units.
-    let out = std::process::Command::new("df")
-        .arg("-k")
-        .arg(".")
-        .output();
+    let out = std::process::Command::new("df").arg("-k").arg(".").output();
     if let Ok(o) = out {
         if o.status.success() {
             if let Some(line) = String::from_utf8_lossy(&o.stdout).lines().nth(1) {
@@ -206,11 +203,7 @@ mod tests {
     #[test]
     fn windows_target_appends_exe_suffix() {
         let p = expected_artifact_path_for("lab", "x86_64-pc-windows-msvc");
-        assert!(
-            p.ends_with("target/release/lab.exe"),
-            "got {}",
-            p.display()
-        );
+        assert!(p.ends_with("target/release/lab.exe"), "got {}", p.display());
     }
 
     #[test]

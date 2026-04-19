@@ -34,38 +34,36 @@ pub struct LogStore {
 
 impl LogStore {
     pub async fn open(path: PathBuf, retention: LogRetention) -> Result<Self, ToolError> {
-        let (write_conn, read_conn) =
-            tokio::task::spawn_blocking(
-                move || -> Result<(Connection, Connection), rusqlite::Error> {
-                    if let Some(parent) = path.parent() {
-                        std::fs::create_dir_all(parent).ok();
-                    }
-                    let rw_flags =
-                        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+        let (write_conn, read_conn) = tokio::task::spawn_blocking(
+            move || -> Result<(Connection, Connection), rusqlite::Error> {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                let rw_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
 
-                    // Write connection — owns schema init and WAL configuration.
-                    let wc = Connection::open_with_flags(&path, rw_flags)?;
-                    wc.busy_timeout(std::time::Duration::from_millis(5_000))?;
-                    wc.pragma_update(None, "journal_mode", "WAL")?;
-                    wc.pragma_update(None, "synchronous", "NORMAL")?;
-                    wc.pragma_update(None, "temp_store", "MEMORY")?;
-                    wc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
-                    migrate(&wc)?;
+                // Write connection — owns schema init and WAL configuration.
+                let wc = Connection::open_with_flags(&path, rw_flags)?;
+                wc.busy_timeout(std::time::Duration::from_millis(5_000))?;
+                wc.pragma_update(None, "journal_mode", "WAL")?;
+                wc.pragma_update(None, "synchronous", "NORMAL")?;
+                wc.pragma_update(None, "temp_store", "MEMORY")?;
+                wc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+                migrate(&wc)?;
 
-                    // Read connection — opened after schema is applied.
-                    let rc = Connection::open_with_flags(&path, rw_flags)?;
-                    rc.busy_timeout(std::time::Duration::from_millis(5_000))?;
-                    rc.pragma_update(None, "journal_mode", "WAL")?;
-                    rc.pragma_update(None, "temp_store", "MEMORY")?;
-                    rc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
-                    rc.pragma_update(None, "query_only", "true")?;
+                // Read connection — opened after schema is applied.
+                let rc = Connection::open_with_flags(&path, rw_flags)?;
+                rc.busy_timeout(std::time::Duration::from_millis(5_000))?;
+                rc.pragma_update(None, "journal_mode", "WAL")?;
+                rc.pragma_update(None, "temp_store", "MEMORY")?;
+                rc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+                rc.pragma_update(None, "query_only", "true")?;
 
-                    Ok((wc, rc))
-                },
-            )
-            .await
-            .map_err(|e| ToolError::internal_message(format!("log store open join: {e}")))?
-            .map_err(|e| ToolError::internal_message(format!("log store open: {e}")))?;
+                Ok((wc, rc))
+            },
+        )
+        .await
+        .map_err(|e| ToolError::internal_message(format!("log store open join: {e}")))?
+        .map_err(|e| ToolError::internal_message(format!("log store open: {e}")))?;
 
         Ok(Self {
             write_conn: Arc::new(Mutex::new(write_conn)),
@@ -300,7 +298,9 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
 /// Escape `%`, `_`, and `\` in a user-supplied string so they are treated as
 /// literals by a SQLite LIKE expression that uses `ESCAPE '\'`.
 fn escape_like(s: &str) -> String {
-    s.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_")
+    s.replace('\\', r"\\")
+        .replace('%', r"\%")
+        .replace('_', r"\_")
 }
 
 fn append_in_clause<I>(

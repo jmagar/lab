@@ -7,8 +7,8 @@
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
-use crate::device::master_client::MasterClient;
 use super::types::RawLogEvent;
+use crate::device::master_client::MasterClient;
 
 /// Configuration for a syslog forward session.
 ///
@@ -231,7 +231,9 @@ async fn forward_syslog_file(
             let rotated = tokio::task::spawn_blocking({
                 let inode_now = inode;
                 move || -> bool {
-                    let Ok(meta) = std::fs::metadata(path) else { return false };
+                    let Ok(meta) = std::fs::metadata(path) else {
+                        return false;
+                    };
                     meta.ino() != inode_now || meta.len() == 0
                 }
             })

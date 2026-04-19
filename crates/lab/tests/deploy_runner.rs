@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use lab::dispatch::deploy::build::BuildOutcome;
 use lab::dispatch::deploy::runner::test_support::{RecordingIo, RunResp};
-use lab::dispatch::deploy::runner::{orchestrate_with_io, HostIo};
+use lab::dispatch::deploy::runner::{HostIo, orchestrate_with_io};
 
 /// Bundle of pre-programmed responses for a single host's full happy path.
 ///
@@ -132,7 +132,14 @@ impl HostIo for TimedIo {
     fn run_argv(
         &self,
         argv: &[&str],
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String, String), lab_apis::deploy::DeployError>> + Send + 'static>> {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<(i32, String, String), lab_apis::deploy::DeployError>,
+                > + Send
+                + 'static,
+        >,
+    > {
         let started_at = self.started_at.clone();
         let finished_at = self.finished_at.clone();
         let delay = self.delay;
@@ -157,7 +164,13 @@ impl HostIo for TimedIo {
         &self,
         remote_path: &str,
         reader: R,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u64, lab_apis::deploy::DeployError>> + Send + 'static>>
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<u64, lab_apis::deploy::DeployError>>
+                + Send
+                + 'static,
+        >,
+    >
     where
         R: tokio::io::AsyncRead + Unpin + Send + 'static,
     {
@@ -167,7 +180,13 @@ impl HostIo for TimedIo {
     fn sha256_remote(
         &self,
         remote_path: &str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<String>, lab_apis::deploy::DeployError>> + Send + 'static>> {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Option<String>, lab_apis::deploy::DeployError>>
+                + Send
+                + 'static,
+        >,
+    > {
         self.inner.sha256_remote(remote_path)
     }
 }
@@ -254,7 +273,14 @@ async fn max_parallel_bounds_concurrency() {
         fn run_argv(
             &self,
             argv: &[&str],
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(i32, String, String), lab_apis::deploy::DeployError>> + Send + 'static>> {
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<(i32, String, String), lab_apis::deploy::DeployError>,
+                    > + Send
+                    + 'static,
+            >,
+        > {
             let in_flight = self.in_flight.clone();
             let max_seen = self.max_seen.clone();
             let inner_fut = self.inner.run_argv(argv);
@@ -277,7 +303,13 @@ async fn max_parallel_bounds_concurrency() {
             &self,
             p: &str,
             r: R,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u64, lab_apis::deploy::DeployError>> + Send + 'static>>
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<u64, lab_apis::deploy::DeployError>>
+                    + Send
+                    + 'static,
+            >,
+        >
         where
             R: tokio::io::AsyncRead + Unpin + Send + 'static,
         {
@@ -286,7 +318,14 @@ async fn max_parallel_bounds_concurrency() {
         fn sha256_remote(
             &self,
             p: &str,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<String>, lab_apis::deploy::DeployError>> + Send + 'static>> {
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<Option<String>, lab_apis::deploy::DeployError>,
+                    > + Send
+                    + 'static,
+            >,
+        > {
             self.inner.sha256_remote(p)
         }
     }
@@ -326,7 +365,10 @@ async fn max_parallel_bounds_concurrency() {
     );
 
     let observed = max_seen.load(std::sync::atomic::Ordering::SeqCst);
-    assert!(observed > 0, "no host pipeline was observed; orchestration may not have run");
+    assert!(
+        observed > 0,
+        "no host pipeline was observed; orchestration may not have run"
+    );
     assert!(
         observed <= 2,
         "max_parallel=2 but observed {observed} concurrent hosts"
@@ -375,7 +417,14 @@ async fn skip_transfer_when_sha_matches_does_not_call_upload() {
 
     // Snapshot the log-carrying reference. We clone the Arc before handing
     // the RecordingIo to the factory so we can inspect ops after the run.
-    let recording = factory.inner.lock().unwrap().get("skiphost").unwrap().log.clone();
+    let recording = factory
+        .inner
+        .lock()
+        .unwrap()
+        .get("skiphost")
+        .unwrap()
+        .log
+        .clone();
 
     let f = factory.clone();
     let results = orchestrate_with_io(

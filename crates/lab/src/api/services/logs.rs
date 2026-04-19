@@ -199,9 +199,7 @@ async fn ingest_peer_events(
     for event in &req.events {
         if event.message.len() > MAX_MESSAGE_BYTES {
             return Err(ToolError::InvalidParam {
-                message: format!(
-                    "event message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"
-                ),
+                message: format!("event message exceeds maximum size of {MAX_MESSAGE_BYTES} bytes"),
                 param: "events[].message".to_string(),
             });
         }

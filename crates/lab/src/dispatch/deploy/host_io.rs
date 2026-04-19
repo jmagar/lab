@@ -64,7 +64,8 @@ impl HostIo for SshHostIo {
     fn run_argv(
         &self,
         argv: &[&str],
-    ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), DeployError>> + Send + 'static>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), DeployError>> + Send + 'static>>
+    {
         let fut = self.session.run_command(argv);
         let host = self.host.clone();
         Box::pin(async move {
@@ -105,4 +106,3 @@ impl HostIo for SshHostIo {
         })
     }
 }
-

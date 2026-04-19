@@ -7,8 +7,8 @@
 //! `lab_apis::core::ssh` because `extract` also uses them. Only the
 //! process-spawning code lives here.
 
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 pub use lab_apis::core::ssh::SshHostTarget;
 
@@ -214,7 +214,8 @@ impl SshSession {
     pub fn run_command(
         &self,
         argv: &[&str],
-    ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), SshError>> + Send + 'static>> {
+    ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), SshError>> + Send + 'static>>
+    {
         let mut cmd = tokio::process::Command::new("ssh");
         for a in self.base_args() {
             cmd.arg(a);
@@ -371,7 +372,10 @@ mod tests {
     #[test]
     fn shell_quote_path_with_embedded_quote() {
         // e.g. a path like /opt/it's-fine/bin
-        assert_eq!(shell_quote("/opt/it's-fine/bin"), "'/opt/it'\\''s-fine/bin'");
+        assert_eq!(
+            shell_quote("/opt/it's-fine/bin"),
+            "'/opt/it'\\''s-fine/bin'"
+        );
     }
 
     #[test]

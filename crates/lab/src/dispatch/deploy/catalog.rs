@@ -35,14 +35,12 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "plan",
         description: "Dry-run: resolve targets, hash local artifact, show what would happen",
         destructive: false,
-        params: &[
-            ParamSpec {
-                name: "targets",
-                ty: "string[]",
-                required: true,
-                description: "SSH host aliases to include in the plan",
-            },
-        ],
+        params: &[ParamSpec {
+            name: "targets",
+            ty: "string[]",
+            required: true,
+            description: "SSH host aliases to include in the plan",
+        }],
         returns: "DeployPlan",
     },
     ActionSpec {

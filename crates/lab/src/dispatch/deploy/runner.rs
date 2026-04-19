@@ -101,10 +101,7 @@ impl DefaultRunner {
     }
 
     fn effective_max_parallel(&self) -> Option<u32> {
-        self.config
-            .defaults
-            .as_ref()
-            .and_then(|d| d.max_parallel)
+        self.config.defaults.as_ref().and_then(|d| d.max_parallel)
     }
 
     fn effective_remote_path(&self, host: &str) -> String {
@@ -139,12 +136,7 @@ impl DefaultRunner {
             .hosts
             .get(host)
             .and_then(|o| o.service_scope)
-            .or_else(|| {
-                self.config
-                    .defaults
-                    .as_ref()
-                    .and_then(|d| d.service_scope)
-            })
+            .or_else(|| self.config.defaults.as_ref().and_then(|d| d.service_scope))
     }
 
     fn canary_set(&self) -> std::collections::BTreeSet<String> {
@@ -253,12 +245,11 @@ impl DefaultRunner {
         // --- sync: all self access before creating the future ---
         for alias in &req.targets {
             if self.resolve_target(alias).is_none() {
-                let err: Result<DeployRunSummary, ToolError> =
-                    Err(DeployError::ValidationFailed {
-                        field: "targets".into(),
-                        reason: format!("unknown SSH alias: {alias}"),
-                    }
-                    .into());
+                let err: Result<DeployRunSummary, ToolError> = Err(DeployError::ValidationFailed {
+                    field: "targets".into(),
+                    reason: format!("unknown SSH alias: {alias}"),
+                }
+                .into());
                 return Box::pin(async move { err });
             }
         }
@@ -423,7 +414,11 @@ impl DefaultRunner {
     }
 
     pub fn config_list_impl(&self) -> Result<Value, ToolError> {
-        let hosts: Vec<&str> = self.ssh_inventory.iter().map(|h| h.alias.as_str()).collect();
+        let hosts: Vec<&str> = self
+            .ssh_inventory
+            .iter()
+            .map(|h| h.alias.as_str())
+            .collect();
         let overrides: Vec<&String> = self.config.hosts.keys().collect();
         Ok(json!({
             "defaults": self.config.defaults,
@@ -465,7 +460,10 @@ fn load_deploy_inventory() -> Vec<SshHostTarget> {
             .map(|s| s.trim().to_ascii_lowercase())
             .filter(|s| !s.is_empty())
             .collect(),
-        _ => DEFAULT_DENYLIST.iter().map(|s| s.to_ascii_lowercase()).collect(),
+        _ => DEFAULT_DENYLIST
+            .iter()
+            .map(|s| s.to_ascii_lowercase())
+            .collect(),
     };
 
     lab_apis::core::ssh::parse_ssh_config(&contents)
@@ -673,15 +671,7 @@ async fn run_single_job(
             };
         }
     };
-    run_host_pipeline(
-        io,
-        job.host,
-        job.remote_path,
-        job.unit,
-        job.scope,
-        build,
-    )
-    .await
+    run_host_pipeline(io, job.host, job.remote_path, job.unit, job.scope, build).await
 }
 
 pub async fn run_host_pipeline<I: HostIo + 'static>(
@@ -694,8 +684,7 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
 ) -> DeployHostResult {
     use std::time::Instant;
 
-    let mut timings: std::collections::BTreeMap<String, u128> =
-        std::collections::BTreeMap::new();
+    let mut timings: std::collections::BTreeMap<String, u128> = std::collections::BTreeMap::new();
     let mut transferred_bytes: Option<u64> = None;
 
     // Preflight
@@ -737,19 +726,23 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
                 );
             }
         };
-        let outcome =
-            match transfer_and_install(io.clone(), remote_path.clone(), build.sha256.clone(), reader)
-                .await
-            {
-                Ok(o) => {
-                    timings.insert("transfer".into(), t.elapsed().as_millis());
-                    o
-                }
-                Err(e) => {
-                    timings.insert("transfer".into(), t.elapsed().as_millis());
-                    return host_err(&host, DeployStage::Install, e, timings, false);
-                }
-            };
+        let outcome = match transfer_and_install(
+            io.clone(),
+            remote_path.clone(),
+            build.sha256.clone(),
+            reader,
+        )
+        .await
+        {
+            Ok(o) => {
+                timings.insert("transfer".into(), t.elapsed().as_millis());
+                o
+            }
+            Err(e) => {
+                timings.insert("transfer".into(), t.elapsed().as_millis());
+                return host_err(&host, DeployStage::Install, e, timings, false);
+            }
+        };
         transferred_bytes = Some(outcome.bytes);
     }
 
@@ -789,8 +782,7 @@ async fn rollback_one_host<I: HostIo + 'static>(
     unit: Option<String>,
     scope: Option<ServiceScope>,
 ) -> DeployHostResult {
-    let mut timings: std::collections::BTreeMap<String, u128> =
-        std::collections::BTreeMap::new();
+    let mut timings: std::collections::BTreeMap<String, u128> = std::collections::BTreeMap::new();
     use std::time::Instant;
 
     // Validate remote_path against the allowlist before any shell use.
@@ -1089,7 +1081,9 @@ pub mod test_support {
         fn run_argv(
             &self,
             argv: &[&str],
-        ) -> Pin<Box<dyn Future<Output = Result<(i32, String, String), DeployError>> + Send + 'static>> {
+        ) -> Pin<
+            Box<dyn Future<Output = Result<(i32, String, String), DeployError>> + Send + 'static>,
+        > {
             let joined = argv.join(",");
             let log = self.log.clone();
             let run_queue = self.run_queue.clone();
@@ -1119,13 +1113,14 @@ pub mod test_support {
             Box::pin(async move {
                 log.lock().unwrap().push(format!("upload:{remote_path}"));
                 let mut buf = Vec::new();
-                let bytes = reader
-                    .read_to_end(&mut buf)
-                    .await
-                    .map_err(|e| DeployError::TransferFailed {
-                        host: "?".into(),
-                        reason: e.to_string(),
-                    })? as u64;
+                let bytes =
+                    reader
+                        .read_to_end(&mut buf)
+                        .await
+                        .map_err(|e| DeployError::TransferFailed {
+                            host: "?".into(),
+                            reason: e.to_string(),
+                        })? as u64;
                 upload_bytes.lock().unwrap().push(bytes);
                 Ok(bytes)
             })
@@ -1134,7 +1129,8 @@ pub mod test_support {
         fn sha256_remote(
             &self,
             remote_path: &str,
-        ) -> Pin<Box<dyn Future<Output = Result<Option<String>, DeployError>> + Send + 'static>> {
+        ) -> Pin<Box<dyn Future<Output = Result<Option<String>, DeployError>> + Send + 'static>>
+        {
             let remote_path = remote_path.to_string();
             let log = self.log.clone();
             let sha_queue = self.sha_queue.clone();

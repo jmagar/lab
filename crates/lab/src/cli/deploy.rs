@@ -138,7 +138,11 @@ pub async fn run(
                 )
             }
         }
-        DeployCmd::Rollback { targets, yes, dry_run } => {
+        DeployCmd::Rollback {
+            targets,
+            yes,
+            dry_run,
+        } => {
             if dry_run {
                 ("plan", json!({ "targets": targets }))
             } else {

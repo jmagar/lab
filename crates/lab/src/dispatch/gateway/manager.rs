@@ -623,7 +623,8 @@ impl GatewayManager {
                 resolve_gateway_bearer_env_name(&spec.name, spec.bearer_token_env.as_deref())?;
             spec.bearer_token_env = Some(env_name.clone());
             insert_upstream(&mut cfg, spec.clone())?;
-            self.persist_gateway_bearer_token(&env_name, token_value).await?;
+            self.persist_gateway_bearer_token(&env_name, token_value)
+                .await?;
         } else {
             insert_upstream(&mut cfg, spec.clone())?;
         }
@@ -680,7 +681,8 @@ impl GatewayManager {
             };
             patch.bearer_token_env = Some(Some(env_name.clone()));
             update_upstream(&mut cfg, name, patch)?;
-            self.persist_gateway_bearer_token(&env_name, token_value).await?;
+            self.persist_gateway_bearer_token(&env_name, token_value)
+                .await?;
         } else {
             update_upstream(&mut cfg, name, patch)?;
         }
@@ -1008,7 +1010,10 @@ fn resolve_gateway_bearer_env_name(
 
 fn normalize_gateway_bearer_token(token_value: &str) -> String {
     let trimmed = token_value.trim();
-    if trimmed.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("bearer ")) {
+    if trimmed
+        .get(..7)
+        .is_some_and(|s| s.eq_ignore_ascii_case("bearer "))
+    {
         format!("Bearer {}", &trimmed[7..])
     } else {
         format!("Bearer {trimmed}")

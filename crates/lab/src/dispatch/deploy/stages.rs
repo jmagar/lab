@@ -152,13 +152,13 @@ where
     }
 
     // 3) integrity verify
-    let remote_sha = io
-        .sha256_remote(&staged)
-        .await?
-        .ok_or_else(|| DeployError::TransferFailed {
-            host: "?".into(),
-            reason: "post-upload sha256 probe returned no hash".into(),
-        })?;
+    let remote_sha =
+        io.sha256_remote(&staged)
+            .await?
+            .ok_or_else(|| DeployError::TransferFailed {
+                host: "?".into(),
+                reason: "post-upload sha256 probe returned no hash".into(),
+            })?;
     if remote_sha != local_sha256 {
         // best-effort cleanup; drop the result explicitly (lint: let-underscore-drop)
         drop(io.run_argv(&["rm", "-f", "--", &staged]).await);
@@ -169,9 +169,7 @@ where
     let backup = format!("{remote_path}.bak.{}", backup_timestamp());
     let maybe_existing = io.sha256_remote(&remote_path).await?;
     let backup_path = if maybe_existing.is_some() {
-        let (code, _stdout, stderr) = io
-            .run_argv(&["mv", "--", &remote_path, &backup])
-            .await?;
+        let (code, _stdout, stderr) = io.run_argv(&["mv", "--", &remote_path, &backup]).await?;
         if code != 0 {
             return Err(DeployError::InstallFailed {
                 host: "?".into(),
@@ -438,12 +436,13 @@ mod tests_transfer_install {
 
         let ops = io.ops();
         assert!(
-            ops.iter().any(|o| o == "upload:/usr/local/bin/lab.new.partial"),
+            ops.iter()
+                .any(|o| o == "upload:/usr/local/bin/lab.new.partial"),
             "ops: {ops:?}"
         );
         assert!(
-            ops.iter().any(|o| o
-                == "run:mv,--,/usr/local/bin/lab.new.partial,/usr/local/bin/lab.new"),
+            ops.iter()
+                .any(|o| o == "run:mv,--,/usr/local/bin/lab.new.partial,/usr/local/bin/lab.new"),
             "ops: {ops:?}"
         );
         assert!(
@@ -521,8 +520,8 @@ mod tests_transfer_install {
 #[cfg(test)]
 mod tests_restart_verify {
     use super::*;
-    use crate::dispatch::deploy::runner::test_support::*;
     use crate::config::ServiceScope;
+    use crate::dispatch::deploy::runner::test_support::*;
 
     #[tokio::test]
     async fn skips_restart_when_unit_is_none() {
@@ -538,13 +537,21 @@ mod tests_restart_verify {
         io.push_run(RunResp::ok("")); // restart
         io.push_run(RunResp::ok("active\n")); // is-active --wait
 
-        restart(io.clone(), Some("lab".to_string()), Some(ServiceScope::System))
-            .await
-            .unwrap();
+        restart(
+            io.clone(),
+            Some("lab".to_string()),
+            Some(ServiceScope::System),
+        )
+        .await
+        .unwrap();
         let ops = io.ops();
-        assert!(ops.iter().any(|o| o == "run:systemctl,restart,lab"), "ops: {ops:?}");
         assert!(
-            ops.iter().any(|o| o == "run:systemctl,is-active,--wait,lab"),
+            ops.iter().any(|o| o == "run:systemctl,restart,lab"),
+            "ops: {ops:?}"
+        );
+        assert!(
+            ops.iter()
+                .any(|o| o == "run:systemctl,is-active,--wait,lab"),
             "ops: {ops:?}"
         );
     }
@@ -555,16 +562,22 @@ mod tests_restart_verify {
         io.push_run(RunResp::ok(""));
         io.push_run(RunResp::ok(""));
 
-        restart(io.clone(), Some("lab-worker".to_string()), Some(ServiceScope::User))
-            .await
-            .unwrap();
+        restart(
+            io.clone(),
+            Some("lab-worker".to_string()),
+            Some(ServiceScope::User),
+        )
+        .await
+        .unwrap();
         let ops = io.ops();
         assert!(
-            ops.iter().any(|o| o == "run:systemctl,--user,restart,lab-worker"),
+            ops.iter()
+                .any(|o| o == "run:systemctl,--user,restart,lab-worker"),
             "ops: {ops:?}"
         );
         assert!(
-            ops.iter().any(|o| o == "run:systemctl,--user,is-active,--wait,lab-worker"),
+            ops.iter()
+                .any(|o| o == "run:systemctl,--user,is-active,--wait,lab-worker"),
             "ops: {ops:?}"
         );
     }
@@ -572,7 +585,9 @@ mod tests_restart_verify {
     #[tokio::test]
     async fn restart_rejects_invalid_unit_names() {
         let io = Arc::new(RecordingIo::new());
-        let err = restart(io.clone(), Some("bad;unit".to_string()), None).await.unwrap_err();
+        let err = restart(io.clone(), Some("bad;unit".to_string()), None)
+            .await
+            .unwrap_err();
         assert_eq!(err.kind(), "validation_failed");
         assert!(io.ops().is_empty(), "must fail before emitting any command");
     }
@@ -581,7 +596,9 @@ mod tests_restart_verify {
     async fn verify_runs_version_and_rejects_nonzero_exit() {
         let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::fail(1, "unknown flag"));
-        let err = verify(io.clone(), "/usr/local/bin/lab".to_string()).await.unwrap_err();
+        let err = verify(io.clone(), "/usr/local/bin/lab".to_string())
+            .await
+            .unwrap_err();
         assert_eq!(err.kind(), "verify_failed");
         let ops = io.ops();
         assert!(

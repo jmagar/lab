@@ -246,8 +246,7 @@ mod tests {
     #[test]
     fn logs_cli_rejects_invalid_local_search_filters() {
         assert!(
-            Cli::try_parse_from(["lab", "logs", "local", "search", "--level", "warning",])
-                .is_err()
+            Cli::try_parse_from(["lab", "logs", "local", "search", "--level", "warning",]).is_err()
         );
     }
 }
