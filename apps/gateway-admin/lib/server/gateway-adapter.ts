@@ -103,6 +103,11 @@ export interface GatewayDiscoverySnapshot {
 
 const NOW = () => new Date().toISOString()
 
+const VALID_TRANSPORTS = ['http', 'stdio', 'lab_service'] as const satisfies readonly TransportType[]
+function isValidTransport(v: unknown): v is TransportType {
+  return typeof v === 'string' && (VALID_TRANSPORTS as readonly string[]).includes(v)
+}
+
 function inferTransport(config: BackendGatewayConfigView): TransportType {
   return config.command ? 'stdio' : 'http'
 }
@@ -275,7 +280,8 @@ export function normalizeServerView(
   view: BackendServerView,
   discovery?: BackendVirtualServiceDiscovery,
 ): Gateway {
-  const transport = (view.config_summary?.transport ?? 'http') as Gateway['transport']
+  const rawTransport = view.config_summary?.transport
+  const transport: TransportType = isValidTransport(rawTransport) ? rawTransport : 'http'
   const target = view.config_summary?.target ?? undefined
   const config: BackendGatewayConfigView = {
     name: view.name,
