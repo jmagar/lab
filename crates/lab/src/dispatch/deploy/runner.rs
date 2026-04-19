@@ -932,6 +932,7 @@ impl DefaultRunner {
 /// Gated to test and `test-utils` builds only — not part of the public
 /// production API.
 #[cfg(any(test, feature = "test-utils"))]
+#[allow(dead_code)]
 pub async fn orchestrate_with_io<I, F>(
     hosts: Vec<(String, Option<String>, Option<ServiceScope>, String)>,
     build: Arc<BuildOutcome>,
@@ -1320,6 +1321,7 @@ fn summarize(
 
 /// Placeholder runner. Kept so callers without a wired `DefaultRunner` can
 /// still register dispatch without a panic.
+#[allow(dead_code)]
 #[derive(Default)]
 pub struct NoopRunner;
 
@@ -1349,7 +1351,9 @@ impl DeployRunner for NoopRunner {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
+#[cfg(any(test, feature = "test-utils"))]
 #[doc(hidden)]
+#[allow(dead_code)]
 pub mod test_support {
     //! Recording `HostIo` used by both inline stage tests and the
     //! `tests/deploy_runner.rs` orchestrator tests.
