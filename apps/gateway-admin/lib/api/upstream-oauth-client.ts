@@ -1,7 +1,19 @@
 import type { StartResponse, UpstreamEntry, UpstreamOauthStatus } from '@/lib/types/upstream-oauth'
+import { isStandaloneBearerAuthMode } from '../auth/auth-mode'
+import { normalizeGatewayApiBase } from '../gateway-config'
+import { gatewayHeaders } from './gateway-request'
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { credentials: 'include', ...init })
+  const token = process.env.NEXT_PUBLIC_API_TOKEN
+  const standaloneBearerAuth = isStandaloneBearerAuthMode(token)
+  const credentials: RequestCredentials = standaloneBearerAuth ? 'omit' : 'include'
+  const base = normalizeGatewayApiBase()
+
+  const res = await fetch(`${base}${path}`, {
+    credentials,
+    ...init,
+    headers: { ...gatewayHeaders(token, standaloneBearerAuth), ...init?.headers },
+  })
   if (!res.ok) {
     let body: { kind?: string; message?: string } = {}
     try { body = await res.json() } catch { /* ignore */ }
@@ -12,17 +24,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const upstreamOauthApi = {
   listUpstreams(signal?: AbortSignal): Promise<UpstreamEntry[]> {
-    return apiFetch('/v1/gateway/oauth/upstreams', { signal })
+    return apiFetch('/gateway/oauth/upstreams', { signal })
   },
 
   status(upstream: string, signal?: AbortSignal): Promise<UpstreamOauthStatus> {
-    return apiFetch(`/v1/gateway/oauth/status?upstream=${encodeURIComponent(upstream)}`, { signal })
+    return apiFetch(`/gateway/oauth/status?upstream=${encodeURIComponent(upstream)}`, { signal })
   },
 
   start(upstream: string, signal?: AbortSignal): Promise<StartResponse> {
-    return apiFetch('/v1/gateway/oauth/start', {
+    return apiFetch('/gateway/oauth/start', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ upstream }),
       signal,
     })
@@ -30,7 +41,7 @@ export const upstreamOauthApi = {
 
   clear(upstream: string, signal?: AbortSignal): Promise<{ ok: boolean }> {
     return apiFetch(
-      `/v1/gateway/oauth/clear?upstream=${encodeURIComponent(upstream)}&confirm=true`,
+      `/gateway/oauth/clear?upstream=${encodeURIComponent(upstream)}&confirm=true`,
       { method: 'POST', signal },
     )
   },

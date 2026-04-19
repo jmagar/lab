@@ -711,6 +711,26 @@ impl UpstreamPool {
         })
     }
 
+    /// Return cached resource URIs keyed by upstream name (used in catalog snapshots).
+    pub async fn cached_upstream_resource_uris(&self) -> Vec<(String, Vec<String>)> {
+        let catalog = self.catalog.read().await;
+        catalog
+            .iter()
+            .filter(|(_, entry)| !entry.resource_uris.is_empty())
+            .map(|(name, entry)| (name.clone(), entry.resource_uris.clone()))
+            .collect()
+    }
+
+    /// Return cached prompt names from all upstreams, excluding any that clash with builtins.
+    pub async fn cached_upstream_prompt_names(&self, builtins: &[&str]) -> Vec<String> {
+        let catalog = self.catalog.read().await;
+        catalog
+            .values()
+            .flat_map(|entry| entry.prompt_names.iter().cloned())
+            .filter(|name| !builtins.contains(&name.as_str()))
+            .collect()
+    }
+
     /// Return the current tool health for one upstream.
     pub async fn upstream_tool_health(&self, upstream_name: &str) -> Option<UpstreamHealth> {
         let catalog = self.catalog.read().await;
@@ -1115,12 +1135,29 @@ impl UpstreamPool {
         let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
             .await
             .map_err(|error| error.to_string())?;
-        let result = match conn
+        match conn
             .peer
             .read_resource(rmcp::model::ReadResourceRequestParams::new(original_uri))
             .await
         {
             Ok(result) => {
+                // Size check before recording success so an oversized response
+                // does not advance the circuit breaker's healthy counter.
+                let response_size = serde_json::to_string(&result).map_or(0, |s| s.len());
+                let max_bytes = max_response_bytes();
+                if response_size > max_bytes {
+                    self.record_failure_for(
+                        &config.name,
+                        UpstreamCapability::Resources,
+                        format!(
+                            "upstream resource response too large ({response_size} bytes, max {max_bytes})"
+                        ),
+                    )
+                    .await;
+                    return Err(format!(
+                        "upstream resource response too large ({response_size} bytes, max {max_bytes})"
+                    ));
+                }
                 self.record_success_for(&config.name, UpstreamCapability::Resources)
                     .await;
                 Ok(normalize_resource_result_uri(result, uri))
@@ -1134,17 +1171,7 @@ impl UpstreamPool {
                 .await;
                 Err(format!("upstream resource read failed: {error}"))
             }
-        };
-        if let Ok(ref r) = result {
-            let response_size = serde_json::to_string(r).map_or(0, |s| s.len());
-            let max_bytes = max_response_bytes();
-            if response_size > max_bytes {
-                return Err(format!(
-                    "upstream resource response too large ({response_size} bytes, max {max_bytes})"
-                ));
-            }
         }
-        result
     }
 
     /// Fetch prompts from all healthy upstreams and merge them, returning both the
@@ -1823,6 +1850,8 @@ mod tests {
             .expect("policy"),
             prompt_count: 0,
             resource_count: 0,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: UpstreamHealth::Healthy,
             prompt_health: UpstreamHealth::Healthy,
             resource_health: UpstreamHealth::Healthy,
@@ -1874,6 +1903,8 @@ mod tests {
                 .expect("policy"),
             prompt_count: 0,
             resource_count: 0,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: UpstreamHealth::Healthy,
             prompt_health: UpstreamHealth::Healthy,
             resource_health: UpstreamHealth::Healthy,
@@ -1904,6 +1935,8 @@ mod tests {
             exposure_policy: ToolExposurePolicy::All,
             prompt_count: 0,
             resource_count: 0,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: UpstreamHealth::Healthy,
             prompt_health: UpstreamHealth::Healthy,
             resource_health: UpstreamHealth::Healthy,
@@ -1947,6 +1980,8 @@ mod tests {
             exposure_policy: ToolExposurePolicy::All,
             prompt_count: 0,
             resource_count: 0,
+            prompt_names: Vec::new(),
+            resource_uris: Vec::new(),
             tool_health: UpstreamHealth::Healthy,
             prompt_health: UpstreamHealth::Healthy,
             resource_health: UpstreamHealth::Healthy,
