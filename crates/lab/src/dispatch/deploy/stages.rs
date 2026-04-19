@@ -37,6 +37,7 @@ pub struct PreflightOutcome {
 pub struct TransferOutcome {
     pub bytes: u64,
     /// Path of the `.bak.<ts>` file the previous binary (if any) was moved to.
+    #[allow(dead_code)]
     pub backup_path: Option<String>,
 }
 
@@ -44,6 +45,7 @@ pub struct TransferOutcome {
 #[derive(Debug, Clone, Copy)]
 pub struct RestartOutcome {
     /// True when `unit` was `None` — no systemd action was taken.
+    #[allow(dead_code)]
     pub skipped: bool,
 }
 
