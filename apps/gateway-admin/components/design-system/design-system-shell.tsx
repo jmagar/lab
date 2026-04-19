@@ -1,7 +1,6 @@
 import { AppHeader } from '@/components/app-header'
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -12,15 +11,6 @@ import { FeedbackSection } from './feedback-section'
 import { FoundationsSection } from './foundations-section'
 import { NavigationSection } from './navigation-section'
 import { PatternsSection } from './patterns-section'
-
-const sectionHeadings = [
-  'Theme Foundations',
-  'Controls',
-  'Feedback',
-  'Navigation',
-  'Data Display',
-  'Application Patterns',
-] as const
 
 export function DesignSystemShell() {
   return (
@@ -65,20 +55,6 @@ export function DesignSystemShell() {
           <div className="xl:col-span-2">
             <PatternsSection />
           </div>
-          {sectionHeadings.filter((heading) => !['Theme Foundations', 'Controls', 'Feedback', 'Navigation', 'Data Display', 'Application Patterns'].includes(heading)).map((heading) => (
-            <Card key={heading} className="h-full">
-              <CardHeader className="border-b">
-                <CardTitle>{heading}</CardTitle>
-                <CardDescription>
-                  Section scaffold in place. Detailed interactive demos land here in later tasks.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-6 text-sm text-muted-foreground">
-                Preview content intentionally stays local to this route so teams can test the UI
-                safely.
-              </CardContent>
-            </Card>
-          ))}
         </div>
       </div>
     </>
