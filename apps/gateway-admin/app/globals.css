@@ -125,6 +125,36 @@
   --info-foreground: #07131c;
 }
 
+.light {
+  /* Aurora raw tokens — light mode remaps.
+     Semantic tokens in :root are already correct; only raw Aurora vars need overriding
+     so that bg-aurora-*, text-aurora-*, border-aurora-* utilities render on light bg. */
+  --aurora-page-bg: #f0f6f8;
+  --aurora-nav-bg: #e4eff3;
+  --aurora-panel-medium: #ffffff;
+  --aurora-panel-medium-top: rgba(220, 237, 243, 0.5);
+  --aurora-panel-strong: #edf4f7;
+  --aurora-panel-strong-top: #e4eff3;
+  --aurora-control-surface: #e8f2f5;
+  --aurora-control-surface-top: rgba(215, 232, 239, 0.96);
+  --aurora-border-default: #c5dae2;
+  --aurora-border-strong: #9fbfcc;
+  --aurora-text-primary: #162126;
+  --aurora-text-muted: #4a6872;
+  --aurora-accent-primary: #0288d1;
+  --aurora-accent-strong: #0277bd;
+  --aurora-accent-deep: #01579b;
+  --aurora-warn: #8a6914;
+  --aurora-error: #9c3545;
+  --aurora-success: #2d7d6e;
+  --aurora-focus-ring: rgba(2, 136, 209, 0.34);
+  --aurora-active-glow: 0 0 0 1px rgba(2, 136, 209, 0.18), 0 0 16px rgba(2, 136, 209, 0.08);
+  --aurora-shadow-medium: 0 12px 24px rgba(0, 0, 0, 0.08);
+  --aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.12);
+  --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
 @theme inline {
   --font-sans: var(--font-inter), 'Segoe UI', 'Helvetica Neue', arial, sans-serif;
   --font-display: var(--font-manrope), var(--font-inter), 'Segoe UI', 'Helvetica Neue', arial, sans-serif;
