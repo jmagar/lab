@@ -14,6 +14,10 @@ import {
 interface ServerFiltersProps {
   search: string
   onSearchChange: (value: string) => void
+  version: string
+  onVersionChange: (value: string) => void
+  updatedSince: string
+  onUpdatedSinceChange: (value: string) => void
   totalCount?: number
   isLoading?: boolean
 }
@@ -21,11 +25,24 @@ interface ServerFiltersProps {
 export function ServerFilters({
   search,
   onSearchChange,
+  version,
+  onVersionChange,
+  updatedSince,
+  onUpdatedSinceChange,
   totalCount,
   isLoading,
 }: ServerFiltersProps) {
+  const hasExtraFilters = version !== '' || updatedSince !== ''
+
+  const handleClearAll = () => {
+    onSearchChange('')
+    onVersionChange('')
+    onUpdatedSinceChange('')
+  }
+
   return (
     <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-4')}>
+      {/* Row 1: search */}
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-1.5">
           <p className={AURORA_MUTED_LABEL}>Search</p>
@@ -44,11 +61,11 @@ export function ServerFilters({
           </div>
         </div>
 
-        {search && (
+        {(search || hasExtraFilters) && (
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onSearchChange('')}
+            onClick={handleClearAll}
             className={cn(
               gatewayActionTone(),
               'mt-6 h-9 shrink-0 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
@@ -58,6 +75,38 @@ export function ServerFilters({
             Clear
           </Button>
         )}
+      </div>
+
+      {/* Row 2: version + updated since */}
+      <div className="flex flex-wrap gap-4">
+        <div className="min-w-[160px] flex-1 space-y-1.5">
+          <p className={AURORA_MUTED_LABEL}>Version</p>
+          <Input
+            aria-label="Filter by version"
+            placeholder="Filter by version"
+            value={version}
+            onChange={(e) => onVersionChange(e.target.value)}
+            className={cn(
+              AURORA_CONTROL_SURFACE,
+              'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
+            )}
+          />
+        </div>
+
+        <div className="min-w-[160px] flex-1 space-y-1.5">
+          <p className={AURORA_MUTED_LABEL}>Updated since</p>
+          <Input
+            aria-label="Filter by updated since date"
+            type="date"
+            placeholder="YYYY-MM-DD"
+            value={updatedSince}
+            onChange={(e) => onUpdatedSinceChange(e.target.value)}
+            className={cn(
+              AURORA_CONTROL_SURFACE,
+              'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
+            )}
+          />
+        </div>
       </div>
 
       {!isLoading && totalCount !== undefined && (

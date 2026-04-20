@@ -10,26 +10,50 @@ export const REGISTRY_SERVER_KEY = '/registry/server'
 export const registryServersKey = (
   query: string,
   cursor: string | null,
-): [string, string, string | null] => [REGISTRY_SERVERS_KEY, query, cursor]
+  version?: string,
+  updatedSince?: string,
+): [string, string, string | null, string | undefined, string | undefined] => [
+  REGISTRY_SERVERS_KEY,
+  query,
+  cursor,
+  version || undefined,
+  updatedSince || undefined,
+]
 
 export const registryServerKey = (name: string): [string, string] => [
   REGISTRY_SERVER_KEY,
   name,
 ]
 
+type RegistryServersKey = [string, string, string | null, string | undefined, string | undefined]
+
 // Fetcher exported so bead 3 can wrap it with an AbortController ref.
 export function fetchRegistryServers(
-  [, query, cursor]: [string, string, string | null],
+  [, query, cursor, version, updatedSince]: RegistryServersKey,
   signal?: AbortSignal,
 ): Promise<ServerListResponse> {
-  return listServers({ search: query || undefined, limit: 20, cursor: cursor ?? undefined }, signal)
+  return listServers(
+    {
+      search: query || undefined,
+      limit: 20,
+      cursor: cursor ?? undefined,
+      version: version || undefined,
+      updated_since: updatedSince || undefined,
+    },
+    signal,
+  )
 }
 
-export function useRegistryServers(query: string, cursor: string | null = null) {
+export function useRegistryServers(
+  query: string,
+  cursor: string | null = null,
+  version?: string,
+  updatedSince?: string,
+) {
   return useSWR<ServerListResponse>(
-    registryServersKey(query, cursor),
-    (key: readonly [string, string, string | null]) =>
-      fetchRegistryServers([key[0], key[1], key[2]], undefined),
+    registryServersKey(query, cursor, version, updatedSince),
+    (key: readonly [...RegistryServersKey]) =>
+      fetchRegistryServers([key[0], key[1], key[2], key[3], key[4]], undefined),
     { revalidateOnFocus: false },
   )
 }
