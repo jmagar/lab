@@ -1,15 +1,45 @@
 import * as React from 'react'
+import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
 
-function Card({ className, ...props }: React.ComponentProps<'div'>) {
+/**
+ * Card variants:
+ * - `medium` (default): Tier 2 surface — standard content panels.
+ * - `strong`: Tier 3 surface — elevated/featured panels with stronger shadow.
+ *
+ * The `variant` axis mirrors Button/Badge API convention (not a `tier` prop).
+ * Tier naming maps to: medium = Tier 2, strong = Tier 3.
+ */
+const cardVariants = cva(
+  'flex flex-col gap-6 rounded-[1.35rem] border bg-card text-card-foreground',
+  {
+    variants: {
+      variant: {
+        /** Default: Tier 2 medium panel — most content cards. */
+        medium:
+          'border-aurora-border-strong bg-aurora-panel-medium shadow-aurora-medium shadow-aurora-highlight-medium',
+        /** Tier 3 strong panel — elevated/featured sections. */
+        strong:
+          'border-aurora-border-strong bg-aurora-panel-strong rounded-[1.4rem] shadow-aurora-strong shadow-aurora-highlight-strong',
+      },
+    },
+    defaultVariants: {
+      variant: 'medium',
+    },
+  },
+)
+
+function Card({
+  className,
+  variant,
+  ...props
+}: React.ComponentProps<'div'> & VariantProps<typeof cardVariants>) {
   return (
     <div
       data-slot="card"
-      className={cn(
-        'bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm',
-        className,
-      )}
+      data-variant={variant ?? 'medium'}
+      className={cn(cardVariants({ variant }), className)}
       {...props}
     />
   )
@@ -89,4 +119,5 @@ export {
   CardAction,
   CardDescription,
   CardContent,
+  cardVariants,
 }
