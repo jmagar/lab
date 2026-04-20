@@ -131,6 +131,10 @@ pub struct ResolvedDeviceRuntime {
     pub role: DeviceRole,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// Configuration for a single upstream MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpstreamConfig {
@@ -149,9 +153,12 @@ pub struct UpstreamConfig {
     /// Arguments to pass to the stdio command.
     #[serde(default)]
     pub args: Vec<String>,
-    /// Whether to proxy resources from this upstream (opt-in).
-    #[serde(default)]
+    /// Whether to proxy resources from this upstream. Defaults to true.
+    #[serde(default = "default_true")]
     pub proxy_resources: bool,
+    /// Whether to proxy prompts from this upstream. Defaults to true.
+    #[serde(default = "default_true")]
+    pub proxy_prompts: bool,
     /// Optional allowlist of tool names/patterns to expose from this upstream.
     #[serde(default)]
     pub expose_tools: Option<Vec<String>>,
