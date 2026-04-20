@@ -7,8 +7,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use russh::keys::agent::AgentIdentity;
-use russh::keys::agent::client::AgentClient;
 use russh::{ChannelMsg, client};
 use russh_sftp::client::SftpSession;
 
@@ -174,49 +172,61 @@ impl SshFs {
             })?;
 
         // Authenticate using the running ssh-agent.
-        let mut agent = AgentClient::connect_env()
-            .await
-            .map_err(|e| ExtractError::Ssh {
-                host: host.clone(),
-                message: format!("ssh-agent: {e}"),
-            })?;
+        // AgentClient::connect_env uses SSH_AUTH_SOCK (Unix sockets only).
+        #[cfg(unix)]
+        {
+            use russh::keys::agent::AgentIdentity;
+            use russh::keys::agent::client::AgentClient;
 
-        let identities = agent
-            .request_identities()
-            .await
-            .map_err(|e| ExtractError::Ssh {
-                host: host.clone(),
-                message: format!("agent identities: {e}"),
-            })?;
-
-        let mut authenticated = false;
-        for identity in &identities {
-            // Only handle plain public-key identities; skip certificates.
-            let pub_key = match identity {
-                AgentIdentity::PublicKey { key, .. } => key.clone(),
-                AgentIdentity::Certificate { .. } => continue,
-            };
-
-            let result = handle
-                .authenticate_publickey_with(&user, pub_key, None, &mut agent)
+            let mut agent = AgentClient::connect_env()
                 .await
                 .map_err(|e| ExtractError::Ssh {
                     host: host.clone(),
-                    message: format!("agent auth: {e:?}"),
+                    message: format!("ssh-agent: {e}"),
                 })?;
 
-            if result.success() {
-                authenticated = true;
-                break;
+            let identities = agent
+                .request_identities()
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("agent identities: {e}"),
+                })?;
+
+            let mut authenticated = false;
+            for identity in &identities {
+                // Only handle plain public-key identities; skip certificates.
+                let pub_key = match identity {
+                    AgentIdentity::PublicKey { key, .. } => key.clone(),
+                    AgentIdentity::Certificate { .. } => continue,
+                };
+
+                let result = handle
+                    .authenticate_publickey_with(&user, pub_key, None, &mut agent)
+                    .await
+                    .map_err(|e| ExtractError::Ssh {
+                        host: host.clone(),
+                        message: format!("agent auth: {e:?}"),
+                    })?;
+
+                if result.success() {
+                    authenticated = true;
+                    break;
+                }
+            }
+
+            if !authenticated {
+                return Err(ExtractError::Ssh {
+                    host: host.clone(),
+                    message: "all agent identities were rejected".to_owned(),
+                });
             }
         }
-
-        if !authenticated {
-            return Err(ExtractError::Ssh {
-                host: host.clone(),
-                message: "all agent identities were rejected".to_owned(),
-            });
-        }
+        #[cfg(not(unix))]
+        return Err(ExtractError::Ssh {
+            host: host.clone(),
+            message: "SSH agent authentication is not supported on this platform".to_owned(),
+        });
 
         // Open an SSH session channel and request the SFTP subsystem.
         let channel = handle
