@@ -30,7 +30,11 @@ export function UpstreamOauthCard({ name }: UpstreamOauthCardProps) {
     setConnecting(true)
     try {
       const { authorization_url } = await upstreamOauthApi.start(name)
-      window.open(authorization_url, '_blank', 'noopener,noreferrer')
+      const popup = window.open(authorization_url, '_blank', 'noopener,noreferrer')
+      if (!popup) {
+        setConnecting(false)
+        setError('Popup blocked — please allow popups for this site and try again')
+      }
     } catch (err: unknown) {
       setConnecting(false)
       setError(err instanceof Error ? err.message : 'Failed to start authorization')

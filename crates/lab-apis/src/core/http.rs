@@ -807,14 +807,25 @@ mod tests {
         let encoded = HttpClient::encode_path_segment(raw);
 
         // Neither '/' nor '?' should survive encoding.
-        assert!(!encoded.contains('/'), "forward slash must be encoded: {encoded}");
-        assert!(!encoded.contains('?'), "question mark must be encoded: {encoded}");
+        assert!(
+            !encoded.contains('/'),
+            "forward slash must be encoded: {encoded}"
+        );
+        assert!(
+            !encoded.contains('?'),
+            "question mark must be encoded: {encoded}"
+        );
 
         // The encoded segment should round-trip through url() without splitting.
         let client = make_client("http://localhost:8080");
         let path = format!("/api/v1/items/{encoded}");
-        let url = client.url(&path).expect("encoded segment should produce valid url");
-        assert!(url.ends_with(&encoded), "encoded segment must appear verbatim in URL: {url}");
+        let url = client
+            .url(&path)
+            .expect("encoded segment should produce valid url");
+        assert!(
+            url.ends_with(&encoded),
+            "encoded segment must appear verbatim in URL: {url}"
+        );
     }
 
     #[test]

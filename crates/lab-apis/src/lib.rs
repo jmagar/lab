@@ -113,3 +113,7 @@ pub mod apprise;
 /// Deploy service — push local release binary to SSH targets.
 #[cfg(feature = "deploy")]
 pub mod deploy;
+
+/// MCP Registry client — browse and search the official MCP server registry.
+#[cfg(feature = "mcpregistry")]
+pub mod mcpregistry;

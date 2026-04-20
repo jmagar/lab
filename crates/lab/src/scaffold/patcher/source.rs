@@ -124,7 +124,11 @@ pub fn patch_dispatch_clients_rs(name: &str, content: &str) -> Result<String> {
     if content.contains(&load) {
         Ok(content)
     } else {
-        insert_once(&content, from_env_marker, &format!("{load}{from_env_marker}"))
+        insert_once(
+            &content,
+            from_env_marker,
+            &format!("{load}{from_env_marker}"),
+        )
     }
 }
 

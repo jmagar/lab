@@ -334,22 +334,4 @@ mod tests {
             assert!(!spec.destructive, "{action} should remain non-destructive");
         }
     }
-
-    #[test]
-    fn gateway_read_actions_remain_non_destructive() {
-        for action in [
-            "gateway.list",
-            "gateway.get",
-            "gateway.test",
-            "gateway.discovered_tools",
-            "gateway.discovered_resources",
-            "gateway.discovered_prompts",
-        ] {
-            let spec = ACTIONS
-                .iter()
-                .find(|spec| spec.name == action)
-                .expect("gateway action");
-            assert!(!spec.destructive, "{action} must remain non-destructive");
-        }
-    }
 }

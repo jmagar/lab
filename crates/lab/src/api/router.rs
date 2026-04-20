@@ -321,13 +321,18 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
     let mut v1 = Router::new().nest("/device", super::device::routes(state.clone()));
 
     if is_master {
-        v1 = v1
-            .route("/{service}/actions", get(service_actions))
-            // upstream oauth must be nested before /gateway so its more-specific prefix wins
-            .nest(
+        v1 = v1.route("/{service}/actions", get(service_actions));
+
+        // upstream oauth must be nested before /gateway so its more-specific prefix wins;
+        // only mount when the gateway manager is present (oauth requires it).
+        if state.gateway_manager.is_some() {
+            v1 = v1.nest(
                 "/gateway/oauth",
                 crate::api::upstream_oauth::gateway_routes(state.clone()),
-            )
+            );
+        }
+
+        v1 = v1
             .nest("/gateway", services::gateway::routes(state.clone()))
             .route(
                 "/openapi.json",
@@ -379,6 +384,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
         mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
         mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
+        mount_if_enabled!(v1, state, "mcpregistry", "mcpregistry", mcpregistry);
         mount_if_enabled!(v1, state, "memos", "memos", memos);
         mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
         mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
