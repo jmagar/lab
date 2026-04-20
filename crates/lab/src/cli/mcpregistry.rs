@@ -1,9 +1,8 @@
 //! `lab mcpregistry` — CLI shim for the MCP Registry service.
 
-use std::net::ToSocketAddrs;
 use std::process::ExitCode;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::Result;
 use clap::{Args, Subcommand};
 
 use crate::cli::helpers::run_confirmable_action_command;
@@ -102,139 +101,29 @@ async fn run_action(args: ActionArgs, format: OutputFormat) -> Result<ExitCode> 
     .await
 }
 
-#[allow(clippy::print_stdout)]
 async fn run_install(args: InstallArgs, format: OutputFormat) -> Result<ExitCode> {
-    // Step 1: fetch server from registry.
-    let get_result = crate::dispatch::mcpregistry::dispatch(
-        "server.get",
-        serde_json::json!({ "name": args.name }),
-    )
-    .await
-    .map_err(|e| anyhow!("registry lookup failed: {e}"))?;
-
-    // Step 2: extract remotes[0].url.
-    let url = get_result
-        .pointer("/server/remotes/0/url")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            anyhow!(
-                "server '{}' has no remote transport URLs — cannot install as HTTP gateway.\n\
-                 Tip: check `lab mcpregistry action server.get name={}` for package-only servers.",
-                args.name,
-                args.name
-            )
-        })?
-        .to_string();
-
-    // Step 3: SSRF validation before passing to gateway.add.
-    // DNS TOCTOU: validated at call time; short-TTL rebind could bypass. Homelab threat model accepts this.
-    let url_for_check = url.clone();
-    tokio::task::spawn_blocking(move || validate_registry_url(&url_for_check))
-        .await
-        .context("SSRF validation task panicked")?
-        .context("registry URL failed SSRF validation")?;
-
-    // Step 4: derive gateway name (last segment after `/`).
-    let gateway_name = args.gateway_name.unwrap_or_else(|| {
-        args.name
-            .rsplit('/')
-            .next()
-            .unwrap_or(&args.name)
-            .to_string()
-    });
-
-    let spec = serde_json::json!({
-        "name": gateway_name,
-        "url": url,
-        "bearer_token_env": args.bearer_token_env,
-        "command": null,
-        "args": [],
-        "proxy_resources": false,
-        "expose_tools": null,
-    });
-    let params = serde_json::json!({ "spec": spec });
-
-    // Step 5: delegate to gateway.add (destructive; honors -y).
-    let gateway_actions = crate::dispatch::gateway::ACTIONS;
     run_confirmable_action_command(
-        "gateway",
-        gateway_actions,
-        "gateway.add".to_string(),
-        params,
+        "mcpregistry",
+        ACTIONS,
+        "server.install".to_string(),
+        serde_json::json!({
+            "name": args.name,
+            "gateway_name": args.gateway_name,
+            "bearer_token_env": args.bearer_token_env,
+            "version": args.version,
+        }),
         args.yes,
         format,
-        |action, p| async move { crate::dispatch::gateway::dispatch(&action, p).await },
+        |action, params| async move {
+            crate::dispatch::mcpregistry::dispatch(&action, params).await
+        },
     )
     .await
-    .context("gateway.add failed")?;
-
-    println!("Installed: {gateway_name} → {url}");
-    Ok(ExitCode::SUCCESS)
-}
-
-/// Validate that a registry-sourced URL is safe to install as a gateway upstream.
-///
-/// Rejects non-HTTPS schemes and hosts that resolve to private/loopback ranges.
-///
-/// # MUST NOT call from async context without spawn_blocking
-/// Uses synchronous `ToSocketAddrs` DNS resolution.
-fn validate_registry_url(url: &str) -> Result<()> {
-    let parsed = url::Url::parse(url).with_context(|| format!("invalid URL: {url}"))?;
-
-    if parsed.scheme() != "https" {
-        return Err(anyhow!(
-            "registry URL must use HTTPS, got '{}': {url}",
-            parsed.scheme()
-        ));
-    }
-
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| anyhow!("URL has no host: {url}"))?;
-    let port = parsed.port_or_known_default().unwrap_or(443);
-
-    // Check literal IP addresses directly without DNS.
-    if let Ok(addr) = host.parse::<std::net::IpAddr>() {
-        return check_ip_not_private(addr, url);
-    }
-
-    // Resolve hostname; reject if any resolved address is private.
-    // Synchronous DNS call — MUST NOT be called from async without spawn_blocking.
-    let addrs: Vec<_> = format!("{host}:{port}")
-        .to_socket_addrs()
-        .with_context(|| format!("failed to resolve host '{host}'"))?
-        .collect();
-
-    for sock_addr in addrs {
-        check_ip_not_private(sock_addr.ip(), url)?;
-    }
-
-    Ok(())
-}
-
-fn check_ip_not_private(ip: std::net::IpAddr, url: &str) -> Result<()> {
-    let blocked = match ip {
-        std::net::IpAddr::V4(v4) => {
-            let o = v4.octets();
-            v4.is_loopback()                                              // 127.0.0.0/8
-                || o[0] == 10                                             // 10.0.0.0/8
-                || (o[0] == 172 && o[1] >= 16 && o[1] <= 31)            // 172.16.0.0/12
-                || (o[0] == 192 && o[1] == 168)                          // 192.168.0.0/16
-                || (o[0] == 169 && o[1] == 254) // 169.254.0.0/16 link-local / IMDS
-        }
-        std::net::IpAddr::V6(v6) => v6.is_loopback(), // ::1/128
-    };
-    if blocked {
-        return Err(anyhow!(
-            "registry URL resolves to a private/loopback address — blocked to prevent SSRF: {url}"
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::dispatch::mcpregistry::params::validate_registry_url;
 
     #[test]
     fn validate_registry_url_blocks_http() {
@@ -281,19 +170,5 @@ mod tests {
     #[test]
     fn validate_registry_url_rejects_missing_scheme() {
         validate_registry_url("not-a-url").unwrap_err();
-    }
-
-    #[test]
-    fn install_default_gateway_name_last_segment() {
-        let name = "io.github.user/my-mcp";
-        let gateway_name = name.rsplit('/').next().unwrap_or(name).to_string();
-        assert_eq!(gateway_name, "my-mcp");
-    }
-
-    #[test]
-    fn install_default_gateway_name_no_slash() {
-        let name = "my-server";
-        let gateway_name = name.rsplit('/').next().unwrap_or(name).to_string();
-        assert_eq!(gateway_name, "my-server");
     }
 }
