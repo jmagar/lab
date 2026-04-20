@@ -19,7 +19,7 @@ import {
   AURORA_MUTED_LABEL,
   controlTone,
   pillTone,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { cn } from '@/lib/utils'
 
 interface LogToolbarProps {

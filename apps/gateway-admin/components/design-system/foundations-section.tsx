@@ -1,11 +1,11 @@
 import { cn } from '@/lib/utils'
 import {
+  AURORA_DISPLAY_2,
   AURORA_DISPLAY_NUMBER,
-  AURORA_DISPLAY_TITLE,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import {
   auroraColorTokens,
   elevationTiers,
@@ -19,7 +19,7 @@ export function FoundationsSection() {
     <section className={cn(AURORA_STRONG_PANEL, 'overflow-hidden')}>
       <div className="border-b border-aurora-border-strong px-5 py-4">
         <p className={AURORA_MUTED_LABEL}>Theme Foundations</p>
-        <h2 className={cn(AURORA_DISPLAY_TITLE, 'mt-2 text-2xl font-semibold text-aurora-text-primary')}>
+        <h2 className={cn(AURORA_DISPLAY_2, 'mt-2 text-aurora-text-primary')}>
           Aurora page language
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-aurora-text-muted">

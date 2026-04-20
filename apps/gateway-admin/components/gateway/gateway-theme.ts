@@ -1,26 +1,10 @@
 import { cn } from '@/lib/utils'
-import {
-  AURORA_CONTROL_SURFACE,
-  AURORA_DISPLAY_NUMBER,
-  AURORA_DISPLAY_TITLE,
-  AURORA_MEDIUM_PANEL,
-  AURORA_MUTED_LABEL,
-  AURORA_PAGE_FRAME,
-  AURORA_PAGE_SHELL,
-  AURORA_STRONG_PANEL,
-  controlTone,
-} from '@/components/logs/log-theme'
+import { AURORA_CONTROL_SURFACE, controlTone } from '@/components/aurora/tokens'
 
-export {
-  AURORA_CONTROL_SURFACE,
-  AURORA_DISPLAY_NUMBER,
-  AURORA_DISPLAY_TITLE,
-  AURORA_MEDIUM_PANEL,
-  AURORA_MUTED_LABEL,
-  AURORA_PAGE_FRAME,
-  AURORA_PAGE_SHELL,
-  AURORA_STRONG_PANEL,
-}
+/**
+ * Gateway-specific surface tokens.
+ * Shared Aurora constants live in @/components/aurora/tokens.
+ */
 
 export const AURORA_GATEWAY_STAT =
   'rounded-[1.05rem] border border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(12,27,38,0.98))] px-4 py-3 shadow-[0_8px_18px_rgba(0,0,0,0.18),var(--aurora-highlight-medium)]'
@@ -35,7 +19,7 @@ export const AURORA_GATEWAY_ROW =
   'border-t border-aurora-border-strong/80 bg-[linear-gradient(180deg,rgba(14,31,44,0.72),rgba(10,22,31,0.88))] transition-colors hover:bg-[linear-gradient(180deg,rgba(17,38,54,0.9),rgba(12,27,38,0.96))]'
 
 export const AURORA_GATEWAY_DISABLED_ROW =
-  'border-t border-aurora-border-strong/60 bg-[linear-gradient(180deg,rgba(8,19,27,0.9),rgba(7,16,24,0.96))] text-[#7f95a3]'
+  'border-t border-aurora-border-strong/60 bg-[linear-gradient(180deg,rgba(8,19,27,0.9),rgba(7,16,24,0.96))] text-aurora-text-muted'
 
 export const AURORA_GATEWAY_SUBTLE_SURFACE =
   'rounded-[0.95rem] border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]'
