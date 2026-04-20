@@ -149,35 +149,42 @@ impl SshFs {
     pub async fn connect(host: impl Into<String>) -> Result<Self, ExtractError> {
         let host = host.into();
 
-        // Resolve the alias through ~/.ssh/config (Hostname, Port, User, ProxyCommand).
-        let cfg = russh_config::parse_home(&host).map_err(|e| ExtractError::Ssh {
-            host: host.clone(),
-            message: format!("ssh config: {e}"),
-        })?;
-        let user = cfg.user();
+        // AgentClient::connect_env uses SSH_AUTH_SOCK (Unix socket) — not available on Windows.
+        #[cfg(not(unix))]
+        return Err(ExtractError::Ssh {
+            host,
+            message: "SSH transport requires Unix (SSH_AUTH_SOCK is not available on this platform)".to_owned(),
+        });
 
-        // Open TCP stream (or ProxyCommand pipe) to the resolved endpoint.
-        let stream = cfg.stream().await.map_err(|e| ExtractError::Ssh {
-            host: host.clone(),
-            message: format!("connect: {e}"),
-        })?;
-
-        // Perform the SSH handshake.
-        let ssh_cfg = Arc::new(client::Config::default());
-        let mut handle = client::connect_stream(ssh_cfg, stream, ClientHandler)
-            .await
-            .map_err(|e| ExtractError::Ssh {
-                host: host.clone(),
-                message: format!("handshake: {e}"),
-            })?;
-
-        // Authenticate using the running ssh-agent.
-        // AgentClient::connect_env uses SSH_AUTH_SOCK (Unix sockets only).
+        // Everything below is Unix-only.
         #[cfg(unix)]
         {
             use russh::keys::agent::AgentIdentity;
             use russh::keys::agent::client::AgentClient;
 
+            // Resolve the alias through ~/.ssh/config (Hostname, Port, User, ProxyCommand).
+            let cfg = russh_config::parse_home(&host).map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("ssh config: {e}"),
+            })?;
+            let user = cfg.user();
+
+            // Open TCP stream (or ProxyCommand pipe) to the resolved endpoint.
+            let stream = cfg.stream().await.map_err(|e| ExtractError::Ssh {
+                host: host.clone(),
+                message: format!("connect: {e}"),
+            })?;
+
+            // Perform the SSH handshake.
+            let ssh_cfg = Arc::new(client::Config::default());
+            let mut handle = client::connect_stream(ssh_cfg, stream, ClientHandler)
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("handshake: {e}"),
+                })?;
+
+            // Authenticate using the running ssh-agent.
             let mut agent = AgentClient::connect_env()
                 .await
                 .map_err(|e| ExtractError::Ssh {
@@ -221,43 +228,38 @@ impl SshFs {
                     message: "all agent identities were rejected".to_owned(),
                 });
             }
-        }
-        #[cfg(not(unix))]
-        return Err(ExtractError::Ssh {
-            host: host.clone(),
-            message: "SSH agent authentication is not supported on this platform".to_owned(),
-        });
 
-        // Open an SSH session channel and request the SFTP subsystem.
-        let channel = handle
-            .channel_open_session()
-            .await
-            .map_err(|e| ExtractError::Ssh {
-                host: host.clone(),
-                message: format!("channel open: {e}"),
-            })?;
-
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| ExtractError::Ssh {
-                host: host.clone(),
-                message: format!("sftp subsystem: {e}"),
-            })?;
-
-        let sftp =
-            SftpSession::new(channel.into_stream())
+            // Open an SSH session channel and request the SFTP subsystem.
+            let channel = handle
+                .channel_open_session()
                 .await
                 .map_err(|e| ExtractError::Ssh {
                     host: host.clone(),
-                    message: format!("sftp init: {e}"),
+                    message: format!("channel open: {e}"),
                 })?;
 
-        Ok(Self {
-            host,
-            sftp,
-            _session: handle,
-        })
+            channel
+                .request_subsystem(true, "sftp")
+                .await
+                .map_err(|e| ExtractError::Ssh {
+                    host: host.clone(),
+                    message: format!("sftp subsystem: {e}"),
+                })?;
+
+            let sftp =
+                SftpSession::new(channel.into_stream())
+                    .await
+                    .map_err(|e| ExtractError::Ssh {
+                        host: host.clone(),
+                        message: format!("sftp init: {e}"),
+                    })?;
+
+            Ok(Self {
+                host,
+                sftp,
+                _session: handle,
+            })
+        }
     }
 
     pub(crate) async fn read(&self, path: &Path) -> Result<Vec<u8>, ExtractError> {
