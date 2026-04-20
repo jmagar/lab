@@ -28,7 +28,8 @@ export function fetchRegistryServers(
 export function useRegistryServers(query: string, cursor: string | null = null) {
   return useSWR<ServerListResponse>(
     registryServersKey(query, cursor),
-    (key) => fetchRegistryServers(key),
+    (key: readonly [string, string, string | null]) =>
+      fetchRegistryServers([key[0], key[1], key[2]], undefined),
     { revalidateOnFocus: false },
   )
 }
