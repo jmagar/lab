@@ -42,7 +42,6 @@ export function ServerFilters({
 
   return (
     <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-4')}>
-      {/* Row 1: search */}
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-1.5">
           <p className={AURORA_MUTED_LABEL}>Search</p>
@@ -77,7 +76,6 @@ export function ServerFilters({
         )}
       </div>
 
-      {/* Row 2: version + updated since */}
       <div className="flex flex-wrap gap-4">
         <div className="min-w-[160px] flex-1 space-y-1.5">
           <p className={AURORA_MUTED_LABEL}>Version</p>

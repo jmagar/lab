@@ -17,6 +17,8 @@ import {
   AURORA_PAGE_SHELL,
   AURORA_MUTED_LABEL,
 } from '@/components/gateway/gateway-theme'
+import { REGISTRY_META_KEY } from '@/lib/types/registry'
+import { RegistryStatusBadge } from './registry-status-badge'
 import type { ServerResponse } from '@/lib/types/registry'
 
 interface RegistryListContentProps {
@@ -194,7 +196,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
               const { text: descText, truncated } = truncateDescription(server.description)
               const isExpanded = expandedDescriptions.has(server.name)
               const repoHref = safeHref(server.repository?.url)
-              const status = response._meta?.['io.modelcontextprotocol.registry/official']?.status ?? 'active'
+              const status = response._meta?.[REGISTRY_META_KEY]?.status ?? 'active'
               const isDeleted = status === 'deleted'
 
               return (
@@ -249,16 +251,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                         >
                           {isHTTP ? 'HTTP' : 'stdio only'}
                         </span>
-                        {status === 'deprecated' && (
-                          <span className="rounded-full border border-aurora-warn/20 bg-aurora-warn/15 px-2 py-0.5 text-xs text-aurora-warn">
-                            Deprecated
-                          </span>
-                        )}
-                        {status === 'deleted' && (
-                          <span className="rounded-full border border-aurora-error/20 bg-aurora-error/15 px-2 py-0.5 text-xs text-aurora-error">
-                            Deleted
-                          </span>
-                        )}
+                        <RegistryStatusBadge status={status} />
                       </div>
 
                       {/* untrusted registry data — do not use dangerouslySetInnerHTML */}

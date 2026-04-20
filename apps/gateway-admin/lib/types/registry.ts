@@ -1,6 +1,8 @@
 // TypeScript types mirroring crates/lab-apis/src/mcpregistry/types.rs
 // JSON field names follow serde rename annotations in the Rust source.
 
+export const REGISTRY_META_KEY = 'io.modelcontextprotocol.registry/official'
+
 export interface ListServersParams {
   search?: string
   limit?: number
