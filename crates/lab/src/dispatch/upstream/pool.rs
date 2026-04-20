@@ -107,10 +107,23 @@ async fn routable_upstream_peers(
         .collect()
 }
 
+/// Returns true if the error represents a capability the upstream simply doesn't support
+/// (method not found / not implemented). These are healthy — the upstream just doesn't
+/// expose that capability, which is fine.
+fn is_capability_unsupported(error: &rmcp::ServiceError) -> bool {
+    let msg = error.to_string();
+    msg.contains("Method not found")
+        || msg.contains("method_not_found")
+        || msg.contains("-32601")
+        || msg.contains("Not implemented")
+        || msg.contains("not supported")
+}
+
 async fn discover_capability_counts(
     name: &str,
     peer: &rmcp::service::Peer<RoleClient>,
     proxy_resources: bool,
+    proxy_prompts: bool,
 ) -> (
     usize,
     Option<String>,
@@ -122,6 +135,9 @@ async fn discover_capability_counts(
     let (resource_count, resource_error, resource_health) = if proxy_resources {
         match peer.list_resources(None).await {
             Ok(result) => (result.resources.len(), None, UpstreamHealth::Healthy),
+            Err(ref error) if is_capability_unsupported(error) => {
+                (0, None, UpstreamHealth::Healthy)
+            }
             Err(error) => (
                 0,
                 Some(format!("failed to list resources from upstream: {error}")),
@@ -134,15 +150,22 @@ async fn discover_capability_counts(
         (0, None, UpstreamHealth::Healthy)
     };
 
-    let (prompt_count, prompt_error, prompt_health) = match peer.list_prompts(None).await {
-        Ok(result) => (result.prompts.len(), None, UpstreamHealth::Healthy),
-        Err(error) => (
-            0,
-            Some(format!("failed to list prompts from upstream: {error}")),
-            UpstreamHealth::Unhealthy {
-                consecutive_failures: 1,
-            },
-        ),
+    let (prompt_count, prompt_error, prompt_health) = if proxy_prompts {
+        match peer.list_prompts(None).await {
+            Ok(result) => (result.prompts.len(), None, UpstreamHealth::Healthy),
+            Err(ref error) if is_capability_unsupported(error) => {
+                (0, None, UpstreamHealth::Healthy)
+            }
+            Err(error) => (
+                0,
+                Some(format!("failed to list prompts from upstream: {error}")),
+                UpstreamHealth::Unhealthy {
+                    consecutive_failures: 1,
+                },
+            ),
+        }
+    } else {
+        (0, None, UpstreamHealth::Healthy)
     };
 
     if let Some(error) = &resource_error {
@@ -291,7 +314,7 @@ impl UpstreamPool {
             }
         }
 
-        // Track which upstreams have resource proxying enabled.
+        // Track which upstreams have resource/prompt proxying enabled.
         let resource_names: Vec<String> = configs
             .iter()
             .filter(|c| c.proxy_resources)
@@ -339,8 +362,13 @@ impl UpstreamPool {
                             prompt_count,
                             prompt_last_error,
                             prompt_health,
-                        ) = discover_capability_counts(&name, &conn.peer, config.proxy_resources)
-                            .await;
+                        ) = discover_capability_counts(
+                            &name,
+                            &conn.peer,
+                            config.proxy_resources,
+                            config.proxy_prompts,
+                        )
+                        .await;
                         tracing::info!(
                             upstream = %name,
                             transport = upstream_transport(&config),

@@ -378,6 +378,7 @@ impl GatewayManager {
                         command: None,
                         args: vec![],
                         proxy_resources: false,
+                        proxy_prompts: false,
                         expose_tools: None,
                         oauth: Some(UpstreamOauthConfig {
                             mode: UpstreamOauthMode::AuthorizationCodePkce,
