@@ -83,6 +83,44 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
+        name: "server.install",
+        description: "Install an MCP server from the registry as a gateway upstream (HTTP transport only)",
+        destructive: true,
+        returns: "Gateway",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name (e.g. `io.github.user/my-mcp`)",
+            },
+            ParamSpec {
+                name: "gateway_name",
+                ty: "string",
+                required: false,
+                description: "Gateway name to use; defaults to the segment after the last `/` in the server name",
+            },
+            ParamSpec {
+                name: "bearer_token_env",
+                ty: "string",
+                required: false,
+                description: "Name of the env var holding the bearer token (not the token value)",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Registry version to fetch; defaults to `latest`",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive install operation",
+            },
+        ],
+    },
+    ActionSpec {
         name: "server.validate",
         description: "Validate a ServerJSON document against the registry schema without publishing",
         destructive: false,
