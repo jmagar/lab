@@ -3,10 +3,11 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { 
-  Cable, 
-  LayoutDashboard, 
-  Settings, 
+import {
+  Cable,
+  LayoutDashboard,
+  Package,
+  Settings,
   Activity,
   ScrollText,
   HelpCircle,
@@ -44,6 +45,11 @@ export const primarySidebarNavigation = [
     title: 'Gateways',
     url: '/gateways',
     icon: Cable,
+  },
+  {
+    title: 'Registry',
+    url: '/registry',
+    icon: Package,
   },
   {
     title: 'Setup',
