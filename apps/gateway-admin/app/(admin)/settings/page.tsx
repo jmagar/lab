@@ -145,7 +145,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex items-center justify-between rounded-lg border p-3">
                     <span>Disconnected gateways</span>
-                    <Badge variant={snapshot.disconnectedGateways === 0 ? 'secondary' : 'destructive'}>
+                    <Badge variant="secondary" status={snapshot.disconnectedGateways === 0 ? 'default' : 'error'}>
                       {snapshot.disconnectedGateways}
                     </Badge>
                   </div>

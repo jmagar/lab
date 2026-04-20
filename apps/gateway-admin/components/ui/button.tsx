@@ -4,20 +4,36 @@ import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
 
+/**
+ * Button variants — Aurora-tuned:
+ * - `default`: Aurora accent primary (action CTA)
+ * - `destructive`: action-consequence only (delete, remove, irreversible)
+ * - `outline`: Aurora control surface (toolbar actions)
+ * - `secondary`: panel-strong background (supporting actions)
+ * - `ghost`: no background, hover reveals panel (in-context actions)
+ * - `link`: underline only (navigation-adjacent)
+ *
+ * Selected state: use `data-selected="true"` attribute.
+ * This follows the existing `aria-invalid:` selector pattern (line 8).
+ * Do NOT pass `selected` as a boolean prop.
+ *
+ * Example: <Button variant="outline" data-selected={isSelected}>
+ */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-aurora-accent-primary/34 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        default:
+          'bg-primary text-primary-foreground hover:bg-aurora-accent-strong/95 data-[selected=true]:shadow-aurora-active-glow',
         destructive:
           'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         outline:
-          'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50',
+          'border border-aurora-border-strong bg-aurora-control-surface hover:bg-aurora-panel-medium hover:text-aurora-text-primary data-[selected=true]:shadow-aurora-active-glow data-[selected=true]:border-aurora-accent-primary/40',
         secondary:
           'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost:
-          'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
+          'hover:bg-aurora-panel-medium hover:text-aurora-text-primary dark:hover:bg-aurora-panel-medium/50',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
