@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  Play, 
-  RefreshCw, 
-  Pencil, 
+import {
+  Play,
+  RefreshCw,
+  Pencil,
   Trash2,
   AlertTriangle,
   Clock,
@@ -14,6 +14,8 @@ import {
   Loader2,
   Search,
   Wrench,
+  Settings,
+  ChevronDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppHeader } from '@/components/app-header'
@@ -22,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TransportBadge } from './transport-badge'
 import { ToolExposureTable } from './tool-exposure-table'
 import { GatewayFormDialog } from './gateway-form-dialog'
@@ -37,7 +40,6 @@ import {
 } from '@/lib/api/tool-exposure-draft'
 import { getErrorMessage } from '@/lib/utils'
 import { buildGatewayClientConfig } from '@/lib/api/gateway-client-config'
-import { SurfaceRatio } from './surface-ratio'
 
 interface GatewayDetailContentProps {
   gatewayId: string | null
@@ -68,6 +70,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [exposureSaveError, setExposureSaveError] = useState<string | null>(null)
   const [resourceSearch, setResourceSearch] = useState('')
   const [promptSearch, setPromptSearch] = useState('')
+  const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set())
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
   const toolExposureSignature = useMemo(
     () =>
@@ -283,7 +286,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         : tool.name
       : null,
   }))
-  const hiddenToolCount = displayedTools.filter((tool) => !tool.exposed).length
   const clientConfigJson = JSON.stringify(buildGatewayClientConfig(gateway), null, 2)
   const resourceExposureEnabled = gateway.config.proxy_resources ?? true
   const filteredResources = gateway.discovery.resources.filter(
@@ -299,6 +301,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   )
   const gatewayStatusLabel =
     gateway.status.healthy && gateway.status.connected ? 'Connected' : 'Offline'
+  const toolsTabLabel = isLabGateway ? 'Actions' : 'Tools'
 
   const handleExposeAllChange = (checked: boolean) => {
     if (!manageToolsMode) {
@@ -359,6 +362,105 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     }
   }
 
+  const togglePrompt = (name: string) => {
+    setExpandedPrompts((current) => {
+      const next = new Set(current)
+      if (next.has(name)) {
+        next.delete(name)
+      } else {
+        next.add(name)
+      }
+      return next
+    })
+  }
+
+  // AppHeader actions: status + toggles + timestamp + action buttons
+  const headerActions = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* Status indicator */}
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <span
+          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+          aria-label={gatewayStatusLabel}
+        />
+        <span className="text-xs font-medium">{gatewayStatusLabel}</span>
+      </div>
+
+      {/* Expose resources toggle */}
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <span className="text-xs font-medium">Expose resources</span>
+        <Switch
+          aria-label="Expose resources"
+          checked={resourceExposureEnabled}
+          onCheckedChange={handleProxyResourcesToggle}
+          className="scale-75"
+        />
+      </div>
+
+      {/* Lab gateway enabled toggle */}
+      {isLabGateway && (
+        <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+          <span className="text-xs font-medium">Enabled</span>
+          <Switch
+            aria-label="Gateway enabled"
+            checked={gateway.enabled ?? false}
+            onCheckedChange={handleEnabledToggle}
+            className="scale-75"
+          />
+        </div>
+      )}
+
+      {/* Surface toggles */}
+      {surfaceEntries.map(([surface, state]) => (
+        <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+          <span
+            className={`size-2 rounded-full ${state.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+            aria-hidden="true"
+          />
+          <span className="text-xs font-medium uppercase">{surface}</span>
+          <Switch
+            aria-label={`${surface.toUpperCase()} surface`}
+            checked={state.enabled}
+            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
+            className="scale-75"
+          />
+        </div>
+      ))}
+
+      {/* Updated timestamp */}
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Clock className="size-3" />
+        <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
+      </div>
+
+      {/* Action buttons */}
+      {!isLabGateway && (
+        <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
+          {isTesting ? (
+            <Loader2 className="size-4 mr-2 animate-spin" />
+          ) : (
+            <Play className="size-4 mr-2" />
+          )}
+          Test
+        </Button>
+      )}
+      {!isLabGateway && (
+        <Button variant="outline" size="sm" onClick={handleReload} disabled={isReloading}>
+          <RefreshCw className={`size-4 mr-2 ${isReloading ? 'animate-spin' : ''}`} />
+          Reload
+        </Button>
+      )}
+      <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+        <Pencil className="size-4 mr-2" />
+        Edit
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)}>
+        <Trash2 className="size-4 mr-2" />
+        {isLabGateway ? 'Disable' : 'Remove'}
+      </Button>
+    </div>
+  )
+
   return (
     <>
       <AppHeader
@@ -366,59 +468,38 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           { label: 'Gateways', href: '/gateways' },
           { label: gateway.name }
         ]}
-        actions={
-          <div className="flex items-center gap-2">
-            {!isLabGateway && (
-              <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
-                {isTesting ? (
-                  <Loader2 className="size-4 mr-2 animate-spin" />
-                ) : (
-                  <Play className="size-4 mr-2" />
-                )}
-                Test
-              </Button>
-            )}
-            {!isLabGateway && (
-              <Button variant="outline" size="sm" onClick={handleReload} disabled={isReloading}>
-                <RefreshCw className={`size-4 mr-2 ${isReloading ? 'animate-spin' : ''}`} />
-                Reload
-              </Button>
-            )}
-            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-              <Pencil className="size-4 mr-2" />
-              Edit
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="size-4 mr-2" />
-              {isLabGateway ? 'Disable' : 'Remove'}
-            </Button>
-          </div>
-        }
+        actions={headerActions}
       />
 
-      <div className="flex-1 p-6 space-y-6 min-w-0 overflow-x-hidden">
-        {/* Header Summary */}
-        <div className="rounded-lg border bg-card p-5">
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <TransportBadge transport={gateway.transport} />
-                <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  {gateway.source === 'lab_service' ? 'Lab gateway' : 'Custom gateway'}
-                </Badge>
-                {gateway.warnings.length > 0 && (
-                  <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                    {gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock className="size-4" />
-                <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
-              </div>
+      <div className="flex-1 p-6 min-w-0 overflow-x-hidden">
+        <Tabs defaultValue="tools" className="space-y-4">
+          {/* Header card with tabs embedded */}
+          <div className="rounded-lg border bg-card p-5">
+            {/* Badge row */}
+            <div className="flex flex-wrap items-center gap-2">
+              <TransportBadge transport={gateway.transport} />
+              <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                {isLabGateway ? 'Lab gateway' : 'Custom gateway'}
+              </Badge>
+              {gateway.warnings.length > 0 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 cursor-default">
+                      {gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    {gateway.warnings[0].message}
+                    {gateway.warnings.length > 1 && (
+                      <span className="block mt-1 text-xs opacity-70">+{gateway.warnings.length - 1} more — see Warnings tab</span>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
-            <div className="space-y-2">
+            {/* Name + endpoint */}
+            <div className="mt-3 space-y-1">
               <div className="flex flex-wrap items-center gap-3">
                 <span
                   className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
@@ -435,147 +516,42 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <SurfaceRatio
-                icon={Wrench}
-                label="Tools"
-                exposed={gateway.status.exposed_tool_count}
-                total={gateway.status.discovered_tool_count}
-              />
-              <SurfaceRatio
-                icon={FileText}
-                label="Resources"
-                exposed={gateway.status.exposed_resource_count}
-                total={gateway.status.discovered_resource_count}
-              />
-              <SurfaceRatio
-                icon={MessageSquare}
-                label="Prompts"
-                exposed={gateway.status.exposed_prompt_count}
-                total={gateway.status.discovered_prompt_count}
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-2.5">
-              <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
-                <span
-                  className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                  aria-hidden="true"
-                />
-                <span className="text-sm font-medium">{gatewayStatusLabel}</span>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
-                <span className="text-sm font-medium">Expose resources</span>
-                <Switch
-                  aria-label="Expose resources"
-                  checked={resourceExposureEnabled}
-                  onCheckedChange={handleProxyResourcesToggle}
-                />
-              </div>
-              {isLabGateway && (
-                <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
-                  <span className="text-sm font-medium">Gateway enabled</span>
-                  <Switch
-                    aria-label="Gateway enabled"
-                    checked={gateway.enabled ?? false}
-                    onCheckedChange={handleEnabledToggle}
-                  />
-                </div>
-              )}
-              {surfaceEntries.map(([surface, state]) => (
-                <div key={surface} className="inline-flex items-center gap-2 rounded-full border bg-background px-2.5 py-1.5">
-                  <span
-                    className={`size-2 rounded-full ${state.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                    aria-hidden="true"
-                  />
-                  <span className="text-sm font-medium uppercase">{surface}</span>
-                  <Switch
-                    aria-label={`${surface.toUpperCase()} surface`}
-                    checked={state.enabled}
-                    onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
-              <div className="overflow-hidden rounded-xl border bg-background">
-                <div className="border-b px-4 py-3">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Client JSON</p>
-                </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-foreground">
-                  <code>{clientConfigJson}</code>
-                </pre>
-              </div>
-
-              <div className="space-y-3">
-                {gateway.status.last_error ? (
-                  <div className="rounded-xl border border-warning/20 bg-warning/10 p-4 text-sm text-warning">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="font-medium">Most recent probe result</p>
-                        <p>{gateway.status.last_error}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-success/20 bg-success/10 p-4 text-sm text-success">
-                    <div className="space-y-1">
-                      <p className="font-medium">Gateway reachable</p>
-                      <p>
-                        The latest probe discovered {gateway.status.discovered_tool_count} tools, {gateway.status.discovered_resource_count} resources, and {gateway.status.discovered_prompt_count} prompts.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
-                  <p>
-                    {hiddenToolCount === 0
-                      ? 'All discovered tools are currently exposed downstream.'
-                      : `${hiddenToolCount} discovered tool${hiddenToolCount === 1 ? ' is' : 's are'} currently hidden from downstream clients.`}
-                  </p>
-                  <p className="mt-2">
-                    Resources are {resourceExposureEnabled ? 'currently exposed' : 'currently hidden'}, while prompts remain upstream-derived.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <Tabs defaultValue="tools" className="space-y-6">
-          <TabsList className="-mx-1 px-1">
-            <TabsTrigger value="tools">
-              Tools
-              <Badge variant="secondary" className="ml-2 text-xs">
-                {gateway.discovery.tools.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="resources">
-              Resources
-              <Badge variant="secondary" className="ml-2 text-xs">
-                {gateway.discovery.resources.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="prompts">
-              Prompts
-              <Badge variant="secondary" className="ml-2 text-xs">
-                {gateway.discovery.prompts.length}
-              </Badge>
-            </TabsTrigger>
-            {gateway.warnings.length > 0 && (
-              <TabsTrigger value="warnings" className="text-amber-600 dark:text-amber-400">
-                Warnings
-                <Badge variant="secondary" className="ml-2 text-xs bg-amber-500/10">
-                  {gateway.warnings.length}
+            {/* Tabs directly under name/endpoint */}
+            <TabsList className="-mx-1 px-1 mt-4">
+              <TabsTrigger value="tools">
+                {toolsTabLabel}
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {gateway.discovery.tools.length}
                 </Badge>
               </TabsTrigger>
-            )}
-          </TabsList>
+              <TabsTrigger value="resources">
+                Resources
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {gateway.discovery.resources.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="prompts">
+                Prompts
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {gateway.discovery.prompts.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="config">
+                <Settings className="size-3 mr-1.5" />
+                Config
+              </TabsTrigger>
+              {gateway.warnings.length > 0 && (
+                <TabsTrigger value="warnings" className="text-amber-600 dark:text-amber-400">
+                  Warnings
+                  <Badge variant="secondary" className="ml-2 text-xs bg-amber-500/10">
+                    {gateway.warnings.length}
+                  </Badge>
+                </TabsTrigger>
+              )}
+            </TabsList>
+          </div>
 
+          {/* Tab content */}
           <TabsContent value="tools">
             <div className="rounded-lg border bg-card p-4">
               <ToolExposureTable
@@ -636,16 +612,23 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               ) : (
                 <div className="space-y-2">
                   {filteredResources.map((resource) => (
-                    <div key={resource.name} className="flex items-start justify-between rounded-lg border p-4">
-                      <div>
+                    <div key={resource.name} className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                      <div className="min-w-0">
                         <code className="text-sm font-mono font-medium">{resource.name}</code>
                         {resource.description && (
                           <p className="text-sm text-muted-foreground mt-1">{resource.description}</p>
                         )}
                       </div>
-                      <code className="break-all text-xs text-muted-foreground bg-muted px-2 py-1 rounded sm:max-w-[18rem]">
-                        {resource.uri}
-                      </code>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <code className="shrink-0 max-w-[18rem] truncate text-xs text-muted-foreground bg-muted px-2 py-1 rounded cursor-default">
+                            {resource.uri}
+                          </code>
+                        </TooltipTrigger>
+                        <TooltipContent side="left" className="max-w-sm break-all font-mono text-xs">
+                          {resource.uri}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   ))}
                 </div>
@@ -659,7 +642,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 <div>
                   <h2 className="text-lg font-semibold">Discovered MCP Prompts</h2>
                   <p className="text-sm text-muted-foreground">
-                    Prompts are currently upstream-derived. Search and inspect them here while tool exposure is managed separately.
+                    Prompts are upstream-derived. Click a prompt to expand arguments and details.
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -676,9 +659,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     <span>{filteredPrompts.length}/{gateway.discovery.prompts.length}</span>
                     <span>visible</span>
                   </div>
-                  <Badge variant="outline" className="rounded-full px-3 py-1 text-muted-foreground">
-                    Upstream-derived
-                  </Badge>
                 </div>
               </div>
               {gateway.discovery.prompts.length === 0 ? (
@@ -687,34 +667,81 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   <p>No prompts discovered</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {filteredPrompts.map((prompt) => (
-                    <div key={prompt.name} className="rounded-lg border p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <code className="break-all text-sm font-mono font-medium">{prompt.name}</code>
-                        {prompt.arguments && prompt.arguments.length > 0 && (
-                          <Badge variant="secondary" className="text-xs">
-                            {prompt.arguments.length} arg{prompt.arguments.length !== 1 ? 's' : ''}
-                          </Badge>
+                <div className="divide-y rounded-lg border">
+                  {filteredPrompts.map((prompt) => {
+                    const isExpanded = expandedPrompts.has(prompt.name)
+                    const hasArgs = prompt.arguments && prompt.arguments.length > 0
+                    return (
+                      <div key={prompt.name} className="overflow-hidden first:rounded-t-lg last:rounded-b-lg">
+                        <button
+                          type="button"
+                          onClick={() => togglePrompt(prompt.name)}
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <code className="break-all text-sm font-mono font-medium">{prompt.name}</code>
+                            {hasArgs && (
+                              <Badge variant="secondary" className="text-xs shrink-0">
+                                {prompt.arguments!.length} arg{prompt.arguments!.length !== 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                          </div>
+                          <ChevronDown
+                            className={`size-4 text-muted-foreground shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                        {isExpanded && (
+                          <div className="px-4 pb-4 border-t bg-muted/10 space-y-3">
+                            {prompt.description && (
+                              <p className="text-sm text-muted-foreground pt-3">{prompt.description}</p>
+                            )}
+                            {hasArgs && (
+                              <div className="space-y-2">
+                                <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Arguments</p>
+                                <div className="space-y-1">
+                                  {prompt.arguments!.map((arg) => (
+                                    <div key={arg.name} className="flex items-start gap-3 rounded-md border bg-background px-3 py-2">
+                                      <code className="text-xs font-mono font-medium shrink-0">
+                                        {arg.name}
+                                        {arg.required && <span className="text-destructive ml-0.5">*</span>}
+                                      </code>
+                                      {arg.description && (
+                                        <p className="text-xs text-muted-foreground">{arg.description}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {!prompt.description && !hasArgs && (
+                              <p className="text-sm text-muted-foreground pt-3">No additional details available.</p>
+                            )}
+                          </div>
                         )}
                       </div>
-                      {prompt.description && (
-                        <p className="text-sm text-muted-foreground mt-1">{prompt.description}</p>
-                      )}
-                      {prompt.arguments && prompt.arguments.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {prompt.arguments.map((arg) => (
-                            <Badge key={arg.name} variant="outline" className="font-mono text-xs">
-                              {arg.name}
-                              {arg.required && <span className="text-destructive ml-0.5">*</span>}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="config">
+            <div className="rounded-lg border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold">Client Configuration</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Add this JSON block to your MCP client configuration to connect to this gateway.
+                </p>
+              </div>
+              <div className="overflow-hidden rounded-xl border bg-background">
+                <div className="border-b px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Client JSON</p>
+                </div>
+                <pre className="overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-foreground">
+                  <code>{clientConfigJson}</code>
+                </pre>
+              </div>
             </div>
           </TabsContent>
 
@@ -724,8 +751,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 <h2 className="text-lg font-semibold mb-4">Gateway Warnings</h2>
                 <div className="space-y-2">
                   {gateway.warnings.map((warning, index) => (
-                    <div 
-                      key={index} 
+                    <div
+                      key={index}
                       className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4"
                     >
                       <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
