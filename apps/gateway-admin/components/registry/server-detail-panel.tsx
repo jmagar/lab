@@ -1,0 +1,219 @@
+'use client'
+
+import { Package, ExternalLink, Globe } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { safeHref } from '@/lib/utils/safe-href'
+import { cn } from '@/lib/utils'
+import { AURORA_MEDIUM_PANEL, AURORA_MUTED_LABEL } from '@/components/gateway/gateway-theme'
+import type { ServerJSON } from '@/lib/types/registry'
+
+interface ServerDetailPanelProps {
+  server: ServerJSON | null
+  onClose: () => void
+}
+
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+})
+
+export function ServerDetailPanel({ server, onClose }: ServerDetailPanelProps) {
+  const open = server !== null
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-lg" side="right">
+        {server && <PanelBody server={server} />}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function PanelBody({ server }: { server: ServerJSON }) {
+  const displayName = server.title ?? server.name
+  const isHTTP = server.remotes.length > 0
+  const icon = server.icons.find((ic) => ic.type === 'icon')
+  const repoHref = safeHref(server.repository?.url)
+  const websiteHref = safeHref(server.websiteUrl)
+
+  return (
+    <>
+      <SheetHeader className="border-b px-6 py-5">
+        <div className="flex items-start gap-4">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
+            {icon ? (
+              <img
+                src={icon.url}
+                alt=""
+                className="size-8 rounded object-contain"
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
+              />
+            ) : (
+              <Package className="size-6 text-aurora-text-muted" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <SheetTitle className="text-base font-semibold leading-tight">
+              {displayName}
+            </SheetTitle>
+            <p className="mt-0.5 font-mono text-xs text-aurora-text-muted">{server.name}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="rounded-full border border-aurora-border-strong/60 px-2 py-0.5 text-xs text-aurora-text-muted">
+                v{server.version}
+              </span>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-xs font-medium',
+                  isHTTP
+                    ? 'bg-aurora-accent-strong/15 text-aurora-accent-strong'
+                    : 'bg-aurora-border-strong/40 text-aurora-text-muted',
+                )}
+              >
+                {isHTTP ? 'HTTP' : 'stdio only'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </SheetHeader>
+
+      <div className="flex-1 space-y-6 px-6 py-5">
+        {/* Description */}
+        <div className="space-y-1.5">
+          <p className={AURORA_MUTED_LABEL}>Description</p>
+          {/* untrusted registry data — do not use dangerouslySetInnerHTML */}
+          <p className="text-sm leading-relaxed text-aurora-text-secondary">{server.description}</p>
+        </div>
+
+        {/* Links */}
+        {(repoHref || websiteHref) && (
+          <div className="space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Links</p>
+            <div className="flex flex-wrap gap-2">
+              {repoHref && (
+                <a
+                  href={repoHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-aurora-accent-strong hover:underline"
+                >
+                  <ExternalLink className="size-3.5" />
+                  Repository
+                </a>
+              )}
+              {websiteHref && (
+                <a
+                  href={websiteHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-aurora-accent-strong hover:underline"
+                >
+                  <Globe className="size-3.5" />
+                  Website
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Remotes */}
+        {server.remotes.length > 0 && (
+          <div className="space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Remote transports</p>
+            <div className="space-y-2">
+              {server.remotes.map((remote, i) => (
+                <div key={i} className={cn(AURORA_MEDIUM_PANEL, 'p-3 text-sm')}>
+                  <span className="font-medium text-aurora-text-primary">{remote.type}</span>
+                  {remote.url && (
+                    <p
+                      className="mt-1 break-all font-mono text-xs text-aurora-text-muted"
+                      style={{ wordBreak: 'break-all' }}
+                    >
+                      {remote.url}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* No remotes banner */}
+        {server.remotes.length === 0 && (
+          <div className={cn(AURORA_MEDIUM_PANEL, 'p-4 text-sm text-aurora-text-muted')}>
+            This server uses stdio transport only and cannot be added to a gateway.
+          </div>
+        )}
+
+        {/* Packages */}
+        {server.packages.length > 0 && (
+          <div className="space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Packages ({server.packages.length})</p>
+            <div className="space-y-2">
+              {server.packages.map((pkg, i) => (
+                <div key={i} className={cn(AURORA_MEDIUM_PANEL, 'p-3 text-sm')}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-aurora-text-primary">{pkg.name}</span>
+                    {pkg.version && (
+                      <span className="text-xs text-aurora-text-muted">v{pkg.version}</span>
+                    )}
+                  </div>
+                  {pkg.command && (
+                    <p className="mt-1 font-mono text-xs text-aurora-text-muted">{pkg.command}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Install button — disabled until lab-77y5.14 ships (server.install not in HTTP API) */}
+      <div className="border-t px-6 py-4">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="w-full">
+                <Button disabled className="w-full" tabIndex={-1}>
+                  Install to Gateway
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              Install coming soon — requires backend update
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        {/*
+          TODO(install-dialog): when lab-77y5.14 ships, wire the install flow here.
+
+          Gateway name pre-fill:
+            const segment = server.name.rsplit('/').at(-1) ?? server.name
+            const normalized = segment.normalize('NFC')
+              .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, '')
+              .replace(/[^a-zA-Z0-9_-]/g, '')
+            Validate: /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/ — show inline error if invalid.
+
+          Install POST params must include version field for TOCTOU protection:
+            { action: 'server.install', params: { name: server.name, version: server.version, confirm: true } }
+
+          401 response from server.install POST:
+            call logoutBrowserSession() and redirect to login — not a generic error toast.
+        */}
+      </div>
+    </>
+  )
+}

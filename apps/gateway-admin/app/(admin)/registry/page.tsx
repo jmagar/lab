@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { RegistryListContent } from '@/components/registry/registry-list-content'
+import { ServerDetailPanel } from '@/components/registry/server-detail-panel'
 import type { ServerJSON } from '@/lib/types/registry'
 
 export default function RegistryPage() {
@@ -10,7 +11,10 @@ export default function RegistryPage() {
   return (
     <>
       <RegistryListContent onSelectServer={setSelectedServer} />
-      {/* ServerDetailPanel wired in bead 4 — selectedServer state lives here */}
+      <ServerDetailPanel
+        server={selectedServer}
+        onClose={() => setSelectedServer(null)}
+      />
     </>
   )
 }
