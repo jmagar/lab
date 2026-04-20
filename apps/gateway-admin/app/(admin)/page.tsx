@@ -4,50 +4,61 @@ import Link from 'next/link'
 import { Cable, Wrench, Eye, AlertTriangle, ArrowRight, Activity, Clock3 } from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { useGateways } from '@/lib/hooks/use-gateways'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/gateway/status-badge'
 import { TransportBadge } from '@/components/gateway/transport-badge'
+import { cn } from '@/lib/utils'
+import {
+  AURORA_DISPLAY_1,
+  AURORA_DISPLAY_NUMBER,
+  AURORA_MUTED_LABEL,
+  AURORA_PAGE_FRAME,
+  AURORA_PAGE_SHELL,
+  AURORA_STRONG_PANEL,
+} from '@/components/aurora/tokens'
 
-function StatCard({ 
-  label, 
-  value, 
+/** Icon container tone classes — no raw hex, uses Aurora semantic tokens. */
+const statIconTone = {
+  default: 'bg-aurora-accent-primary/15 text-aurora-accent-primary',
+  success: 'bg-aurora-accent-strong/15 text-aurora-accent-strong',
+  warning: 'bg-aurora-warn/15 text-aurora-warn',
+  info: 'bg-aurora-accent-deep/20 text-aurora-accent-strong',
+} as const
+
+function StatCard({
+  label,
+  value,
   detail,
   icon: Icon,
   variant = 'default',
   loading = false,
-}: { 
+}: {
   label: string
   value: number | string
   detail: string
   icon: React.ElementType
-  variant?: 'default' | 'success' | 'warning' | 'info'
+  variant?: keyof typeof statIconTone
   loading?: boolean
 }) {
-  const colorMap = {
-    default: 'bg-primary/15 text-primary shadow-md shadow-primary/15',
-    success: 'bg-[#00e676]/20 text-[#00e676] shadow-md shadow-[#00e676]/20',
-    warning: 'bg-[#ff9100]/20 text-[#ff9100] shadow-md shadow-[#ff9100]/20',
-    info: 'bg-[#00b0ff]/20 text-[#00b0ff] shadow-md shadow-[#00b0ff]/20',
-  }
-
   return (
-    <div className="flex items-center gap-4 p-4">
-      <div className={`flex size-10 items-center justify-center rounded-lg ${colorMap[variant]}`}>
+    <div className="flex items-center gap-4 p-5">
+      <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg', statIconTone[variant])}>
         <Icon className="size-5" />
       </div>
       <div>
         {loading ? (
           <>
-            <Skeleton className="h-7 w-12 mb-1" />
+            <Skeleton className="mb-1 h-7 w-12" />
             <Skeleton className="h-4 w-32" />
           </>
         ) : (
           <>
-            <p className="text-2xl font-semibold tabular-nums">{value}</p>
-            <p className="text-sm font-medium text-foreground">{label}</p>
-            <p className="text-xs text-muted-foreground">{detail}</p>
+            <p className={cn(AURORA_DISPLAY_NUMBER, 'text-[22px]')}>{value}</p>
+            <p className="text-sm font-medium text-aurora-text-primary">{label}</p>
+            <p className="text-xs text-aurora-text-muted">{detail}</p>
           </>
         )}
       </div>
@@ -71,18 +82,17 @@ export default function OverviewPage() {
   return (
     <>
       <AppHeader
-        breadcrumbs={[
-          { label: 'Overview' }
-        ]}
+        breadcrumbs={[{ label: 'Overview' }]}
       />
 
-      <div className="flex-1 p-6 space-y-8">
-        <div className="rounded-2xl border bg-card p-6 shadow-sm shadow-black/5">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div className={cn(AURORA_PAGE_FRAME, AURORA_PAGE_SHELL)}>
+        {/* Header */}
+        <div className={cn(AURORA_STRONG_PANEL, 'px-6 py-5')}>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl space-y-2">
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Gateway Fleet</p>
-              <h1 className="text-3xl font-semibold tracking-tight">Operational overview</h1>
-              <p className="text-sm text-muted-foreground sm:text-base">
+              <p className={AURORA_MUTED_LABEL}>Gateway Fleet</p>
+              <h1 className={cn(AURORA_DISPLAY_1, 'text-aurora-text-primary')}>Operational overview</h1>
+              <p className="text-sm text-aurora-text-muted sm:text-base">
                 Keep an eye on reachability, exposure, and recent gateway changes before clients start depending on them.
               </p>
             </div>
@@ -99,62 +109,70 @@ export default function OverviewPage() {
 
         {/* Stats Grid */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border bg-card">
-            <StatCard
-              label="Total Gateways"
-              value={stats.totalGateways}
-              detail="Managed upstream MCP connections."
-              icon={Cable}
-              loading={isLoading}
-            />
-          </div>
-          <div className="rounded-lg border bg-card">
-            <StatCard
-              label="Healthy Connections"
-              value={stats.healthyGateways}
-              detail="Connected and probing successfully."
-              icon={Activity}
-              variant="success"
-              loading={isLoading}
-            />
-          </div>
-          <div className="rounded-lg border bg-card">
-            <StatCard
-              label="Discovered Tools"
-              value={stats.totalTools}
-              detail="Capabilities currently visible upstream."
-              icon={Wrench}
-              variant="info"
-              loading={isLoading}
-            />
-          </div>
-          <div className="rounded-lg border bg-card">
-            <StatCard
-              label="Exposed Downstream"
-              value={stats.exposedTools}
-              detail="Tools currently re-published to clients."
-              icon={Eye}
-              variant="success"
-              loading={isLoading}
-            />
-          </div>
+          <Card variant="medium">
+            <CardContent className="p-0">
+              <StatCard
+                label="Total Gateways"
+                value={stats.totalGateways}
+                detail="Managed upstream MCP connections."
+                icon={Cable}
+                loading={isLoading}
+              />
+            </CardContent>
+          </Card>
+          <Card variant="medium">
+            <CardContent className="p-0">
+              <StatCard
+                label="Healthy Connections"
+                value={stats.healthyGateways}
+                detail="Connected and probing successfully."
+                icon={Activity}
+                variant="success"
+                loading={isLoading}
+              />
+            </CardContent>
+          </Card>
+          <Card variant="medium">
+            <CardContent className="p-0">
+              <StatCard
+                label="Discovered Tools"
+                value={stats.totalTools}
+                detail="Capabilities currently visible upstream."
+                icon={Wrench}
+                variant="info"
+                loading={isLoading}
+              />
+            </CardContent>
+          </Card>
+          <Card variant="medium">
+            <CardContent className="p-0">
+              <StatCard
+                label="Exposed Downstream"
+                value={stats.exposedTools}
+                detail="Tools currently re-published to clients."
+                icon={Eye}
+                variant="success"
+                loading={isLoading}
+              />
+            </CardContent>
+          </Card>
         </div>
 
         {/* Warnings Banner */}
         {!isLoading && stats.totalWarnings > 0 && (
-          <div className="flex items-center gap-3 rounded-lg border-2 border-[#ff9100]/50 bg-gradient-to-r from-[#ff9100]/20 to-[#ffea00]/10 p-4 shadow-lg shadow-[#ff9100]/10">
-            <div className="p-2 rounded-full bg-[#ff9100]/20">
-              <AlertTriangle className="size-5 text-[#ff9100]" />
+          <div className="flex items-center gap-3 rounded-[1.1rem] border border-aurora-warn/30 bg-aurora-warn/8 p-4">
+            <div className="rounded-full border border-aurora-warn/30 bg-aurora-warn/12 p-2">
+              <AlertTriangle className="size-5 text-aurora-warn" />
             </div>
             <div className="flex-1">
-              <p className="font-semibold text-[#ff9100]">
+              <p className="font-semibold text-aurora-warn">
                 {stats.totalWarnings} warning{stats.totalWarnings !== 1 ? 's' : ''} across gateways
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-aurora-text-muted">
                 Review unhealthy or overexposed gateways before publishing more downstream tools.
               </p>
             </div>
-            <Button variant="outline" size="sm" asChild className="border-[#ff9100] text-[#ff9100] hover:bg-[#ff9100]/20 hover:text-[#ff9100]">
+            <Button variant="outline" size="sm" asChild>
               <Link href="/gateways">View gateways</Link>
             </Button>
           </div>
@@ -162,12 +180,12 @@ export default function OverviewPage() {
 
         {/* Recent Gateways */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Recent Gateways</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-aurora-text-primary">Recent Gateways</h2>
             <Button variant="ghost" size="sm" asChild>
               <Link href="/gateways">
                 View all
-                <ArrowRight className="size-4 ml-1" />
+                <ArrowRight className="ml-1 size-4" />
               </Link>
             </Button>
           </div>
@@ -175,10 +193,10 @@ export default function OverviewPage() {
           {isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 rounded-lg border bg-card p-4">
+                <div key={i} className="flex items-center gap-4 rounded-[1.1rem] border border-aurora-border-strong bg-aurora-panel-medium p-4">
                   <Skeleton className="size-10 rounded-lg" />
                   <div className="flex-1">
-                    <Skeleton className="h-5 w-32 mb-1" />
+                    <Skeleton className="mb-1 h-5 w-32" />
                     <Skeleton className="h-4 w-24" />
                   </div>
                   <Skeleton className="h-5 w-16" />
@@ -186,15 +204,15 @@ export default function OverviewPage() {
               ))}
             </div>
           ) : recentGateways.length === 0 ? (
-            <div className="rounded-lg border-2 border-dashed border-primary/20 bg-gradient-to-br from-primary/5 to-info/5 p-8 text-center">
-              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-info shadow-lg shadow-primary/20">
-                <Cable className="size-7 text-white" />
+            <div className={cn(AURORA_STRONG_PANEL, 'p-10 text-center')}>
+              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full border border-aurora-border-strong bg-aurora-control-surface shadow-[0_8px_16px_rgba(0,0,0,0.16)]">
+                <Cable className="size-7 text-aurora-accent-strong" />
               </div>
-              <p className="font-semibold text-lg">No gateways configured</p>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-lg font-semibold text-aurora-text-primary">No gateways configured</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">
                 Add your first MCP gateway to get started
               </p>
-              <Button className="mt-4 bg-gradient-to-r from-primary to-info text-white shadow-lg shadow-primary/20 hover:from-primary/90 hover:to-info/90" asChild>
+              <Button className="mt-5" asChild>
                 <Link href="/gateways">Add Gateway</Link>
               </Button>
             </div>
@@ -204,36 +222,44 @@ export default function OverviewPage() {
                 <Link
                   key={gateway.id}
                   href={gatewayDetailHref(gateway.id)}
-                  className="group flex flex-col gap-4 rounded-lg border bg-card p-4 transition-all duration-200 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/10 sm:flex-row sm:items-start"
+                  className={cn(
+                    'group flex flex-col gap-4 rounded-[1.1rem] border border-aurora-border-strong bg-aurora-panel-medium p-4 transition-colors',
+                    'hover:border-aurora-accent-primary/30 hover:bg-aurora-panel-strong',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34 focus-visible:ring-offset-2 focus-visible:ring-offset-aurora-page-bg',
+                    'sm:flex-row sm:items-start',
+                  )}
                 >
-                  <div className={`flex size-10 items-center justify-center rounded-lg transition-colors ${
-                    gateway.status.healthy && gateway.status.connected 
-                      ? 'bg-[#00e676]/20 text-[#00e676] shadow-md shadow-[#00e676]/20'
-                      : 'bg-[#ff1744]/20 text-[#ff1744] shadow-md shadow-[#ff1744]/20'
-                  }`}>
+                  <div className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-lg transition-colors',
+                    gateway.status.healthy && gateway.status.connected
+                      ? 'bg-aurora-accent-strong/15 text-aurora-accent-strong'
+                      : 'bg-aurora-error/15 text-aurora-error',
+                  )}>
                     <Cable className="size-5" />
                   </div>
-                  <div className="flex-1 min-w-0 space-y-2">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate font-semibold transition-colors group-hover:text-primary">{gateway.name}</p>
+                      <p className="truncate font-semibold text-aurora-text-primary transition-colors group-hover:text-aurora-accent-strong">
+                        {gateway.name}
+                      </p>
                       <StatusBadge healthy={gateway.status.healthy} connected={gateway.status.connected} />
                       <TransportBadge transport={gateway.transport} />
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-aurora-text-muted">
                       {gateway.status.discovered_tool_count} discovered tools, {gateway.status.exposed_tool_count} exposed downstream
                     </p>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-aurora-text-muted">
                       <span className="inline-flex items-center gap-1">
                         <Clock3 className="size-3.5" />
                         Updated {new Date(gateway.updated_at).toLocaleDateString()}
                       </span>
                       {gateway.warnings.length > 0 && (
-                        <span>{gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}</span>
+                        <span className="text-aurora-warn">{gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}</span>
                       )}
                     </div>
                   </div>
-                  <div className="text-sm font-medium text-muted-foreground sm:text-right">
-                    <span className="block text-lg font-semibold tabular-nums text-foreground">
+                  <div className="text-sm text-aurora-text-muted sm:text-right">
+                    <span className={cn(AURORA_DISPLAY_NUMBER, 'block text-[20px] text-aurora-text-primary')}>
                       {gateway.status.exposed_tool_count}
                     </span>
                     exposed
