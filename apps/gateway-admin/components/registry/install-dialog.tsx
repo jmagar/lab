@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import {
   Dialog,
@@ -41,16 +41,22 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
   const [nameError, setNameError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
 
-  // Re-derive gateway name whenever the server changes
   useEffect(() => {
     if (server) {
       setGatewayName(deriveGatewayName(server.name))
       setBearerTokenEnv('')
       setNameError(null)
       setSubmitError(null)
+    } else {
+      // Reset derived name when closed so it re-derives on next open
+      setGatewayName('')
     }
   }, [server])
+
+  // Abort any in-flight submit on unmount
+  useEffect(() => () => { abortRef.current?.abort() }, [])
 
   const validateGatewayName = (value: string): string | null => {
     if (!value) return 'Gateway name is required'
@@ -79,13 +85,19 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
     setSubmitError(null)
     setIsSubmitting(true)
 
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
+
     try {
-      await installServer({
-        name: server.name,
-        gateway_name: gatewayName,
-        version: server.version,
-        bearer_token_env: bearerTokenEnv.trim() || undefined,
-      })
+      await installServer(
+        {
+          name: server.name,
+          gateway_name: gatewayName,
+          version: server.version,
+          bearer_token_env: bearerTokenEnv.trim() || undefined,
+        },
+        abortRef.current.signal,
+      )
       toast.success('Server installed successfully')
       onClose()
     } catch (error) {
@@ -93,6 +105,7 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
         await logoutBrowserSession()
         return
       }
+      if (error instanceof DOMException && error.name === 'AbortError') return
       setSubmitError(error instanceof Error ? error.message : 'Failed to install server')
     } finally {
       setIsSubmitting(false)

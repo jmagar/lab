@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { formatDistanceToNow } from 'date-fns'
 import { Package, ExternalLink, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,6 +20,7 @@ import { safeHref } from '@/lib/utils/safe-href'
 import { cn } from '@/lib/utils'
 import { AURORA_MEDIUM_PANEL, AURORA_MUTED_LABEL } from '@/components/gateway/gateway-theme'
 import { InstallDialog } from './install-dialog'
+import { RegistryStatusBadge } from './registry-status-badge'
 import type { ServerJSON } from '@/lib/types/registry'
 
 interface ServerDetailPanelProps {
@@ -29,39 +31,7 @@ interface ServerDetailPanelProps {
   onClose: () => void
 }
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-})
-
-function formatRelativeTime(isoString: string): string {
-  const now = Date.now()
-  let past: number
-  try {
-    past = new Date(isoString).getTime()
-  } catch {
-    return isoString
-  }
-  if (Number.isNaN(past)) return isoString
-
-  const diffMs = now - past
-  const diffSecs = Math.floor(diffMs / 1000)
-  if (diffSecs < 60) return 'just now'
-
-  const diffMins = Math.floor(diffSecs / 60)
-  if (diffMins < 60) return diffMins === 1 ? '1 minute ago' : `${diffMins} minutes ago`
-
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`
-
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 30) return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`
-
-  const diffMonths = Math.floor(diffDays / 30)
-  if (diffMonths < 12) return diffMonths === 1 ? '1 month ago' : `${diffMonths} months ago`
-
-  const diffYears = Math.floor(diffMonths / 12)
-  return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`
-}
+type PanelBodyProps = Omit<ServerDetailPanelProps, 'onClose' | 'server'> & { server: ServerJSON }
 
 export function ServerDetailPanel({ server, updatedAt, status, statusMessage, onClose }: ServerDetailPanelProps) {
   const open = server !== null
@@ -75,7 +45,7 @@ export function ServerDetailPanel({ server, updatedAt, status, statusMessage, on
   )
 }
 
-function PanelBody({ server, updatedAt, status, statusMessage }: { server: ServerJSON; updatedAt?: string | null; status?: 'active' | 'deprecated' | 'deleted' | null; statusMessage?: string | null }) {
+function PanelBody({ server, updatedAt, status, statusMessage }: PanelBodyProps) {
   const displayName = server.title ?? server.name
   const isHTTP = server.remotes.length > 0
   const [installOpen, setInstallOpen] = useState(false)
@@ -123,21 +93,12 @@ function PanelBody({ server, updatedAt, status, statusMessage }: { server: Serve
               {updatedAt && (
                 <span
                   title={updatedAt}
-                  className="rounded-full border border-aurora-border-strong/40 px-2 py-0.5 text-xs text-aurora-text-muted cursor-default"
+                  className="cursor-default rounded-full border border-aurora-border-strong/40 px-2 py-0.5 text-xs text-aurora-text-muted"
                 >
-                  {formatRelativeTime(updatedAt)}
+                  {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
                 </span>
               )}
-              {status === 'deprecated' && (
-                <span className="rounded-full border border-aurora-warn/20 bg-aurora-warn/15 px-2 py-0.5 text-xs font-medium text-aurora-warn">
-                  Deprecated
-                </span>
-              )}
-              {status === 'deleted' && (
-                <span className="rounded-full border border-aurora-error/20 bg-aurora-error/15 px-2 py-0.5 text-xs font-medium text-aurora-error">
-                  Deleted
-                </span>
-              )}
+              <RegistryStatusBadge status={status} />
             </div>
             {statusMessage && (status === 'deprecated' || status === 'deleted') && (
               <p className="mt-2 text-xs leading-relaxed text-aurora-text-secondary">
@@ -239,7 +200,6 @@ function PanelBody({ server, updatedAt, status, statusMessage }: { server: Serve
         )}
       </div>
 
-      {/* Install button */}
       <div className="border-t px-6 py-4">
         {isHTTP ? (
           <Button className="w-full" onClick={() => setInstallOpen(true)}>
