@@ -103,12 +103,22 @@ impl UpstreamOauthManager {
         &self,
         subject: &str,
     ) -> Result<BeginAuthorization, OauthError> {
+        let started = std::time::Instant::now();
         let oauth_cfg = self.oauth_config()?;
         let upstream_url = self.upstream_url()?;
 
         let mut manager = AuthorizationManager::new(upstream_url.as_str())
             .await
-            .map_err(|e| OauthError::Internal(format!("create auth manager: {e}")))?;
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = "internal_error",
+                    error = %e,
+                    "upstream oauth: failed to create authorization manager"
+                );
+                OauthError::Internal(format!("create auth manager: {e}"))
+            })?;
 
         let cred_store = SqliteCredentialStore::new(
             self.sqlite.clone(),
@@ -120,8 +130,33 @@ impl UpstreamOauthManager {
         manager.set_credential_store(cred_store);
         manager.set_state_store(state_store);
 
-        let metadata = self.get_or_discover_metadata(&mut manager).await?;
-        self.verify_s256(&metadata.code_challenge_methods_supported)?;
+        let metadata = self.get_or_discover_metadata(&mut manager).await.map_err(|e| {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                subject,
+                kind = e.kind(),
+                error = %e,
+                "upstream oauth: AS metadata discovery failed"
+            );
+            e
+        })?;
+
+        info!(
+            upstream = %self.upstream.name,
+            subject,
+            issuer = metadata.issuer.as_deref().unwrap_or("<none>"),
+            "upstream oauth: AS metadata ready"
+        );
+
+        self.verify_s256(&metadata.code_challenge_methods_supported).map_err(|e| {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                subject,
+                kind = e.kind(),
+                "upstream oauth: S256 PKCE verification failed"
+            );
+            e
+        })?;
         manager.set_metadata(metadata);
 
         let scopes: Vec<&str> = oauth_cfg
@@ -134,22 +169,59 @@ impl UpstreamOauthManager {
 
         let client_cfg = self
             .resolve_client_config(&mut manager, subject, &scopes)
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = e.kind(),
+                    error = %e,
+                    "upstream oauth: client config resolution failed"
+                );
+                e
+            })?;
+
         manager
             .configure_client(client_cfg)
-            .map_err(|e| OauthError::Internal(format!("configure client: {e}")))?;
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = "internal_error",
+                    error = %e,
+                    "upstream oauth: client configuration failed"
+                );
+                OauthError::Internal(format!("configure client: {e}"))
+            })?;
 
         let authorization_url = manager
             .get_authorization_url(&scopes)
             .await
-            .map_err(|e| OauthError::Internal(format!("get authorization url: {e}")))?;
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = "internal_error",
+                    error = %e,
+                    "upstream oauth: authorization URL generation failed"
+                );
+                OauthError::Internal(format!("get authorization url: {e}"))
+            })?;
+
         let _csrf = extract_state_param(&authorization_url).ok_or_else(|| {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                subject,
+                kind = "internal_error",
+                "upstream oauth: authorization URL missing state parameter"
+            );
             OauthError::Internal("authorization url missing required state parameter".to_string())
         })?;
 
         info!(
             upstream = %self.upstream.name,
             subject,
+            elapsed_ms = started.elapsed().as_millis(),
             "upstream oauth: authorization started"
         );
 
@@ -167,16 +239,39 @@ impl UpstreamOauthManager {
         code: &str,
         csrf_token: &str,
     ) -> Result<(), OauthError> {
-        self.configured_authorization_manager(subject)
-            .await?
+        let started = std::time::Instant::now();
+
+        let auth_manager = self.configured_authorization_manager(subject).await.map_err(|e| {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                subject,
+                kind = e.kind(),
+                error = %e,
+                "upstream oauth: failed to build configured authorization manager for token exchange"
+            );
+            e
+        })?;
+
+        auth_manager
             .exchange_code_for_token(code, csrf_token)
             .await
-            .map_err(map_auth_error)?;
+            .map_err(|e| {
+                let mapped = map_auth_error(e);
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = mapped.kind(),
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "upstream oauth: token exchange failed"
+                );
+                mapped
+            })?;
 
         info!(
             upstream = %self.upstream.name,
             subject,
-            "upstream oauth: authorization completed"
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream oauth: authorization completed, tokens stored"
         );
 
         Ok(())
@@ -187,17 +282,35 @@ impl UpstreamOauthManager {
         self.sqlite
             .delete_upstream_oauth_credentials(&self.upstream.name, subject)
             .await
-            .map_err(|e| OauthError::Internal(e.to_string()))?;
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = "internal_error",
+                    error = %e,
+                    "upstream oauth: failed to delete credentials from store"
+                );
+                OauthError::Internal(e.to_string())
+            })?;
 
         self.sqlite
             .delete_dynamic_client_registration(&self.upstream.name, subject)
             .await
-            .map_err(|e| OauthError::Internal(e.to_string()))?;
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = "internal_error",
+                    error = %e,
+                    "upstream oauth: failed to delete dynamic client registration"
+                );
+                OauthError::Internal(e.to_string())
+            })?;
 
         info!(
             upstream = %self.upstream.name,
             subject,
-            "upstream oauth: credentials cleared"
+            "upstream oauth: credentials and dynamic registration cleared"
         );
 
         Ok(())

@@ -16,7 +16,6 @@ import {
   type BackendServerView,
   type BackendGatewayView,
   type GatewayDiscoverySnapshot,
-  buildGatewayPatch,
   buildGatewayCreatePayload,
   buildGatewayUpdatePayload,
   exposurePolicyFromConfig,

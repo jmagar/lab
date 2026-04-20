@@ -49,7 +49,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${manrope.variable} bg-background font-sans antialiased`}>
+      <body className={`${inter.variable} ${manrope.variable} bg-background font-sans antialiased overflow-x-clip`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

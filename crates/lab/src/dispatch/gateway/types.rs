@@ -35,6 +35,8 @@ pub struct GatewayConfigView {
     #[serde(default)]
     pub bearer_token_env: Option<String>,
     #[serde(default)]
+    pub oauth_enabled: bool,
+    #[serde(default)]
     pub proxy_resources: bool,
 }
 

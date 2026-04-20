@@ -396,7 +396,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         }
       />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-6 space-y-6 min-w-0 overflow-x-hidden">
         {/* Header Summary */}
         <div className="rounded-lg border bg-card p-5">
           <div className="space-y-4">
@@ -424,9 +424,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
                   aria-hidden="true"
                 />
-                <h1 className="text-3xl font-semibold tracking-tight">{gateway.name}</h1>
+                <h1 className="text-3xl font-semibold tracking-tight break-words">{gateway.name}</h1>
               </div>
-              <p className="max-w-3xl text-sm text-muted-foreground">
+              <p className="max-w-3xl text-sm text-muted-foreground break-all">
                 {gateway.transport === 'http'
                   ? gateway.config.url
                   : isLabGateway
@@ -499,7 +499,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
-              <div className="rounded-xl border bg-background">
+              <div className="overflow-hidden rounded-xl border bg-background">
                 <div className="border-b px-4 py-3">
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Client JSON</p>
                 </div>

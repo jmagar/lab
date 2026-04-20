@@ -2,7 +2,7 @@ use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::config::UpstreamConfig;
+use crate::config::{UpstreamConfig, UpstreamOauthConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayNameParams {
@@ -69,6 +69,8 @@ pub struct GatewayUpdatePatch {
     pub proxy_resources: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     pub expose_tools: Option<Option<Vec<String>>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub oauth: Option<Option<UpstreamOauthConfig>>,
 }
 
 /// Distinguish absent from null for `Option<Option<T>>` patch fields.

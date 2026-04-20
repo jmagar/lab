@@ -131,7 +131,7 @@ test('logoutBrowserSession clears local state even when /auth/logout fails', asy
     logoutBrowserSession(),
     /Failed to logout browser session/,
   )
-  assert.deepEqual(getBrowserSessionState(), { status: 'unauthenticated', loginAvailable: true })
+  assert.deepEqual(getBrowserSessionState(), { status: 'unauthenticated' })
 })
 
 test('hasApiTokenAuth only enables bearer mode for non-empty tokens', () => {

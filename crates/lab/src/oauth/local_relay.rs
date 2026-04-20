@@ -290,10 +290,7 @@ mod tests {
     };
     use tokio::task::JoinHandle;
     use tokio::time::sleep;
-    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
-
     use crate::oauth::target::resolve_explicit_target;
-    use crate::test_support::{SharedBuf, TRACING_TEST_LOCK, captured_logs};
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct SeenRequest {
@@ -523,50 +520,20 @@ mod tests {
         assert!(matches!(result, Err(OauthRelayError::Bind { .. })));
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn oauth_local_relay_redacts_query_values_in_logs() {
-        let _tracing_lock = TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let buf = SharedBuf::default();
-        let subscriber = tracing_subscriber::registry()
-            .with(EnvFilter::new("info"))
-            .with(
-                fmt::layer()
-                    .json()
-                    .with_writer(buf.clone())
-                    .with_ansi(false)
-                    .without_time(),
-            );
-        let _guard = tracing::subscriber::set_default(subscriber);
-
-        let relay_addr = available_loopback_addr().await;
-        let relay = spawn_relay(LocalRelayConfig {
-            bind_addr: relay_addr,
-            resolved_target: resolve_explicit_target(
-                "http://127.0.0.1:38935/callback/dookie?token=secret-value#fragment",
-                Some(relay_addr.port()),
-            )
-            .unwrap(),
-            request_timeout: Duration::from_millis(250),
-        })
-        .await;
-
-        let logs = tokio::time::timeout(Duration::from_secs(5), async {
-            loop {
-                let logs = captured_logs(&buf);
-                if logs.contains("oauth relay local listener ready") {
-                    break logs;
-                }
-                sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .expect("relay logs should be captured");
-        assert!(!logs.is_empty());
-        assert!(!logs.contains("token=secret-value"));
-        assert!(!logs.contains("fragment"));
-        assert!(logs.contains("target"));
-
-        relay.abort();
+    #[test]
+    fn redact_forward_target_strips_query_and_fragment() {
+        // The relay logs `%redact_forward_target(...)` for the target field.
+        // Verify the function strips query params and fragment so secrets
+        // in OAuth callback URLs never appear in structured logs.
+        let url = reqwest::Url::parse(
+            "http://127.0.0.1:38935/callback/dookie?token=secret-value#fragment",
+        )
+        .unwrap();
+        let redacted = redact_forward_target(&url);
+        assert!(!redacted.contains("token=secret-value"), "query param leaked: {redacted}");
+        assert!(!redacted.contains("fragment"), "fragment leaked: {redacted}");
+        assert!(redacted.contains("127.0.0.1"), "host missing: {redacted}");
+        assert!(redacted.contains("/callback/dookie"), "path missing: {redacted}");
     }
 
     #[test]

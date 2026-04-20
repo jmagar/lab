@@ -6,13 +6,17 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::config::{LabConfig, UpstreamConfig, backup_env, env_is_up_to_date, write_env};
+use crate::config::{
+    LabConfig, UpstreamConfig, UpstreamOauthConfig, UpstreamOauthMode,
+    UpstreamOauthRegistration, backup_env, env_is_up_to_date, write_env,
+};
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::gateway::oauth::UpstreamOauthStatusView;
 use crate::dispatch::upstream::pool::UpstreamCachedSummary;
 use crate::dispatch::upstream::pool::UpstreamPool;
 use crate::oauth::upstream::cache::OauthClientCache;
+use crate::oauth::upstream::encryption::EncryptionKey;
 use crate::oauth::upstream::manager::UpstreamOauthManager;
 use crate::oauth::upstream::types::{BeginAuthorization, OauthError};
 use crate::registry::ToolRegistry;
@@ -93,6 +97,10 @@ pub struct GatewayManager {
     virtual_health_cache: Arc<RwLock<Option<VirtualServiceHealthCache>>>,
     oauth_client_cache: Option<OauthClientCache>,
     upstream_oauth_managers: Option<Arc<dashmap::DashMap<String, UpstreamOauthManager>>>,
+    /// Resources needed to build transient OAuth managers for probed upstreams.
+    oauth_sqlite: Option<lab_auth::sqlite::SqliteStore>,
+    oauth_key: Option<EncryptionKey>,
+    oauth_redirect_uri: Option<Arc<String>>,
 }
 
 impl GatewayManager {
@@ -106,7 +114,23 @@ impl GatewayManager {
             virtual_health_cache: Arc::new(RwLock::new(None)),
             oauth_client_cache: None,
             upstream_oauth_managers: None,
+            oauth_sqlite: None,
+            oauth_key: None,
+            oauth_redirect_uri: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_oauth_resources(
+        mut self,
+        sqlite: lab_auth::sqlite::SqliteStore,
+        key: EncryptionKey,
+        redirect_uri: String,
+    ) -> Self {
+        self.oauth_sqlite = Some(sqlite);
+        self.oauth_key = Some(key);
+        self.oauth_redirect_uri = Some(Arc::new(redirect_uri));
+        self
     }
 
     #[must_use]
@@ -173,6 +197,250 @@ impl GatewayManager {
             .cloned()
     }
 
+    /// Probe `url` for OAuth support via RFC 8414 AS metadata discovery.
+    ///
+    /// On success, registers a transient `UpstreamOauthManager` (Dynamic strategy)
+    /// keyed by the URL hostname so subsequent `begin_upstream_authorization` calls
+    /// work without requiring a static config entry.
+    pub async fn probe_upstream_oauth(
+        &self,
+        url: &str,
+    ) -> Result<crate::dispatch::gateway::oauth::ProbeResult, ToolError> {
+        use rmcp::transport::AuthorizationManager;
+        let started = std::time::Instant::now();
+
+        let parsed = Url::parse(url).map_err(|_| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "probe",
+                url,
+                kind = "invalid_param",
+                "upstream oauth probe: invalid URL"
+            );
+            ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: format!("invalid upstream URL: {url}"),
+            }
+        })?;
+        if parsed.scheme() != "http" && parsed.scheme() != "https" {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "probe",
+                url,
+                kind = "invalid_param",
+                "upstream oauth probe: URL must use http or https"
+            );
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: "upstream URL must use http or https".to_string(),
+            });
+        }
+
+        let name = parsed
+            .host_str()
+            .unwrap_or("upstream")
+            .replace('.', "-");
+
+        tracing::info!(
+            service = "upstream_oauth",
+            action = "probe",
+            upstream = %name,
+            url,
+            "upstream oauth probe: connecting"
+        );
+
+        let auth_manager = AuthorizationManager::new(url)
+            .await
+            .map_err(|e| {
+                tracing::warn!(
+                    service = "upstream_oauth",
+                    action = "probe",
+                    upstream = %name,
+                    url,
+                    kind = "network_error",
+                    error = %e,
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "upstream oauth probe: connection failed"
+                );
+                ToolError::Sdk {
+                    sdk_kind: "network_error".to_string(),
+                    message: format!("failed to connect to upstream: {e}"),
+                }
+            })?;
+
+        let metadata = match auth_manager.discover_metadata().await {
+            Ok(m) => {
+                tracing::info!(
+                    service = "upstream_oauth",
+                    action = "probe",
+                    upstream = %name,
+                    url,
+                    issuer = m.issuer.as_deref().unwrap_or("<none>"),
+                    supports_dynamic_registration = m.registration_endpoint.is_some(),
+                    scopes = ?m.scopes_supported,
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "upstream oauth probe: OAuth metadata discovered"
+                );
+                m
+            }
+            Err(e) => {
+                tracing::info!(
+                    service = "upstream_oauth",
+                    action = "probe",
+                    upstream = %name,
+                    url,
+                    reason = %e,
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "upstream oauth probe: no OAuth metadata found"
+                );
+                return Ok(crate::dispatch::gateway::oauth::ProbeResult {
+                    upstream: name,
+                    url: url.to_string(),
+                    oauth_discovered: false,
+                    issuer: None,
+                    scopes: None,
+                    registration_strategy: None,
+                });
+            }
+        };
+
+        let supports_dynamic = metadata.registration_endpoint.is_some();
+        let strategy = if supports_dynamic { "dynamic" } else { "client_metadata_document" };
+
+        // Check each prerequisite independently so the error names only what's missing.
+        if self.oauth_key.is_none() || self.oauth_sqlite.is_none() || self.oauth_redirect_uri.is_none() {
+            let missing: Vec<&str> = [
+                self.oauth_key.is_none().then_some("LAB_OAUTH_ENCRYPTION_KEY"),
+                // redirect_uri derives from LAB_PUBLIC_URL; missing key is the same root cause
+                self.oauth_redirect_uri.is_none().then_some("LAB_PUBLIC_URL"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let message = format!(
+                "upstream OAuth not configured — set {} to enable it",
+                missing.join(" and ")
+            );
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "probe",
+                upstream = %name,
+                kind = "not_configured",
+                elapsed_ms = started.elapsed().as_millis(),
+                %message,
+                "upstream oauth probe: oauth resources not configured"
+            );
+            return Err(ToolError::Sdk {
+                sdk_kind: "not_configured".to_string(),
+                message,
+            });
+        }
+
+        match (
+            self.upstream_oauth_managers.as_ref(),
+            self.oauth_sqlite.as_ref(),
+            self.oauth_key.as_ref(),
+            self.oauth_redirect_uri.as_ref(),
+        ) {
+            (Some(managers), Some(sqlite), Some(key), Some(redirect_uri)) => {
+                if managers.contains_key(&name) {
+                    tracing::info!(
+                        service = "upstream_oauth",
+                        action = "probe",
+                        upstream = %name,
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "upstream oauth probe: reusing existing manager"
+                    );
+                } else {
+                    let registration = if supports_dynamic {
+                        UpstreamOauthRegistration::Dynamic
+                    } else {
+                        // No RFC 7591 dynamic registration — use the Client ID Metadata
+                        // Document (CIMD) approach: the lab's own metadata-document URL
+                        // acts as the client_id. Derive it from the redirect_uri origin.
+                        let metadata_doc_url = Url::parse(redirect_uri.as_str())
+                            .ok()
+                            .map(|mut u| {
+                                u.set_path("/.well-known/oauth-client");
+                                u.set_query(None);
+                                u.set_fragment(None);
+                                u.to_string()
+                            })
+                            .unwrap_or_default();
+                        UpstreamOauthRegistration::ClientMetadataDocument {
+                            url: metadata_doc_url,
+                        }
+                    };
+                    let config = UpstreamConfig {
+                        name: name.clone(),
+                        url: Some(url.to_string()),
+                        bearer_token_env: None,
+                        command: None,
+                        args: vec![],
+                        proxy_resources: false,
+                        expose_tools: None,
+                        oauth: Some(UpstreamOauthConfig {
+                            mode: UpstreamOauthMode::AuthorizationCodePkce,
+                            registration,
+                            scopes: metadata.scopes_supported.clone(),
+                        }),
+                    };
+                    let manager = UpstreamOauthManager::new(
+                        sqlite.clone(),
+                        key.clone(),
+                        config,
+                        redirect_uri.as_ref().clone(),
+                    );
+                    managers.insert(name.clone(), manager);
+                    tracing::info!(
+                        service = "upstream_oauth",
+                        action = "probe",
+                        upstream = %name,
+                        registration_strategy = strategy,
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "upstream oauth probe: transient manager registered"
+                    );
+                }
+            }
+            _ => {
+                tracing::warn!(
+                    service = "upstream_oauth",
+                    action = "probe",
+                    upstream = %name,
+                    kind = "not_configured",
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "upstream oauth probe: oauth resources not configured (LAB_PUBLIC_URL + LAB_OAUTH_ENCRYPTION_KEY required)"
+                );
+                return Err(ToolError::Sdk {
+                    sdk_kind: "not_configured".to_string(),
+                    message: "upstream OAuth requires LAB_PUBLIC_URL (https) and LAB_OAUTH_ENCRYPTION_KEY to be set".to_string(),
+                });
+            }
+        }
+
+        Ok(crate::dispatch::gateway::oauth::ProbeResult {
+            upstream: name,
+            url: url.to_string(),
+            oauth_discovered: true,
+            issuer: metadata.issuer,
+            scopes: metadata.scopes_supported,
+            registration_strategy: Some(strategy.to_string()),
+        })
+    }
+
+    /// Returns the upstream OAuth SQLite store, if configured.
+    pub fn oauth_sqlite(&self) -> Option<lab_auth::sqlite::SqliteStore> {
+        self.oauth_sqlite.clone()
+    }
+
+    /// Returns the upstream OAuth callback redirect URI, if configured.
+    ///
+    /// Used by the `/.well-known/oauth-client` endpoint to build the client
+    /// metadata document served to CIMD-supporting authorization servers.
+    pub fn oauth_redirect_uri(&self) -> Option<String> {
+        self.oauth_redirect_uri.as_deref().map(|s| s.to_string())
+    }
+
     pub fn upstream_oauth_manager(&self, upstream: &str) -> Option<UpstreamOauthManager> {
         self.upstream_oauth_managers
             .as_ref()
@@ -197,17 +465,41 @@ impl GatewayManager {
         upstream: &str,
         subject: &str,
     ) -> Result<BeginAuthorization, ToolError> {
-        let manager = self
-            .upstream_oauth_manager(upstream)
-            .ok_or_else(|| ToolError::Sdk {
+        let started = std::time::Instant::now();
+        let manager = self.upstream_oauth_manager(upstream).ok_or_else(|| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "start",
+                upstream,
+                kind = "not_found",
+                "upstream oauth start: upstream not found or has no oauth config"
+            );
+            ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
                 message: format!("upstream '{upstream}' not found or has no oauth config"),
-            })?;
+            }
+        })?;
 
-        manager
-            .begin_authorization(subject)
-            .await
-            .map_err(tool_error_from_oauth)
+        let result = manager.begin_authorization(subject).await.map_err(|e| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "start",
+                upstream,
+                kind = e.kind(),
+                elapsed_ms = started.elapsed().as_millis(),
+                "upstream oauth start: begin authorization failed"
+            );
+            tool_error_from_oauth(e)
+        })?;
+
+        tracing::info!(
+            service = "upstream_oauth",
+            action = "start",
+            upstream,
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream oauth start: authorization URL generated"
+        );
+        Ok(result)
     }
 
     pub async fn complete_upstream_authorization_callback(
@@ -217,17 +509,44 @@ impl GatewayManager {
         code: &str,
         state: &str,
     ) -> Result<(), ToolError> {
-        let manager = self
-            .upstream_oauth_manager(upstream)
-            .ok_or_else(|| ToolError::Sdk {
+        let started = std::time::Instant::now();
+        let manager = self.upstream_oauth_manager(upstream).ok_or_else(|| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "callback",
+                upstream,
+                kind = "not_found",
+                "upstream oauth callback: upstream not found or has no oauth config"
+            );
+            ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
                 message: format!("upstream '{upstream}' not found or has no oauth config"),
-            })?;
+            }
+        })?;
 
         manager
             .complete_authorization_callback(subject, code, state)
             .await
-            .map_err(tool_error_from_oauth)
+            .map_err(|e| {
+                tracing::warn!(
+                    service = "upstream_oauth",
+                    action = "callback",
+                    upstream,
+                    kind = e.kind(),
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "upstream oauth callback: token exchange failed"
+                );
+                tool_error_from_oauth(e)
+            })?;
+
+        tracing::info!(
+            service = "upstream_oauth",
+            action = "callback",
+            upstream,
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream oauth callback: tokens stored"
+        );
+        Ok(())
     }
 
     pub async fn upstream_oauth_status(
@@ -235,25 +554,50 @@ impl GatewayManager {
         upstream: &str,
         subject: &str,
     ) -> Result<UpstreamOauthStatusView, ToolError> {
-        let manager = self
-            .upstream_oauth_manager(upstream)
-            .ok_or_else(|| ToolError::Sdk {
+        let started = std::time::Instant::now();
+        let manager = self.upstream_oauth_manager(upstream).ok_or_else(|| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "status",
+                upstream,
+                kind = "not_found",
+                "upstream oauth status: upstream not found or has no oauth config"
+            );
+            ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
                 message: format!("upstream '{upstream}' not found or has no oauth config"),
-            })?;
-        let row = manager
-            .credential_row(subject)
-            .await
-            .map_err(tool_error_from_oauth)?;
+            }
+        })?;
+
+        let row = manager.credential_row(subject).await.map_err(|e| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "status",
+                upstream,
+                kind = e.kind(),
+                elapsed_ms = started.elapsed().as_millis(),
+                "upstream oauth status: credential lookup failed"
+            );
+            tool_error_from_oauth(e)
+        })?;
+
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        Ok(UpstreamOauthStatusView {
-            authenticated: row.is_some(),
-            upstream: upstream.to_string(),
-            expires_within_5m: row.is_some_and(|row| row.access_token_expires_at - now <= 300),
-        })
+        let authenticated = row.is_some();
+        let expires_within_5m = row.is_some_and(|row| row.access_token_expires_at - now <= 300);
+
+        tracing::debug!(
+            service = "upstream_oauth",
+            action = "status",
+            upstream,
+            authenticated,
+            expires_within_5m,
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream oauth status: checked"
+        );
+        Ok(UpstreamOauthStatusView { authenticated, upstream: upstream.to_string(), expires_within_5m })
     }
 
     pub async fn clear_upstream_credentials(
@@ -261,18 +605,41 @@ impl GatewayManager {
         upstream: &str,
         subject: &str,
     ) -> Result<(), ToolError> {
-        let manager = self
-            .upstream_oauth_manager(upstream)
-            .ok_or_else(|| ToolError::Sdk {
+        let started = std::time::Instant::now();
+        let manager = self.upstream_oauth_manager(upstream).ok_or_else(|| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "clear",
+                upstream,
+                kind = "not_found",
+                "upstream oauth clear: upstream not found or has no oauth config"
+            );
+            ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
                 message: format!("upstream '{upstream}' not found or has no oauth config"),
-            })?;
+            }
+        })?;
 
-        manager
-            .clear_credentials(subject)
-            .await
-            .map_err(tool_error_from_oauth)?;
+        manager.clear_credentials(subject).await.map_err(|e| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "clear",
+                upstream,
+                kind = e.kind(),
+                elapsed_ms = started.elapsed().as_millis(),
+                "upstream oauth clear: failed to clear credentials"
+            );
+            tool_error_from_oauth(e)
+        })?;
+
         self.evict_subject_client(upstream, subject);
+        tracing::info!(
+            service = "upstream_oauth",
+            action = "clear",
+            upstream,
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream oauth clear: credentials cleared and client cache evicted"
+        );
         Ok(())
     }
 
@@ -1152,6 +1519,7 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
             .map(|arg| redact_gateway_stdio_value(arg))
             .collect(),
         bearer_token_env: upstream.bearer_token_env.clone(),
+        oauth_enabled: upstream.oauth.is_some(),
         proxy_resources: upstream.proxy_resources,
     }
 }
@@ -1536,7 +1904,8 @@ fn service_config_view(
 
     ServiceConfigView {
         service: meta.name.to_string(),
-        configured: fields.iter().any(|field| field.present),
+        // A service with no env vars needs no configuration and is always ready.
+        configured: fields.is_empty() || fields.iter().any(|field| field.present),
         fields,
     }
 }

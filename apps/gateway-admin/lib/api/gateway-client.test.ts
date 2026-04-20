@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { __setBrowserSessionStateForTests } from '../auth/session-store.ts'
-import { gatewayApi } from './gateway-client.ts'
+import { __setBrowserSessionStateForTests, getBrowserSessionState } from '../auth/session-store.ts'
+import { GatewayApiError, gatewayApi } from './gateway-client.ts'
 
 type RecordedRequest = {
   action: string
@@ -255,7 +255,6 @@ test('gatewayApi.list does not refresh browser session for non-csrf validation e
     user: { sub: 'browser-user', email: 'browser@example.com' },
     expiresAt: 123,
     csrfToken: 'csrf-old',
-    loginAvailable: true,
   })
 
   const urls: string[] = []
@@ -296,7 +295,6 @@ test('gatewayApi.list does not refresh browser session for non-csrf validation e
     user: { sub: 'browser-user', email: 'browser@example.com' },
     expiresAt: 123,
     csrfToken: 'csrf-old',
-    loginAvailable: true,
   })
   assert.deepEqual(urls, ['/v1/gateway'])
 })

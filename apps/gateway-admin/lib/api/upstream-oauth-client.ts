@@ -1,6 +1,6 @@
-import type { StartResponse, UpstreamEntry, UpstreamOauthStatus } from '@/lib/types/upstream-oauth'
+import type { ProbeResponse, StartResponse, UpstreamEntry, UpstreamOauthStatus } from '@/lib/types/upstream-oauth'
 import { isStandaloneBearerAuthMode } from '../auth/auth-mode'
-import { normalizeGatewayApiBase } from '../gateway-config'
+import { normalizeGatewayApiBase } from './gateway-config'
 import { gatewayHeaders } from './gateway-request'
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -44,5 +44,14 @@ export const upstreamOauthApi = {
       `/gateway/oauth/clear?upstream=${encodeURIComponent(upstream)}&confirm=true`,
       { method: 'POST', signal },
     )
+  },
+
+  probe(url: string, signal?: AbortSignal): Promise<ProbeResponse> {
+    return apiFetch('/gateway/oauth/probe', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+    })
   },
 }

@@ -593,6 +593,31 @@ impl SqliteStore {
         .await
     }
 
+    /// Look up `(upstream_name, subject)` by `csrf_token` alone.
+    ///
+    /// Used by the OAuth callback handler to recover the upstream identity from
+    /// the state parameter without requiring the caller to know it upfront.
+    pub async fn find_upstream_oauth_state_owner(
+        &self,
+        csrf_token: &str,
+        now: i64,
+    ) -> Result<Option<(String, String)>, AuthError> {
+        let csrf_token = csrf_token.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT upstream_name, subject
+                 FROM upstream_oauth_state
+                 WHERE csrf_token = ?1
+                   AND expires_at > ?2",
+                params![csrf_token, now],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()
+            .map_err(sqlite_error)
+        })
+        .await
+    }
+
     /// Atomic take-once via `DELETE ... RETURNING`.
     pub async fn take_upstream_oauth_state(
         &self,
