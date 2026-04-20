@@ -27,7 +27,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "ServerListResponse",
         params: &[
             ParamSpec {
-                name: "query",
+                name: "search",
                 ty: "string",
                 required: false,
                 description: "Search query to filter servers by name or description",
@@ -43,6 +43,18 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "string",
                 required: false,
                 description: "Pagination cursor from a previous response metadata.nextCursor field",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Filter by package version string",
+            },
+            ParamSpec {
+                name: "updated_since",
+                ty: "string",
+                required: false,
+                description: "ISO 8601 datetime; return only servers updated after this time",
             },
         ],
     },
@@ -68,6 +80,18 @@ pub const ACTIONS: &[ActionSpec] = &[
             ty: "string",
             required: true,
             description: "Server name to list versions for",
+        }],
+    },
+    ActionSpec {
+        name: "server.validate",
+        description: "Validate a ServerJSON document against the registry schema without publishing",
+        destructive: false,
+        returns: "ValidationResult",
+        params: &[ParamSpec {
+            name: "server_json",
+            ty: "object",
+            required: true,
+            description: "ServerJSON document to validate (must include name, description, version)",
         }],
     },
 ];

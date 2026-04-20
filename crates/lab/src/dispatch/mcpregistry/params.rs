@@ -4,21 +4,13 @@ use serde_json::Value;
 use crate::dispatch::error::ToolError;
 
 /// Extract `server.list` params from the dispatch params object.
-///
-/// Maps:
-/// - `query`  → `ListServersParams::search`
-/// - `limit`  → `ListServersParams::limit`
-/// - `cursor` → `ListServersParams::cursor`
 pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolError> {
-    let search = params["query"].as_str().map(str::to_string);
-    let limit = params["limit"].as_u64().map(|v| v as u32);
-    let cursor = params["cursor"].as_str().map(str::to_string);
     Ok(ListServersParams {
-        search,
-        cursor,
-        limit,
-        version: None,
-        updated_since: None,
+        search: params["search"].as_str().map(str::to_string),
+        limit: params["limit"].as_u64().map(|v| v as u32),
+        cursor: params["cursor"].as_str().map(str::to_string),
+        version: params["version"].as_str().map(str::to_string),
+        updated_since: params["updated_since"].as_str().map(str::to_string),
     })
 }
 

@@ -1,3 +1,4 @@
+use lab_apis::mcpregistry::types::ServerJSON;
 use lab_apis::mcpregistry::McpRegistryClient;
 use serde_json::Value;
 
@@ -23,6 +24,16 @@ pub async fn dispatch_with_client(
         "server.versions" => {
             let name = params::require_name(&params_value)?;
             to_json(client.list_versions(&name).await?)
+        }
+        "server.validate" => {
+            let server_json: ServerJSON =
+                serde_json::from_value(params_value["server_json"].clone()).map_err(|e| {
+                    ToolError::Sdk {
+                        sdk_kind: "invalid_params".to_string(),
+                        message: format!("invalid server_json: {e}"),
+                    }
+                })?;
+            to_json(client.validate(&server_json).await?)
         }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
