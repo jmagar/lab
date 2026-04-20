@@ -52,6 +52,13 @@ pub enum ToolError {
         /// Human-readable message.
         message: String,
     },
+    /// Resource already exists with the given identifier.
+    Conflict {
+        /// Human-readable message.
+        message: String,
+        /// The identifier of the conflicting resource.
+        existing_id: String,
+    },
     /// Pass-through of an `ApiError::kind()` tag from the SDK.
     Sdk {
         /// Stable kind tag (`auth_failed`, `rate_limited`, …).
@@ -93,6 +100,11 @@ impl Serialize for ToolError {
                 "kind": "confirmation_required",
                 "message": message,
             }),
+            Self::Conflict { message, existing_id } => serde_json::json!({
+                "kind": "conflict",
+                "message": message,
+                "existing_id": existing_id,
+            }),
             Self::Sdk { sdk_kind, message } => serde_json::json!({
                 "kind": sdk_kind,
                 "message": message,
@@ -124,6 +136,7 @@ impl ToolError {
             Self::InvalidParam { .. } => "invalid_param",
             Self::UnknownInstance { .. } => "unknown_instance",
             Self::ConfirmationRequired { .. } => "confirmation_required",
+            Self::Conflict { .. } => "conflict",
             Self::Sdk { sdk_kind, .. } => sdk_kind.as_str(),
         }
     }
