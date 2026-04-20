@@ -21,6 +21,7 @@ import type { ServerJSON } from '@/lib/types/registry'
 
 interface ServerDetailPanelProps {
   server: ServerJSON | null
+  updatedAt?: string | null
   onClose: () => void
 }
 
@@ -28,19 +29,49 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
 })
 
-export function ServerDetailPanel({ server, onClose }: ServerDetailPanelProps) {
+function formatRelativeTime(isoString: string): string {
+  const now = Date.now()
+  let past: number
+  try {
+    past = new Date(isoString).getTime()
+  } catch {
+    return isoString
+  }
+  if (Number.isNaN(past)) return isoString
+
+  const diffMs = now - past
+  const diffSecs = Math.floor(diffMs / 1000)
+  if (diffSecs < 60) return 'just now'
+
+  const diffMins = Math.floor(diffSecs / 60)
+  if (diffMins < 60) return diffMins === 1 ? '1 minute ago' : `${diffMins} minutes ago`
+
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`
+
+  const diffMonths = Math.floor(diffDays / 30)
+  if (diffMonths < 12) return diffMonths === 1 ? '1 month ago' : `${diffMonths} months ago`
+
+  const diffYears = Math.floor(diffMonths / 12)
+  return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`
+}
+
+export function ServerDetailPanel({ server, updatedAt, onClose }: ServerDetailPanelProps) {
   const open = server !== null
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-lg" side="right">
-        {server && <PanelBody server={server} />}
+        {server && <PanelBody server={server} updatedAt={updatedAt} />}
       </SheetContent>
     </Sheet>
   )
 }
 
-function PanelBody({ server }: { server: ServerJSON }) {
+function PanelBody({ server, updatedAt }: { server: ServerJSON; updatedAt?: string | null }) {
   const displayName = server.title ?? server.name
   const isHTTP = server.remotes.length > 0
   const icon = server.icons.find((ic) => ic.type === 'icon')
@@ -84,6 +115,14 @@ function PanelBody({ server }: { server: ServerJSON }) {
               >
                 {isHTTP ? 'HTTP' : 'stdio only'}
               </span>
+              {updatedAt && (
+                <span
+                  title={updatedAt}
+                  className="rounded-full border border-aurora-border-strong/40 px-2 py-0.5 text-xs text-aurora-text-muted cursor-default"
+                >
+                  {formatRelativeTime(updatedAt)}
+                </span>
+              )}
             </div>
           </div>
         </div>
