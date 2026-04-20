@@ -1,14 +1,16 @@
-import { AppHeader } from '@/components/app-header'
+'use client'
+
+import { useState } from 'react'
+import { RegistryListContent } from '@/components/registry/registry-list-content'
+import type { ServerJSON } from '@/lib/types/registry'
 
 export default function RegistryPage() {
+  const [selectedServer, setSelectedServer] = useState<ServerJSON | null>(null)
+
   return (
     <>
-      <AppHeader breadcrumbs={[{ label: 'Registry' }]} />
-      <div className="flex-1 p-6">
-        <div className="flex h-32 items-center justify-center text-muted-foreground">
-          Loading registry…
-        </div>
-      </div>
+      <RegistryListContent onSelectServer={setSelectedServer} />
+      {/* ServerDetailPanel wired in bead 4 — selectedServer state lives here */}
     </>
   )
 }
