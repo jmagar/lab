@@ -11,6 +11,26 @@ pub struct UpstreamOauthStatusView {
     pub expires_within_5m: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ProbeResult {
+    pub upstream: String,
+    pub url: String,
+    pub oauth_discovered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scopes: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_strategy: Option<String>,
+}
+
+pub async fn probe(
+    manager: &GatewayManager,
+    url: &str,
+) -> Result<ProbeResult, ToolError> {
+    manager.probe_upstream_oauth(url).await
+}
+
 pub async fn begin_authorization(
     manager: &GatewayManager,
     upstream: &str,

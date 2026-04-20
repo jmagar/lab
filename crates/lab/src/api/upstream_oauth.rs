@@ -14,6 +14,7 @@ use crate::dispatch::error::ToolError;
 pub fn gateway_routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/upstreams", get(upstreams))
+        .route("/probe", post(probe))
         .route("/start", post(start))
         .route("/status", get(status))
         .route("/clear", post(clear))
@@ -23,6 +24,61 @@ pub fn browser_routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/auth/upstream/callback", get(callback))
         .route("/gateway/oauth/result", get(result_page))
+}
+
+/// Route group for `/.well-known/oauth-client` — the CIMD metadata document.
+///
+/// Mounted unconditionally; returns 404 when upstream OAuth is not configured.
+pub fn well_known_routes(_state: AppState) -> Router<AppState> {
+    Router::new().route("/.well-known/oauth-client", get(oauth_client_metadata))
+}
+
+/// Serve the OAuth Client ID Metadata Document (RFC 9728 / MCP OAuth 2.1).
+///
+/// Authorization servers that support the Client ID Metadata Document approach
+/// (e.g. Cloudflare MCP) fetch this document when they receive an authorization
+/// request whose `client_id` is a URL. The lab server uses the URL of this
+/// endpoint as its `client_id` for upstreams that do not support RFC 7591
+/// dynamic client registration.
+async fn oauth_client_metadata(State(state): State<AppState>) -> impl IntoResponse {
+    let redirect_uri = state
+        .gateway_manager
+        .as_ref()
+        .and_then(|m| m.oauth_redirect_uri());
+    let Some(redirect_uri) = redirect_uri else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let client_id = url::Url::parse(&redirect_uri)
+        .ok()
+        .map(|mut u| {
+            u.set_path("/.well-known/oauth-client");
+            u.set_query(None);
+            u.set_fragment(None);
+            u.to_string()
+        })
+        .unwrap_or_default();
+
+    let doc = serde_json::json!({
+        "client_id": client_id,
+        "client_name": "lab",
+        "redirect_uris": [redirect_uri],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+        "code_challenge_method": "S256"
+    });
+
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        Json(doc),
+    )
+        .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+struct ProbeRequest {
+    url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,7 +101,6 @@ struct ClearQuery {
 struct CallbackQuery {
     code: String,
     state: String,
-    upstream: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -154,6 +209,41 @@ fn html_escape(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+async fn probe(
+    State(state): State<AppState>,
+    Extension(_auth): Extension<crate::api::oauth::AuthContext>,
+    Json(body): Json<ProbeRequest>,
+) -> Result<Json<crate::dispatch::gateway::oauth::ProbeResult>, ToolError> {
+    let started = std::time::Instant::now();
+    require_master(&state)?;
+    let manager = state
+        .gateway_manager
+        .clone()
+        .ok_or_else(|| ToolError::internal_message("gateway manager not wired"))?;
+    let result = crate::dispatch::gateway::oauth::probe(&manager, &body.url)
+        .await
+        .inspect_err(|error| {
+            warn!(
+                surface = "api",
+                service = "upstream_oauth",
+                action = "probe",
+                elapsed_ms = started.elapsed().as_millis(),
+                kind = error.kind(),
+                "upstream oauth probe failed"
+            );
+        })?;
+    info!(
+        surface = "api",
+        service = "upstream_oauth",
+        action = "probe",
+        elapsed_ms = started.elapsed().as_millis(),
+        url = %body.url,
+        oauth_discovered = result.oauth_discovered,
+        "upstream oauth probe completed"
+    );
+    Ok(Json(result))
 }
 
 async fn start(
@@ -286,10 +376,6 @@ async fn callback(
         Some(manager) => manager,
         None => return ToolError::internal_message("gateway manager not wired").into_response(),
     };
-    let subject = match callback_subject(&state, auth.map(|e| e.0), &headers).await {
-        Ok(subject) => subject,
-        Err(error) => return error.into_response(),
-    };
     let base = match public_url(&state) {
         Ok(url) => url.clone(),
         Err(error) => return error.into_response(),
@@ -299,9 +385,55 @@ async fn callback(
         Err(error) => return error.into_response(),
     };
 
+    // Recover (upstream, subject) from the state token — the AS only sends back
+    // `code` and `state`, so we can't require `upstream` as a query param.
+    let sqlite = match manager.oauth_sqlite() {
+        Some(s) => s,
+        None => return ToolError::internal_message("oauth sqlite not configured").into_response(),
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let (upstream, subject) = match sqlite
+        .find_upstream_oauth_state_owner(&query.state, now)
+        .await
+    {
+        Ok(Some(pair)) => pair,
+        Ok(None) => {
+            warn!(
+                surface = "api",
+                service = "upstream_oauth",
+                action = "callback",
+                "upstream oauth callback: state token not found or expired"
+            );
+            return ToolError::Sdk {
+                sdk_kind: "auth_failed".to_string(),
+                message: "OAuth state token not found or expired".to_string(),
+            }
+            .into_response();
+        }
+        Err(e) => {
+            return ToolError::internal_message(format!("state lookup failed: {e}")).into_response();
+        }
+    };
+
+    // If a browser session is present, verify it matches the subject from state.
+    if let Ok(session_subject) = callback_subject(&state, auth.map(|e| e.0), &headers).await {
+        if session_subject != subject {
+            warn!(
+                surface = "api",
+                service = "upstream_oauth",
+                action = "callback",
+                upstream = %upstream,
+                "upstream oauth callback: session subject mismatch"
+            );
+        }
+    }
+
     let result = crate::dispatch::gateway::oauth::complete_authorization_callback(
         &manager,
-        &query.upstream,
+        &upstream,
         &subject,
         &query.code,
         &query.state,
@@ -314,7 +446,7 @@ async fn callback(
             service = "upstream_oauth",
             action = "callback",
             elapsed_ms = started.elapsed().as_millis(),
-            upstream = %query.upstream,
+            upstream = %upstream,
             kind = error.kind(),
             "upstream oauth callback failed"
         );
@@ -325,14 +457,14 @@ async fn callback(
             service = "upstream_oauth",
             action = "callback",
             elapsed_ms = started.elapsed().as_millis(),
-            upstream = %query.upstream,
+            upstream = %upstream,
             "upstream oauth callback completed"
         );
         "ok"
     };
     redirect_url
         .query_pairs_mut()
-        .append_pair("upstream", &query.upstream)
+        .append_pair("upstream", &upstream)
         .append_pair("status", status);
 
     if let Err(error) = result {

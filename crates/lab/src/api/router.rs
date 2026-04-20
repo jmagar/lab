@@ -492,7 +492,9 @@ pub fn build_router(
         .route("/ready", get(health::ready))
         .merge(v1_protected);
     if is_master {
-        router = router.merge(crate::api::upstream_oauth::browser_routes(state.clone()));
+        router = router
+            .merge(crate::api::upstream_oauth::browser_routes(state.clone()))
+            .merge(crate::api::upstream_oauth::well_known_routes(state.clone()));
     }
     if let Some(mcp) = mcp_protected.filter(|_| is_master) {
         router = router.merge(mcp);

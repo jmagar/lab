@@ -47,28 +47,6 @@ const WINDOW_TO_MS: Record<string, number | null> = {
 
 const BUFFER_LIMIT = 500
 
-const timestampFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-  return `${bytes} B`
-}
-
-function retainedWindow(stats: LogStoreStats | null): string {
-  if (!stats?.oldest_retained_ts || !stats.newest_retained_ts) {
-    return 'Awaiting retained events'
-  }
-  return `${timestampFormatter.format(new Date(stats.oldest_retained_ts))} -> ${timestampFormatter.format(new Date(stats.newest_retained_ts))}`
-}
-
 function scrollViewportToBottom(viewport: HTMLDivElement | null) {
   viewport?.scrollTo({
     top: viewport.scrollHeight,

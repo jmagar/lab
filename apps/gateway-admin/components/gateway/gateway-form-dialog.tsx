@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Play } from 'lucide-react'
+import { Loader2, Play, ShieldCheck, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,10 @@ import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/utils'
 import { defaultGatewayBearerEnvName, validateBearerTokenEnvName } from '@/lib/gateway-env'
 import { isAbortError } from '@/lib/api/service-action-client'
+import { upstreamOauthApi } from '@/lib/api/upstream-oauth-client'
+import { useUpstreamOauthStatus } from '@/lib/hooks/use-upstream-oauth'
+import type { OAuthConnectState } from '@/lib/types/upstream-oauth'
+import { Badge } from '@/components/ui/badge'
 
 interface GatewayFormDialogProps {
   open: boolean
@@ -39,7 +43,7 @@ interface GatewayFormDialogProps {
 }
 
 type FormMode = 'custom' | 'lab'
-type GatewayAuthMode = 'none' | 'bearer'
+type GatewayAuthMode = 'none' | 'bearer' | 'oauth'
 type GatewayAuthSource = 'paste' | 'env'
 
 function valuePreview(fieldName: string, preview?: string | null) {
@@ -70,11 +74,13 @@ export function GatewayFormDialog({
   const isLabGateway = gateway?.source === 'lab_service'
   const prevOpenRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const probeInfoRef = useRef<{ registration_strategy: string; scopes?: string[] } | null>(null)
+  const nameAutoRef = useRef(false)
   const { data: supportedServices } = useSupportedServices()
   const { testGateway, saveServiceConfig, enableVirtualServer, disableVirtualServer } =
     useGatewayMutations()
 
-  const [mode, setMode] = useState<FormMode>('lab')
+  const [mode, setMode] = useState<FormMode>('custom')
   const [transport, setTransport] = useState<TransportType>('http')
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
@@ -93,6 +99,9 @@ export function GatewayFormDialog({
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [oauthState, setOauthState] = useState<OAuthConnectState>({ kind: 'idle' })
+  const [oauthProbed, setOauthProbed] = useState<{ oauth_discovered: boolean; upstream: string; issuer?: string; scopes?: string[]; registration_strategy?: string } | null>(null)
+  const [isProbing, setIsProbing] = useState(false)
 
   const serviceMeta = useMemo(
     () => supportedServices?.find((service) => service.key === selectedService) ?? null,
@@ -100,6 +109,102 @@ export function GatewayFormDialog({
   )
   const serviceEnvFields = useMemo(() => serviceFields(serviceMeta), [serviceMeta])
   const { data: serviceConfig } = useServiceConfig(mode === 'lab' && selectedService ? selectedService : null)
+
+  const oauthUpstream = oauthState.kind === 'authorizing' || oauthState.kind === 'connected' || oauthState.kind === 'discovered'
+    ? (oauthState as { upstream: string }).upstream
+    : null
+  const { data: oauthStatus } = useUpstreamOauthStatus(
+    oauthState.kind === 'authorizing' ? oauthUpstream : null,
+    { pollWhilePending: oauthState.kind === 'authorizing' },
+  )
+
+  useEffect(() => {
+    if (oauthState.kind === 'authorizing' && oauthStatus?.authenticated) {
+      const info = probeInfoRef.current
+      setOauthState({
+        kind: 'connected',
+        upstream: oauthState.upstream,
+        registration_strategy: info?.registration_strategy ?? 'dynamic',
+        scopes: info?.scopes,
+      })
+    }
+  }, [oauthState, oauthStatus?.authenticated])
+
+  // Auto-probe the URL for OAuth support when transport is HTTP and URL looks valid.
+  // Resets probed state and authMode when URL changes so stale OAuth option disappears.
+  useEffect(() => {
+    if (transport !== 'http' || !url.trim()) {
+      setOauthProbed(null)
+      setIsProbing(false)
+      if (authMode === 'oauth') setAuthMode('none')
+      return
+    }
+    setOauthProbed(null)
+    let cancelled = false
+    const timer = setTimeout(() => {
+      setIsProbing(true)
+      upstreamOauthApi.probe(url.trim()).then((result) => {
+        if (!cancelled) { setOauthProbed(result); setIsProbing(false) }
+      }).catch(() => {
+        if (!cancelled) { setOauthProbed({ oauth_discovered: false, upstream: '' }); setIsProbing(false) }
+      })
+    }, 600)
+    return () => {
+      cancelled = true
+      setIsProbing(false)
+      clearTimeout(timer)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, transport])
+
+  // Auto-fill the name from the URL hostname when the user hasn't typed a name yet.
+  useEffect(() => {
+    if (isEditing || transport !== 'http' || !url.trim()) return
+    try {
+      const hostname = new URL(url).hostname.replace(/^www\./, '')
+      const slug = hostname.replace(/[^a-z0-9]+/gi, '-').toLowerCase().replace(/^-+|-+$/g, '')
+      if (!slug) return
+      setName((prev) => {
+        if (!prev || nameAutoRef.current) {
+          nameAutoRef.current = true
+          return slug
+        }
+        return prev
+      })
+    } catch {
+      // invalid URL, skip
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url])
+
+  async function handleOauthConnect() {
+    if (!url.trim()) return
+    // Open a blank tab synchronously — must happen directly in the click handler
+    // before any await, otherwise browsers treat it as an unsolicited popup and block it.
+    const authTab = window.open('about:blank', '_blank')
+    setOauthState({ kind: 'probing' })
+    try {
+      // Reuse already-probed result to avoid a duplicate round-trip.
+      const probe = oauthProbed?.oauth_discovered ? oauthProbed : await upstreamOauthApi.probe(url.trim())
+      if (!probe.oauth_discovered) {
+        authTab?.close()
+        setOauthState({ kind: 'error', message: 'This server does not advertise OAuth support' })
+        return
+      }
+      setOauthState({ kind: 'discovered', upstream: probe.upstream, issuer: probe.issuer, scopes: probe.scopes })
+      probeInfoRef.current = { registration_strategy: probe.registration_strategy ?? 'dynamic', scopes: probe.scopes }
+      const { authorization_url } = await upstreamOauthApi.start(probe.upstream)
+      if (!authTab || authTab.closed) {
+        setOauthState({ kind: 'error', message: 'Authorization tab was closed. Please try again.' })
+        return
+      }
+      authTab.location.href = authorization_url
+      setOauthState({ kind: 'authorizing', upstream: probe.upstream })
+    } catch (err: unknown) {
+      authTab?.close()
+      setOauthState({ kind: 'error', message: err instanceof Error ? err.message : 'OAuth connection failed' })
+    }
+  }
 
   useEffect(() => {
     const wasOpen = prevOpenRef.current
@@ -118,34 +223,48 @@ export function GatewayFormDialog({
         setUrl(gateway.config.url || '')
         setCommand(gateway.config.command || '')
         setArgs(gateway.config.args?.join(' ') || '')
-        setAuthMode(gateway.config.bearer_token_env ? 'bearer' : 'none')
+        const initialAuthMode = gateway.config.oauth_enabled ? 'oauth'
+          : gateway.config.bearer_token_env ? 'bearer'
+          : 'none'
+        setAuthMode(initialAuthMode)
+        if (initialAuthMode === 'oauth') {
+          setOauthState({ kind: 'connected', upstream: gateway.name, registration_strategy: 'unknown', scopes: undefined })
+          setOauthProbed({ oauth_discovered: true, upstream: gateway.name })
+        }
         setAuthSource(gateway.config.bearer_token_env ? 'env' : 'paste')
         setBearerTokenEnv(gateway.config.bearer_token_env || '')
         setBearerTokenValue('')
         setProxyResources(gateway.config.proxy_resources ?? true)
       }
       } else {
-        setMode('lab')
+        setMode('custom')
         setTransport(emptyCustomState.transport)
         setName(emptyCustomState.name)
         setUrl(emptyCustomState.url)
-      setCommand(emptyCustomState.command)
-      setArgs(emptyCustomState.args)
-      setAuthMode('none')
-      setAuthSource('paste')
-      setBearerTokenEnv(emptyCustomState.bearerTokenEnv)
-      setBearerTokenValue('')
-      setProxyResources(emptyCustomState.proxyResources)
-      setSelectedService('')
-      setServiceValues({})
-      setEnableServer(true)
-    }
+        setCommand(emptyCustomState.command)
+        setArgs(emptyCustomState.args)
+        setAuthMode('none')
+        setAuthSource('paste')
+        setBearerTokenEnv(emptyCustomState.bearerTokenEnv)
+        setBearerTokenValue('')
+        setProxyResources(emptyCustomState.proxyResources)
+        setSelectedService('')
+        setServiceValues({})
+        setEnableServer(true)
+        nameAutoRef.current = false
+      }
     setErrors({})
+    setOauthState({ kind: 'idle' })
+    setOauthProbed(null)
   }, [open, gateway])
 
   useEffect(() => {
     setServiceValues({})
   }, [selectedService])
+
+  useEffect(() => {
+    setOauthState({ kind: 'idle' })
+  }, [url])
 
   useEffect(() => {
     if (!serviceMeta || !serviceConfig) return
@@ -179,6 +298,12 @@ export function GatewayFormDialog({
       }
     } else if (!command.trim()) {
       newErrors.command = 'Command is required'
+    }
+
+    if (authMode === 'oauth') {
+      if (oauthState.kind !== 'connected' && !oauthStatus?.authenticated) {
+        newErrors.oauth = 'Complete OAuth authorization before saving'
+      }
     }
 
     if (authMode === 'bearer') {
@@ -236,7 +361,7 @@ export function GatewayFormDialog({
             args: args.trim() ? args.split(/\s+/) : undefined,
           }),
       bearer_token_env:
-        authMode === 'none'
+        authMode === 'none' || authMode === 'oauth'
           ? ''
           : authSource === 'env'
             ? bearerTokenEnv
@@ -244,6 +369,10 @@ export function GatewayFormDialog({
       bearer_token_value:
         authMode === 'bearer' && authSource === 'paste'
           ? bearerTokenValue
+          : undefined,
+      oauth:
+        authMode === 'oauth' && oauthState.kind === 'connected' && oauthState.registration_strategy !== 'unknown'
+          ? { registration_strategy: oauthState.registration_strategy, scopes: oauthState.scopes }
           : undefined,
       proxy_resources: proxyResources,
     },
@@ -351,15 +480,18 @@ export function GatewayFormDialog({
       onOpenChange(nextOpen)
     }}>
         <DialogContent className="sm:max-w-[680px]">
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
           <DialogDescription>
-            {mode === 'lab'
-              ? 'Configure a Lab-backed gateway and decide whether to expose it in the control plane.'
-              : 'Configure a custom upstream MCP server connection.'}
+            {isEditing
+              ? 'Edit gateway settings.'
+              : mode === 'lab'
+                ? 'Connect a built-in Lab service.'
+                : 'Connect an upstream MCP server.'}
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
         <Tabs
           value={mode}
           onValueChange={(value) => setMode(value as FormMode)}
@@ -367,10 +499,10 @@ export function GatewayFormDialog({
         >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="lab" disabled={isEditing && !isLabGateway}>
-              Lab Gateways
+              Lab Service
             </TabsTrigger>
             <TabsTrigger value="custom" disabled={isEditing && isLabGateway}>
-              Custom Gateways
+              Custom
             </TabsTrigger>
           </TabsList>
 
@@ -446,7 +578,7 @@ export function GatewayFormDialog({
                 <Input
                   id="name"
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => { nameAutoRef.current = false; setName(event.target.value) }}
                   placeholder="my-gateway"
                   className={errors.name ? 'border-destructive' : ''}
                 />
@@ -458,54 +590,76 @@ export function GatewayFormDialog({
               </Field>
             </FieldGroup>
 
-            <Tabs value={transport} onValueChange={(value) => setTransport(value as TransportType)}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="http">HTTP</TabsTrigger>
-                <TabsTrigger value="stdio">stdio</TabsTrigger>
-              </TabsList>
+            <RadioGroup
+              value={transport}
+              onValueChange={(value) => setTransport(value as TransportType)}
+              className="grid grid-cols-2 gap-3"
+            >
+              <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="transport-http">
+                <RadioGroupItem value="http" id="transport-http" />
+                <div className="space-y-0.5">
+                  <span className="font-medium text-sm">HTTP</span>
+                  <p className="text-sm text-muted-foreground">Remote server via HTTP or SSE</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="transport-stdio">
+                <RadioGroupItem value="stdio" id="transport-stdio" />
+                <div className="space-y-0.5">
+                  <span className="font-medium text-sm">stdio</span>
+                  <p className="text-sm text-muted-foreground">Local process via stdin/stdout</p>
+                </div>
+              </label>
+            </RadioGroup>
 
-              <TabsContent value="http" className="space-y-4 mt-4">
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="url">URL</FieldLabel>
+            {transport === 'http' && (
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="url">URL</FieldLabel>
+                  <div className="relative">
                     <Input
                       id="url"
                       value={url}
                       onChange={(event) => setUrl(event.target.value)}
                       placeholder="http://localhost:3001/mcp"
-                      className={errors.url ? 'border-destructive' : ''}
+                      className={`${errors.url ? 'border-destructive' : ''} pr-8`}
                     />
-                    {errors.url && <p className="text-sm text-destructive">{errors.url}</p>}
-                  </Field>
-                </FieldGroup>
-              </TabsContent>
+                    {isProbing && (
+                      <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground animate-spin pointer-events-none" />
+                    )}
+                    {!isProbing && oauthProbed?.oauth_discovered && (
+                      <CheckCircle2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-green-500 pointer-events-none" />
+                    )}
+                  </div>
+                  {errors.url && <p className="text-sm text-destructive">{errors.url}</p>}
+                </Field>
+              </FieldGroup>
+            )}
 
-              <TabsContent value="stdio" className="space-y-4 mt-4">
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="command">Command</FieldLabel>
-                    <Input
-                      id="command"
-                      value={command}
-                      onChange={(event) => setCommand(event.target.value)}
-                      placeholder="npx"
-                      className={errors.command ? 'border-destructive' : ''}
-                    />
-                    {errors.command && <p className="text-sm text-destructive">{errors.command}</p>}
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="args">Arguments</FieldLabel>
-                    <Input
-                      id="args"
-                      value={args}
-                      onChange={(event) => setArgs(event.target.value)}
-                      placeholder="-y @modelcontextprotocol/server-filesystem /path"
-                    />
-                    <FieldDescription>Space-separated command arguments</FieldDescription>
-                  </Field>
-                </FieldGroup>
-              </TabsContent>
-            </Tabs>
+            {transport === 'stdio' && (
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="command">Command</FieldLabel>
+                  <Input
+                    id="command"
+                    value={command}
+                    onChange={(event) => setCommand(event.target.value)}
+                    placeholder="npx"
+                    className={errors.command ? 'border-destructive' : ''}
+                  />
+                  {errors.command && <p className="text-sm text-destructive">{errors.command}</p>}
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="args">Arguments</FieldLabel>
+                  <Input
+                    id="args"
+                    value={args}
+                    onChange={(event) => setArgs(event.target.value)}
+                    placeholder="-y @modelcontextprotocol/server-filesystem /path"
+                  />
+                  <FieldDescription>Space-separated command arguments</FieldDescription>
+                </Field>
+              </FieldGroup>
+            )}
 
             <FieldGroup>
               <Field className="space-y-4">
@@ -521,21 +675,85 @@ export function GatewayFormDialog({
                     <RadioGroupItem value="none" id="auth-none" />
                     <div className="space-y-1">
                       <span className="font-medium text-sm">No auth</span>
-                      <p className="text-sm text-muted-foreground">
-                        Use this when the upstream does not require an Authorization header.
-                      </p>
+                      <p className="text-sm text-muted-foreground">No Authorization header sent.</p>
                     </div>
                   </label>
                   <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-bearer">
                     <RadioGroupItem value="bearer" id="auth-bearer" />
                     <div className="space-y-1">
                       <span className="font-medium text-sm">Bearer token</span>
-                      <p className="text-sm text-muted-foreground">
-                        Recommended for GitHub and other remote HTTP MCP servers.
-                      </p>
+                      <p className="text-sm text-muted-foreground">Static token sent as an Authorization header.</p>
                     </div>
                   </label>
+                  {transport === 'http' && (oauthProbed?.oauth_discovered || gateway?.config.oauth_enabled) && (
+                    <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-oauth">
+                      <RadioGroupItem value="oauth" id="auth-oauth" />
+                      <div className="space-y-1">
+                        <span className="font-medium text-sm">
+                          OAuth (MCP)
+                          {oauthProbed?.oauth_discovered && (
+                            <Badge variant="secondary" className="ml-2 text-xs">Detected</Badge>
+                          )}
+                        </span>
+                        <p className="text-sm text-muted-foreground">OAuth 2.1 — for GitHub, Cloudflare, and other remote MCP servers.</p>
+                      </div>
+                    </label>
+                  )}
                 </RadioGroup>
+
+                {authMode === 'oauth' && (
+                  <div className="rounded-lg border p-4 flex flex-col gap-3">
+                    {oauthState.kind === 'connected' ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 font-medium">
+                          <ShieldCheck className="size-4" />
+                          Connected
+                          <Badge variant="outline" className="border-green-500 text-green-600 ml-1">Authorized</Badge>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setOauthState({ kind: 'idle' })
+                            probeInfoRef.current = null
+                          }}
+                        >
+                          Re-authorize
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          {!url.trim()
+                            ? 'Enter a URL above, then connect.'
+                            : oauthState.kind === 'authorizing'
+                              ? 'Complete authorization in the new tab…'
+                              : 'Connect this gateway via OAuth. A popup will open for you to authorize.'}
+                        </p>
+                        {oauthState.kind === 'error' && (
+                          <div className="flex items-start gap-2 text-sm text-destructive">
+                            <AlertCircle className="size-4 mt-0.5 shrink-0" />
+                            {oauthState.message}
+                          </div>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void handleOauthConnect()}
+                          disabled={!url.trim() || oauthState.kind === 'probing' || oauthState.kind === 'authorizing'}
+                        >
+                          {(oauthState.kind === 'probing' || oauthState.kind === 'authorizing') && (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          )}
+                          {oauthState.kind === 'probing' ? 'Detecting OAuth…' :
+                           oauthState.kind === 'authorizing' ? 'Waiting…' : 'Connect via OAuth'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {errors.oauth && <p className="text-sm text-destructive">{errors.oauth}</p>}
 
                 {authMode === 'bearer' && (
                   <div className="space-y-4 rounded-xl border p-4">
@@ -581,23 +799,31 @@ export function GatewayFormDialog({
                             </FieldDescription>
                           )}
                         </Field>
-                        <Field>
-                          <FieldLabel htmlFor="bearer-token-env-override">Env var name</FieldLabel>
-                          <Input
-                            id="bearer-token-env-override"
-                            value={bearerTokenEnv}
-                            onChange={(event) => setBearerTokenEnv(event.target.value)}
-                            placeholder={defaultGatewayBearerEnvName(name || 'gateway')}
-                            className={errors.bearerTokenEnv ? 'border-destructive' : ''}
-                          />
-                          {errors.bearerTokenEnv ? (
-                            <p className="text-sm text-destructive">{errors.bearerTokenEnv}</p>
-                          ) : (
-                            <FieldDescription>
-                              Optional. Leave blank to let Labby generate an env var name automatically.
-                            </FieldDescription>
-                          )}
-                        </Field>
+                        <details className="group">
+                          <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+                            <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+                            Advanced
+                          </summary>
+                          <div className="mt-3">
+                            <Field>
+                              <FieldLabel htmlFor="bearer-token-env-override">Env var name</FieldLabel>
+                              <Input
+                                id="bearer-token-env-override"
+                                value={bearerTokenEnv}
+                                onChange={(event) => setBearerTokenEnv(event.target.value)}
+                                placeholder={defaultGatewayBearerEnvName(name || 'gateway')}
+                                className={errors.bearerTokenEnv ? 'border-destructive' : ''}
+                              />
+                              {errors.bearerTokenEnv ? (
+                                <p className="text-sm text-destructive">{errors.bearerTokenEnv}</p>
+                              ) : (
+                                <FieldDescription>
+                                  Optional. Leave blank to let Labby generate an env var name automatically.
+                                </FieldDescription>
+                              )}
+                            </Field>
+                          </div>
+                        </details>
                       </FieldGroup>
                     ) : (
                       <Field>
@@ -640,8 +866,9 @@ export function GatewayFormDialog({
             </div>
           </TabsContent>
         </Tabs>
+        </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="shrink-0 gap-2 sm:gap-0">
           {isEditing && !isLabGateway && (
             <Button
               type="button"

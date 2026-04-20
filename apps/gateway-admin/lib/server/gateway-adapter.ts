@@ -461,7 +461,7 @@ export function probeStatusFromRuntime(runtime: BackendGatewayRuntimeView): Gate
 }
 
 export function gatewayInputToSpec(input: CreateGatewayInput) {
-  return {
+  const spec: Record<string, unknown> = {
     name: input.name,
     url: input.transport === 'http' ? input.config.url ?? null : null,
     command: input.transport === 'stdio' ? input.config.command ?? null : null,
@@ -470,6 +470,14 @@ export function gatewayInputToSpec(input: CreateGatewayInput) {
     proxy_resources: input.config.proxy_resources ?? false,
     expose_tools: input.config.expose_tools ?? null,
   }
+  if (input.config.oauth) {
+    spec.oauth = {
+      mode: 'authorization_code_pkce',
+      registration: { strategy: input.config.oauth.registration_strategy },
+      scopes: input.config.oauth.scopes ?? null,
+    }
+  }
+  return spec
 }
 
 export function buildGatewayCreatePayload(input: CreateGatewayInput) {

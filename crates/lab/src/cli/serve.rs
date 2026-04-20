@@ -123,8 +123,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     };
     if !config.upstream.is_empty() {
         let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
-        if let Some((_, cache)) = &upstream_oauth_runtime {
-            pool_builder = pool_builder.with_oauth_client_cache(cache.clone());
+        if let Some(rt) = &upstream_oauth_runtime {
+            pool_builder = pool_builder.with_oauth_client_cache(rt.cache.clone());
         }
         let pool = Arc::new(pool_builder);
         pool.discover_all(&config.upstream).await;
@@ -139,10 +139,11 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         gateway_runtime.clone(),
     )
     .with_service_clients(service_clients);
-    if let Some((managers, cache)) = upstream_oauth_runtime {
+    if let Some(rt) = upstream_oauth_runtime {
         gateway_manager = gateway_manager
-            .with_upstream_oauth_managers(managers)
-            .with_oauth_client_cache(cache);
+            .with_upstream_oauth_managers(rt.managers)
+            .with_oauth_client_cache(rt.cache)
+            .with_oauth_resources(rt.sqlite, rt.key, rt.redirect_uri);
     }
     gateway_manager.set_notifier(CatalogChangeNotifier::new(notify_tx));
     let gateway_manager = Arc::new(gateway_manager);
@@ -235,35 +236,29 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     .await
 }
 
+struct UpstreamOauthRuntime {
+    managers: Arc<dashmap::DashMap<String, crate::oauth::upstream::manager::UpstreamOauthManager>>,
+    cache: crate::oauth::upstream::cache::OauthClientCache,
+    sqlite: lab_auth::sqlite::SqliteStore,
+    key: crate::oauth::upstream::encryption::EncryptionKey,
+    redirect_uri: String,
+}
+
 async fn build_upstream_oauth_runtime(
     config: &LabConfig,
     auth_config: &lab_auth::config::AuthConfig,
-) -> Result<
-    Option<(
-        Arc<dashmap::DashMap<String, crate::oauth::upstream::manager::UpstreamOauthManager>>,
-        crate::oauth::upstream::cache::OauthClientCache,
-    )>,
-> {
-    if !config
-        .upstream
-        .iter()
-        .any(|upstream| upstream.oauth.is_some())
-    {
+) -> Result<Option<UpstreamOauthRuntime>> {
+    let Some(public_url) = auth_config.public_url.as_ref() else {
         return Ok(None);
-    }
-
-    let public_url = auth_config
-        .public_url
-        .as_ref()
-        .context("LAB_PUBLIC_URL is required when upstream oauth is configured")?;
+    };
+    let Ok(encryption_key_raw) = std::env::var("LAB_OAUTH_ENCRYPTION_KEY") else {
+        return Ok(None);
+    };
     anyhow::ensure!(
         public_url.scheme() == "https",
         "LAB_PUBLIC_URL must be absolute https:// when upstream oauth is configured"
     );
-
-    let encryption_key = std::env::var("LAB_OAUTH_ENCRYPTION_KEY")
-        .context("LAB_OAUTH_ENCRYPTION_KEY is required when upstream oauth is configured")?;
-    let encryption_key = crate::oauth::upstream::encryption::load_key(&encryption_key)
+    let key = crate::oauth::upstream::encryption::load_key(&encryption_key_raw)
         .map_err(|error| anyhow::anyhow!("invalid LAB_OAUTH_ENCRYPTION_KEY: {error}"))?;
     let sqlite = lab_auth::sqlite::SqliteStore::open(auth_config.sqlite_path.clone())
         .await
@@ -280,14 +275,14 @@ async fn build_upstream_oauth_runtime(
             upstream.name.clone(),
             crate::oauth::upstream::manager::UpstreamOauthManager::new(
                 sqlite.clone(),
-                encryption_key.clone(),
+                key.clone(),
                 upstream.clone(),
                 redirect_uri.clone(),
             ),
         );
     }
     let cache = crate::oauth::upstream::cache::OauthClientCache::new(Arc::clone(&managers));
-    Ok(Some((managers, cache)))
+    Ok(Some(UpstreamOauthRuntime { managers, cache, sqlite, key, redirect_uri }))
 }
 
 fn build_upstream_oauth_callback_uri(public_url: &url::Url) -> Result<String> {

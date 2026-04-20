@@ -22,7 +22,6 @@ import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/type
 import { cn, getErrorMessage } from '@/lib/utils'
 import {
   AURORA_DISPLAY_NUMBER,
-  AURORA_DISPLAY_TITLE,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
   AURORA_PAGE_FRAME,

@@ -38,30 +38,15 @@ export function AuthBootstrap({ children }: AuthBootstrapProps) {
       : `${window.location.pathname}${window.location.search}${window.location.hash}`
 
   if (session.status === 'unauthenticated') {
-    return <LoginScreen loginAvailable={session.loginAvailable} returnTo={returnTo} />
+    return <LoginScreen returnTo={returnTo} />
   }
 
   if (session.status === 'auth_error') {
-    return (
-      <LoginScreen
-        errorMessage={session.message}
-        loginAvailable={session.loginAvailable}
-        requestId={session.requestId}
-        returnTo={returnTo}
-      />
-    )
-  }
-
-  if (session.status === 'auth_error') {
-    const returnTo =
-      typeof window === 'undefined'
-        ? '/'
-        : `${window.location.pathname}${window.location.search}${window.location.hash}`
     return (
       <LoginScreen
         errorMessage={session.message}
         requestId={session.requestId}
-        returnTo={returnTo || '/'}
+        returnTo={returnTo}
       />
     )
   }

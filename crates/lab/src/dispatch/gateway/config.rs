@@ -152,6 +152,9 @@ pub fn update_upstream(
             other => other,
         };
     }
+    if let Some(oauth) = patch.oauth {
+        cfg.upstream[index].oauth = oauth;
+    }
 
     validate_upstream(&cfg.upstream[index])?;
     Ok(())

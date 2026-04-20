@@ -7,6 +7,7 @@ export interface GatewayConfig {
   command?: string
   args?: string[]
   bearer_token_env?: string
+  oauth_enabled?: boolean
   proxy_resources?: boolean
   expose_tools?: string[]
 }
@@ -14,6 +15,8 @@ export interface GatewayConfig {
 /** Extended config for create/update payloads only. `bearer_token_value` is write-only and never returned by the API. */
 export interface GatewayWriteConfig extends GatewayConfig {
   bearer_token_value?: string
+  /** OAuth spec — write-only, never returned by the API. Set when auth mode is 'oauth'. */
+  oauth?: { registration_strategy: string; scopes?: string[] }
 }
 
 export interface GatewayStatus {
