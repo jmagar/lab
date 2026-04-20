@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Package, ExternalLink, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,6 +18,7 @@ import {
 import { safeHref } from '@/lib/utils/safe-href'
 import { cn } from '@/lib/utils'
 import { AURORA_MEDIUM_PANEL, AURORA_MUTED_LABEL } from '@/components/gateway/gateway-theme'
+import { InstallDialog } from './install-dialog'
 import type { ServerJSON } from '@/lib/types/registry'
 
 interface ServerDetailPanelProps {
@@ -76,6 +78,7 @@ export function ServerDetailPanel({ server, updatedAt, status, statusMessage, on
 function PanelBody({ server, updatedAt, status, statusMessage }: { server: ServerJSON; updatedAt?: string | null; status?: 'active' | 'deprecated' | 'deleted' | null; statusMessage?: string | null }) {
   const displayName = server.title ?? server.name
   const isHTTP = server.remotes.length > 0
+  const [installOpen, setInstallOpen] = useState(false)
   const icon = server.icons.find((ic) => ic.type === 'icon')
   const repoHref = safeHref(server.repository?.url)
   const websiteHref = safeHref(server.websiteUrl)
@@ -236,40 +239,34 @@ function PanelBody({ server, updatedAt, status, statusMessage }: { server: Serve
         )}
       </div>
 
-      {/* Install button — disabled until lab-77y5.14 ships (server.install not in HTTP API) */}
+      {/* Install button */}
       <div className="border-t px-6 py-4">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="w-full">
-                <Button disabled className="w-full" tabIndex={-1}>
-                  Install to Gateway
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              Install coming soon — requires backend update
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/*
-          TODO(install-dialog): when lab-77y5.14 ships, wire the install flow here.
-
-          Gateway name pre-fill:
-            const segment = server.name.rsplit('/').at(-1) ?? server.name
-            const normalized = segment.normalize('NFC')
-              .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, '')
-              .replace(/[^a-zA-Z0-9_-]/g, '')
-            Validate: /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/ — show inline error if invalid.
-
-          Install POST params must include version field for TOCTOU protection:
-            { action: 'server.install', params: { name: server.name, version: server.version, confirm: true } }
-
-          401 response from server.install POST:
-            call logoutBrowserSession() and redirect to login — not a generic error toast.
-        */}
+        {isHTTP ? (
+          <Button className="w-full" onClick={() => setInstallOpen(true)}>
+            Install to Gateway
+          </Button>
+        ) : (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="w-full">
+                  <Button disabled className="w-full" tabIndex={-1}>
+                    Install to Gateway
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                This server uses stdio transport only and cannot be installed to a gateway
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
+
+      <InstallDialog
+        server={installOpen ? server : null}
+        onClose={() => setInstallOpen(false)}
+      />
     </>
   )
 }

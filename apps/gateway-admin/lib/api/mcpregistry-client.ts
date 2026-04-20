@@ -1,4 +1,5 @@
 import { performServiceAction } from './service-action-client'
+import { confirmGatewayParams } from './gateway-request'
 import { RegistryApiError } from '@/lib/types/registry'
 import type {
   ListServersParams,
@@ -53,4 +54,22 @@ export async function validateServer(
   signal?: AbortSignal,
 ): Promise<ValidationResult> {
   return registryAction<ValidationResult>('server.validate', { server_json: serverJson }, signal)
+}
+
+export interface InstallServerParams {
+  name: string
+  gateway_name: string
+  version: string
+  bearer_token_env?: string
+}
+
+export async function installServer(
+  params: InstallServerParams,
+  signal?: AbortSignal,
+): Promise<{ message: string }> {
+  return registryAction<{ message: string }>(
+    'server.install',
+    confirmGatewayParams(params),
+    signal,
+  )
 }
