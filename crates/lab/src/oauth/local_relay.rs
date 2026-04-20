@@ -454,8 +454,13 @@ mod tests {
         let status = response.status();
         let body = response.text().await.expect("body should decode");
 
-        assert_eq!(status, StatusCode::BAD_GATEWAY);
-        assert!(body.contains("failed to reach oauth relay target"));
+        // On Linux the OS returns ECONNREFUSED immediately → 502 BAD_GATEWAY.
+        // On Windows a loopback connection to a closed port may time out instead
+        // of getting ECONNREFUSED → 504 GATEWAY_TIMEOUT. Both are correct here.
+        assert!(
+            status == StatusCode::BAD_GATEWAY || status == StatusCode::GATEWAY_TIMEOUT,
+            "expected 502 or 504, got {status}"
+        );
         assert!(!body.contains("code=abc"));
 
         relay.abort();
