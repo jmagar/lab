@@ -271,12 +271,22 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         #[cfg(feature = "apprise")]
         Command::Apprise(args) => apprise::run(args, format).await,
         #[cfg(feature = "deploy")]
-        Command::Deploy(args) => {
-            let deploy_prefs = config.deploy.clone().unwrap_or_default();
-            let runner = crate::dispatch::deploy::client::build_runner(deploy_prefs);
-            deploy::run(args, format, &runner)
-                .await
-                .map(|()| ExitCode::SUCCESS)
-        } // [lab-scaffold: cli-dispatch]
+        Command::Deploy(args) => dispatch_deploy(args, format, config.deploy.clone()).await,
+        // [lab-scaffold: cli-dispatch]
     }
+}
+
+/// Deploy dispatch extracted to a helper so the match arm stays a single expression,
+/// which prevents rustfmt from merging the `// [lab-scaffold: cli-dispatch]` anchor
+/// with a trailing `}`.
+#[cfg(feature = "deploy")]
+async fn dispatch_deploy(
+    args: deploy::DeployArgs,
+    format: OutputFormat,
+    deploy_cfg: Option<crate::config::DeployPreferences>,
+) -> Result<ExitCode> {
+    let runner = crate::dispatch::deploy::client::build_runner(deploy_cfg.unwrap_or_default());
+    deploy::run(args, format, &runner)
+        .await
+        .map(|()| ExitCode::SUCCESS)
 }
