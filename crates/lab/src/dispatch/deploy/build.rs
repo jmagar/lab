@@ -182,7 +182,12 @@ mod tests {
         // Host triple → target/release/<bin> (no triple in path).
         let host = detect_host_triple();
         let p = expected_artifact_path_for("lab", &host);
-        assert!(p.ends_with("target/release/lab"), "got {}", p.display());
+        let expected = if host.contains("windows") {
+            "target/release/lab.exe"
+        } else {
+            "target/release/lab"
+        };
+        assert!(p.ends_with(expected), "got {}", p.display());
     }
 
     #[test]
