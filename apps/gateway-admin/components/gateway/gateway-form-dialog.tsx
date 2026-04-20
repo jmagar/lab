@@ -30,6 +30,7 @@ import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/utils'
 import { defaultGatewayBearerEnvName, validateBearerTokenEnvName } from '@/lib/gateway-env'
 import { isAbortError } from '@/lib/api/service-action-client'
+import { GatewayApiError } from '@/lib/api/gateway-client-core'
 import { upstreamOauthApi } from '@/lib/api/upstream-oauth-client'
 import { useUpstreamOauthStatus } from '@/lib/hooks/use-upstream-oauth'
 import type { OAuthConnectState } from '@/lib/types/upstream-oauth'
@@ -98,6 +99,7 @@ export function GatewayFormDialog({
 
   const [isSaving, setIsSaving] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [oauthState, setOauthState] = useState<OAuthConnectState>({ kind: 'idle' })
   const [oauthProbed, setOauthProbed] = useState<{ oauth_discovered: boolean; upstream: string; issuer?: string; scopes?: string[]; registration_strategy?: string } | null>(null)
@@ -451,12 +453,17 @@ export function GatewayFormDialog({
       }
 
       if (!validateCustom()) return
+      setSaveError(null)
       await onSave(buildInput())
       if (controller.signal.aborted) return
       toast.success(isEditing ? 'Gateway updated successfully' : 'Gateway created successfully')
       onOpenChange(false)
     } catch (error) {
       if (isAbortError(error)) return
+      if (error instanceof GatewayApiError && error.status === 409) {
+        setSaveError(error.message)
+        return
+      }
       toast.error(
         getErrorMessage(
           error,
@@ -868,6 +875,12 @@ export function GatewayFormDialog({
         </Tabs>
         </div>
 
+        {saveError && (
+          <div className="shrink-0 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="size-4 mt-0.5 shrink-0" />
+            <span>{saveError}</span>
+          </div>
+        )}
         <DialogFooter className="shrink-0 gap-2 sm:gap-0">
           {isEditing && !isLabGateway && (
             <Button
