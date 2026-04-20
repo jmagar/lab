@@ -27,6 +27,8 @@ import {
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
   AURORA_STRONG_PANEL,
+} from '@/components/aurora/tokens'
+import {
   AURORA_GATEWAY_STAT,
   gatewayActionTone,
 } from './gateway-theme'

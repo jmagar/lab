@@ -8,7 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { AURORA_STRONG_PANEL } from './gateway-theme'
+import { AURORA_STRONG_PANEL } from '@/components/aurora/tokens'
 
 interface TableSkeletonProps {
   rows?: number

@@ -16,15 +16,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import {
-  AURORA_DISPLAY_TITLE,
   AURORA_LEVEL_TEXT,
+  AURORA_TAIL_ROW,
+} from '@/components/logs/log-theme'
+import {
+  AURORA_DISPLAY_2,
   AURORA_MEDIUM_PANEL,
   AURORA_MESSAGE_SURFACE,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
-  AURORA_TAIL_ROW,
   controlTone,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { fakeLogEvents, toolbarSummaryChips } from './demo-data'
 
 export function PatternsSection() {
@@ -35,7 +37,7 @@ export function PatternsSection() {
     <section className={cn(AURORA_STRONG_PANEL, 'overflow-hidden')}>
       <div className="border-b border-aurora-border-strong px-5 py-4">
         <p className={AURORA_MUTED_LABEL}>Application Patterns</p>
-        <h2 className={cn(AURORA_DISPLAY_TITLE, 'mt-2 text-2xl font-semibold text-aurora-text-primary')}>
+        <h2 className={cn(AURORA_DISPLAY_2, 'mt-2 text-aurora-text-primary')}>
           Composed admin workflows
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-aurora-text-muted">

@@ -38,9 +38,11 @@ import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { buildGatewayEndpointPreview } from '@/lib/api/gateway-mobile'
 import { SurfaceRatio } from './surface-ratio'
 import {
-  AURORA_DISPLAY_TITLE,
+  AURORA_DISPLAY_2,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
+} from '@/components/aurora/tokens'
+import {
   AURORA_GATEWAY_CARD,
   AURORA_GATEWAY_DISABLED_ROW,
   AURORA_GATEWAY_MUTED_CARD,
@@ -108,7 +110,7 @@ export function GatewayTable({
                         <Link
                           href={gatewayDetailHref(gateway.id)}
                           className={cn(
-                            AURORA_DISPLAY_TITLE,
+                            AURORA_DISPLAY_2,
                             'min-w-0 max-w-full break-words text-base font-semibold text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
                           )}
                         >
@@ -278,7 +280,7 @@ export function GatewayTable({
                         <Link
                           href={gatewayDetailHref(gateway.id)}
                           className={cn(
-                            AURORA_DISPLAY_TITLE,
+                            AURORA_DISPLAY_2,
                             'min-w-0 max-w-full break-words font-medium text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
                           )}
                         >

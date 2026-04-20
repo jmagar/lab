@@ -2,11 +2,11 @@
 
 import type { LogEvent } from '@/lib/types/logs'
 import {
-  AURORA_DISPLAY_TITLE,
-  AURORA_MUTED_LABEL,
+  AURORA_DISPLAY_2,
   AURORA_MESSAGE_SURFACE,
+  AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 
 interface LogEventInspectorProps {
   event: LogEvent | null
@@ -21,7 +21,7 @@ export function LogEventInspector({ event }: LogEventInspectorProps) {
   return (
     <aside className={AURORA_STRONG_PANEL}>
       <div className="border-b border-aurora-border-strong px-5 py-4">
-        <p className={`text-lg font-semibold text-aurora-text-primary ${AURORA_DISPLAY_TITLE}`}>Selected event</p>
+        <p className={`${AURORA_DISPLAY_2} text-aurora-text-primary`}>Selected event</p>
         <p className="mt-1 text-sm text-aurora-text-muted">
           Message stays primary in the stream. Structured metadata lives here.
         </p>

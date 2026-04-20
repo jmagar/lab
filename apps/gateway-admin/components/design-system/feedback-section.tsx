@@ -23,12 +23,12 @@ import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
-  AURORA_DISPLAY_TITLE,
+  AURORA_DISPLAY_2,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
   controlTone,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { feedbackModes } from './demo-data'
 
 export function FeedbackSection() {
@@ -38,7 +38,7 @@ export function FeedbackSection() {
     <section className={cn(AURORA_STRONG_PANEL, 'overflow-hidden')}>
       <div className="border-b border-aurora-border-strong px-5 py-4">
         <p className={AURORA_MUTED_LABEL}>Feedback</p>
-        <h2 className={cn(AURORA_DISPLAY_TITLE, 'mt-2 text-2xl font-semibold text-aurora-text-primary')}>
+        <h2 className={cn(AURORA_DISPLAY_2, 'mt-2 text-aurora-text-primary')}>
           Response states
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-aurora-text-muted">
