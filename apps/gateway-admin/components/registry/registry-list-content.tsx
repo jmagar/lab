@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { AppHeader } from '@/components/app-header'
 import { ServerFilters } from './server-filters'
 import { registryServersKey, fetchRegistryServers } from '@/lib/hooks/use-registry'
-import { listServers } from '@/lib/api/mcpregistry-client'
 import { safeHref } from '@/lib/utils/safe-href'
 import useSWR from 'swr'
 import { cn } from '@/lib/utils'
@@ -33,25 +32,31 @@ function truncateDescription(desc: string): { text: string; truncated: boolean }
 export function RegistryListContent({ onSelectServer }: RegistryListContentProps) {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [version, setVersion] = useState('')
+  const [debouncedVersion, setDebouncedVersion] = useState('')
+  const [updatedSince, setUpdatedSince] = useState('')
+  const [debouncedUpdatedSince, setDebouncedUpdatedSince] = useState('')
   const [cursor, setCursor] = useState<string | null>(null)
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set())
   const [slowFetch, setSlowFetch] = useState(false)
   const [verySlowFetch, setVerySlowFetch] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
 
-  // Debounce search 300ms; reset cursor on every new query
+  // Debounce all filter fields 300ms; reset cursor on any filter change
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
+      setDebouncedVersion(version)
+      setDebouncedUpdatedSince(updatedSince)
       setCursor(null)
     }, 300)
     return () => clearTimeout(timer)
-  }, [search])
+  }, [search, version, updatedSince])
 
-  const key = registryServersKey(debouncedSearch, cursor)
+  const key = registryServersKey(debouncedSearch, cursor, debouncedVersion, debouncedUpdatedSince)
 
   // Fetcher with AbortController — aborts prior request on key change
-  const fetcher = useCallback((k: [string, string, string | null]) => {
+  const fetcher = useCallback((k: [string, string, string | null, string | undefined, string | undefined]) => {
     controllerRef.current?.abort()
     controllerRef.current = new AbortController()
     return fetchRegistryServers(k, controllerRef.current.signal)
@@ -122,6 +127,10 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
         <ServerFilters
           search={search}
           onSearchChange={setSearch}
+          version={version}
+          onVersionChange={setVersion}
+          updatedSince={updatedSince}
+          onUpdatedSinceChange={setUpdatedSince}
           totalCount={totalCount}
           isLoading={isLoading}
         />
