@@ -5,21 +5,22 @@ import { Package, ExternalLink, RefreshCw, XCircle, RotateCcw } from 'lucide-rea
 import { Button } from '@/components/ui/button'
 import { AppHeader } from '@/components/app-header'
 import { ServerFilters } from './server-filters'
-import { registryServersKey, fetchRegistryServers } from '@/lib/hooks/use-registry'
+import { registryServersKey, fetchRegistryServers, type RegistryServersKey } from '@/lib/hooks/use-registry'
 import { safeHref } from '@/lib/utils/safe-href'
 import useSWR from 'swr'
 import { cn } from '@/lib/utils'
 import {
   AURORA_GATEWAY_ROW,
+  AURORA_GATEWAY_DISABLED_ROW,
   AURORA_MEDIUM_PANEL,
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
   AURORA_MUTED_LABEL,
 } from '@/components/gateway/gateway-theme'
-import type { ServerJSON } from '@/lib/types/registry'
+import type { ServerResponse } from '@/lib/types/registry'
 
 interface RegistryListContentProps {
-  onSelectServer?: (server: ServerJSON) => void
+  onSelectServer?: (response: ServerResponse) => void
 }
 
 const DESCRIPTION_CHAR_LIMIT = 2000
@@ -56,7 +57,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   const key = registryServersKey(debouncedSearch, cursor, debouncedVersion, debouncedUpdatedSince)
 
   // Fetcher with AbortController — aborts prior request on key change
-  const fetcher = useCallback((k: [string, string, string | null, string | undefined, string | undefined]) => {
+  const fetcher = useCallback((k: RegistryServersKey) => {
     controllerRef.current?.abort()
     controllerRef.current = new AbortController()
     return fetchRegistryServers(k, controllerRef.current.signal)
@@ -193,19 +194,21 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
               const { text: descText, truncated } = truncateDescription(server.description)
               const isExpanded = expandedDescriptions.has(server.name)
               const repoHref = safeHref(server.repository?.url)
+              const status = response._meta?.['io.modelcontextprotocol.registry/official']?.status ?? 'active'
+              const isDeleted = status === 'deleted'
 
               return (
                 <div
                   key={server.name}
                   className={cn(
-                    AURORA_GATEWAY_ROW,
+                    isDeleted ? cn(AURORA_GATEWAY_DISABLED_ROW, 'opacity-60') : AURORA_GATEWAY_ROW,
                     'cursor-pointer px-5 py-4',
                   )}
-                  onClick={() => onSelectServer?.(server)}
+                  onClick={() => onSelectServer?.(response)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') onSelectServer?.(server)
+                    if (e.key === 'Enter' || e.key === ' ') onSelectServer?.(response)
                   }}
                 >
                   <div className="flex items-start gap-4">
@@ -246,6 +249,16 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                         >
                           {isHTTP ? 'HTTP' : 'stdio only'}
                         </span>
+                        {status === 'deprecated' && (
+                          <span className="rounded-full border border-aurora-warn/20 bg-aurora-warn/15 px-2 py-0.5 text-xs text-aurora-warn">
+                            Deprecated
+                          </span>
+                        )}
+                        {status === 'deleted' && (
+                          <span className="rounded-full border border-aurora-error/20 bg-aurora-error/15 px-2 py-0.5 text-xs text-aurora-error">
+                            Deleted
+                          </span>
+                        )}
                       </div>
 
                       {/* untrusted registry data — do not use dangerouslySetInnerHTML */}

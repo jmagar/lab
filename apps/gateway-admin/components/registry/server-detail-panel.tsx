@@ -22,6 +22,8 @@ import type { ServerJSON } from '@/lib/types/registry'
 interface ServerDetailPanelProps {
   server: ServerJSON | null
   updatedAt?: string | null
+  status?: 'active' | 'deprecated' | 'deleted' | null
+  statusMessage?: string | null
   onClose: () => void
 }
 
@@ -59,19 +61,19 @@ function formatRelativeTime(isoString: string): string {
   return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`
 }
 
-export function ServerDetailPanel({ server, updatedAt, onClose }: ServerDetailPanelProps) {
+export function ServerDetailPanel({ server, updatedAt, status, statusMessage, onClose }: ServerDetailPanelProps) {
   const open = server !== null
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-lg" side="right">
-        {server && <PanelBody server={server} updatedAt={updatedAt} />}
+        {server && <PanelBody server={server} updatedAt={updatedAt} status={status} statusMessage={statusMessage} />}
       </SheetContent>
     </Sheet>
   )
 }
 
-function PanelBody({ server, updatedAt }: { server: ServerJSON; updatedAt?: string | null }) {
+function PanelBody({ server, updatedAt, status, statusMessage }: { server: ServerJSON; updatedAt?: string | null; status?: 'active' | 'deprecated' | 'deleted' | null; statusMessage?: string | null }) {
   const displayName = server.title ?? server.name
   const isHTTP = server.remotes.length > 0
   const icon = server.icons.find((ic) => ic.type === 'icon')
@@ -123,7 +125,22 @@ function PanelBody({ server, updatedAt }: { server: ServerJSON; updatedAt?: stri
                   {formatRelativeTime(updatedAt)}
                 </span>
               )}
+              {status === 'deprecated' && (
+                <span className="rounded-full border border-aurora-warn/20 bg-aurora-warn/15 px-2 py-0.5 text-xs font-medium text-aurora-warn">
+                  Deprecated
+                </span>
+              )}
+              {status === 'deleted' && (
+                <span className="rounded-full border border-aurora-error/20 bg-aurora-error/15 px-2 py-0.5 text-xs font-medium text-aurora-error">
+                  Deleted
+                </span>
+              )}
             </div>
+            {statusMessage && (status === 'deprecated' || status === 'deleted') && (
+              <p className="mt-2 text-xs leading-relaxed text-aurora-text-secondary">
+                {statusMessage}
+              </p>
+            )}
           </div>
         </div>
       </SheetHeader>
