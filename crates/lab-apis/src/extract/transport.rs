@@ -5,6 +5,7 @@
 //! API object-safety-friendly without `async-trait`.
 
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::sync::Arc;
 
 use russh::{ChannelMsg, client};
@@ -153,7 +154,7 @@ impl SshFs {
         #[cfg(not(unix))]
         return Err(ExtractError::Ssh {
             host,
-            message: "SSH transport requires Unix (SSH_AUTH_SOCK is not available on this platform)".to_owned(),
+            message: "SSH transport requires Unix (SSH_AUTH_SOCK not available here)".to_owned(),
         });
 
         // Everything below is Unix-only.
