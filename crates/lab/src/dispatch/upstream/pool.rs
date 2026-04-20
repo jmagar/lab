@@ -999,8 +999,9 @@ impl UpstreamPool {
                         }
                     }
                     for mut resource in result.resources {
-                        let original_uri = resource.uri.clone();
-                        resource.uri = format!("lab://upstream/{name}/{original_uri}");
+                        if !resource.uri.starts_with("lab://upstream/") {
+                            resource.uri = format!("lab://upstream/{name}/{}", resource.uri);
+                        }
                         resources.push(resource);
                     }
                 }
@@ -1060,8 +1061,9 @@ impl UpstreamPool {
             match conn.peer.list_resources(None).await {
                 Ok(result) => {
                     for mut resource in result.resources {
-                        let original_uri = resource.uri.clone();
-                        resource.uri = format!("lab://upstream/{name}/{original_uri}");
+                        if !resource.uri.starts_with("lab://upstream/") {
+                            resource.uri = format!("lab://upstream/{name}/{}", resource.uri);
+                        }
                         resources.push(resource);
                     }
                 }

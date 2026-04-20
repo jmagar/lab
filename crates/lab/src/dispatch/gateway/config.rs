@@ -92,9 +92,9 @@ pub fn insert_upstream(cfg: &mut LabConfig, upstream: UpstreamConfig) -> Result<
         .iter()
         .any(|existing| existing.name == upstream.name)
     {
-        return Err(ToolError::InvalidParam {
-            message: format!("gateway `{}` already exists", upstream.name),
-            param: "name".to_string(),
+        return Err(ToolError::Conflict {
+            message: format!("A gateway named {} already exists.", upstream.name),
+            existing_id: upstream.name.clone(),
         });
     }
     cfg.upstream.push(upstream);
@@ -657,7 +657,7 @@ args = ["server.js"]
         )
         .expect_err("duplicate should fail");
 
-        assert_eq!(err.kind(), "invalid_param");
+        assert_eq!(err.kind(), "conflict");
     }
 
     #[test]

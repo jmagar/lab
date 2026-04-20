@@ -184,6 +184,13 @@ impl From<ToolError> for DispatchError {
                 param: None,
                 hint: None,
             },
+            ToolError::Conflict { message, .. } => Self {
+                kind: "conflict",
+                message,
+                valid: None,
+                param: None,
+                hint: None,
+            },
             ToolError::Sdk { sdk_kind, message } => Self {
                 kind: canonical_kind(&sdk_kind),
                 message,
@@ -207,6 +214,7 @@ pub(crate) fn canonical_kind(s: &str) -> &'static str {
         "invalid_param" => "invalid_param",
         "unknown_instance" => "unknown_instance",
         "confirmation_required" => "confirmation_required",
+        "conflict" => "conflict",
         "auth_failed" => "auth_failed",
         "not_found" => "not_found",
         "rate_limited" => "rate_limited",
