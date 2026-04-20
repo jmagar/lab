@@ -33,6 +33,8 @@ pub mod deploy;
 pub mod gotify;
 #[cfg(feature = "linkding")]
 pub mod linkding;
+#[cfg(feature = "mcpregistry")]
+pub mod mcpregistry;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "openai")]
@@ -159,6 +161,9 @@ pub enum Command {
     /// Linkding bookmark manager.
     #[cfg(feature = "linkding")]
     Linkding(linkding::LinkdingArgs),
+    /// MCP Registry — browse and search MCP servers.
+    #[cfg(feature = "mcpregistry")]
+    Mcpregistry(mcpregistry::McpregistryArgs),
     /// Memos note-taking service.
     #[cfg(feature = "memos")]
     Memos(memos::MemosArgs),
@@ -239,6 +244,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Tailscale(args) => tailscale::run(args, format).await,
         #[cfg(feature = "linkding")]
         Command::Linkding(args) => linkding::run(args, format).await,
+        #[cfg(feature = "mcpregistry")]
+        Command::Mcpregistry(args) => mcpregistry::run(args, format).await,
         #[cfg(feature = "memos")]
         Command::Memos(args) => memos::run(args, format).await,
         #[cfg(feature = "bytestash")]
@@ -264,13 +271,22 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         #[cfg(feature = "apprise")]
         Command::Apprise(args) => apprise::run(args, format).await,
         #[cfg(feature = "deploy")]
-        Command::Deploy(args) => {
-            let deploy_prefs = config.deploy.clone().unwrap_or_default();
-            let runner = crate::dispatch::deploy::client::build_runner(deploy_prefs);
-            deploy::run(args, format, &runner)
-                .await
-                .map(|()| ExitCode::SUCCESS)
-        }
+        Command::Deploy(args) => dispatch_deploy(args, format, config.deploy.clone()).await,
         // [lab-scaffold: cli-dispatch]
     }
+}
+
+/// Deploy dispatch extracted to a helper so the match arm stays a single expression,
+/// which prevents rustfmt from merging the `// [lab-scaffold: cli-dispatch]` anchor
+/// with a trailing `}`.
+#[cfg(feature = "deploy")]
+async fn dispatch_deploy(
+    args: deploy::DeployArgs,
+    format: OutputFormat,
+    deploy_cfg: Option<crate::config::DeployPreferences>,
+) -> Result<ExitCode> {
+    let runner = crate::dispatch::deploy::client::build_runner(deploy_cfg.unwrap_or_default());
+    deploy::run(args, format, &runner)
+        .await
+        .map(|()| ExitCode::SUCCESS)
 }

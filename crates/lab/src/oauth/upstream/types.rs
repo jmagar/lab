@@ -15,11 +15,13 @@ pub enum OauthError {
 
     /// Callback state is missing, expired, replayed, or bound to a different
     /// subject / upstream.
+    #[allow(dead_code)]
     #[error("oauth_state_invalid: {0}")]
     StateInvalid(String),
 
     /// Upstream AS refused the `resource` parameter or issued a token with the
     /// wrong audience (RFC 8707).
+    #[allow(dead_code)]
     #[error("oauth_resource_mismatch: {0}")]
     ResourceMismatch(String),
 
@@ -49,6 +51,7 @@ impl OauthError {
         }
     }
 
+    #[allow(dead_code)]
     pub fn http_status(&self) -> StatusCode {
         match self {
             Self::NeedsReauth(_) => StatusCode::UNAUTHORIZED,

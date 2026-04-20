@@ -16,9 +16,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _bd_utils import check_bd_ready
 from typing import Any
 
 
@@ -141,6 +146,7 @@ def main() -> None:
     parser.add_argument("--input", "-i", metavar="FILE", help="JSON file from gh-fetch-comments (required with --all)")
     parser.add_argument("--dry-run", action="store_true", help="Preview which threads would be resolved without making changes")
     parser.add_argument("--workers", type=int, default=8, metavar="N", help="Max concurrent API calls (default: 8)")
+    parser.add_argument("--no-beads", action="store_true", help="Skip automatic bead closing after resolving")
     args = parser.parse_args()
 
     if args.all:
@@ -157,6 +163,24 @@ def main() -> None:
             parser.error("Provide at least one THREAD_ID or use --all --input FILE")
 
     failures = run_resolution(thread_ids, args.dry_run, args.workers)
+
+    # Auto-close beads for resolved threads (skip silently if bd not ready or no mapping)
+    if not args.no_beads and not failures and args.input:
+        if args.dry_run or check_bd_ready(fatal=False):
+            base, _ = os.path.splitext(args.input)
+            mpath = base + ".beads.json"
+            if os.path.exists(mpath):
+                print(f"\nClosing beads...")
+                close_cmd = [
+                    sys.executable,
+                    str(Path(__file__).parent / "close_beads.py"),
+                    "--input", args.input,
+                    "--reason", "Thread marked resolved via gh-mark-resolved",
+                ]
+                if args.dry_run:
+                    close_cmd.append("--dry-run")
+                subprocess.run(close_cmd, check=False)
+
     if failures:
         sys.exit(1)
 

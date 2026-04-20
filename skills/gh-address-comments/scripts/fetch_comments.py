@@ -18,9 +18,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _bd_utils import check_bd_ready
 
 QUERY = """\
 query(
@@ -115,6 +120,31 @@ def _ensure_gh_authenticated() -> None:
     except RuntimeError:
         print("run `gh auth login` to authenticate the GitHub CLI", file=sys.stderr)
         raise RuntimeError("gh auth status failed; run `gh auth login` to authenticate the GitHub CLI") from None
+
+
+def _check_rate_limit() -> None:
+    """Warn if GraphQL rate limit headroom is low (< 20% of 5000 points/hour)."""
+    try:
+        data = _run_json(["gh", "api", "rate_limit"])
+        graphql = data.get("resources", {}).get("graphql", {})
+        remaining = graphql.get("remaining", None)
+        limit = graphql.get("limit", 5000)
+        reset_at = graphql.get("reset", None)
+        if remaining is None:
+            return
+        pct = remaining / limit * 100
+        if pct < 20:
+            import datetime
+            reset_str = ""
+            if reset_at:
+                reset_dt = datetime.datetime.fromtimestamp(reset_at)
+                reset_str = f", resets at {reset_dt.strftime('%H:%M:%S')}"
+            print(
+                f"⚠️  GitHub GraphQL rate limit low: {remaining}/{limit} points remaining ({pct:.0f}%{reset_str})",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # Rate limit check is best-effort; don't block on failure
 
 
 def gh_pr_view_json(fields: str) -> dict[str, Any]:
@@ -267,9 +297,11 @@ def main() -> None:
     parser.add_argument("--repo", metavar="OWNER/REPO", help="Repository (default: auto-detect from gh)")
     parser.add_argument("--output", "-o", metavar="FILE", help="Save full output to FILE instead of stdout")
     parser.add_argument("--since", metavar="FILE", help="Compare against a previous snapshot; output only new/changed items")
+    parser.add_argument("--no-beads", action="store_true", help="Skip automatic bead creation after saving")
     args = parser.parse_args()
 
     _ensure_gh_authenticated()
+    _check_rate_limit()
 
     if args.pr and args.repo:
         repo_parts = args.repo.split("/", 1)
@@ -292,6 +324,24 @@ def main() -> None:
         with open(args.output, "w") as f:
             json.dump(result, f, indent=2)
         print(f"Saved PR #{number} comments to {args.output}", file=sys.stderr)
+        # Update completion cache with latest thread IDs
+        cache_dir = os.path.expanduser("~/.cache/gh-comments")
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(os.path.join(cache_dir, "threads.json"), "w") as f:
+            json.dump(result, f)
+        # Auto-create beads for open threads (skip silently if bd not ready)
+        if not args.no_beads and check_bd_ready(fatal=False):
+            open_count = sum(
+                1 for t in result.get("review_threads", [])
+                if not t.get("isResolved") and not t.get("isOutdated")
+            )
+            if open_count:
+                print(f"Creating beads for {open_count} open thread(s)...", file=sys.stderr)
+                subprocess.run([
+                    sys.executable,
+                    str(Path(__file__).parent / "create_beads.py"),
+                    "--input", args.output,
+                ], check=False)
 
     if args.since:
         try:

@@ -145,7 +145,10 @@ impl OauthClientCache {
     pub fn evict_subject(&self, upstream: &str, subject: &str) {
         let key = (upstream.to_string(), subject.to_string());
         self.clients.remove(&key);
-        self.build_locks.remove(&key);
+        // build_locks is intentionally NOT evicted: it serializes concurrent
+        // builders for the same (upstream, subject) key. Removing it creates a
+        // race window where two concurrent callers both see no cached client,
+        // both drop the lock guard, and then both start building in parallel.
     }
 
     /// Evict every entry for `upstream`.
@@ -155,16 +158,18 @@ impl OauthClientCache {
     /// upstream's sessions.
     pub fn evict_upstream(&self, upstream: &str) {
         self.clients.retain(|(name, _), _| name != upstream);
-        self.build_locks.retain(|(name, _), _| name != upstream);
+        // build_locks intentionally preserved — see comment in evict_subject.
     }
 
     /// Number of cached clients. Intended for tests and observability.
+    #[allow(dead_code)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.clients.len()
     }
 
     /// True when the cache holds no clients.
+    #[allow(dead_code)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.clients.is_empty()

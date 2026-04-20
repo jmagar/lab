@@ -753,7 +753,7 @@ mod tests {
             "gateway.add",
             json!({"spec": {
                 "name": "fixture-http",
-                "url": "http://127.0.0.1:9001",
+                "url": "https://fixture.example.com/mcp",
                 "bearer_token_env": "FIXTURE_HTTP_TOKEN"
             }}),
         )

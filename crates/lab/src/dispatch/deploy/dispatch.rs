@@ -50,6 +50,7 @@ fn validate_deploy_action(action: &str, params_v: &Value) -> Result<DeployReques
 /// Follows the standard dispatch.rs contract: `help` and `schema` work
 /// unconditionally; every other action signals that it needs a runner without
 /// running auth or param validation (authentication is the runner's concern).
+#[allow(dead_code)]
 pub async fn dispatch(action: &str, params_v: Value) -> Result<Value, ToolError> {
     match action {
         "help" => Ok(help_payload("deploy", ACTIONS)),

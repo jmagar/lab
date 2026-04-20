@@ -57,7 +57,14 @@ pub async fn run(config: ForwardConfig) -> Result<std::process::ExitCode> {
     if !config.syslog_only && journald_available() {
         forward_journald(&client, &config.node_id, config.batch_size).await
     } else {
-        forward_syslog_file(&client, &config.node_id, config.batch_size).await
+        #[cfg(unix)]
+        {
+            forward_syslog_file(&client, &config.node_id, config.batch_size).await
+        }
+        #[cfg(not(unix))]
+        {
+            anyhow::bail!("syslog file forwarding is not supported on this platform")
+        }
     }
 }
 
@@ -195,6 +202,7 @@ fn parse_journald_line(line: &str) -> RawLogEvent {
     }
 }
 
+#[cfg(unix)]
 async fn forward_syslog_file(
     client: &MasterClient,
     node_id: &str,
@@ -268,6 +276,7 @@ async fn forward_syslog_file(
 /// Skip `n` whitespace-delimited tokens and return the rest of the string.
 ///
 /// Handles RFC 3164 double-space dates like "Nov  2 10:30:00" (day < 10).
+#[cfg(unix)]
 fn skip_whitespace_tokens<'a>(s: &'a str, n: usize) -> &'a str {
     let mut rest = s;
     for _ in 0..n {
@@ -277,6 +286,7 @@ fn skip_whitespace_tokens<'a>(s: &'a str, n: usize) -> &'a str {
     rest
 }
 
+#[cfg(unix)]
 fn parse_syslog_line(line: &str) -> RawLogEvent {
     // Best-effort RFC 3164 parse: "Mon DD HH:MM:SS host tag: message"
     // RFC 3164 uses a single space between fields, but some syslogd

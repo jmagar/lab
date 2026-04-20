@@ -362,7 +362,7 @@ mod tests {
     use axum::{
         Extension,
         body::{self, Body},
-        http::{Request, StatusCode, header},
+        http::{HeaderMap, Request, StatusCode, header},
     };
     use lab_auth::{
         config::{AuthConfig, AuthMode, GoogleConfig},
@@ -395,8 +395,8 @@ mod tests {
     #[tokio::test]
     async fn callback_requires_authenticated_browser_session() {
         let state = AppState::new();
-        let parts = Request::new(()).into_parts().0;
-        let error = callback_subject(&state, &parts).await.unwrap_err();
+        let headers = HeaderMap::new();
+        let error = callback_subject(&state, None, &headers).await.unwrap_err();
         assert_eq!(error.kind(), "oauth_state_invalid");
     }
 

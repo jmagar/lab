@@ -22,6 +22,7 @@ pub fn www_authenticate_value(resource_url: &str) -> String {
     )
 }
 
+#[allow(dead_code)]
 pub fn auth_context(parts: &Parts) -> Option<&AuthContext> {
     parts.extensions.get::<AuthContext>()
 }

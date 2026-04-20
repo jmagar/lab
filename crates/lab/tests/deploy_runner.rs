@@ -7,6 +7,7 @@
 //! correctly and respects the concurrency/abort knobs.
 
 #![cfg(feature = "deploy")]
+#![allow(unused_qualifications)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

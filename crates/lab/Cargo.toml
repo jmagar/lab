@@ -110,6 +110,9 @@ paperless   = ["lab-apis/paperless"]
 gotify      = ["lab-apis/gotify"]
 apprise     = ["lab-apis/apprise"]
 
+# bootstrap / registry
+mcpregistry = ["lab-apis/mcpregistry"]
+
 # ai / vector / inference
 openai      = ["lab-apis/openai"]
 qdrant      = ["lab-apis/qdrant"]
@@ -152,6 +155,7 @@ all         = [
   "tei",
   "lab-admin",
   "deploy",
+  "mcpregistry",
 ]
 
 [lints]
