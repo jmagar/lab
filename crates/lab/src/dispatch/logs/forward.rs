@@ -57,7 +57,14 @@ pub async fn run(config: ForwardConfig) -> Result<std::process::ExitCode> {
     if !config.syslog_only && journald_available() {
         forward_journald(&client, &config.node_id, config.batch_size).await
     } else {
-        forward_syslog_file(&client, &config.node_id, config.batch_size).await
+        #[cfg(unix)]
+        {
+            forward_syslog_file(&client, &config.node_id, config.batch_size).await
+        }
+        #[cfg(not(unix))]
+        {
+            anyhow::bail!("syslog file forwarding is not supported on this platform")
+        }
     }
 }
 
@@ -195,6 +202,7 @@ fn parse_journald_line(line: &str) -> RawLogEvent {
     }
 }
 
+#[cfg(unix)]
 async fn forward_syslog_file(
     client: &MasterClient,
     node_id: &str,
