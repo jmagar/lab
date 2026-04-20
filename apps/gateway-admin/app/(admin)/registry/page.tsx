@@ -3,17 +3,22 @@
 import { useState } from 'react'
 import { RegistryListContent } from '@/components/registry/registry-list-content'
 import { ServerDetailPanel } from '@/components/registry/server-detail-panel'
-import type { ServerJSON } from '@/lib/types/registry'
+import type { ServerResponse } from '@/lib/types/registry'
 
 export default function RegistryPage() {
-  const [selectedServer, setSelectedServer] = useState<ServerJSON | null>(null)
+  const [selectedResponse, setSelectedResponse] = useState<ServerResponse | null>(null)
+
+  const extensions = selectedResponse?._meta?.['io.modelcontextprotocol.registry/official']
 
   return (
     <>
-      <RegistryListContent onSelectServer={setSelectedServer} />
+      <RegistryListContent onSelectServer={setSelectedResponse} />
       <ServerDetailPanel
-        server={selectedServer}
-        onClose={() => setSelectedServer(null)}
+        server={selectedResponse?.server ?? null}
+        updatedAt={extensions?.updatedAt}
+        status={extensions?.status}
+        statusMessage={extensions?.statusMessage}
+        onClose={() => setSelectedResponse(null)}
       />
     </>
   )
