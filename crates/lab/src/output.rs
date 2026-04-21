@@ -146,6 +146,9 @@ fn render_object(
     if is_doctor_report(map) {
         return render_doctor_report(map, ctx, indent);
     }
+    if is_catalog(map) {
+        return render_catalog(map, ctx);
+    }
 
     if map.is_empty() {
         return format!("{}{}", indent_str(indent), dim("∅", ctx));
@@ -279,7 +282,7 @@ fn render_table_separator(widths: &[usize], ctx: RenderContext) -> String {
         if idx > 0 {
             line.push(' ');
         }
-        line.push_str(&subtle(&"━".repeat(*width), ctx));
+        line.push_str(&subtle(&"─".repeat(*width), ctx));
     }
     line
 }
@@ -791,61 +794,262 @@ fn render_doctor_report(
         .and_then(Value::as_array)
         .map_or(&[][..], Vec::as_slice);
 
+    // Group findings by service, preserving first-seen order.
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: std::collections::HashMap<String, (usize, usize, usize)> =
+        std::collections::HashMap::new();
+    for item in findings.iter().filter_map(Value::as_object) {
+        let Some(service) = item.get("service").and_then(Value::as_str) else {
+            continue;
+        };
+        let severity = item
+            .get("severity")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let entry = groups.entry(service.to_string()).or_insert_with(|| {
+            order.push(service.to_string());
+            (0, 0, 0)
+        });
+        match severity.as_str() {
+            "ok" => entry.0 += 1,
+            "warn" | "warning" => entry.1 += 1,
+            "fail" | "error" => entry.2 += 1,
+            _ => {}
+        }
+    }
+
+    let total_services = order.len();
+    let mut healthy = 0usize;
+    let mut degraded = 0usize;
+    let mut unhealthy = 0usize;
+    for name in &order {
+        let (_ok, warn, fail) = groups[name];
+        if fail > 0 {
+            unhealthy += 1;
+        } else if warn > 0 {
+            degraded += 1;
+        } else {
+            healthy += 1;
+        }
+    }
+
     let mut out = String::new();
     writeln!(out, "{}", render_heading("Doctor Report", ctx)).ok();
     writeln!(
         out,
-        "{} {}",
-        primary("Checks:", ctx),
-        accent(findings.len().to_string().as_str(), ctx)
+        "{} {} {} {} {} {} {} {}",
+        dim(format!("{total_services} services").as_str(), ctx),
+        dim("·", ctx),
+        status_ok("", ctx),
+        dim(format!("{healthy} healthy").as_str(), ctx),
+        dim("·", ctx),
+        status_warn("", ctx),
+        dim(format!("{degraded} degraded").as_str(), ctx),
+        if unhealthy > 0 {
+            format!(
+                "{} {} {}",
+                dim("·", ctx),
+                status_fail("", ctx),
+                dim(format!("{unhealthy} unhealthy").as_str(), ctx)
+            )
+        } else {
+            String::new()
+        },
     )
     .ok();
-    if !findings.is_empty() {
-        let (ok, warn, fail) = count_findings(findings);
-        writeln!(
-            out,
-            "{} {} {} {} {} {} {}",
-            dim("Severity:", ctx),
-            status_ok("", ctx),
-            accent(ok.to_string().as_str(), ctx),
-            status_warn("", ctx),
-            accent(warn.to_string().as_str(), ctx),
-            status_fail("", ctx),
-            accent(fail.to_string().as_str(), ctx)
-        )
-        .ok();
-        out.push('\n');
-        out.push_str(&render_finding_rows(findings, ctx));
+
+    if order.is_empty() {
+        return out;
+    }
+
+    out.push('\n');
+
+    // Build one-row-per-service summary.
+    let rows: Vec<Vec<String>> = order
+        .iter()
+        .map(|service| {
+            let (ok, warn, fail) = groups[service];
+            let status = if fail > 0 {
+                status_fail("", ctx)
+            } else if warn > 0 {
+                status_warn("", ctx)
+            } else {
+                status_ok("", ctx)
+            };
+            let total = ok + warn + fail;
+            let env_summary = if fail == 0 && warn == 0 {
+                dim(format!("env {ok}/{total}").as_str(), ctx)
+            } else {
+                format!(
+                    "{} {}",
+                    dim("env", ctx),
+                    accent(format!("{ok}/{total}").as_str(), ctx)
+                )
+            };
+            vec![
+                format!("  {status}"),
+                bold(accent(service, ctx), ctx),
+                env_summary,
+            ]
+        })
+        .collect();
+
+    let headers = vec![String::new(), String::new(), String::new()];
+    out.push_str(&render_table_plain(&headers, &rows));
+    out
+}
+
+/// Render a table without headers or separator — used for borderless list layouts.
+fn render_table_plain(headers: &[String], rows: &[Vec<String>]) -> String {
+    let mut widths: Vec<usize> = headers.iter().map(|h| visible_width(h)).collect();
+    for row in rows {
+        for (idx, cell) in row.iter().enumerate() {
+            if idx < widths.len() {
+                widths[idx] = widths[idx].max(visible_width(cell));
+            } else {
+                widths.push(visible_width(cell));
+            }
+        }
+    }
+    let mut out = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push_str(&render_table_row(row, &widths, Clone::clone));
     }
     out
 }
 
-fn count_findings(items: &[Value]) -> (usize, usize, usize) {
-    let mut ok = 0usize;
-    let mut warn = 0usize;
-    let mut fail = 0usize;
-    for item in items.iter().filter_map(Value::as_object) {
-        match item
-            .get("severity")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "ok" => ok += 1,
-            "warn" | "warning" => warn += 1,
-            "fail" | "error" => fail += 1,
-            _ => {}
+fn is_catalog(map: &serde_json::Map<String, Value>) -> bool {
+    map.len() == 1
+        && map
+            .get("services")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.iter().filter_map(Value::as_object).any(|svc| {
+                    svc.contains_key("name")
+                        && svc.contains_key("actions")
+                        && svc.contains_key("category")
+                })
+            })
+}
+
+fn render_catalog(map: &serde_json::Map<String, Value>, ctx: RenderContext) -> String {
+    let services = map
+        .get("services")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+
+    let mut out = String::new();
+    writeln!(
+        out,
+        "{} {} {}",
+        bold(accent("Lab", ctx), ctx),
+        dim("·", ctx),
+        dim(format!("{} services", services.len()).as_str(), ctx)
+    )
+    .ok();
+    out.push('\n');
+
+    // Measure service-name column width (cap at 14).
+    let name_width = services
+        .iter()
+        .filter_map(Value::as_object)
+        .filter_map(|svc| svc.get("name").and_then(Value::as_str))
+        .map(str::len)
+        .max()
+        .unwrap_or(10)
+        .min(14);
+    let cat_width = services
+        .iter()
+        .filter_map(Value::as_object)
+        .filter_map(|svc| svc.get("category").and_then(Value::as_str))
+        .map(str::len)
+        .max()
+        .unwrap_or(10)
+        .min(14);
+
+    const ACTION_PREVIEW: usize = 5;
+    const MAX_ACTIONS_WIDTH: usize = 64;
+
+    for (idx, svc) in services.iter().filter_map(Value::as_object).enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        let name = svc.get("name").and_then(Value::as_str).unwrap_or("-");
+        let category = svc.get("category").and_then(Value::as_str).unwrap_or("-");
+        let status_str = svc.get("status").and_then(Value::as_str).unwrap_or("");
+        let actions = svc
+            .get("actions")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice);
+        let status_icon = match status_str {
+            "available" => status_ok("", ctx),
+            "stub" => status_warn("", ctx),
+            _ => status_fail("", ctx),
+        };
+
+        writeln!(
+            out,
+            "  {} {}  {}  {} {}",
+            status_icon,
+            pad_right(&bold(accent(name, ctx), ctx), name_width),
+            pad_right(&dim(category, ctx), cat_width),
+            accent(actions.len().to_string().as_str(), ctx),
+            dim("actions", ctx),
+        )
+        .ok();
+
+        // Action preview: first N names, middle-dot separated, truncate at MAX_ACTIONS_WIDTH.
+        let names: Vec<&str> = actions
+            .iter()
+            .filter_map(Value::as_object)
+            .filter_map(|a| a.get("name").and_then(Value::as_str))
+            .collect();
+        if names.is_empty() {
+            continue;
+        }
+        let sep = format!(" {} ", dim("·", ctx));
+        let indent = "      ";
+        let mut line = String::new();
+        let mut shown = 0usize;
+        for (i, n) in names.iter().take(ACTION_PREVIEW).enumerate() {
+            let candidate = if i == 0 {
+                n.to_string()
+            } else {
+                format!("{sep}{n}")
+            };
+            if visible_width(&line) + visible_width(&candidate) > MAX_ACTIONS_WIDTH {
+                break;
+            }
+            line.push_str(&candidate);
+            shown += 1;
+        }
+        writeln!(out, "{indent}{line}").ok();
+        let remaining = names.len().saturating_sub(shown);
+        if remaining > 0 {
+            writeln!(
+                out,
+                "{indent}{}",
+                dim(
+                    format!("(+{remaining} more — `lab help {name}`)").as_str(),
+                    ctx
+                )
+            )
+            .ok();
         }
     }
-    (ok, warn, fail)
+
+    out
 }
 
 fn render_heading(title: &str, ctx: RenderContext) -> String {
     format!(
         "{}\n{}",
-        bold(primary(title, ctx), ctx),
-        subtle(&"━".repeat(visible_width(title).max(12)), ctx)
+        bold(accent(title, ctx), ctx),
+        subtle(&"─".repeat(visible_width(title).max(12)), ctx)
     )
 }
 
@@ -866,20 +1070,31 @@ fn indent_str(level: usize) -> String {
     "  ".repeat(level)
 }
 
+// Palette — ANSI 256, 6 colors total. Premium = restraint.
+//
+// Role      Code            Use
+// accent    38;5;39   cyan  service names, section headers
+// default   —               data cells (terminal fg)
+// dim       38;5;244        labels, hints, secondary text
+// muted     38;5;240        rule lines, separators
+// success   38;5;78   green ✓ available
+// warning   38;5;214  amber ⚠ degraded
+// error     38;5;203  red   ✗ unreachable
+
 fn status_ok(text: &str, ctx: RenderContext) -> String {
-    status_badge("✓", "38;5;39", text, ctx)
+    status_badge("✓", "38;5;78", text, ctx)
 }
 
 fn status_warn(text: &str, ctx: RenderContext) -> String {
-    status_badge("⚠", "38;5;208", text, ctx)
+    status_badge("⚠", "38;5;214", text, ctx)
 }
 
 fn status_fail(text: &str, ctx: RenderContext) -> String {
-    status_badge("✗", "38;5;160", text, ctx)
+    status_badge("✗", "38;5;203", text, ctx)
 }
 
 fn accent(text: &str, ctx: RenderContext) -> String {
-    paint("38;5;208", text, ctx)
+    paint("38;5;39", text, ctx)
 }
 
 fn primary(text: &str, ctx: RenderContext) -> String {
@@ -887,7 +1102,7 @@ fn primary(text: &str, ctx: RenderContext) -> String {
 }
 
 fn subtle(text: &str, ctx: RenderContext) -> String {
-    paint("38;5;110", text, ctx)
+    paint("38;5;240", text, ctx)
 }
 
 fn bold(text: String, ctx: RenderContext) -> String {
@@ -899,14 +1114,14 @@ fn bold(text: String, ctx: RenderContext) -> String {
 }
 
 fn dim<T: AsRef<str>>(text: T, ctx: RenderContext) -> String {
-    paint("2", text.as_ref(), ctx)
+    paint("38;5;244", text.as_ref(), ctx)
 }
 
 fn bool_icon(value: bool, ctx: RenderContext) -> String {
     if value {
-        paint("38;5;39", "✓", ctx)
+        paint("38;5;78", "✓", ctx)
     } else {
-        paint("38;5;208", "✗", ctx)
+        paint("38;5;203", "✗", ctx)
     }
 }
 
@@ -996,13 +1211,51 @@ mod tests {
 
         let out = render(&val, OutputFormat::Human).unwrap();
         assert!(out.contains("Doctor Report"));
-        assert!(out.contains("Checks:"));
+        // Service-grouped summary: per-service row, not per-check.
+        assert!(out.contains("radarr"));
+        assert!(out.contains("env"));
         assert!(out.contains("✓"));
         assert!(out.contains("✗"));
-        assert!(!out.contains("ok:"));
-        assert!(!out.contains("fail:"));
+        // Per-check detail is hidden in default (grouped) mode.
         assert!(!out.contains("is set"));
         assert!(!out.contains("is missing"));
+    }
+
+    #[test]
+    fn catalog_renders_nested_layout_without_key_count_artifacts() {
+        let val = serde_json::json!({
+            "services": [
+                {
+                    "name": "radarr",
+                    "description": "Movie manager",
+                    "category": "servarr",
+                    "status": "available",
+                    "requires_http_subject": false,
+                    "actions": [
+                        {"name": "movie.search", "description": "", "destructive": false, "params": [], "returns": ""},
+                        {"name": "movie.add", "description": "", "destructive": false, "params": [], "returns": ""},
+                        {"name": "queue.list", "description": "", "destructive": false, "params": [], "returns": ""},
+                        {"name": "queue.purge", "description": "", "destructive": true, "params": [], "returns": ""},
+                        {"name": "history.list", "description": "", "destructive": false, "params": [], "returns": ""},
+                        {"name": "root.list", "description": "", "destructive": false, "params": [], "returns": ""},
+                        {"name": "tag.list", "description": "", "destructive": false, "params": [], "returns": ""}
+                    ]
+                }
+            ]
+        });
+        let out = render(&val, OutputFormat::Human).unwrap();
+        assert!(out.contains("Lab"));
+        assert!(out.contains("radarr"));
+        assert!(out.contains("servarr"));
+        assert!(out.contains("7 actions") || out.contains("7\u{1b}[0m actions"));
+        assert!(out.contains("movie.search"));
+        assert!(out.contains("(+2 more"));
+        // The old `{5 keys}` artifact must not appear.
+        assert!(
+            !out.contains("{5 keys}"),
+            "nested ActionEntry rendered as '{{N keys}}' artifact"
+        );
+        assert!(!out.contains("keys}"), "any 'keys}}' artifact leaked");
     }
 
     #[test]
