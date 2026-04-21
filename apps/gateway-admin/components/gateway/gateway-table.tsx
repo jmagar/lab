@@ -97,7 +97,7 @@ export function GatewayTable({
               className={cn(
                 isDisabled ? AURORA_GATEWAY_MUTED_CARD : AURORA_GATEWAY_CARD,
                 'p-4 text-aurora-text-primary',
-                isDisabled && 'text-[#8ea4b3]',
+                isDisabled && 'text-aurora-text-muted',
               )}
             >
               <div className="flex items-start gap-3">
@@ -123,9 +123,9 @@ export function GatewayTable({
                       <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={cn('size-2 rounded-full', statusTone.dot)}
-                          aria-hidden="true"
+                          aria-label={statusTone.label}
+                          title={statusTone.label}
                         />
-                        <span className={cn(AURORA_MUTED_LABEL, 'tracking-[0.14em]', statusTone.text)}>{statusTone.label}</span>
                         <TransportBadge transport={gateway.transport} />
                         <WarningsPill warnings={gateway.warnings} />
                       </div>
@@ -136,7 +136,7 @@ export function GatewayTable({
                         <Button
                           variant="outline"
                           size="icon"
-                          className={cn(gatewayActionTone(), 'size-9 shrink-0 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                          className={cn(gatewayActionTone(), 'size-9 shrink-0 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                         >
                           <MoreHorizontal className="size-4" />
                           <span className="sr-only">More actions</span>
@@ -208,7 +208,7 @@ export function GatewayTable({
                       <Button
                         variant="outline"
                         size="sm"
-                        className={cn(gatewayActionTone(), 'h-9 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                         onClick={() => handleAction(gateway, 'test', onTest)}
                         disabled={isLoading(gateway.id, 'test')}
                       >
@@ -220,7 +220,7 @@ export function GatewayTable({
                       <Button
                         variant="outline"
                         size="sm"
-                        className={cn(gatewayActionTone(), 'h-9 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                         onClick={() => handleAction(gateway, 'reload', onReload)}
                         disabled={isLoading(gateway.id, 'reload')}
                       >
@@ -232,7 +232,7 @@ export function GatewayTable({
                       asChild
                       variant="outline"
                       size="sm"
-                      className={cn(gatewayActionTone('accent'), 'h-9 px-3 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                      className={cn(gatewayActionTone('accent'), 'h-9 px-3 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                     >
                       <Link href={gatewayDetailHref(gateway.id)}>
                         View
@@ -272,9 +272,9 @@ export function GatewayTable({
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <span
                           className={cn('size-2 rounded-full', statusTone.dot)}
-                          aria-hidden="true"
+                          aria-label={statusTone.label}
+                          title={statusTone.label}
                         />
-                        <span className={cn(AURORA_MUTED_LABEL, 'tracking-[0.14em]', statusTone.text)}>{statusTone.label}</span>
                         <Link
                           href={gatewayDetailHref(gateway.id)}
                           className={cn(
@@ -293,7 +293,7 @@ export function GatewayTable({
                         <WarningsPill warnings={gateway.warnings} />
                       </div>
                       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-aurora-text-muted">
-                        <span className="truncate text-[#c8d9e3]" title={endpointPreview}>
+                        <span className="truncate text-aurora-text-muted" title={endpointPreview}>
                           {endpointPreview}
                         </span>
                         <span className="tabular-nums">
@@ -335,7 +335,7 @@ export function GatewayTable({
                           size="icon"
                           className={cn(
                             gatewayActionTone(),
-                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
+                            'size-9 opacity-100 transition-opacity hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
                           )}
                           onClick={() => handleAction(gateway, 'test', onTest)}
                           disabled={isLoading(gateway.id, 'test')}
@@ -350,7 +350,7 @@ export function GatewayTable({
                           size="icon"
                           className={cn(
                             gatewayActionTone(),
-                            'size-9 opacity-100 transition-opacity hover:bg-[#17364b] hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
+                            'size-9 opacity-100 transition-opacity hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
                           )}
                           onClick={() => handleAction(gateway, 'reload', onReload)}
                           disabled={isLoading(gateway.id, 'reload')}
@@ -364,7 +364,7 @@ export function GatewayTable({
                           <Button
                             variant="outline"
                             size="icon"
-                            className={cn(gatewayActionTone(), 'size-9 hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                            className={cn(gatewayActionTone(), 'size-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                           >
                             <MoreHorizontal className="size-4" />
                             <span className="sr-only">More actions</span>

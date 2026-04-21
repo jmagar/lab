@@ -394,7 +394,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       {/* Status indicator */}
       <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
         <span
-          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
           aria-label={gatewayStatusLabel}
         />
         <span className="text-xs font-medium">{gatewayStatusLabel}</span>
@@ -439,7 +439,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       {surfaceEntries.map(([surface, state]) => (
         <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
           <span
-            className={`size-2 rounded-full ${state.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+            className={`size-2 rounded-full ${state.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
             aria-hidden="true"
           />
           <span className="text-xs font-medium uppercase">{surface}</span>
@@ -509,7 +509,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               {gateway.warnings.length > 0 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 cursor-default">
+                    <Badge variant="outline" className="rounded-full border-aurora-warn/30 bg-aurora-warn/10 text-aurora-warn cursor-default">
                       {gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}
                     </Badge>
                   </TooltipTrigger>
@@ -527,7 +527,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
             <div className="mt-3 space-y-1">
               <div className="flex flex-wrap items-center gap-3">
                 <span
-                  className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                  className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
                   aria-hidden="true"
                 />
                 <h1 className="text-3xl font-semibold tracking-tight break-words">{gateway.name}</h1>
@@ -566,9 +566,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 Config
               </TabsTrigger>
               {gateway.warnings.length > 0 && (
-                <TabsTrigger value="warnings" className="text-amber-600 dark:text-amber-400">
+                <TabsTrigger value="warnings" className="text-aurora-warn">
                   Warnings
-                  <Badge variant="secondary" className="ml-2 text-xs bg-amber-500/10">
+                  <Badge variant="secondary" className="ml-2 text-xs bg-aurora-warn/10">
                     {gateway.warnings.length}
                   </Badge>
                 </TabsTrigger>
@@ -778,11 +778,11 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   {gateway.warnings.map((warning, index) => (
                     <div
                       key={index}
-                      className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4"
+                      className="flex items-start gap-3 rounded-lg border border-aurora-warn/20 bg-aurora-warn/5 p-4"
                     >
-                      <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                      <AlertTriangle className="size-4 text-aurora-warn mt-0.5 shrink-0" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                        <p className="text-sm font-medium text-aurora-warn">
                           {warning.code}
                         </p>
                         <p className="text-sm text-muted-foreground mt-0.5">{warning.message}</p>

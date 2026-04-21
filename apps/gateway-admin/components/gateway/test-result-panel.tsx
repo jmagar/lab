@@ -38,24 +38,24 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
           {/* Status */}
           <div className={`flex items-start gap-4 rounded-lg border p-4 ${
             isSuccess
-              ? 'border-emerald-500/20 bg-emerald-500/5'
+              ? 'border-aurora-success/20 bg-aurora-success/5'
               : isWarning
-                ? 'border-amber-500/20 bg-amber-500/5'
+                ? 'border-aurora-warn/20 bg-aurora-warn/5'
                 : 'border-red-500/20 bg-red-500/5'
           }`}>
             {isSuccess ? (
-              <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+              <CheckCircle2 className="size-5 text-aurora-success mt-0.5" />
             ) : isWarning ? (
-              <Clock className="size-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <Clock className="size-5 text-aurora-warn mt-0.5" />
             ) : (
               <XCircle className="size-5 text-red-600 dark:text-red-400 mt-0.5" />
             )}
             <div className="flex-1">
               <p className={`font-medium ${
                 isSuccess
-                  ? 'text-emerald-600 dark:text-emerald-400'
+                  ? 'text-aurora-success'
                   : isWarning
-                    ? 'text-amber-600 dark:text-amber-400'
+                    ? 'text-aurora-warn'
                     : 'text-red-600 dark:text-red-400'
               }`}>
                 {isSuccess
@@ -68,7 +68,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                 {testResult.message}
               </p>
               {testResult.detail && (
-                <p className="text-sm text-amber-700 dark:text-amber-300 mt-2 font-mono bg-amber-500/10 rounded px-2 py-1">
+                <p className="text-sm text-aurora-warn mt-2 font-mono bg-aurora-warn/10 rounded px-2 py-1">
                   {testResult.detail}
                 </p>
               )}

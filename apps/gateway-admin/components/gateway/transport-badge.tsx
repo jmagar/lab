@@ -21,14 +21,14 @@ export function TransportBadge({ transport, className }: TransportBadgeProps) {
         return {
           label: 'stdio',
           className:
-            'border-aurora-border-strong bg-[linear-gradient(180deg,rgba(17,32,44,0.98),rgba(11,22,30,0.98))] text-[#d2c8e8] shadow-[0_8px_16px_rgba(0,0,0,0.14),var(--aurora-highlight-medium)]',
+            'border-aurora-border-strong bg-[linear-gradient(180deg,rgba(17,32,44,0.98),rgba(11,22,30,0.98))] text-aurora-text-muted shadow-[0_8px_16px_rgba(0,0,0,0.14),var(--aurora-highlight-medium)]',
           icon: Terminal,
         }
       case 'lab_service':
         return {
           label: 'Lab',
           className:
-            'border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-[#cae5cf] shadow-[0_8px_16px_rgba(0,0,0,0.14),var(--aurora-highlight-medium)]',
+            'border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-aurora-text-muted shadow-[0_8px_16px_rgba(0,0,0,0.14),var(--aurora-highlight-medium)]',
           icon: Layers,
         }
       default: {

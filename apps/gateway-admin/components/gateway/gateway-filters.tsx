@@ -68,7 +68,7 @@ export function GatewayFilters({
             onClick={clearFilters}
             className={cn(
               gatewayActionTone(),
-              'h-9 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
+              'h-9 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
             )}
           >
             <X className="mr-1 size-4" />

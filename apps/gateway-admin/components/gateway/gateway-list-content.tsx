@@ -189,7 +189,7 @@ export function GatewayListContent() {
         actions={
           <Button
             onClick={handleCreate}
-            className={cn(gatewayActionTone('accent'), 'border px-4 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary')}
+            className={cn(gatewayActionTone('accent'), 'border px-4 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
           >
             <Plus className="size-4 mr-2" />
             Add Gateway
