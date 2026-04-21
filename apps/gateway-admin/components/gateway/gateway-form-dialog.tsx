@@ -29,6 +29,7 @@ import type {
 import { toast } from 'sonner'
 import { cn, getErrorMessage } from '@/lib/utils'
 import { defaultGatewayBearerEnvName, validateBearerTokenEnvName } from '@/lib/gateway-env'
+import { validateGatewayName } from '@/lib/utils/gateway-name'
 import { isAbortError } from '@/lib/api/service-action-client'
 import { GatewayApiError } from '@/lib/api/gateway-client-core'
 import { upstreamOauthApi } from '@/lib/api/upstream-oauth-client'
@@ -432,10 +433,9 @@ export function GatewayFormDialog({
   const validateCustom = () => {
     const newErrors: Record<string, string> = {}
 
-    if (!name.trim()) {
-      newErrors.name = 'Name is required'
-    } else if (!/^[a-z0-9-]+$/.test(name)) {
-      newErrors.name = 'Name must be lowercase alphanumeric with hyphens'
+    const nameError = validateGatewayName(name.trim())
+    if (nameError) {
+      newErrors.name = nameError
     }
 
     if (transport === 'http') {
@@ -898,7 +898,9 @@ export function GatewayFormDialog({
                 {errors.name ? (
                   <p className="text-sm text-destructive">{errors.name}</p>
                 ) : (
-                  <FieldDescription>Lowercase alphanumeric with hyphens</FieldDescription>
+                  <FieldDescription>
+                    Letters, digits, underscores, hyphens — starts with a letter or digit
+                  </FieldDescription>
                 )}
               </Field>
             </FieldGroup>

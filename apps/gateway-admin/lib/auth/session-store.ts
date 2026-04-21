@@ -125,11 +125,15 @@ export async function logoutBrowserSession() {
       : undefined,
   })
 
+  // Flip local state to unauthenticated before surfacing a server failure:
+  // once the user clicked logout, we treat the browser session as gone even
+  // if the server-side revoke fails, so the UI cannot keep showing them as
+  // signed in while a retry runs.
+  setState({ status: 'unauthenticated' })
+
   if (!response.ok) {
     throw new Error('Failed to logout browser session')
   }
-
-  setState({ status: 'unauthenticated' })
 }
 
 export function __setBrowserSessionStateForTests(state: BrowserSessionState) {
