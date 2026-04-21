@@ -109,62 +109,71 @@ export function FeedbackSection() {
           </div>
 
           <div className="space-y-4">
-            <StatusAlert
-              title="Success"
-              tone="success"
-              icon={<CheckCircle2 className="size-4" />}
-              active={activeMode === 'success'}
+            <Alert
+              variant="default"
+              className={cn('transition-opacity', activeMode === 'success' ? 'opacity-100' : 'opacity-70')}
             >
-              Preview state updated. No network request left this page.
-            </StatusAlert>
-            <StatusAlert
-              title="Warning"
-              tone="warning"
-              icon={<ShieldAlert className="size-4" />}
-              active={activeMode === 'warning'}
+              <CheckCircle2 className="size-4" />
+              <AlertTitle>Success</AlertTitle>
+              <AlertDescription>
+                Preview state updated. No network request left this page.
+              </AlertDescription>
+            </Alert>
+            <Alert
+              variant="warn"
+              className={cn('transition-opacity', activeMode === 'warning' ? 'opacity-100' : 'opacity-70')}
             >
-              A warning should feel actionable without looking like a hard failure.
-            </StatusAlert>
-            <StatusAlert
-              title="Error"
-              tone="error"
-              icon={<AlertCircle className="size-4" />}
-              active={activeMode === 'error'}
+              <ShieldAlert className="size-4" />
+              <AlertTitle>Warning</AlertTitle>
+              <AlertDescription>
+                A warning should feel actionable without looking like a hard failure.
+              </AlertDescription>
+            </Alert>
+            <Alert
+              variant="error"
+              className={cn('transition-opacity', activeMode === 'error' ? 'opacity-100' : 'opacity-70')}
             >
-              Local demo failure: confirm the destructive state copy and recovery affordances.
-            </StatusAlert>
+              <AlertCircle className="size-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>
+                Local demo failure: confirm the destructive state copy and recovery affordances.
+              </AlertDescription>
+            </Alert>
+          </div>
+        </div>
+
+        <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 px-4 py-4')}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-aurora-text-primary">Badge status matrix</p>
+            <p className={AURORA_MUTED_LABEL}>variant x status</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[100px_repeat(4,minmax(0,1fr))]">
+            <div aria-hidden />
+            <p className={AURORA_MUTED_LABEL}>default</p>
+            <p className={AURORA_MUTED_LABEL}>warn</p>
+            <p className={AURORA_MUTED_LABEL}>error</p>
+            <p className={AURORA_MUTED_LABEL}>success</p>
+
+            <p className="text-sm font-medium text-aurora-text-primary">default</p>
+            <Badge variant="default">Default</Badge>
+            <Badge variant="default" status="warn">Warn</Badge>
+            <Badge variant="default" status="error">Error</Badge>
+            <Badge variant="default" status="success">Success</Badge>
+
+            <p className="text-sm font-medium text-aurora-text-primary">outline</p>
+            <Badge variant="outline">Default</Badge>
+            <Badge variant="outline" status="warn">Warn</Badge>
+            <Badge variant="outline" status="error">Error</Badge>
+            <Badge variant="outline" status="success">Success</Badge>
+
+            <p className="text-sm font-medium text-aurora-text-primary">pill</p>
+            <Badge variant="pill">Default</Badge>
+            <Badge variant="pill" status="warn">Warn</Badge>
+            <Badge variant="pill" status="error">Error</Badge>
+            <Badge variant="pill" status="success">Success</Badge>
           </div>
         </div>
       </div>
     </section>
-  )
-}
-
-function StatusAlert({
-  active,
-  children,
-  icon,
-  title,
-  tone,
-}: {
-  active: boolean
-  children: React.ReactNode
-  icon: React.ReactNode
-  title: string
-  tone: 'success' | 'warning' | 'error'
-}) {
-  const toneClass =
-    tone === 'success'
-      ? 'border-success/30 bg-success/8 text-success'
-      : tone === 'warning'
-        ? 'border-warning/30 bg-warning/8 text-warning'
-        : 'border-destructive/30 bg-destructive/8 text-destructive'
-
-  return (
-    <Alert className={cn('border transition-opacity', toneClass, active ? 'opacity-100' : 'opacity-70')}>
-      {icon}
-      <AlertTitle>{title}</AlertTitle>
-      <AlertDescription>{children}</AlertDescription>
-    </Alert>
   )
 }

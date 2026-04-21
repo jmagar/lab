@@ -37,6 +37,12 @@ export const auroraColorTokens = [
     className: 'bg-aurora-error',
     textClassName: 'text-[#311319]',
   },
+  {
+    label: 'Aurora success',
+    value: '#7dd3c7',
+    className: 'bg-aurora-success',
+    textClassName: 'text-[#08242d]',
+  },
 ] as const
 
 export const typeRamp = [
@@ -167,6 +173,36 @@ export const denseRows = [
     gateway: 'preview-ssh',
     transport: 'sse',
     tools: '24 exposed',
+    health: 'Healthy',
+  },
+  {
+    gateway: 'radarr-main',
+    transport: 'streamable_http',
+    tools: '12 exposed',
+    health: 'Healthy',
+  },
+  {
+    gateway: 'sonarr-main',
+    transport: 'streamable_http',
+    tools: '11 exposed',
+    health: 'Healthy',
+  },
+  {
+    gateway: 'prowlarr-edge',
+    transport: 'sse',
+    tools: '7 exposed',
+    health: 'Error',
+  },
+  {
+    gateway: 'qbit-seed',
+    transport: 'stdio',
+    tools: '5 exposed',
+    health: 'Warning',
+  },
+  {
+    gateway: 'tailscale-gate',
+    transport: 'streamable_http',
+    tools: '22 exposed',
     health: 'Healthy',
   },
 ] as const
