@@ -1,5 +1,12 @@
 import { Badge } from '@/components/ui/badge'
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
   Table,
   TableBody,
   TableCell,
@@ -32,6 +39,38 @@ export function DataDisplaySection() {
       </div>
 
       <div className="space-y-4 px-5 py-5">
+        <section className="space-y-3">
+          <p className="text-sm font-medium text-aurora-text-primary">Card variants</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Card variant="medium">
+              <CardHeader>
+                <CardTitle>Medium card</CardTitle>
+                <CardDescription>
+                  Default emphasis for list items and secondary panels.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-aurora-text-muted">
+                  Uses <code className="font-mono text-xs">bg-aurora-panel-medium</code> with the medium shadow tier.
+                </p>
+              </CardContent>
+            </Card>
+            <Card variant="strong">
+              <CardHeader>
+                <CardTitle>Strong card</CardTitle>
+                <CardDescription>
+                  Elevated surfaces like hero inspectors and pinned detail views.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-aurora-text-muted">
+                  Uses <code className="font-mono text-xs">bg-aurora-panel-strong</code> with the strong shadow tier.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
         <section className="space-y-3">
           <p className="text-sm font-medium text-aurora-text-primary">Metric cards</p>
           <div className="grid gap-3 md:grid-cols-3">
@@ -66,7 +105,18 @@ export function DataDisplaySection() {
                     <TableCell className="font-mono text-xs text-aurora-text-muted">{row.transport}</TableCell>
                     <TableCell>{row.tools}</TableCell>
                     <TableCell>
-                      <Badge variant={row.health === 'Healthy' ? 'secondary' : 'outline'}>
+                      <Badge
+                        variant="outline"
+                        status={
+                          row.health === 'Healthy'
+                            ? 'success'
+                            : row.health === 'Warning'
+                              ? 'warn'
+                              : row.health === 'Error'
+                                ? 'error'
+                                : 'default'
+                        }
+                      >
                         {row.health}
                       </Badge>
                     </TableCell>

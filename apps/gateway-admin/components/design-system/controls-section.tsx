@@ -76,22 +76,41 @@ export function ControlsSection() {
       <div className="grid gap-4 px-5 py-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <div className="space-y-4">
           <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 px-4 py-4')}>
+            <p className={AURORA_MUTED_LABEL}>Button hierarchy</p>
             <div className="flex flex-wrap items-center gap-3">
-              <Button className="rounded-[0.95rem] bg-aurora-accent-primary text-[#06253a] hover:bg-aurora-accent-strong">
-                Primary button
-              </Button>
-              <Button variant="secondary" className="rounded-[0.95rem]">
-                Secondary button
-              </Button>
-              <Button variant="outline" className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')}>
-                Outline button
-              </Button>
-              <Button variant="ghost" className="rounded-[0.95rem] text-aurora-text-muted hover:bg-aurora-panel-medium hover:text-aurora-text-primary">
-                Ghost button
-              </Button>
-              <Button variant="destructive" className="rounded-[0.95rem]">
-                Destructive button
-              </Button>
+              <Button>Default</Button>
+              <Button variant="outline">Outline</Button>
+              <Button variant="secondary">Secondary</Button>
+              <Button variant="ghost">Ghost</Button>
+              <Button variant="destructive">Destructive</Button>
+              <Button variant="link">Link</Button>
+            </div>
+            <p className={AURORA_MUTED_LABEL}>data-selected glow</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button data-selected="true">Selected (glow)</Button>
+              <Button data-selected="false">Unselected</Button>
+              <Button variant="outline" data-selected="true">Outline selected</Button>
+            </div>
+            <p className={AURORA_MUTED_LABEL}>Input, Select, Textarea states</p>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="design-input-default" className="text-aurora-text-primary">
+                  Default input
+                </Label>
+                <Input id="design-input-default" defaultValue="healthy" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="design-input-focused" className="text-aurora-text-primary">
+                  Focused-looking input
+                </Label>
+                <Input id="design-input-focused" defaultValue="focus preview" autoFocus={false} className="ring-aurora-focus-ring/40 ring-2" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="design-input-error" className="text-aurora-text-primary">
+                  Invalid input
+                </Label>
+                <Input id="design-input-error" defaultValue="bad-value" aria-invalid="true" />
+              </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">

@@ -87,7 +87,7 @@ export function NavigationSection() {
             <Tabs defaultValue={navigationTabs[1]}>
               <TabsList className="bg-aurora-control-surface text-aurora-text-muted">
                 {navigationTabs.map((tab) => (
-                  <TabsTrigger key={tab} value={tab} className="data-[state=active]:bg-aurora-panel-medium data-[state=active]:text-aurora-text-primary">
+                  <TabsTrigger key={tab} value={tab}>
                     {tab}
                   </TabsTrigger>
                 ))}
