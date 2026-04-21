@@ -41,14 +41,14 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
               ? 'border-aurora-success/20 bg-aurora-success/5'
               : isWarning
                 ? 'border-aurora-warn/20 bg-aurora-warn/5'
-                : 'border-red-500/20 bg-red-500/5'
+                : 'border-aurora-error/20 bg-aurora-error/5'
           }`}>
             {isSuccess ? (
               <CheckCircle2 className="size-5 text-aurora-success mt-0.5" />
             ) : isWarning ? (
               <Clock className="size-5 text-aurora-warn mt-0.5" />
             ) : (
-              <XCircle className="size-5 text-red-600 dark:text-red-400 mt-0.5" />
+              <XCircle className="size-5 text-aurora-error mt-0.5" />
             )}
             <div className="flex-1">
               <p className={`font-medium ${
@@ -56,7 +56,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                   ? 'text-aurora-success'
                   : isWarning
                     ? 'text-aurora-warn'
-                    : 'text-red-600 dark:text-red-400'
+                    : 'text-aurora-error'
               }`}>
                 {isSuccess
                   ? 'Connection Successful'
@@ -73,7 +73,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                 </p>
               )}
               {testResult.error && (
-                <p className="text-sm text-red-600 dark:text-red-400 mt-2 font-mono bg-red-500/10 rounded px-2 py-1">
+                <p className="text-sm text-aurora-error mt-2 font-mono bg-aurora-error/10 rounded px-2 py-1">
                   {testResult.error}
                 </p>
               )}
