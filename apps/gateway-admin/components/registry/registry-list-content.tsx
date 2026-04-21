@@ -5,6 +5,7 @@ import { Package, ExternalLink, RefreshCw, XCircle, RotateCcw } from 'lucide-rea
 import { Button } from '@/components/ui/button'
 import { AppHeader } from '@/components/app-header'
 import { ServerFilters } from './server-filters'
+import { getRegistryConfig } from '@/lib/api/mcpregistry-client'
 import { registryServersKey, fetchRegistryServers, type RegistryServersKey } from '@/lib/hooks/use-registry'
 import { safeHref } from '@/lib/utils/safe-href'
 import useSWR from 'swr'
@@ -74,6 +75,11 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     revalidateOnFocus: false,
   })
 
+  const { data: config } = useSWR('/registry/config', () => getRegistryConfig(), {
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+  })
+
   // 3-stage loading escalation
   useEffect(() => {
     if (!isLoading) {
@@ -113,18 +119,28 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   return (
     <div className={AURORA_PAGE_SHELL}>
       <AppHeader
-        breadcrumbs={[{ label: 'Registry' }]}
+        breadcrumbs={[{ label: 'MCP Registry' }]}
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRetry}
-            disabled={isValidating}
-            className="gap-1.5"
-          >
-            <RefreshCw className={cn('size-4', isValidating && 'animate-spin')} />
-            Refresh
-          </Button>
+          <>
+            {config?.url && (
+              <code
+                title={config.url}
+                className="hidden rounded-md border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.6)] px-2 py-1 font-mono text-xs text-aurora-text-muted md:inline-block"
+              >
+                {config.url}
+              </code>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetry}
+              disabled={isValidating}
+              className="gap-1.5"
+            >
+              <RefreshCw className={cn('size-4', isValidating && 'animate-spin')} />
+              Refresh
+            </Button>
+          </>
         }
       />
 
@@ -192,8 +208,9 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           <div className="overflow-hidden rounded-lg border border-aurora-border-strong">
             {servers.map((response) => {
               const server = response.server
-              const isHTTP = server.remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
-              const icon = server.icons[0] ?? null
+              const { remotes, icons } = server
+              const isHTTP = remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
+              const icon = icons[0] ?? null
               const displayName = server.title ?? server.name
               const { text: descText, truncated } = truncateDescription(server.description)
               const isExpanded = expandedDescriptions.has(server.name)
@@ -221,7 +238,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                       {icon ? (
                         <>
                           <img
-                            src={icon.src}
+                            src={safeHref(icon.src) ?? undefined}
                             alt=""
                             className="size-7 rounded object-contain"
                             referrerPolicy="no-referrer"

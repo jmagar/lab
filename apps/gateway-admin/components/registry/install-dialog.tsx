@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,8 @@ import { toast } from 'sonner'
 import { installServer } from '@/lib/api/mcpregistry-client'
 import { RegistryApiError } from '@/lib/types/registry'
 import { logoutBrowserSession } from '@/lib/auth/session'
+import { validateGatewayName } from '@/lib/utils/gateway-name'
+import { cn } from '@/lib/utils'
 import type { ServerJSON } from '@/lib/types/registry'
 
 interface InstallDialogProps {
@@ -23,7 +25,6 @@ interface InstallDialogProps {
   onClose: () => void
 }
 
-const GATEWAY_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 const BIDI_STRIP_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g
 const INVALID_CHARS_RE = /[^a-zA-Z0-9_-]/g
 
@@ -38,6 +39,7 @@ function deriveGatewayName(serverName: string): string {
 export function InstallDialog({ server, onClose }: InstallDialogProps) {
   const [gatewayName, setGatewayName] = useState('')
   const [bearerTokenEnv, setBearerTokenEnv] = useState('')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [nameError, setNameError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -47,6 +49,7 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
     if (server) {
       setGatewayName(deriveGatewayName(server.name))
       setBearerTokenEnv('')
+      setAdvancedOpen(false)
       setNameError(null)
       setSubmitError(null)
     } else {
@@ -58,13 +61,6 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
 
   // Abort any in-flight submit on unmount
   useEffect(() => () => { abortRef.current?.abort() }, [])
-
-  const validateGatewayName = (value: string): string | null => {
-    if (!value) return 'Gateway name is required'
-    if (!GATEWAY_NAME_PATTERN.test(value))
-      return 'Must start with a letter or digit and contain only letters, digits, underscores, or hyphens (max 64 chars)'
-    return null
-  }
 
   const handleGatewayNameChange = (value: string) => {
     setGatewayName(value)
@@ -139,18 +135,37 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="bearer-token-env">Bearer token env var <span className="text-aurora-text-muted font-normal">(optional)</span></Label>
-            <Input
-              id="bearer-token-env"
-              value={bearerTokenEnv}
-              onChange={(e) => setBearerTokenEnv(e.target.value)}
-              placeholder="MY_SERVER_TOKEN"
-              disabled={isSubmitting}
-            />
-            <p className="text-xs text-aurora-text-muted">
-              Name of the environment variable holding the bearer token for this server
-            </p>
+          <div className="rounded-md border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.4)]">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              aria-expanded={advancedOpen}
+              aria-controls="install-advanced"
+              className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted hover:text-aurora-text-primary"
+            >
+              <span>Advanced</span>
+              <ChevronDown
+                className={cn('size-3.5 transition-transform', advancedOpen && 'rotate-180')}
+              />
+            </button>
+            {advancedOpen && (
+              <div id="install-advanced" className="space-y-1.5 border-t border-aurora-border-strong/40 px-3 py-3">
+                <Label htmlFor="bearer-token-env" className="text-xs">
+                  Bearer token env var
+                </Label>
+                <Input
+                  id="bearer-token-env"
+                  value={bearerTokenEnv}
+                  onChange={(e) => setBearerTokenEnv(e.target.value)}
+                  placeholder="MY_SERVER_TOKEN"
+                  disabled={isSubmitting}
+                />
+                <p className="text-xs text-aurora-text-muted">
+                  Only needed if this server requires a bearer token. Enter the name of an env var
+                  (not the token value) that holds it.
+                </p>
+              </div>
+            )}
           </div>
 
           {submitError && (
