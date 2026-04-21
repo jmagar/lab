@@ -63,6 +63,7 @@ export interface BackendGatewayConfigView {
   args?: string[]
   bearer_token_env?: string | null
   proxy_resources?: boolean
+  proxy_prompts?: boolean
   expose_tools?: string[] | null
 }
 
@@ -229,6 +230,31 @@ function classifyWarning(lastError?: string) {
   return { code: 'connection_error', message: lastError }
 }
 
+function extractReqwestUrl(error: string): string | undefined {
+  return error.match(/url \(([^)]+)\)/)?.[1]
+}
+
+function humanizeLabServiceHealthError(message: string, serviceName: string): string | undefined {
+  if (isNonEssentialCapabilityError(message)) {
+    return undefined
+  }
+
+  if (message.includes('Auth required') || message.includes('Authentication')) {
+    return `${serviceName} rejected the health check request. Verify the configured API key or token.`
+  }
+
+  const url = extractReqwestUrl(message)
+  if (url) {
+    return `Could not reach ${serviceName} at ${url}. Verify the service is running and the URL is correct.`
+  }
+
+  if (message.toLowerCase().includes('timed out')) {
+    return `${serviceName} did not respond to the health check in time. The service may be overloaded or unreachable.`
+  }
+
+  return message
+}
+
 export function humanizeProbeError(lastError: string | undefined, config: BackendGatewayConfigView): string | undefined {
   if (!lastError) {
     return undefined
@@ -244,9 +270,9 @@ export function humanizeProbeError(lastError: string | undefined, config: Backen
     return `Authentication is required by ${target}. Configure \`bearer_token_env\` with a valid upstream token, then reload this gateway.`
   }
 
-  const urlMatch = lastError.match(/url \(([^)]+)\)/)
-  if (urlMatch?.[1]) {
-    return `Could not connect to ${urlMatch[1]}. The upstream did not complete the MCP initialize request. Verify the server is running, reachable, and speaking MCP.`
+  const url = extractReqwestUrl(lastError)
+  if (url) {
+    return `Could not connect to ${url}. The upstream did not complete the MCP initialize request. Verify the server is running, reachable, and speaking MCP.`
   }
 
   if (lastError.includes('No such file or directory')) {
@@ -288,13 +314,17 @@ export function normalizeServerView(
     ...(transport === 'http' ? { url: target } : {}),
     ...(transport === 'stdio' ? { command: target } : {}),
     proxy_resources: false,
+    proxy_prompts: false,
   }
+  const isLabService = view.source === 'lab_service'
   const warnings = (view.warnings ?? []).map((warning) => {
     if (isNonEssentialCapabilityError(warning.message)) {
       return null
     }
 
-    const message = humanizeProbeError(warning.message, config) ?? warning.message
+    const message = isLabService
+      ? (humanizeLabServiceHealthError(warning.message, view.name) ?? warning.message)
+      : (humanizeProbeError(warning.message, config) ?? warning.message)
     const classified = classifyWarning(message)
 
     return {
@@ -340,6 +370,7 @@ export function normalizeServerView(
       ...((transport === 'http' && target) ? { url: target } : {}),
       ...((transport === 'stdio' && target) ? { command: target } : {}),
       proxy_resources: config.proxy_resources,
+      proxy_prompts: config.proxy_prompts,
     },
     status: {
       healthy: (view.connected ?? false) && warnings.length === 0,
@@ -406,6 +437,7 @@ export function normalizeGateway(
       args: normalizeArgs(config.args),
       bearer_token_env: config.bearer_token_env ?? undefined,
       proxy_resources: config.proxy_resources ?? false,
+      proxy_prompts: config.proxy_prompts ?? false,
       expose_tools: exposePatterns ?? undefined,
     },
     status: {
@@ -468,6 +500,7 @@ export function gatewayInputToSpec(input: CreateGatewayInput) {
     args: input.transport === 'stdio' ? normalizeArgs(input.config.args) : [],
     bearer_token_env: input.config.bearer_token_env ?? null,
     proxy_resources: input.config.proxy_resources ?? false,
+    proxy_prompts: input.config.proxy_prompts ?? false,
     expose_tools: input.config.expose_tools ?? null,
   }
   if (input.config.oauth) {
@@ -529,6 +562,10 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
 
   if (config.proxy_resources !== undefined) {
     patch.proxy_resources = config.proxy_resources
+  }
+
+  if (config.proxy_prompts !== undefined) {
+    patch.proxy_prompts = config.proxy_prompts
   }
 
   if (config.expose_tools !== undefined) {
