@@ -294,6 +294,19 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "string[]",
         params: &[NAME_PARAM],
     },
+    ActionSpec {
+        name: "gateway.oauth.probe",
+        description: "Probe a URL for OAuth support via RFC 8414 AS metadata discovery. \
+                       Registers a transient OAuth manager so subsequent authorize calls work.",
+        destructive: false,
+        returns: "ProbeResult",
+        params: &[ParamSpec {
+            name: "url",
+            ty: "string",
+            required: true,
+            description: "HTTPS URL of the upstream MCP server to probe for OAuth support",
+        }],
+    },
 ];
 
 #[cfg(test)]

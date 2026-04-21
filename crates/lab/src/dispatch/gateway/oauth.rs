@@ -24,10 +24,7 @@ pub struct ProbeResult {
     pub registration_strategy: Option<String>,
 }
 
-pub async fn probe(
-    manager: &GatewayManager,
-    url: &str,
-) -> Result<ProbeResult, ToolError> {
+pub async fn probe(manager: &GatewayManager, url: &str) -> Result<ProbeResult, ToolError> {
     manager.probe_upstream_oauth(url).await
 }
 

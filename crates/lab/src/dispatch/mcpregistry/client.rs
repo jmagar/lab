@@ -14,6 +14,11 @@ pub fn client_from_env() -> Option<McpRegistryClient> {
     McpRegistryClient::new(&url, Auth::None).ok()
 }
 
+/// Resolved registry base URL — env var or default.
+pub fn resolved_url() -> String {
+    env_non_empty("MCPREGISTRY_URL").unwrap_or_else(|| REGISTRY_DEFAULT_URL.to_string())
+}
+
 /// Return a client or a structured error.
 ///
 /// Always succeeds unless TLS init fails; the registry URL defaults to the
