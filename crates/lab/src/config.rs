@@ -664,7 +664,7 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 /// Standard location for the `.env` file: `~/.lab/.env`.
-fn dotenv_path() -> Option<PathBuf> {
+pub fn dotenv_path() -> Option<PathBuf> {
     home_dir().map(|home| home.join(".lab").join(".env"))
 }
 
@@ -930,6 +930,101 @@ pub fn write_env(path: &Path, new_creds: &[ServiceCreds], force: bool) -> Result
     }
 
     // Atomic write: write to .tmp, sync, rename.
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create dir {}", parent.display()))?;
+    }
+
+    let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+    {
+        let mut file = std::fs::File::create(&tmp_path)
+            .with_context(|| format!("create {}", tmp_path.display()))?;
+        for line in &out_lines {
+            writeln!(file, "{line}").with_context(|| format!("write {}", tmp_path.display()))?;
+        }
+        file.sync_all()
+            .with_context(|| format!("sync {}", tmp_path.display()))?;
+    }
+    std::fs::rename(&tmp_path, path)
+        .with_context(|| format!("rename {} → {}", tmp_path.display(), path.display()))?;
+
+    Ok(conflicts)
+}
+
+/// Write raw `(key, value)` pairs into the `.env` file at `path`.
+///
+/// Identical merge semantics to [`write_env`]: atomic write, existing order preserved,
+/// conflicts skipped unless `force=true`, idempotent on same values.
+/// Returns a `Vec<String>` of conflict warnings.
+///
+/// Prefer this over [`write_env`] when the pairs are not derived from [`ServiceCreds`].
+///
+/// # Errors
+/// Returns an error if the tmp file cannot be written or renamed.
+pub fn write_env_pairs(path: &Path, pairs: &[(String, String)], force: bool) -> Result<Vec<String>> {
+    let existing_raw = if path.exists() {
+        std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?
+    } else {
+        String::new()
+    };
+    let existing_lines: Vec<&str> = existing_raw.lines().collect();
+
+    let mut existing: HashMap<String, String> = HashMap::new();
+    for line in &existing_lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = trimmed.split_once('=') {
+            existing.insert(k.trim().to_owned(), v.trim().to_owned());
+        }
+    }
+
+    let mut conflicts: Vec<String> = Vec::new();
+    let mut override_keys: HashMap<String, String> = HashMap::new();
+    let mut new_keys: Vec<(String, String)> = Vec::new();
+
+    for (key, value) in pairs {
+        match existing.get(key) {
+            None => new_keys.push((key.clone(), value.clone())),
+            Some(existing_val) if existing_val == value => {}
+            Some(existing_val) => {
+                if force {
+                    override_keys.insert(key.clone(), value.clone());
+                } else {
+                    conflicts.push(format!(
+                        "CONFLICT: {key} already set to {existing_val:?}; skipping (use --force to overwrite)"
+                    ));
+                }
+            }
+        }
+    }
+
+    let mut out_lines: Vec<String> = Vec::new();
+    for line in &existing_lines {
+        let trimmed = line.trim();
+        if !trimmed.is_empty()
+            && !trimmed.starts_with('#')
+            && let Some((k, _)) = trimmed.split_once('=')
+        {
+            let key = k.trim();
+            if let Some(new_val) = override_keys.get(key) {
+                out_lines.push(format!("{}={}", key, quote_env_value(new_val)));
+                continue;
+            }
+        }
+        out_lines.push((*line).to_owned());
+    }
+
+    if !new_keys.is_empty() {
+        if !out_lines.last().is_none_or(|l| l.trim().is_empty()) {
+            out_lines.push(String::new());
+        }
+        for (key, value) in &new_keys {
+            out_lines.push(format!("{}={}", key, quote_env_value(value)));
+        }
+    }
+
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("create dir {}", parent.display()))?;

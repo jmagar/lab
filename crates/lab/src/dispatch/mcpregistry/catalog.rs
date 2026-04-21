@@ -91,7 +91,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "server.install",
-        description: "Install an MCP server from the registry as a gateway upstream (HTTP transport only)",
+        description: "Install an MCP server from the registry as a gateway upstream. HTTP servers are added as remote upstreams; stdio servers (npx/uvx/docker/dnx/pipx/node/python/python3/deno) are added as command upstreams and their required env vars are written to ~/.lab/.env",
         destructive: true,
         returns: "Gateway",
         params: &[
@@ -111,13 +111,19 @@ pub const ACTIONS: &[ActionSpec] = &[
                 name: "bearer_token_env",
                 ty: "string",
                 required: false,
-                description: "Name of the env var holding the bearer token (not the token value)",
+                description: "HTTP only: name of the env var holding the bearer token (not the token value)",
             },
             ParamSpec {
                 name: "version",
                 ty: "string",
                 required: false,
                 description: "Registry version to fetch; defaults to `latest`",
+            },
+            ParamSpec {
+                name: "env_values",
+                ty: "object",
+                required: false,
+                description: "Stdio only: map of env var name → value for variables declared by the server's packages[0].environmentVariables. Required vars with no default must be supplied here.",
             },
             ParamSpec {
                 name: "confirm",
