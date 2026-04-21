@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useRef } from 'react'
 import useSWR from 'swr'
 import { upstreamOauthApi } from '@/lib/api/upstream-oauth-client'
 import type { UpstreamEntry, UpstreamOauthStatus } from '@/lib/types/upstream-oauth'
@@ -16,21 +16,17 @@ export function useUpstreamOauthStatus(
   options: { pollWhilePending?: boolean; maxPollDuration?: number } = {},
 ) {
   const { pollWhilePending = false, maxPollDuration = 300_000 } = options
-  const [pollingExpired, setPollingExpired] = useState(false)
-
-  useEffect(() => {
-    if (!pollWhilePending) return
-    setPollingExpired(false)
-    const timer = setTimeout(() => setPollingExpired(true), maxPollDuration)
-    return () => clearTimeout(timer)
-  }, [pollWhilePending, maxPollDuration])
+  const pollStartRef = useRef<number | null>(null)
 
   return useSWR<UpstreamOauthStatus, Error>(
     name ? `/v1/gateway/oauth/status/${name}` : null,
     () => upstreamOauthApi.status(name!),
     {
-      refreshInterval: (data) =>
-        pollWhilePending && !pollingExpired && !data?.authenticated ? 3_000 : 0,
+      refreshInterval: (data) => {
+        if (!pollWhilePending || data?.authenticated) return 0
+        if (pollStartRef.current === null) pollStartRef.current = Date.now()
+        return Date.now() - pollStartRef.current < maxPollDuration ? 3_000 : 0
+      },
       revalidateOnFocus: true,
     },
   )

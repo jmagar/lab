@@ -450,21 +450,10 @@ async fn callback(
     )
     .await;
 
-    // On failure, revoke the state token to foreclose replay attacks.
-    //
-    // On success the exchange already consumed the row atomically via
-    // `take_upstream_oauth_state` (DELETE … RETURNING inside the rmcp
-    // `StateStore::load` path); the revoke below becomes a silent no-op.
-    //
-    // On failure the row is still alive until TTL, so we delete it here to
-    // prevent a second callback attempt from succeeding.
+    // Delete the state token on failure to prevent replay; on success it was already consumed atomically.
     if result.is_err() {
-        let revoke_now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
         if let Err(revoke_err) = sqlite
-            .delete_upstream_oauth_state_by_csrf(&query.state, revoke_now)
+            .delete_upstream_oauth_state_by_csrf(&query.state, now)
             .await
         {
             warn!(

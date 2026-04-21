@@ -14,9 +14,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { installServer } from '@/lib/api/mcpregistry-client'
+import { isAbortError } from '@/lib/api/service-action-client'
 import { RegistryApiError } from '@/lib/types/registry'
 import { logoutBrowserSession } from '@/lib/auth/session'
-import { validateGatewayName } from '@/lib/utils/gateway-name'
+import { validateGatewayName, deriveGatewayName } from '@/lib/utils/gateway-name'
 import { cn } from '@/lib/utils'
 import type { ServerJSON } from '@/lib/types/registry'
 
@@ -25,16 +26,6 @@ interface InstallDialogProps {
   onClose: () => void
 }
 
-const BIDI_STRIP_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g
-const INVALID_CHARS_RE = /[^a-zA-Z0-9_-]/g
-
-function deriveGatewayName(serverName: string): string {
-  const segment = serverName.split('/').at(-1) ?? serverName
-  return segment
-    .normalize('NFC')
-    .replace(BIDI_STRIP_RE, '')
-    .replace(INVALID_CHARS_RE, '')
-}
 
 export function InstallDialog({ server, onClose }: InstallDialogProps) {
   const [gatewayName, setGatewayName] = useState('')
@@ -102,7 +93,7 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
         await logoutBrowserSession()
         return
       }
-      if (error instanceof DOMException && error.name === 'AbortError') return
+      if (isAbortError(error)) return
       setSubmitError(error instanceof Error ? error.message : 'Failed to install server')
     } finally {
       setIsSubmitting(false)

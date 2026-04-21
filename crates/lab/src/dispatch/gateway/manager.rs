@@ -553,10 +553,6 @@ impl GatewayManager {
             "upstream oauth callback: tokens stored"
         );
 
-        // iwtf.3: persist OAuth config for probe-created (transient) managers.
-        // A transient manager is created by `probe_upstream_oauth` but not yet
-        // persisted in LabConfig.  On first successful token exchange, backfill
-        // the OAuth metadata so it survives a server restart.
         let updated_cfg = {
             let probe_oauth = manager.upstream_config().oauth.clone();
             if let Some(oauth_config) = probe_oauth {
@@ -588,15 +584,19 @@ impl GatewayManager {
             }
         };
         if let Some(cfg) = updated_cfg {
-            if let Err(e) = self.persist_config(cfg).await {
-                tracing::warn!(
-                    service = "upstream_oauth",
-                    action = "callback",
-                    upstream,
-                    error = %e,
-                    "upstream oauth callback: failed to persist oauth config (non-fatal)"
-                );
-            }
+            let manager_for_persist = self.clone();
+            let upstream_for_persist = upstream.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = manager_for_persist.persist_config(cfg).await {
+                    tracing::warn!(
+                        service = "upstream_oauth",
+                        action = "callback",
+                        upstream = upstream_for_persist,
+                        error = %e,
+                        "upstream oauth callback: failed to persist oauth config (non-fatal)"
+                    );
+                }
+            });
         }
 
         Ok(())

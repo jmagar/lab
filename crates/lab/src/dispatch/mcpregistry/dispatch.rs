@@ -40,11 +40,9 @@ pub async fn dispatch_with_client(
             let name = params::require_name(&params_value)?;
             let version = params_value["version"].as_str().unwrap_or("latest");
 
-            // Fetch the server entry from the registry.
             let server_resp = client.get_server(&name, version).await?;
             let server = &server_resp.server;
 
-            // Require at least one HTTP remote — stdio-only servers cannot be gateway upstreams.
             let url = server
                 .remotes
                 .iter()
@@ -90,7 +88,6 @@ pub async fn dispatch_with_client(
                     None
                 };
 
-            // Derive gateway name from the last segment after `/`.
             let gateway_name = params_value["gateway_name"]
                 .as_str()
                 .map(str::to_string)
@@ -108,7 +105,6 @@ pub async fn dispatch_with_client(
                 "expose_tools": null,
             });
 
-            // Embed discovered OAuth metadata into the spec when available.
             if let Some(oauth) = discovered_oauth {
                 spec["oauth"] = oauth;
             }
