@@ -257,6 +257,15 @@ async fn start(
         .gateway_manager
         .clone()
         .ok_or_else(|| ToolError::internal_message("gateway manager not wired"))?;
+    // Pre-flight: verify SQLite is configured before redirecting the user to
+    // the authorization server. Without this check, a misconfigured deployment
+    // sends the user off-site only to fail at the callback with "oauth sqlite
+    // not configured" — after the user has already left the page.
+    if manager.oauth_sqlite().is_none() {
+        return Err(ToolError::internal_message(
+            "upstream OAuth not configured (missing SQLite store)",
+        ));
+    }
     let begin =
         crate::dispatch::gateway::oauth::begin_authorization(&manager, &body.upstream, &auth.sub)
             .await
@@ -414,7 +423,8 @@ async fn callback(
             .into_response();
         }
         Err(e) => {
-            return ToolError::internal_message(format!("state lookup failed: {e}")).into_response();
+            return ToolError::internal_message(format!("state lookup failed: {e}"))
+                .into_response();
         }
     };
 
@@ -439,6 +449,32 @@ async fn callback(
         &query.state,
     )
     .await;
+
+    // On failure, revoke the state token to foreclose replay attacks.
+    //
+    // On success the exchange already consumed the row atomically via
+    // `take_upstream_oauth_state` (DELETE … RETURNING inside the rmcp
+    // `StateStore::load` path); the revoke below becomes a silent no-op.
+    //
+    // On failure the row is still alive until TTL, so we delete it here to
+    // prevent a second callback attempt from succeeding.
+    if result.is_err() {
+        let revoke_now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        if let Err(revoke_err) = sqlite
+            .delete_upstream_oauth_state_by_csrf(&query.state, revoke_now)
+            .await
+        {
+            warn!(
+                surface = "api",
+                service = "upstream_oauth",
+                action = "callback",
+                "failed to revoke oauth state token after exchange failure: {revoke_err}"
+            );
+        }
+    }
 
     let status = if let Err(error) = &result {
         warn!(

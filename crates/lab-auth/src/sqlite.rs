@@ -618,6 +618,33 @@ impl SqliteStore {
         .await
     }
 
+    /// Revoke a pending upstream OAuth state token identified by `csrf_token` alone.
+    ///
+    /// Called on token-exchange failure in the OAuth callback handler to foreclose
+    /// replay attacks. On the happy path, `take_upstream_oauth_state` (called inside
+    /// the exchange flow) has already consumed the row; this becomes a silent no-op.
+    ///
+    /// Only deletes unexpired rows (`expires_at > now`) — expired rows are handled by
+    /// `cleanup_expired`.
+    pub async fn delete_upstream_oauth_state_by_csrf(
+        &self,
+        csrf_token: &str,
+        now: i64,
+    ) -> Result<(), AuthError> {
+        let csrf_token = csrf_token.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM upstream_oauth_state
+                 WHERE csrf_token = ?1
+                   AND expires_at > ?2",
+                params![csrf_token, now],
+            )
+            .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Atomic take-once via `DELETE ... RETURNING`.
     pub async fn take_upstream_oauth_state(
         &self,
