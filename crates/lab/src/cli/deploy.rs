@@ -60,6 +60,21 @@ pub enum DeployCmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Watch SSH hosts and emit JSON events when they go online or offline.
+    ///
+    /// Emits one newline-delimited JSON line per state change to stdout.
+    /// Suitable for use with the Claude Code Monitor tool.
+    Monitor {
+        /// SSH aliases to watch (must exist in deploy config).
+        #[arg(required = true)]
+        targets: Vec<String>,
+        /// Poll interval in seconds.
+        #[arg(long, default_value = "30")]
+        interval: u64,
+        /// TCP probe timeout in seconds.
+        #[arg(long, default_value = "3")]
+        timeout: u64,
+    },
 }
 
 impl DeployArgs {
@@ -70,7 +85,8 @@ impl DeployArgs {
         match &self.cmd {
             DeployCmd::Plan { targets }
             | DeployCmd::Run { targets, .. }
-            | DeployCmd::Rollback { targets, .. } => targets.clone(),
+            | DeployCmd::Rollback { targets, .. }
+            | DeployCmd::Monitor { targets, .. } => targets.clone(),
             DeployCmd::ConfigList => vec![],
         }
     }
@@ -113,6 +129,22 @@ pub async fn run(
     format: OutputFormat,
     runner: &deploy::runner::DefaultRunner,
 ) -> Result<()> {
+    if let DeployCmd::Monitor {
+        targets,
+        interval,
+        timeout,
+    } = args.cmd
+    {
+        deploy::monitor::watch_hosts(
+            runner,
+            targets,
+            std::time::Duration::from_secs(interval),
+            std::time::Duration::from_secs(timeout),
+        )
+        .await;
+        return Ok(());
+    }
+
     let (action, params) = match args.cmd {
         DeployCmd::ConfigList => ("config.list", json!({})),
         DeployCmd::Plan { targets } => ("plan", json!({ "targets": targets })),
@@ -150,6 +182,7 @@ pub async fn run(
                 ("rollback", json!({ "targets": targets, "confirm": true }))
             }
         }
+        DeployCmd::Monitor { .. } => unreachable!(),
     };
 
     // Scope the MCP context to CLI so authz treats this as a local operator

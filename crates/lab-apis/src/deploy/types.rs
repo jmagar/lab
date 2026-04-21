@@ -66,6 +66,7 @@ pub enum DeployStage {
     Install,
     Restart,
     Verify,
+    PhoneHome,
 }
 
 /// Per-host result row in `DeployRunSummary`.
@@ -80,6 +81,25 @@ pub struct DeployHostResult {
     /// Stable kind; full detail at local WARN only.
     pub error_kind: Option<String>,
     pub stage_timings_ms: std::collections::BTreeMap<String, u128>,
+}
+
+/// Reachability state of a monitored host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostStatus {
+    Online,
+    Offline,
+}
+
+/// A single state-change event emitted by `deploy monitor`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostStatusEvent {
+    /// Unix timestamp (seconds).
+    pub ts: u64,
+    pub host: String,
+    pub status: HostStatus,
+    /// Address and port that was probed.
+    pub addr: String,
 }
 
 /// Result of `deploy.run` / `deploy.rollback`.

@@ -100,7 +100,10 @@ impl Serialize for ToolError {
                 "kind": "confirmation_required",
                 "message": message,
             }),
-            Self::Conflict { message, existing_id } => serde_json::json!({
+            Self::Conflict {
+                message,
+                existing_id,
+            } => serde_json::json!({
                 "kind": "conflict",
                 "message": message,
                 "existing_id": existing_id,

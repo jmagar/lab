@@ -26,7 +26,7 @@ GitHub review threads can be in several states:
 
 ### Phase 1: Fetch Comments
 
-**Script:** `scripts/fetch_comments.py`
+**Script:** `gh-fetch-comments`
 
 **Purpose:** Pull all PR data including conversation comments, reviews, and review threads.
 

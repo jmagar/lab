@@ -6,7 +6,7 @@ export function buildGatewayEndpointPreview(gateway: Gateway): string {
   }
 
   if (gateway.transport === 'lab_service') {
-    return gateway.config.url ?? `${gateway.name} virtual server`
+    return `lab serve mcp --stdio --services ${gateway.name}`
   }
 
   return [gateway.config.command, ...(gateway.config.args ?? [])].filter(Boolean).join(' ')

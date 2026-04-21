@@ -9,16 +9,14 @@ import type { ServerResponse } from '@/lib/types/registry'
 export default function RegistryPage() {
   const [selectedResponse, setSelectedResponse] = useState<ServerResponse | null>(null)
 
-  const extensions = selectedResponse?._meta?.[REGISTRY_META_KEY]
+  const extensions = selectedResponse?._meta?.[REGISTRY_META_KEY] ?? null
 
   return (
     <>
       <RegistryListContent onSelectServer={setSelectedResponse} />
       <ServerDetailPanel
         server={selectedResponse?.server ?? null}
-        updatedAt={extensions?.updatedAt}
-        status={extensions?.status}
-        statusMessage={extensions?.statusMessage}
+        extensions={extensions}
         onClose={() => setSelectedResponse(null)}
       />
     </>

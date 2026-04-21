@@ -22,8 +22,9 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
             reason: format!("disk-space check join: {e}"),
         })??;
     check_disk_space(free, 1_500_000_000)?;
+    let pkg_spec = concat!("lab@", env!("CARGO_PKG_VERSION"));
     let output = tokio::process::Command::new("cargo")
-        .args(["build", "--release", "--all-features", "-p", "lab"])
+        .args(["build", "--release", "--all-features", "-p", pkg_spec])
         .output()
         .await
         .map_err(|e| DeployError::BuildFailed {

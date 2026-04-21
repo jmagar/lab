@@ -17,9 +17,16 @@ pub struct DeviceAck {
     pub ok: bool,
 }
 
-pub fn routes(state: AppState) -> Router<AppState> {
+/// Unauthenticated device routes — mounted outside the bearer-auth middleware.
+/// `/v1/device/hello` is self-registration and must not require a pre-shared token.
+pub fn public_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/hello", post(hello::handle))
+        .with_state(state)
+}
+
+pub fn routes(state: AppState) -> Router<AppState> {
+    Router::new()
         .route("/status", post(status::handle))
         .route("/metadata", post(metadata::handle))
         .route("/devices", axum::routing::get(fleet::list_devices))

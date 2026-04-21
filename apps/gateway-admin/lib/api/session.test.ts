@@ -141,18 +141,14 @@ test('hasApiTokenAuth only enables bearer mode for non-empty tokens', () => {
   assert.equal(hasApiTokenAuth('dev-token'), true)
 })
 
-test('isStandaloneBearerAuthMode requires both a token and the explicit standalone override', () => {
-  assert.equal(isStandaloneBearerAuthMode(undefined, undefined), false)
-  assert.equal(isStandaloneBearerAuthMode('dev-token', undefined), false)
-  assert.equal(isStandaloneBearerAuthMode(undefined, 'true'), false)
-  assert.equal(isStandaloneBearerAuthMode('dev-token', 'false'), false)
-  assert.equal(isStandaloneBearerAuthMode('dev-token', 'true'), true)
+test('isStandaloneBearerAuthMode activates whenever a token is set', () => {
+  assert.equal(isStandaloneBearerAuthMode(undefined), false)
+  assert.equal(isStandaloneBearerAuthMode('   '), false)
+  assert.equal(isStandaloneBearerAuthMode('dev-token'), true)
 })
 
-test('shouldBypassBrowserSessionAuth only bypasses hosted auth for mock mode or explicit standalone bearer mode', () => {
-  assert.equal(shouldBypassBrowserSessionAuth(undefined, 'false', undefined), false)
-  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'false', undefined), false)
-  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'false', 'false'), false)
-  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'false', 'true'), true)
-  assert.equal(shouldBypassBrowserSessionAuth(undefined, 'true', undefined), true)
+test('shouldBypassBrowserSessionAuth bypasses hosted auth when a token is set or in mock mode', () => {
+  assert.equal(shouldBypassBrowserSessionAuth(undefined, 'false'), false)
+  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'false'), true)
+  assert.equal(shouldBypassBrowserSessionAuth(undefined, 'true'), true)
 })

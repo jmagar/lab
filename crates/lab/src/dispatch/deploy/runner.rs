@@ -41,7 +41,7 @@ use super::host_io::SshHostIo;
 // can still import it from this module path.
 pub use super::host_io::HostIo;
 use super::ssh_session::SshHostTarget;
-use super::stages::{preflight, restart, transfer_and_install, verify};
+use super::stages::{phone_home, preflight, restart, transfer_and_install, verify};
 use lab_apis::deploy::{
     DeployError, DeployHostResult, DeployPlan, DeployRequest, DeployRunSummary, DeployStage,
 };
@@ -96,7 +96,7 @@ impl DefaultRunner {
         }
     }
 
-    fn resolve_target(&self, alias: &str) -> Option<&SshHostTarget> {
+    pub fn resolve_target(&self, alias: &str) -> Option<&SshHostTarget> {
         self.ssh_inventory.iter().find(|h| h.alias == alias)
     }
 
@@ -119,16 +119,20 @@ impl DefaultRunner {
     }
 
     fn effective_unit(&self, host: &str) -> Option<String> {
+        // An explicit empty string in host config means "no service for this host"
+        // and short-circuits the fallback to defaults.
+        if let Some(host_cfg) = self.config.hosts.get(host) {
+            match host_cfg.service.as_deref() {
+                Some("") => return None,
+                Some(s) => return Some(s.to_string()),
+                None => {}
+            }
+        }
         self.config
-            .hosts
-            .get(host)
-            .and_then(|o| o.service.clone())
-            .or_else(|| {
-                self.config
-                    .defaults
-                    .as_ref()
-                    .and_then(|d| d.service.clone())
-            })
+            .defaults
+            .as_ref()
+            .and_then(|d| d.service.clone())
+            .filter(|s| !s.is_empty())
     }
 
     fn effective_scope(&self, host: &str) -> Option<ServiceScope> {
@@ -541,10 +545,19 @@ struct HostJob {
     remote_path: String,
     unit: Option<String>,
     scope: Option<ServiceScope>,
+    master_url: Option<String>,
 }
 
 impl DefaultRunner {
+    fn master_url(&self) -> Option<String> {
+        self.config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.master_url.clone())
+    }
+
     fn build_jobs(&self, hosts: &[String]) -> Vec<HostJob> {
+        let master_url = self.master_url();
         hosts
             .iter()
             .filter_map(|h| {
@@ -555,6 +568,7 @@ impl DefaultRunner {
                     remote_path: self.effective_remote_path(h),
                     unit: self.effective_unit(h),
                     scope: self.effective_scope(h),
+                    master_url: master_url.clone(),
                 })
             })
             .collect()
@@ -652,7 +666,7 @@ where
                     run_id = %run_id,
                 );
                 let io = Arc::new(io_factory(&host));
-                let res = run_host_pipeline(io, host.clone(), remote_path, unit, scope, build)
+                let res = run_host_pipeline(io, host.clone(), remote_path, unit, scope, build, None)
                     .instrument(span)
                     .await;
                 if fail_fast && !res.succeeded {
@@ -692,7 +706,7 @@ async fn run_single_job(
             };
         }
     };
-    run_host_pipeline(io, job.host, job.remote_path, job.unit, job.scope, build).await
+    run_host_pipeline(io, job.host, job.remote_path, job.unit, job.scope, build, job.master_url).await
 }
 
 pub async fn run_host_pipeline<I: HostIo + 'static>(
@@ -702,6 +716,7 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
     unit: Option<String>,
     scope: Option<ServiceScope>,
     build: Arc<BuildOutcome>,
+    master_url: Option<String>,
 ) -> DeployHostResult {
     use std::time::Instant;
 
@@ -779,15 +794,28 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
 
     // Verify
     let t = Instant::now();
-    if let Err(e) = verify(io, remote_path.clone()).await {
+    if let Err(e) = verify(io.clone(), remote_path.clone()).await {
         timings.insert("verify".into(), t.elapsed().as_millis());
         return host_err(&host, DeployStage::Verify, e, timings, skipped_transfer);
     }
     timings.insert("verify".into(), t.elapsed().as_millis());
 
+    // Phone home (best-effort — does not fail the deploy on error)
+    if let Some(url) = master_url {
+        let t = Instant::now();
+        if let Err(e) = phone_home(io, remote_path, url).await {
+            tracing::warn!(
+                host = %host,
+                error = %e.kind(),
+                "deploy.phone_home.failed"
+            );
+        }
+        timings.insert("phone_home".into(), t.elapsed().as_millis());
+    }
+
     DeployHostResult {
         host,
-        reached_stage: DeployStage::Verify,
+        reached_stage: DeployStage::PhoneHome,
         succeeded: true,
         skipped_transfer,
         transferred_bytes,

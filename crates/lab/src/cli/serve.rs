@@ -282,7 +282,13 @@ async fn build_upstream_oauth_runtime(
         );
     }
     let cache = crate::oauth::upstream::cache::OauthClientCache::new(Arc::clone(&managers));
-    Ok(Some(UpstreamOauthRuntime { managers, cache, sqlite, key, redirect_uri }))
+    Ok(Some(UpstreamOauthRuntime {
+        managers,
+        cache,
+        sqlite,
+        key,
+        redirect_uri,
+    }))
 }
 
 fn build_upstream_oauth_callback_uri(public_url: &url::Url) -> Result<String> {

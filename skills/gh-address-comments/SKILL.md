@@ -11,7 +11,9 @@ Find the open PR for the current branch and systematically address all review co
 
 ## Available CLI Tools
 
-All scripts are in PATH:
+All scripts are symlinked into PATH as `gh-*` names. Invoke them using the **Bash tool**
+by their symlink name (e.g. `gh-fetch-comments`). Do not call the underlying
+`scripts/*.py` source files directly.
 
 | Command | Purpose |
 |---------|---------|
@@ -22,7 +24,7 @@ All scripts are in PATH:
 | `gh-close-beads` | Close beads for threads that are now resolved |
 | `gh-verify-resolution` | Verify all threads are addressed |
 | `gh-post-reply` | Post a reply to a thread (e.g. "Fixed in abc1234") |
-| `gh-ai-triage` | AI-powered priority/effort analysis of open threads |
+| `gh-ai-triage` | AI-powered triage — **runs a nested `claude -p` subprocess** (requires `claude` CLI in PATH; blocks until Claude responds; prints plain-text report only) |
 | `gh-thread-context` | Show file code context for a thread |
 | `gh-pr-status` | Quick merge-readiness dashboard |
 | `gh-pr-checklist` | Full pre-merge gate with actionable fix commands |
@@ -75,6 +77,11 @@ gh-pr-summary --input /tmp/pr.json --open-only
 ```
 
 For large PRs, run AI triage first to prioritise:
+
+> **Note:** `gh-ai-triage` shells out to `claude -p` internally. It requires the `claude` CLI
+> to be installed and in PATH. It blocks synchronously while Claude responds, then prints a
+> plain-text report. Do not call it expecting structured JSON output.
+
 ```bash
 gh-ai-triage --input /tmp/pr.json
 ```
@@ -83,6 +90,19 @@ Ask which threads to tackle in this session — don't assume all must be address
 To inspect what a specific thread is actually commenting on:
 ```bash
 gh-thread-context PRRT_kwDO... --input /tmp/pr.json
+```
+
+### 3) Verify tracking setup
+
+Beads for all open threads are created automatically when `gh-fetch-comments -o` saves its output. Confirm they exist:
+```bash
+bd list --status open
+```
+
+If beads are missing (e.g. `--no-beads` was passed, or `bd` was unavailable at fetch time):
+```bash
+gh-create-beads --input /tmp/pr.json        # preview first
+gh-create-beads --input /tmp/pr.json --dry-run
 ```
 
 ### 4) Apply fixes with commit linking

@@ -2,7 +2,15 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { CheckCircle2, ExternalLink, Globe, Package } from 'lucide-react'
+import {
+  Check,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  FileCode,
+  Globe,
+  Package,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -17,12 +25,18 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { safeHref } from '@/lib/utils/safe-href'
+import {
+  formatLocalDateTimePrecise,
+  formatUtcTooltip,
+} from '@/lib/utils/format-time'
 import { cn } from '@/lib/utils'
 import { AURORA_MEDIUM_PANEL, AURORA_MUTED_LABEL } from '@/components/gateway/gateway-theme'
 import { InstallDialog } from './install-dialog'
 import { RegistryStatusBadge } from './registry-status-badge'
 import type {
   EnvironmentVariable,
+  Header,
+  Icon as RegistryIcon,
   NormalizedServerJSON,
   Package as RegistryPackage,
   PackageArgument,
@@ -54,9 +68,11 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   const { remotes, icons, packages } = server
   const isHTTP = remotes.some((r) => r.type === 'streamable-http' || r.type === 'sse')
   const [installOpen, setInstallOpen] = useState(false)
-  const icon = icons[0] ?? null
+  const primaryIcon = icons[0] ?? null
+  const extraIcons = icons.slice(1)
   const repoHref = safeHref(server.repository?.url)
   const websiteHref = safeHref(server.websiteUrl)
+  const schemaHref = safeHref(server.$schema)
   const status = extensions?.status ?? null
   const statusMessage = extensions?.statusMessage ?? null
 
@@ -65,9 +81,9 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
       <DialogHeader className="shrink-0 space-y-0 border-b border-aurora-border-strong/60 px-6 py-5">
         <div className="flex items-start gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
-            {icon ? (
+            {primaryIcon ? (
               <img
-                src={safeHref(icon.src) ?? undefined}
+                src={safeHref(primaryIcon.src) ?? undefined}
                 alt=""
                 className="size-8 rounded object-contain"
                 referrerPolicy="no-referrer"
@@ -82,7 +98,10 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
             <DialogTitle className="text-base font-semibold leading-tight text-aurora-text-primary">
               {displayName}
             </DialogTitle>
-            <p className="mt-0.5 break-all font-mono text-xs text-aurora-text-muted">{server.name}</p>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <p className="break-all font-mono text-xs text-aurora-text-muted">{server.name}</p>
+              <CopyButton value={server.name} label="Copy server name" />
+            </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="rounded-full border border-aurora-border-strong/60 px-2 py-0.5 text-xs text-aurora-text-muted">
                 v{server.version}
@@ -102,17 +121,10 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
                   <CheckCircle2 className="size-3" /> Latest
                 </span>
               )}
-              {extensions?.updatedAt && (
-                <span
-                  title={extensions.updatedAt}
-                  className="cursor-default rounded-full border border-aurora-border-strong/40 px-2 py-0.5 text-xs text-aurora-text-muted"
-                >
-                  {formatDistanceToNow(new Date(extensions.updatedAt), { addSuffix: true })}
-                </span>
-              )}
+              {extensions?.updatedAt && <TimestampPill iso={extensions.updatedAt} />}
               <RegistryStatusBadge status={status} />
             </div>
-            {statusMessage && (status === 'deprecated' || status === 'deleted') && (
+            {statusMessage && (
               <p className="mt-2 text-xs leading-relaxed text-aurora-text-secondary">
                 {statusMessage}
               </p>
@@ -129,7 +141,7 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
           </p>
         </Section>
 
-        {(repoHref || websiteHref || server.$schema) && (
+        {(repoHref || websiteHref || schemaHref || server.repository?.id || server.repository?.subfolder) && (
           <Section label="Links">
             <div className="flex flex-wrap gap-3">
               {repoHref && (
@@ -157,6 +169,32 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
                   Website
                 </a>
               )}
+              {schemaHref && (
+                <a
+                  href={schemaHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-aurora-accent-strong hover:underline"
+                  title={server.$schema ?? undefined}
+                >
+                  <FileCode className="size-3.5" />
+                  Schema
+                </a>
+              )}
+            </div>
+            {(server.repository?.id || server.repository?.subfolder) && (
+              <dl className={cn(AURORA_MEDIUM_PANEL, 'mt-2 grid grid-cols-1 gap-x-6 gap-y-2 p-3 text-xs sm:grid-cols-2')}>
+                {server.repository?.id && <MetaRow label="Repository ID" value={server.repository.id} mono copy />}
+                {server.repository?.subfolder && <MetaRow label="Subfolder" value={server.repository.subfolder} mono />}
+              </dl>
+            )}
+          </Section>
+        )}
+
+        {extraIcons.length > 0 && (
+          <Section label={`Icons (${icons.length})`}>
+            <div className="flex flex-wrap gap-2">
+              {icons.map((icon, i) => <IconChip key={i} icon={icon} />)}
             </div>
           </Section>
         )}
@@ -186,10 +224,11 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
         {extensions && (
           <Section label="Registry metadata">
             <dl className={cn(AURORA_MEDIUM_PANEL, 'grid grid-cols-1 gap-x-6 gap-y-2 p-4 text-xs sm:grid-cols-2')}>
-              <MetaRow label="Published" value={extensions.publishedAt} />
-              <MetaRow label="Updated" value={extensions.updatedAt ?? undefined} />
-              <MetaRow label="Status changed" value={extensions.statusChangedAt} />
+              <TimeRow label="Published" iso={extensions.publishedAt} />
+              <TimeRow label="Updated" iso={extensions.updatedAt} />
+              <TimeRow label="Status changed" iso={extensions.statusChangedAt} />
               <MetaRow label="Status" value={extensions.status} />
+              <MetaRow label="Is latest" value={extensions.isLatest ? 'yes' : 'no'} />
             </dl>
           </Section>
         )}
@@ -235,18 +274,114 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-function MetaRow({ label, value }: { label: string; value?: string | null }) {
+function MetaRow({
+  label,
+  value,
+  mono,
+  copy,
+}: {
+  label: string
+  value?: string | null
+  mono?: boolean
+  copy?: boolean
+}) {
   if (!value) return null
   return (
     <div className="flex flex-col gap-0.5">
       <dt className={AURORA_MUTED_LABEL}>{label}</dt>
-      <dd className="font-mono text-xs text-aurora-text-secondary">{value}</dd>
+      <dd className={cn('flex items-center gap-1.5 text-xs text-aurora-text-secondary', mono && 'font-mono')}>
+        <span className="break-all">{value}</span>
+        {copy && <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />}
+      </dd>
+    </div>
+  )
+}
+
+function TimeRow({ label, iso }: { label: string; iso?: string | null }) {
+  const local = formatLocalDateTimePrecise(iso)
+  const utc = formatUtcTooltip(iso)
+  if (!local) return null
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className={AURORA_MUTED_LABEL}>{label}</dt>
+      <dd className="font-mono text-xs text-aurora-text-secondary" title={utc ?? undefined}>
+        {local}
+      </dd>
+    </div>
+  )
+}
+
+function TimestampPill({ iso }: { iso: string }) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const tooltip = [formatLocalDateTimePrecise(iso), formatUtcTooltip(iso)]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <span
+      title={tooltip}
+      className="cursor-default rounded-full border border-aurora-border-strong/40 px-2 py-0.5 text-xs text-aurora-text-muted"
+    >
+      {formatDistanceToNow(d, { addSuffix: true })}
+    </span>
+  )
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={async (e) => {
+        e.stopPropagation()
+        try {
+          await navigator.clipboard.writeText(value)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        } catch {
+          // clipboard access denied
+        }
+      }}
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-aurora-text-muted hover:bg-aurora-border-strong/40 hover:text-aurora-text-primary"
+    >
+      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+    </button>
+  )
+}
+
+function IconChip({ icon }: { icon: RegistryIcon }) {
+  const href = safeHref(icon.src)
+  const label = [icon.theme, icon.sizes?.join(', '), icon.mimeType]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <div
+      className={cn(AURORA_MEDIUM_PANEL, 'flex items-center gap-2 px-2 py-1.5 text-xs')}
+      title={icon.src}
+    >
+      {href ? (
+        <img
+          src={href}
+          alt=""
+          className="size-6 rounded object-contain"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+        />
+      ) : (
+        <Package className="size-4 text-aurora-text-muted" />
+      )}
+      <span className="font-mono text-[11px] text-aurora-text-secondary">
+        {label || 'icon'}
+      </span>
     </div>
   )
 }
 
 function RemoteRow({ transport }: { transport: Transport }) {
-  const headers = transport.headers ?? []
+  const headers: Header[] = transport.headers ?? []
   const variables = transport.variables ?? null
   const hasVariables = variables && Object.keys(variables).length > 0
 
@@ -258,11 +393,14 @@ function RemoteRow({ transport }: { transport: Transport }) {
         </span>
       </div>
       {transport.url && (
-        <p className="break-all font-mono text-xs text-aurora-text-muted">{transport.url}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="break-all font-mono text-xs text-aurora-text-muted">{transport.url}</p>
+          <CopyButton value={transport.url} label="Copy URL" />
+        </div>
       )}
       {headers.length > 0 && (
         <div className="space-y-1">
-          <p className={AURORA_MUTED_LABEL}>Headers</p>
+          <p className={AURORA_MUTED_LABEL}>Headers ({headers.length})</p>
           <ul className="space-y-0.5">
             {headers.map((h, i) => (
               <li key={i} className="font-mono text-xs text-aurora-text-secondary">
@@ -294,6 +432,7 @@ function PackageCard({ pkg }: { pkg: RegistryPackage }) {
       <div className="space-y-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="font-medium text-aurora-text-primary">{pkg.identifier}</span>
+          <CopyButton value={pkg.identifier} label="Copy identifier" />
           {pkg.version && (
             <span className="text-xs text-aurora-text-muted">v{pkg.version}</span>
           )}
@@ -307,28 +446,40 @@ function PackageCard({ pkg }: { pkg: RegistryPackage }) {
           )}
         </div>
         {pkg.registryBaseUrl && (
-          <p className="break-all font-mono text-[11px] text-aurora-text-muted">
-            {pkg.registryBaseUrl}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="break-all font-mono text-[11px] text-aurora-text-muted">
+              {pkg.registryBaseUrl}
+            </p>
+            <CopyButton value={pkg.registryBaseUrl} label="Copy registry URL" />
+          </div>
         )}
         {pkg.fileSha256 && (
-          <p className="break-all font-mono text-[11px] text-aurora-text-muted">
-            sha256: {pkg.fileSha256}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="break-all font-mono text-[11px] text-aurora-text-muted">
+              sha256: {pkg.fileSha256}
+            </p>
+            <CopyButton value={pkg.fileSha256} label="Copy sha256" />
+          </div>
         )}
       </div>
 
       <div className="space-y-1">
         <p className={AURORA_MUTED_LABEL}>Transport</p>
-        <div className="font-mono text-xs text-aurora-text-secondary">
+        <div className="flex items-center gap-1.5 font-mono text-xs text-aurora-text-secondary">
           <span className="text-aurora-text-primary">{pkg.transport.type}</span>
-          {pkg.transport.url && <> · {pkg.transport.url}</>}
+          {pkg.transport.url && (
+            <>
+              <span>·</span>
+              <span className="break-all">{pkg.transport.url}</span>
+              <CopyButton value={pkg.transport.url} label="Copy URL" />
+            </>
+          )}
         </div>
       </div>
 
-      {runtimeArgs.length > 0 && <ArgsList label="Runtime arguments" items={runtimeArgs} renderItem={renderRuntimeArg} />}
-      {packageArgs.length > 0 && <ArgsList label="Package arguments" items={packageArgs} renderItem={renderPackageArg} />}
-      {envVars.length > 0 && <ArgsList label="Environment variables" items={envVars} renderItem={renderEnvVar} />}
+      {runtimeArgs.length > 0 && <ArgsList label={`Runtime arguments (${runtimeArgs.length})`} items={runtimeArgs} renderItem={renderRuntimeArg} />}
+      {packageArgs.length > 0 && <ArgsList label={`Package arguments (${packageArgs.length})`} items={packageArgs} renderItem={renderPackageArg} />}
+      {envVars.length > 0 && <ArgsList label={`Environment variables (${envVars.length})`} items={envVars} renderItem={renderEnvVar} />}
     </div>
   )
 }
@@ -394,3 +545,4 @@ function renderEnvVar(env: EnvironmentVariable, i: number) {
     </li>
   )
 }
+

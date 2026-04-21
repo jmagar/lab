@@ -280,6 +280,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    use crate::oauth::target::resolve_explicit_target;
     use axum::{
         Router,
         body::Bytes,
@@ -290,7 +291,6 @@ mod tests {
     };
     use tokio::task::JoinHandle;
     use tokio::time::sleep;
-    use crate::oauth::target::resolve_explicit_target;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct SeenRequest {
@@ -530,10 +530,19 @@ mod tests {
         )
         .unwrap();
         let redacted = redact_forward_target(&url);
-        assert!(!redacted.contains("token=secret-value"), "query param leaked: {redacted}");
-        assert!(!redacted.contains("fragment"), "fragment leaked: {redacted}");
+        assert!(
+            !redacted.contains("token=secret-value"),
+            "query param leaked: {redacted}"
+        );
+        assert!(
+            !redacted.contains("fragment"),
+            "fragment leaked: {redacted}"
+        );
         assert!(redacted.contains("127.0.0.1"), "host missing: {redacted}");
-        assert!(redacted.contains("/callback/dookie"), "path missing: {redacted}");
+        assert!(
+            redacted.contains("/callback/dookie"),
+            "path missing: {redacted}"
+        );
     }
 
     #[test]

@@ -19,12 +19,12 @@ export function connectLogStream(
     standaloneBearerAuth?: boolean
   },
 ) {
-  const modeOverride =
-    typeof options?.standaloneBearerAuth === 'boolean'
-      ? (options.standaloneBearerAuth ? 'true' : 'false')
-      : undefined
-
-  if (isStandaloneBearerAuthMode(options?.token, modeOverride)) {
+  // EventSource cannot carry bearer headers — only same-origin session cookies.
+  // Refuse explicitly so callers in standalone-bearer deployments fail fast
+  // instead of silently sending unauthenticated stream requests.
+  const standaloneBearerAuth =
+    options?.standaloneBearerAuth ?? isStandaloneBearerAuthMode(options?.token)
+  if (standaloneBearerAuth) {
     throw new Error(
       'live log streaming uses hosted same-origin session auth in v1; standalone bearer mode is not supported for EventSource',
     )

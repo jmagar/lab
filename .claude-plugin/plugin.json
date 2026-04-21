@@ -1,7 +1,7 @@
 {
   "name": "lab",
   "description": "Homelab control plane — CLI, MCP server, and HTTP API for 22 services (Radarr, Sonarr, Plex, UniFi, Unraid, and more). Includes skills for onboarding new services and using the lab CLI.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": {
     "name": "Jacob Magar"
   },
@@ -9,6 +9,13 @@
   "repository": "https://github.com/jmagar/lab",
   "license": "MIT",
   "keywords": ["homelab", "mcp", "cli", "rust", "media-server", "unraid", "unifi"],
+  "monitors": "./monitors/monitors.json",
+  "userConfig": {
+    "deploy_targets": {
+      "description": "Space-separated SSH aliases to monitor (e.g. tootie shart vivobook-wsl)",
+      "sensitive": false
+    }
+  },
   "skills": [
     {
       "name": "using-lab-cli",
