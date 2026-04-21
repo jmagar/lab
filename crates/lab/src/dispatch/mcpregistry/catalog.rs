@@ -21,6 +21,13 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
+        name: "config",
+        description: "Return the resolved registry base URL",
+        destructive: false,
+        returns: "RegistryConfig",
+        params: &[],
+    },
+    ActionSpec {
         name: "server.list",
         description: "List MCP servers from the registry with optional search and pagination",
         destructive: false,
@@ -131,5 +138,25 @@ pub const ACTIONS: &[ActionSpec] = &[
             required: true,
             description: "ServerJSON document to validate (must include name, description, version)",
         }],
+    },
+    ActionSpec {
+        name: "server.uninstall",
+        description: "Remove a previously installed MCP server gateway upstream by gateway name",
+        destructive: true,
+        returns: "GatewayView",
+        params: &[
+            ParamSpec {
+                name: "gateway_name",
+                ty: "string",
+                required: true,
+                description: "Gateway name to remove (as used during install)",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive uninstall operation",
+            },
+        ],
     },
 ];

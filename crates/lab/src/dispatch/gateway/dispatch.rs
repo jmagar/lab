@@ -150,6 +150,10 @@ pub async fn dispatch_with_manager(
             let params: GatewayNameParams = parse_params(params_value)?;
             to_json(manager.discovered_prompts(&params.name).await?)
         }
+        "gateway.oauth.probe" => {
+            let url = require_str(&params_value, "url")?;
+            to_json(manager.probe_upstream_oauth(url).await?)
+        }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
@@ -216,6 +220,7 @@ mod tests {
         assert!(names.contains(&"gateway.discovered_tools"));
         assert!(names.contains(&"gateway.discovered_resources"));
         assert!(names.contains(&"gateway.discovered_prompts"));
+        assert!(names.contains(&"gateway.oauth.probe"));
 
         for name in [
             "gateway.add",
@@ -248,6 +253,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             }])
@@ -279,6 +285,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             }])
@@ -308,6 +315,7 @@ mod tests {
                 command: Some("noxa".to_string()),
                 args: vec!["mcp".to_string()],
                 proxy_resources: true,
+                proxy_prompts: false,
                 expose_tools: Some(vec!["scrape".to_string()]),
                 oauth: None,
             }])
@@ -719,6 +727,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             }])
@@ -822,6 +831,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             }])

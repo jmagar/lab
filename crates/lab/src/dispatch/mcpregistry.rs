@@ -10,6 +10,7 @@ mod params;
 pub use catalog::ACTIONS;
 pub use client::client_from_env;
 pub use dispatch::{dispatch, dispatch_with_client};
+pub use params::validate_registry_url;
 
 #[cfg(test)]
 mod tests {
@@ -26,12 +27,33 @@ mod tests {
     }
 
     #[test]
-    fn no_action_is_destructive() {
-        for spec in ACTIONS {
+    fn install_and_uninstall_are_destructive() {
+        let destructive_actions = ["server.install", "server.uninstall"];
+        for action_name in destructive_actions {
+            let spec = ACTIONS
+                .iter()
+                .find(|a| a.name == action_name)
+                .unwrap_or_else(|| panic!("action '{}' not found in catalog", action_name));
+            assert!(
+                spec.destructive,
+                "action '{}' must be destructive",
+                action_name
+            );
+        }
+    }
+
+    #[test]
+    fn read_actions_are_not_destructive() {
+        let read_actions = ["server.list", "server.get", "server.versions", "server.validate"];
+        for action_name in read_actions {
+            let spec = ACTIONS
+                .iter()
+                .find(|a| a.name == action_name)
+                .unwrap_or_else(|| panic!("action '{}' not found in catalog", action_name));
             assert!(
                 !spec.destructive,
-                "action '{}' must not be destructive — mcpregistry is read-only",
-                spec.name
+                "action '{}' must not be destructive",
+                action_name
             );
         }
     }

@@ -1,5 +1,5 @@
-use lab_apis::mcpregistry::types::ServerJSON;
 use lab_apis::mcpregistry::McpRegistryClient;
+use lab_apis::mcpregistry::types::ServerJSON;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
@@ -13,6 +13,7 @@ pub async fn dispatch_with_client(
     params_value: Value,
 ) -> Result<Value, ToolError> {
     match action {
+        "config" => Ok(serde_json::json!({ "url": client::resolved_url() })),
         "server.list" => {
             let p = params::list_servers_params(&params_value)?;
             to_json(client.list_servers(p).await?)
@@ -61,22 +62,43 @@ pub async fn dispatch_with_client(
             let url_for_check = url.clone();
             tokio::task::spawn_blocking(move || params::validate_registry_url(&url_for_check))
                 .await
-                .map_err(|e| ToolError::Sdk {
-                    sdk_kind: "internal_error".to_string(),
-                    message: format!("SSRF validation task panicked: {e}"),
+                .map_err(|e| {
+                    ToolError::internal_message(format!("SSRF validation task panicked: {e}"))
                 })??;
+
+            // Probe for OAuth support and capture the discovered OAuth config if available.
+            // Non-fatal: if there is no gateway manager or the probe fails for any reason,
+            // install proceeds without OAuth configuration.
+            let discovered_oauth: Option<Value> =
+                if let Some(manager) = crate::dispatch::gateway::current_gateway_manager() {
+                    match manager.probe_upstream_oauth(&url).await {
+                        Ok(probe) if probe.oauth_discovered => {
+                            // The probe registered a transient manager in the DashMap.
+                            // Retrieve its full UpstreamOauthConfig so we can embed it in the
+                            // gateway spec — that way the installed gateway already has OAuth
+                            // and does not require a separate `gateway.oauth.probe` call.
+                            let oauth_cfg = manager
+                                .upstream_oauth_manager(&probe.upstream)
+                                .and_then(|m| {
+                                    serde_json::to_value(m.upstream_config().oauth.clone()).ok()
+                                });
+                            oauth_cfg
+                        }
+                        Ok(_) | Err(_) => None,
+                    }
+                } else {
+                    None
+                };
 
             // Derive gateway name from the last segment after `/`.
             let gateway_name = params_value["gateway_name"]
                 .as_str()
                 .map(str::to_string)
-                .unwrap_or_else(|| {
-                    name.rsplit('/').next().unwrap_or(&name).to_string()
-                });
+                .unwrap_or_else(|| name.rsplit('/').next().unwrap_or(&name).to_string());
 
             let bearer_token_env = params_value["bearer_token_env"].as_str();
 
-            let spec = serde_json::json!({
+            let mut spec = serde_json::json!({
                 "name": gateway_name,
                 "url": url,
                 "bearer_token_env": bearer_token_env,
@@ -86,12 +108,35 @@ pub async fn dispatch_with_client(
                 "expose_tools": null,
             });
 
+            // Embed discovered OAuth metadata into the spec when available.
+            if let Some(oauth) = discovered_oauth {
+                spec["oauth"] = oauth;
+            }
+
             // Delegate to gateway.add — pass confirm:true since the caller already confirmed at
             // the server.install level (destructive:true is checked by handle_action before we
             // reach this arm).
             crate::dispatch::gateway::dispatch(
                 "gateway.add",
                 serde_json::json!({ "spec": spec, "confirm": true }),
+            )
+            .await
+        }
+        "server.uninstall" => {
+            let gateway_name = params_value["gateway_name"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| ToolError::MissingParam {
+                    message: "missing required parameter `gateway_name`".to_string(),
+                    param: "gateway_name".to_string(),
+                })?
+                .to_string();
+
+            // Delegate to gateway.remove — pass confirm:true since the caller already confirmed
+            // at the server.uninstall level (destructive:true is checked by handle_action).
+            crate::dispatch::gateway::dispatch(
+                "gateway.remove",
+                serde_json::json!({ "name": gateway_name, "confirm": true }),
             )
             .await
         }

@@ -7,8 +7,8 @@ use tokio::sync::RwLock;
 use url::Url;
 
 use crate::config::{
-    LabConfig, UpstreamConfig, UpstreamOauthConfig, UpstreamOauthMode,
-    UpstreamOauthRegistration, backup_env, env_is_up_to_date, write_env,
+    LabConfig, UpstreamConfig, UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration,
+    backup_env, env_is_up_to_date, write_env,
 };
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
@@ -209,37 +209,33 @@ impl GatewayManager {
         use rmcp::transport::AuthorizationManager;
         let started = std::time::Instant::now();
 
-        let parsed = Url::parse(url).map_err(|_| {
+        // SSRF validation (synchronous DNS) — must run in spawn_blocking.
+        // Also enforces https-only and rejects RFC 1918, loopback, and link-local.
+        let url_for_check = url.to_string();
+        tokio::task::spawn_blocking(move || {
+            crate::dispatch::mcpregistry::validate_registry_url(&url_for_check)
+        })
+        .await
+        .map_err(|e| ToolError::internal_message(format!("SSRF validation task panicked: {e}")))
+        .map_err(|e| {
             tracing::warn!(
                 service = "upstream_oauth",
                 action = "probe",
                 url,
-                kind = "invalid_param",
-                "upstream oauth probe: invalid URL"
+                kind = "ssrf_blocked",
+                "upstream oauth probe: SSRF validation task error"
             );
-            ToolError::Sdk {
-                sdk_kind: "invalid_param".to_string(),
-                message: format!("invalid upstream URL: {url}"),
-            }
-        })?;
-        if parsed.scheme() != "http" && parsed.scheme() != "https" {
-            tracing::warn!(
-                service = "upstream_oauth",
-                action = "probe",
-                url,
-                kind = "invalid_param",
-                "upstream oauth probe: URL must use http or https"
-            );
-            return Err(ToolError::Sdk {
-                sdk_kind: "invalid_param".to_string(),
-                message: "upstream URL must use http or https".to_string(),
-            });
-        }
+            e
+        })??;
 
-        let name = parsed
-            .host_str()
-            .unwrap_or("upstream")
-            .replace('.', "-");
+        let parsed = Url::parse(url).map_err(|_| ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("invalid upstream URL: {url}"),
+        })?;
+
+        // Use the raw hostname (with dots) as the DashMap key so that
+        // `api.example.com` and `api-example.com` do not collide.
+        let name = parsed.host_str().unwrap_or("upstream").to_string();
 
         tracing::info!(
             service = "upstream_oauth",
@@ -249,24 +245,22 @@ impl GatewayManager {
             "upstream oauth probe: connecting"
         );
 
-        let auth_manager = AuthorizationManager::new(url)
-            .await
-            .map_err(|e| {
-                tracing::warn!(
-                    service = "upstream_oauth",
-                    action = "probe",
-                    upstream = %name,
-                    url,
-                    kind = "network_error",
-                    error = %e,
-                    elapsed_ms = started.elapsed().as_millis(),
-                    "upstream oauth probe: connection failed"
-                );
-                ToolError::Sdk {
-                    sdk_kind: "network_error".to_string(),
-                    message: format!("failed to connect to upstream: {e}"),
-                }
-            })?;
+        let auth_manager = AuthorizationManager::new(url).await.map_err(|e| {
+            tracing::warn!(
+                service = "upstream_oauth",
+                action = "probe",
+                upstream = %name,
+                url,
+                kind = "network_error",
+                error = %e,
+                elapsed_ms = started.elapsed().as_millis(),
+                "upstream oauth probe: connection failed"
+            );
+            ToolError::Sdk {
+                sdk_kind: "network_error".to_string(),
+                message: format!("failed to connect to upstream: {e}"),
+            }
+        })?;
 
         let metadata = match auth_manager.discover_metadata().await {
             Ok(m) => {
@@ -305,14 +299,25 @@ impl GatewayManager {
         };
 
         let supports_dynamic = metadata.registration_endpoint.is_some();
-        let strategy = if supports_dynamic { "dynamic" } else { "client_metadata_document" };
+        let strategy = if supports_dynamic {
+            "dynamic"
+        } else {
+            "client_metadata_document"
+        };
 
         // Check each prerequisite independently so the error names only what's missing.
-        if self.oauth_key.is_none() || self.oauth_sqlite.is_none() || self.oauth_redirect_uri.is_none() {
+        if self.oauth_key.is_none()
+            || self.oauth_sqlite.is_none()
+            || self.oauth_redirect_uri.is_none()
+        {
             let missing: Vec<&str> = [
-                self.oauth_key.is_none().then_some("LAB_OAUTH_ENCRYPTION_KEY"),
+                self.oauth_key
+                    .is_none()
+                    .then_some("LAB_OAUTH_ENCRYPTION_KEY"),
                 // redirect_uri derives from LAB_PUBLIC_URL; missing key is the same root cause
-                self.oauth_redirect_uri.is_none().then_some("LAB_PUBLIC_URL"),
+                self.oauth_redirect_uri
+                    .is_none()
+                    .then_some("LAB_PUBLIC_URL"),
             ]
             .into_iter()
             .flatten()
@@ -547,6 +552,53 @@ impl GatewayManager {
             elapsed_ms = started.elapsed().as_millis(),
             "upstream oauth callback: tokens stored"
         );
+
+        // iwtf.3: persist OAuth config for probe-created (transient) managers.
+        // A transient manager is created by `probe_upstream_oauth` but not yet
+        // persisted in LabConfig.  On first successful token exchange, backfill
+        // the OAuth metadata so it survives a server restart.
+        let updated_cfg = {
+            let probe_oauth = manager.upstream_config().oauth.clone();
+            if let Some(oauth_config) = probe_oauth {
+                let mut cfg = self.config.read().await.clone();
+                if let Some(existing) = cfg.upstream.iter_mut().find(|u| u.name == upstream) {
+                    if existing.oauth.is_none() {
+                        tracing::info!(
+                            service = "upstream_oauth",
+                            action = "callback",
+                            upstream,
+                            "upstream oauth callback: persisting oauth config for probe-created manager"
+                        );
+                        existing.oauth = Some(oauth_config);
+                        Some(cfg)
+                    } else {
+                        None
+                    }
+                } else {
+                    tracing::debug!(
+                        service = "upstream_oauth",
+                        action = "callback",
+                        upstream,
+                        "upstream oauth callback: no matching gateway in config; skipping oauth persistence"
+                    );
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        if let Some(cfg) = updated_cfg {
+            if let Err(e) = self.persist_config(cfg).await {
+                tracing::warn!(
+                    service = "upstream_oauth",
+                    action = "callback",
+                    upstream,
+                    error = %e,
+                    "upstream oauth callback: failed to persist oauth config (non-fatal)"
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -598,7 +650,11 @@ impl GatewayManager {
             elapsed_ms = started.elapsed().as_millis(),
             "upstream oauth status: checked"
         );
-        Ok(UpstreamOauthStatusView { authenticated, upstream: upstream.to_string(), expires_within_5m })
+        Ok(UpstreamOauthStatusView {
+            authenticated,
+            upstream: upstream.to_string(),
+            expires_within_5m,
+        })
     }
 
     pub async fn clear_upstream_credentials(
@@ -680,21 +736,20 @@ impl GatewayManager {
         let creds = values_to_service_creds(service, values);
         let env_path = self.env_path();
         if !creds.is_empty() && !env_is_up_to_date(&env_path, &creds) {
-            drop(backup_env(&env_path).map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("failed to back up env file: {e}"),
+            drop(backup_env(&env_path).map_err(|e| {
+                ToolError::internal_message(format!("failed to back up env file: {e}"))
             })?);
-            write_env(&env_path, &creds, true).map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("failed to write env file: {e}"),
+            write_env(&env_path, &creds, true).map_err(|e| {
+                ToolError::internal_message(format!("failed to write env file: {e}"))
             })?;
             if let Some(service_clients) = &self.service_clients {
                 service_clients
                     .refresh_from_env_path(&env_path)
                     .await
-                    .map_err(|e| ToolError::Sdk {
-                        sdk_kind: "internal_error".to_string(),
-                        message: format!("failed to refresh service clients: {e}"),
+                    .map_err(|e| {
+                        ToolError::internal_message(format!(
+                            "failed to refresh service clients: {e}"
+                        ))
                     })?;
             }
             self.invalidate_virtual_service_health_cache().await;
@@ -1135,10 +1190,7 @@ impl GatewayManager {
         let path = self.path.clone();
         let cfg = tokio::task::spawn_blocking(move || load_gateway_config(&path))
             .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config read task failed: {e}"),
-            })??;
+            .map_err(|e| ToolError::internal_message(format!("config read task failed: {e}")))??;
         tracing::info!(
             action = "gateway.reload",
             phase = "config.load.finish",
@@ -1401,13 +1453,11 @@ impl GatewayManager {
         }];
 
         if !env_is_up_to_date(&env_path, &creds) {
-            drop(backup_env(&env_path).map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("failed to back up env file: {e}"),
+            drop(backup_env(&env_path).map_err(|e| {
+                ToolError::internal_message(format!("failed to back up env file: {e}"))
             })?);
-            write_env(&env_path, &creds, true).map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("failed to write env file: {e}"),
+            write_env(&env_path, &creds, true).map_err(|e| {
+                ToolError::internal_message(format!("failed to write env file: {e}"))
             })?;
         }
 
@@ -1421,16 +1471,12 @@ impl GatewayManager {
         let env_path_clone = env_path.clone();
         tokio::task::spawn_blocking(move || dotenvy::from_path_override(&env_path_clone))
             .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("env reload task panicked: {e}"),
-            })?
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!(
+            .map_err(|e| ToolError::internal_message(format!("env reload task panicked: {e}")))?
+            .map_err(|e| {
+                ToolError::internal_message(format!(
                     "failed to refresh process env from {}: {e}",
                     env_path.display()
-                ),
+                ))
             })?;
 
         Ok(())
@@ -1448,9 +1494,8 @@ impl GatewayManager {
         );
         tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
             .await
-            .map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: format!("config write task failed: {e}"),
+            .map_err(|e| {
+                ToolError::internal_message(format!("config write task failed: {e}"))
             })??;
         *self.config.write().await = cfg;
         tracing::info!(
@@ -2035,6 +2080,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             }])
@@ -2066,6 +2112,7 @@ mod tests {
                     "--api-key=super-secret".to_string(),
                 ],
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             }])
@@ -2093,6 +2140,7 @@ mod tests {
             command: None,
             args: Vec::new(),
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2114,6 +2162,7 @@ mod tests {
             command: None,
             args: Vec::new(),
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2139,6 +2188,7 @@ mod tests {
                 "--access_token=abc123".to_string(),
             ],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2241,6 +2291,7 @@ mod tests {
                     command: None,
                     args: Vec::new(),
                     proxy_resources: false,
+                    proxy_prompts: false,
                     expose_tools: None,
                     oauth: None,
                 },
@@ -2588,6 +2639,7 @@ mod tests {
                     command: None,
                     args: Vec::new(),
                     proxy_resources: false,
+                    proxy_prompts: false,
                     expose_tools: None,
                     oauth: None,
                 }],
@@ -2615,6 +2667,7 @@ mod tests {
                     command: None,
                     args: Vec::new(),
                     proxy_resources: false,
+                    proxy_prompts: false,
                     expose_tools: None,
                     oauth: Some(crate::config::UpstreamOauthConfig {
                         mode: crate::config::UpstreamOauthMode::AuthorizationCodePkce,
@@ -2675,6 +2728,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: true,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             },
@@ -2732,6 +2786,7 @@ mod tests {
                 command: None,
                 args: Vec::new(),
                 proxy_resources: true,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             },
@@ -2751,6 +2806,7 @@ mod tests {
             command: None,
             args: Vec::new(),
             proxy_resources: true,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };

@@ -79,6 +79,14 @@ impl UpstreamOauthManager {
         }
     }
 
+    /// Return the `UpstreamConfig` this manager was constructed with.
+    ///
+    /// Used to persist transient (probe-created) managers back into the gateway
+    /// LabConfig when authorization completes for the first time.
+    pub fn upstream_config(&self) -> &UpstreamConfig {
+        &self.upstream
+    }
+
     /// Return `true` if persisted credentials exist for `subject`.
     ///
     /// Does not check whether the credentials are still valid.
@@ -130,16 +138,19 @@ impl UpstreamOauthManager {
         manager.set_credential_store(cred_store);
         manager.set_state_store(state_store);
 
-        let metadata = self.get_or_discover_metadata(&mut manager).await.map_err(|e| {
-            tracing::warn!(
-                upstream = %self.upstream.name,
-                subject,
-                kind = e.kind(),
-                error = %e,
-                "upstream oauth: AS metadata discovery failed"
-            );
-            e
-        })?;
+        let metadata = self
+            .get_or_discover_metadata(&mut manager)
+            .await
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = e.kind(),
+                    error = %e,
+                    "upstream oauth: AS metadata discovery failed"
+                );
+                e
+            })?;
 
         info!(
             upstream = %self.upstream.name,
@@ -148,15 +159,16 @@ impl UpstreamOauthManager {
             "upstream oauth: AS metadata ready"
         );
 
-        self.verify_s256(&metadata.code_challenge_methods_supported).map_err(|e| {
-            tracing::warn!(
-                upstream = %self.upstream.name,
-                subject,
-                kind = e.kind(),
-                "upstream oauth: S256 PKCE verification failed"
-            );
-            e
-        })?;
+        self.verify_s256(&metadata.code_challenge_methods_supported)
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    subject,
+                    kind = e.kind(),
+                    "upstream oauth: S256 PKCE verification failed"
+                );
+                e
+            })?;
         manager.set_metadata(metadata);
 
         let scopes: Vec<&str> = oauth_cfg
@@ -181,32 +193,27 @@ impl UpstreamOauthManager {
                 e
             })?;
 
-        manager
-            .configure_client(client_cfg)
-            .map_err(|e| {
-                tracing::warn!(
-                    upstream = %self.upstream.name,
-                    subject,
-                    kind = "internal_error",
-                    error = %e,
-                    "upstream oauth: client configuration failed"
-                );
-                OauthError::Internal(format!("configure client: {e}"))
-            })?;
+        manager.configure_client(client_cfg).map_err(|e| {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                subject,
+                kind = "internal_error",
+                error = %e,
+                "upstream oauth: client configuration failed"
+            );
+            OauthError::Internal(format!("configure client: {e}"))
+        })?;
 
-        let authorization_url = manager
-            .get_authorization_url(&scopes)
-            .await
-            .map_err(|e| {
-                tracing::warn!(
-                    upstream = %self.upstream.name,
-                    subject,
-                    kind = "internal_error",
-                    error = %e,
-                    "upstream oauth: authorization URL generation failed"
-                );
-                OauthError::Internal(format!("get authorization url: {e}"))
-            })?;
+        let authorization_url = manager.get_authorization_url(&scopes).await.map_err(|e| {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                subject,
+                kind = "internal_error",
+                error = %e,
+                "upstream oauth: authorization URL generation failed"
+            );
+            OauthError::Internal(format!("get authorization url: {e}"))
+        })?;
 
         let _csrf = extract_state_param(&authorization_url).ok_or_else(|| {
             tracing::warn!(

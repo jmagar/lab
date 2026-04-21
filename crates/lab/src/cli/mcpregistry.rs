@@ -123,7 +123,7 @@ async fn run_install(args: InstallArgs, format: OutputFormat) -> Result<ExitCode
 
 #[cfg(test)]
 mod tests {
-    use crate::dispatch::mcpregistry::params::validate_registry_url;
+    use crate::dispatch::mcpregistry::validate_registry_url;
 
     #[test]
     fn validate_registry_url_blocks_http() {
