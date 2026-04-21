@@ -1,0 +1,6 @@
+{
+  "action": "created",
+  "comment": { "id": 555, "user": { "login": "octocat" } },
+  "issue": { "number": 100 },
+  "repository": { "full_name": "jmagar/lab", "owner": { "login": "jmagar" }, "name": "lab" }
+}
