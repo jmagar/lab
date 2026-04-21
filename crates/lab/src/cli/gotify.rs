@@ -17,6 +17,7 @@ use crate::output::OutputFormat;
 #[derive(Debug, Args)]
 pub struct GotifyArgs {
     /// Action to run, e.g. `help`, `message.send`, `app.list`.
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(ACTIONS.iter().map(|a| a.name)))]
     pub action: String,
 
     /// Optional `key=value` params for the action.

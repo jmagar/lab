@@ -10,10 +10,7 @@
   "plugins": [
     {
       "name": "lab",
-      "source": {
-        "source": "github",
-        "repo": "jmagar/lab"
-      },
+      "source": "./",
       "description": "Homelab control plane — CLI, MCP server, and HTTP API for 22 services (Radarr, Sonarr, Plex, UniFi, Unraid, and more). Includes skills for onboarding new services and using the lab CLI.",
       "version": "0.1.0",
       "author": {

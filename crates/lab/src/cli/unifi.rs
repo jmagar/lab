@@ -17,6 +17,7 @@ use crate::output::OutputFormat;
 #[derive(Debug, Args)]
 pub struct UnifiArgs {
     /// Action to run, e.g. `help`, `sites.list`, `firewall.zones.list`.
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(unifi_actions().iter().map(|a| a.name)))]
     pub action: String,
 
     /// Optional named instance label.
