@@ -355,10 +355,10 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
             <div className="space-y-4">
               {/* Stats */}
               <div className="grid gap-4 sm:grid-cols-3">
-                <div className="flex items-center gap-3 rounded-lg border-2 border-[#00e676]/50 bg-[#00e676]/15 p-3 shadow-md shadow-[#00e676]/10">
-                  <CheckCircle2 className="size-5 text-[#00e676]" />
+                <div className="flex items-center gap-3 rounded-lg border-2 border-aurora-preview-allowed/50 bg-aurora-preview-allowed/15 p-3 shadow-md shadow-aurora-preview-allowed/10">
+                  <CheckCircle2 className="size-5 text-aurora-preview-allowed" />
                   <div>
-                    <p className="text-2xl font-bold tabular-nums text-[#00e676]">{preview.exposed_count}</p>
+                    <p className="text-2xl font-bold tabular-nums text-aurora-preview-allowed">{preview.exposed_count}</p>
                     <p className="text-xs text-muted-foreground">Exposed</p>
                   </div>
                 </div>
@@ -370,10 +370,10 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                   </div>
                 </div>
                 {preview.unmatched_patterns.length > 0 && (
-                  <div className="flex items-center gap-3 rounded-lg border-2 border-[#ff9100]/50 bg-[#ff9100]/15 p-3 shadow-md shadow-[#ff9100]/10">
-                    <AlertTriangle className="size-5 text-[#ff9100]" />
+                  <div className="flex items-center gap-3 rounded-lg border-2 border-aurora-preview-unmatched/50 bg-aurora-preview-unmatched/15 p-3 shadow-md shadow-aurora-preview-unmatched/10">
+                    <AlertTriangle className="size-5 text-aurora-preview-unmatched" />
                     <div>
-                      <p className="text-2xl font-bold tabular-nums text-[#ff9100]">{preview.unmatched_patterns.length}</p>
+                      <p className="text-2xl font-bold tabular-nums text-aurora-preview-unmatched">{preview.unmatched_patterns.length}</p>
                       <p className="text-xs text-muted-foreground">Unmatched</p>
                     </div>
                   </div>
@@ -382,8 +382,8 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
 
               {/* Unmatched warnings */}
               {preview.unmatched_patterns.length > 0 && (
-                <div className="rounded-lg border-2 border-[#ff9100]/50 bg-gradient-to-r from-[#ff9100]/15 to-[#ffea00]/10 p-4 shadow-md shadow-[#ff9100]/10">
-                  <div className="flex items-center gap-2 text-[#ff9100] mb-2">
+                <div className="rounded-lg border-2 border-aurora-preview-unmatched/50 bg-gradient-to-r from-aurora-preview-unmatched/15 to-aurora-preview-highlight/10 p-4 shadow-md shadow-aurora-preview-unmatched/10">
+                  <div className="flex items-center gap-2 text-aurora-preview-unmatched mb-2">
                     <AlertTriangle className="size-4" />
                     <span className="text-sm font-semibold">Unmatched Patterns</span>
                   </div>
@@ -392,7 +392,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {preview.unmatched_patterns.map((pattern) => (
-                      <Badge key={pattern} variant="outline" className="font-mono text-xs border-[#ff9100]/50 text-[#ff9100] bg-[#ff9100]/10">
+                      <Badge key={pattern} variant="outline" className="font-mono text-xs border-aurora-preview-unmatched/50 text-aurora-preview-unmatched bg-aurora-preview-unmatched/10">
                         {pattern}
                       </Badge>
                     ))}
@@ -403,13 +403,13 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
               {/* Matched tools */}
               {preview.matched_tools.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-semibold mb-2 flex items-center gap-2 text-[#00e676]">
+                  <h4 className="text-sm font-semibold mb-2 flex items-center gap-2 text-aurora-preview-allowed">
                     <Eye className="size-4" />
                     Exposed Tools
                   </h4>
                   <div className="flex flex-wrap gap-2">
                     {preview.matched_tools.slice(0, 10).map((tool) => (
-                      <Badge key={tool.name} variant="secondary" className="font-mono text-xs bg-[#00e676]/20 text-[#00e676] border-[#00e676]/50 border shadow-sm shadow-[#00e676]/20">
+                      <Badge key={tool.name} variant="secondary" className="font-mono text-xs bg-aurora-preview-allowed/20 text-aurora-preview-allowed border-aurora-preview-allowed/50 border shadow-sm shadow-aurora-preview-allowed/20">
                         {tool.name}
                       </Badge>
                     ))}
