@@ -207,12 +207,33 @@ impl DefaultRunner {
                 return Box::pin(async move { err });
             }
         }
-        let canary_hosts: Vec<String> = self.canary_set().into_iter().collect();
+        let canary_set = self.canary_set();
+        let canary_hosts: Vec<String> = canary_set.iter().cloned().collect();
         let max_parallel = req
             .max_parallel
             .or_else(|| self.effective_max_parallel())
             .unwrap_or(1)
             .max(1);
+
+        let host_details: Vec<lab_apis::deploy::DeployPlanHost> = req
+            .targets
+            .iter()
+            .filter_map(|alias| {
+                let target = self.resolve_target(alias)?;
+                Some(lab_apis::deploy::DeployPlanHost {
+                    alias: alias.clone(),
+                    hostname: target.hostname.clone(),
+                    ssh_user: target.user.clone(),
+                    port: target.port,
+                    remote_path: self.effective_remote_path(alias),
+                    service: self.effective_unit(alias),
+                    service_scope: self
+                        .effective_scope(alias)
+                        .map(|s| format!("{s:?}").to_lowercase()),
+                    canary: canary_set.contains(alias),
+                })
+            })
+            .collect();
 
         // --- async: only owned values, no &self ---
         Box::pin(async move {
@@ -229,7 +250,7 @@ impl DefaultRunner {
             Ok(DeployPlan {
                 artifact_path: artifact.to_string_lossy().into_owned(),
                 artifact_sha256,
-                hosts: req.targets.clone(),
+                host_details,
                 max_parallel,
                 canary_hosts,
             })

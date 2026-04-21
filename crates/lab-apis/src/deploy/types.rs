@@ -23,12 +23,34 @@ pub struct DeployRequest {
     pub confirm: bool,
 }
 
+/// Per-host resolved configuration shown by `deploy.plan`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeployPlanHost {
+    /// SSH alias used to address this host.
+    pub alias: String,
+    /// Resolved `HostName` from `~/.ssh/config`, if present.
+    pub hostname: Option<String>,
+    /// SSH user from `~/.ssh/config`, if present.
+    pub ssh_user: Option<String>,
+    /// SSH port from `~/.ssh/config`, if present.
+    pub port: Option<u16>,
+    /// Remote filesystem path where the binary will be installed.
+    pub remote_path: String,
+    /// Systemd unit that will be restarted, if configured.
+    pub service: Option<String>,
+    /// Systemd scope (`system` or `user`), if configured.
+    pub service_scope: Option<String>,
+    /// Whether this host is in the canary group.
+    pub canary: bool,
+}
+
 /// Output of `deploy.plan` — what `run` would do if invoked now.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployPlan {
     pub artifact_path: String,
     pub artifact_sha256: Option<String>,
-    pub hosts: Vec<String>,
+    /// Per-host resolved SSH target and install config.
+    pub host_details: Vec<DeployPlanHost>,
     pub max_parallel: u32,
     pub canary_hosts: Vec<String>,
 }
