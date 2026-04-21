@@ -490,6 +490,11 @@ pub fn build_router(
     let mut router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
+        // POST /v1/device/hello is self-registration — exempt from bearer auth.
+        .nest(
+            "/v1/device",
+            super::device::public_routes(state.clone()),
+        )
         .merge(v1_protected);
     if is_master {
         router = router

@@ -25,7 +25,7 @@ Document the **entire conversation session** (not just recent work) as a markdow
 Path rules:
 - Relative paths resolve from the repo root (not CWD).
 - Keep this workflow in-repo. If the resolved target is outside the repo root, stop and report the path issue.
-- If the target directory doesn't exist, create it.
+- Check whether the target directory exists (`[ -d <dir> ]`) before creating it — only run `mkdir -p` if the check fails.
 - If the target filename already exists, do not overwrite. Append a suffix like `-v2`, `-v3`, etc.
 
 ## Documentation Requirements

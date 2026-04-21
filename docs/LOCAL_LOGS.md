@@ -65,7 +65,7 @@ The shared `LogSystem` runtime owns:
 - `logs.tail` is bounded follow-up access, not true streaming
 - true live streaming is HTTP SSE only
 - hosted same-origin browser session auth is the supported v1 SSE access mode
-- standalone bearer mode does not get implicit browser EventSource support in v1
+- bearer mode (active when `NEXT_PUBLIC_API_TOKEN` is set) does not support live EventSource streaming; the SSE endpoint requires session cookie auth
 
 ## Retention
 

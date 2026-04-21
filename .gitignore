@@ -63,6 +63,8 @@ Thumbs.db
 
 # ── Caches (ALL tool caches go here) ─────────────────────────────────────────
 .cache/
+__pycache__/
+*.pyc
 
 # ── Documentation artifacts (session/plan docs, not reference) ───────────────
 .docs/

@@ -1,6 +1,7 @@
 'use client'
 
-import { Search, X } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -32,7 +33,9 @@ export function ServerFilters({
   totalCount,
   isLoading,
 }: ServerFiltersProps) {
-  const hasExtraFilters = version !== '' || updatedSince !== ''
+  const activeExtraCount = (version ? 1 : 0) + (updatedSince ? 1 : 0)
+  const [expanded, setExpanded] = useState(activeExtraCount > 0)
+  const hasAny = Boolean(search) || activeExtraCount > 0
 
   const handleClearAll = () => {
     onSearchChange('')
@@ -42,70 +45,94 @@ export function ServerFilters({
 
   return (
     <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-4')}>
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className={AURORA_MUTED_LABEL}>Search</p>
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
-            <Input
-              aria-label="Search MCP servers"
-              placeholder="Search servers by name or description"
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className={cn(
-                AURORA_CONTROL_SURFACE,
-                'h-11 border pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted',
-              )}
-            />
-          </div>
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
+          <Input
+            aria-label="Search MCP servers"
+            placeholder="Search servers by name or description"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className={cn(
+              AURORA_CONTROL_SURFACE,
+              'h-11 border pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted',
+            )}
+          />
         </div>
 
-        {(search || hasExtraFilters) && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="registry-extra-filters"
+          className={cn(
+            gatewayActionTone(activeExtraCount > 0 ? 'accent' : 'default'),
+            'h-11 shrink-0 gap-2 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
+          )}
+        >
+          <SlidersHorizontal className="size-4" />
+          <span className="hidden sm:inline">Filters</span>
+          {activeExtraCount > 0 && (
+            <span className="inline-flex size-5 items-center justify-center rounded-full bg-aurora-accent-strong/20 text-[11px] font-medium text-aurora-accent-strong">
+              {activeExtraCount}
+            </span>
+          )}
+          <ChevronDown
+            className={cn('size-3.5 transition-transform', expanded && 'rotate-180')}
+          />
+        </Button>
+
+        {hasAny && (
           <Button
             variant="outline"
             size="sm"
             onClick={handleClearAll}
             className={cn(
               gatewayActionTone(),
-              'mt-6 h-9 shrink-0 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
+              'h-11 shrink-0 gap-1 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
             )}
           >
-            <X className="mr-1 size-4" />
-            Clear
+            <X className="size-4" />
+            <span className="hidden sm:inline">Clear</span>
           </Button>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-4">
-        <div className="min-w-[160px] flex-1 space-y-1.5">
-          <p className={AURORA_MUTED_LABEL}>Version</p>
-          <Input
-            aria-label="Filter by version"
-            placeholder="Filter by version"
-            value={version}
-            onChange={(e) => onVersionChange(e.target.value)}
-            className={cn(
-              AURORA_CONTROL_SURFACE,
-              'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
-            )}
-          />
-        </div>
+      {expanded && (
+        <div
+          id="registry-extra-filters"
+          className="flex flex-wrap gap-4 border-t border-aurora-border-strong/40 pt-3"
+        >
+          <div className="min-w-[180px] flex-1 space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Version</p>
+            <Input
+              aria-label="Filter by version"
+              placeholder="e.g. 1.2.0"
+              value={version}
+              onChange={(e) => onVersionChange(e.target.value)}
+              className={cn(
+                AURORA_CONTROL_SURFACE,
+                'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
+              )}
+            />
+          </div>
 
-        <div className="min-w-[160px] flex-1 space-y-1.5">
-          <p className={AURORA_MUTED_LABEL}>Updated since</p>
-          <Input
-            aria-label="Filter by updated since date"
-            type="date"
-            placeholder="YYYY-MM-DD"
-            value={updatedSince}
-            onChange={(e) => onUpdatedSinceChange(e.target.value)}
-            className={cn(
-              AURORA_CONTROL_SURFACE,
-              'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
-            )}
-          />
+          <div className="min-w-[180px] flex-1 space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Updated since</p>
+            <Input
+              aria-label="Filter by updated since date"
+              type="date"
+              value={updatedSince}
+              onChange={(e) => onUpdatedSinceChange(e.target.value)}
+              className={cn(
+                AURORA_CONTROL_SURFACE,
+                'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
+              )}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {!isLoading && totalCount !== undefined && (
         <p className="text-xs text-aurora-text-muted">

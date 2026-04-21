@@ -234,6 +234,19 @@ fn normalize_resource_result_uri(
     result
 }
 
+/// Rewrite an upstream resource's URI to the gateway-prefixed form.
+///
+/// Strips any embedded upstream name from existing `lab://upstream/…` URIs
+/// and re-prefixes with the caller's `upstream_name`.
+fn rewrite_resource_uri(resource: &mut Resource, upstream_name: &str) {
+    let bare_uri = resource
+        .uri
+        .strip_prefix("lab://upstream/")
+        .and_then(|rest| rest.splitn(2, '/').nth(1).or(Some(rest)))
+        .unwrap_or(resource.uri.as_str());
+    resource.uri = format!("lab://upstream/{upstream_name}/{bare_uri}");
+}
+
 /// Upstream connection pool — holds live connections and discovered tool catalogs.
 #[derive(Clone)]
 pub struct UpstreamPool {
@@ -998,13 +1011,7 @@ impl UpstreamPool {
                         }
                     }
                     for mut resource in result.resources {
-                        let bare_uri = if let Some(rest) = resource.uri.strip_prefix("lab://upstream/") {
-                            // Strip any embedded upstream name and re-prefix with the correct one
-                            rest.splitn(2, '/').nth(1).unwrap_or(rest)
-                        } else {
-                            resource.uri.as_str()
-                        };
-                        resource.uri = format!("lab://upstream/{name}/{bare_uri}");
+                        rewrite_resource_uri(&mut resource, &name);
                         resources.push(resource);
                     }
                 }
@@ -1064,13 +1071,7 @@ impl UpstreamPool {
             match conn.peer.list_resources(None).await {
                 Ok(result) => {
                     for mut resource in result.resources {
-                        let bare_uri = if let Some(rest) = resource.uri.strip_prefix("lab://upstream/") {
-                            // Strip any embedded upstream name and re-prefix with the correct one
-                            rest.splitn(2, '/').nth(1).unwrap_or(rest)
-                        } else {
-                            resource.uri.as_str()
-                        };
-                        resource.uri = format!("lab://upstream/{name}/{bare_uri}");
+                        rewrite_resource_uri(&mut resource, &name);
                         resources.push(resource);
                     }
                 }

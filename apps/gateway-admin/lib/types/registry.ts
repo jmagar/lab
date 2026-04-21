@@ -22,8 +22,24 @@ export interface ListMetadata {
 }
 
 export interface ServerResponse {
-  server: ServerJSON
+  server: NormalizedServerJSON
   _meta?: ResponseMeta | null
+}
+
+/// `ServerJSON` with array fields guaranteed non-null (normalized at the API boundary).
+export type NormalizedServerJSON = Omit<ServerJSON, 'packages' | 'remotes' | 'icons'> & {
+  packages: Package[]
+  remotes: Transport[]
+  icons: Icon[]
+}
+
+export function normalizeServerJSON(server: ServerJSON): NormalizedServerJSON {
+  return {
+    ...server,
+    packages: server.packages ?? [],
+    remotes: server.remotes ?? [],
+    icons: server.icons ?? [],
+  }
 }
 
 export interface ResponseMeta {
@@ -45,10 +61,10 @@ export interface ServerJSON {
   title?: string | null
   description: string
   version: string
-  packages: Package[]
-  remotes: Transport[]
+  packages?: Package[]
+  remotes?: Transport[]
   repository?: Repository | null
-  icons: Icon[]
+  icons?: Icon[]
   websiteUrl?: string | null
 }
 
@@ -98,6 +114,7 @@ export interface Repository {
   url: string
   source?: string | null
   id?: string | null
+  subfolder?: string | null
 }
 
 export interface Icon {

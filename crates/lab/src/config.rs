@@ -91,6 +91,9 @@ pub struct DeployDefaults {
     pub max_parallel: Option<u32>,
     #[serde(default)]
     pub canary_hosts: Vec<String>,
+    /// Base URL of the master lab instance that deployed hosts should phone home to.
+    /// e.g. "http://dookie:8765". If absent, phone-home is skipped.
+    pub master_url: Option<String>,
 }
 
 /// Per-host policy overrides for deploy.

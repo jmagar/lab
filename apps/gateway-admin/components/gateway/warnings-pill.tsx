@@ -29,7 +29,7 @@ export function WarningsPill({ warnings, className }: WarningsPillProps) {
             )}
           >
             <AlertTriangle className="size-3" />
-            {warnings.length} issue{warnings.length === 1 ? '' : 's'}
+            {warnings.length}
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">

@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::sync::OnceLock;
 
 /// Allowed install path prefixes. Any `remote_path` must start with one of these.
-const ALLOWED_PREFIXES: &[&str] = &["/usr/local/bin/", "/opt/lab/bin/"];
+const ALLOWED_PREFIXES: &[&str] = &["/usr/local/bin/", "/opt/lab/bin/", "/home/"];
 
 fn alias_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();

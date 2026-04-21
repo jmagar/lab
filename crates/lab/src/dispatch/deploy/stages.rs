@@ -190,6 +190,17 @@ where
         });
     }
 
+    // 6) ensure the binary is executable (upload preserves no mode bits)
+    let (code, _stdout, stderr) = io
+        .run_argv(&["chmod", "755", "--", &remote_path])
+        .await?;
+    if code != 0 {
+        return Err(DeployError::InstallFailed {
+            host: "?".into(),
+            reason: format!("chmod 755: {}", stderr.trim()),
+        });
+    }
+
     Ok(TransferOutcome { bytes, backup_path })
 }
 
@@ -261,6 +272,33 @@ pub async fn verify<I: HostIo + 'static>(
         return Err(DeployError::VerifyFailed {
             host: "?".into(),
             reason: format!("--version exit {code}: {}", stderr.trim()),
+        });
+    }
+    Ok(())
+}
+
+/// Phone home: run `<remote_path> device hello --master <master_url>` on the
+/// remote host so it self-registers with the master fleet store.
+///
+/// Non-fatal — the caller logs a warning on error but does not fail the deploy.
+pub async fn phone_home<I: HostIo + 'static>(
+    io: Arc<I>,
+    remote_path: String,
+    master_url: String,
+) -> Result<(), DeployError> {
+    let (code, _stdout, stderr) = io
+        .run_argv(&[
+            remote_path.as_str(),
+            "device",
+            "hello",
+            "--master",
+            master_url.as_str(),
+        ])
+        .await?;
+    if code != 0 {
+        return Err(DeployError::VerifyFailed {
+            host: "?".into(),
+            reason: format!("phone-home exit {code}: {}", stderr.trim()),
         });
     }
     Ok(())

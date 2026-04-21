@@ -10,6 +10,7 @@ pub mod client;
 pub mod dispatch;
 pub mod host_io;
 pub mod lock;
+pub mod monitor;
 pub mod params;
 pub mod runner;
 pub mod ssh_session;
