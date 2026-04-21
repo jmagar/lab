@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { upstreamOauthApi } from '@/lib/api/upstream-oauth-client'
+import { isAbortError } from '@/lib/api/service-action-client'
 import { useUpstreamOauthStatus } from '@/lib/hooks/use-upstream-oauth'
 import type { ProbeResponse } from '@/lib/types/upstream-oauth'
 
@@ -80,7 +81,7 @@ export function ConnectUpstreamDialog({ open, onOpenChange, onConnected }: Conne
       const probe = await upstreamOauthApi.probe(url.trim(), ac.signal)
       setPhase(probe.oauth_discovered ? { kind: 'discovered', probe } : { kind: 'no_oauth', probe })
     } catch (err: unknown) {
-      if ((err as { name?: string }).name === 'AbortError') return
+      if (isAbortError(err)) return
       setPhase({ kind: 'error', message: err instanceof Error ? err.message : 'Probe failed' })
     }
   }
