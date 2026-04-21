@@ -728,7 +728,7 @@ export function GatewayFormDialog({
     }}>
         <DialogContent
           className={cn(
-            'relative overflow-visible sm:max-w-[540px] transition-[border-radius] duration-[250ms]',
+            'overflow-visible sm:max-w-[540px] transition-[border-radius] duration-[250ms]',
             (envDrawerOpen || jsonDrawerOpen) && 'rounded-r-none',
           )}
         >
