@@ -437,7 +437,7 @@ export function normalizeGateway(
       args: normalizeArgs(config.args),
       bearer_token_env: config.bearer_token_env ?? undefined,
       proxy_resources: config.proxy_resources ?? false,
-      proxy_prompts: config.proxy_prompts ?? false,
+      proxy_prompts: config.proxy_prompts ?? true,
       expose_tools: exposePatterns ?? undefined,
     },
     status: {
@@ -500,7 +500,7 @@ export function gatewayInputToSpec(input: CreateGatewayInput) {
     args: input.transport === 'stdio' ? normalizeArgs(input.config.args) : [],
     bearer_token_env: input.config.bearer_token_env ?? null,
     proxy_resources: input.config.proxy_resources ?? false,
-    proxy_prompts: input.config.proxy_prompts ?? false,
+    proxy_prompts: input.config.proxy_prompts ?? true,
     expose_tools: input.config.expose_tools ?? null,
   }
   if (input.config.oauth) {
@@ -570,6 +570,14 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
 
   if (config.expose_tools !== undefined) {
     patch.expose_tools = config.expose_tools
+  }
+
+  if (config.oauth !== undefined) {
+    patch.oauth = {
+      mode: 'authorization_code_pkce',
+      registration: { strategy: config.oauth.registration_strategy },
+      scopes: config.oauth.scopes ?? null,
+    }
   }
 
   return patch

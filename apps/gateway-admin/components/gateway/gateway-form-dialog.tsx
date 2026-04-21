@@ -282,17 +282,18 @@ export function GatewayFormDialog({
       return
     }
     setOauthProbed(null)
-    let cancelled = false
+    const ac = new AbortController()
     const timer = setTimeout(() => {
       setIsProbing(true)
-      upstreamOauthApi.probe(url.trim()).then((result) => {
-        if (!cancelled) { setOauthProbed(result); setIsProbing(false) }
-      }).catch(() => {
-        if (!cancelled) { setOauthProbed({ oauth_discovered: false, upstream: '' }); setIsProbing(false) }
+      upstreamOauthApi.probe(url.trim(), ac.signal).then((result) => {
+        setOauthProbed(result); setIsProbing(false)
+      }).catch((err: unknown) => {
+        if (isAbortError(err)) return
+        setOauthProbed({ oauth_discovered: false, upstream: '' }); setIsProbing(false)
       })
     }, 600)
     return () => {
-      cancelled = true
+      ac.abort()
       setIsProbing(false)
       clearTimeout(timer)
     }
@@ -353,6 +354,9 @@ export function GatewayFormDialog({
     prevOpenRef.current = open
     if (!open || wasOpen) return
 
+    setEnvDrawerOpen(false)
+    setJsonDrawerOpen(false)
+
     if (gateway) {
       if (gateway.source === 'lab_service') {
         setMode('lab')
@@ -371,7 +375,7 @@ export function GatewayFormDialog({
         setArgs(gateway.config.args?.join(' ') || '')
         setAuthMode(initialAuthMode)
         if (initialAuthMode === 'oauth') {
-          setOauthState({ kind: 'connected', upstream: gateway.name, registration_strategy: 'unknown', scopes: undefined })
+          setOauthState({ kind: 'connected', upstream: gateway.name, registration_strategy: 'preregistered', scopes: undefined })
           setOauthProbed({ oauth_discovered: true, upstream: gateway.name })
         }
         setAuthSource(gateway.config.bearer_token_env ? 'env' : 'paste')
