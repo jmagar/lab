@@ -15,8 +15,8 @@ import {
   AURORA_CONTROL_SURFACE,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
-  gatewayActionTone,
-} from './gateway-theme'
+} from '@/components/aurora/tokens'
+import { gatewayActionTone } from './gateway-theme'
 
 export type HealthFilter =
   | 'all'

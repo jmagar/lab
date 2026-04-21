@@ -3,18 +3,30 @@ import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
 
+/**
+ * Card variants:
+ * - `medium` (default): Tier 2 surface — standard content panels.
+ * - `strong`: Tier 3 surface — elevated/featured panels with stronger shadow.
+ *
+ * The `variant` axis mirrors Button/Badge API convention (not a `tier` prop).
+ * Tier naming maps to: medium = Tier 2, strong = Tier 3.
+ */
 const cardVariants = cva(
-  'flex flex-col gap-6 rounded-[1.35rem] border bg-card text-card-foreground shadow-sm',
+  'flex flex-col gap-6 rounded-[1.35rem] border bg-card text-card-foreground',
   {
     variants: {
       variant: {
+        /** Default: Tier 2 medium panel — most content cards. */
         medium:
           'border-aurora-border-strong bg-aurora-panel-medium shadow-aurora-medium shadow-aurora-highlight-medium',
+        /** Tier 3 strong panel — elevated/featured sections. */
         strong:
           'border-aurora-border-strong bg-aurora-panel-strong rounded-[1.4rem] shadow-aurora-strong shadow-aurora-highlight-strong',
       },
     },
-    defaultVariants: { variant: 'medium' },
+    defaultVariants: {
+      variant: 'medium',
+    },
   },
 )
 

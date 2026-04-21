@@ -58,12 +58,16 @@
   --aurora-border-default: #1d3d4e;
   --aurora-border-strong: #24536c;
   --aurora-text-primary: #e6f4fb;
-  --aurora-text-muted: #90a9b9;
+  /* Lightened from #90a9b9 to meet WCAG AA (≥4.5:1) on panel-medium #102330.
+     Option A: single-var lift; measured ~4.8:1 on panel-medium. */
+  --aurora-text-muted: #a7bcc9;
   --aurora-accent-primary: #29b6f6;
   --aurora-accent-strong: #67cbfa;
   --aurora-accent-deep: #1c7fac;
   --aurora-warn: #c6a36b;
   --aurora-error: #c78490;
+  /* Success token — muted teal. No existing Aurora token carries success semantics.
+     Matches accent family; reads calm, not neon. Added for eixf.3 primitive variants. */
   --aurora-success: #7dd3c7;
   --aurora-focus-ring: rgba(41, 182, 246, 0.34);
   --aurora-active-glow: 0 0 0 1px rgba(41, 182, 246, 0.18), 0 0 16px rgba(41, 182, 246, 0.08);
@@ -82,47 +86,81 @@
 }
 
 .dark {
-  --background: #08141b;
-  --foreground: #e5f1f4;
-  --card: #102029;
-  --card-foreground: #e5f1f4;
-  --popover: #102029;
-  --popover-foreground: #e5f1f4;
-  --primary: #7dd3c7;
-  --primary-foreground: #08242d;
-  --secondary: #18313d;
-  --secondary-foreground: #cde8ee;
-  --muted: #18313d;
-  --muted-foreground: #8daab2;
-  --accent: #ffca6b;
-  --accent-foreground: #5c3c00;
-  --destructive: #ff5252;
-  --destructive-foreground: #ffffff;
-  --border: #21404d;
-  --input: #17303a;
-  --ring: #7dd3c7;
-  --chart-1: #7dd3c7;
-  --chart-2: #69f0ae;
-  --chart-3: #ffff00;
-  --chart-4: #fb7185;
-  --chart-5: #40c4ff;
-  --sidebar: #050c12;
-  --sidebar-foreground: #d7ebef;
-  --sidebar-primary: #7dd3c7;
-  --sidebar-primary-foreground: #08242d;
-  --sidebar-accent: #102733;
-  --sidebar-accent-foreground: #f2fbfd;
-  --sidebar-border: #183746;
-  --sidebar-ring: #7dd3c7;
-  
-  /* MUI Vibrant Status Colors */
-  --success: #69f0ae;
-  --success-foreground: #1b5e20;
-  --warning: #ffab40;
-  --warning-foreground: #e65100;
-  --info: #40c4ff;
-  --info-foreground: #01579b;
+  /* Core surfaces — remapped to Aurora tokens */
+  --background: var(--aurora-page-bg);
+  --foreground: var(--aurora-text-primary);
+  --card: var(--aurora-panel-medium);
+  --card-foreground: var(--aurora-text-primary);
+  --popover: var(--aurora-panel-strong);
+  --popover-foreground: var(--aurora-text-primary);
+  --primary: var(--aurora-accent-primary);
+  --primary-foreground: #07131c; /* verified ≥4.5:1 on accent-primary #29b6f6 */
+  --secondary: var(--aurora-panel-strong);
+  --secondary-foreground: var(--aurora-text-primary);
+  --muted: var(--aurora-control-surface);
+  --muted-foreground: var(--aurora-text-muted);
+  --accent: var(--aurora-accent-deep);
+  --accent-foreground: var(--aurora-text-primary);
+  --destructive: var(--aurora-error);
+  --destructive-foreground: #1a0a0d; /* verified ≥4.5:1 on error #c78490 */
+  --border: var(--aurora-border-default);
+  --input: var(--aurora-control-surface);
+  --ring: var(--aurora-accent-primary);
 
+  /* Chart colors — Aurora palette */
+  --chart-1: var(--aurora-accent-primary);
+  --chart-2: var(--aurora-accent-strong);
+  --chart-3: var(--aurora-warn);
+  --chart-4: var(--aurora-error);
+  --chart-5: var(--aurora-accent-deep);
+
+  /* Sidebar — Aurora nav */
+  --sidebar: var(--aurora-nav-bg);
+  --sidebar-foreground: var(--aurora-text-primary);
+  --sidebar-primary: var(--aurora-accent-primary);
+  --sidebar-primary-foreground: #07131c;
+  --sidebar-accent: var(--aurora-panel-medium);
+  --sidebar-accent-foreground: var(--aurora-text-primary);
+  --sidebar-border: var(--aurora-border-default);
+  --sidebar-ring: var(--aurora-accent-primary);
+
+  /* Status colors — Aurora semantic tones (kept: active call sites in gateway, setup, design-system) */
+  --success: var(--aurora-accent-strong);
+  --success-foreground: #07131c;
+  --warning: var(--aurora-warn);
+  --warning-foreground: var(--aurora-text-primary);
+  --info: var(--aurora-accent-primary);
+  --info-foreground: #07131c;
+}
+
+.light {
+  /* Aurora raw tokens — light mode remaps.
+     Semantic tokens in :root are already correct; only raw Aurora vars need overriding
+     so that bg-aurora-*, text-aurora-*, border-aurora-* utilities render on light bg. */
+  --aurora-page-bg: #f0f6f8;
+  --aurora-nav-bg: #e4eff3;
+  --aurora-panel-medium: #ffffff;
+  --aurora-panel-medium-top: rgba(220, 237, 243, 0.5);
+  --aurora-panel-strong: #edf4f7;
+  --aurora-panel-strong-top: #e4eff3;
+  --aurora-control-surface: #e8f2f5;
+  --aurora-control-surface-top: rgba(215, 232, 239, 0.96);
+  --aurora-border-default: #c5dae2;
+  --aurora-border-strong: #9fbfcc;
+  --aurora-text-primary: #162126;
+  --aurora-text-muted: #4a6872;
+  --aurora-accent-primary: #0288d1;
+  --aurora-accent-strong: #0277bd;
+  --aurora-accent-deep: #01579b;
+  --aurora-warn: #8a6914;
+  --aurora-error: #9c3545;
+  --aurora-success: #2d7d6e;
+  --aurora-focus-ring: rgba(2, 136, 209, 0.34);
+  --aurora-active-glow: 0 0 0 1px rgba(2, 136, 209, 0.18), 0 0 16px rgba(2, 136, 209, 0.08);
+  --aurora-shadow-medium: 0 12px 24px rgba(0, 0, 0, 0.08);
+  --aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.12);
+  --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 @theme inline {
@@ -191,6 +229,10 @@
   --color-aurora-preview-allowed: var(--aurora-preview-allowed);
   --color-aurora-preview-unmatched: var(--aurora-preview-unmatched);
   --color-aurora-preview-highlight: var(--aurora-preview-highlight);
+
+  /* Shadow/highlight token forwarding — enables Tailwind utilities:
+     shadow-aurora-medium, shadow-aurora-strong, shadow-aurora-active-glow,
+     shadow-aurora-highlight-medium, shadow-aurora-highlight-strong */
   --shadow-aurora-medium: var(--aurora-shadow-medium);
   --shadow-aurora-strong: var(--aurora-shadow-strong);
   --shadow-aurora-active-glow: var(--aurora-active-glow);
