@@ -9,7 +9,7 @@ import {
   AURORA_PAGE_SHELL,
   AURORA_STRONG_PANEL,
   controlTone,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 
 export {
   AURORA_CONTROL_SURFACE,

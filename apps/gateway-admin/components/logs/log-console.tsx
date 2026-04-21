@@ -15,7 +15,7 @@ import { connectLogStream } from '@/lib/api/logs-stream'
 import {
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import {
   buildLogSearchQuery,
   resolveExpandedEventId,

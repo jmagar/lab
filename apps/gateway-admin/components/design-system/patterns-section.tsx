@@ -24,7 +24,7 @@ import {
   AURORA_STRONG_PANEL,
   AURORA_TAIL_ROW,
   controlTone,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { fakeLogEvents, toolbarSummaryChips } from './demo-data'
 
 export function PatternsSection() {

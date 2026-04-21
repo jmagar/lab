@@ -22,7 +22,7 @@ import {
   AURORA_MUTED_LABEL,
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { buildGatewayDocsSnapshot } from '@/lib/dashboard/admin-insights'
 import { useGateways, useSupportedServices } from '@/lib/hooks/use-gateways'
 import { cn } from '@/lib/utils'

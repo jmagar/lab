@@ -6,7 +6,7 @@ import {
   AURORA_MUTED_LABEL,
   AURORA_MESSAGE_SURFACE,
   AURORA_STRONG_PANEL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 
 interface LogEventInspectorProps {
   event: LogEvent | null

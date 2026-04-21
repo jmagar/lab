@@ -9,7 +9,7 @@ import {
   AURORA_STRONG_PANEL,
   AURORA_MESSAGE_SURFACE,
   AURORA_TAIL_ROW,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { cn } from '@/lib/utils'
 import type { LogEvent } from '@/lib/types/logs'
 

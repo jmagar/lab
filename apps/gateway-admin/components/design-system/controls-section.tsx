@@ -19,8 +19,6 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-// TODO: move Aurora token constants to a shared design-system module (e.g. @/lib/aurora-tokens)
-// so design-system components don't depend on the logs-specific log-theme module.
 import {
   AURORA_CONTROL_SURFACE,
   AURORA_DISPLAY_TITLE,
@@ -29,7 +27,7 @@ import {
   AURORA_STRONG_PANEL,
   controlTone,
   pillTone,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import {
   accessModeOptions,
   environmentOptions,

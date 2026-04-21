@@ -11,16 +11,12 @@ import {
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
   AURORA_STRONG_PANEL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { hasMockDataAuthMode, isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
 import { buildGatewaySettingsSnapshot } from '@/lib/dashboard/admin-insights'
 import { useGateways } from '@/lib/hooks/use-gateways'
 import { cn } from '@/lib/utils'
 
-// DEVIATION (eixf.6): AURORA_DISPLAY_1 / AURORA_DISPLAY_2 do not yet exist in
-// components/logs/log-theme.ts — using AURORA_DISPLAY_TITLE fallback for both
-// the page h1 and section h2/h3s. eixf.4/.5 own adding the explicit constants.
-//
 // DEVIATION (eixf.6): components/ui/card.tsx does not expose a `variant` prop.
 // Applying AURORA_STRONG_PANEL / AURORA_MEDIUM_PANEL utility strings via
 // className instead of `<Card variant="strong">`. Visual result is identical
