@@ -20,10 +20,10 @@ export function LoginScreen({ errorMessage, requestId, returnTo }: LoginScreenPr
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">Sign in to Labby</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">{introCopy}</p>
         {errorMessage ? (
-          <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900">
+          <div className="mt-6 rounded-xl border border-aurora-warn/30 bg-aurora-warn/10 px-4 py-3 text-sm text-aurora-warn">
             <p>{errorMessage}</p>
             {requestId ? (
-              <p className="mt-2 font-mono text-xs text-amber-950/80">Request ID: {requestId}</p>
+              <p className="mt-2 font-mono text-xs text-aurora-warn/80">Request ID: {requestId}</p>
             ) : null}
           </div>
         ) : null}
