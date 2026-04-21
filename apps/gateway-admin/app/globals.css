@@ -72,6 +72,13 @@
   --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   --aurora-hover-bg: #17364b;
+
+  /* Live-preview palette — intentionally brighter than Aurora muted tones.
+     Used only by exposure-policy-editor to signal allowed/unmatched/highlight
+     states in a real-time visualization surface. Not for general status UI. */
+  --aurora-preview-allowed: #00e676;
+  --aurora-preview-unmatched: #ff9100;
+  --aurora-preview-highlight: #ffea00;
 }
 
 .dark {
@@ -180,6 +187,9 @@
   --color-aurora-error: var(--aurora-error);
   --color-aurora-success: var(--aurora-success);
   --color-aurora-hover-bg: var(--aurora-hover-bg);
+  --color-aurora-preview-allowed: var(--aurora-preview-allowed);
+  --color-aurora-preview-unmatched: var(--aurora-preview-unmatched);
+  --color-aurora-preview-highlight: var(--aurora-preview-highlight);
   --shadow-aurora-medium: var(--aurora-shadow-medium);
   --shadow-aurora-strong: var(--aurora-shadow-strong);
   --shadow-aurora-active-glow: var(--aurora-active-glow);
