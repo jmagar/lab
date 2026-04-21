@@ -84,6 +84,7 @@ test('buildGatewayCreatePayload generates an auth env var when a bearer token is
       args: [],
       bearer_token_env: 'LAB_GW_GITHUB_AUTH_HEADER',
       proxy_resources: false,
+      proxy_prompts: false,
       expose_tools: null,
     },
     bearer_token_value: 'ghp_secret',
@@ -336,6 +337,7 @@ test('gatewayInputToSpec converts UI input into backend spec payload', () => {
     args: [],
     bearer_token_env: 'FIXTURE_TOKEN',
     proxy_resources: true,
+    proxy_prompts: false,
     expose_tools: ['alpha.*'],
   })
 })
