@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Play, ShieldCheck, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react'
+import { Loader2, Play, ShieldCheck, AlertCircle, CheckCircle2, ChevronRight, ShieldOff, KeyRound } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,11 +14,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FieldGroup, Field, FieldLabel, FieldDescription } from '@/components/ui/field'
 import { useGatewayMutations, useServiceConfig, useSupportedServices } from '@/lib/hooks/use-gateways'
-import { LabServicePicker } from './lab-service-picker'
 import type {
   Gateway,
   CreateGatewayInput,
@@ -27,7 +27,7 @@ import type {
   SupportedService,
 } from '@/lib/types/gateway'
 import { toast } from 'sonner'
-import { getErrorMessage } from '@/lib/utils'
+import { cn, getErrorMessage } from '@/lib/utils'
 import { defaultGatewayBearerEnvName, validateBearerTokenEnvName } from '@/lib/gateway-env'
 import { isAbortError } from '@/lib/api/service-action-client'
 import { GatewayApiError } from '@/lib/api/gateway-client-core'
@@ -51,6 +51,137 @@ function valuePreview(fieldName: string, preview?: string | null) {
   return preview ?? (fieldName.endsWith('_URL') ? 'http://localhost' : '')
 }
 
+const SERVICE_BRANDS: Record<string, string> = {
+  apprise: '#3B7BBF',
+  arcane: '#0DB7ED',
+  bytestash: '#6B73FF',
+  gotify: '#45AEE5',
+  linkding: '#7C5CBF',
+  memos: '#3478F6',
+  openai: '#10A37F',
+  overseerr: '#E5870A',
+  paperless: '#17BC6C',
+  plex: '#CC7B19',
+  prowlarr: '#F16529',
+  qbittorrent: '#2F99E0',
+  qdrant: '#DC244C',
+  radarr: '#F0BC40',
+  sabnzbd: '#F4A623',
+  sonarr: '#35C5F4',
+  tailscale: '#1E5EFF',
+  tautulli: '#D9A21B',
+  tei: '#FF9D00',
+  unifi: '#0559C9',
+  unraid: '#F45B00',
+}
+
+const siw = (slug: string) => `https://cdn.simpleicons.org/${slug}/ffffff`
+
+const SERVICE_LOGOS: Record<string, string | null> = {
+  apprise: null,
+  arcane: null,
+  bytestash: null,
+  gotify: null,
+  linkding: null,
+  memos: null,
+  tei: null,
+  openai: siw('openai'),
+  overseerr: siw('overseerr'),
+  paperless: siw('paperlessngx'),
+  plex: siw('plex'),
+  prowlarr: siw('prowlarr'),
+  qbittorrent: siw('qbittorrent'),
+  qdrant: siw('qdrant'),
+  radarr: siw('radarr'),
+  sabnzbd: siw('sabnzbd'),
+  sonarr: siw('sonarr'),
+  tailscale: siw('tailscale'),
+  tautulli: siw('tautulli'),
+  unifi: siw('ubiquiti'),
+  unraid: siw('unraid'),
+}
+
+const SERVICE_SVG_FALLBACKS: Record<string, string> = {
+  apprise: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>`,
+  arcane: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M21 4.5l-9-2.25L3 4.5v9c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12v-9z"/></svg>`,
+  bytestash: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M20 6H4V4h16v2zm0 2H4v2h16V8zm0 4H4v2h16v-2zm0 4H4v2h16v-2z"/></svg>`,
+  gotify: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>`,
+  linkding: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 8H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-2zm-3-4h8v2H8v-2z"/></svg>`,
+  memos: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`,
+  tei: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M21 3H3v2h9v14h2V5h9V3zM5 9v2h3v8h2v-8h3V9H5z"/></svg>`,
+}
+
+const SERVICE_ENV_PREFIXES: Record<string, string> = {
+  APPRISE: 'apprise',
+  ARCANE: 'arcane',
+  BYTESTASH: 'bytestash',
+  GOTIFY: 'gotify',
+  LINKDING: 'linkding',
+  MEMOS: 'memos',
+  OPENAI: 'openai',
+  OVERSEERR: 'overseerr',
+  PAPERLESS: 'paperless',
+  PLEX: 'plex',
+  PROWLARR: 'prowlarr',
+  QBITTORRENT: 'qbittorrent',
+  QDRANT: 'qdrant',
+  RADARR: 'radarr',
+  SABNZBD: 'sabnzbd',
+  SONARR: 'sonarr',
+  TAILSCALE: 'tailscale',
+  TAUTULLI: 'tautulli',
+  TEI: 'tei',
+  UNIFI: 'unifi',
+  UNRAID: 'unraid',
+}
+
+function parseEnvText(text: string): { pairs: Record<string, string>; detectedServices: string[] } {
+  const pairs: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eqIdx = trimmed.indexOf('=')
+    if (eqIdx < 1) continue
+    const key = trimmed.slice(0, eqIdx).trim()
+    const val = trimmed.slice(eqIdx + 1).trim()
+    pairs[key] = val
+  }
+  const found = new Set<string>()
+  for (const key of Object.keys(pairs)) {
+    for (const [prefix, serviceKey] of Object.entries(SERVICE_ENV_PREFIXES)) {
+      if (key.startsWith(`${prefix}_`)) {
+        found.add(serviceKey)
+      }
+    }
+  }
+  return { pairs, detectedServices: [...found] }
+}
+
+function ServiceIconBox({ serviceKey }: { serviceKey: string }) {
+  const brand = SERVICE_BRANDS[serviceKey] ?? '#1d3d4e'
+  const logo = SERVICE_LOGOS[serviceKey]
+  const svg = SERVICE_SVG_FALLBACKS[serviceKey]
+
+  return (
+    <div
+      className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
+      style={{ background: `${brand}CC`, border: `1px solid ${brand}` }}
+    >
+      {logo ? (
+        <img src={logo} alt="" className="w-5 h-5 object-contain" />
+      ) : svg ? (
+        <span
+          className="w-5 h-5 block"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted static SVG strings
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      ) : (
+        <span className="text-white text-xs font-bold">{serviceKey[0]?.toUpperCase()}</span>
+      )}
+    </div>
+  )
+}
+
 const emptyCustomState = {
   transport: 'http' as TransportType,
   name: '',
@@ -59,6 +190,7 @@ const emptyCustomState = {
   args: '',
   bearerTokenEnv: '',
   proxyResources: true,
+  proxyPrompts: true,
 }
 
 function serviceFields(serviceMeta: SupportedService | null) {
@@ -92,6 +224,13 @@ export function GatewayFormDialog({
   const [bearerTokenEnv, setBearerTokenEnv] = useState('')
   const [bearerTokenValue, setBearerTokenValue] = useState('')
   const [proxyResources, setProxyResources] = useState(true)
+  const [proxyPrompts, setProxyPrompts] = useState(true)
+  const [envDrawerOpen, setEnvDrawerOpen] = useState(false)
+  const [jsonDrawerOpen, setJsonDrawerOpen] = useState(false)
+  const [jsonText, setJsonText] = useState('')
+  const [jsonValid, setJsonValid] = useState(false)
+  const syncingRef = useRef(false)
+  const [envText, setEnvText] = useState('')
 
   const [selectedService, setSelectedService] = useState('')
   const [serviceValues, setServiceValues] = useState<Record<string, string>>({})
@@ -237,6 +376,7 @@ export function GatewayFormDialog({
         setBearerTokenEnv(gateway.config.bearer_token_env || '')
         setBearerTokenValue('')
         setProxyResources(gateway.config.proxy_resources ?? true)
+        setProxyPrompts(gateway.config.proxy_prompts ?? true)
       }
       } else {
         setMode('custom')
@@ -250,6 +390,7 @@ export function GatewayFormDialog({
         setBearerTokenEnv(emptyCustomState.bearerTokenEnv)
         setBearerTokenValue('')
         setProxyResources(emptyCustomState.proxyResources)
+        setProxyPrompts(emptyCustomState.proxyPrompts)
         setSelectedService('')
         setServiceValues({})
         setEnableServer(true)
@@ -377,6 +518,7 @@ export function GatewayFormDialog({
           ? { registration_strategy: oauthState.registration_strategy, scopes: oauthState.scopes }
           : undefined,
       proxy_resources: proxyResources,
+      proxy_prompts: proxyPrompts,
     },
   })
 
@@ -479,6 +621,99 @@ export function GatewayFormDialog({
     }
   }
 
+  const toggleEnvDrawer = () => {
+    const next = !envDrawerOpen
+    setEnvDrawerOpen(next)
+    if (next) setJsonDrawerOpen(false)
+  }
+
+  const toggleJsonDrawer = () => {
+    const next = !jsonDrawerOpen
+    setJsonDrawerOpen(next)
+    if (next) setEnvDrawerOpen(false)
+  }
+
+  const applyEnvToForm = () => {
+    const { pairs, detectedServices } = parseEnvText(envText)
+    const detected = detectedServices[0]
+    if (!detected) return
+    const prefix = Object.entries(SERVICE_ENV_PREFIXES).find(([, key]) => key === detected)?.[0]
+    if (!prefix) return
+    setMode('custom')
+    setTransport('http')
+    setName(detected)
+    const urlKey = `${prefix}_URL`
+    if (pairs[urlKey]) setUrl(pairs[urlKey])
+    setEnvDrawerOpen(false)
+  }
+
+  const buildJsonFromForm = (): object | null => {
+    const n = name.trim()
+    if (!n) return null
+    const cfg: Record<string, unknown> = {}
+    if (transport === 'http') {
+      const u = url.trim()
+      if (u) cfg.url = u
+    } else {
+      const cmd = command.trim()
+      if (cmd) cfg.command = cmd
+      const a = args.trim()
+      if (a) cfg.args = a.split(/\s+/).filter(Boolean)
+    }
+    return { [n]: cfg }
+  }
+
+  const onFormChange = () => {
+    if (syncingRef.current || !jsonDrawerOpen) return
+    syncingRef.current = true
+    const json = buildJsonFromForm()
+    if (json) {
+      setJsonText(JSON.stringify(json, null, 2))
+      setJsonValid(true)
+    } else {
+      setJsonText('')
+      setJsonValid(false)
+    }
+    // Defer reset so it runs AFTER React flushes batched state — otherwise the
+    // useEffect watching [name, url, ...] fires with guard already false and loops.
+    setTimeout(() => { syncingRef.current = false }, 0)
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { onFormChange() }, [name, url, command, args, transport, jsonDrawerOpen])
+
+  const parseJsonToForm = (text: string) => {
+    if (syncingRef.current) return
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>
+      const keys = Object.keys(parsed)
+      if (keys.length !== 1) {
+        setJsonValid(false)
+        return
+      }
+      const gatewayName = keys[0]!
+      const cfg = parsed[gatewayName] as Record<string, unknown>
+      setJsonValid(true)
+      syncingRef.current = true
+      setName(gatewayName)
+      if (typeof cfg.url === 'string') {
+        setTransport('http')
+        setUrl(cfg.url)
+      } else if (typeof cfg.command === 'string') {
+        setTransport('stdio')
+        setCommand(cfg.command)
+        if (Array.isArray(cfg.args)) {
+          setArgs((cfg.args as string[]).join(' '))
+        }
+      }
+      // Defer reset — same reason as onFormChange: the useEffect fires after React
+      // flushes the setName/setUrl/setTransport calls; guard must still be true then.
+      setTimeout(() => { syncingRef.current = false }, 0)
+    } catch {
+      setJsonValid(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => {
       if (!nextOpen) {
@@ -486,22 +721,64 @@ export function GatewayFormDialog({
       }
       onOpenChange(nextOpen)
     }}>
-        <DialogContent className="sm:max-w-[680px]">
+        <DialogContent
+          className={cn(
+            'relative overflow-visible sm:max-w-[540px] transition-[border-radius] duration-[250ms]',
+            (envDrawerOpen || jsonDrawerOpen) && 'rounded-r-none',
+          )}
+        >
         <DialogHeader className="shrink-0">
-          <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? 'Edit gateway settings.'
-              : mode === 'lab'
-                ? 'Connect a built-in Lab service.'
-                : 'Connect an upstream MCP server.'}
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col gap-1">
+              <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
+              <DialogDescription>
+                {isEditing
+                  ? 'Edit gateway settings.'
+                  : mode === 'lab'
+                    ? 'Connect a built-in Lab service.'
+                    : 'Connect an upstream MCP server.'}
+              </DialogDescription>
+            </div>
+            <div
+              className="flex gap-1.5 shrink-0"
+              style={{ visibility: mode === 'custom' ? 'visible' : 'hidden' }}
+            >
+              <button
+                type="button"
+                onClick={toggleEnvDrawer}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  envDrawerOpen
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-foreground hover:bg-accent',
+                )}
+              >
+                ENV
+              </button>
+              <button
+                type="button"
+                onClick={toggleJsonDrawer}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  jsonDrawerOpen
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-foreground hover:bg-accent',
+                )}
+              >
+                JSON
+              </button>
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
         <Tabs
           value={mode}
-          onValueChange={(value) => setMode(value as FormMode)}
+          onValueChange={(value) => {
+            setMode(value as FormMode)
+            setEnvDrawerOpen(false)
+            setJsonDrawerOpen(false)
+          }}
           className="space-y-6"
         >
           <TabsList className="grid w-full grid-cols-2">
@@ -516,11 +793,31 @@ export function GatewayFormDialog({
           <TabsContent value="lab" className="space-y-6">
             <FieldGroup>
               <Field>
-                <LabServicePicker
-                  selectedService={selectedService}
-                  services={supportedServices ?? []}
-                  onSelect={setSelectedService}
-                />
+                <div
+                  className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto pr-1"
+                  style={{ maxHeight: 320 }}
+                >
+                  {(supportedServices ?? []).map((svc) => (
+                    <button
+                      key={svc.key}
+                      type="button"
+                      onClick={() => setSelectedService(svc.key)}
+                      className={cn(
+                        'flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors hover:border-primary/60 hover:bg-accent/30',
+                        selectedService === svc.key
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border bg-background',
+                      )}
+                    >
+                      <ServiceIconBox serviceKey={svc.key} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-tight truncate">{svc.display_name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{svc.category}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-snug">{svc.description}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
                 {errors.service && <p className="text-sm text-destructive">{errors.service}</p>}
               </Field>
             </FieldGroup>
@@ -600,7 +897,7 @@ export function GatewayFormDialog({
             <RadioGroup
               value={transport}
               onValueChange={(value) => setTransport(value as TransportType)}
-              className="grid grid-cols-2 gap-3"
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3"
             >
               <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="transport-http">
                 <RadioGroupItem value="http" id="transport-http" />
@@ -677,36 +974,41 @@ export function GatewayFormDialog({
                   </FieldDescription>
                 </div>
 
-                <RadioGroup value={authMode} onValueChange={(value) => setAuthMode(value as GatewayAuthMode)}>
-                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-none">
-                    <RadioGroupItem value="none" id="auth-none" />
-                    <div className="space-y-1">
-                      <span className="font-medium text-sm">No auth</span>
-                      <p className="text-sm text-muted-foreground">No Authorization header sent.</p>
-                    </div>
-                  </label>
-                  <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-bearer">
-                    <RadioGroupItem value="bearer" id="auth-bearer" />
-                    <div className="space-y-1">
-                      <span className="font-medium text-sm">Bearer token</span>
-                      <p className="text-sm text-muted-foreground">Static token sent as an Authorization header.</p>
-                    </div>
-                  </label>
-                  {transport === 'http' && (oauthProbed?.oauth_discovered || gateway?.config.oauth_enabled) && (
-                    <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="auth-oauth">
-                      <RadioGroupItem value="oauth" id="auth-oauth" />
-                      <div className="space-y-1">
-                        <span className="font-medium text-sm">
-                          OAuth (MCP)
-                          {oauthProbed?.oauth_discovered && (
-                            <Badge variant="secondary" className="ml-2 text-xs">Detected</Badge>
-                          )}
-                        </span>
-                        <p className="text-sm text-muted-foreground">OAuth 2.1 — for GitHub, Cloudflare, and other remote MCP servers.</p>
-                      </div>
-                    </label>
-                  )}
-                </RadioGroup>
+                <Select value={authMode} onValueChange={(value) => setAuthMode(value as GatewayAuthMode)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      <span className="flex items-center gap-2">
+                        {authMode === 'none' && <ShieldOff className="size-4 text-muted-foreground" />}
+                        {authMode === 'bearer' && <KeyRound className="size-4 text-muted-foreground" />}
+                        {authMode === 'oauth' && <ShieldCheck className="size-4 text-muted-foreground" />}
+                        {authMode === 'none' ? 'No auth' : authMode === 'bearer' ? 'Bearer token' : 'OAuth (MCP)'}
+                        {authMode === 'oauth' && oauthProbed?.oauth_discovered && (
+                          <Badge variant="secondary" className="ml-1 text-xs">Detected</Badge>
+                        )}
+                      </span>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent style={{ zIndex: 200 }}>
+                    <SelectItem value="none">
+                      <span className="flex items-center gap-2">
+                        <ShieldOff className="size-4 text-muted-foreground" />
+                        No auth
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="bearer">
+                      <span className="flex items-center gap-2">
+                        <KeyRound className="size-4 text-muted-foreground" />
+                        Bearer token
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="oauth">
+                      <span className="flex items-center gap-2">
+                        <ShieldCheck className="size-4 text-muted-foreground" />
+                        OAuth (MCP)
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
 
                 {authMode === 'oauth' && (
                   <div className="rounded-lg border p-4 flex flex-col gap-3">
@@ -871,8 +1173,168 @@ export function GatewayFormDialog({
                 onCheckedChange={setProxyResources}
               />
             </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="proxy-prompts" className="font-medium">
+                  Proxy Prompts
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Forward MCP prompt requests to this gateway
+                </p>
+              </div>
+              <Switch
+                id="proxy-prompts"
+                checked={proxyPrompts}
+                onCheckedChange={setProxyPrompts}
+              />
+            </div>
           </TabsContent>
         </Tabs>
+        </div>
+
+        {/* ENV drawer */}
+        <div
+          className={cn(
+            'absolute top-0 bottom-0 bg-background border-l border-border rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
+            envDrawerOpen
+              ? 'w-[300px] max-[600px]:w-full max-[600px]:h-full'
+              : 'w-0',
+          )}
+          style={{ left: '100%' }}
+          aria-hidden={!envDrawerOpen}
+        >
+          <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto">
+            <p className="text-xs text-muted-foreground">
+              Paste <code>KEY=VALUE</code> lines — Lab detects the service and can pre-fill the form.
+            </p>
+            <div className="relative">
+              <textarea
+                className="w-full min-h-[180px] rounded-md border border-border bg-background px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder={'RADARR_URL=http://localhost:7878\nRADARR_API_KEY=abc123'}
+                value={envText}
+                onChange={(e) => setEnvText(e.target.value)}
+              />
+              {(() => {
+                if (!envText.trim()) {
+                  return <span className="absolute top-2 right-2 text-[10px] text-muted-foreground">Waiting</span>
+                }
+                const { detectedServices } = parseEnvText(envText)
+                if (detectedServices.length > 0) {
+                  return (
+                    <span className="absolute top-2 right-2 text-[10px] text-green-500">
+                      Valid · {detectedServices.length} service{detectedServices.length > 1 ? 's' : ''}
+                    </span>
+                  )
+                }
+                return <span className="absolute top-2 right-2 text-[10px] text-yellow-500">No known service</span>
+              })()}
+            </div>
+            {envText.trim() && (() => {
+              const { detectedServices } = parseEnvText(envText)
+              if (detectedServices.length === 0) return null
+              return (
+                <div className="flex flex-wrap gap-1.5">
+                  {detectedServices.map((s) => (
+                    <span key={s} className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )
+            })()}
+          </div>
+          <div className="flex gap-2 border-t border-border p-3">
+            <button
+              type="button"
+              className="flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText()
+                  setEnvText(text)
+                } catch {
+                  // clipboard access denied — user must paste manually
+                }
+              }}
+            >
+              Paste
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs hover:bg-primary/90 transition-colors disabled:opacity-50"
+              disabled={!parseEnvText(envText).detectedServices.length}
+              onClick={applyEnvToForm}
+            >
+              Apply to form
+            </button>
+          </div>
+        </div>
+
+        {/* JSON drawer */}
+        <div
+          className={cn(
+            'absolute top-0 bottom-0 bg-background border-l border-border rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
+            jsonDrawerOpen
+              ? 'w-[380px] max-[600px]:w-full max-[600px]:h-full'
+              : 'w-0',
+          )}
+          style={{ left: '100%' }}
+          aria-hidden={!jsonDrawerOpen}
+        >
+          <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto">
+            <p className="text-xs text-muted-foreground">
+              Live editor — changes here update the form, and form changes update this JSON automatically.
+            </p>
+            <div className="relative">
+              <textarea
+                className="w-full min-h-[240px] rounded-md border border-border bg-background px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder={'{\n  "gateway-name": {\n    "url": "http://localhost:3001/mcp"\n  }\n}'}
+                value={jsonText}
+                onChange={(e) => {
+                  setJsonText(e.target.value)
+                  parseJsonToForm(e.target.value)
+                }}
+              />
+              {(() => {
+                if (!jsonText.trim()) {
+                  return <span className="absolute top-2 right-2 text-[10px] text-muted-foreground">Waiting</span>
+                }
+                if (jsonValid) {
+                  return <span className="absolute top-2 right-2 text-[10px] text-green-500">Valid</span>
+                }
+                return <span className="absolute top-2 right-2 text-[10px] text-destructive">Invalid JSON</span>
+              })()}
+            </div>
+            {jsonValid && name && (
+              <div className="flex flex-wrap gap-1.5">
+                <span className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary">
+                  {name}
+                </span>
+                <span className="rounded-full bg-muted border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                  {transport}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 border-t border-border p-3">
+            <button
+              type="button"
+              className="flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText()
+                  setJsonText(text)
+                  parseJsonToForm(text)
+                } catch {
+                  // clipboard access denied
+                }
+              }}
+            >
+              Paste
+            </button>
+          </div>
         </div>
 
         {saveError && (
