@@ -163,6 +163,34 @@ pub struct Transport {
     pub variables: Option<serde_json::Value>,
 }
 
+/// A single environment variable declaration from the registry.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EnvironmentVariable {
+    /// Variable name (e.g. `GITHUB_TOKEN`).
+    pub name: String,
+    /// Human-readable description shown in install dialogs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether a value must be supplied before the server can run.
+    #[serde(rename = "isRequired", default)]
+    pub is_required: bool,
+    /// Whether the value should be treated as a secret (masked in UIs, written to `.env`).
+    #[serde(rename = "isSecret", default)]
+    pub is_secret: bool,
+    /// Default value used when the user provides none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+    /// Enumerated allowed values.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
+    /// Placeholder text for the install dialog input field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+    /// Semantic format hint (e.g. `"token"`, `"url"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+}
+
 /// Package distribution configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Package {
@@ -199,7 +227,7 @@ pub struct Package {
         default,
         skip_serializing_if = "Vec::is_empty"
     )]
-    pub environment_variables: Vec<serde_json::Value>,
+    pub environment_variables: Vec<EnvironmentVariable>,
     /// SHA-256 hash of the package file for integrity verification.
     #[serde(rename = "fileSha256", skip_serializing_if = "Option::is_none")]
     pub file_sha256: Option<String>,

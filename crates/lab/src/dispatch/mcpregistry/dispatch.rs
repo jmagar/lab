@@ -2,6 +2,7 @@ use lab_apis::mcpregistry::McpRegistryClient;
 use lab_apis::mcpregistry::types::ServerJSON;
 use serde_json::Value;
 
+use crate::config;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
 use crate::dispatch::mcpregistry::{catalog::ACTIONS, client, params};
@@ -43,75 +44,29 @@ pub async fn dispatch_with_client(
             let server_resp = client.get_server(&name, version).await?;
             let server = &server_resp.server;
 
-            let url = server
-                .remotes
-                .iter()
-                .find_map(|r| r.url.as_deref())
-                .ok_or_else(|| ToolError::Sdk {
-                    sdk_kind: "no_remote_transport".to_string(),
-                    message: format!(
-                        "server '{name}' has no remote transport URLs — stdio-only servers \
-                         cannot be added as gateway upstreams"
-                    ),
-                })?
-                .to_string();
-
-            // SSRF validation (synchronous DNS) — must run in spawn_blocking.
-            let url_for_check = url.clone();
-            tokio::task::spawn_blocking(move || params::validate_registry_url(&url_for_check))
-                .await
-                .map_err(|e| {
-                    ToolError::internal_message(format!("SSRF validation task panicked: {e}"))
-                })??;
-
-            // Probe for OAuth support and capture the discovered OAuth config if available.
-            // Non-fatal: if there is no gateway manager or the probe fails for any reason,
-            // install proceeds without OAuth configuration.
-            let discovered_oauth: Option<Value> =
-                if let Some(manager) = crate::dispatch::gateway::current_gateway_manager() {
-                    match manager.probe_upstream_oauth(&url).await {
-                        Ok(probe) if probe.oauth_discovered => {
-                            // The probe registered a transient manager in the DashMap.
-                            // Retrieve its full UpstreamOauthConfig so we can embed it in the
-                            // gateway spec — that way the installed gateway already has OAuth
-                            // and does not require a separate `gateway.oauth.probe` call.
-                            let oauth_cfg = manager
-                                .upstream_oauth_manager(&probe.upstream)
-                                .and_then(|m| {
-                                    serde_json::to_value(m.upstream_config().oauth.clone()).ok()
-                                });
-                            oauth_cfg
-                        }
-                        Ok(_) | Err(_) => None,
-                    }
-                } else {
-                    None
-                };
-
             let gateway_name = params_value["gateway_name"]
                 .as_str()
                 .map(str::to_string)
                 .unwrap_or_else(|| name.rsplit('/').next().unwrap_or(&name).to_string());
 
-            let bearer_token_env = params_value["bearer_token_env"].as_str();
+            // Choose transport: prefer the first HTTP remote; fall back to packages[0] stdio.
+            let http_url = server.remotes.iter().find_map(|r| r.url.as_deref());
 
-            let mut spec = serde_json::json!({
-                "name": gateway_name,
-                "url": url,
-                "bearer_token_env": bearer_token_env,
-                "command": null,
-                "args": [],
-                "proxy_resources": false,
-                "expose_tools": null,
-            });
+            let spec = if let Some(url) = http_url {
+                install_http(url, &gateway_name, &params_value).await?
+            } else if let Some(pkg) = server.packages.first() {
+                install_stdio(pkg, &gateway_name, &params_value, &name)?
+            } else {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "no_transport".to_string(),
+                    message: format!(
+                        "server '{name}' has no remotes and no packages — cannot install"
+                    ),
+                });
+            };
 
-            if let Some(oauth) = discovered_oauth {
-                spec["oauth"] = oauth;
-            }
-
-            // Delegate to gateway.add — pass confirm:true since the caller already confirmed at
-            // the server.install level (destructive:true is checked by handle_action before we
-            // reach this arm).
+            // Delegate to gateway.add — confirm:true because the caller already confirmed at the
+            // server.install level (destructive:true is enforced by handle_action upstream).
             crate::dispatch::gateway::dispatch(
                 "gateway.add",
                 serde_json::json!({ "spec": spec, "confirm": true }),
@@ -142,6 +97,160 @@ pub async fn dispatch_with_client(
             hint: None,
         }),
     }
+}
+
+/// Build a gateway spec for an HTTP-transport server and return it as JSON.
+///
+/// Validates the URL against SSRF rules and probes for OAuth support.
+async fn install_http(
+    url: &str,
+    gateway_name: &str,
+    params_value: &Value,
+) -> Result<Value, ToolError> {
+    let url = url.to_string();
+
+    // SSRF validation (synchronous DNS) — must run in spawn_blocking.
+    let url_for_check = url.clone();
+    tokio::task::spawn_blocking(move || params::validate_registry_url(&url_for_check))
+        .await
+        .map_err(|e| ToolError::internal_message(format!("SSRF validation task panicked: {e}")))?
+        ?;
+
+    // Probe for OAuth support — non-fatal, install proceeds without OAuth on failure.
+    let discovered_oauth: Option<Value> =
+        if let Some(manager) = crate::dispatch::gateway::current_gateway_manager() {
+            match manager.probe_upstream_oauth(&url).await {
+                Ok(probe) if probe.oauth_discovered => manager
+                    .upstream_oauth_manager(&probe.upstream)
+                    .and_then(|m| serde_json::to_value(m.upstream_config().oauth.clone()).ok()),
+                Ok(_) | Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+    let bearer_token_env = params_value["bearer_token_env"].as_str();
+
+    let mut spec = serde_json::json!({
+        "name": gateway_name,
+        "url": url,
+        "bearer_token_env": bearer_token_env,
+        "command": null,
+        "args": [],
+        "proxy_resources": false,
+        "expose_tools": null,
+    });
+
+    if let Some(oauth) = discovered_oauth {
+        spec["oauth"] = oauth;
+    }
+
+    Ok(spec)
+}
+
+/// Build a gateway spec for a stdio-transport server, validate security constraints,
+/// and write any user-supplied env vars into `~/.lab/.env`.
+fn install_stdio(
+    pkg: &lab_apis::mcpregistry::types::Package,
+    gateway_name: &str,
+    params_value: &Value,
+    server_name: &str,
+) -> Result<Value, ToolError> {
+    // runtimeHint is required for stdio packages.
+    let hint = pkg.runtime_hint.as_deref().ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "no_runtime_hint".to_string(),
+        message: format!(
+            "server '{server_name}' package has no runtimeHint — cannot build stdio command"
+        ),
+    })?;
+
+    params::validate_runtime_hint(hint)?;
+
+    // Build argv: runtimeArguments + identifier + packageArguments.
+    let mut argv: Vec<String> = pkg
+        .runtime_arguments
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
+    argv.push(pkg.identifier.clone());
+    argv.extend(
+        pkg.package_arguments
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string)),
+    );
+
+    params::validate_stdio_argv(&argv)?;
+
+    // Resolve env vars: user-supplied values take precedence; defaults fill gaps;
+    // required vars with no resolution produce an error.
+    let user_env = params_value["env_values"].as_object();
+    let mut resolved_env: Vec<(String, String)> = Vec::new();
+
+    for ev in &pkg.environment_variables {
+        params::validate_env_var_name(&ev.name)?;
+
+        let user_val = user_env
+            .and_then(|m| m.get(&ev.name))
+            .and_then(Value::as_str);
+
+        let resolved = if let Some(v) = user_val {
+            params::validate_env_value(&ev.name, v)?;
+            Some(v.to_string())
+        } else {
+            ev.default.clone()
+        };
+
+        match resolved {
+            Some(v) => resolved_env.push((ev.name.clone(), v)),
+            None if ev.is_required => {
+                return Err(ToolError::MissingParam {
+                    message: format!(
+                        "env var '{}' is required by server '{server_name}' but was not supplied in \
+                         `env_values` and has no default",
+                        ev.name
+                    ),
+                    param: ev.name.clone(),
+                });
+            }
+            None => {}
+        }
+    }
+
+    // Write resolved env vars to ~/.lab/.env if there are any.
+    if !resolved_env.is_empty() {
+        let env_path = config::dotenv_path().ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: "cannot determine ~/.lab/.env path".to_string(),
+        })?;
+        config::backup_env(&env_path).map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!("failed to back up .env: {e}"),
+        })?;
+        let conflicts =
+            config::write_env_pairs(&env_path, &resolved_env, false).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to write env vars to .env: {e}"),
+            })?;
+        if !conflicts.is_empty() {
+            // Surface conflicts as a warning embedded in the result rather than failing —
+            // the gateway will still be registered; the user can --force if needed.
+            tracing::warn!(
+                service = "mcpregistry",
+                action = "server.install",
+                "env write conflicts (skipped): {}",
+                conflicts.join("; ")
+            );
+        }
+    }
+
+    Ok(serde_json::json!({
+        "name": gateway_name,
+        "url": null,
+        "command": hint,
+        "args": argv,
+        "proxy_resources": false,
+        "expose_tools": null,
+    }))
 }
 
 /// Dispatch one call against the `mcpregistry` service.
