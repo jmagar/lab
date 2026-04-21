@@ -64,6 +64,7 @@
   --aurora-accent-deep: #1c7fac;
   --aurora-warn: #c6a36b;
   --aurora-error: #c78490;
+  --aurora-success: #7dd3c7;
   --aurora-focus-ring: rgba(41, 182, 246, 0.34);
   --aurora-active-glow: 0 0 0 1px rgba(41, 182, 246, 0.18), 0 0 16px rgba(41, 182, 246, 0.08);
   --aurora-shadow-medium: 0 12px 24px rgba(0, 0, 0, 0.18);
@@ -176,6 +177,7 @@
   --color-aurora-accent-deep: var(--aurora-accent-deep);
   --color-aurora-warn: var(--aurora-warn);
   --color-aurora-error: var(--aurora-error);
+  --color-aurora-success: var(--aurora-success);
 }
 
 @layer base {

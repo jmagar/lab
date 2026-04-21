@@ -13,14 +13,78 @@ const badgeVariants = cva(
           'border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90',
         secondary:
           'border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90',
+        /**
+         * @deprecated Use `status="error"` instead. Retained one cycle for backwards compatibility.
+         */
         destructive:
           'border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         outline:
           'text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
+        pill: 'border-transparent bg-primary text-primary-foreground rounded-full px-2.5 [a&]:hover:bg-primary/90',
+      },
+      status: {
+        default: '',
+        warn: '',
+        error: '',
+        success: '',
       },
     },
+    compoundVariants: [
+      // warn tones — applied to default, outline, pill (not secondary/destructive)
+      {
+        variant: 'default',
+        status: 'warn',
+        className: 'bg-aurora-warn/12 border-aurora-warn/30 text-aurora-warn',
+      },
+      {
+        variant: 'outline',
+        status: 'warn',
+        className: 'bg-aurora-warn/12 border-aurora-warn/30 text-aurora-warn',
+      },
+      {
+        variant: 'pill',
+        status: 'warn',
+        className: 'bg-aurora-warn/12 border-aurora-warn/30 text-aurora-warn',
+      },
+      // error tones
+      {
+        variant: 'default',
+        status: 'error',
+        className: 'bg-aurora-error/12 border-aurora-error/30 text-aurora-error',
+      },
+      {
+        variant: 'outline',
+        status: 'error',
+        className: 'bg-aurora-error/12 border-aurora-error/30 text-aurora-error',
+      },
+      {
+        variant: 'pill',
+        status: 'error',
+        className: 'bg-aurora-error/12 border-aurora-error/30 text-aurora-error',
+      },
+      // success tones
+      {
+        variant: 'default',
+        status: 'success',
+        className:
+          'bg-aurora-success/12 border-aurora-success/30 text-aurora-success',
+      },
+      {
+        variant: 'outline',
+        status: 'success',
+        className:
+          'bg-aurora-success/12 border-aurora-success/30 text-aurora-success',
+      },
+      {
+        variant: 'pill',
+        status: 'success',
+        className:
+          'bg-aurora-success/12 border-aurora-success/30 text-aurora-success',
+      },
+    ],
     defaultVariants: {
       variant: 'default',
+      status: 'default',
     },
   },
 )
@@ -28,6 +92,7 @@ const badgeVariants = cva(
 function Badge({
   className,
   variant,
+  status,
   asChild = false,
   ...props
 }: React.ComponentProps<'span'> &
@@ -37,7 +102,7 @@ function Badge({
   return (
     <Comp
       data-slot="badge"
-      className={cn(badgeVariants({ variant }), className)}
+      className={cn(badgeVariants({ variant, status }), className)}
       {...props}
     />
   )
