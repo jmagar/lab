@@ -23,6 +23,7 @@ impl IntoResponse for ToolError {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             "confirmation_required" => StatusCode::UNPROCESSABLE_ENTITY,
+            "ssrf_blocked" | "no_remote_transport" => StatusCode::UNPROCESSABLE_ENTITY,
             "oauth_needs_reauth" => StatusCode::UNAUTHORIZED,
             "oauth_state_invalid" => StatusCode::BAD_REQUEST,
             "forbidden" => StatusCode::FORBIDDEN,
