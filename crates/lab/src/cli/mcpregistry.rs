@@ -29,6 +29,7 @@ pub enum McpregistryCommand {
 #[derive(Debug, Args)]
 pub struct ActionArgs {
     /// Action to run, e.g. `help`, `server.list`, `server.get`.
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(ACTIONS.iter().map(|a| a.name)))]
     pub action: String,
 
     /// Optional `key=value` params for the action.

@@ -17,6 +17,7 @@ use crate::output::OutputFormat;
 #[derive(Debug, Args)]
 pub struct BytestashArgs {
     /// Action to run, e.g. `help`, `snippets.list`, `categories.list`.
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(ACTIONS.iter().map(|a| a.name)))]
     pub action: String,
 
     /// Optional `key=value` params for the action.
