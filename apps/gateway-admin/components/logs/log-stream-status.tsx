@@ -40,8 +40,8 @@ export function LogStreamStatusCard({
             variant="outline"
             className={
               status.connected
-                ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200'
-                : 'border-rose-400/40 bg-rose-400/10 text-rose-200'
+                ? 'border-aurora-success/40 bg-aurora-success/10 text-aurora-success'
+                : 'border-aurora-error/40 bg-aurora-error/10 text-aurora-error'
             }
           >
             {status.connected ? 'Connected' : 'Disconnected'}
@@ -87,7 +87,7 @@ export function LogStreamStatusCard({
         </div>
 
         {status.error ? (
-          <p className="rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">
+          <p className="rounded-lg border border-aurora-error/30 bg-aurora-error/10 px-3 py-2 text-sm text-aurora-error">
             {status.error}
           </p>
         ) : null}
