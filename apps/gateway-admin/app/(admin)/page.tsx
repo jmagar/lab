@@ -19,7 +19,7 @@ import {
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
   AURORA_STRONG_PANEL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 
 const AURORA_FOCUS_RING =
   'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34 focus-visible:ring-offset-2 focus-visible:ring-offset-aurora-page-bg'

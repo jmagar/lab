@@ -5,7 +5,7 @@ import {
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import {
   auroraColorTokens,
   elevationTiers,

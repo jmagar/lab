@@ -13,7 +13,7 @@ import {
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
   AURORA_STRONG_PANEL,
-} from '@/components/logs/log-theme'
+} from '@/components/aurora/tokens'
 import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { buildGatewayActivityFeed } from '@/lib/dashboard/admin-insights'
 import { useGateways } from '@/lib/hooks/use-gateways'
