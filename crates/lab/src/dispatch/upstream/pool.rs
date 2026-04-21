@@ -116,7 +116,6 @@ fn is_capability_unsupported(error: &rmcp::ServiceError) -> bool {
         || msg.contains("method_not_found")
         || msg.contains("-32601")
         || msg.contains("Not implemented")
-        || msg.contains("not supported")
 }
 
 async fn discover_capability_counts(
@@ -999,9 +998,13 @@ impl UpstreamPool {
                         }
                     }
                     for mut resource in result.resources {
-                        if !resource.uri.starts_with("lab://upstream/") {
-                            resource.uri = format!("lab://upstream/{name}/{}", resource.uri);
-                        }
+                        let bare_uri = if let Some(rest) = resource.uri.strip_prefix("lab://upstream/") {
+                            // Strip any embedded upstream name and re-prefix with the correct one
+                            rest.splitn(2, '/').nth(1).unwrap_or(rest)
+                        } else {
+                            resource.uri.as_str()
+                        };
+                        resource.uri = format!("lab://upstream/{name}/{bare_uri}");
                         resources.push(resource);
                     }
                 }
@@ -1061,9 +1064,13 @@ impl UpstreamPool {
             match conn.peer.list_resources(None).await {
                 Ok(result) => {
                     for mut resource in result.resources {
-                        if !resource.uri.starts_with("lab://upstream/") {
-                            resource.uri = format!("lab://upstream/{name}/{}", resource.uri);
-                        }
+                        let bare_uri = if let Some(rest) = resource.uri.strip_prefix("lab://upstream/") {
+                            // Strip any embedded upstream name and re-prefix with the correct one
+                            rest.splitn(2, '/').nth(1).unwrap_or(rest)
+                        } else {
+                            resource.uri.as_str()
+                        };
+                        resource.uri = format!("lab://upstream/{name}/{bare_uri}");
                         resources.push(resource);
                     }
                 }
@@ -1548,7 +1555,9 @@ async fn connect_http_upstream(
                 } else {
                     token
                 };
-                transport_config.auth_header = Some(raw.to_string());
+                if !raw.is_empty() {
+                    transport_config.auth_header = Some(raw.to_string());
+                }
             }
         } else {
             tracing::warn!(

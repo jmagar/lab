@@ -50,6 +50,7 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
       setNameError(null)
       setSubmitError(null)
     } else {
+      abortRef.current?.abort()
       // Reset derived name when closed so it re-derives on next open
       setGatewayName('')
     }

@@ -54,6 +54,7 @@ Dispatch layers may add the following kinds on top of SDK errors:
 - `missing_param`
 - `invalid_param`
 - `unknown_instance`
+- `conflict` — resource already exists with the given identifier; HTTP 409
 
 ### mcpregistry-specific kinds
 
