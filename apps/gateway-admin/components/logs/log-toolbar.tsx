@@ -151,21 +151,21 @@ export function LogToolbar({
               </SelectContent>
             </Select>
 
-            <Button variant="outline" className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')} onClick={onTogglePause}>
+            <Button variant="outline" className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-aurora-hover-bg hover:text-aurora-text-primary')} onClick={onTogglePause}>
               {streamStatus.paused ? <PlayCircle className="size-4" /> : <PauseCircle className="size-4" />}
               {streamStatus.paused ? 'Resume' : 'Pause'}
             </Button>
 
             <Button
               variant="outline"
-              className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')}
+              className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
               onClick={onJumpToNewest}
               disabled={streamStatus.atLiveEdge && streamStatus.buffered === 0}
             >
               Jump to newest
             </Button>
 
-            <Button variant="outline" className={cn(controlTone('accent'), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')} onClick={onRefresh} disabled={isRefreshing}>
+            <Button variant="outline" className={cn(controlTone('accent'), 'rounded-[0.95rem] hover:bg-aurora-hover-bg hover:text-aurora-text-primary')} onClick={onRefresh} disabled={isRefreshing}>
               <RefreshCw className="size-4" />
               {isRefreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
@@ -198,7 +198,7 @@ export function LogToolbar({
           </div>
 
           {streamStatus.error ? (
-            <div role="alert" className="rounded-[0.95rem] border border-aurora-error/28 bg-[rgba(76,42,52,0.18)] px-3 py-2 text-sm text-[#efd6dd] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div role="alert" className="rounded-[0.95rem] border border-aurora-error/28 bg-[rgba(76,42,52,0.18)] px-3 py-2 text-sm text-aurora-error shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
               {streamStatus.error}
             </div>
           ) : null}
