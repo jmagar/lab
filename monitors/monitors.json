@@ -1,0 +1,7 @@
+[
+  {
+    "name": "gh-comments-monitor",
+    "command": "tail -F ~/.local/share/gh-webhook/notifications.jsonl | jq -r '.display'",
+    "description": "Streams GitHub PR comment notifications from the webhook server"
+  }
+]
