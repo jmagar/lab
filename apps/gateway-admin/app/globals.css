@@ -178,6 +178,11 @@
   --color-aurora-warn: var(--aurora-warn);
   --color-aurora-error: var(--aurora-error);
   --color-aurora-success: var(--aurora-success);
+  --shadow-aurora-medium: var(--aurora-shadow-medium);
+  --shadow-aurora-strong: var(--aurora-shadow-strong);
+  --shadow-aurora-active-glow: var(--aurora-active-glow);
+  --shadow-aurora-highlight-medium: var(--aurora-highlight-medium);
+  --shadow-aurora-highlight-strong: var(--aurora-highlight-strong);
 }
 
 @layer base {
