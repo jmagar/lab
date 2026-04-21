@@ -71,6 +71,7 @@
   --aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.26);
   --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --aurora-hover-bg: #17364b;
 }
 
 .dark {
@@ -178,6 +179,7 @@
   --color-aurora-warn: var(--aurora-warn);
   --color-aurora-error: var(--aurora-error);
   --color-aurora-success: var(--aurora-success);
+  --color-aurora-hover-bg: var(--aurora-hover-bg);
   --shadow-aurora-medium: var(--aurora-shadow-medium);
   --shadow-aurora-strong: var(--aurora-shadow-strong);
   --shadow-aurora-active-glow: var(--aurora-active-glow);
