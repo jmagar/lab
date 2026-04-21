@@ -109,7 +109,7 @@ export function ServerFilters({
 
       {!isLoading && totalCount !== undefined && (
         <p className="text-xs text-aurora-text-muted">
-          {totalCount === 0 ? 'No servers found' : `${totalCount} server${totalCount === 1 ? '' : 's'}`}
+          {totalCount === 0 ? 'No servers found' : `${totalCount} server${totalCount === 1 ? '' : 's'} on this page`}
         </p>
       )}
     </div>

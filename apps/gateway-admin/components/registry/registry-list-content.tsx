@@ -39,24 +39,26 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   const [debouncedVersion, setDebouncedVersion] = useState('')
   const [updatedSince, setUpdatedSince] = useState('')
   const [debouncedUpdatedSince, setDebouncedUpdatedSince] = useState('')
-  const [cursor, setCursor] = useState<string | null>(null)
+  const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null])
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set())
   const [slowFetch, setSlowFetch] = useState(false)
   const [verySlowFetch, setVerySlowFetch] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
 
-  // Debounce all filter fields 300ms; reset cursor on any filter change
+  // Debounce all filter fields 300ms; reset cursor stack on any filter change
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
       setDebouncedVersion(version)
       setDebouncedUpdatedSince(updatedSince)
-      setCursor(null)
+      setCursorHistory([null])
     }, 300)
     return () => clearTimeout(timer)
   }, [search, version, updatedSince])
 
-  const key = registryServersKey(debouncedSearch, cursor, debouncedVersion, debouncedUpdatedSince)
+  const activeCursor = cursorHistory[cursorHistory.length - 1]
+  const currentPage = cursorHistory.length
+  const key = registryServersKey(debouncedSearch, activeCursor, debouncedVersion, debouncedUpdatedSince)
 
   // Fetcher with AbortController — aborts prior request on key change
   const fetcher = useCallback((k: RegistryServersKey) => {
@@ -293,21 +295,22 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
         )}
 
         {/* Pagination */}
-        {!isLoading && !error && (servers.length > 0 || cursor !== null) && (
+        {!isLoading && !error && (servers.length > 0 || currentPage > 1) && (
           <div className="flex items-center justify-between">
             <Button
               variant="outline"
               size="sm"
-              disabled={cursor === null}
-              onClick={() => setCursor(null)}
+              disabled={currentPage <= 1}
+              onClick={() => setCursorHistory((h) => h.slice(0, -1))}
             >
-              ← Previous
+              ← Back
             </Button>
+            <span className="text-xs text-aurora-text-muted">Page {currentPage}</span>
             <Button
               variant="outline"
               size="sm"
               disabled={nextCursor === null}
-              onClick={() => { if (nextCursor) setCursor(nextCursor) }}
+              onClick={() => { if (nextCursor) setCursorHistory((h) => [...h, nextCursor]) }}
             >
               Next →
             </Button>
