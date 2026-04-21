@@ -209,6 +209,7 @@ export function GatewayFormDialog({
   const abortControllerRef = useRef<AbortController | null>(null)
   const probeInfoRef = useRef<{ registration_strategy: string; scopes?: string[] } | null>(null)
   const nameAutoRef = useRef(false)
+  const skipUrlOauthResetRef = useRef(false)
   const { data: supportedServices } = useSupportedServices()
   const { testGateway, saveServiceConfig, enableVirtualServer, disableVirtualServer } =
     useGatewayMutations()
@@ -361,12 +362,13 @@ export function GatewayFormDialog({
         setMode('custom')
         setTransport(gateway.transport === 'lab_service' ? 'http' : gateway.transport)
         setName(gateway.name)
-        setUrl(gateway.config.url || '')
-        setCommand(gateway.config.command || '')
-        setArgs(gateway.config.args?.join(' ') || '')
         const initialAuthMode = gateway.config.oauth_enabled ? 'oauth'
           : gateway.config.bearer_token_env ? 'bearer'
           : 'none'
+        skipUrlOauthResetRef.current = initialAuthMode === 'oauth'
+        setUrl(gateway.config.url || '')
+        setCommand(gateway.config.command || '')
+        setArgs(gateway.config.args?.join(' ') || '')
         setAuthMode(initialAuthMode)
         if (initialAuthMode === 'oauth') {
           setOauthState({ kind: 'connected', upstream: gateway.name, registration_strategy: 'unknown', scopes: undefined })
@@ -397,8 +399,6 @@ export function GatewayFormDialog({
         nameAutoRef.current = false
       }
     setErrors({})
-    setOauthState({ kind: 'idle' })
-    setOauthProbed(null)
   }, [open, gateway])
 
   useEffect(() => {
@@ -406,7 +406,12 @@ export function GatewayFormDialog({
   }, [selectedService])
 
   useEffect(() => {
+    if (skipUrlOauthResetRef.current) {
+      skipUrlOauthResetRef.current = false
+      return
+    }
     setOauthState({ kind: 'idle' })
+    setOauthProbed(null)
   }, [url])
 
   useEffect(() => {

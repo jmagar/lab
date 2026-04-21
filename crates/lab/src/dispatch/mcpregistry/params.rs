@@ -32,13 +32,13 @@ pub fn validate_registry_url(url: &str) -> Result<(), ToolError> {
     };
 
     let parsed = url::Url::parse(url).map_err(|_| ToolError::Sdk {
-        sdk_kind: "invalid_params".to_string(),
+        sdk_kind: "invalid_param".to_string(),
         message: format!("invalid registry URL: {url}"),
     })?;
 
     if parsed.scheme() != "https" {
         return Err(ToolError::Sdk {
-            sdk_kind: "invalid_params".to_string(),
+            sdk_kind: "invalid_param".to_string(),
             message: format!(
                 "registry URL must use HTTPS, got '{}': {url}",
                 parsed.scheme()
@@ -47,7 +47,7 @@ pub fn validate_registry_url(url: &str) -> Result<(), ToolError> {
     }
 
     let host = parsed.host_str().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "invalid_params".to_string(),
+        sdk_kind: "invalid_param".to_string(),
         message: format!("registry URL has no host: {url}"),
     })?;
 
@@ -83,6 +83,14 @@ fn check_ip_not_private(ip: IpAddr, url: &str) -> Result<(), ToolError> {
             v6.is_loopback()
                 || (v6.segments()[0] & 0xfe00) == 0xfc00 // fc00::/7 ULA
                 || (v6.segments()[0] & 0xffc0) == 0xfe80 // fe80::/10 link-local
+                || v6.to_ipv4_mapped().is_some_and(|v4| {
+                    let o = v4.octets();
+                    v4.is_loopback()
+                        || o[0] == 10
+                        || (o[0] == 172 && (16..=31).contains(&o[1]))
+                        || (o[0] == 192 && o[1] == 168)
+                        || (o[0] == 169 && o[1] == 254)
+                })
         }
     };
     if blocked {

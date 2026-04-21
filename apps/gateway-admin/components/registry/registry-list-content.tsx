@@ -192,8 +192,8 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           <div className="overflow-hidden rounded-lg border border-aurora-border-strong">
             {servers.map((response) => {
               const server = response.server
-              const isHTTP = server.remotes.length > 0
-              const icon = server.icons.find((ic) => ic.type === 'icon')
+              const isHTTP = server.remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
+              const icon = server.icons[0] ?? null
               const displayName = server.title ?? server.name
               const { text: descText, truncated } = truncateDescription(server.description)
               const isExpanded = expandedDescriptions.has(server.name)
@@ -219,19 +219,23 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                     {/* Icon */}
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
                       {icon ? (
-                        <img
-                          src={icon.url}
-                          alt=""
-                          className="size-7 rounded object-contain"
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none'
-                            e.currentTarget.nextElementSibling?.removeAttribute('style')
-                          }}
-                        />
-                      ) : null}
-                      {!icon && <Package className="size-5 text-aurora-text-muted" />}
+                        <>
+                          <img
+                            src={icon.src}
+                            alt=""
+                            className="size-7 rounded object-contain"
+                            referrerPolicy="no-referrer"
+                            loading="lazy"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                              ;(e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
+                            }}
+                          />
+                          <Package className="size-5 text-aurora-text-muted" style={{ display: 'none' }} />
+                        </>
+                      ) : (
+                        <Package className="size-5 text-aurora-text-muted" />
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">

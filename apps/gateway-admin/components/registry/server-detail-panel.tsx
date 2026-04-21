@@ -47,9 +47,9 @@ export function ServerDetailPanel({ server, updatedAt, status, statusMessage, on
 
 function PanelBody({ server, updatedAt, status, statusMessage }: PanelBodyProps) {
   const displayName = server.title ?? server.name
-  const isHTTP = server.remotes.length > 0
+  const isHTTP = server.remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
   const [installOpen, setInstallOpen] = useState(false)
-  const icon = server.icons.find((ic) => ic.type === 'icon')
+  const icon = server.icons[0] ?? null
   const repoHref = safeHref(server.repository?.url)
   const websiteHref = safeHref(server.websiteUrl)
 
@@ -60,7 +60,7 @@ function PanelBody({ server, updatedAt, status, statusMessage }: PanelBodyProps)
           <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
             {icon ? (
               <img
-                src={icon.url}
+                src={icon.src}
                 alt=""
                 className="size-8 rounded object-contain"
                 referrerPolicy="no-referrer"
@@ -185,14 +185,11 @@ function PanelBody({ server, updatedAt, status, statusMessage }: PanelBodyProps)
               {server.packages.map((pkg, i) => (
                 <div key={i} className={cn(AURORA_MEDIUM_PANEL, 'p-3 text-sm')}>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-aurora-text-primary">{pkg.name}</span>
+                    <span className="font-medium text-aurora-text-primary">{pkg.identifier}</span>
                     {pkg.version && (
                       <span className="text-xs text-aurora-text-muted">v{pkg.version}</span>
                     )}
                   </div>
-                  {pkg.command && (
-                    <p className="mt-1 font-mono text-xs text-aurora-text-muted">{pkg.command}</p>
-                  )}
                 </div>
               ))}
             </div>

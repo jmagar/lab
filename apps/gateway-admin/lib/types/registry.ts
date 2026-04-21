@@ -65,11 +65,10 @@ export interface Header {
 }
 
 export interface Package {
-  registryName: string
-  name: string
+  registryType: string
+  identifier: string
   version?: string | null
-  command?: string | null
-  args?: string[] | null
+  transport: Transport
   runtimeHint?: string | null
   runtimeArguments?: RuntimeArgument[] | null
   packageArguments?: PackageArgument[] | null
@@ -102,8 +101,10 @@ export interface Repository {
 }
 
 export interface Icon {
-  type: string
-  url: string
+  src: string
+  mimeType?: string | null
+  sizes?: string[]
+  theme?: string | null
 }
 
 export interface ValidationResult {

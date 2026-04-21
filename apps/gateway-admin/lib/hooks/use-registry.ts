@@ -38,7 +38,9 @@ export function fetchRegistryServers(
       limit: 20,
       cursor: cursor ?? undefined,
       version,
-      updated_since: updatedSince,
+      updated_since: updatedSince && /^\d{4}-\d{2}-\d{2}$/.test(updatedSince)
+        ? `${updatedSince}T00:00:00Z`
+        : updatedSince,
     },
     signal,
   )
