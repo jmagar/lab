@@ -32,27 +32,27 @@ export function GatewayTableSkeleton({ rows = 5 }: TableSkeletonProps) {
           {Array.from({ length: rows }).map((_, i) => (
             <TableRow key={i} className="border-t border-aurora-border-strong/70">
               <TableCell>
-                <Skeleton className="h-5 w-32 bg-[#173245]" />
+                <Skeleton className="h-5 w-32 bg-[var(--aurora-panel-strong-top)]" />
               </TableCell>
               <TableCell>
-                <Skeleton className="h-5 w-16 bg-[#173245]" />
+                <Skeleton className="h-5 w-16 bg-[var(--aurora-panel-strong-top)]" />
               </TableCell>
               <TableCell>
-                <Skeleton className="h-5 w-20 bg-[#173245]" />
+                <Skeleton className="h-5 w-20 bg-[var(--aurora-panel-strong-top)]" />
               </TableCell>
               <TableCell>
                 <div className="flex gap-2">
-                  <Skeleton className="h-5 w-12 bg-[#173245]" />
-                  <Skeleton className="h-5 w-12 bg-[#173245]" />
+                  <Skeleton className="h-5 w-12 bg-[var(--aurora-panel-strong-top)]" />
+                  <Skeleton className="h-5 w-12 bg-[var(--aurora-panel-strong-top)]" />
                 </div>
               </TableCell>
               <TableCell>
-                <Skeleton className="h-5 w-8 bg-[#173245]" />
+                <Skeleton className="h-5 w-8 bg-[var(--aurora-panel-strong-top)]" />
               </TableCell>
               <TableCell>
                 <div className="flex justify-end gap-1">
-                  <Skeleton className="size-8 rounded-md bg-[#173245]" />
-                  <Skeleton className="size-8 rounded-md bg-[#173245]" />
+                  <Skeleton className="size-8 rounded-md bg-[var(--aurora-panel-strong-top)]" />
+                  <Skeleton className="size-8 rounded-md bg-[var(--aurora-panel-strong-top)]" />
                 </div>
               </TableCell>
             </TableRow>

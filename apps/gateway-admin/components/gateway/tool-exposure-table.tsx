@@ -139,7 +139,7 @@ export function ToolExposureTable({
               {hiddenCount} hidden
             </span>
             {hasDraftChanges && (
-              <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-300">
+              <Badge variant="outline" className="rounded-full border-aurora-warn/30 bg-aurora-warn/10 px-2.5 py-1 text-aurora-warn">
                 Unsaved changes
               </Badge>
             )}
@@ -198,7 +198,7 @@ export function ToolExposureTable({
                 </label>
                 <Badge variant="secondary" className="rounded-full">{selectedRowToolNames.length} selected</Badge>
                 {hasDraftChanges && (
-                  <Badge variant="outline" className="rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                  <Badge variant="outline" className="rounded-full border-aurora-warn/30 bg-aurora-warn/10 text-aurora-warn">
                     Unsaved changes
                   </Badge>
                 )}
@@ -252,7 +252,7 @@ export function ToolExposureTable({
                     <TooltipTrigger asChild>
                       <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${
                         tool.exposed
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          ? 'bg-aurora-success/10 text-aurora-success'
                           : 'bg-muted text-muted-foreground'
                       }`}>
                         {tool.exposed ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
@@ -318,7 +318,7 @@ export function ToolExposureTable({
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-2.5">
                           <span
-                            className={`size-2 rounded-full ${tool.exposed ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                            className={`size-2 rounded-full ${tool.exposed ? 'bg-aurora-success' : 'bg-aurora-error'}`}
                             aria-hidden="true"
                           />
                           <code className="text-sm font-mono">{tool.name}</code>

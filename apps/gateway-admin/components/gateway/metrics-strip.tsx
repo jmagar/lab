@@ -34,7 +34,7 @@ export function MetricsStrip({
             className={cn(
               'flex items-center justify-between gap-3',
               item.tone === 'success'
-                ? 'text-emerald-600 dark:text-emerald-400'
+                ? 'text-aurora-success'
                 : 'text-muted-foreground',
             )}
           >
@@ -65,7 +65,7 @@ export function MetricsStrip({
                 className={cn(
                   'flex items-center gap-1.5',
                   item.tone === 'success'
-                    ? 'text-emerald-600 dark:text-emerald-400'
+                    ? 'text-aurora-success'
                     : 'text-muted-foreground',
                 )}
               >
