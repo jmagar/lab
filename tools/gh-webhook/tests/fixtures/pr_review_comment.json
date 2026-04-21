@@ -1,0 +1,6 @@
+{
+  "action": "created",
+  "comment": { "id": 123, "user": { "login": "octocat" } },
+  "pull_request": { "number": 42, "head": { "ref": "feat/foo" } },
+  "repository": { "full_name": "jmagar/lab", "owner": { "login": "jmagar" }, "name": "lab" }
+}

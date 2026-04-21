@@ -1,0 +1,5 @@
+{
+  "action": "completed",
+  "workflow_run": { "id": 9, "name": "CI", "conclusion": "failure", "head_branch": "feat/baz", "html_url": "https://github.com/jmagar/lab/actions/runs/9" },
+  "repository": { "full_name": "jmagar/lab", "owner": { "login": "jmagar" }, "name": "lab" }
+}
