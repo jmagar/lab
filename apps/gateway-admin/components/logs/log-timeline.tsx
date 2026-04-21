@@ -3,11 +3,11 @@
 import { ArrowDown, ChevronDown, ChevronRight } from 'lucide-react'
 
 import {
-  AURORA_DISPLAY_TITLE,
+  AURORA_DISPLAY_2,
   AURORA_LEVEL_TEXT,
+  AURORA_MESSAGE_SURFACE,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
-  AURORA_MESSAGE_SURFACE,
   AURORA_TAIL_ROW,
 } from '@/components/aurora/tokens'
 import { cn } from '@/lib/utils'
@@ -45,7 +45,7 @@ export function LogTimeline({
     <div className={AURORA_STRONG_PANEL}>
       <div className="flex items-center justify-between border-b border-aurora-border-strong px-5 py-4">
         <div>
-          <p className={`text-lg font-semibold text-aurora-text-primary ${AURORA_DISPLAY_TITLE}`}>Runtime stream</p>
+          <p className={`${AURORA_DISPLAY_2} text-aurora-text-primary`}>Runtime stream</p>
           <p className="text-sm text-aurora-text-muted">Structured tail view. One line per event.</p>
         </div>
         <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-aurora-text-muted">

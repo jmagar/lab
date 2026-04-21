@@ -2,11 +2,11 @@ import { Cable, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
-  AURORA_DISPLAY_TITLE,
+  AURORA_DISPLAY_2,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
-  gatewayActionTone,
-} from './gateway-theme'
+} from '@/components/aurora/tokens'
+import { gatewayActionTone } from './gateway-theme'
 
 interface EmptyStateProps {
   title: string
@@ -32,7 +32,7 @@ export function EmptyState({
         {icon || <Cable className="size-6 text-aurora-accent-strong" />}
       </div>
       <p className={cn(AURORA_MUTED_LABEL, 'mt-5')}>Gateway fleet</p>
-      <h3 className={cn(AURORA_DISPLAY_TITLE, 'mt-2 text-xl font-semibold text-aurora-text-primary')}>{title}</h3>
+      <h3 className={cn(AURORA_DISPLAY_2, 'mt-2 text-aurora-text-primary')}>{title}</h3>
       <p className="mt-2 max-w-sm text-sm leading-6 text-aurora-text-muted">
         {description}
       </p>

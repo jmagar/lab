@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
   AURORA_CONTROL_SURFACE,
-  AURORA_DISPLAY_TITLE,
+  AURORA_DISPLAY_2,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
   AURORA_STRONG_PANEL,
@@ -63,7 +63,7 @@ export function ControlsSection() {
     <section className={cn(AURORA_STRONG_PANEL, 'overflow-hidden')}>
       <div className="border-b border-aurora-border-strong px-5 py-4">
         <p className={AURORA_MUTED_LABEL}>Controls</p>
-        <h2 className={cn(AURORA_DISPLAY_TITLE, 'mt-2 text-2xl font-semibold text-aurora-text-primary')}>
+        <h2 className={cn(AURORA_DISPLAY_2, 'mt-2 text-aurora-text-primary')}>
           Form and action primitives
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-aurora-text-muted">

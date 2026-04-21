@@ -3,9 +3,9 @@
 import { KeyRound, LifeBuoy, PlugZap, ShieldCheck } from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
 import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
 import {
-  AURORA_DISPLAY_TITLE,
+  AURORA_DISPLAY_1,
+  AURORA_DISPLAY_NUMBER,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
   AURORA_PAGE_FRAME,
@@ -17,11 +17,6 @@ import { buildGatewaySettingsSnapshot } from '@/lib/dashboard/admin-insights'
 import { useGateways } from '@/lib/hooks/use-gateways'
 import { cn } from '@/lib/utils'
 
-// DEVIATION (eixf.6): components/ui/card.tsx does not expose a `variant` prop.
-// Applying AURORA_STRONG_PANEL / AURORA_MEDIUM_PANEL utility strings via
-// className instead of `<Card variant="strong">`. Visual result is identical
-// (both are documented Aurora panel recipes) and no primitive is modified.
-
 export default function SettingsPage() {
   const { data: gateways, isLoading, error } = useGateways()
   const snapshot = gateways ? buildGatewaySettingsSnapshot(gateways, {
@@ -32,195 +27,162 @@ export default function SettingsPage() {
   return (
     <div className={AURORA_PAGE_SHELL}>
       <AppHeader
-        breadcrumbs={[
-          { label: 'Settings' }
-        ]}
+        breadcrumbs={[{ label: 'Settings' }]}
       />
-      <div className={AURORA_PAGE_FRAME}>
-        <header className="flex flex-col gap-2">
-          <h1 className={cn(AURORA_DISPLAY_TITLE, 'text-2xl font-semibold text-aurora-text-primary')}>
-            Settings
-          </h1>
-          <p className="text-sm text-aurora-text-muted">
-            Control-plane posture and effective defaults for the admin surface.
+      <div className={cn(AURORA_PAGE_FRAME, AURORA_PAGE_SHELL)}>
+        {/* Page header */}
+        <div className={cn(AURORA_STRONG_PANEL, 'px-6 py-5')}>
+          <p className={AURORA_MUTED_LABEL}>Admin Console</p>
+          <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Settings</h1>
+          <p className="mt-2 text-sm text-aurora-text-muted">
+            Control-plane posture and effective defaults for the gateway fleet.
           </p>
-        </header>
+        </div>
 
+        {/* Stat cards */}
         {isLoading ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, index) => (
-              <div
-                key={index}
-                className={cn(AURORA_MEDIUM_PANEL, 'h-28 animate-pulse')}
-              />
+              <div key={index} className="h-28 animate-pulse rounded-[1.35rem] border border-aurora-border-strong bg-aurora-panel-medium" />
             ))}
           </div>
         ) : error || !snapshot ? (
-          <Card className={cn(AURORA_MEDIUM_PANEL, 'p-4 text-sm text-aurora-error')}>
+          <div className="rounded-[1rem] border border-aurora-error/30 bg-aurora-error/8 p-4 text-sm text-aurora-error">
             Failed to load settings because the gateway list is unavailable.
-          </Card>
+          </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Card className={cn(AURORA_MEDIUM_PANEL, 'gap-2 p-4')}>
+            <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
               <p className={AURORA_MUTED_LABEL}>Auth Mode</p>
-              <p className={cn(AURORA_DISPLAY_TITLE, 'text-xl font-semibold text-aurora-text-primary')}>
-                {snapshot.authModeLabel}
-              </p>
-              <p className="text-sm text-aurora-text-muted">
-                How the web UI authenticates control-plane requests.
-              </p>
-            </Card>
-            <Card className={cn(AURORA_MEDIUM_PANEL, 'gap-2 p-4')}>
+              <p className="mt-2 text-xl font-semibold text-aurora-text-primary">{snapshot.authModeLabel}</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">How the web UI authenticates control-plane requests.</p>
+            </div>
+            <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
               <p className={AURORA_MUTED_LABEL}>Runtime</p>
-              <p className={cn(AURORA_DISPLAY_TITLE, 'text-xl font-semibold text-aurora-text-primary')}>
-                {snapshot.runtimeLabel}
-              </p>
-              <p className="text-sm text-aurora-text-muted">
-                Current environment mode exposed to the admin UI.
-              </p>
-            </Card>
-            <Card className={cn(AURORA_MEDIUM_PANEL, 'gap-2 p-4')}>
+              <p className="mt-2 text-xl font-semibold text-aurora-text-primary">{snapshot.runtimeLabel}</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">Current environment mode exposed to the admin UI.</p>
+            </div>
+            <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
               <p className={AURORA_MUTED_LABEL}>Warnings</p>
-              <p className={cn(AURORA_DISPLAY_TITLE, 'text-xl font-semibold text-aurora-warn')}>
+              <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-[22px]', snapshot.warningCount > 0 ? 'text-aurora-warn' : 'text-aurora-text-primary')}>
                 {snapshot.warningCount}
               </p>
-              <p className="text-sm text-aurora-text-muted">
-                Warnings across all configured gateways.
-              </p>
-            </Card>
-            <Card className={cn(AURORA_MEDIUM_PANEL, 'gap-2 p-4')}>
+              <p className="mt-1 text-sm text-aurora-text-muted">Warnings across all configured gateways.</p>
+            </div>
+            <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
               <p className={AURORA_MUTED_LABEL}>Disconnected</p>
-              <p className={cn(AURORA_DISPLAY_TITLE, 'text-xl font-semibold text-aurora-error')}>
+              <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-[22px]', snapshot.disconnectedGateways > 0 ? 'text-aurora-error' : 'text-aurora-text-primary')}>
                 {snapshot.disconnectedGateways}
               </p>
-              <p className="text-sm text-aurora-text-muted">
-                Gateways that currently need operator attention.
-              </p>
-            </Card>
+              <p className="mt-1 text-sm text-aurora-text-muted">Gateways that currently need operator attention.</p>
+            </div>
           </div>
         )}
 
-        <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <Card className={cn(AURORA_STRONG_PANEL, 'gap-4 p-6')}>
-            <div className="flex flex-col gap-1">
-              <h2 className={cn(AURORA_DISPLAY_TITLE, 'text-lg font-semibold text-aurora-text-primary')}>
-                Control-plane posture
-              </h2>
-              <p className="text-sm text-aurora-text-muted">
-                A read-only summary of the admin surface and the current gateway fleet.
-              </p>
-            </div>
+        {/* Detail grid */}
+        <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+          <div className={cn(AURORA_STRONG_PANEL, 'px-6 py-5')}>
+            <p className="text-base font-semibold text-aurora-text-primary">Control-plane posture</p>
+            <p className="mt-1 text-sm text-aurora-text-muted">
+              A read-only summary of the admin surface and the current gateway fleet.
+            </p>
 
             {isLoading ? (
-              <div className="space-y-3">
+              <div className="mt-5 space-y-3">
                 {Array.from({ length: 4 }, (_, index) => (
-                  <div
-                    key={index}
-                    className={cn(AURORA_MEDIUM_PANEL, 'h-20 animate-pulse')}
-                  />
+                  <div key={index} className="h-20 animate-pulse rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface" />
                 ))}
               </div>
             ) : error || !snapshot ? (
-              <Card className={cn(AURORA_MEDIUM_PANEL, 'p-4 text-sm text-aurora-error')}>
+              <div className="mt-5 rounded-[1rem] border border-aurora-error/30 bg-aurora-error/8 p-4 text-sm text-aurora-error">
                 Failed to load settings because the gateway list is unavailable.
-              </Card>
+              </div>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className={cn(AURORA_MEDIUM_PANEL, 'p-4')}>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <div className="rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface p-4">
                   <div className="flex items-center gap-3">
                     <ShieldCheck className="size-5 text-aurora-accent-primary" />
-                    <div className="space-y-1">
+                    <div>
                       <p className="font-medium text-aurora-text-primary">Authentication</p>
                       <p className="text-sm text-aurora-text-muted">
-                        UI requests are running in{' '}
-                        <span className="font-medium text-aurora-text-primary">
-                          {snapshot.authModeLabel}
-                        </span>.
+                        UI requests are running in <span className="font-medium text-aurora-text-primary">{snapshot.authModeLabel}</span>.
                       </p>
                     </div>
                   </div>
-                </Card>
-                <Card className={cn(AURORA_MEDIUM_PANEL, 'p-4')}>
+                </div>
+                <div className="rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface p-4">
                   <div className="flex items-center gap-3">
                     <LifeBuoy className="size-5 text-aurora-accent-primary" />
-                    <div className="space-y-1">
+                    <div>
                       <p className="font-medium text-aurora-text-primary">Preview mode</p>
                       <p className="text-sm text-aurora-text-muted">
-                        <span className="font-medium text-aurora-text-primary">
-                          {snapshot.runtimeLabel}
-                        </span>{' '}
-                        is active for this build.
+                        <span className="font-medium text-aurora-text-primary">{snapshot.runtimeLabel}</span> is active for this build.
                       </p>
                     </div>
                   </div>
-                </Card>
-                <Card className={cn(AURORA_MEDIUM_PANEL, 'p-4')}>
+                </div>
+                <div className="rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface p-4">
                   <div className="flex items-center gap-3">
                     <PlugZap className="size-5 text-aurora-accent-primary" />
-                    <div className="space-y-1">
+                    <div>
                       <p className="font-medium text-aurora-text-primary">Gateway reachability</p>
                       <p className="text-sm text-aurora-text-muted">
                         {snapshot.connectedGateways} of {snapshot.totalGateways} gateways are connected.
                       </p>
                     </div>
                   </div>
-                </Card>
-                <Card className={cn(AURORA_MEDIUM_PANEL, 'p-4')}>
+                </div>
+                <div className="rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface p-4">
                   <div className="flex items-center gap-3">
                     <KeyRound className="size-5 text-aurora-accent-primary" />
-                    <div className="space-y-1">
+                    <div>
                       <p className="font-medium text-aurora-text-primary">Protected upstreams</p>
                       <p className="text-sm text-aurora-text-muted">
                         {snapshot.bearerTokenGateways} gateways require bearer-token env wiring.
                       </p>
                     </div>
                   </div>
-                </Card>
+                </div>
               </div>
             )}
-          </Card>
+          </div>
 
-          <Card className={cn(AURORA_STRONG_PANEL, 'gap-4 p-6')}>
-            <h2 className={cn(AURORA_DISPLAY_TITLE, 'text-lg font-semibold text-aurora-text-primary')}>
-              Effective defaults
-            </h2>
+          <div className={cn(AURORA_STRONG_PANEL, 'px-6 py-5')}>
+            <p className="text-base font-semibold text-aurora-text-primary">Effective defaults</p>
             {isLoading ? (
-              <div className="space-y-3">
+              <div className="mt-4 space-y-3">
                 {Array.from({ length: 4 }, (_, index) => (
-                  <div
-                    key={index}
-                    className={cn(AURORA_MEDIUM_PANEL, 'h-14 animate-pulse')}
-                  />
+                  <div key={index} className="h-14 animate-pulse rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface" />
                 ))}
               </div>
             ) : error || !snapshot ? (
-              <Card className={cn(AURORA_MEDIUM_PANEL, 'p-4 text-sm text-aurora-error')}>
+              <div className="mt-4 rounded-[1rem] border border-aurora-error/30 bg-aurora-error/8 p-4 text-sm text-aurora-error">
                 Effective defaults are unavailable until the gateway list loads successfully.
-              </Card>
+              </div>
             ) : (
-              <div className="space-y-3 text-sm text-aurora-text-muted">
-                <div className={cn(AURORA_MEDIUM_PANEL, 'flex items-center justify-between p-3')}>
-                  <span className="text-aurora-text-primary">Proxy resources enabled</span>
+              <div className="mt-4 space-y-2 text-sm text-aurora-text-muted">
+                <div className="flex items-center justify-between rounded-[0.85rem] border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
+                  <span>Proxy resources enabled</span>
                   <Badge variant="secondary">{snapshot.proxyResourceGateways} gateways</Badge>
                 </div>
-                <div className={cn(AURORA_MEDIUM_PANEL, 'flex items-center justify-between p-3')}>
-                  <span className="text-aurora-text-primary">Disconnected gateways</span>
-                  <Badge variant={snapshot.disconnectedGateways === 0 ? 'secondary' : 'destructive'}>
+                <div className="flex items-center justify-between rounded-[0.85rem] border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
+                  <span>Disconnected gateways</span>
+                  <Badge variant="secondary" status={snapshot.disconnectedGateways === 0 ? 'default' : 'error'}>
                     {snapshot.disconnectedGateways}
                   </Badge>
                 </div>
-                <div className={cn(AURORA_MEDIUM_PANEL, 'flex items-center justify-between p-3')}>
-                  <span className="text-aurora-text-primary">Warning backlog</span>
-                  <Badge variant={snapshot.warningCount === 0 ? 'secondary' : 'outline'}>
+                <div className="flex items-center justify-between rounded-[0.85rem] border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
+                  <span>Warning backlog</span>
+                  <Badge variant={snapshot.warningCount === 0 ? 'secondary' : 'outline'} status={snapshot.warningCount > 0 ? 'warn' : 'default'}>
                     {snapshot.warningCount}
                   </Badge>
                 </div>
-                <div className={cn(AURORA_MEDIUM_PANEL, 'border-dashed p-4 text-aurora-text-muted')}>
+                <div className="rounded-[0.85rem] border border-aurora-border-strong border-dashed p-4 text-aurora-text-muted">
                   This page is intentionally read-only for now. Global configuration is still managed through environment and backend config, but the UI now exposes the active posture instead of a dead placeholder.
                 </div>
               </div>
             )}
-          </Card>
+          </div>
         </div>
       </div>
     </div>

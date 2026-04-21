@@ -22,6 +22,11 @@ export {
   AURORA_STRONG_PANEL,
 }
 
+/**
+ * Gateway-specific surface tokens.
+ * Shared Aurora constants live in @/components/aurora/tokens.
+ */
+
 export const AURORA_GATEWAY_STAT =
   'rounded-[1.05rem] border border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(12,27,38,0.98))] px-4 py-3 shadow-[0_8px_18px_rgba(0,0,0,0.18),var(--aurora-highlight-medium)]'
 
