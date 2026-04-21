@@ -878,15 +878,17 @@ fn render_doctor_report(
                 status_ok("", ctx)
             };
             let total = ok + warn + fail;
-            let env_summary = if fail == 0 && warn == 0 {
-                dim(format!("env {ok}/{total}").as_str(), ctx)
-            } else {
-                format!(
-                    "{} {}",
-                    dim("env", ctx),
-                    accent(format!("{ok}/{total}").as_str(), ctx)
-                )
-            };
+            let env_summary = format!(
+                "{} {}",
+                dim("env", ctx),
+                if fail == 0 && warn == 0 {
+                    tertiary(format!("{ok}/{total}").as_str(), ctx)
+                } else if fail > 0 {
+                    paint("38;5;203", format!("{ok}/{total}").as_str(), ctx)
+                } else {
+                    paint("38;5;214", format!("{ok}/{total}").as_str(), ctx)
+                }
+            );
             vec![
                 format!("  {status}"),
                 bold(accent(service, ctx), ctx),
@@ -996,8 +998,8 @@ fn render_catalog(map: &serde_json::Map<String, Value>, ctx: RenderContext) -> S
             "  {} {}  {}  {} {}",
             status_icon,
             pad_right(&bold(accent(name, ctx), ctx), name_width),
-            pad_right(&dim(category, ctx), cat_width),
-            accent(actions.len().to_string().as_str(), ctx),
+            pad_right(&secondary(category, ctx), cat_width),
+            bold(accent(actions.len().to_string().as_str(), ctx), ctx),
             dim("actions", ctx),
         )
         .ok();
@@ -1016,10 +1018,11 @@ fn render_catalog(map: &serde_json::Map<String, Value>, ctx: RenderContext) -> S
         let mut line = String::new();
         let mut shown = 0usize;
         for (i, n) in names.iter().take(ACTION_PREVIEW).enumerate() {
+            let colored = tertiary(n, ctx);
             let candidate = if i == 0 {
-                n.to_string()
+                colored
             } else {
-                format!("{sep}{n}")
+                format!("{sep}{colored}")
             };
             if visible_width(&line) + visible_width(&candidate) > MAX_ACTIONS_WIDTH {
                 break;
@@ -1070,16 +1073,17 @@ fn indent_str(level: usize) -> String {
     "  ".repeat(level)
 }
 
-// Palette — ANSI 256, 6 colors total. Premium = restraint.
+// Palette — ANSI 256.
 //
-// Role      Code            Use
-// accent    38;5;39   cyan  service names, section headers
-// default   —               data cells (terminal fg)
-// dim       38;5;244        labels, hints, secondary text
-// muted     38;5;240        rule lines, separators
-// success   38;5;78   green ✓ available
-// warning   38;5;214  amber ⚠ degraded
-// error     38;5;203  red   ✗ unreachable
+// Role        Code            Use
+// accent      38;5;45   cyan    service names, section headers (identity anchor)
+// secondary   38;5;141  violet  category badges, metadata tags
+// tertiary    38;5;115  teal    action names, data values
+// dim         38;5;244  grey    labels, hints, separators
+// muted       38;5;240  slate   rule lines
+// success     38;5;78   green   ✓ available
+// warning     38;5;214  amber   ⚠ degraded
+// error       38;5;203  red     ✗ unreachable
 
 fn status_ok(text: &str, ctx: RenderContext) -> String {
     status_badge("✓", "38;5;78", text, ctx)
@@ -1094,11 +1098,19 @@ fn status_fail(text: &str, ctx: RenderContext) -> String {
 }
 
 fn accent(text: &str, ctx: RenderContext) -> String {
-    paint("38;5;39", text, ctx)
+    paint("38;5;45", text, ctx)
 }
 
 fn primary(text: &str, ctx: RenderContext) -> String {
-    paint("38;5;39", text, ctx)
+    paint("38;5;45", text, ctx)
+}
+
+fn secondary(text: &str, ctx: RenderContext) -> String {
+    paint("38;5;141", text, ctx)
+}
+
+fn tertiary(text: &str, ctx: RenderContext) -> String {
+    paint("38;5;115", text, ctx)
 }
 
 fn subtle(text: &str, ctx: RenderContext) -> String {
