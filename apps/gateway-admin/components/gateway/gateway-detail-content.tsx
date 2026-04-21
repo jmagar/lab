@@ -288,6 +288,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }))
   const clientConfigJson = JSON.stringify(buildGatewayClientConfig(gateway), null, 2)
   const resourceExposureEnabled = gateway.config.proxy_resources ?? true
+  const promptExposureEnabled = gateway.config.proxy_prompts ?? true
   const filteredResources = gateway.discovery.resources.filter(
     (resource) =>
       resource.name.toLowerCase().includes(resourceSearch.trim().toLowerCase()) ||
@@ -362,6 +363,19 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     }
   }
 
+  const handleProxyPromptsToggle = async (enabled: boolean) => {
+    try {
+      await updateGateway(gateway.id, {
+        config: {
+          proxy_prompts: enabled,
+        },
+      })
+      toast.success(enabled ? 'Prompt exposure enabled' : 'Prompt exposure disabled')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to update prompt exposure'))
+    }
+  }
+
   const togglePrompt = (name: string) => {
     setExpandedPrompts((current) => {
       const next = new Set(current)
@@ -393,6 +407,17 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           aria-label="Expose resources"
           checked={resourceExposureEnabled}
           onCheckedChange={handleProxyResourcesToggle}
+          className="scale-75"
+        />
+      </div>
+
+      {/* Expose prompts toggle */}
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <span className="text-xs font-medium">Expose prompts</span>
+        <Switch
+          aria-label="Expose prompts"
+          checked={promptExposureEnabled}
+          onCheckedChange={handleProxyPromptsToggle}
           className="scale-75"
         />
       </div>
