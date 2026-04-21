@@ -11,6 +11,13 @@ export const AURORA_LEVEL_TEXT: Record<LogLevel, string> = {
 export const AURORA_DISPLAY_TITLE = 'font-display tracking-[-0.02em]'
 export const AURORA_DISPLAY_NUMBER = 'font-display tracking-[-0.04em] tabular-nums'
 
+// Page-level h1 — Manrope, 34px, -0.045em tracking.
+export const AURORA_DISPLAY_1 =
+  'font-display text-[34px] leading-[1.1] tracking-[-0.045em] text-aurora-text-primary'
+
+// Section-level h2 — alias to AURORA_DISPLAY_TITLE for semantic clarity.
+export const AURORA_DISPLAY_2 = AURORA_DISPLAY_TITLE
+
 export const AURORA_PAGE_FRAME =
   'mx-auto flex w-full max-w-[1740px] flex-col gap-5 px-4 py-6 sm:px-6 xl:px-8'
 
