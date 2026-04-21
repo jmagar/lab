@@ -48,6 +48,17 @@ export function ConnectUpstreamDialog({ open, onOpenChange, onConnected }: Conne
     }
   }, [phase.kind, status?.authenticated, onConnected, onOpenChange])
 
+  // Reset state when the dialog is closed externally (e.g. parent sets open={false}
+  // after onConnected fires). handleOpenChange is only called when Radix fires
+  // onOpenChange, so direct prop changes would otherwise leave stale phase state.
+  useEffect(() => {
+    if (!open) {
+      abortRef.current?.abort()
+      setUrl('')
+      setPhase({ kind: 'idle' })
+    }
+  }, [open])
+
   function reset() {
     abortRef.current?.abort()
     setUrl('')
@@ -75,16 +86,25 @@ export function ConnectUpstreamDialog({ open, onOpenChange, onConnected }: Conne
   }
 
   async function handleAuthorize(upstream: string) {
-    setPhase({ kind: 'error', message: '' }) // clear error
+    setPhase({ kind: 'authorizing', upstream })
+
+    // Open a blank tab synchronously — must happen directly in the click handler
+    // before any await, otherwise browsers treat it as an unsolicited popup and block it.
+    const authTab = window.open('about:blank', '_blank')
+    if (!authTab) {
+      setPhase({ kind: 'error', message: 'Popup blocked — allow popups for this site and try again' })
+      return
+    }
+
     try {
       const { authorization_url } = await upstreamOauthApi.start(upstream)
-      const popup = window.open(authorization_url, '_blank', 'noopener,noreferrer')
-      if (!popup) {
-        setPhase({ kind: 'error', message: 'Popup blocked — allow popups for this site and try again' })
+      if (authTab.closed) {
+        setPhase({ kind: 'error', message: 'Authorization tab was closed. Please try again.' })
         return
       }
-      setPhase({ kind: 'authorizing', upstream })
+      authTab.location.href = authorization_url
     } catch (err: unknown) {
+      authTab.close()
       setPhase({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to start authorization' })
     }
   }
