@@ -9,6 +9,7 @@ export interface GatewayConfig {
   bearer_token_env?: string
   oauth_enabled?: boolean
   proxy_resources?: boolean
+  proxy_prompts?: boolean
   expose_tools?: string[]
 }
 
