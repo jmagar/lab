@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "lab": {
+            "type": "stdio",
+            "command": "lab",
+            "args": [
+                "serve",
+                "mcp",
+                "--stdio"
+            ]
+        }
+    }
+}

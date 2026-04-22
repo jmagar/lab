@@ -1,7 +1,7 @@
 {
   "name": "lab",
   "description": "Homelab control plane — CLI, MCP server, and HTTP API for 22 services (Radarr, Sonarr, Plex, UniFi, Unraid, and more). Includes skills for onboarding new services and using the lab CLI.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "author": {
     "name": "Jacob Magar"
   },
