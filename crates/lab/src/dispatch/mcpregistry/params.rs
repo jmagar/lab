@@ -89,6 +89,7 @@ pub fn validate_env_value(key: &str, value: &str) -> Result<(), ToolError> {
 }
 
 /// Sort field for `server.list`.
+#[derive(Debug, Clone)]
 pub enum SortBy {
     Updated,
     Published,
@@ -96,6 +97,7 @@ pub enum SortBy {
 }
 
 /// Client-side sort specification extracted from dispatch params.
+#[derive(Debug, Clone)]
 pub struct SortSpec {
     pub by: SortBy,
     pub desc: bool,
