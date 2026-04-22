@@ -106,18 +106,19 @@ function ServiceIconBox({ serviceKey }: { serviceKey: string }) {
   return (
     <div
       className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
-      style={{ background: `${brand}CC`, border: `1px solid ${brand}` }}
+      style={{ background: '#ffffff', border: `2px solid ${brand}`, boxShadow: `0 0 0 1px ${brand}33` }}
     >
       {logo ? (
         <img src={logo} alt="" className="w-5 h-5 object-contain" onError={() => setImgError(true)} />
       ) : svg ? (
         <span
           className="w-5 h-5 block"
+          style={{ color: brand }}
           // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted static SVG strings
-          dangerouslySetInnerHTML={{ __html: svg }}
+          dangerouslySetInnerHTML={{ __html: svg.replace('fill="white"', `fill="${brand}"`) }}
         />
       ) : (
-        <span className="text-white text-xs font-bold">{serviceKey[0]?.toUpperCase()}</span>
+        <span className="text-xs font-bold" style={{ color: brand }}>{serviceKey[0]?.toUpperCase()}</span>
       )}
     </div>
   )
