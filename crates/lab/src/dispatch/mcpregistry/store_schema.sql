@@ -1,5 +1,3 @@
-PRAGMA journal_mode=WAL;
-
 CREATE TABLE IF NOT EXISTS registry_servers (
     server_name          TEXT NOT NULL,
     version              TEXT NOT NULL,

@@ -10,7 +10,7 @@ import {
   installPlugin,
   uninstallPlugin,
   addMarketplace,
-} from '../api/marketplace-client.js'
+} from '../api/marketplace-client'
 
 const MARKETPLACES_KEY = 'marketplace:sources'
 const PLUGINS_KEY = 'marketplace:plugins'

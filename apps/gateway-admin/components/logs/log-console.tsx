@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { startTransition, useDeferredValue } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Copy } from 'lucide-react'
 
 import { AppHeader } from '@/components/app-header'
@@ -67,8 +68,13 @@ function queryPreviewForAfterTs(filters: LogFilterState, afterTs: number | null)
   )
 }
 
-export function LogConsole() {
-  const [filters, setFilters] = React.useState<LogFilterState>(DEFAULT_FILTERS)
+export function LogConsole({ initialText = "" }: { initialText?: string }) {
+  const searchParams = useSearchParams()
+  const requestText = searchParams.get('request') ?? initialText
+  const [filters, setFilters] = React.useState<LogFilterState>(() => ({
+    ...DEFAULT_FILTERS,
+    text: requestText,
+  }))
   const [windowPreset, setWindowPreset] = React.useState('1h')
   const [events, setEvents] = React.useState<LogEvent[]>([])
   const [bufferedEvents, setBufferedEvents] = React.useState<LogEvent[]>([])
@@ -105,6 +111,14 @@ export function LogConsole() {
     maxEntriesRef.current = filters.limit
     afterTsRef.current = afterTs
   }, [afterTs, bufferedEvents, filters, effectivePaused])
+
+  React.useEffect(() => {
+    setFilters((current) => (
+      current.text === requestText
+        ? current
+        : { ...current, text: requestText }
+    ))
+  }, [requestText])
 
   React.useEffect(() => {
     if (!copyStatus) {

@@ -1,22 +1,20 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { Activity, Cable, Plus, TriangleAlert, Wrench } from 'lucide-react'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { AppHeader } from '@/components/app-header'
-import { GatewayTable } from './gateway-table'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
-  GatewayFilters,
-  type ConnectionFilter,
-  type GatewayTypeFilter,
-  type HealthFilter,
-} from './gateway-filters'
-import { GatewayTableSkeleton } from './table-skeleton'
-import { EmptyState } from './empty-state'
-import { GatewayFormDialog } from './gateway-form-dialog'
-import { DeleteGatewayDialog } from './delete-gateway-dialog'
-import { TestResultPanel } from './test-result-panel'
+  Activity,
+  ArrowLeft,
+  Cable,
+  LayoutList,
+  Plus,
+  Rows3,
+  SlidersHorizontal,
+  TriangleAlert,
+  Wrench,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { AppHeader } from '@/components/app-header'
+import { Button } from '@/components/ui/button'
 import { useGateways, useGatewayMutations } from '@/lib/hooks/use-gateways'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
 import { cn, getErrorMessage } from '@/lib/utils'
@@ -29,82 +27,234 @@ import {
   AURORA_STRONG_PANEL,
 } from '@/components/aurora/tokens'
 import {
-  AURORA_GATEWAY_STAT,
-  gatewayActionTone,
-} from './gateway-theme'
+  aggregateToolsFromGateways,
+  filterGateways,
+  filterTools,
+  sortToolRows,
+  type GatewayFilterState,
+  type GatewayPrimaryLens,
+  type GatewaySourceFacet,
+  type GatewayStatusFacet,
+  type GatewayTransportFacet,
+  type ToolFilterState,
+  type ToolsExposureFilter,
+} from './gateway-list-state'
+import { EmptyState } from './empty-state'
+import { DeleteGatewayDialog } from './delete-gateway-dialog'
+import { GatewayFilters } from './gateway-filters'
+import { GatewayFormDialog } from './gateway-form-dialog'
+import { GatewayTable } from './gateway-table'
+import { GatewayTableSkeleton } from './table-skeleton'
+import { GatewayToolsTable } from './gateway-tools-table'
+import { TestResultPanel } from './test-result-panel'
+import { AURORA_GATEWAY_STAT, gatewayActionTone } from './gateway-theme'
+
+const DEFAULT_GATEWAY_LENS: GatewayPrimaryLens = 'configured'
+const DEFAULT_DENSITY: 'comfortable' | 'condensed' = 'comfortable'
+
+const DEFAULT_TOOL_FILTERS: ToolFilterState = {
+  search: '',
+  gatewayIds: [],
+  exposure: 'all',
+  source: [],
+  transport: [],
+}
+
+function buildDefaultGatewayFilters(primaryLens: GatewayPrimaryLens): GatewayFilterState {
+  return {
+    primaryLens,
+    search: '',
+    status: [],
+    source: [],
+    transport: [],
+  }
+}
+
+function toggleArrayValue<T extends string>(values: T[], value: T): T[] {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
+}
+
+interface GatewaySummary {
+  configured: number
+  healthy: number
+  disconnected: number
+  tools: number
+}
+
+export interface GatewayListViewProps {
+  summary: GatewaySummary
+  showToolsView: boolean
+  gatewayFilters: GatewayFilterState
+  toolFilters: ToolFilterState
+  gatewayOptions: Array<{ value: string; label: string }>
+  activeSearch: string
+  mobileSheetOpen: boolean
+  density: 'comfortable' | 'condensed'
+  isLoading: boolean
+  errorMessage?: string
+  itemsCount: number
+  filteredGateways: Gateway[]
+  filteredToolRows: Parameters<typeof GatewayToolsTable>[0]['rows']
+  onPrimaryLensChange: (lens: GatewayPrimaryLens | 'tools') => void
+  onBackToGateways: () => void
+  onMobileSheetOpenChange: (open: boolean) => void
+  onDensityChange: (density: 'comfortable' | 'condensed') => void
+  onSearchChange: (value: string) => void
+  onGatewayFilterToggle: (group: 'status' | 'source' | 'transport', value: string) => void
+  onToolFilterToggle: (group: 'gatewayIds' | 'source' | 'transport', value: string) => void
+  onExposureChange: (value: ToolsExposureFilter) => void
+  onClearFilters: () => void
+  onCreate: () => void
+  onEdit: (gateway: Gateway) => void
+  onTest: (gateway: Gateway) => void
+  onReload: (gateway: Gateway) => void
+  onDelete: (gateway: Gateway) => void
+}
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
   const { testGateway, reloadGateway, removeGateway, createGateway, updateGateway, disableVirtualServer } =
     useGatewayMutations()
 
-  // Filters
-  const [search, setSearch] = useState('')
-  const [healthFilter, setHealthFilter] = useState<HealthFilter>('all')
-  const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>('all')
-  const [typeFilter, setTypeFilter] = useState<GatewayTypeFilter>('all')
+  const [primaryView, setPrimaryView] = useState<GatewayPrimaryLens | 'tools'>(DEFAULT_GATEWAY_LENS)
+  const [lastGatewayFilters, setLastGatewayFilters] = useState<GatewayFilterState>(() =>
+    buildDefaultGatewayFilters(DEFAULT_GATEWAY_LENS),
+  )
+  const [toolFilters, setToolFilters] = useState<ToolFilterState>(DEFAULT_TOOL_FILTERS)
+  const [density, setDensity] = useState<'comfortable' | 'condensed'>(DEFAULT_DENSITY)
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
 
-  // Dialogs
   const [formOpen, setFormOpen] = useState(false)
   const [editingGateway, setEditingGateway] = useState<Gateway | null>(null)
   const [deleteGateway, setDeleteGateway] = useState<Gateway | null>(null)
-  const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
+  const [testResult, setTestResult] = useState<{
+    gateway: Gateway
+    result: Awaited<ReturnType<typeof testGateway>>
+  } | null>(null)
+
+  const items = gateways ?? []
 
   const summary = useMemo(() => {
-    const items = gateways ?? []
+    const configured = items.filter((gateway) => gateway.configured ?? true).length
     const healthy = items.filter((gateway) => gateway.status.healthy && gateway.status.connected).length
     const disconnected = items.filter((gateway) => !gateway.status.connected).length
-    const warnings = items.reduce((count, gateway) => count + gateway.warnings.length, 0)
-    const tools = items.reduce((count, gateway) => count + gateway.status.discovered_tool_count, 0)
+    const tools = aggregateToolsFromGateways(items).length
 
-    return { total: items.length, healthy, disconnected, warnings, tools }
-  }, [gateways])
+    return { configured, healthy, disconnected, tools }
+  }, [items])
 
-  // Filter gateways
-  const filteredGateways = useMemo(() => {
-    if (!gateways) return []
-    
-    return gateways.filter((gateway) => {
-      // Search filter
-      if (search && !gateway.name.toLowerCase().includes(search.toLowerCase())) {
-        return false
+  const filteredGateways = useMemo(() => filterGateways(items, lastGatewayFilters), [items, lastGatewayFilters])
+
+  const filteredToolRows = useMemo(() => {
+    const rows = aggregateToolsFromGateways(items)
+    return sortToolRows(filterTools(rows, toolFilters))
+  }, [items, toolFilters])
+
+  const gatewayOptions = useMemo(
+    () => items.map((gateway) => ({ value: gateway.id, label: gateway.name })),
+    [items],
+  )
+
+  const showToolsView = primaryView === 'tools'
+
+  const handlePrimaryLens = (lens: GatewayPrimaryLens | 'tools') => {
+    setMobileSheetOpen(false)
+
+    if (lens === 'tools') {
+      setPrimaryView('tools')
+      setToolFilters(DEFAULT_TOOL_FILTERS)
+      return
+    }
+
+    const nextGatewayFilters = buildDefaultGatewayFilters(lens)
+    setLastGatewayFilters(nextGatewayFilters)
+    setPrimaryView(lens)
+  }
+
+  const handleBackToGateways = () => {
+    setPrimaryView(lastGatewayFilters.primaryLens)
+    setMobileSheetOpen(false)
+  }
+
+  const handleSearchChange = (value: string) => {
+    if (showToolsView) {
+      setToolFilters((current) => ({ ...current, search: value }))
+      return
+    }
+
+    setLastGatewayFilters((current) => ({ ...current, search: value }))
+  }
+
+  const handleGatewayFilterToggle = (
+    group: 'status' | 'source' | 'transport',
+    value: string,
+  ) => {
+    setLastGatewayFilters((current) => {
+      if (group === 'status') {
+        return {
+          ...current,
+          status: toggleArrayValue(current.status, value as GatewayStatusFacet),
+        }
       }
 
-      // State filter
-      if (healthFilter !== 'all') {
-        const isConfigured = gateway.configured ?? true
-        const isEnabled = gateway.enabled ?? true
-
-        if (healthFilter === 'active' && !(isConfigured && isEnabled)) return false
-        if (healthFilter === 'configured' && !isConfigured) return false
-        if (healthFilter === 'enabled' && !isEnabled) return false
-        if (healthFilter === 'disabled' && isEnabled) return false
+      if (group === 'source') {
+        return {
+          ...current,
+          source: toggleArrayValue(current.source, value as GatewaySourceFacet),
+        }
       }
 
-      // Connection filter
-      if (connectionFilter !== 'all') {
-        const isConnected = gateway.status.connected
-        if (connectionFilter === 'connected' && !isConnected) return false
-        if (connectionFilter === 'disconnected' && isConnected) return false
+      return {
+        ...current,
+        transport: toggleArrayValue(current.transport, value as GatewayTransportFacet),
       }
-
-      // Type filter
-      if (typeFilter === 'lab' && gateway.source !== 'lab_service') {
-        return false
-      }
-      if (typeFilter === 'custom' && gateway.source === 'lab_service') {
-        return false
-      }
-      if (
-        (typeFilter === 'http' || typeFilter === 'stdio') &&
-        gateway.transport !== typeFilter
-      ) {
-        return false
-      }
-
-      return true
     })
-  }, [gateways, search, healthFilter, connectionFilter, typeFilter])
+  }
+
+  const handleToolFilterToggle = (
+    group: 'gatewayIds' | 'source' | 'transport',
+    value: string,
+  ) => {
+    setToolFilters((current) => {
+      if (group === 'gatewayIds') {
+        return {
+          ...current,
+          gatewayIds: toggleArrayValue(current.gatewayIds, value),
+        }
+      }
+
+      if (group === 'source') {
+        return {
+          ...current,
+          source: toggleArrayValue(current.source, value as GatewaySourceFacet),
+        }
+      }
+
+      return {
+        ...current,
+        transport: toggleArrayValue(current.transport, value as GatewayTransportFacet),
+      }
+    })
+  }
+
+  const handleExposureChange = (value: ToolsExposureFilter) => {
+    setToolFilters((current) => ({ ...current, exposure: value }))
+  }
+
+  const handleClearFilters = () => {
+    if (showToolsView) {
+      setToolFilters(DEFAULT_TOOL_FILTERS)
+      return
+    }
+
+    setLastGatewayFilters((current) => ({
+      ...current,
+      search: '',
+      status: [],
+      source: [],
+      transport: [],
+    }))
+  }
 
   const handleCreate = () => {
     setEditingGateway(null)
@@ -127,8 +277,8 @@ export function GatewayListContent() {
       } else {
         toast.error(result.error || result.message)
       }
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to test gateway'))
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to test gateway'))
     }
   }
 
@@ -140,13 +290,14 @@ export function GatewayListContent() {
       } else {
         toast.error(result.message)
       }
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to reload gateway'))
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to reload gateway'))
     }
   }
 
   const handleDelete = async () => {
     if (!deleteGateway) return
+
     try {
       if (deleteGateway.source === 'lab_service') {
         await disableVirtualServer(deleteGateway.id)
@@ -156,8 +307,8 @@ export function GatewayListContent() {
         toast.success('Gateway removed successfully')
       }
       setDeleteGateway(null)
-    } catch (error) {
-      toast.error(getErrorMessage(error, 'Failed to remove gateway'))
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to remove gateway'))
     }
   }
 
@@ -172,122 +323,50 @@ export function GatewayListContent() {
       }
       setFormOpen(false)
       setEditingGateway(null)
-    } catch (error) {
+    } catch (requestError) {
       toast.error(
         getErrorMessage(
-          error,
-          editingGateway ? 'Failed to update gateway' : 'Failed to create gateway'
-        )
+          requestError,
+          editingGateway ? 'Failed to update gateway' : 'Failed to create gateway',
+        ),
       )
     }
   }
 
+  const activeSearch = showToolsView ? toolFilters.search : lastGatewayFilters.search
+
   return (
     <>
-      <AppHeader
-        breadcrumbs={[
-          { label: 'Gateways' }
-        ]}
-        actions={
-          <Button
-            onClick={handleCreate}
-            className={cn(gatewayActionTone('accent'), 'border px-4 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-          >
-            <Plus className="size-4 mr-2" />
-            Add Gateway
-          </Button>
-        }
+      <GatewayListView
+        summary={summary}
+        showToolsView={showToolsView}
+        gatewayFilters={lastGatewayFilters}
+        toolFilters={toolFilters}
+        gatewayOptions={gatewayOptions}
+        activeSearch={activeSearch}
+        mobileSheetOpen={mobileSheetOpen}
+        density={density}
+        isLoading={isLoading}
+        errorMessage={error?.message}
+        itemsCount={items.length}
+        filteredGateways={filteredGateways}
+        filteredToolRows={filteredToolRows}
+        onPrimaryLensChange={handlePrimaryLens}
+        onBackToGateways={handleBackToGateways}
+        onMobileSheetOpenChange={setMobileSheetOpen}
+        onDensityChange={setDensity}
+        onSearchChange={handleSearchChange}
+        onGatewayFilterToggle={handleGatewayFilterToggle}
+        onToolFilterToggle={handleToolFilterToggle}
+        onExposureChange={handleExposureChange}
+        onClearFilters={handleClearFilters}
+        onCreate={handleCreate}
+        onEdit={handleEdit}
+        onTest={handleTest}
+        onReload={handleReload}
+        onDelete={setDeleteGateway}
       />
 
-      <div className={cn('relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary', AURORA_PAGE_SHELL)}>
-        <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
-          <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className={AURORA_GATEWAY_STAT}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className={AURORA_MUTED_LABEL}>Configured</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{summary.total}</p>
-                  </div>
-                  <Cable className="size-5 text-aurora-text-muted" />
-                </div>
-              </div>
-              <div className={AURORA_GATEWAY_STAT}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className={AURORA_MUTED_LABEL}>Healthy</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-accent-strong')}>{summary.healthy}</p>
-                  </div>
-                  <Activity className="size-5 text-aurora-accent-strong" />
-                </div>
-              </div>
-              <div className={AURORA_GATEWAY_STAT}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className={AURORA_MUTED_LABEL}>Disconnected</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-warn')}>{summary.disconnected}</p>
-                  </div>
-                  <TriangleAlert className="size-5 text-aurora-warn" />
-                </div>
-              </div>
-              <div className={AURORA_GATEWAY_STAT}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className={AURORA_MUTED_LABEL}>Discovered tools</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{summary.tools}</p>
-                  </div>
-                  <Wrench className="size-5 text-aurora-accent-primary" />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <GatewayFilters
-            search={search}
-            onSearchChange={setSearch}
-            healthFilter={healthFilter}
-            onHealthFilterChange={setHealthFilter}
-            connectionFilter={connectionFilter}
-            onConnectionFilterChange={setConnectionFilter}
-            typeFilter={typeFilter}
-            onTypeFilterChange={setTypeFilter}
-          />
-
-          <div>
-            {isLoading ? (
-              <GatewayTableSkeleton />
-            ) : error ? (
-              <div className={cn(AURORA_STRONG_PANEL, 'p-8 text-center')}>
-                <p className="text-aurora-error">Failed to load gateways</p>
-                <p className="mt-1 text-sm text-aurora-text-muted">{error.message}</p>
-              </div>
-            ) : filteredGateways.length === 0 ? (
-              gateways?.length === 0 ? (
-                <EmptyState
-                  title="No gateways configured"
-                  description="Get started by adding your first MCP gateway connection to manage upstream gateway tools."
-                  action={{ label: 'Add Gateway', onClick: handleCreate }}
-                />
-              ) : (
-                <EmptyState
-                  title="No matching gateways"
-                  description="Try adjusting your filters to find what you&apos;re looking for."
-                />
-              )
-            ) : (
-              <GatewayTable
-                gateways={filteredGateways}
-                onEdit={handleEdit}
-                onTest={handleTest}
-                onReload={handleReload}
-                onDelete={setDeleteGateway}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Dialogs */}
       <GatewayFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
@@ -301,10 +380,269 @@ export function GatewayListContent() {
         onConfirm={handleDelete}
       />
 
-      <TestResultPanel
-        result={testResult}
-        onClose={() => setTestResult(null)}
-      />
+      <TestResultPanel result={testResult} onClose={() => setTestResult(null)} />
     </>
+  )
+}
+
+export function GatewayListView({
+  summary,
+  showToolsView,
+  gatewayFilters,
+  toolFilters,
+  gatewayOptions,
+  activeSearch,
+  mobileSheetOpen,
+  density,
+  isLoading,
+  errorMessage,
+  itemsCount,
+  filteredGateways,
+  filteredToolRows,
+  onPrimaryLensChange,
+  onBackToGateways,
+  onMobileSheetOpenChange,
+  onDensityChange,
+  onSearchChange,
+  onGatewayFilterToggle,
+  onToolFilterToggle,
+  onExposureChange,
+  onClearFilters,
+  onCreate,
+  onEdit,
+  onTest,
+  onReload,
+  onDelete,
+}: GatewayListViewProps) {
+  return (
+    <>
+      <AppHeader
+        breadcrumbs={[{ label: 'Gateways' }]}
+        actions={
+          <div className="flex items-center gap-2">
+            {showToolsView ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onBackToGateways}
+                className={cn(
+                  gatewayActionTone(),
+                  'h-10 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg',
+                )}
+              >
+                <ArrowLeft className="mr-1.5 size-4" />
+                Back to gateways
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => onMobileSheetOpenChange(true)}
+              className={cn(
+                gatewayActionTone(),
+                'size-10 lg:hidden hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+              )}
+              aria-label="Open filters"
+            >
+              <SlidersHorizontal className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => onDensityChange('comfortable')}
+              className={cn(
+                gatewayActionTone(),
+                'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                density === 'comfortable' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
+              )}
+              aria-label="Comfortable density"
+              aria-pressed={density === 'comfortable'}
+              title="Comfortable density"
+            >
+              <LayoutList className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => onDensityChange('condensed')}
+              className={cn(
+                gatewayActionTone(),
+                'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                density === 'condensed' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
+              )}
+              aria-label="Condensed density"
+              aria-pressed={density === 'condensed'}
+              title="Condensed density"
+            >
+              <Rows3 className="size-4" />
+            </Button>
+            <Button
+              onClick={onCreate}
+              className={cn(
+                gatewayActionTone('accent'),
+                'border px-4 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+              )}
+            >
+              <Plus className="mr-2 size-4" />
+              Add Gateway
+            </Button>
+          </div>
+        }
+      />
+
+      <div
+        className={cn(
+          'relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary',
+          AURORA_PAGE_SHELL,
+        )}
+      >
+        <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                label="Configured"
+                value={summary.configured}
+                icon={<Cable className="size-5 text-aurora-text-muted" />}
+                active={!showToolsView && gatewayFilters.primaryLens === 'configured'}
+                onClick={() => onPrimaryLensChange('configured')}
+              />
+              <SummaryCard
+                label="Healthy"
+                value={summary.healthy}
+                icon={<Activity className="size-5 text-aurora-accent-strong" />}
+                valueClassName="text-aurora-accent-strong"
+                active={!showToolsView && gatewayFilters.primaryLens === 'healthy'}
+                onClick={() => onPrimaryLensChange('healthy')}
+              />
+              <SummaryCard
+                label="Disconnected"
+                value={summary.disconnected}
+                icon={<TriangleAlert className="size-5 text-aurora-warn" />}
+                valueClassName="text-aurora-warn"
+                active={!showToolsView && gatewayFilters.primaryLens === 'disconnected'}
+                onClick={() => onPrimaryLensChange('disconnected')}
+              />
+              <SummaryCard
+                label="Discovered tools"
+                value={summary.tools}
+                icon={<Wrench className="size-5 text-aurora-accent-primary" />}
+                active={showToolsView}
+                onClick={() => onPrimaryLensChange('tools')}
+              />
+            </div>
+          </section>
+
+          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
+            <GatewayFilters
+              mode={showToolsView ? 'tools' : 'gateways'}
+              search={activeSearch}
+              gatewayFilters={{
+                status: gatewayFilters.status,
+                source: gatewayFilters.source,
+                transport: gatewayFilters.transport,
+              }}
+              toolFilters={toolFilters}
+              gatewayOptions={gatewayOptions}
+              mobileSheetOpen={mobileSheetOpen}
+              onMobileSheetOpenChange={onMobileSheetOpenChange}
+              onSearchChange={onSearchChange}
+              onGatewayFilterToggle={onGatewayFilterToggle}
+              onToolFilterToggle={onToolFilterToggle}
+              onExposureChange={onExposureChange}
+              onClearFilters={onClearFilters}
+            />
+
+            <div>
+              {isLoading ? (
+                <GatewayTableSkeleton />
+              ) : errorMessage ? (
+                <div className={cn(AURORA_STRONG_PANEL, 'p-8 text-center')}>
+                  <p className="text-aurora-error">Failed to load gateways</p>
+                  <p className="mt-1 text-sm text-aurora-text-muted">{errorMessage}</p>
+                </div>
+              ) : showToolsView ? (
+                filteredToolRows.length === 0 ? (
+                  itemsCount === 0 || summary.tools === 0 ? (
+                    <EmptyState
+                      title="No discovered tools"
+                      description="Reload or add a gateway to build the aggregated tools inventory."
+                      action={itemsCount === 0 ? { label: 'Add Gateway', onClick: onCreate } : undefined}
+                    />
+                  ) : (
+                    <EmptyState
+                      title="No matching tools"
+                      description="Try adjusting your filters to find the tools you want."
+                    />
+                  )
+                ) : (
+                  <GatewayToolsTable rows={filteredToolRows} />
+                )
+              ) : filteredGateways.length === 0 ? (
+                itemsCount === 0 ? (
+                  <EmptyState
+                    title="No gateways configured"
+                    description="Get started by adding your first MCP gateway connection to manage upstream gateway tools."
+                    action={{ label: 'Add Gateway', onClick: onCreate }}
+                  />
+                ) : (
+                  <EmptyState
+                    title="No matching gateways"
+                    description="Try adjusting your filters to find what you're looking for."
+                  />
+                )
+              ) : (
+                <GatewayTable
+                  gateways={filteredGateways}
+                  density={density}
+                  onEdit={onEdit}
+                  onTest={onTest}
+                  onReload={onReload}
+                  onDelete={onDelete}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function SummaryCard({
+  label,
+  value,
+  icon,
+  active,
+  onClick,
+  valueClassName,
+}: {
+  label: string
+  value: number
+  icon: ReactNode
+  active: boolean
+  onClick: () => void
+  valueClassName?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        AURORA_GATEWAY_STAT,
+        'text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        active && 'border-aurora-accent-primary/40 bg-aurora-accent-primary/8 shadow-[inset_0_0_0_1px_rgba(87,190,255,0.12)]',
+      )}
+      aria-pressed={active}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className={AURORA_MUTED_LABEL}>{label}</p>
+          <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary', valueClassName)}>
+            {value}
+          </p>
+        </div>
+        {icon}
+      </div>
+    </button>
   )
 }

@@ -19,6 +19,11 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   const [value, setValue] = React.useState('')
   const [agentPickerOpen, setAgentPickerOpen] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const pickerRef = React.useRef<HTMLDivElement>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([])
+  const [activeAgentIndex, setActiveAgentIndex] = React.useState(0)
+  const pickerId = React.useId()
 
   const handleSend = () => {
     const trimmed = value.trim()
@@ -31,6 +36,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -43,6 +49,80 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
     const el = e.target
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }
+
+  React.useEffect(() => {
+    if (!agentPickerOpen) return
+
+    const selectedIndex = Math.max(agents.findIndex((agent) => agent.id === selectedAgent?.id), 0)
+    setActiveAgentIndex(selectedIndex)
+    const frame = window.requestAnimationFrame(() => {
+      optionRefs.current[selectedIndex]?.focus()
+    })
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) {
+        setAgentPickerOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [agentPickerOpen, agents, selectedAgent?.id])
+
+  const selectAgent = (agentId: string) => {
+    onSelectAgent(agentId)
+    setAgentPickerOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  const handleAgentTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      setAgentPickerOpen(true)
+    }
+  }
+
+  const handleAgentListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setAgentPickerOpen(false)
+      triggerRef.current?.focus()
+      return
+    }
+
+    if (event.key === 'Tab') {
+      setAgentPickerOpen(false)
+      return
+    }
+
+    if (agents.length === 0) return
+
+    const moveTo = (nextIndex: number) => {
+      setActiveAgentIndex(nextIndex)
+      optionRefs.current[nextIndex]?.focus()
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveTo((activeAgentIndex + 1) % agents.length)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveTo((activeAgentIndex - 1 + agents.length) % agents.length)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      moveTo(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      moveTo(agents.length - 1)
+    } else if ((event.key === 'Enter' || event.key === ' ') && agents[activeAgentIndex]) {
+      event.preventDefault()
+      selectAgent(agents[activeAgentIndex].id)
+    }
   }
 
   return (
@@ -93,10 +173,15 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           </TooltipProvider>
 
           {/* Agent picker */}
-          <div className="relative ml-auto">
+          <div ref={pickerRef} className="relative ml-auto">
             <button
+              ref={triggerRef}
               type="button"
               onClick={() => setAgentPickerOpen((o) => !o)}
+              onKeyDown={handleAgentTriggerKeyDown}
+              aria-haspopup="listbox"
+              aria-expanded={agentPickerOpen}
+              aria-controls={pickerId}
               className={cn(
                 'flex items-center gap-1.5 rounded-full border border-aurora-border-default',
                 'bg-aurora-panel-medium px-2.5 py-1 text-[11px] font-medium text-aurora-text-muted',
@@ -108,17 +193,31 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
             </button>
 
             {agentPickerOpen && (
-              <div className={cn(
+              <div
+                id={pickerId}
+                role="listbox"
+                aria-label="Agent picker"
+                aria-activedescendant={agents[activeAgentIndex] ? `${pickerId}-${agents[activeAgentIndex].id}` : undefined}
+                onKeyDown={handleAgentListKeyDown}
+                className={cn(
                 'absolute bottom-full right-0 mb-1.5 min-w-[200px] overflow-hidden',
                 'rounded-aurora-2 border border-aurora-border-strong bg-aurora-panel-strong',
                 'shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]',
                 'z-50',
               )}>
-                {agents.map((agent) => (
+                {agents.map((agent, index) => (
                   <button
                     key={agent.id}
+                    id={`${pickerId}-${agent.id}`}
+                    ref={(node) => {
+                      optionRefs.current[index] = node
+                    }}
                     type="button"
-                    onClick={() => { onSelectAgent(agent.id); setAgentPickerOpen(false) }}
+                    role="option"
+                    aria-selected={selectedAgent?.id === agent.id}
+                    tabIndex={index === activeAgentIndex ? 0 : -1}
+                    onFocus={() => setActiveAgentIndex(index)}
+                    onClick={() => selectAgent(agent.id)}
                     className={cn(
                       'flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors hover:bg-aurora-hover-bg',
                       selectedAgent?.id === agent.id && 'bg-aurora-panel-medium',

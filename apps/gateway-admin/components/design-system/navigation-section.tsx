@@ -79,7 +79,7 @@ export function NavigationSection() {
                 <Button variant="outline" className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
                   Filter logs
                 </Button>
-                <Button className="rounded-aurora-1 bg-aurora-accent-primary text-primary-foreground hover:bg-aurora-accent-strong">
+                <Button className="rounded-aurora-1 bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong">
                   Create gateway
                 </Button>
               </div>

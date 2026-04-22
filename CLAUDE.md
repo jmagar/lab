@@ -2,7 +2,7 @@
 
 ## What is this?
 
-`lab` is a pluggable homelab CLI + MCP server SDK in Rust. One binary, **24 services** (23 feature-gated + always-on `extract`), runtime MCP tool selection via a single tool per service with an `action` + `params` dispatch shape (~24 MCP tools max, not hundreds).
+`lab` is a pluggable homelab CLI + MCP server SDK in Rust. One binary, **25 services** (23 feature-gated + always-on `extract` and `device_runtime`), runtime MCP tool selection via a single tool per service with an `action` + `params` dispatch shape (~25 MCP tools max, not hundreds).
 
 Start with `docs/README.md` for the docs index. The topic docs in `docs/` are the source of truth; if this file disagrees with them, this file is stale.
 
@@ -59,6 +59,9 @@ lab/
 │   │       ├── qdrant/                # Vector database
 │   │       ├── tei/                   # HF Text Embeddings Inference
 │   │       ├── apprise/               # Universal notification dispatcher
+│   │       ├── mcpregistry/           # MCP Registry v0.1 (server discovery + install)
+│   │       ├── deploy/                # Deployment/runner primitives
+│   │       ├── device_runtime/        # ALWAYS-ON: local device runtime introspection
 │   │       └── extract/                # ALWAYS-ON synthetic service: scan local/SSH hosts for service creds
 │   │
 │   └── lab/                          # BINARY: cli + mcp + tui + main
@@ -169,7 +172,7 @@ See `docs/MCP.md` for the MCP surface and `docs/CONVENTIONS.md` for the canonica
 8. Create the shared dispatch layer in `crates/lab/src/dispatch/foo/` following the required layout in `crates/lab/src/dispatch/CLAUDE.md` (catalog.rs, client.rs, params.rs, dispatch.rs + entry `foo.rs`)
 9. Create CLI subcommands in `crates/lab/src/cli/foo.rs` calling the dispatch layer
 10. Create API route group in `crates/lab/src/api/services/foo.rs` calling the dispatch layer
-11. Register in `crates/lab/src/mcp/registry.rs`, `crates/lab/src/cli.rs`, and `crates/lab/src/api/router.rs`
+11. Register in `crates/lab/src/registry.rs` (via `register_service!` inside `build_default_registry()`), `crates/lab/src/cli.rs`, and `crates/lab/src/api/router.rs`
 12. Add `foo = ["lab-apis/foo"]` passthrough to `crates/lab/Cargo.toml`
 13. Add to plugin metadata in `crates/lab/src/tui/metadata.rs`
 

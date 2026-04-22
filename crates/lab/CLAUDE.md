@@ -30,7 +30,7 @@ Two files loaded in order: `~/.lab/.env` (secrets, `dotenvy`) then `config.toml`
 
 To expose a new service via MCP and the `lab://catalog` resource, touch all three or it silently disappears from the MCP surface:
 
-1. `mcp/registry.rs` — `register_service!(reg, "<service>", <module>)` inside `build_default_registry()`
+1. `crates/lab/src/registry.rs` — `register_service!(reg, "<service>", <module>)` inside `build_default_registry()`. (`mcp/registry.rs` is a 2-line re-export of this module.)
 2. `mcp/services.rs` — module declaration (`pub mod <service>;`)
 3. `mcp/services/<service>.rs` — the dispatch file itself (must export `ACTIONS` and `dispatch`)
 

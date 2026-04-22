@@ -78,6 +78,8 @@ fn upstream_target_redacted(config: &UpstreamConfig) -> String {
             if let Ok(mut parsed) = url::Url::parse(url_str) {
                 let _ = parsed.set_username("");
                 let _ = parsed.set_password(None);
+                parsed.set_query(None);
+                parsed.set_fragment(None);
                 parsed.to_string()
             } else {
                 "<invalid-url>".to_string()
@@ -260,7 +262,7 @@ fn rewrite_resource_uri(resource: &mut Resource, upstream_name: &str) {
     let bare_uri = resource
         .uri
         .strip_prefix("lab://upstream/")
-        .and_then(|rest| rest.splitn(2, '/').nth(1).or(Some(rest)))
+        .and_then(|rest| rest.split_once('/').map(|x| x.1).or(Some(rest)))
         .unwrap_or(resource.uri.as_str());
     resource.uri = format!("lab://upstream/{upstream_name}/{bare_uri}");
 }

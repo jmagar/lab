@@ -2,7 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.7.2
+## [Unreleased] — 0.7.3
+
+| Commit | Change |
+|--------|--------|
+| `802d67e` | feat(marketplace): route + sidebar nav entry — Marketplace page complete |
+| `3674c5b` | feat(marketplace): all UI components — cards, panels, dialogs, modal |
+| `120bf6a` | feat(marketplace): types, API client (mock data), and SWR hooks |
+| `861e4e8` | feat(gateway-admin): wire listServers to GET /v0.1/servers REST endpoint |
+| `de8d173` | fix(registry_v01): normalize error kinds; add owner filter; use ToolError uniformly |
+| `ff6185a` | fix(mcpregistry): extract shared sync guards to dispatch layer |
+| `4dfd248` | fix(mcpregistry/params): add Tailscale CGNAT range to SSRF blocklist |
+| `9892d33` | fix(mcpregistry/store): ON CONFLICT DO UPDATE, jiff, WAL, UTF-8 truncation |
+| `c67b839` | fix(lab): remove chrono dep, feature-gate rusqlite/r2d2 under mcpregistry |
+| `281dfbd` | fix(log_fmt): replace chrono with jiff for timestamp formatting |
+| `af7d12a` | fix(mcpregistry): surface upstream errors properly; add Upstream variant |
+| `9ff7ded` | feat(mcpregistry): add sync observability — start/page/finish log events |
+| `8e17b84` | fix(registry_v01): use axum 0.8 {param} route syntax instead of :param |
+| `388c22e` | fix: squash serve/dispatch warnings (unnecessary qualifications, dead code) |
+| `fca019b` | fix(gateway-admin): brand icon white bg + colored border for contrast |
+
+### Highlights
+- **Marketplace UI** — full Marketplace page: types, mock API client, SWR hooks, card/panel/dialog/modal components, route + sidebar nav entry
+- **Gateway admin REST wiring** — listServers now calls GET /v0.1/servers; gateway/registry/log/chat UI components updated (filters, table, detail panel, session sidebar, log console)
+- **Chat UI improvements** — chat-input, chat-shell, message-bubble, message-thread, settings-panel refined; gateway tools table added
+- **mcpregistry fixes** — sync guard extraction, SSRF blocklist (Tailscale CGNAT), ON CONFLICT upsert, WAL mode, jiff timestamp, upstream error surfacing, sync observability log events
+- **Chrono → jiff migration** — removed chrono dep from workspace; log formatter uses jiff
+- **Registry v0.1 API fixes** — axum 0.8 route syntax, owner filter, ToolError normalization, coverage doc added
+
+### Version bumps
+- Rust workspace: `0.7.2 → 0.7.3`
+- gateway-admin: `0.2.2 → 0.2.3`
+
+---
+
+## [0.7.2] — 2026-04-22
 
 | Commit | Change |
 |--------|--------|

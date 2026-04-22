@@ -55,6 +55,8 @@ interface ServerDetailPanelProps {
   onClose: () => void
 }
 
+const MAX_SCHEMA_RESPONSE_BYTES = 256 * 1024
+
 export function ServerDetailPanel({ server, extensions, onClose }: ServerDetailPanelProps) {
   const open = server !== null
 
@@ -89,7 +91,14 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
     try {
       const res = await fetch(schemaHref)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const contentLength = Number(res.headers.get('content-length') ?? '0')
+      if (contentLength > MAX_SCHEMA_RESPONSE_BYTES) {
+        throw new Error(`Schema exceeds ${MAX_SCHEMA_RESPONSE_BYTES} bytes`)
+      }
       const text = await res.text()
+      if (text.length > MAX_SCHEMA_RESPONSE_BYTES) {
+        throw new Error(`Schema exceeds ${MAX_SCHEMA_RESPONSE_BYTES} bytes`)
+      }
       try {
         setSchemaContent(JSON.stringify(JSON.parse(text), null, 2))
       } catch {
@@ -108,6 +117,7 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   const headerAvatarSrc = ghAvatar ?? safeHref(primaryIcon?.src) ?? null
   const websiteHref = safeHref(server.websiteUrl)
   const schemaHref = safeHref(server.$schema)
+  const schemaPanelId = `schema-viewer-${server.name.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const status = extensions?.status ?? null
   const statusMessage = extensions?.statusMessage ?? null
 
@@ -214,6 +224,8 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
                 <button
                   type="button"
                   onClick={toggleSchema}
+                  aria-expanded={schemaOpen}
+                  aria-controls={schemaPanelId}
                   className="inline-flex items-center gap-1.5 text-sm text-aurora-accent-strong hover:underline"
                   title={server.$schema ?? undefined}
                 >
@@ -236,6 +248,7 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
 
         {schemaOpen && schemaHref && (
           <SchemaViewer
+            id={schemaPanelId}
             url={schemaHref}
             content={schemaContent}
             loading={schemaLoading}
@@ -362,18 +375,20 @@ function JsonHighlight({ content }: { content: string }) {
 }
 
 function SchemaViewer({
+  id,
   url,
   content,
   loading,
   error,
 }: {
+  id?: string
   url: string
   content: string | null
   loading: boolean
   error: string | null
 }) {
   return (
-    <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-2 p-3')}>
+    <div id={id} className={cn(AURORA_MEDIUM_PANEL, 'space-y-2 p-3')}>
       <div className="flex items-center justify-between gap-2">
         <p className="break-all font-mono text-[11px] text-aurora-text-muted">{url}</p>
         {content && <CopyButton value={content} label="Copy schema" />}
@@ -678,4 +693,3 @@ function renderEnvVar(env: EnvironmentVariable, i: number) {
     </li>
   )
 }
-

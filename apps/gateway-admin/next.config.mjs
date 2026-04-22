@@ -12,6 +12,9 @@ if (process.env.LAB_ALLOWED_DEV_ORIGINS) {
 
 const nextConfig = {
   output: 'export',
+  turbopack: {
+    root: import.meta.dirname,
+  },
   trailingSlash: true,
   allowedDevOrigins,
   typescript: {

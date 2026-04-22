@@ -27,14 +27,18 @@ function EmptyState() {
 
 export function MessageThread({ run, messages }: MessageThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null)
-  const prevLengthRef = React.useRef(messages.length)
+  const prevRunIdRef = React.useRef<string | null>(run?.id ?? null)
+  const prevLengthRef = React.useRef(0)
 
   React.useEffect(() => {
-    if (messages.length !== prevLengthRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const runChanged = prevRunIdRef.current !== (run?.id ?? null)
+    const lengthChanged = messages.length !== prevLengthRef.current
+    if (runChanged || lengthChanged) {
+      bottomRef.current?.scrollIntoView({ behavior: runChanged ? 'auto' : 'smooth' })
+      prevRunIdRef.current = run?.id ?? null
       prevLengthRef.current = messages.length
     }
-  }, [messages.length])
+  }, [messages, run?.id])
 
   if (!run) {
     return <EmptyState />

@@ -29,7 +29,7 @@ These strings appear verbatim in MCP and HTTP error surfaces. Adding a new kind 
 | `Decode(_)` | `"decode_error"` |
 | `Internal(_)` | `"internal_error"` |
 
-Dispatchers in `lab/src/mcp/` layer additional kinds on top: `unknown_action`, `unknown_subaction`, `missing_param`, `invalid_param`, `unknown_instance`.
+Dispatchers in `lab/src/dispatch/` layer additional kinds on top: `unknown_action`, `unknown_subaction`, `missing_param`, `invalid_param`, `unknown_instance`. See `docs/ERRORS.md` for the canonical vocabulary and envelope rules.
 
 ## Invariants
 

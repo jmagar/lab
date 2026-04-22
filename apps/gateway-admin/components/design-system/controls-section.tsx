@@ -211,7 +211,7 @@ export function ControlsSection() {
             <p className="text-sm text-aurora-text-muted">{saveDemo.message}</p>
             <div className="flex flex-wrap gap-3">
               <Button
-                className="rounded-aurora-1 bg-aurora-accent-primary text-primary-foreground hover:bg-aurora-accent-strong"
+                className="rounded-aurora-1 bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong"
                 disabled={saveDemo.status === 'loading'}
                 onClick={() => saveDemo.run('success')}
               >

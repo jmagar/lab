@@ -12,9 +12,13 @@ function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = React.useState(false)
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy message text', error)
+    }
   }
 
   return (
@@ -57,37 +61,39 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
 
 function TextContent({ text }: { text: string }) {
   const paragraphs = text.split('\n\n').filter(Boolean)
+  const renderInline = (value: string) =>
+    value.split(/(\*\*[^*]+\*\*)/).map((chunk, j) => {
+      if (chunk.startsWith('**') && chunk.endsWith('**')) {
+        return <strong key={j} className="font-semibold text-aurora-text-primary">{chunk.slice(2, -2)}</strong>
+      }
+
+      return chunk.split(/(`[^`]+`)/).map((c, k) => {
+        if (c.startsWith('`') && c.endsWith('`')) {
+          return <code key={k} className="rounded px-1 py-0.5 font-mono text-[11px] bg-aurora-control-surface text-aurora-accent-strong">{c.slice(1, -1)}</code>
+        }
+        return c
+      })
+    })
 
   return (
     <div className="space-y-2">
       {paragraphs.map((para, i) => {
         if (para.startsWith('# ')) {
-          return <p key={i} className="font-display text-[17px] font-bold tracking-[-0.01em] text-aurora-text-primary">{para.slice(2)}</p>
+          return <h3 key={i} className="font-display text-[17px] font-bold tracking-[-0.01em] text-aurora-text-primary">{renderInline(para.slice(2))}</h3>
         }
         if (para.startsWith('## ')) {
-          return <p key={i} className="font-display text-[15px] font-bold tracking-[-0.01em] text-aurora-text-primary">{para.slice(3)}</p>
+          return <h4 key={i} className="font-display text-[15px] font-bold tracking-[-0.01em] text-aurora-text-primary">{renderInline(para.slice(3))}</h4>
         }
-        // Inline bold: **text**
-        const rendered = para.split(/(\*\*[^*]+\*\*)/).map((chunk, j) => {
-          if (chunk.startsWith('**') && chunk.endsWith('**')) {
-            return <strong key={j} className="font-semibold text-aurora-text-primary">{chunk.slice(2, -2)}</strong>
-          }
-          // Handle `code` inline
-          return chunk.split(/(`[^`]+`)/).map((c, k) => {
-            if (c.startsWith('`') && c.endsWith('`')) {
-              return <code key={k} className="rounded px-1 py-0.5 font-mono text-[11px] bg-aurora-control-surface text-aurora-accent-strong">{c.slice(1, -1)}</code>
-            }
-            return c
-          })
-        })
+        const rendered = renderInline(para)
 
-        if (para.startsWith('- ') || para.includes('\n- ')) {
-          const lines = para.split('\n')
+        const lines = para.split('\n')
+        const nonEmptyLines = lines.filter(Boolean)
+        if (nonEmptyLines.length > 0 && nonEmptyLines.every((line) => line.startsWith('- '))) {
           return (
             <ul key={i} className="space-y-0.5 pl-4">
-              {lines.map((line, j) => (
+              {nonEmptyLines.map((line, j) => (
                 <li key={j} className="list-disc text-[13px] leading-[1.55] text-aurora-text-primary">
-                  {line.replace(/^- /, '')}
+                  {renderInline(line.replace(/^- /, ''))}
                 </li>
               ))}
             </ul>

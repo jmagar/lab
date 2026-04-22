@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Package, ExternalLink, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AppHeader } from '@/components/app-header'
@@ -22,7 +22,7 @@ import {
 } from '@/components/gateway/gateway-theme'
 import { REGISTRY_META_KEY } from '@/lib/types/registry'
 import { RegistryStatusBadge } from './registry-status-badge'
-import type { ServerResponse, ServerListResponse, RegistrySortBy, RegistrySortOrder } from '@/lib/types/registry'
+import type { ServerResponse, ServerListResponse } from '@/lib/types/registry'
 
 interface RegistryListContentProps {
   onSelectServer?: (response: ServerResponse) => void
@@ -35,27 +35,6 @@ function truncateDescription(desc: string): { text: string; truncated: boolean }
   return { text: desc.slice(0, DESCRIPTION_CHAR_LIMIT), truncated: true }
 }
 
-function sortKey(response: ServerResponse, by: RegistrySortBy): string {
-  const ext = response._meta?.[REGISTRY_META_KEY]
-  switch (by) {
-    case 'name': return response.server.name
-    case 'published': return ext?.publishedAt ?? ''
-    case 'updated': return ext?.updatedAt ?? ext?.publishedAt ?? ''
-  }
-}
-
-function sortServers(
-  servers: ServerResponse[],
-  by: RegistrySortBy,
-  order: RegistrySortOrder,
-): ServerResponse[] {
-  return [...servers].sort((a, b) => {
-    const ka = sortKey(a, by)
-    const kb = sortKey(b, by)
-    return order === 'desc' ? kb.localeCompare(ka) : ka.localeCompare(kb)
-  })
-}
-
 export function RegistryListContent({ onSelectServer }: RegistryListContentProps) {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -63,10 +42,9 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   const [debouncedVersion, setDebouncedVersion] = useState('')
   const [updatedSince, setUpdatedSince] = useState('')
   const [debouncedUpdatedSince, setDebouncedUpdatedSince] = useState('')
-  const [sortBy, setSortBy] = useState<RegistrySortBy | ''>('')
-  const [order, setOrder] = useState<RegistrySortOrder>('desc')
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set())
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const pagingRef = useRef(false)
 
   // Debounce filter fields; sort is client-side so no debounce needed
   useEffect(() => {
@@ -93,11 +71,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     { revalidateOnFocus: false, revalidateFirstPage: false },
   )
 
-  // Flatten all pages then sort client-side — sort covers everything loaded, not just one page
-  const allServers = useMemo(() => {
-    const flat = pages?.flatMap(p => p.servers) ?? []
-    return sortBy ? sortServers(flat, sortBy, order) : flat
-  }, [pages, sortBy, order])
+  const allServers = pages?.flatMap((page) => page.servers) ?? []
 
   const lastPage = pages?.[pages.length - 1]
   const hasMore = Boolean(lastPage?.metadata.nextCursor)
@@ -110,6 +84,8 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && hasMore && !isValidating) {
+          if (pagingRef.current) return
+          pagingRef.current = true
           setSize(s => s + 1)
         }
       },
@@ -118,6 +94,12 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     observer.observe(el)
     return () => observer.disconnect()
   }, [hasMore, isValidating, setSize])
+
+  useEffect(() => {
+    if (!isValidating) {
+      pagingRef.current = false
+    }
+  }, [isValidating])
 
   const toggleDescription = (name: string) => {
     setExpandedDescriptions((prev) => {
@@ -169,10 +151,6 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           onVersionChange={setVersion}
           updatedSince={updatedSince}
           onUpdatedSinceChange={setUpdatedSince}
-          sortBy={sortBy}
-          onSortByChange={setSortBy}
-          order={order}
-          onOrderChange={setOrder}
           totalLoaded={totalLoaded}
           hasMore={hasMore}
           isLoading={isLoading}
@@ -252,6 +230,10 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                             referrerPolicy="no-referrer"
                             loading="lazy"
                             onError={(e) => {
+                              if (ghAvatar && fallbackIcon?.src && e.currentTarget.src !== fallbackIcon.src) {
+                                e.currentTarget.src = fallbackIcon.src
+                                return
+                              }
                               e.currentTarget.style.display = 'none'
                               ;(e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
                             }}
