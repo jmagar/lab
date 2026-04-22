@@ -31,6 +31,7 @@ import { GatewayFormDialog } from './gateway-form-dialog'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { TestResultPanel } from './test-result-panel'
 import { useGateway, useGatewayMutations } from '@/lib/hooks/use-gateways'
+import { AURORA_DISPLAY_1 } from '@/components/aurora/tokens'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
 import {
   applyBulkExposureToDraft,
@@ -38,7 +39,7 @@ import {
   createExposureDraftFromTools,
   getDraftExposureSummary,
 } from '@/lib/api/tool-exposure-draft'
-import { getErrorMessage } from '@/lib/utils'
+import { cn, getErrorMessage } from '@/lib/utils'
 import { buildGatewayClientConfig } from '@/lib/api/gateway-client-config'
 
 interface GatewayDetailContentProps {
@@ -528,9 +529,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
                   aria-hidden="true"
                 />
-                <h1 className="text-3xl font-semibold tracking-tight break-words">{gateway.name}</h1>
+                <h1 className={cn(AURORA_DISPLAY_1, 'break-words text-aurora-text-primary')}>{gateway.name}</h1>
               </div>
-              <p className="max-w-3xl text-sm text-muted-foreground break-all">
+              <p className="max-w-3xl break-all text-sm text-aurora-text-muted">
                 {gateway.transport === 'http'
                   ? gateway.config.url
                   : isLabGateway

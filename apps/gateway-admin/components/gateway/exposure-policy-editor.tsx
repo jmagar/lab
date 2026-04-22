@@ -28,9 +28,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { AURORA_DISPLAY_NUMBER } from '@/components/aurora/tokens'
+import { cn } from '@/lib/utils'
 import { useGatewayMutations, useExposurePolicy, useServiceActions } from '@/lib/hooks/use-gateways'
 import type { Gateway, ExposurePolicyPreview } from '@/lib/types/gateway'
-import { cn } from '@/lib/utils'
 
 interface ExposurePolicyEditorProps {
   gateway: Gateway
@@ -358,23 +359,23 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                 <div className="flex items-center gap-3 rounded-lg border-2 border-aurora-preview-allowed/50 bg-aurora-preview-allowed/15 p-3 shadow-md shadow-aurora-preview-allowed/10">
                   <CheckCircle2 className="size-5 text-aurora-preview-allowed" />
                   <div>
-                    <p className="text-2xl font-bold tabular-nums text-aurora-preview-allowed">{preview.exposed_count}</p>
-                    <p className="text-xs text-muted-foreground">Exposed</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'text-aurora-preview-allowed')}>{preview.exposed_count}</p>
+                    <p className="text-xs text-aurora-text-muted">Exposed</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-lg border p-3">
                   <EyeOff className="size-5 text-muted-foreground" />
                   <div>
-                    <p className="text-2xl font-semibold tabular-nums">{preview.filtered_count}</p>
-                    <p className="text-xs text-muted-foreground">Filtered</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'text-aurora-text-primary')}>{preview.filtered_count}</p>
+                    <p className="text-xs text-aurora-text-muted">Filtered</p>
                   </div>
                 </div>
                 {preview.unmatched_patterns.length > 0 && (
                   <div className="flex items-center gap-3 rounded-lg border-2 border-aurora-preview-unmatched/50 bg-aurora-preview-unmatched/15 p-3 shadow-md shadow-aurora-preview-unmatched/10">
                     <AlertTriangle className="size-5 text-aurora-preview-unmatched" />
                     <div>
-                      <p className="text-2xl font-bold tabular-nums text-aurora-preview-unmatched">{preview.unmatched_patterns.length}</p>
-                      <p className="text-xs text-muted-foreground">Unmatched</p>
+                      <p className={cn(AURORA_DISPLAY_NUMBER, 'text-aurora-preview-unmatched')}>{preview.unmatched_patterns.length}</p>
+                      <p className="text-xs text-aurora-text-muted">Unmatched</p>
                     </div>
                   </div>
                 )}
