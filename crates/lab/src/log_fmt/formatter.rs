@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt as stdfmt;
 
-use chrono::Local;
 use console::Style;
+use jiff::Zoned;
 use tracing::{
     field::{Field, Visit},
     Event, Subscriber,
@@ -67,9 +67,9 @@ impl Visit for EventFieldCollector {
 #[derive(Clone, Copy)]
 pub(crate) struct PremiumEventFormatter;
 
-fn write_level(writer: &mut Writer<'_>, level: &tracing::Level, ansi: bool) -> stdfmt::Result {
+fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> stdfmt::Result {
     if ansi {
-        let s = match *level {
+        let s = match level {
             tracing::Level::ERROR => Style::new().red().bold().apply_to("ERROR").to_string(),
             tracing::Level::WARN => Style::new().yellow().bold().apply_to(" WARN").to_string(),
             tracing::Level::INFO => Style::new().apply_to(" INFO").to_string(),
@@ -78,7 +78,7 @@ fn write_level(writer: &mut Writer<'_>, level: &tracing::Level, ansi: bool) -> s
         };
         write!(writer, "{s}  ")
     } else {
-        let s = match *level {
+        let s = match level {
             tracing::Level::ERROR => "ERROR",
             tracing::Level::WARN => " WARN",
             tracing::Level::INFO => " INFO",
@@ -90,7 +90,7 @@ fn write_level(writer: &mut Writer<'_>, level: &tracing::Level, ansi: bool) -> s
 }
 
 /// Semantic accent for structured field values — mirrors Axon ui.rs palette.
-fn style_value(key: &str, value: &str, level: &tracing::Level) -> String {
+fn style_value(key: &str, value: &str, level: tracing::Level) -> String {
     match key {
         // primary pink (color256 211) — service identifiers
         "service" => Style::new().color256(211).apply_to(value).to_string(),
@@ -118,31 +118,21 @@ fn style_value(key: &str, value: &str, level: &tracing::Level) -> String {
             }
         }
         "error" => Style::new().red().apply_to(value).to_string(),
-        "kind" if matches!(level, &tracing::Level::WARN | &tracing::Level::ERROR) => {
+        "kind" if matches!(level, tracing::Level::WARN | tracing::Level::ERROR) => {
             Style::new().yellow().apply_to(value).to_string()
         }
         _ => value.to_string(),
     }
 }
 
-/// Strip C0 control characters from upstream-controlled field values to prevent ANSI injection.
+/// Strip Unicode control characters from upstream-controlled field values to prevent ANSI injection.
 /// Tab (0x09) and newline (0x0A) are preserved.
 pub(crate) fn sanitize_field_value(value: &str) -> std::borrow::Cow<'_, str> {
-    if value
-        .bytes()
-        .any(|b| matches!(b, 0x00..=0x08 | 0x0B..=0x0C | 0x0E..=0x1F | 0x7F))
-    {
+    if value.chars().any(|c| c.is_control() && c != '\t' && c != '\n') {
         std::borrow::Cow::Owned(
             value
                 .chars()
-                .map(|c| {
-                    let n = c as u32;
-                    if (n <= 0x1F && c != '\t' && c != '\n') || n == 0x7F {
-                        '\u{FFFD}'
-                    } else {
-                        c
-                    }
-                })
+                .map(|c| if c.is_control() && c != '\t' && c != '\n' { '\u{FFFD}' } else { c })
                 .collect(),
         )
     } else {
@@ -161,7 +151,7 @@ pub(crate) fn format_field_value(value: &str) -> String {
 pub(crate) fn should_skip_field(key: &str, value: &str) -> bool {
     matches!(
         (key, value),
-        ("subject_scoped", "false") | ("destructive", "false")
+        ("subject_scoped" | "destructive", "false")
     )
 }
 
@@ -181,14 +171,16 @@ where
         let mut fields = EventFieldCollector::default();
         event.record(&mut fields);
 
-        let level = event.metadata().level();
+        let level = *event.metadata().level();
         let message = fields
             .take("message")
             .map(|m| sanitize_field_value(&m).into_owned())
             .unwrap_or_default();
 
         // HH:MM:SS (local time, dim)
-        let ts = Local::now().format("%H:%M:%S").to_string();
+        let ts = Zoned::now()
+            .strftime("%H:%M:%S")
+            .to_string();
         if ansi {
             write!(writer, "{}  ", Style::new().dim().apply_to(&ts))?;
         } else {
