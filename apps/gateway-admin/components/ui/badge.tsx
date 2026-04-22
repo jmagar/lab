@@ -62,7 +62,7 @@ const badgeVariants = cva(
       { variant: 'default', status: 'error', class: 'bg-aurora-error/12 border-aurora-error/30 text-aurora-error' },
       { variant: 'default', status: 'success', class: 'bg-aurora-success/12 border-aurora-success/30 text-aurora-success' },
       // outline variant × status — border + text color only
-      { variant: 'outline', status: 'default', class: 'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground' },
+      { variant: 'outline', status: 'default', class: 'border-border text-foreground [a&]:hover:bg-aurora-hover-bg [a&]:hover:text-aurora-text-primary' },
       { variant: 'outline', status: 'warn', class: 'border-aurora-warn/40 text-aurora-warn' },
       { variant: 'outline', status: 'error', class: 'border-aurora-error/40 text-aurora-error' },
       { variant: 'outline', status: 'success', class: 'border-aurora-success/40 text-aurora-success' },

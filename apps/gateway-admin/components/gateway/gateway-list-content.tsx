@@ -207,7 +207,7 @@ export function GatewayListContent() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className={AURORA_MUTED_LABEL}>Configured</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-text-primary')}>{summary.total}</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{summary.total}</p>
                   </div>
                   <Cable className="size-5 text-aurora-text-muted" />
                 </div>
@@ -216,7 +216,7 @@ export function GatewayListContent() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className={AURORA_MUTED_LABEL}>Healthy</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-accent-strong')}>{summary.healthy}</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-accent-strong')}>{summary.healthy}</p>
                   </div>
                   <Activity className="size-5 text-aurora-accent-strong" />
                 </div>
@@ -225,7 +225,7 @@ export function GatewayListContent() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className={AURORA_MUTED_LABEL}>Disconnected</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-warn')}>{summary.disconnected}</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-warn')}>{summary.disconnected}</p>
                   </div>
                   <TriangleAlert className="size-5 text-aurora-warn" />
                 </div>
@@ -234,7 +234,7 @@ export function GatewayListContent() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className={AURORA_MUTED_LABEL}>Discovered tools</p>
-                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-3xl text-aurora-text-primary')}>{summary.tools}</p>
+                    <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{summary.tools}</p>
                   </div>
                   <Wrench className="size-5 text-aurora-accent-primary" />
                 </div>

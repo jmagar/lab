@@ -2,27 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.7.0
-
-### Added
-- **Chat UI** — new `components/chat/` and `app/(admin)/chat/` for gateway-admin
-- **Branding lib** — `lib/branding/` design tokens and identity helpers
-- **Registry enhancements** — server detail panel expansion, filter sidebar, and richer list content
-- **Admin insights** — `lib/dashboard/admin-insights.ts` with aggregated dashboard metrics
-- **mcpregistry dispatch** — additional actions in `dispatch/mcpregistry/` (catalog, params, dispatch)
-- **Registry type extensions** — new fields in `lib/types/registry.ts` and `lib/hooks/use-registry.ts`
-- **lefthook** — pre-commit hook configuration added to `lefthook.yml`
+## [Unreleased] — 0.7.1
 
 ### Changed
-- **Log toolbar** — `log-toolbar.tsx` refactored; `log-filters.tsx` and `log-stream-status.tsx` removed (consolidated)
-- **upstream_oauth** — `api/upstream_oauth.rs` updated with cleaner handler shape
-- **MCP server** — `mcp/server.rs` updated for service consolidation
-- **MCP services** — `mcp/services/tailscale.rs` and `mcp/services/tautulli.rs` deleted (fully migrated to shared dispatch layer)
-- **gateway-admin** — multiple UI component updates across design system, gateway, upstream-oauth
+- **Aurora token sweep** — complete theming of all `components/ui/` shadcn primitives: toggle, navigation-menu, skeleton, dialog, item, calendar, scroll-area, resizable, badge, checkbox, switch, radio-group, slider, dropdown-menu, select, alert, separator, accordion, progress, tabs, sonner, command, context-menu, menubar
+- **Focus ring normalization** — all Radix primitives now use `aurora-accent-primary` rings instead of shadcn `ring-ring/50` defaults
+- **Hover state normalization** — all `bg-accent`/`focus:bg-accent`/`hover:bg-accent` replaced with `aurora-hover-bg` across all menu and interactive components
+- **Light mode fix** — `--aurora-hover-bg: #dcedf2` added to `.light` class (was dark-only)
+- **`text-aurora-text-secondary` purge** — removed all 10 usages of the no-op token (not in `@theme inline`); replaced with `text-aurora-text-muted`
+- **`aurora-scrollbar` utility** — added to `globals.css` for Firefox + WebKit scrollbar theming
+- **`alert` success variant** — new `success` variant added to `alert.tsx`
+- **JsonHighlight** — syntax-colored JSON renderer in `server-detail-panel.tsx`
 
 ### Version bumps
-- Rust workspace: `0.6.1 → 0.7.0`
-- gateway-admin: `0.1.0 → 0.2.0`
+- Rust workspace: `0.7.0 → 0.7.1`
+- gateway-admin: `0.2.0 → 0.2.1`
+
+---
+
+## [0.7.0] — 2026-04-21
+
+| Commit | Change |
+|--------|--------|
+| `8cc9a59` | feat(gateway-admin): chat UI, registry enhancements, log toolbar refactor — v0.7.0 |
+| `3eaa81c` | docs(observability): document ANSI sanitization, resource_uri redaction, and shell wrapper boundary |
+| `762be6e` | feat(observability): add missing identifying fields to MCP/upstream warn events |
+| `b09db3f` | feat(observability): normalize startup lifecycle events in lab serve |
+| `0203829` | feat(formatter): extract PremiumEventFormatter into log_fmt/ with Axon-style semantic coloring |
+| `234f7c4` | fix(security): sanitize log field values + redact upstream credentials |
+
+### Highlights
+- Chat UI (`components/chat/`, `app/(admin)/chat/`) and branding lib added to gateway-admin
+- Registry: server detail panel expansion, filter sidebar, richer list content
+- Log toolbar refactored; `log-filters.tsx` and `log-stream-status.tsx` consolidated
+- Observability improvements: startup lifecycle events, MCP/upstream warn fields, ANSI sanitization
+- `PremiumEventFormatter` extracted into `log_fmt/` with Axon-style semantic coloring
+- Security: log field value sanitization + upstream credential redaction
 
 ---
 
