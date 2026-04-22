@@ -152,6 +152,29 @@ impl PremiumEventFormatter {
         }
     }
 
+    fn sanitize_field_value(value: &str) -> std::borrow::Cow<'_, str> {
+        // Upstream-controlled values (tool names, prompt names, resource URIs) may contain
+        // ANSI escape sequences injected by a malicious MCP server. Strip C0 controls
+        // (except tab and newline which format_field_value handles) before any styling.
+        if value.bytes().any(|b| matches!(b, 0x00..=0x08 | 0x0B..=0x0C | 0x0E..=0x1F | 0x7F)) {
+            std::borrow::Cow::Owned(
+                value
+                    .chars()
+                    .map(|c| {
+                        let n = c as u32;
+                        if (n <= 0x1F && c != '\t' && c != '\n') || n == 0x7F {
+                            '\u{FFFD}'
+                        } else {
+                            c
+                        }
+                    })
+                    .collect(),
+            )
+        } else {
+            std::borrow::Cow::Borrowed(value)
+        }
+    }
+
     fn format_field_value(value: &str) -> String {
         if value.contains(char::is_whitespace) {
             format!("{value:?}")
@@ -225,6 +248,7 @@ impl PremiumEventFormatter {
                 if Self::should_skip_field(key, &value) {
                     continue;
                 }
+                let safe = Self::sanitize_field_value(&value);
                 if !rendered_any {
                     write!(writer, " {} ", self.dim("|"))?;
                     rendered_any = true;
@@ -235,7 +259,7 @@ impl PremiumEventFormatter {
                     writer,
                     "{}={}",
                     self.dim(key),
-                    self.bold(&Self::format_field_value(&value))
+                    self.bold(&Self::format_field_value(&safe))
                 )?;
             }
         }
@@ -244,6 +268,7 @@ impl PremiumEventFormatter {
             if Self::should_skip_field(key, value) {
                 continue;
             }
+            let safe = Self::sanitize_field_value(value);
             if !rendered_any {
                 write!(writer, " {} ", self.dim("|"))?;
                 rendered_any = true;
@@ -254,7 +279,7 @@ impl PremiumEventFormatter {
                 writer,
                 "{}={}",
                 self.dim(key),
-                self.bold(&Self::format_field_value(value))
+                self.bold(&Self::format_field_value(&safe))
             )?;
         }
 
@@ -276,7 +301,10 @@ where
         let mut fields = EventFieldCollector::default();
         event.record(&mut fields);
 
-        let message = fields.take("message").unwrap_or_default();
+        let message = fields
+            .take("message")
+            .map(|m| Self::sanitize_field_value(&m).into_owned())
+            .unwrap_or_default();
         let (lane, use_target_fallback) = Self::render_lane(&mut fields, event.metadata().target());
         let subject = Self::render_subject(&mut fields, event.metadata().target(), use_target_fallback);
         let elapsed_ms = fields.take("elapsed_ms");

@@ -33,7 +33,6 @@ pub struct TailscaleArgs {
 ///
 /// # Errors
 /// Returns an error if dispatch fails.
-#[allow(clippy::print_stdout)]
 pub async fn run(args: TailscaleArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = args
         .params
