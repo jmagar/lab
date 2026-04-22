@@ -304,9 +304,11 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service = "lab",
                         action = "get_prompt",
+                        prompt = %prompt_name,
+                        upstream = %upstream_name,
                         elapsed_ms,
                         kind = "not_found",
-                        "unknown prompt"
+                        "upstream not connected for prompt"
                     );
                     self.emit_dispatch_notification(
                         &context,
@@ -516,7 +518,7 @@ impl ServerHandler for LabMcpServer {
                 surface = "mcp",
                 service = "lab",
                 action = "read_resource",
-                resource_uri = %uri,
+                resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                 route = "upstream",
                 "dispatch route selected"
             );
@@ -532,7 +534,7 @@ impl ServerHandler for LabMcpServer {
                         service = "lab",
                         action = "read_resource",
                         upstream,
-                        resource_uri = %uri,
+                        resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
                         "resource proxy ok"
                     );
@@ -557,7 +559,7 @@ impl ServerHandler for LabMcpServer {
                         service = "lab",
                         action = "read_resource",
                         upstream,
-                        resource_uri = %uri,
+                        resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
                         kind = "internal_error",
                         error = %message,
@@ -578,13 +580,19 @@ impl ServerHandler for LabMcpServer {
                 }
                 None => {
                     let elapsed_ms = start.elapsed().as_millis();
+                    let upstream = uri
+                        .strip_prefix("lab://upstream/")
+                        .and_then(|rest| rest.split('/').next())
+                        .unwrap_or("unknown");
                     tracing::warn!(
                         surface = "mcp",
                         service = "lab",
                         action = "read_resource",
+                        upstream,
+                        resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
                         kind = "not_found",
-                        "unknown resource"
+                        "upstream not connected for resource"
                     );
                     self.emit_dispatch_notification(
                         &context,
@@ -617,7 +625,7 @@ impl ServerHandler for LabMcpServer {
                 surface = "mcp",
                 service = "lab",
                 action = "read_resource",
-                resource_uri = %uri,
+                resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                 upstream = %config.name,
                 route = "subject_scoped",
                 "dispatch route selected"
@@ -633,7 +641,7 @@ impl ServerHandler for LabMcpServer {
                         service = "lab",
                         action = "read_resource",
                         upstream = %config.name,
-                        resource_uri = %uri,
+                        resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
                         "subject-scoped resource proxy ok"
                     );
@@ -654,7 +662,7 @@ impl ServerHandler for LabMcpServer {
                         service = "lab",
                         action = "read_resource",
                         upstream = %config.name,
-                        resource_uri = %uri,
+                        resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
                         kind = "upstream_error",
                         error = %message,

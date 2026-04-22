@@ -65,7 +65,7 @@ fn upstream_transport(config: &UpstreamConfig) -> &'static str {
 ///
 /// SECURITY: Upstream MCP servers may return resource URIs containing pre-signed
 /// tokens or OAuth credentials in query parameters. Only scheme+host+path is safe to log.
-fn redact_resource_uri_for_logging(uri: &str) -> &str {
+pub(crate) fn redact_resource_uri_for_logging(uri: &str) -> &str {
     let cut = uri.find('?').or_else(|| uri.find('#')).unwrap_or(uri.len());
     &uri[..cut]
 }
