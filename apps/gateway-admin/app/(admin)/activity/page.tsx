@@ -70,35 +70,42 @@ function useActivityFeed() {
   const [items, setItems] = React.useState<ActivityItem[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const activeControllerRef = React.useRef<AbortController | null>(null)
+  const latestRequestIdRef = React.useRef(0)
 
-  const reload = React.useCallback(async (signal?: AbortSignal) => {
+  const reload = React.useCallback(async () => {
+    activeControllerRef.current?.abort()
+    const controller = new AbortController()
+    activeControllerRef.current = controller
+    const requestId = ++latestRequestIdRef.current
     try {
       const result = await fetchLogs(
         {
           subsystems: [...ACTIVITY_SUBSYSTEMS],
           limit: ACTIVITY_LIMIT,
         },
-        { signal },
+        { signal: controller.signal },
       )
-      if (signal?.aborted) return
+      if (controller.signal.aborted || requestId !== latestRequestIdRef.current) return
       setItems(buildActivityItemsFromLogs(result.events))
       setError(null)
     } catch (err) {
-      if (signal?.aborted) return
+      if (controller.signal.aborted || requestId !== latestRequestIdRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load activity')
     } finally {
-      if (!signal?.aborted) setLoading(false)
+      if (!controller.signal.aborted && requestId === latestRequestIdRef.current) {
+        setLoading(false)
+      }
     }
   }, [])
 
   React.useEffect(() => {
-    const controller = new AbortController()
-    void reload(controller.signal)
+    void reload()
     const interval = window.setInterval(() => {
-      void reload(controller.signal)
+      void reload()
     }, POLL_INTERVAL_MS)
     return () => {
-      controller.abort()
+      activeControllerRef.current?.abort()
       window.clearInterval(interval)
     }
   }, [reload])

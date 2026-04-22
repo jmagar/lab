@@ -83,15 +83,10 @@ function ProjectGroup({
   onNewRun: (projectId: string) => void
 }) {
   const [open, setOpen] = React.useState(!(project.collapsed ?? false))
-  const [hovered, setHovered] = React.useState(false)
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <div
-        className="group/proj flex items-center gap-1 px-1 py-0.5"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
+      <div className="group/proj flex items-center gap-1 px-1 py-0.5">
         <CollapsibleTrigger asChild>
           <button
             type="button"
@@ -110,38 +105,38 @@ function ProjectGroup({
 
         <Database className="size-3.5 shrink-0 text-aurora-text-muted/40" />
 
-        {hovered && (
-          <div className="flex shrink-0 items-center gap-0.5">
-            <TooltipProvider delayDuration={400}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-5 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
-                    onClick={(e) => { e.stopPropagation(); onNewRun(project.id) }}
-                  >
-                    <Plus className="size-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">New session</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-5 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="size-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">Project options</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        )}
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/proj:opacity-100 group-focus-within/proj:opacity-100">
+          <TooltipProvider delayDuration={400}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Start a new session in ${project.name}`}
+                  className="size-5 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
+                  onClick={(e) => { e.stopPropagation(); onNewRun(project.id) }}
+                >
+                  <Plus className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">New session</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Project options for ${project.name}`}
+                  className="size-5 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">Project options</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       <CollapsibleContent>

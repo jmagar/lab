@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use sha2::{Digest, Sha256};
 
 use axum::http::{self, request::Parts};
 use rmcp::model::{
@@ -142,7 +143,7 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
         let start = std::time::Instant::now();
-        let subject = self.request_subject(&context).unwrap_or_default();
+        let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
             service = "lab",
@@ -199,7 +200,7 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, ErrorData> {
         let start = std::time::Instant::now();
-        let subject = self.request_subject(&context).unwrap_or_default();
+        let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
             service = "lab",
@@ -451,7 +452,7 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         let start = std::time::Instant::now();
-        let subject = self.request_subject(&context).unwrap_or_default();
+        let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
             service = "lab",
@@ -514,14 +515,14 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
         let start = std::time::Instant::now();
-        let subject = self.request_subject(&context).unwrap_or_default();
+        let subject = self.request_subject_log_tag(&context);
         let uri = &request.uri;
         tracing::info!(
             surface = "mcp",
             service = "lab",
             action = "read_resource",
             subject,
-            resource_uri = %uri,
+            resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
             "dispatch start"
         );
 
@@ -771,7 +772,7 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let start = std::time::Instant::now();
-        let subject = self.request_subject(&context).unwrap_or_default();
+        let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
             service = "lab",
@@ -958,7 +959,7 @@ impl ServerHandler for LabMcpServer {
         }
 
         let start = std::time::Instant::now();
-        let subject = self.request_subject(&context).unwrap_or_default();
+        let subject = self.request_subject_log_tag(&context);
         let dispatch_action = if svc.is_some() {
             action.as_str()
         } else {
@@ -989,7 +990,7 @@ impl ServerHandler for LabMcpServer {
                 .await
                 .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
             let elapsed_ms = start.elapsed().as_millis();
-            let (result, outcome) = format_dispatch_result(result, &service, &action, elapsed_ms, subject);
+            let (result, outcome) = format_dispatch_result(result, &service, &action, elapsed_ms, &subject);
             self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
                 .await;
             return Ok(result);
@@ -1312,7 +1313,7 @@ impl ServerHandler for LabMcpServer {
         // Neither built-in nor upstream.
         let elapsed_ms = start.elapsed().as_millis();
         let err = anyhow::anyhow!("service `{service}` has no dispatcher wired");
-        let (result, outcome) = format_dispatch_result(Err(err), &service, &action, elapsed_ms, subject);
+        let (result, outcome) = format_dispatch_result(Err(err), &service, &action, elapsed_ms, &subject);
         self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
             .await;
         Ok(result)
@@ -1321,9 +1322,20 @@ impl ServerHandler for LabMcpServer {
 
 use crate::mcp::catalog::CatalogSnapshot;
 
+fn redact_subject_for_logging(subject: &str) -> String {
+    let digest = Sha256::digest(subject.as_bytes());
+    format!("sub:{:x}", digest)[..16].to_string()
+}
+
 impl LabMcpServer {
     fn request_subject<'a>(&self, context: &'a RequestContext<RoleServer>) -> Option<&'a str> {
         subject_from_extensions(&context.extensions)
+    }
+
+    fn request_subject_log_tag(&self, context: &RequestContext<RoleServer>) -> String {
+        self.request_subject(context)
+            .map(redact_subject_for_logging)
+            .unwrap_or_default()
     }
 
     async fn oauth_upstream_configs(&self) -> Vec<crate::config::UpstreamConfig> {

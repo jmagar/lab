@@ -24,6 +24,7 @@ mod test_support;
 mod log_fmt;
 mod tui;
 
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -77,6 +78,7 @@ fn init_tracing(log: &config::LogPreferences) {
             .init();
     } else {
         let fmt_layer = fmt::layer()
+            .with_ansi(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
             .with_target(false)
             .event_format(PremiumEventFormatter)
             .with_writer(std::io::stderr)

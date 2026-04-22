@@ -16,8 +16,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-text': 'var(--aurora-text-primary)',
           '--normal-border': 'var(--aurora-border-default)',
           '--success-bg': 'var(--aurora-success)',
+          '--success-text': 'var(--aurora-page-bg)',
           '--success-border': 'var(--aurora-success)',
           '--error-bg': 'var(--aurora-error)',
+          '--error-text': 'var(--aurora-page-bg)',
           '--error-border': 'var(--aurora-error)',
         } as React.CSSProperties
       }

@@ -217,7 +217,7 @@ impl GatewayManager {
         })
         .await
         .map_err(|e| ToolError::internal_message(format!("SSRF validation task panicked: {e}")))
-        .map_err(|e| {
+        .inspect_err(|_| {
             tracing::warn!(
                 service = "upstream_oauth",
                 action = "probe",
@@ -225,7 +225,6 @@ impl GatewayManager {
                 kind = "ssrf_blocked",
                 "upstream oauth probe: SSRF validation task error"
             );
-            e
         })??;
 
         let parsed = Url::parse(url).map_err(|_| ToolError::Sdk {

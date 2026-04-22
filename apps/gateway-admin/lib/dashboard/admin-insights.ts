@@ -91,13 +91,14 @@ function formatDetail(event: LogEvent, descriptor: ActionDescriptor): string {
 export function buildActivityItemsFromLogs(events: LogEvent[]): ActivityItem[] {
   return events.map((event) => {
     const descriptor = describeAction(event)
+    const parsed = new Date(event.ts)
     return {
       id: event.event_id,
       kind: descriptor.kind,
       tone: toneFor(event),
       title: descriptor.label,
       detail: formatDetail(event, descriptor),
-      timestamp: new Date(event.ts).toISOString(),
+      timestamp: Number.isNaN(parsed.getTime()) ? new Date(0).toISOString() : parsed.toISOString(),
       event,
     }
   })

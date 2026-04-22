@@ -388,7 +388,7 @@ Rules:
 
 `CardTitle` defaults to `font-display tracking-[-0.02em]` so card headers automatically pick up Manrope and the Aurora display tracking. Sizing stays the caller's responsibility — compose `AURORA_DISPLAY_2` (or another ramp entry) when an explicit ramp slot is required.
 
-`Card` exposes `variant="medium" | "strong"` mapped to Tier 2 / Tier 3. Use `variant="strong"` for the primary surface on a page; everything else stays on the medium default.
+`Card` exposes `variant="medium" | "strong"` mapped to Tier 1 / Tier 2. Use `variant="strong"` for the primary surface on a page; everything else stays on the medium default.
 
 ### Service Brand Identity
 

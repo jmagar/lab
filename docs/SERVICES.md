@@ -59,6 +59,7 @@ Default feature posture:
 - OpenAI
 - Qdrant
 - TEI
+- MCP Registry (`docs/upstream-api/mcp-registry.yaml`)
 
 ### Services Without OpenAPI Specs
 

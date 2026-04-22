@@ -39,6 +39,7 @@ export function SettingsPanel({
         <Button
           variant="ghost"
           size="icon"
+          aria-label="Close settings"
           onClick={onClose}
           className="size-6 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
         >
@@ -74,6 +75,7 @@ export function SettingsPanel({
             <p className={AURORA_MUTED_LABEL}>System Prompt</p>
           </div>
           <textarea
+            aria-label="System prompt"
             value={systemPrompt}
             onChange={(e) => onSystemPromptChange(e.target.value)}
             placeholder="You are a helpful assistant…"
@@ -99,6 +101,7 @@ export function SettingsPanel({
             </span>
           </div>
           <Slider
+            aria-label="Temperature"
             value={[temperature]}
             onValueChange={([v]) => onTemperatureChange(v)}
             min={0}
@@ -124,6 +127,7 @@ export function SettingsPanel({
             </span>
           </div>
           <Slider
+            aria-label="Max tokens"
             value={[maxTokens]}
             onValueChange={([v]) => onMaxTokensChange(v)}
             min={256}

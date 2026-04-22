@@ -345,8 +345,8 @@ Additional rules:
 - do not persist bearer tokens, cookies, authorization headers, or raw secret material in the local log store
 - do not fan out unredacted structured fields to live SSE subscribers
 - upstream-controlled field values (tool names, prompt names, resource URIs from external MCP servers)
-  must be sanitized before rendering in human log output — strip C0 control characters (0x00–0x1F
-  except tab and newline) to prevent ANSI escape injection. `sanitize_field_value()` in
+  must be sanitized before rendering in human log output — strip Unicode control characters except
+  tab and newline to prevent ANSI escape injection. `sanitize_field_value()` in
   `log_fmt/formatter.rs` is the canonical implementation; apply it before any terminal styling.
 - `resource_uri` field values must have query strings and fragments stripped before logging
   (`redact_resource_uri_for_logging()` in `dispatch/upstream/pool.rs`). Pre-signed S3 tokens,
@@ -354,7 +354,7 @@ Additional rules:
 - upstream URL values must have userinfo (username:password) stripped before logging
   (`upstream_target_redacted()` in `dispatch/upstream/pool.rs`).
 
-Shell wrapper boundary: `/home/jmagar/.cargo/bin/lab` emits CLI-PREFLIGHT output via `printf` to
+Shell wrapper boundary: the user-installed `lab` shell wrapper emits CLI-PREFLIGHT output via `printf` to
 stderr before the Rust binary starts. This output is pre-binary and therefore not processed by
 `init_tracing()`, `LogIngestLayer`, or any redaction rules. Treat it as an unstructured stderr
 boundary — it must not emit credential-bearing content.

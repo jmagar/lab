@@ -40,6 +40,7 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
+#[allow(clippy::print_stdout)] // CLI watch streams NDJSON events to stdout by design.
 fn emit(event: &HostStatusEvent) {
     let line = serde_json::to_string(event).unwrap_or_default();
     println!("{line}");

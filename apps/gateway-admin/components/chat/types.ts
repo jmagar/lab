@@ -57,7 +57,7 @@ export interface ACPToolResultPart {
 
 export type ACPPart = ACPTextPart | ACPThinkingPart | ACPToolUsePart | ACPToolResultPart
 
-export type ACPRole = 'user' | 'agent'
+export type ACPRole = 'user' | 'assistant'
 
 export interface ACPMessage {
   id: string

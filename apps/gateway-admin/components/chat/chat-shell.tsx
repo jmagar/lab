@@ -21,6 +21,7 @@ export function ChatShell() {
   const [systemPrompt, setSystemPrompt] = React.useState('')
   const [temperature, setTemperature] = React.useState(0.7)
   const [maxTokens, setMaxTokens] = React.useState(8192)
+  const streamingIntervalRef = React.useRef<number | null>(null)
 
   const selectedRun = state.runs.find((r) => r.id === state.selectedRunId) ?? null
   const selectedMessages = state.selectedRunId ? (state.messages[state.selectedRunId] ?? []) : []
@@ -54,20 +55,26 @@ export function ChatShell() {
   }
 
   const handleSend = (text: string) => {
-    if (!state.selectedRunId) return
+    const runId = state.selectedRunId
+    if (!runId) return
+
+    if (streamingIntervalRef.current !== null) {
+      window.clearInterval(streamingIntervalRef.current)
+      streamingIntervalRef.current = null
+    }
 
     const userMessage: ACPMessage = {
-      id: `msg-${Date.now()}`,
-      runId: state.selectedRunId,
+      id: crypto.randomUUID(),
+      runId,
       role: 'user',
       parts: [{ type: 'text', text }],
       createdAt: new Date(),
     }
 
     const streamingMessage: ACPMessage = {
-      id: `msg-${Date.now() + 1}`,
-      runId: state.selectedRunId,
-      role: 'agent',
+      id: crypto.randomUUID(),
+      runId,
+      role: 'assistant',
       parts: [{ type: 'text', text: '' }],
       createdAt: new Date(),
       isStreaming: true,
@@ -77,7 +84,7 @@ export function ChatShell() {
       ...s,
       messages: {
         ...s.messages,
-        [s.selectedRunId!]: [...(s.messages[s.selectedRunId!] ?? []), userMessage, streamingMessage],
+        [runId]: [...(s.messages[runId] ?? []), userMessage, streamingMessage],
       },
     }))
 
@@ -88,21 +95,32 @@ export function ChatShell() {
       "I'm processing your request...\n\nLet me look into that for you.\n\nThis is a mockup — in production, real ACP responses would stream here.",
     ]
     let step = 0
-    const interval = setInterval(() => {
+    streamingIntervalRef.current = window.setInterval(() => {
       step++
       const responseText = responses[Math.min(step - 1, responses.length - 1)]
       setState((s) => {
-        const msgs = s.messages[s.selectedRunId!] ?? []
+        const msgs = s.messages[runId] ?? []
         const updatedMsgs = msgs.map((m) =>
           m.id === streamingMessage.id
             ? { ...m, parts: [{ type: 'text' as const, text: responseText }], isStreaming: step < responses.length }
             : m,
         )
-        return { ...s, messages: { ...s.messages, [s.selectedRunId!]: updatedMsgs } }
+        return { ...s, messages: { ...s.messages, [runId]: updatedMsgs } }
       })
-      if (step >= responses.length) clearInterval(interval)
+      if (step >= responses.length && streamingIntervalRef.current !== null) {
+        window.clearInterval(streamingIntervalRef.current)
+        streamingIntervalRef.current = null
+      }
     }, 600)
   }
+
+  React.useEffect(() => {
+    return () => {
+      if (streamingIntervalRef.current !== null) {
+        window.clearInterval(streamingIntervalRef.current)
+      }
+    }
+  }, [])
 
   const handleSelectAgent = (agentId: string) => {
     if (!state.selectedRunId) return

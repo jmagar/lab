@@ -23,7 +23,7 @@ export const auroraColorTokens = [
     label: 'Aurora accent',
     value: '#29b6f6',
     className: 'bg-aurora-accent-primary',
-    textClassName: 'text-primary-foreground',
+    textClassName: 'text-aurora-page-bg',
   },
   {
     label: 'Aurora warn',
@@ -91,9 +91,9 @@ export const spacingScale = [
 ] as const
 
 export const radiusScale = [
-  { label: 'Aurora 1', className: 'rounded-aurora-1', value: '14px' },
-  { label: 'Aurora 2', className: 'rounded-aurora-2', value: '18px' },
-  { label: 'Aurora 3', className: 'rounded-aurora-3', value: '22px' },
+  { label: 'Radius 1', className: 'rounded-aurora-1', value: '14px' },
+  { label: 'Radius 2', className: 'rounded-aurora-2', value: '18px' },
+  { label: 'Radius 3', className: 'rounded-aurora-3', value: '22px' },
 ] as const
 
 export const elevationTiers = [

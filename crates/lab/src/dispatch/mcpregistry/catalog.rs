@@ -29,7 +29,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "server.list",
-        description: "List MCP servers from the registry with optional search and pagination. NOTE: this action calls the upstream registry directly (/v1 surface). Sort operates within the current page only. For full-dataset sort across all cached servers, use the /v0.1/servers GET surface.",
+        description: "List MCP servers from the registry with optional search, owner filter, and pagination. This action calls the upstream registry directly (/v1 surface).",
         destructive: false,
         returns: "ServerListResponse",
         params: &[
@@ -38,6 +38,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "string",
                 required: false,
                 description: "Search query to filter servers by name or description",
+            },
+            ParamSpec {
+                name: "owner",
+                ty: "string",
+                required: false,
+                description: "GitHub username or org. Client-side convenience that maps to `search=io.github.{owner}/` (lowercased, trimmed). Ignored if `search` is also set. Does not match non-GitHub publishers. Rejected with `invalid_param` if empty or containing `/` or whitespace.",
             },
             ParamSpec {
                 name: "limit",
@@ -62,18 +68,6 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "string",
                 required: false,
                 description: "ISO 8601 datetime; return only servers updated after this time",
-            },
-            ParamSpec {
-                name: "sort_by",
-                ty: "string",
-                required: false,
-                description: "Sort results by field: `updated` (default when set), `published`, or `name`. NOTE: sort operates within the current page only on this /v1 surface. For full-dataset sort, use /v0.1/servers.",
-            },
-            ParamSpec {
-                name: "order",
-                ty: "string",
-                required: false,
-                description: "Sort direction: `desc` (default) or `asc`. See sort_by note above.",
             },
         ],
     },
@@ -179,7 +173,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "sync",
-        description: "Trigger an immediate upstream sync of the local registry store. Rate-limited: returns rate_limited if called within 60 seconds of the last sync. No-op if registry store is not initialized.",
+        description: "Trigger an immediate upstream sync of the local registry store. Opens or creates the store on demand, then syncs from upstream. Rate-limited: returns rate_limited if called within 60 seconds of the last sync.",
         destructive: false,
         returns: "SyncResult",
         params: &[],
