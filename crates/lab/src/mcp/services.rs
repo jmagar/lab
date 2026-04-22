@@ -25,17 +25,11 @@ pub mod prowlarr;
 #[cfg(feature = "plex")]
 pub mod plex;
 
-#[cfg(feature = "tautulli")]
-pub mod tautulli;
-
 #[cfg(feature = "sabnzbd")]
 pub mod sabnzbd;
 
 #[cfg(feature = "qbittorrent")]
 pub mod qbittorrent;
-
-#[cfg(feature = "tailscale")]
-pub mod tailscale;
 
 #[cfg(feature = "linkding")]
 pub mod linkding;
@@ -74,4 +68,10 @@ pub mod tei;
 
 #[cfg(feature = "apprise")]
 pub mod apprise;
+
+#[cfg(feature = "tailscale")]
+pub mod tailscale;
+
+#[cfg(feature = "tautulli")]
+pub mod tautulli;
 // [lab-scaffold: mcp-services]

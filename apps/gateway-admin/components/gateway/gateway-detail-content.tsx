@@ -267,7 +267,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         ['cli', gateway.surfaces.cli],
         ['api', gateway.surfaces.api],
         ['mcp', gateway.surfaces.mcp],
-        ['webui', gateway.surfaces.webui],
       ] as const)
     : []
   const hasDraftChanges =
@@ -388,77 +387,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     })
   }
 
-  // AppHeader actions: status + toggles + timestamp + action buttons
+  // AppHeader actions: action buttons
   const headerActions = (
     <div className="flex items-center gap-2 flex-wrap">
-      {/* Status indicator */}
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
-        <span
-          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
-          aria-label={gatewayStatusLabel}
-        />
-        <span className="text-xs font-medium">{gatewayStatusLabel}</span>
-      </div>
-
-      {/* Expose resources toggle */}
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
-        <span className="text-xs font-medium">Expose resources</span>
-        <Switch
-          aria-label="Expose resources"
-          checked={resourceExposureEnabled}
-          onCheckedChange={handleProxyResourcesToggle}
-          className="scale-75"
-        />
-      </div>
-
-      {/* Expose prompts toggle */}
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
-        <span className="text-xs font-medium">Expose prompts</span>
-        <Switch
-          aria-label="Expose prompts"
-          checked={promptExposureEnabled}
-          onCheckedChange={handleProxyPromptsToggle}
-          className="scale-75"
-        />
-      </div>
-
-      {/* Lab gateway enabled toggle */}
-      {isLabGateway && (
-        <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
-          <span className="text-xs font-medium">Enabled</span>
-          <Switch
-            aria-label="Gateway enabled"
-            checked={gateway.enabled ?? false}
-            onCheckedChange={handleEnabledToggle}
-            className="scale-75"
-          />
-        </div>
-      )}
-
-      {/* Surface toggles */}
-      {surfaceEntries.map(([surface, state]) => (
-        <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
-          <span
-            className={`size-2 rounded-full ${state.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
-            aria-hidden="true"
-          />
-          <span className="text-xs font-medium uppercase">{surface}</span>
-          <Switch
-            aria-label={`${surface.toUpperCase()} surface`}
-            checked={state.enabled}
-            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
-            className="scale-75"
-          />
-        </div>
-      ))}
-
-      {/* Updated timestamp */}
-      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Clock className="size-3" />
-        <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
-      </div>
-
-      {/* Action buttons */}
       {!isLabGateway && (
         <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
           {isTesting ? (
@@ -483,6 +414,71 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         <Trash2 className="size-4 mr-2" />
         {isLabGateway ? 'Disable' : 'Remove'}
       </Button>
+    </div>
+  )
+
+  const headerStatusPills = (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <span
+          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
+          aria-label={gatewayStatusLabel}
+        />
+        <span className="text-xs font-medium">{gatewayStatusLabel}</span>
+      </div>
+
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <span className="text-xs font-medium">Expose resources</span>
+        <Switch
+          aria-label="Expose resources"
+          checked={resourceExposureEnabled}
+          onCheckedChange={handleProxyResourcesToggle}
+          className="scale-75"
+        />
+      </div>
+
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <span className="text-xs font-medium">Expose prompts</span>
+        <Switch
+          aria-label="Expose prompts"
+          checked={promptExposureEnabled}
+          onCheckedChange={handleProxyPromptsToggle}
+          className="scale-75"
+        />
+      </div>
+
+      {isLabGateway && (
+        <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+          <span className="text-xs font-medium">Enabled</span>
+          <Switch
+            aria-label="Gateway enabled"
+            checked={gateway.enabled ?? false}
+            onCheckedChange={handleEnabledToggle}
+            className="scale-75"
+          />
+        </div>
+      )}
+
+      {surfaceEntries.map(([surface, state]) => (
+        <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+          <span
+            className={`size-2 rounded-full ${state.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
+            aria-hidden="true"
+          />
+          <span className="text-xs font-medium uppercase">{surface}</span>
+          <Switch
+            aria-label={`${surface.toUpperCase()} surface`}
+            checked={state.enabled}
+            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
+            className="scale-75"
+          />
+        </div>
+      ))}
+
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+        <Clock className="size-3" />
+        <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
+      </div>
     </div>
   )
 
@@ -521,6 +517,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   </TooltipContent>
                 </Tooltip>
               )}
+
+              {headerStatusPills}
             </div>
 
             {/* Name + endpoint */}

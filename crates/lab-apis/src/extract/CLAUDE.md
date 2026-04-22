@@ -4,7 +4,7 @@
 
 ## Always compiled
 
-Unlike the 20 feature-gated services, `extract` has no feature flag — it's always on. It's the bootstrap: how a new user goes from zero to a populated `.env` in one command.
+Unlike the 23 feature-gated services, `extract` has no feature flag — it's always on. It's the bootstrap: how a new user goes from zero to a populated `.env` in one command.
 
 ## Module layout
 

@@ -279,29 +279,7 @@ impl ExtractClient {
     {
         let mut result = FleetScanResult::default();
 
-        if let Err(error) = host.docker_available().await {
-            result.warnings.push(host_warning(
-                host.alias().to_owned(),
-                None,
-                "extract",
-                error.to_string(),
-            ));
-            return result;
-        }
-
-        let containers = match host.list_running_supported_containers().await {
-            Ok(containers) => containers,
-            Err(error) => {
-                result.warnings.push(host_warning(
-                    host.alias().to_owned(),
-                    None,
-                    "extract",
-                    error.to_string(),
-                ));
-                return result;
-            }
-        };
-
+        // Resolve probe host via SSH commands (independent of Docker).
         let tailscale_ip = match host.tailscale_ipv4().await {
             Ok(ip) => ip,
             Err(error) => {
@@ -350,17 +328,51 @@ impl ExtractClient {
             probe_host = Some(hostname.to_owned());
         }
 
-        let Some(probe_host) = probe_host else {
+        if probe_host.is_none() {
             result.warnings.push(host_warning(
                 host.alias().to_owned(),
                 None,
                 "extract",
                 "no locally resolvable probe host identity found".to_owned(),
             ));
-            return result;
-        };
+        }
 
+        // Docker scan first: authoritative for services in containers because it
+        // knows the actual published host port (which may differ from container port).
+        if host.docker_available().await.is_ok() {
+            if let Ok(containers) = host.list_running_supported_containers().await {
+                if let Some(ref ph) = probe_host {
+                    self.scan_docker_containers(host, containers, ph, &mut result, probe)
+                        .await;
+                }
+            }
+        }
+
+        // Filesystem scan second: finds services on non-Docker hosts, or any
+        // service not running in a container. Skips services already found above.
+        self.scan_appdata_roots(host, probe_host.as_deref(), &mut result, probe)
+            .await;
+
+        result
+    }
+
+    async fn scan_docker_containers<H, P, PFut>(
+        &self,
+        host: &H,
+        containers: Vec<RuntimeContainerSummary>,
+        probe_host: &str,
+        result: &mut FleetScanResult,
+        probe: &mut P,
+    ) where
+        H: FleetHost,
+        P: FnMut(String) -> PFut,
+        PFut: Future<Output = Result<Option<VerifiedEndpoint>, ExtractError>>,
+    {
         for summary in containers {
+            if result.found.contains(&summary.service) {
+                continue;
+            }
+
             let runtime = RuntimeProvenance {
                 container_name: summary.container_name.clone(),
                 image: summary.image.clone(),
@@ -434,7 +446,7 @@ impl ExtractClient {
 
             let candidate_urls = probe_candidates(
                 &details.service,
-                &probe_host,
+                probe_host,
                 port,
                 parsed_config
                     .as_ref()
@@ -482,7 +494,7 @@ impl ExtractClient {
                 &details.service,
                 &verified,
                 host.alias(),
-                &probe_host,
+                probe_host,
                 RuntimeProvenance {
                     container_name: details.container_name.clone(),
                     image: details.image.clone(),
@@ -501,31 +513,25 @@ impl ExtractClient {
                 continue;
             };
 
-            match parsed_config {
-                Some(parsed) => {
-                    cred.secret = parsed.secret;
-                    cred.env_field = parsed.env_field;
-                    if let Some(refined) = refine_verified_url(&verified.url, parsed.url.as_deref())
-                    {
-                        match probe(refined.clone()).await {
-                            Ok(Some(refined_verified)) => cred.url = Some(refined_verified.url),
-                            Ok(None) => {}
-                            Err(error) => result.warnings.push(host_warning(
-                                host.alias().to_owned(),
-                                cred.runtime.clone(),
-                                &details.service,
-                                format!("refined endpoint probe failed: {error}"),
-                            )),
-                        }
+            if let Some(parsed) = parsed_config {
+                cred.secret = parsed.secret;
+                cred.env_field = parsed.env_field;
+                if let Some(refined) = refine_verified_url(&verified.url, parsed.url.as_deref()) {
+                    match probe(refined.clone()).await {
+                        Ok(Some(refined_verified)) => cred.url = Some(refined_verified.url),
+                        Ok(None) => {}
+                        Err(error) => result.warnings.push(host_warning(
+                            host.alias().to_owned(),
+                            cred.runtime.clone(),
+                            &details.service,
+                            format!("refined endpoint probe failed: {error}"),
+                        )),
                     }
                 }
-                None => {}
             }
 
             result.creds.push(cred);
         }
-
-        result
     }
 
     async fn open_transport(&self, uri: &Uri) -> Result<Transport, ExtractError> {
@@ -582,6 +588,90 @@ struct FleetScanResult {
     found: BTreeSet<String>,
     creds: Vec<ServiceCreds>,
     warnings: Vec<ExtractWarning>,
+}
+
+/// Common appdata root paths tried on every SSH host during fleet scan.
+const APPDATA_ROOTS: &[&str] = &[
+    "/mnt/user/appdata",
+    "/mnt/appdata",
+    "/opt/appdata",
+    "/srv/appdata",
+];
+
+impl ExtractClient {
+    /// Scan common appdata root paths on `host` via SFTP, running all parsers
+    /// against each root. Services already in `result.found` are skipped.
+    /// Credentials are added even when endpoint probing fails — the API key is
+    /// still useful without a verified URL.
+    async fn scan_appdata_roots<H, P, PFut>(
+        &self,
+        host: &H,
+        probe_host: Option<&str>,
+        result: &mut FleetScanResult,
+        probe: &mut P,
+    ) where
+        H: FleetHost,
+        P: FnMut(String) -> PFut,
+        PFut: Future<Output = Result<Option<VerifiedEndpoint>, ExtractError>>,
+    {
+        for &root in APPDATA_ROOTS {
+            let root = Path::new(root);
+            for parser in &self.parsers {
+                if result.found.contains(parser.name()) {
+                    continue;
+                }
+                let path = parser.config_path(root);
+                let bytes = match host.read_file(&path).await {
+                    Ok(bytes) => bytes,
+                    // File absent — this service isn't under this root.
+                    Err(ExtractError::Io { .. } | ExtractError::Ssh { .. }) => continue,
+                    Err(error) => {
+                        result.warnings.push(host_warning(
+                            host.alias().to_owned(),
+                            None,
+                            parser.name(),
+                            error.to_string(),
+                        ));
+                        continue;
+                    }
+                };
+
+                let mut cred = match parser.parse(&bytes) {
+                    Ok(cred) => cred,
+                    Err(_) => continue,
+                };
+
+                cred.source_host = Some(host.alias().to_owned());
+
+                if let Some(ph) = probe_host {
+                    cred.probe_host = Some(ph.to_owned());
+                    if let Some(url) = &cred.url {
+                        let candidate = replace_url_host(url, ph);
+                        match probe(candidate.clone()).await {
+                            Ok(Some(verified)) => {
+                                cred.url = Some(verified.url);
+                                cred.url_verified = true;
+                            }
+                            Ok(None) => {
+                                cred.url = Some(candidate);
+                            }
+                            Err(error) => {
+                                result.warnings.push(host_warning(
+                                    host.alias().to_owned(),
+                                    None,
+                                    parser.name(),
+                                    format!("endpoint probe failed: {error}"),
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                result.found.insert(cred.service.clone());
+                result.creds.push(cred);
+            }
+        }
+    }
 }
 
 fn load_ssh_inventory() -> Result<Vec<SshHostTarget>, ExtractError> {
@@ -681,6 +771,15 @@ fn default_env_field(service: &str) -> &'static str {
         "linkding" => "LINKDING_TOKEN",
         _ => "EXTRACT_SECRET",
     }
+}
+
+fn replace_url_host(url: &str, probe_host: &str) -> String {
+    if let Ok(mut parsed) = url::Url::parse(url) {
+        if parsed.set_host(Some(probe_host)).is_ok() {
+            return parsed.to_string();
+        }
+    }
+    url.to_owned()
 }
 
 fn host_warning(
@@ -983,7 +1082,9 @@ mod tests {
             br#"<Config><Port>7878</Port><BindAddress>*</BindAddress><EnableSsl>True</EnableSsl><UrlBase>/radarr</UrlBase><ApiKey>secret-key</ApiKey></Config>"#.to_vec(),
         );
 
-        let err = client
+        // Filesystem scan finds the config file and returns the cred even though
+        // the endpoint probe fails — the API key is still valid and useful.
+        let report = client
             .scan_fleet_hosts_with(
                 vec![SshHostTarget {
                     alias: "media-node".to_owned(),
@@ -994,18 +1095,17 @@ mod tests {
                 |_url| async { Ok(None) },
             )
             .await
-            .expect_err("no verified endpoint");
+            .expect("cred from filesystem scan");
 
-        assert!(matches!(
-            err,
-            ExtractError::NothingFound {
-                target: ScanTarget::Fleet
-            }
-        ));
-        assert_eq!(
-            reads.lock().expect("reads").as_slice(),
-            &[PathBuf::from("/srv/appdata/radarr/config.xml")]
-        );
+        assert_eq!(report.creds.len(), 1);
+        let cred = &report.creds[0];
+        assert_eq!(cred.service, "radarr");
+        assert_eq!(cred.secret.as_deref(), Some("secret-key"));
+        assert!(!cred.url_verified);
+        assert!(reads
+            .lock()
+            .expect("reads")
+            .contains(&PathBuf::from("/srv/appdata/radarr/config.xml")));
     }
 
     #[tokio::test]

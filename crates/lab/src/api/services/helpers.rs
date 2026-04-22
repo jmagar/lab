@@ -103,6 +103,11 @@ where
         });
     };
     let is_destructive = spec.is_some_and(|s| s.destructive);
+    let instance = params
+        .get("instance")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let param_key_count = params.as_object().map_or(0, serde_json::Map::len);
 
     // Gate: destructive confirmation.
     // Confirmation requires params["confirm"] == true (body-only — header-based confirmation
@@ -135,6 +140,17 @@ where
 
     // Clone action before the move into dispatch — needed for post-dispatch logging.
     let action_log = action.clone();
+
+    tracing::info!(
+        surface = surface,
+        service,
+        action = action_log.as_str(),
+        request_id,
+        instance = instance.as_deref(),
+        param_key_count,
+        destructive = is_destructive,
+        "dispatch start"
+    );
 
     // Intent log: emit before dispatch so there is audit evidence even if the downstream
     // service errors mid-way. Only fires for destructive actions after confirmation succeeds.

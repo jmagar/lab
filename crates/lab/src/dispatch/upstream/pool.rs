@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
@@ -494,9 +494,9 @@ impl UpstreamPool {
                         resource_health,
                         tool_unhealthy_since: None,
                         prompt_unhealthy_since: (!prompt_health.is_routable())
-                            .then(std::time::Instant::now),
+                            .then(Instant::now),
                         resource_unhealthy_since: (!resource_health.is_routable())
-                            .then(std::time::Instant::now),
+                            .then(Instant::now),
                         tool_last_error: None,
                         prompt_last_error,
                         resource_last_error,
@@ -523,9 +523,9 @@ impl UpstreamPool {
                         resource_health: UpstreamHealth::Unhealthy {
                             consecutive_failures: 1,
                         },
-                        tool_unhealthy_since: Some(std::time::Instant::now()),
-                        prompt_unhealthy_since: Some(std::time::Instant::now()),
-                        resource_unhealthy_since: Some(std::time::Instant::now()),
+                        tool_unhealthy_since: Some(Instant::now()),
+                        prompt_unhealthy_since: Some(Instant::now()),
+                        resource_unhealthy_since: Some(Instant::now()),
                         tool_last_error: Some(error_message.clone()),
                         prompt_last_error: Some(error_message.clone()),
                         resource_last_error: Some(error_message),
@@ -594,9 +594,48 @@ impl UpstreamPool {
         subject: &str,
         params: CallToolRequestParams,
     ) -> Result<CallToolResult, String> {
-        let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
-            .await
-            .map_err(|error| error.to_string())?;
+        let start = Instant::now();
+        let tool_name = params.name.to_string();
+        tracing::debug!(
+            upstream = %config.name,
+            capability = "tools",
+            operation = "tool.call",
+            tool = %tool_name,
+            subject_scoped = true,
+            transport = upstream_transport(config),
+            "upstream.request.start"
+        );
+        let (conn, _) = match connect_upstream(
+            config,
+            Some(subject),
+            self.oauth_client_cache.as_ref(),
+        )
+        .await
+        {
+            Ok(conn) => conn,
+            Err(error) => {
+                self.record_failure_for(
+                    &config.name,
+                    UpstreamCapability::Tools,
+                    format!("upstream connect failed: {error}"),
+                )
+                .await;
+                let elapsed_ms = start.elapsed().as_millis();
+                tracing::warn!(
+                    upstream = %config.name,
+                    capability = "tools",
+                    operation = "tool.call",
+                    tool = %tool_name,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms,
+                    kind = "upstream_connect_error",
+                    error = %error,
+                    "upstream.request.error"
+                );
+                return Err(error.to_string());
+            }
+        };
         match conn.peer.call_tool(params).await {
             Ok(result) => {
                 let response_size = estimate_response_size(&result);
@@ -608,12 +647,38 @@ impl UpstreamPool {
                         format!("response too large: {response_size} bytes"),
                     )
                     .await;
+                    let elapsed_ms = start.elapsed().as_millis();
+                    tracing::warn!(
+                        upstream = %config.name,
+                        capability = "tools",
+                        operation = "tool.call",
+                        tool = %tool_name,
+                        subject_scoped = true,
+                        transport = upstream_transport(config),
+                        elapsed_ms,
+                        kind = "response_too_large",
+                        response_bytes = response_size,
+                        max_bytes,
+                        "upstream.request.error"
+                    );
                     return Err(format!(
                         "upstream response too large ({response_size} bytes, max {max_bytes})"
                     ));
                 }
                 self.record_success_for(&config.name, UpstreamCapability::Tools)
                     .await;
+                let elapsed_ms = start.elapsed().as_millis();
+                tracing::info!(
+                    upstream = %config.name,
+                    capability = "tools",
+                    operation = "tool.call",
+                    tool = %tool_name,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms,
+                    response_bytes = response_size,
+                    "upstream.request.finish"
+                );
                 Ok(result)
             }
             Err(error) => {
@@ -623,6 +688,19 @@ impl UpstreamPool {
                     format!("upstream call failed: {error}"),
                 )
                 .await;
+                let elapsed_ms = start.elapsed().as_millis();
+                tracing::warn!(
+                    upstream = %config.name,
+                    capability = "tools",
+                    operation = "tool.call",
+                    tool = %tool_name,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms,
+                    kind = "upstream_error",
+                    error = %error,
+                    "upstream.request.error"
+                );
                 Err(format!("upstream call failed: {error}"))
             }
         }
@@ -791,24 +869,72 @@ impl UpstreamPool {
         upstream_name: &str,
         params: CallToolRequestParams,
     ) -> Option<Result<CallToolResult, String>> {
+        let start = Instant::now();
+        let tool_name = params.name.to_string();
         let peer = {
             let connections = self.connections.read().await;
             connections.get(upstream_name)?.peer.clone()
         };
+        tracing::debug!(
+            upstream = %upstream_name,
+            capability = "tools",
+            operation = "tool.call",
+            tool = %tool_name,
+            subject_scoped = false,
+            "upstream.request.start"
+        );
         let result = peer
             .call_tool(params)
             .await
-            .map_err(|e| format!("upstream call failed: {e}"));
+            .map_err(|e| {
+                let elapsed_ms = start.elapsed().as_millis();
+                tracing::warn!(
+                    upstream = %upstream_name,
+                    capability = "tools",
+                    operation = "tool.call",
+                    tool = %tool_name,
+                    subject_scoped = false,
+                    elapsed_ms,
+                    kind = "upstream_error",
+                    error = %e,
+                    "upstream.request.error"
+                );
+                format!("upstream call failed: {e}")
+            });
 
         // Enforce response size cap.
         if let Ok(ref r) = result {
             let response_size = estimate_response_size(r);
             let max_bytes = max_response_bytes();
             if response_size > max_bytes {
+                let elapsed_ms = start.elapsed().as_millis();
+                tracing::warn!(
+                    upstream = %upstream_name,
+                    capability = "tools",
+                    operation = "tool.call",
+                    tool = %tool_name,
+                    subject_scoped = false,
+                    elapsed_ms,
+                    kind = "response_too_large",
+                    response_bytes = response_size,
+                    max_bytes,
+                    "upstream.request.error"
+                );
                 return Some(Err(format!(
                     "upstream response too large ({response_size} bytes, max {max_bytes})"
                 )));
             }
+            let elapsed_ms = start.elapsed().as_millis();
+            tracing::info!(
+                upstream = %upstream_name,
+                capability = "tools",
+                operation = "tool.call",
+                tool = %tool_name,
+                subject_scoped = false,
+                elapsed_ms,
+                response_bytes = response_size,
+                "upstream.request.finish"
+            );
         }
 
         Some(result)
@@ -849,7 +975,7 @@ impl UpstreamPool {
                 },
             );
             if entry.unhealthy_since_for(capability).is_none() {
-                entry.set_unhealthy_since_for(capability, Some(std::time::Instant::now()));
+                entry.set_unhealthy_since_for(capability, Some(Instant::now()));
             }
             entry.set_last_error_for(capability, Some(error.clone()));
             if new_count >= types::CIRCUIT_BREAKER_THRESHOLD {
@@ -1096,6 +1222,7 @@ impl UpstreamPool {
         &self,
         uri: &str,
     ) -> Option<Result<ReadResourceResult, String>> {
+        let start = Instant::now();
         let prefix = "lab://upstream/";
         let rest = uri.strip_prefix(prefix)?;
 
@@ -1127,13 +1254,21 @@ impl UpstreamPool {
             connections.get(upstream_name)?.peer.clone()
         };
 
+        tracing::debug!(
+            upstream = %upstream_name,
+            capability = "resources",
+            operation = "resource.read",
+            resource_uri = %uri,
+            subject_scoped = false,
+            "upstream.request.start"
+        );
+
         let params = rmcp::model::ReadResourceRequestParams::new(original_uri);
 
         let result = match peer.read_resource(params).await {
             Ok(result) => {
-                self.record_success_for(upstream_name, UpstreamCapability::Resources)
-                    .await;
-                Ok(normalize_resource_result_uri(result, uri))
+                let normalized = normalize_resource_result_uri(result, uri);
+                Ok(normalized)
             }
             Err(e) => {
                 self.record_failure_for(
@@ -1142,6 +1277,17 @@ impl UpstreamPool {
                     format!("upstream resource read failed: {e}"),
                 )
                 .await;
+                tracing::warn!(
+                    upstream = %upstream_name,
+                    capability = "resources",
+                    operation = "resource.read",
+                    resource_uri = %uri,
+                    subject_scoped = false,
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "upstream_error",
+                    error = %e,
+                    "upstream.request.error"
+                );
                 Err(format!("upstream resource read failed: {e}"))
             }
         };
@@ -1151,10 +1297,42 @@ impl UpstreamPool {
             let response_size = serde_json::to_string(r).map_or(0, |s| s.len());
             let max_bytes = max_response_bytes();
             if response_size > max_bytes {
+                self.record_failure_for(
+                    upstream_name,
+                    UpstreamCapability::Resources,
+                    format!(
+                        "upstream resource response too large ({response_size} bytes, max {max_bytes})"
+                    ),
+                )
+                .await;
+                tracing::warn!(
+                    upstream = %upstream_name,
+                    capability = "resources",
+                    operation = "resource.read",
+                    resource_uri = %uri,
+                    subject_scoped = false,
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "response_too_large",
+                    response_bytes = response_size,
+                    max_bytes,
+                    "upstream.request.error"
+                );
                 return Some(Err(format!(
                     "upstream resource response too large ({response_size} bytes, max {max_bytes})"
                 )));
             }
+            self.record_success_for(upstream_name, UpstreamCapability::Resources)
+                .await;
+            tracing::info!(
+                upstream = %upstream_name,
+                capability = "resources",
+                operation = "resource.read",
+                resource_uri = %uri,
+                subject_scoped = false,
+                elapsed_ms = start.elapsed().as_millis(),
+                response_bytes = response_size,
+                "upstream.request.finish"
+            );
         }
 
         Some(result)
@@ -1166,13 +1344,50 @@ impl UpstreamPool {
         subject: &str,
         uri: &str,
     ) -> Result<ReadResourceResult, String> {
+        let start = Instant::now();
         let prefix = format!("lab://upstream/{}/", config.name);
         let original_uri = uri
             .strip_prefix(&prefix)
             .ok_or_else(|| "resource uri does not match upstream".to_string())?;
-        let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
-            .await
-            .map_err(|error| error.to_string())?;
+        tracing::debug!(
+            upstream = %config.name,
+            capability = "resources",
+            operation = "resource.read",
+            resource_uri = %uri,
+            subject_scoped = true,
+            transport = upstream_transport(config),
+            "upstream.request.start"
+        );
+        let (conn, _) = match connect_upstream(
+            config,
+            Some(subject),
+            self.oauth_client_cache.as_ref(),
+        )
+        .await
+        {
+            Ok(conn) => conn,
+            Err(error) => {
+                self.record_failure_for(
+                    &config.name,
+                    UpstreamCapability::Resources,
+                    format!("upstream resource connect failed: {error}"),
+                )
+                .await;
+                tracing::warn!(
+                    upstream = %config.name,
+                    capability = "resources",
+                    operation = "resource.read",
+                    resource_uri = %uri,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "upstream_connect_error",
+                    error = %error,
+                    "upstream.request.error"
+                );
+                return Err(error.to_string());
+            }
+        };
         match conn
             .peer
             .read_resource(rmcp::model::ReadResourceRequestParams::new(original_uri))
@@ -1192,13 +1407,38 @@ impl UpstreamPool {
                         ),
                     )
                     .await;
+                    tracing::warn!(
+                        upstream = %config.name,
+                        capability = "resources",
+                        operation = "resource.read",
+                        resource_uri = %uri,
+                        subject_scoped = true,
+                        transport = upstream_transport(config),
+                        elapsed_ms = start.elapsed().as_millis(),
+                        kind = "response_too_large",
+                        response_bytes = response_size,
+                        max_bytes,
+                        "upstream.request.error"
+                    );
                     return Err(format!(
                         "upstream resource response too large ({response_size} bytes, max {max_bytes})"
                     ));
                 }
                 self.record_success_for(&config.name, UpstreamCapability::Resources)
                     .await;
-                Ok(normalize_resource_result_uri(result, uri))
+                let normalized = normalize_resource_result_uri(result, uri);
+                tracing::info!(
+                    upstream = %config.name,
+                    capability = "resources",
+                    operation = "resource.read",
+                    resource_uri = %uri,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    response_bytes = response_size,
+                    "upstream.request.finish"
+                );
+                Ok(normalized)
             }
             Err(error) => {
                 self.record_failure_for(
@@ -1207,6 +1447,18 @@ impl UpstreamPool {
                     format!("upstream resource read failed: {error}"),
                 )
                 .await;
+                tracing::warn!(
+                    upstream = %config.name,
+                    capability = "resources",
+                    operation = "resource.read",
+                    resource_uri = %uri,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "upstream_error",
+                    error = %error,
+                    "upstream.request.error"
+                );
                 Err(format!("upstream resource read failed: {error}"))
             }
         }
@@ -1381,15 +1633,35 @@ impl UpstreamPool {
         upstream_name: &str,
         params: GetPromptRequestParams,
     ) -> Option<Result<GetPromptResult, String>> {
+        let start = Instant::now();
+        let prompt_name = params.name.to_string();
         let peer = {
             let connections = self.connections.read().await;
             connections.get(upstream_name)?.peer.clone()
         };
 
+        tracing::debug!(
+            upstream = %upstream_name,
+            capability = "prompts",
+            operation = "prompt.get",
+            prompt = %prompt_name,
+            subject_scoped = false,
+            "upstream.request.start"
+        );
+
         match peer.get_prompt(params).await {
             Ok(result) => {
                 self.record_success_for(upstream_name, UpstreamCapability::Prompts)
                     .await;
+                tracing::info!(
+                    upstream = %upstream_name,
+                    capability = "prompts",
+                    operation = "prompt.get",
+                    prompt = %prompt_name,
+                    subject_scoped = false,
+                    elapsed_ms = start.elapsed().as_millis(),
+                    "upstream.request.finish"
+                );
                 Some(Ok(result))
             }
             Err(e) => {
@@ -1399,6 +1671,17 @@ impl UpstreamPool {
                     format!("upstream prompt get failed: {e}"),
                 )
                 .await;
+                tracing::warn!(
+                    upstream = %upstream_name,
+                    capability = "prompts",
+                    operation = "prompt.get",
+                    prompt = %prompt_name,
+                    subject_scoped = false,
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "upstream_error",
+                    error = %e,
+                    "upstream.request.error"
+                );
                 Some(Err(format!("upstream prompt get failed: {e}")))
             }
         }
@@ -1410,13 +1693,61 @@ impl UpstreamPool {
         subject: &str,
         params: GetPromptRequestParams,
     ) -> Result<GetPromptResult, String> {
-        let (conn, _) = connect_upstream(config, Some(subject), self.oauth_client_cache.as_ref())
-            .await
-            .map_err(|error| error.to_string())?;
+        let start = Instant::now();
+        let prompt_name = params.name.to_string();
+        tracing::debug!(
+            upstream = %config.name,
+            capability = "prompts",
+            operation = "prompt.get",
+            prompt = %prompt_name,
+            subject_scoped = true,
+            transport = upstream_transport(config),
+            "upstream.request.start"
+        );
+        let (conn, _) = match connect_upstream(
+            config,
+            Some(subject),
+            self.oauth_client_cache.as_ref(),
+        )
+        .await
+        {
+            Ok(conn) => conn,
+            Err(error) => {
+                self.record_failure_for(
+                    &config.name,
+                    UpstreamCapability::Prompts,
+                    format!("upstream prompt connect failed: {error}"),
+                )
+                .await;
+                tracing::warn!(
+                    upstream = %config.name,
+                    capability = "prompts",
+                    operation = "prompt.get",
+                    prompt = %prompt_name,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "upstream_connect_error",
+                    error = %error,
+                    "upstream.request.error"
+                );
+                return Err(error.to_string());
+            }
+        };
         match conn.peer.get_prompt(params).await {
             Ok(result) => {
                 self.record_success_for(&config.name, UpstreamCapability::Prompts)
                     .await;
+                tracing::info!(
+                    upstream = %config.name,
+                    capability = "prompts",
+                    operation = "prompt.get",
+                    prompt = %prompt_name,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    "upstream.request.finish"
+                );
                 Ok(result)
             }
             Err(error) => {
@@ -1426,6 +1757,18 @@ impl UpstreamPool {
                     format!("upstream prompt get failed: {error}"),
                 )
                 .await;
+                tracing::warn!(
+                    upstream = %config.name,
+                    capability = "prompts",
+                    operation = "prompt.get",
+                    prompt = %prompt_name,
+                    subject_scoped = true,
+                    transport = upstream_transport(config),
+                    elapsed_ms = start.elapsed().as_millis(),
+                    kind = "upstream_error",
+                    error = %error,
+                    "upstream.request.error"
+                );
                 Err(format!("upstream prompt get failed: {error}"))
             }
         }
@@ -1590,6 +1933,7 @@ async fn connect_stdio_upstream(
     config: &UpstreamConfig,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     use rmcp::transport::child_process::TokioChildProcess;
+    use std::process::Stdio;
     use tokio::process::Command;
 
     let mut cmd = Command::new(command);
@@ -1602,7 +1946,9 @@ async fn connect_stdio_upstream(
         cmd.env(env_name, &token);
     }
 
-    let process = TokioChildProcess::new(cmd)?;
+    let (process, _stderr) = TokioChildProcess::builder(cmd)
+        .stderr(Stdio::null())
+        .spawn()?;
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(process).await?;
     let peer = service.peer().clone();
 

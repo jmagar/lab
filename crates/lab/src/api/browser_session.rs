@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Response};
 use std::time::Instant;
 
 use crate::api::ToolError;
-use crate::api::auth_helpers::{log_auth_dispatch, request_id};
+use crate::api::auth_helpers::{log_auth_dispatch, log_auth_dispatch_start, request_id};
 use crate::api::state::AppState;
 
 use lab_auth::session::{BROWSER_CSRF_HEADER_NAME, BROWSER_SESSION_COOKIE_NAME};
@@ -100,6 +100,7 @@ fn invalid_csrf_response() -> Response {
 pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
     let start = Instant::now();
     let request_id = request_id(&headers).map(ToOwned::to_owned);
+    log_auth_dispatch_start("session.get", request_id.as_deref());
     let login_available = state.oauth_state.is_some();
     let Some(auth_state) = oauth_state(&state) else {
         let response = unauthenticated_session_response(false);
@@ -142,6 +143,7 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
 pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
     let start = Instant::now();
     let request_id = request_id(&headers).map(ToOwned::to_owned);
+    log_auth_dispatch_start("session.logout", request_id.as_deref());
     let Some(auth_state) = oauth_state(&state) else {
         log_auth_dispatch("session.logout", request_id.as_deref(), start, None);
         return StatusCode::NO_CONTENT.into_response();

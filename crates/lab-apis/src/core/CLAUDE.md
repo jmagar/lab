@@ -1,6 +1,6 @@
 # core/ — Cross-cutting primitives
 
-This directory is the foundation every service module depends on. Changes here ripple across 21 clients — be conservative and align with `docs/ARCH.md`, `docs/CONVENTIONS.md`, `docs/OBSERVABILITY.md`, `docs/ERRORS.md`, and `docs/SERIALIZATION.md` before editing.
+This directory is the foundation every service module depends on. Changes here ripple across 23 clients — be conservative and align with `docs/ARCH.md`, `docs/CONVENTIONS.md`, `docs/OBSERVABILITY.md`, `docs/ERRORS.md`, and `docs/SERIALIZATION.md` before editing.
 
 ## Files
 

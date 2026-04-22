@@ -9,6 +9,16 @@ pub(crate) fn request_id(headers: &HeaderMap) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+pub(crate) fn log_auth_dispatch_start(action: &str, request_id: Option<&str>) {
+    tracing::info!(
+        surface = "api",
+        service = "auth",
+        action,
+        request_id,
+        "auth oauth dispatch start"
+    );
+}
+
 pub(crate) fn log_auth_dispatch(
     action: &str,
     request_id: Option<&str>,

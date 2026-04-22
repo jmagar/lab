@@ -12,7 +12,7 @@ Sub-docs for each surface:
 
 ## Feature Flags
 
-22 flags, all 1:1 passthroughs to `lab-apis` features. Default: `all` (every service enabled). The `all` feature is delegated entirely to `lab-apis/all`.
+23 flags, all 1:1 passthroughs to `lab-apis` features. Default: `all` (every service enabled). The `all` feature is delegated entirely to `lab-apis/all`.
 
 All surface code (axum, rmcp, ratatui, clap) is compiled unconditionally — feature flags gate service-specific code only, not the surface infrastructure.
 
@@ -40,7 +40,7 @@ Full new-service onboarding (CLI, API, TUI, dispatch layer) is covered in the ro
 
 ## Shared Dispatch Layer
 
-`src/dispatch/` is the home for surface-neutral dispatch. All 22 services plus `lab_admin` are fully migrated there, each with the required directory layout (catalog.rs, client.rs, params.rs, dispatch.rs). The `mcp/services/<service>.rs` files are now thin bridges that delegate to the shared dispatch layer.
+`src/dispatch/` is the home for surface-neutral dispatch. All 23 services plus `lab_admin` are fully migrated there, each with the required directory layout (catalog.rs, client.rs, params.rs, dispatch.rs). The `mcp/services/<service>.rs` files are now thin bridges that delegate to the shared dispatch layer.
 
 When adding new services, use the full `dispatch/<service>/` directory layout from the start — see `crates/lab/src/dispatch/CLAUDE.md` for templates.
 
