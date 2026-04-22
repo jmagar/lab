@@ -8,8 +8,6 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
-    response::IntoResponse,
     routing::get,
 };
 use serde::Deserialize;
@@ -26,6 +24,11 @@ use crate::dispatch::mcpregistry::store::StoreListParams;
 pub struct ListServersQuery {
     /// Substring search on server name.
     pub search: Option<String>,
+    /// GitHub username or org. Convenience: translated to
+    /// `search = "io.github.{owner}/"` (lowercased, trimmed) when `search` is
+    /// unset. Ignored if `search` is also set. Rejected with `invalid_param`
+    /// if empty or containing `/` or whitespace.
+    pub owner: Option<String>,
     /// Opaque pagination cursor from a previous response.
     pub cursor: Option<String>,
     /// Max results per page (server-side clamped to 1–100, default 20).
@@ -42,26 +45,25 @@ const SERVER_NAME_MAX_LEN: usize = 512;
 async fn list_servers(
     State(state): State<AppState>,
     Query(query): Query<ListServersQuery>,
-) -> Result<impl IntoResponse, ToolError> {
+) -> Result<Json<serde_json::Value>, ToolError> {
     let Some(store) = state.registry_store.as_ref() else {
-        return Ok((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "kind": "sync_in_progress",
-                "message": "registry store initializing — try again in a few seconds"
-            })),
-        )
-            .into_response());
+        return Err(ToolError::Sdk {
+            sdk_kind: "service_unavailable".into(),
+            message: "registry store initializing — try again in a few seconds".into(),
+        });
     };
 
     let mut params = StoreListParams {
         cursor: query.cursor,
         limit: query.limit,
         include_deleted: query.include_deleted,
-        sort: None,
         search: None,
     };
-    if let Some(search) = query.search {
+    let effective_search = crate::dispatch::mcpregistry::resolve_search_for_rest(
+        query.search.as_deref(),
+        query.owner.as_deref(),
+    )?;
+    if let Some(search) = effective_search {
         params = params.with_search(search);
     }
 
@@ -74,32 +76,28 @@ async fn list_servers(
         "servers": paged.servers,
         "next_cursor": paged.next_cursor,
     });
-    Ok((StatusCode::OK, Json(body)).into_response())
+    Ok(Json(body))
 }
 
 /// `GET /v0.1/servers/:serverName/versions` — list all versions for a server.
 async fn list_versions(
     State(state): State<AppState>,
     Path(server_name): Path<String>,
-) -> Result<impl IntoResponse, ToolError> {
+) -> Result<Json<serde_json::Value>, ToolError> {
     if server_name.len() > SERVER_NAME_MAX_LEN {
         return Err(ToolError::Sdk {
-            sdk_kind: "validation_failed".into(),
+            sdk_kind: "invalid_param".into(),
             message: format!(
-                "serverName must be at most {SERVER_NAME_MAX_LEN} characters"
+                "serverName must be at most {SERVER_NAME_MAX_LEN} bytes"
             ),
         });
     }
 
     let Some(store) = state.registry_store.as_ref() else {
-        return Ok((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "kind": "sync_in_progress",
-                "message": "registry store initializing — try again in a few seconds"
-            })),
-        )
-            .into_response());
+        return Err(ToolError::Sdk {
+            sdk_kind: "service_unavailable".into(),
+            message: "registry store initializing — try again in a few seconds".into(),
+        });
     };
 
     let versions = store
@@ -110,36 +108,32 @@ async fn list_versions(
             message: format!("registry store list_versions: {e}"),
         })?;
 
-    Ok((StatusCode::OK, Json(json!({ "versions": versions }))).into_response())
+    Ok(Json(json!({ "versions": versions })))
 }
 
 /// `GET /v0.1/servers/:serverName/versions/:version` — get a single server version.
 async fn get_server(
     State(state): State<AppState>,
     Path((server_name, version)): Path<(String, String)>,
-) -> Result<impl IntoResponse, ToolError> {
+) -> Result<Json<serde_json::Value>, ToolError> {
     if server_name.len() > SERVER_NAME_MAX_LEN {
         return Err(ToolError::Sdk {
-            sdk_kind: "validation_failed".into(),
+            sdk_kind: "invalid_param".into(),
             message: format!(
-                "serverName must be at most {SERVER_NAME_MAX_LEN} characters"
+                "serverName must be at most {SERVER_NAME_MAX_LEN} bytes"
             ),
         });
     }
 
     let Some(store) = state.registry_store.as_ref() else {
-        return Ok((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "kind": "sync_in_progress",
-                "message": "registry store initializing — try again in a few seconds"
-            })),
-        )
-            .into_response());
+        return Err(ToolError::Sdk {
+            sdk_kind: "service_unavailable".into(),
+            message: "registry store initializing — try again in a few seconds".into(),
+        });
     };
 
     match store.get_server(&server_name, &version).await {
-        Ok(Some(server)) => Ok((StatusCode::OK, Json(json!(server))).into_response()),
+        Ok(Some(server)) => Ok(Json(json!(server))),
         Ok(None) => Err(ToolError::Sdk {
             sdk_kind: "not_found".into(),
             message: format!("server '{server_name}' version '{version}' not found"),
