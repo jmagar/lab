@@ -117,6 +117,62 @@ pub async fn dispatch_with_client(
             )
             .await
         }
+        "sync" => {
+            // Gate 1: reject if a sync is already in progress.
+            // AcqRel is sufficient — Acquire establishes happens-before with the prior Release
+            // store in SyncGuard::drop; Relaxed on failure is safe (we just read, no ordering needed).
+            if SYNC_IN_PROGRESS
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+                .is_err()
+            {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "rate_limited".to_string(),
+                    message: "sync already in progress".to_string(),
+                });
+            }
+            // RAII guard: resets SYNC_IN_PROGRESS to false on drop, including on panic.
+            // Must be created before any early return so all exit paths reset the flag.
+            let _guard = SyncGuard;
+
+            // Gate 2: minimum 60s between syncs.
+            let last = LAST_SYNC_AT.get_or_init(|| std::sync::Mutex::new(None));
+            {
+                let guard = last.lock().unwrap();
+                if let Some(t) = *guard {
+                    if t.elapsed() < std::time::Duration::from_secs(60) {
+                        // _guard drops here, resetting SYNC_IN_PROGRESS.
+                        return Err(ToolError::Sdk {
+                            sdk_kind: "rate_limited".to_string(),
+                            message: format!(
+                                "sync rate-limited; next allowed in {}s",
+                                60 - t.elapsed().as_secs()
+                            ),
+                        });
+                    }
+                }
+            }
+
+            // Open the registry store from config path (no AppState available in MCP/CLI path).
+            let db_path = crate::config::registry_db_path();
+            let store =
+                crate::dispatch::mcpregistry::store::RegistryStore::open(&db_path)
+                    .await
+                    .map_err(|e| {
+                        ToolError::internal_message(format!("registry store open: {e}"))
+                    })?;
+
+            let count = store.sync_from_upstream(client).await.map_err(|e| {
+                ToolError::internal_message(format!("sync failed: {e}"))
+            })?;
+
+            // Update last sync time only on success.
+            *LAST_SYNC_AT
+                .get_or_init(|| std::sync::Mutex::new(None))
+                .lock()
+                .unwrap() = Some(std::time::Instant::now());
+
+            Ok(serde_json::json!({ "synced": count }))
+        }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
