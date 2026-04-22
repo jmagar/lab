@@ -555,20 +555,6 @@ async fn run_http(
     let web_assets_enabled = state.web_assets_dir.is_some();
     let bearer_token_configured = bearer_token.is_some();
     tracing::info!(
-        subsystem = "web_server",
-        phase = if web_assets_enabled { "mount.start" } else { "disabled" },
-        bind_host = %host,
-        bind_port = port,
-        "web server startup state resolved"
-    );
-    tracing::info!(
-        subsystem = "mcp_server",
-        phase = if mount_http_mcp { "mount.start" } else { "disabled" },
-        bind_host = %host,
-        bind_port = port,
-        "http mcp server startup state resolved"
-    );
-    tracing::info!(
         subsystem = "api_server",
         phase = "router.build.start",
         bind_host = %host,
@@ -618,7 +604,6 @@ async fn run_http(
         phase = if web_assets_enabled { "ready" } else { "disabled" },
         addr,
         route = "/",
-        "web server ready state resolved"
     );
     tracing::info!(
         subsystem = "mcp_server",
@@ -626,7 +611,6 @@ async fn run_http(
         addr,
         route = "/mcp",
         transport = "http",
-        "http mcp server ready state resolved"
     );
     tracing::info!(
         subsystem = "startup",
@@ -634,8 +618,7 @@ async fn run_http(
         addr,
         web_server_enabled = web_assets_enabled,
         mcp_server_enabled = mount_http_mcp,
-        http_mcp_enabled = mount_http_mcp,
-        "http, web, and mcp services ready"
+        "lab serve ready"
     );
     axum::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)
@@ -676,24 +659,18 @@ async fn run_stdio(
 ) -> Result<ExitCode> {
     tracing::info!(
         subsystem = "mcp_server",
-        phase = "startup.start",
+        phase = "start",
         transport = "stdio",
         services = registry.services().len(),
         device_role = ?device_role,
         "starting stdio mcp server"
     );
     tracing::info!(
-        subsystem = "mcp_server",
+        subsystem = "startup",
         phase = "ready",
         transport = "stdio",
         services = registry.services().len(),
-        "stdio mcp server ready"
-    );
-    tracing::info!(
-        subsystem = "startup",
-        phase = "ready",
-        services = registry.services().len(),
-        "stdio mcp server ready"
+        "lab serve ready"
     );
     let server = LabMcpServer {
         registry,
