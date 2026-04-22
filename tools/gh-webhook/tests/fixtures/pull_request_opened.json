@@ -1,5 +1,0 @@
-{
-  "action": "opened",
-  "pull_request": { "number": 7, "head": { "ref": "feat/bar" } },
-  "repository": { "full_name": "jmagar/lab", "owner": { "login": "jmagar" }, "name": "lab" }
-}
