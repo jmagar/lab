@@ -142,10 +142,12 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
         let start = std::time::Instant::now();
+        let subject = self.request_subject(&context).unwrap_or_default();
         tracing::info!(
             surface = "mcp",
             service = "lab",
             action = "list_prompts",
+            subject,
             "dispatch start"
         );
         let mut prompts = crate::mcp::prompts::list_all().prompts;
@@ -175,6 +177,7 @@ impl ServerHandler for LabMcpServer {
             surface = "mcp",
             service = "lab",
             action = "list_prompts",
+            subject,
             elapsed_ms,
             "prompt list ok"
         );
@@ -196,10 +199,12 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, ErrorData> {
         let start = std::time::Instant::now();
+        let subject = self.request_subject(&context).unwrap_or_default();
         tracing::info!(
             surface = "mcp",
             service = "lab",
             action = "get_prompt",
+            subject,
             prompt = %request.name,
             "dispatch start"
         );
@@ -223,6 +228,7 @@ impl ServerHandler for LabMcpServer {
                 surface = "mcp",
                 service = "lab",
                 action = "get_prompt",
+                subject,
                 elapsed_ms,
                 "prompt resolved"
             );
@@ -257,6 +263,7 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service = "lab",
                         action = "get_prompt",
+                        subject,
                         prompt = %prompt_name,
                         upstream = %upstream_name,
                         elapsed_ms,
@@ -361,6 +368,7 @@ impl ServerHandler for LabMcpServer {
                             surface = "mcp",
                             service = "lab",
                             action = "get_prompt",
+                            subject,
                             prompt = %prompt_name,
                             upstream = %config.name,
                             elapsed_ms,
@@ -415,6 +423,7 @@ impl ServerHandler for LabMcpServer {
             surface = "mcp",
             service = "lab",
             action = "get_prompt",
+            subject,
             elapsed_ms,
             kind = "not_found",
             "unknown prompt"
@@ -442,10 +451,12 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         let start = std::time::Instant::now();
+        let subject = self.request_subject(&context).unwrap_or_default();
         tracing::info!(
             surface = "mcp",
             service = "lab",
             action = "list_resources",
+            subject,
             "dispatch start"
         );
         let mut resources = vec![
@@ -481,6 +492,7 @@ impl ServerHandler for LabMcpServer {
             surface = "mcp",
             service = "lab",
             action = "list_resources",
+            subject,
             elapsed_ms,
             "resource list ok"
         );
@@ -502,11 +514,13 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
         let start = std::time::Instant::now();
+        let subject = self.request_subject(&context).unwrap_or_default();
         let uri = &request.uri;
         tracing::info!(
             surface = "mcp",
             service = "lab",
             action = "read_resource",
+            subject,
             resource_uri = %uri,
             "dispatch start"
         );
@@ -533,6 +547,7 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service = "lab",
                         action = "read_resource",
+                        subject,
                         upstream,
                         resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
@@ -640,6 +655,7 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service = "lab",
                         action = "read_resource",
+                        subject,
                         upstream = %config.name,
                         resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
@@ -707,6 +723,7 @@ impl ServerHandler for LabMcpServer {
                     surface = "mcp",
                     service = "lab",
                     action = "read_resource",
+                    subject,
                     elapsed_ms,
                     "resource read ok"
                 );
@@ -754,10 +771,12 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let start = std::time::Instant::now();
+        let subject = self.request_subject(&context).unwrap_or_default();
         tracing::info!(
             surface = "mcp",
             service = "lab",
             action = "list_tools",
+            subject,
             "dispatch start"
         );
         let schema = Arc::new(action_schema());
@@ -811,6 +830,7 @@ impl ServerHandler for LabMcpServer {
             surface = "mcp",
             service = "lab",
             action = "list_tools",
+            subject,
             elapsed_ms,
             "tool list ok"
         );
@@ -938,6 +958,7 @@ impl ServerHandler for LabMcpServer {
         }
 
         let start = std::time::Instant::now();
+        let subject = self.request_subject(&context).unwrap_or_default();
         let dispatch_action = if svc.is_some() {
             action.as_str()
         } else {
@@ -947,6 +968,7 @@ impl ServerHandler for LabMcpServer {
             surface = "mcp",
             service,
             action = dispatch_action,
+            subject,
             tool = %service,
             instance = instance.as_deref(),
             param_key_count,
@@ -967,7 +989,7 @@ impl ServerHandler for LabMcpServer {
                 .await
                 .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
             let elapsed_ms = start.elapsed().as_millis();
-            let (result, outcome) = format_dispatch_result(result, &service, &action, elapsed_ms);
+            let (result, outcome) = format_dispatch_result(result, &service, &action, elapsed_ms, subject);
             self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
                 .await;
             return Ok(result);
@@ -1049,6 +1071,7 @@ impl ServerHandler for LabMcpServer {
                             surface = "mcp",
                             service,
                             action = upstream_action,
+                            subject,
                             tool = %service,
                             upstream = %upstream_name,
                             capability = upstream_capability,
@@ -1205,6 +1228,7 @@ impl ServerHandler for LabMcpServer {
                                 capability = upstream_capability,
                                 operation = upstream_operation,
                                 subject_scoped = true,
+                                subject,
                                 elapsed_ms,
                                 kind,
                                 "upstream dispatch error"
@@ -1227,6 +1251,7 @@ impl ServerHandler for LabMcpServer {
                                 capability = upstream_capability,
                                 operation = upstream_operation,
                                 subject_scoped = true,
+                                subject,
                                 elapsed_ms,
                                 "upstream dispatch ok"
                             );
@@ -1253,6 +1278,7 @@ impl ServerHandler for LabMcpServer {
                             capability = upstream_capability,
                             operation = upstream_operation,
                             subject_scoped = true,
+                            subject,
                             elapsed_ms,
                             kind = "upstream_error",
                             error = %e,
@@ -1286,7 +1312,7 @@ impl ServerHandler for LabMcpServer {
         // Neither built-in nor upstream.
         let elapsed_ms = start.elapsed().as_millis();
         let err = anyhow::anyhow!("service `{service}` has no dispatcher wired");
-        let (result, outcome) = format_dispatch_result(Err(err), &service, &action, elapsed_ms);
+        let (result, outcome) = format_dispatch_result(Err(err), &service, &action, elapsed_ms, subject);
         self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
             .await;
         Ok(result)
@@ -1371,6 +1397,7 @@ fn format_dispatch_result(
     service: &str,
     action: &str,
     elapsed_ms: u128,
+    subject: &str,
 ) -> (CallToolResult, DispatchLogOutcome) {
     match result {
         Ok(v) => {
@@ -1378,6 +1405,7 @@ fn format_dispatch_result(
                 surface = "mcp",
                 service,
                 action,
+                subject,
                 tool = %service,
                 elapsed_ms,
                 "dispatch ok"
@@ -1396,6 +1424,7 @@ fn format_dispatch_result(
                     surface = "mcp",
                     service,
                     action,
+                    subject,
                     tool = %service,
                     elapsed_ms,
                     kind,
@@ -1406,6 +1435,7 @@ fn format_dispatch_result(
                     surface = "mcp",
                     service,
                     action,
+                    subject,
                     tool = %service,
                     elapsed_ms,
                     kind,

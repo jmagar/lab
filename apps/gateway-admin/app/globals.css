@@ -83,6 +83,13 @@
   --aurora-preview-allowed: #00e676;
   --aurora-preview-unmatched: #ff9100;
   --aurora-preview-highlight: #ffea00;
+
+  /* Aurora radius scale — token-backed per design-system-contract.md.
+     New code should reach for rounded-aurora-1/2/3; legacy rounded-[…rem]
+     variants are tolerated as tuned variants pending migration. */
+  --radius-1: 14px;
+  --radius-2: 18px;
+  --radius-3: 22px;
 }
 
 .dark {
@@ -161,6 +168,7 @@
   --aurora-shadow-strong: 0 20px 38px rgba(0, 0, 0, 0.12);
   --aurora-highlight-medium: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   --aurora-highlight-strong: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --aurora-hover-bg: #dcedf2;
 }
 
 @theme inline {
@@ -238,6 +246,11 @@
   --shadow-aurora-active-glow: var(--aurora-active-glow);
   --shadow-aurora-highlight-medium: var(--aurora-highlight-medium);
   --shadow-aurora-highlight-strong: var(--aurora-highlight-strong);
+
+  /* Aurora radius forwarding — enables rounded-aurora-1/2/3 utilities. */
+  --radius-aurora-1: var(--radius-1);
+  --radius-aurora-2: var(--radius-2);
+  --radius-aurora-3: var(--radius-3);
 }
 
 @layer base {
@@ -246,5 +259,31 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Aurora scrollbar — thin, token-backed. Use on any overflow-auto/scroll container.
+     Covers: webkit (Chrome/Edge/Safari) + standard scrollbar-color (Firefox). */
+  .aurora-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--aurora-border-strong) transparent;
+  }
+  .aurora-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .aurora-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .aurora-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--aurora-border-strong);
+    border-radius: 999px;
+  }
+  .aurora-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: var(--aurora-accent-deep);
+  }
+  .aurora-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }

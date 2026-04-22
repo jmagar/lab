@@ -88,6 +88,51 @@ pub fn validate_env_value(key: &str, value: &str) -> Result<(), ToolError> {
     }
 }
 
+/// Sort field for `server.list`.
+pub enum SortBy {
+    Updated,
+    Published,
+    Name,
+}
+
+/// Client-side sort specification extracted from dispatch params.
+pub struct SortSpec {
+    pub by: SortBy,
+    pub desc: bool,
+}
+
+/// Extract optional sort params from the dispatch params object.
+pub fn parse_sort_params(params: &Value) -> Result<Option<SortSpec>, ToolError> {
+    let by_str = match params["sort_by"].as_str() {
+        Some(s) => s,
+        None => return Ok(None),
+    };
+    let by = match by_str {
+        "updated" => SortBy::Updated,
+        "published" => SortBy::Published,
+        "name" => SortBy::Name,
+        other => {
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: format!(
+                    "invalid sort_by '{other}'; must be one of: updated, published, name"
+                ),
+            })
+        }
+    };
+    let desc = match params["order"].as_str().unwrap_or("desc") {
+        "desc" => true,
+        "asc" => false,
+        other => {
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: format!("invalid order '{other}'; must be 'asc' or 'desc'"),
+            })
+        }
+    };
+    Ok(Some(SortSpec { by, desc }))
+}
+
 /// Extract `server.list` params from the dispatch params object.
 pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolError> {
     Ok(ListServersParams {

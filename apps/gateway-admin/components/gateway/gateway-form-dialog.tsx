@@ -36,6 +36,28 @@ import { upstreamOauthApi } from '@/lib/api/upstream-oauth-client'
 import { useUpstreamOauthStatus } from '@/lib/hooks/use-upstream-oauth'
 import type { OAuthConnectState } from '@/lib/types/upstream-oauth'
 import { Badge } from '@/components/ui/badge'
+import {
+  SERVICE_BRANDS,
+  SERVICE_BRAND_FALLBACK,
+  SERVICE_ENV_PREFIXES,
+  SERVICE_LOGOS,
+  SERVICE_SVG_FALLBACKS,
+  isServiceKey,
+} from '@/lib/branding/service-brands'
+
+function highlightJson(raw: string): string {
+  const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return esc.replace(
+    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(?=\s*:))|("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],:])/g,
+    (match, key, str, kw, num) => {
+      if (key !== undefined) return `<span style="color:var(--aurora-accent-primary)">${match}</span>`
+      if (str !== undefined) return `<span style="color:var(--aurora-success)">${match}</span>`
+      if (kw !== undefined) return `<span style="color:var(--aurora-warn)">${match}</span>`
+      if (num !== undefined) return `<span style="color:var(--aurora-accent-strong)">${match}</span>`
+      return `<span style="color:var(--aurora-text-muted)">${match}</span>`
+    },
+  )
+}
 
 interface GatewayFormDialogProps {
   open: boolean
@@ -50,90 +72,6 @@ type GatewayAuthSource = 'paste' | 'env'
 
 function valuePreview(fieldName: string, preview?: string | null) {
   return preview ?? (fieldName.endsWith('_URL') ? 'http://localhost' : '')
-}
-
-const SERVICE_BRANDS: Record<string, string> = {
-  apprise: '#3B7BBF',
-  arcane: '#0DB7ED',
-  bytestash: '#6B73FF',
-  gotify: '#45AEE5',
-  linkding: '#7C5CBF',
-  memos: '#3478F6',
-  openai: '#10A37F',
-  overseerr: '#E5870A',
-  paperless: '#17BC6C',
-  plex: '#CC7B19',
-  prowlarr: '#F16529',
-  qbittorrent: '#2F99E0',
-  qdrant: '#DC244C',
-  radarr: '#F0BC40',
-  sabnzbd: '#F4A623',
-  sonarr: '#35C5F4',
-  tailscale: '#1E5EFF',
-  tautulli: '#D9A21B',
-  tei: '#FF9D00',
-  unifi: '#0559C9',
-  unraid: '#F45B00',
-}
-
-const siw = (slug: string) => `https://cdn.simpleicons.org/${slug}/ffffff`
-
-const SERVICE_LOGOS: Record<string, string | null> = {
-  apprise: null,
-  arcane: null,
-  bytestash: null,
-  gotify: null,
-  linkding: null,
-  memos: null,
-  tei: null,
-  openai: siw('openai'),
-  overseerr: siw('overseerr'),
-  paperless: siw('paperlessngx'),
-  plex: siw('plex'),
-  prowlarr: siw('prowlarr'),
-  qbittorrent: siw('qbittorrent'),
-  qdrant: siw('qdrant'),
-  radarr: siw('radarr'),
-  sabnzbd: siw('sabnzbd'),
-  sonarr: siw('sonarr'),
-  tailscale: siw('tailscale'),
-  tautulli: siw('tautulli'),
-  unifi: siw('ubiquiti'),
-  unraid: siw('unraid'),
-}
-
-const SERVICE_SVG_FALLBACKS: Record<string, string> = {
-  apprise: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>`,
-  arcane: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M21 4.5l-9-2.25L3 4.5v9c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12v-9z"/></svg>`,
-  bytestash: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M20 6H4V4h16v2zm0 2H4v2h16V8zm0 4H4v2h16v-2zm0 4H4v2h16v-2z"/></svg>`,
-  gotify: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>`,
-  linkding: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M17 7h-4v2h4c1.65 0 3 1.35 3 3s-1.35 3-3 3h-4v2h4c2.76 0 5-2.24 5-5s-2.24-5-5-5zm-6 8H7c-1.65 0-3-1.35-3-3s1.35-3 3-3h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-2zm-3-4h8v2H8v-2z"/></svg>`,
-  memos: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`,
-  tei: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M21 3H3v2h9v14h2V5h9V3zM5 9v2h3v8h2v-8h3V9H5z"/></svg>`,
-}
-
-const SERVICE_ENV_PREFIXES: Record<string, string> = {
-  APPRISE: 'apprise',
-  ARCANE: 'arcane',
-  BYTESTASH: 'bytestash',
-  GOTIFY: 'gotify',
-  LINKDING: 'linkding',
-  MEMOS: 'memos',
-  OPENAI: 'openai',
-  OVERSEERR: 'overseerr',
-  PAPERLESS: 'paperless',
-  PLEX: 'plex',
-  PROWLARR: 'prowlarr',
-  QBITTORRENT: 'qbittorrent',
-  QDRANT: 'qdrant',
-  RADARR: 'radarr',
-  SABNZBD: 'sabnzbd',
-  SONARR: 'sonarr',
-  TAILSCALE: 'tailscale',
-  TAUTULLI: 'tautulli',
-  TEI: 'tei',
-  UNIFI: 'unifi',
-  UNRAID: 'unraid',
 }
 
 function parseEnvText(text: string): { pairs: Record<string, string>; detectedServices: string[] } {
@@ -159,9 +97,11 @@ function parseEnvText(text: string): { pairs: Record<string, string>; detectedSe
 }
 
 function ServiceIconBox({ serviceKey }: { serviceKey: string }) {
-  const brand = SERVICE_BRANDS[serviceKey] ?? '#1d3d4e'
-  const logo = SERVICE_LOGOS[serviceKey]
-  const svg = SERVICE_SVG_FALLBACKS[serviceKey]
+  const [imgError, setImgError] = useState(false)
+  const known = isServiceKey(serviceKey) ? serviceKey : null
+  const brand = known ? SERVICE_BRANDS[known] : SERVICE_BRAND_FALLBACK
+  const logo = !imgError && known ? SERVICE_LOGOS[known] : null
+  const svg = known ? SERVICE_SVG_FALLBACKS[known] : undefined
 
   return (
     <div
@@ -169,7 +109,7 @@ function ServiceIconBox({ serviceKey }: { serviceKey: string }) {
       style={{ background: `${brand}CC`, border: `1px solid ${brand}` }}
     >
       {logo ? (
-        <img src={logo} alt="" className="w-5 h-5 object-contain" />
+        <img src={logo} alt="" className="w-5 h-5 object-contain" onError={() => setImgError(true)} />
       ) : svg ? (
         <span
           className="w-5 h-5 block"
@@ -232,6 +172,7 @@ export function GatewayFormDialog({
   const [jsonText, setJsonText] = useState('')
   const [jsonValid, setJsonValid] = useState(false)
   const syncingRef = useRef(false)
+  const jsonPreRef = useRef<HTMLPreElement>(null)
   const [envText, setEnvText] = useState('')
 
   const [selectedService, setSelectedService] = useState('')
@@ -749,7 +690,7 @@ export function GatewayFormDialog({
               </DialogDescription>
             </div>
             <div
-              className="flex gap-1.5 shrink-0"
+              className="flex gap-1.5 shrink-0 mr-8"
               style={{ visibility: mode === 'custom' ? 'visible' : 'hidden' }}
             >
               <button
@@ -780,7 +721,7 @@ export function GatewayFormDialog({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
+        <div className="flex-1 min-h-0 overflow-y-auto aurora-scrollbar -mx-6 px-6">
         <Tabs
           value={mode}
           onValueChange={(value) => {
@@ -790,7 +731,7 @@ export function GatewayFormDialog({
           }}
           className="space-y-6"
         >
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-2 overflow-hidden">
             <TabsTrigger value="lab" disabled={isEditing && !isLabGateway}>
               Lab Service
             </TabsTrigger>
@@ -803,7 +744,7 @@ export function GatewayFormDialog({
             <FieldGroup>
               <Field>
                 <div
-                  className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto pr-1"
+                  className="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto aurora-scrollbar pr-1"
                   style={{ maxHeight: 320 }}
                 >
                   {(supportedServices ?? []).map((svc) => (
@@ -812,17 +753,16 @@ export function GatewayFormDialog({
                       type="button"
                       onClick={() => setSelectedService(svc.key)}
                       className={cn(
-                        'flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors hover:border-primary/60 hover:bg-accent/30',
+                        'flex flex-col items-center gap-1.5 rounded-xl border p-2 text-center transition-colors hover:border-primary/60 hover:bg-accent/30',
                         selectedService === svc.key
                           ? 'border-primary bg-primary/10'
                           : 'border-border bg-background',
                       )}
                     >
                       <ServiceIconBox serviceKey={svc.key} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium leading-tight truncate">{svc.display_name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{svc.category}</p>
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-snug">{svc.description}</p>
+                      <div className="min-w-0 w-full">
+                        <p className="text-xs font-medium leading-tight truncate">{svc.display_name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{svc.category}</p>
                       </div>
                     </button>
                   ))}
@@ -942,7 +882,7 @@ export function GatewayFormDialog({
                       <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground animate-spin pointer-events-none" />
                     )}
                     {!isProbing && oauthProbed?.oauth_discovered && (
-                      <CheckCircle2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-green-500 pointer-events-none" />
+                      <CheckCircle2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-aurora-success pointer-events-none" />
                     )}
                   </div>
                   {errors.url && <p className="text-sm text-destructive">{errors.url}</p>}
@@ -1025,10 +965,10 @@ export function GatewayFormDialog({
                   <div className="rounded-lg border p-4 flex flex-col gap-3">
                     {oauthState.kind === 'connected' ? (
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400 font-medium">
+                        <div className="flex items-center gap-2 text-sm text-aurora-success font-medium">
                           <ShieldCheck className="size-4" />
                           Connected
-                          <Badge variant="outline" className="border-green-500 text-green-600 ml-1">Authorized</Badge>
+                          <Badge variant="outline" className="border-aurora-success/40 text-aurora-success ml-1">Authorized</Badge>
                         </div>
                         <Button
                           type="button"
@@ -1216,7 +1156,7 @@ export function GatewayFormDialog({
           style={{ left: '100%' }}
           aria-hidden={!envDrawerOpen}
         >
-          <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">
             <p className="text-xs text-muted-foreground">
               Paste <code>KEY=VALUE</code> lines — Lab detects the service and can pre-fill the form.
             </p>
@@ -1234,12 +1174,12 @@ export function GatewayFormDialog({
                 const { detectedServices } = parseEnvText(envText)
                 if (detectedServices.length > 0) {
                   return (
-                    <span className="absolute top-2 right-2 text-[10px] text-green-500">
+                    <span className="absolute top-2 right-2 text-[10px] text-aurora-success">
                       Valid · {detectedServices.length} service{detectedServices.length > 1 ? 's' : ''}
                     </span>
                   )
                 }
-                return <span className="absolute top-2 right-2 text-[10px] text-yellow-500">No known service</span>
+                return <span className="absolute top-2 right-2 text-[10px] text-aurora-warn">No known service</span>
               })()}
             </div>
             {envText.trim() && (() => {
@@ -1294,28 +1234,48 @@ export function GatewayFormDialog({
           style={{ left: '100%' }}
           aria-hidden={!jsonDrawerOpen}
         >
-          <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">
             <p className="text-xs text-muted-foreground">
               Live editor — changes here update the form, and form changes update this JSON automatically.
             </p>
-            <div className="relative">
+            <div
+              className="relative min-h-[240px] rounded-md border border-border bg-[var(--aurora-control-surface)] overflow-hidden focus-within:ring-2 focus-within:ring-[var(--aurora-accent-primary)]/34"
+            >
+              {/* Syntax-highlighted backing layer — clipped by parent overflow:hidden */}
+              <pre
+                ref={jsonPreRef}
+                aria-hidden="true"
+                className="absolute top-0 left-0 min-w-full m-0 px-3 py-2 text-xs font-mono whitespace-pre pointer-events-none select-none text-[var(--aurora-text-primary)]"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: HTML-escaped JSON tokens
+                dangerouslySetInnerHTML={{ __html: jsonText ? highlightJson(jsonText) : '' }}
+              />
+              {/* Transparent textarea on top — text invisible so highlight shows through */}
               <textarea
-                className="w-full min-h-[240px] rounded-md border border-border bg-background px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                className="relative w-full min-h-[240px] bg-transparent px-3 py-2 text-xs font-mono resize-none focus:outline-none aurora-scrollbar z-10"
+                style={{
+                  color: jsonText ? 'transparent' : 'var(--aurora-text-primary)',
+                  caretColor: 'var(--aurora-text-primary)',
+                }}
                 placeholder={'{\n  "gateway-name": {\n    "url": "http://localhost:3001/mcp"\n  }\n}'}
                 value={jsonText}
                 onChange={(e) => {
                   setJsonText(e.target.value)
                   parseJsonToForm(e.target.value)
                 }}
+                onScroll={(e) => {
+                  if (jsonPreRef.current) {
+                    jsonPreRef.current.style.transform = `translate(-${e.currentTarget.scrollLeft}px, -${e.currentTarget.scrollTop}px)`
+                  }
+                }}
               />
               {(() => {
                 if (!jsonText.trim()) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-muted-foreground">Waiting</span>
+                  return <span className="absolute top-2 right-2 text-[10px] text-muted-foreground z-20">Waiting</span>
                 }
                 if (jsonValid) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-green-500">Valid</span>
+                  return <span className="absolute top-2 right-2 text-[10px] text-aurora-success z-20">Valid</span>
                 }
-                return <span className="absolute top-2 right-2 text-[10px] text-destructive">Invalid JSON</span>
+                return <span className="absolute top-2 right-2 text-[10px] text-destructive z-20">Invalid JSON</span>
               })()}
             </div>
             {jsonValid && name && (

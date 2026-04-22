@@ -88,7 +88,7 @@ export function FoundationsSection() {
                 <div
                   key={tier.label}
                   className={cn(
-                    'rounded-[1.35rem] border border-aurora-border-strong bg-aurora-panel-medium px-4 py-5',
+                    'rounded-aurora-3 border border-aurora-border-strong bg-aurora-panel-medium px-4 py-5',
                     tier.className,
                     tier.emphasized ? 'bg-aurora-panel-strong' : '',
                   )}

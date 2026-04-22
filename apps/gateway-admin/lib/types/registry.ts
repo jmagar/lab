@@ -3,12 +3,17 @@
 
 export const REGISTRY_META_KEY = 'io.modelcontextprotocol.registry/official'
 
+export type RegistrySortBy = 'updated' | 'published' | 'name'
+export type RegistrySortOrder = 'asc' | 'desc'
+
 export interface ListServersParams {
   search?: string
   limit?: number
   cursor?: string | null
   version?: string
   updated_since?: string
+  sort_by?: RegistrySortBy
+  order?: RegistrySortOrder
 }
 
 export interface ServerListResponse {

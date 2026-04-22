@@ -1,7 +1,19 @@
 'use client'
 
+import * as React from 'react'
 import Link from 'next/link'
-import { AlertTriangle, CheckCircle2, Clock3, XCircle } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  KeyRound,
+  LinkIcon,
+  ListTree,
+  MessageSquare,
+  Plug,
+  Wrench,
+  XCircle,
+} from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,9 +26,13 @@ import {
   AURORA_PAGE_SHELL,
   AURORA_STRONG_PANEL,
 } from '@/components/aurora/tokens'
-import { gatewayDetailHref } from '@/lib/api/gateway-config'
-import { buildGatewayActivityFeed } from '@/lib/dashboard/admin-insights'
-import { useGateways } from '@/lib/hooks/use-gateways'
+import { fetchLogs } from '@/lib/api/logs-client'
+import {
+  ACTIVITY_SUBSYSTEMS,
+  buildActivityItemsFromLogs,
+  type ActivityItem,
+} from '@/lib/dashboard/admin-insights'
+import { useBrowserSession } from '@/lib/auth/session'
 import { cn } from '@/lib/utils'
 
 const activityTimestampFormatter = new Intl.DateTimeFormat(undefined, {
@@ -24,47 +40,122 @@ const activityTimestampFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: 'short',
 })
 
-/** Aurora-token tone classes — replaces emerald/amber/rose palette. */
 const toneStyles = {
   success: 'border-aurora-accent-strong/30 bg-aurora-accent-strong/10 text-aurora-accent-strong',
+  info: 'border-aurora-accent-primary/30 bg-aurora-accent-primary/10 text-aurora-accent-primary',
   warning: 'border-aurora-warn/30 bg-aurora-warn/10 text-aurora-warn',
   danger: 'border-aurora-error/30 bg-aurora-error/10 text-aurora-error',
 } as const
 
-const toneIcons = {
+const kindIcons = {
+  session: Plug,
+  tool: Wrench,
+  resource: ListTree,
+  prompt: MessageSquare,
+  oauth: KeyRound,
+  other: LinkIcon,
+} as const
+
+const toneFallbackIcons = {
   success: CheckCircle2,
+  info: CheckCircle2,
   warning: AlertTriangle,
   danger: XCircle,
 } as const
 
-const ROW_FOCUS =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34 focus-visible:ring-offset-2 focus-visible:ring-offset-aurora-page-bg'
+const ACTIVITY_LIMIT = 50
+const POLL_INTERVAL_MS = 10_000
+
+function useActivityFeed() {
+  const [items, setItems] = React.useState<ActivityItem[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const reload = React.useCallback(async (signal?: AbortSignal) => {
+    try {
+      const result = await fetchLogs(
+        {
+          subsystems: [...ACTIVITY_SUBSYSTEMS],
+          limit: ACTIVITY_LIMIT,
+        },
+        { signal },
+      )
+      if (signal?.aborted) return
+      setItems(buildActivityItemsFromLogs(result.events))
+      setError(null)
+    } catch (err) {
+      if (signal?.aborted) return
+      setError(err instanceof Error ? err.message : 'Failed to load activity')
+    } finally {
+      if (!signal?.aborted) setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    const controller = new AbortController()
+    void reload(controller.signal)
+    const interval = window.setInterval(() => {
+      void reload(controller.signal)
+    }, POLL_INTERVAL_MS)
+    return () => {
+      controller.abort()
+      window.clearInterval(interval)
+    }
+  }, [reload])
+
+  return { items, loading, error }
+}
+
+function eventSubject(item: ActivityItem): string | undefined {
+  const fields = item.event.fields_json as Record<string, unknown> | undefined
+  const subject = fields?.subject
+  return typeof subject === 'string' && subject.length > 0 ? subject : undefined
+}
 
 export default function ActivityPage() {
-  const { data: gateways, isLoading, error } = useGateways()
-  const items = buildGatewayActivityFeed(gateways ?? []).slice(0, 12)
-  const warningCount = gateways?.reduce((count, gateway) => count + gateway.warnings.length, 0) ?? 0
-  const disconnectedCount = gateways?.filter((gateway) => !gateway.status.connected).length ?? 0
+  const { items: allItems, loading, error } = useActivityFeed()
+  const session = useBrowserSession()
+  const viewerSub = session.status === 'authenticated' ? session.user.sub : undefined
+  const [mineOnly, setMineOnly] = React.useState(true)
+
+  const items = React.useMemo(() => {
+    if (!mineOnly || !viewerSub) return allItems
+    return allItems.filter((item) => eventSubject(item) === viewerSub)
+  }, [allItems, mineOnly, viewerSub])
+
+  const oauthCount = items.filter((item) => item.kind === 'oauth').length
+  const toolCount = items.filter((item) => item.kind === 'tool').length
+  const issueCount = items.filter((item) => item.tone === 'warning' || item.tone === 'danger').length
 
   return (
     <>
       <AppHeader
         breadcrumbs={[{ label: 'Activity' }]}
         actions={(
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/logs">Open logs</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {viewerSub ? (
+              <Button
+                variant={mineOnly ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setMineOnly((value) => !value)}
+              >
+                {mineOnly ? 'My activity' : 'All users'}
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/logs">Open logs</Link>
+            </Button>
+          </div>
         )}
       />
       <div className={`${AURORA_PAGE_SHELL} flex-1`}>
         <div className={AURORA_PAGE_FRAME}>
-          {/* Page header */}
           <div className={cn(AURORA_STRONG_PANEL, 'px-6 py-5')}>
             <p className={AURORA_MUTED_LABEL}>Control Plane</p>
-            <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Gateway activity</h1>
+            <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Activity</h1>
             <p className="mt-2 text-sm text-aurora-text-muted">
-              Health probes and warning events derived from the current control-plane state.
-              Need the raw event stream?{' '}
+              Live feed of MCP sessions, tool calls, resource reads, and OAuth flows from the log store.
+              Need structured search?{' '}
               <Link href="/logs" className="font-medium text-aurora-accent-primary underline-offset-4 hover:underline">
                 Open the log console
               </Link>
@@ -72,32 +163,26 @@ export default function ActivityPage() {
             </p>
           </div>
 
-          {/* Stat cards */}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
               <p className={AURORA_MUTED_LABEL}>Events</p>
               <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{items.length}</p>
-              <p className="mt-1 text-sm text-aurora-text-muted">Latest gateway health and warning signals.</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">Most recent {ACTIVITY_LIMIT} events across MCP and OAuth subsystems.</p>
             </div>
             <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
-              <p className={AURORA_MUTED_LABEL}>Warnings</p>
-              <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2', warningCount > 0 ? 'text-aurora-warn' : 'text-aurora-text-primary')}>
-                {warningCount}
-              </p>
-              <p className="mt-1 text-sm text-aurora-text-muted">Operator-facing issues that still need cleanup.</p>
+              <p className={AURORA_MUTED_LABEL}>Tool calls</p>
+              <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{toolCount}</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">Tool invocations from MCP clients in this window.</p>
             </div>
             <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
-              <p className={AURORA_MUTED_LABEL}>Disconnected</p>
-              <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2', disconnectedCount > 0 ? 'text-aurora-error' : 'text-aurora-text-primary')}>
-                {disconnectedCount}
-              </p>
-              <p className="mt-1 text-sm text-aurora-text-muted">Gateways that are not currently reachable.</p>
+              <p className={AURORA_MUTED_LABEL}>OAuth events</p>
+              <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{oauthCount}</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">Relay + upstream OAuth connects, callbacks, and clears.</p>
             </div>
           </div>
 
-          {/* Activity feed */}
           <div className={cn(AURORA_STRONG_PANEL, 'overflow-hidden')}>
-            {isLoading ? (
+            {loading && items.length === 0 ? (
               <div className="space-y-3 p-6">
                 {Array.from({ length: 4 }, (_, index) => (
                   <div key={index} className="h-24 animate-pulse rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface" />
@@ -105,16 +190,24 @@ export default function ActivityPage() {
               </div>
             ) : error ? (
               <div className="p-6 text-sm text-aurora-error">
-                Failed to load activity because the gateway list could not be loaded.
+                Failed to load activity: {error}
               </div>
             ) : items.length === 0 ? (
               <div className="p-6 text-sm text-aurora-text-muted">
-                No activity available yet. Add a gateway or run a probe to populate this feed.
+                {mineOnly && viewerSub
+                  ? 'No activity for your account yet. Toggle "All users" to see other subjects, or trigger an MCP request while signed in.'
+                  : 'No activity yet. Connect an MCP client or trigger an OAuth flow to populate this feed.'}
               </div>
             ) : (
               <div className="divide-y divide-aurora-border-strong/60">
+                {issueCount > 0 ? (
+                  <div className="px-6 py-3 text-xs text-aurora-text-muted">
+                    {issueCount} event{issueCount === 1 ? '' : 's'} flagged warning or error — tone icons below highlight them.
+                  </div>
+                ) : null}
                 {items.map((item) => {
-                  const Icon = toneIcons[item.tone]
+                  const KindIcon = kindIcons[item.kind] ?? toneFallbackIcons[item.tone]
+                  const logsHref = `/logs?request=${encodeURIComponent(item.event.request_id ?? '')}`
 
                   return (
                     <div
@@ -123,28 +216,33 @@ export default function ActivityPage() {
                     >
                       <div className="flex gap-3">
                         <div className={cn('mt-0.5 rounded-full border p-2', toneStyles[item.tone])}>
-                          <Icon className="size-4" />
+                          <KindIcon className="size-4" />
                         </div>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="font-medium text-aurora-text-primary">{item.title}</p>
                             <Badge variant="outline">{item.kind}</Badge>
+                            <Badge variant="outline">{item.event.subsystem}</Badge>
+                            {item.event.level !== 'info' ? (
+                              <Badge variant="outline">{item.event.level}</Badge>
+                            ) : null}
                           </div>
                           <p className="text-sm text-aurora-text-muted">{item.detail}</p>
-                          <div className="flex items-center gap-2 text-xs text-aurora-text-muted">
-                            <Clock3 className="size-3.5" />
-                            <span>{activityTimestampFormatter.format(new Date(item.timestamp))}</span>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-aurora-text-muted">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Clock3 className="size-3.5" />
+                              {activityTimestampFormatter.format(new Date(item.timestamp))}
+                            </span>
+                            {item.event.session_id ? <span>session {item.event.session_id.slice(0, 8)}</span> : null}
+                            {item.event.request_id ? <span>req {item.event.request_id.slice(0, 8)}</span> : null}
                           </div>
                         </div>
                       </div>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link
-                          href={gatewayDetailHref(item.gatewayId)}
-                          className={`focus-visible:ring-aurora-accent-primary/34 focus-visible:ring-offset-aurora-page-bg ${ROW_FOCUS}`}
-                        >
-                          Open gateway
-                        </Link>
-                      </Button>
+                      {item.event.request_id ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={logsHref}>View in logs</Link>
+                        </Button>
+                      ) : null}
                     </div>
                   )
                 })}

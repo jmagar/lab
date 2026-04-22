@@ -1,0 +1,53 @@
+'use client'
+
+import * as React from 'react'
+import { MessageSquare } from 'lucide-react'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { MessageBubble } from './message-bubble'
+import type { ACPMessage, ACPRun } from './types'
+
+interface MessageThreadProps {
+  run: ACPRun | null
+  messages: ACPMessage[]
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+      <div className="flex size-12 items-center justify-center rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium">
+        <MessageSquare className="size-5 text-aurora-text-muted/50" />
+      </div>
+      <div className="space-y-1">
+        <p className="text-[14px] font-medium text-aurora-text-primary">No session selected</p>
+        <p className="text-[13px] text-aurora-text-muted">Select a session from the sidebar or start a new one</p>
+      </div>
+    </div>
+  )
+}
+
+export function MessageThread({ run, messages }: MessageThreadProps) {
+  const bottomRef = React.useRef<HTMLDivElement>(null)
+  const prevLengthRef = React.useRef(messages.length)
+
+  React.useEffect(() => {
+    if (messages.length !== prevLengthRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      prevLengthRef.current = messages.length
+    }
+  }, [messages.length])
+
+  if (!run) {
+    return <EmptyState />
+  }
+
+  return (
+    <ScrollArea className="flex-1">
+      <div className="mx-auto flex max-w-[820px] flex-col gap-5 px-6 py-6">
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} />
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </ScrollArea>
+  )
+}

@@ -17,7 +17,12 @@ pub async fn dispatch_with_client(
         "config" => Ok(serde_json::json!({ "url": client::resolved_url() })),
         "server.list" => {
             let p = params::list_servers_params(&params_value)?;
-            to_json(client.list_servers(p).await?)
+            let sort = params::parse_sort_params(&params_value)?;
+            let mut resp = client.list_servers(p).await?;
+            if let Some(spec) = sort {
+                sort_servers(&mut resp.servers, &spec);
+            }
+            to_json(resp)
         }
         "server.get" => {
             let name = params::require_name(&params_value)?;
@@ -251,6 +256,35 @@ fn install_stdio(
         "proxy_resources": false,
         "expose_tools": null,
     }))
+}
+
+fn sort_key(s: &lab_apis::mcpregistry::types::ServerResponse, by: &params::SortBy) -> String {
+    match by {
+        params::SortBy::Name => s.server.name.clone(),
+        params::SortBy::Published => s
+            .meta
+            .as_ref()
+            .and_then(|m| m.official.as_ref())
+            .map(|e| e.published_at.clone())
+            .unwrap_or_default(),
+        params::SortBy::Updated => s
+            .meta
+            .as_ref()
+            .and_then(|m| m.official.as_ref())
+            .map(|e| e.updated_at.as_deref().unwrap_or(&e.published_at).to_string())
+            .unwrap_or_default(),
+    }
+}
+
+fn sort_servers(
+    servers: &mut Vec<lab_apis::mcpregistry::types::ServerResponse>,
+    spec: &params::SortSpec,
+) {
+    servers.sort_by(|a, b| {
+        let ka = sort_key(a, &spec.by);
+        let kb = sort_key(b, &spec.by);
+        if spec.desc { kb.cmp(&ka) } else { ka.cmp(&kb) }
+    });
 }
 
 /// Dispatch one call against the `mcpregistry` service.

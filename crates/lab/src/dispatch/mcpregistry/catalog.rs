@@ -63,6 +63,18 @@ pub const ACTIONS: &[ActionSpec] = &[
                 required: false,
                 description: "ISO 8601 datetime; return only servers updated after this time",
             },
+            ParamSpec {
+                name: "sort_by",
+                ty: "string",
+                required: false,
+                description: "Sort results by field: `updated` (default when set), `published`, or `name`",
+            },
+            ParamSpec {
+                name: "order",
+                ty: "string",
+                required: false,
+                description: "Sort direction: `desc` (default) or `asc`",
+            },
         ],
     },
     ActionSpec {
