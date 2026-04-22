@@ -89,57 +89,52 @@ pub fn validate_env_value(key: &str, value: &str) -> Result<(), ToolError> {
     }
 }
 
-/// Sort field for `server.list`.
-#[derive(Debug, Clone)]
-pub enum SortBy {
-    Updated,
-    Published,
-    Name,
+/// Resolve the effective `search` string from `search` + `owner` dispatch params.
+///
+/// Precedence:
+/// 1. explicit `search` wins if present (owner is silently ignored).
+/// 2. `owner` is validated (non-empty after trim, no `/`, no whitespace) and
+///    synthesized to `io.github.{owner}/` lowercased.
+/// 3. invalid `owner` returns an `invalid_param` error so callers see the
+///    problem instead of falling through to an unfiltered list.
+///
+/// The registry API has no structured owner field — this is a client-side
+/// convenience only and does not match non-GitHub publishers.
+pub fn resolve_search_for_rest(
+    search: Option<&str>,
+    owner: Option<&str>,
+) -> Result<Option<String>, ToolError> {
+    if let Some(s) = search {
+        return Ok(Some(s.to_string()));
+    }
+    let Some(raw) = owner else {
+        return Ok(None);
+    };
+    let owner = raw.trim();
+    if owner.is_empty() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: "`owner` must not be empty".to_string(),
+        });
+    }
+    if owner.chars().any(|c| c == '/' || c.is_whitespace()) {
+        return Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: "`owner` must be a bare GitHub username/org (no slashes or whitespace)"
+                .to_string(),
+        });
+    }
+    Ok(Some(format!("io.github.{}/", owner.to_ascii_lowercase())))
 }
 
-/// Client-side sort specification extracted from dispatch params.
-#[derive(Debug, Clone)]
-pub struct SortSpec {
-    pub by: SortBy,
-    pub desc: bool,
-}
-
-/// Extract optional sort params from the dispatch params object.
-pub fn parse_sort_params(params: &Value) -> Result<Option<SortSpec>, ToolError> {
-    let by_str = match params["sort_by"].as_str() {
-        Some(s) => s,
-        None => return Ok(None),
-    };
-    let by = match by_str {
-        "updated" => SortBy::Updated,
-        "published" => SortBy::Published,
-        "name" => SortBy::Name,
-        other => {
-            return Err(ToolError::Sdk {
-                sdk_kind: "invalid_param".to_string(),
-                message: format!(
-                    "invalid sort_by '{other}'; must be one of: updated, published, name"
-                ),
-            })
-        }
-    };
-    let desc = match params["order"].as_str().unwrap_or("desc") {
-        "desc" => true,
-        "asc" => false,
-        other => {
-            return Err(ToolError::Sdk {
-                sdk_kind: "invalid_param".to_string(),
-                message: format!("invalid order '{other}'; must be 'asc' or 'desc'"),
-            })
-        }
-    };
-    Ok(Some(SortSpec { by, desc }))
+fn resolve_search(params: &Value) -> Result<Option<String>, ToolError> {
+    resolve_search_for_rest(params["search"].as_str(), params["owner"].as_str())
 }
 
 /// Extract `server.list` params from the dispatch params object.
 pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolError> {
     Ok(ListServersParams {
-        search: params["search"].as_str().map(str::to_string),
+        search: resolve_search(params)?,
         limit: params["limit"].as_u64().map(|v| v as u32),
         cursor: params["cursor"].as_str().map(str::to_string),
         version: params["version"].as_str().map(str::to_string),
@@ -154,10 +149,9 @@ pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolErro
 #[allow(dead_code)]
 pub fn store_params_from_dispatch(params: &Value) -> Result<StoreListParams, ToolError> {
     Ok(StoreListParams {
-        search: params["search"].as_str().map(str::to_string),
+        search: resolve_search(params)?,
         cursor: params["cursor"].as_str().map(str::to_string),
         limit: params["limit"].as_u64().map(|v| v.min(100) as u32),
-        sort: parse_sort_params(params)?,
         include_deleted: params["include_deleted"].as_bool().unwrap_or(false),
     })
 }
@@ -224,6 +218,9 @@ fn check_ip_not_private(ip: IpAddr, url: &str) -> Result<(), ToolError> {
                 || (o[0] == 172 && (16..=31).contains(&o[1]))
                 || (o[0] == 192 && o[1] == 168)
                 || (o[0] == 169 && o[1] == 254)
+                // 100.64.0.0/10 — Tailscale/CGNAT shared address space.
+                // On a Tailscale node these addresses reach internal services.
+                || (o[0] == 100 && (64..=127).contains(&o[1]))
         }
         IpAddr::V6(v6) => {
             v6.is_loopback()
@@ -236,6 +233,7 @@ fn check_ip_not_private(ip: IpAddr, url: &str) -> Result<(), ToolError> {
                         || (o[0] == 172 && (16..=31).contains(&o[1]))
                         || (o[0] == 192 && o[1] == 168)
                         || (o[0] == 169 && o[1] == 254)
+                        || (o[0] == 100 && (64..=127).contains(&o[1]))
                 })
         }
     };
@@ -368,5 +366,64 @@ mod tests {
     #[test]
     fn env_value_rejects_cr() {
         assert!(validate_env_value("FOO", "line1\rline2").is_err());
+    }
+
+    // ── resolve_search ─────────────────────────────────────────────────────
+
+    #[test]
+    fn resolve_search_passes_explicit_search_through() {
+        let p = serde_json::json!({ "search": "postgres" });
+        assert_eq!(resolve_search(&p).unwrap().as_deref(), Some("postgres"));
+    }
+
+    #[test]
+    fn resolve_search_synthesizes_owner_with_github_prefix() {
+        let p = serde_json::json!({ "owner": "modelcontextprotocol" });
+        assert_eq!(
+            resolve_search(&p).unwrap().as_deref(),
+            Some("io.github.modelcontextprotocol/")
+        );
+    }
+
+    #[test]
+    fn resolve_search_lowercases_and_trims_owner() {
+        let p = serde_json::json!({ "owner": "  MCP-Corp  " });
+        assert_eq!(
+            resolve_search(&p).unwrap().as_deref(),
+            Some("io.github.mcp-corp/")
+        );
+    }
+
+    #[test]
+    fn resolve_search_prefers_explicit_search_over_owner() {
+        let p = serde_json::json!({ "search": "postgres", "owner": "ignored" });
+        assert_eq!(resolve_search(&p).unwrap().as_deref(), Some("postgres"));
+    }
+
+    #[test]
+    fn resolve_search_rejects_empty_owner() {
+        let p = serde_json::json!({ "owner": "   " });
+        let err = resolve_search(&p).unwrap_err();
+        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
+    }
+
+    #[test]
+    fn resolve_search_rejects_owner_with_slash() {
+        let p = serde_json::json!({ "owner": "alice/bot" });
+        let err = resolve_search(&p).unwrap_err();
+        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
+    }
+
+    #[test]
+    fn resolve_search_rejects_owner_with_whitespace() {
+        let p = serde_json::json!({ "owner": "alice bot" });
+        let err = resolve_search(&p).unwrap_err();
+        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
+    }
+
+    #[test]
+    fn resolve_search_returns_none_when_neither_set() {
+        let p = serde_json::json!({});
+        assert!(resolve_search(&p).unwrap().is_none());
     }
 }
