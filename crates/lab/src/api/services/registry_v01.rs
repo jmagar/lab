@@ -155,9 +155,6 @@ async fn get_server(
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/servers", get(list_servers))
-        .route("/servers/:serverName/versions", get(list_versions))
-        .route(
-            "/servers/:serverName/versions/:version",
-            get(get_server),
-        )
+        .route("/servers/{serverName}/versions", get(list_versions))
+        .route("/servers/{serverName}/versions/{version}", get(get_server))
 }
