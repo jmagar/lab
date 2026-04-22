@@ -35,7 +35,7 @@ export function SetupResults({
       <EmptyState
         title="No scan results yet"
         description="Start with a fleet scan to discover running supported services, or point the scanner at a specific appdata path."
-        icon={<ServerCog className="size-6 text-muted-foreground" />}
+        icon={<ServerCog className="size-6 text-aurora-text-muted" />}
       />
     )
   }
@@ -45,7 +45,7 @@ export function SetupResults({
       <EmptyState
         title="Nothing discovered"
         description="The scan completed without verified supported services. Try a targeted scan if you want to inspect a specific host or path."
-        icon={<TriangleAlert className="size-6 text-muted-foreground" />}
+        icon={<TriangleAlert className="size-6 text-aurora-text-muted" />}
       />
     )
   }
@@ -56,7 +56,7 @@ export function SetupResults({
         <div className="space-y-3">
           <div>
             <h2 className="text-base font-semibold">Discovered credentials</h2>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-aurora-text-muted">
               Read-only extract output. Apply/diff stays out of the UI for this first pass.
             </p>
           </div>
@@ -68,7 +68,7 @@ export function SetupResults({
         <div className="space-y-3">
           <div>
             <h2 className="text-base font-semibold">Warnings</h2>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-aurora-text-muted">
               These hosts or services were reachable enough to inspect, but not usable enough to return credentials.
             </p>
           </div>

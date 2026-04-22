@@ -13,10 +13,10 @@ export function SetupWarningList({ warnings }: { warnings: ExtractWarning[] }) {
             <Badge variant="outline">{warning.host ?? 'unknown host'}</Badge>
             {warning.service ? <Badge variant="secondary">{warning.service}</Badge> : null}
             {warning.runtime?.container_name ? (
-              <span className="text-xs text-muted-foreground">{warning.runtime.container_name}</span>
+              <span className="text-xs text-aurora-text-muted">{warning.runtime.container_name}</span>
             ) : null}
           </div>
-          <p className="mt-2 text-sm text-foreground">{warning.message}</p>
+          <p className="mt-2 text-sm text-aurora-text-primary">{warning.message}</p>
         </div>
       ))}
     </div>

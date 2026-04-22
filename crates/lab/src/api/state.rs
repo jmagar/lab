@@ -52,6 +52,11 @@ pub struct AppState {
     pub web_assets_dir: Option<Arc<PathBuf>>,
     /// When true, `/v1/*` skips auth middleware for hosted UI requests.
     pub web_ui_auth_disabled: bool,
+    /// Shared SQLite-backed MCP registry store for `/v0.1` read endpoints.
+    ///
+    /// `None` when the `mcpregistry` feature is disabled or the store failed to open.
+    #[cfg(feature = "mcpregistry")]
+    pub registry_store: Option<Arc<crate::dispatch::mcpregistry::store::RegistryStore>>,
 }
 
 impl AppState {
@@ -92,6 +97,8 @@ impl AppState {
             device_role: None,
             web_assets_dir: None,
             web_ui_auth_disabled: false,
+            #[cfg(feature = "mcpregistry")]
+            registry_store: None,
         }
     }
 
@@ -154,6 +161,17 @@ impl AppState {
     #[must_use]
     pub fn is_master(&self) -> bool {
         !matches!(self.device_role, Some(DeviceRole::NonMaster))
+    }
+
+    /// Attach the shared MCP registry store for `/v0.1` read endpoints.
+    #[cfg(feature = "mcpregistry")]
+    #[must_use]
+    pub fn with_registry_store(
+        mut self,
+        store: Arc<crate::dispatch::mcpregistry::store::RegistryStore>,
+    ) -> Self {
+        self.registry_store = Some(store);
+        self
     }
 }
 

@@ -675,6 +675,16 @@ pub fn config_toml_path() -> Option<PathBuf> {
         .or_else(|| home_dir().map(|home| home.join(".config").join("lab").join("config.toml")))
 }
 
+/// Path to the SQLite registry database: `~/.lab/registry.db`.
+///
+/// Creates no files — callers are responsible for opening/creating the store.
+pub fn registry_db_path() -> PathBuf {
+    home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".lab")
+        .join("registry.db")
+}
+
 /// A string value that redacts itself in `Debug` and `Display` output.
 ///
 /// Use for secret env values (`API_KEY`, `TOKEN`, `PASSWORD`) so they

@@ -2012,6 +2012,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2027,6 +2028,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2043,6 +2045,7 @@ mod tests {
                 command: None,
                 args: vec![],
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             };
@@ -2062,6 +2065,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2077,6 +2081,7 @@ mod tests {
             command: Some("my-mcp-server".into()),
             args: vec!["--port".into(), "8080".into()],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2092,6 +2097,7 @@ mod tests {
             command: Some("my-mcp-server".into()),
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2107,6 +2113,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2121,6 +2128,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: Some(UpstreamOauthConfig {
                 mode: UpstreamOauthMode::AuthorizationCodePkce,

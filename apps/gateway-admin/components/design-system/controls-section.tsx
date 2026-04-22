@@ -194,7 +194,7 @@ export function ControlsSection() {
                 </Label>
                 <RadioGroup value={accessMode} onValueChange={setAccessMode}>
                   {accessModeOptions.map((option) => (
-                    <Label key={option.value} className="justify-between rounded-xl border border-aurora-border-strong bg-aurora-control-surface/70 px-3 py-3 text-aurora-text-primary">
+                    <Label key={option.value} className="justify-between rounded-aurora-2 border border-aurora-border-strong bg-aurora-control-surface/70 px-3 py-3 text-aurora-text-primary">
                       <span>{option.label}</span>
                       <RadioGroupItem value={option.value} />
                     </Label>

@@ -57,7 +57,7 @@ export function UpstreamOauthCard({ name }: UpstreamOauthCardProps) {
       return <Badge variant="outline" className="border-aurora-warn/40 text-aurora-warn">Expiring</Badge>
     if (status.authenticated)
       return <Badge variant="outline" className="border-aurora-success/40 text-aurora-success">Connected</Badge>
-    return <Badge variant="outline" className="text-muted-foreground">Disconnected</Badge>
+    return <Badge variant="outline" className="text-aurora-text-muted">Disconnected</Badge>
   })()
 
   return (
@@ -81,7 +81,7 @@ export function UpstreamOauthCard({ name }: UpstreamOauthCardProps) {
             </Button>
           )}
           {connecting && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-aurora-text-muted">
               Complete authorization in the new tab
             </p>
           )}

@@ -150,7 +150,7 @@ export function ConnectUpstreamDialog({ open, onOpenChange, onConnected }: Conne
                 OAuth discovered
               </div>
               {phase.probe.issuer && (
-                <p className="text-xs text-muted-foreground break-all">
+                <p className="text-xs text-aurora-text-muted break-all">
                   Issuer: <span className="font-mono">{phase.probe.issuer}</span>
                 </p>
               )}
@@ -169,18 +169,18 @@ export function ConnectUpstreamDialog({ open, onOpenChange, onConnected }: Conne
 
           {phase.kind === 'no_oauth' && (
             <div className="rounded-lg border p-4 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 text-sm text-aurora-text-muted">
                 <Link2 className="size-4" />
                 No OAuth required
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-aurora-text-muted">
                 This server is reachable but does not advertise OAuth. Configure a bearer token in the gateway settings if it requires authentication.
               </p>
             </div>
           )}
 
           {phase.kind === 'authorizing' && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-aurora-text-muted">
               <Loader2 className="size-4 animate-spin" />
               Complete authorization in the new tab…
             </div>

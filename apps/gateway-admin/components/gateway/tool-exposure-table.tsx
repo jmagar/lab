@@ -118,10 +118,10 @@ export function ToolExposureTable({
 
   return (
       <div className="space-y-3">
-      <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-3">
+      <div className="flex flex-col gap-3 rounded-aurora-2 border bg-aurora-control-surface/20 p-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-aurora-text-muted" />
             <Input
               placeholder="Search tools..."
               value={search}
@@ -131,11 +131,11 @@ export function ToolExposureTable({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-sm font-medium">
+            <div className="inline-flex items-center gap-2 rounded-full border bg-aurora-page-bg px-3 py-1 text-sm font-medium">
               <Wrench className="size-4 text-primary" />
               {exposureLabel}
             </div>
-            <span className="text-sm text-muted-foreground tabular-nums">
+            <span className="text-sm text-aurora-text-muted tabular-nums">
               {hiddenCount} hidden
             </span>
             {hasDraftChanges && (
@@ -150,7 +150,7 @@ export function ToolExposureTable({
               </Button>
             ) : (
               <>
-                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1">
+                <div className="flex items-center gap-2 rounded-full border bg-aurora-page-bg px-3 py-1">
                   <span className="text-sm font-medium">Expose all</span>
                   <Switch checked={exposeAll} onCheckedChange={onExposeAllChange} />
                 </div>
@@ -185,10 +185,10 @@ export function ToolExposureTable({
         </div>
 
         {manageMode && (
-          <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+          <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-aurora-2 border bg-aurora-page-bg/95 p-3 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center gap-2.5">
-                <label htmlFor="select-all-visible" className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                <label htmlFor="select-all-visible" className="inline-flex items-center gap-2 text-sm text-aurora-text-muted">
                   <Checkbox
                     id="select-all-visible"
                     checked={allVisibleSelected ? true : partiallyVisibleSelected ? 'indeterminate' : false}
@@ -203,7 +203,7 @@ export function ToolExposureTable({
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">{draftChangeDescription}</p>
+              <p className="text-sm text-aurora-text-muted">{draftChangeDescription}</p>
               {saveErrorMessage && (
                 <p className="text-sm text-destructive">
                   {saveErrorMessage}
@@ -237,14 +237,14 @@ export function ToolExposureTable({
 
       <div className="space-y-3 md:hidden">
         {filteredTools.length === 0 ? (
-          <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border p-6 text-center text-sm text-aurora-text-muted">
             {tools.length === 0 ? 'No tools discovered' : 'No tools match your search'}
           </div>
         ) : (
           filteredTools.map((tool) => (
             <article
               key={tool.name}
-              className={tool.exposed ? 'rounded-lg border p-3' : 'rounded-lg border bg-muted/20 p-3 opacity-80'}
+              className={tool.exposed ? 'rounded-lg border p-3' : 'rounded-lg border bg-aurora-control-surface/20 p-3 opacity-80'}
             >
               <div className="flex items-start gap-3">
                 <TooltipProvider>
@@ -253,7 +253,7 @@ export function ToolExposureTable({
                       <div className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${
                         tool.exposed
                           ? 'bg-aurora-success/10 text-aurora-success'
-                          : 'bg-muted text-muted-foreground'
+                          : 'bg-aurora-control-surface text-aurora-text-muted'
                       }`}>
                         {tool.exposed ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                       </div>
@@ -273,11 +273,11 @@ export function ToolExposureTable({
                         <span className="break-all">{tool.matched_by}</span>
                       </Badge>
                     ) : (
-                      <span className="text-xs text-muted-foreground">No match</span>
+                      <span className="text-xs text-aurora-text-muted">No match</span>
                     )}
                   </div>
                   {tool.description && (
-                    <p className="text-sm text-muted-foreground">{tool.description}</p>
+                    <p className="text-sm text-aurora-text-muted">{tool.description}</p>
                   )}
                 </div>
               </div>
@@ -289,7 +289,7 @@ export function ToolExposureTable({
       <div className="hidden max-h-[60vh] overflow-auto rounded-lg border md:block">
         <Table>
           <TableHeader>
-            <TableRow className="sticky top-0 z-10 bg-background">
+            <TableRow className="sticky top-0 z-10 bg-aurora-page-bg">
               {manageMode && <TableHead className="w-[44px]" />}
               <TableHead>Tool</TableHead>
             </TableRow>
@@ -297,7 +297,7 @@ export function ToolExposureTable({
           <TableBody>
             {filteredTools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={manageMode ? 2 : 1} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={manageMode ? 2 : 1} className="py-8 text-center text-aurora-text-muted">
                   {tools.length === 0 ? 'No tools discovered' : 'No tools match your search'}
                 </TableCell>
               </TableRow>
@@ -323,7 +323,7 @@ export function ToolExposureTable({
                           />
                           <code className="text-sm font-mono">{tool.name}</code>
                         </div>
-                        <p className="pl-[18px] line-clamp-2 text-[13px] leading-5 text-muted-foreground">
+                        <p className="pl-[18px] line-clamp-2 text-[13px] leading-5 text-aurora-text-muted">
                           {tool.description || 'No description provided.'}
                         </p>
                       </div>

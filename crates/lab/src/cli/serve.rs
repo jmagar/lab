@@ -285,6 +285,63 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
     state = state.with_device_store(Arc::clone(&device_store));
     state = state.with_log_system(logs_system);
+    #[cfg(feature = "mcpregistry")]
+    let _registry_sync_keepalive = {
+        let db_path = crate::config::registry_db_path();
+        match crate::dispatch::mcpregistry::store::RegistryStore::open(&db_path).await {
+            Ok(store) => {
+                let store = Arc::new(store);
+                state = state.with_registry_store(Arc::clone(&store));
+                let sync_store = Arc::clone(&store);
+                let sync_client = crate::dispatch::mcpregistry::client::require_client().ok();
+                Some(tokio::spawn(async move {
+                    // Fire immediately at startup — do not wait for the first interval tick.
+                    if let Some(ref client) = sync_client {
+                        if let Err(e) = sync_store.sync_from_upstream(client).await {
+                            tracing::warn!(
+                                service = "mcpregistry",
+                                event = "sync.failed",
+                                error = %e,
+                                "initial sync failed; will retry next hour"
+                            );
+                        }
+                    }
+                    let mut interval =
+                        tokio::time::interval(std::time::Duration::from_secs(3600));
+                    // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                    // Consume the immediate tick so the first loop iteration is at T+1h.
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        if let Some(ref client) = sync_client {
+                            if let Err(e) = sync_store.sync_from_upstream(client).await {
+                                // Supervisor: log and continue — never exit on error.
+                                tracing::warn!(
+                                    service = "mcpregistry",
+                                    event = "sync.failed",
+                                    error = %e,
+                                    "hourly sync failed; will retry next hour"
+                                );
+                            }
+                        }
+                    }
+                }))
+            }
+            Err(e) => {
+                tracing::warn!(
+                    service = "mcpregistry",
+                    event = "store.open.failed",
+                    error = %e,
+                    "registry store unavailable; /v0.1 will return 503"
+                );
+                None
+            }
+        }
+    };
+    // _registry_sync_keepalive: Option<JoinHandle> held in scope until server exits.
+    // The leading _ prevents "unused variable" warning but does NOT drop the handle —
+    // only `let _ = ...` (without the name) would drop immediately.
     state = state.with_device_role(device_role);
     if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
         tracing::info!(
@@ -588,9 +645,7 @@ async fn run_http(
         addr,
         "binding http listener"
     );
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("failed to bind HTTP listener on `{addr}`"))?;
+    let listener = bind_or_reclaim(&addr, port).await?;
     tracing::info!(
         subsystem = "api_server",
         phase = "ready",
@@ -820,6 +875,117 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
         }
     }
     hosts
+}
+
+/// Bind a TCP listener on `addr`. If the port is already in use and the
+/// holding process is `lab` (Linux only), send SIGTERM and retry.
+async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListener> {
+    use std::io::ErrorKind;
+    match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => return Ok(l),
+        Err(e) if e.kind() == ErrorKind::AddrInUse => {
+            #[cfg(target_os = "linux")]
+            {
+                if reclaim_port_if_lab(port) {
+                    for attempt in 1u8..=5 {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        match tokio::net::TcpListener::bind(addr).await {
+                            Ok(l) => {
+                                tracing::info!(
+                                    subsystem = "api_server",
+                                    phase = "listener.reclaimed",
+                                    addr,
+                                    attempt,
+                                    "port reclaimed after killing stale lab process"
+                                );
+                                return Ok(l);
+                            }
+                            Err(e2) if e2.kind() == ErrorKind::AddrInUse => continue,
+                            Err(e2) => return Err(anyhow::Error::from(e2)
+                                .context(format!("failed to bind HTTP listener on `{addr}`"))),
+                        }
+                    }
+                }
+            }
+            Err(anyhow::Error::from(e)
+                .context(format!("failed to bind HTTP listener on `{addr}`")))
+        }
+        Err(e) => Err(anyhow::Error::from(e)
+            .context(format!("failed to bind HTTP listener on `{addr}`"))),
+    }
+}
+
+/// On Linux, find the PID holding `port`, confirm it's a `lab` process, and
+/// send SIGTERM. Returns `true` if a signal was sent.
+#[cfg(target_os = "linux")]
+fn reclaim_port_if_lab(port: u16) -> bool {
+    let Some(pid) = find_pid_for_port(port) else {
+        return false;
+    };
+    let comm_path = format!("/proc/{pid}/comm");
+    let comm = match std::fs::read_to_string(&comm_path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let comm = comm.trim();
+    if !comm.contains("lab") {
+        tracing::warn!(
+            subsystem = "api_server",
+            phase = "listener.port_conflict",
+            port,
+            pid,
+            process = comm,
+            "port in use by non-lab process — not killing"
+        );
+        return false;
+    }
+    tracing::warn!(
+        subsystem = "api_server",
+        phase = "listener.reclaim",
+        port,
+        pid,
+        process = comm,
+        "port held by stale lab process — sending SIGTERM"
+    );
+    let status = std::process::Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status();
+    matches!(status, Ok(s) if s.success())
+}
+
+/// Walk `/proc/net/tcp` (IPv4) to find the inode for a listening port, then
+/// resolve it to a PID by scanning `/proc/*/fd/`.
+#[cfg(target_os = "linux")]
+fn find_pid_for_port(port: u16) -> Option<u32> {
+    let hex_port = format!("{port:04X}");
+    let tcp = std::fs::read_to_string("/proc/net/tcp").ok()?;
+    let inode = tcp.lines().skip(1).find_map(|line| {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        let local = cols.get(1)?;
+        let inode_col = cols.get(9)?;
+        let port_part = local.split(':').nth(1)?;
+        if port_part.eq_ignore_ascii_case(&hex_port) {
+            inode_col.parse::<u64>().ok()
+        } else {
+            None
+        }
+    })?;
+
+    let target = format!("socket:[{inode}]");
+    for entry in std::fs::read_dir("/proc").ok()?.flatten() {
+        let pid_str = entry.file_name();
+        let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else { continue };
+        let fd_dir = format!("/proc/{pid}/fd");
+        let Ok(fds) = std::fs::read_dir(&fd_dir) else { continue };
+        for fd in fds.flatten() {
+            if let Ok(link) = std::fs::read_link(fd.path()) {
+                if link.to_string_lossy() == target {
+                    return Some(pid);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

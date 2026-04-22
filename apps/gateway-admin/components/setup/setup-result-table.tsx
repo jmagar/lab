@@ -11,7 +11,7 @@ import type { ExtractCredential } from '@/lib/api/extract-client'
 
 function SecretCell({ secretPresent }: { secretPresent: boolean }) {
   if (!secretPresent) {
-    return <span className="text-muted-foreground">No secret</span>
+    return <span className="text-aurora-text-muted">No secret</span>
   }
 
   return (
@@ -42,11 +42,11 @@ export function SetupResultTable({ creds }: { creds: ExtractCredential[] }) {
               {cred.url ? (
                 <span title={cred.url}>{cred.url}</span>
               ) : (
-                <span className="text-muted-foreground">No URL</span>
+                <span className="text-aurora-text-muted">No URL</span>
               )}
             </TableCell>
             <TableCell>
-              <code className="rounded bg-muted px-2 py-1 text-xs">{cred.env_field}</code>
+              <code className="rounded bg-aurora-control-surface px-2 py-1 text-xs">{cred.env_field}</code>
             </TableCell>
             <TableCell className="max-w-[18rem]">
               <SecretCell secretPresent={cred.secret_present} />

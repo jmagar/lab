@@ -403,6 +403,14 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
     v1
 }
 
+/// Build the `/v0.1` sub-router with registry REST endpoints.
+///
+/// Auth middleware is applied via `route_layer()` — same pattern as `/v1`.
+#[cfg(feature = "mcpregistry")]
+fn build_v0_1_router() -> Router<AppState> {
+    Router::new().nest("/v0.1", services::registry_v01::routes())
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn build_router(
     mut state: AppState,
@@ -461,6 +469,30 @@ pub fn build_router(
         v1_router
     };
 
+    #[cfg(feature = "mcpregistry")]
+    let v0_1_protected = {
+        let v0_1_router = build_v0_1_router();
+        let auth_state_for_v0_1 = auth_state.clone();
+        let static_token_for_v0_1 = static_token.clone();
+        let resource_url_for_v0_1 = resource_url.clone();
+        if needs_auth {
+            v0_1_router.route_layer(axum::middleware::from_fn(
+                move |request: Request<Body>, next: Next| {
+                    authenticate_request(
+                        request,
+                        next,
+                        static_token_for_v0_1.clone(),
+                        auth_state_for_v0_1.clone(),
+                        resource_url_for_v0_1.clone(),
+                        true,
+                    )
+                },
+            ))
+        } else {
+            v0_1_router
+        }
+    };
+
     let auth_state_for_mcp = auth_state.clone();
     let static_token_for_mcp = static_token.clone();
     let resource_url_for_mcp = resource_url.clone();
@@ -496,6 +528,10 @@ pub fn build_router(
             super::device::public_routes(state.clone()),
         )
         .merge(v1_protected);
+    #[cfg(feature = "mcpregistry")]
+    {
+        router = router.merge(v0_1_protected);
+    }
     if is_master {
         router = router
             .merge(crate::api::upstream_oauth::browser_routes(state.clone()))
@@ -1464,5 +1500,62 @@ mod tests {
             .await
             .unwrap();
         session
+    }
+
+    /// `/v0.1/servers` requires bearer auth — unauthenticated requests must get 401,
+    /// authenticated requests must reach the handler (200 or 503 if store uninitialized).
+    #[cfg(feature = "mcpregistry")]
+    #[tokio::test]
+    async fn v01_servers_requires_auth() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        // Unauthenticated → 401
+        let unauth_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v0.1/servers")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            unauth_response.status(),
+            StatusCode::UNAUTHORIZED,
+            "/v0.1/servers must reject unauthenticated requests"
+        );
+        let body = axum::body::to_bytes(unauth_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["kind"], "auth_failed");
+
+        // Authenticated → reaches handler (200 OK or 503 if store not initialized)
+        let auth_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v0.1/servers")
+                    .header(header::AUTHORIZATION, "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = auth_response.status();
+        assert!(
+            status == StatusCode::OK || status == StatusCode::SERVICE_UNAVAILABLE,
+            "/v0.1/servers with valid token must return 200 or 503 (store not initialized), got {status}"
+        );
+        if status == StatusCode::SERVICE_UNAVAILABLE {
+            let body = axum::body::to_bytes(auth_response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["kind"], "sync_in_progress");
+        }
     }
 }
