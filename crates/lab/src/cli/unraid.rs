@@ -1,6 +1,6 @@
-//! `lab unraid` — CLI stub (not yet implemented).
+//! `lab unraid` — thin CLI shim for the Unraid service.
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
+//! Thin shim: parse → shared dispatch layer → format.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::cli::helpers::run_confirmable_action_command;
+use crate::cli::helpers::{action_parser, print_dry_run, run_confirmable_action_command};
 use crate::dispatch::unraid::ACTIONS;
 use crate::output::OutputFormat;
 
@@ -16,7 +16,8 @@ use crate::output::OutputFormat;
 #[derive(Debug, Args)]
 pub struct UnraidArgs {
     /// Action to run (e.g. help).
-    pub action: Option<String>,
+    #[arg(default_value = "help", value_parser = action_parser(ACTIONS))]
+    pub action: String,
     /// Optional named instance label.
     #[arg(long)]
     pub instance: Option<String>,
@@ -26,14 +27,17 @@ pub struct UnraidArgs {
     /// Skip confirmation prompt for destructive actions (docker.start/stop/restart).
     #[arg(short = 'y', long, alias = "no-confirm")]
     pub yes: bool,
+    /// Print what would be done without executing.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Run the `lab unraid` subcommand.
 ///
 /// # Errors
 /// Returns an error if dispatch fails.
+#[allow(clippy::print_stdout)]
 pub async fn run(args: UnraidArgs, format: OutputFormat) -> Result<ExitCode> {
-    let action = args.action.unwrap_or_else(|| "help".to_string());
     let mut params = args
         .params
         .as_deref()
@@ -47,10 +51,14 @@ pub async fn run(args: UnraidArgs, format: OutputFormat) -> Result<ExitCode> {
             anyhow::bail!("--instance requires --params to be a JSON object");
         }
     }
+    if args.dry_run {
+        print_dry_run("unraid", &args.action, &params);
+        return Ok(ExitCode::SUCCESS);
+    }
     run_confirmable_action_command(
         "unraid",
         ACTIONS,
-        action,
+        args.action,
         params,
         args.yes,
         format,

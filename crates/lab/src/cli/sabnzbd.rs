@@ -1,4 +1,4 @@
-//! `lab sabnzbd` — CLI shim for the `SABnzbd` service.
+//! `lab sabnzbd` — CLI shim for the SABnzbd service.
 //!
 //! Thin shim: parse action + JSON params, call the shared dispatcher,
 //! and format the result.
@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::cli::helpers::run_confirmable_action_command;
+use crate::cli::helpers::{action_parser, print_dry_run, run_confirmable_action_command};
 use crate::dispatch::sabnzbd::ACTIONS;
 use crate::output::OutputFormat;
 
@@ -16,15 +16,14 @@ use crate::output::OutputFormat;
 #[derive(Debug, Args)]
 pub struct SabnzbdArgs {
     /// Action to run (e.g. help).
-    pub action: Option<String>,
+    #[arg(default_value = "help", value_parser = action_parser(ACTIONS))]
+    pub action: String,
     /// Action-specific parameters as JSON.
     #[arg(long)]
     pub params: Option<String>,
-
     /// Skip confirmation for destructive actions.
     #[arg(short = 'y', long, alias = "no-confirm")]
     pub yes: bool,
-
     /// Print what would be done without executing.
     #[arg(long)]
     pub dry_run: bool,
@@ -34,37 +33,21 @@ pub struct SabnzbdArgs {
 ///
 /// # Errors
 /// Returns an error if dispatch fails.
-#[allow(clippy::print_stdout)]
 pub async fn run(args: SabnzbdArgs, format: OutputFormat) -> Result<ExitCode> {
-    let action = args.action.unwrap_or_else(|| "help".to_string());
     let params = args
         .params
         .as_deref()
         .map(serde_json::from_str)
         .transpose()?
-        .unwrap_or(serde_json::Value::Null);
-
+        .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
     if args.dry_run {
-        match format {
-            OutputFormat::Json => {
-                let v = serde_json::json!({"dry_run": true, "action": action, "params": params});
-                crate::output::print(&v, format)?;
-            }
-            OutputFormat::Human => {
-                println!(
-                    "[dry-run] would dispatch sabnzbd action `{}` with params: {}",
-                    action,
-                    serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
-                );
-            }
-        }
+        print_dry_run("sabnzbd", &args.action, &params);
         return Ok(ExitCode::SUCCESS);
     }
-
     run_confirmable_action_command(
         "sabnzbd",
         ACTIONS,
-        action,
+        args.action,
         params,
         args.yes,
         format,

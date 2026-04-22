@@ -27,6 +27,7 @@ pub fn print_dry_run(service: &str, action: &str, params: &Value) {
         serde_json::to_string(params).unwrap_or_else(|_| "{}".to_string())
     );
 }
+
 use crate::dispatch::gateway::current_gateway_manager;
 use crate::output::{OutputFormat, print};
 

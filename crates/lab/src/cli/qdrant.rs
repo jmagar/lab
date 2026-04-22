@@ -1,6 +1,6 @@
-//! `lab qdrant` — CLI stub (not yet implemented).
+//! `lab qdrant` — thin CLI shim for the Qdrant service.
 //!
-//! Thin shim: parse → MCP dispatch → format. Replace once SDK client is complete.
+//! Thin shim: parse → shared dispatch layer → format.
 //! See `radarr.rs` for the reference pattern.
 
 use std::process::ExitCode;
@@ -8,17 +8,25 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::cli::helpers::run_action_command;
+use crate::cli::helpers::{action_parser, print_dry_run, run_confirmable_action_command};
+use crate::dispatch::qdrant::ACTIONS;
 use crate::output::OutputFormat;
 
 /// `lab qdrant` arguments.
 #[derive(Debug, Args)]
 pub struct QdrantArgs {
     /// Action to run (e.g. help).
-    pub action: Option<String>,
+    #[arg(default_value = "help", value_parser = action_parser(ACTIONS))]
+    pub action: String,
     /// Action-specific parameters as JSON.
     #[arg(long)]
     pub params: Option<String>,
+    /// Skip confirmation for destructive actions.
+    #[arg(short = 'y', long, alias = "no-confirm")]
+    pub yes: bool,
+    /// Print what would be done without executing.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Run the `lab qdrant` subcommand.
@@ -26,21 +34,24 @@ pub struct QdrantArgs {
 /// # Errors
 /// Returns an error if dispatch fails.
 pub async fn run(args: QdrantArgs, format: OutputFormat) -> Result<ExitCode> {
-    let action = args.action.unwrap_or_else(|| "help".to_string());
     let params = args
         .params
         .as_deref()
         .map(serde_json::from_str)
         .transpose()?
         .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
-    run_action_command(
+    if args.dry_run {
+        print_dry_run("qdrant", &args.action, &params);
+        return Ok(ExitCode::SUCCESS);
+    }
+    run_confirmable_action_command(
         "qdrant",
-        action,
+        ACTIONS,
+        args.action,
         params,
+        args.yes,
         format,
-        |action, params| async move {
-            crate::mcp::services::qdrant::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::qdrant::dispatch(&action, params).await },
     )
     .await
 }
