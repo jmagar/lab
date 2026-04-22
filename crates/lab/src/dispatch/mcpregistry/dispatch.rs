@@ -1,3 +1,6 @@
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use lab_apis::mcpregistry::McpRegistryClient;
 use lab_apis::mcpregistry::types::ServerJSON;
 use serde_json::Value;
@@ -6,6 +9,24 @@ use crate::config;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
 use crate::dispatch::mcpregistry::{catalog::ACTIONS, client, params};
+
+// ── Sync rate-limit state ─────────────────────────────────────────────────────
+
+/// Guards against concurrent syncs. Set to `true` while a sync is in progress.
+/// Reset to `false` via `SyncGuard` RAII on completion or panic.
+static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// Tracks when the last successful sync completed.
+static LAST_SYNC_AT: OnceLock<std::sync::Mutex<Option<std::time::Instant>>> = OnceLock::new();
+
+/// RAII guard that resets `SYNC_IN_PROGRESS` to `false` on drop, even on panic.
+struct SyncGuard;
+
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        SYNC_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 pub async fn dispatch_with_client(

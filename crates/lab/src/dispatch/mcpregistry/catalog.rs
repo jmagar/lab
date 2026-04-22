@@ -29,7 +29,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "server.list",
-        description: "List MCP servers from the registry with optional search and pagination",
+        description: "List MCP servers from the registry with optional search and pagination. NOTE: this action calls the upstream registry directly (/v1 surface). Sort operates within the current page only. For full-dataset sort across all cached servers, use the /v0.1/servers GET surface.",
         destructive: false,
         returns: "ServerListResponse",
         params: &[
@@ -67,19 +67,19 @@ pub const ACTIONS: &[ActionSpec] = &[
                 name: "sort_by",
                 ty: "string",
                 required: false,
-                description: "Sort results by field: `updated` (default when set), `published`, or `name`",
+                description: "Sort results by field: `updated` (default when set), `published`, or `name`. NOTE: sort operates within the current page only on this /v1 surface. For full-dataset sort, use /v0.1/servers.",
             },
             ParamSpec {
                 name: "order",
                 ty: "string",
                 required: false,
-                description: "Sort direction: `desc` (default) or `asc`",
+                description: "Sort direction: `desc` (default) or `asc`. See sort_by note above.",
             },
         ],
     },
     ActionSpec {
         name: "server.get",
-        description: "Get details for a single MCP server by its registry name",
+        description: "Get details for a single MCP server by its registry name. Calls the upstream registry directly (/v1 surface). For a store-local lookup, use the /v0.1/servers/:name GET endpoint.",
         destructive: false,
         returns: "ServerResponse",
         params: &[ParamSpec {
@@ -91,7 +91,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "server.versions",
-        description: "List available versions for a named MCP server",
+        description: "List available versions for a named MCP server. Calls the upstream registry directly (/v1 surface). For store-local version history, use the /v0.1/servers/:name/versions GET endpoint.",
         destructive: false,
         returns: "ServerListResponse",
         params: &[ParamSpec {
@@ -176,5 +176,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Must be true to confirm the destructive uninstall operation",
             },
         ],
+    },
+    ActionSpec {
+        name: "sync",
+        description: "Trigger an immediate upstream sync of the local registry store. Rate-limited: returns rate_limited if called within 60 seconds of the last sync. No-op if registry store is not initialized.",
+        destructive: false,
+        returns: "SyncResult",
+        params: &[],
     },
 ];

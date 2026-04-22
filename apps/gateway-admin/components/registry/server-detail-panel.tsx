@@ -28,6 +28,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { safeHref } from '@/lib/utils/safe-href'
+import { githubAvatarFromRepoUrl } from '@/lib/github-avatar'
 import {
   formatLocalDateTimePrecise,
   formatUtcTooltip,
@@ -103,6 +104,8 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   const primaryIcon = icons[0] ?? null
   const extraIcons = icons.slice(1)
   const repoHref = safeHref(server.repository?.url)
+  const ghAvatar = githubAvatarFromRepoUrl(server.repository?.url)
+  const headerAvatarSrc = ghAvatar ?? safeHref(primaryIcon?.src) ?? null
   const websiteHref = safeHref(server.websiteUrl)
   const schemaHref = safeHref(server.$schema)
   const status = extensions?.status ?? null
@@ -112,16 +115,22 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
     <>
       <DialogHeader className="shrink-0 space-y-0 border-b border-aurora-border-strong/60 px-6 py-5">
         <div className="flex items-start gap-4">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-aurora-2 border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
-            {primaryIcon ? (
-              <img
-                src={safeHref(primaryIcon.src) ?? undefined}
-                alt=""
-                className="size-8 rounded object-contain"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-                onError={(e) => { e.currentTarget.style.display = 'none' }}
-              />
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-aurora-2 border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
+            {headerAvatarSrc ? (
+              <>
+                <img
+                  src={headerAvatarSrc}
+                  alt=""
+                  className="size-full object-cover"
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                    ;(e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
+                  }}
+                />
+                <Package className="size-6 text-aurora-text-muted" style={{ display: 'none' }} />
+              </>
             ) : (
               <Package className="size-6 text-aurora-text-muted" />
             )}
