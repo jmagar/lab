@@ -7,6 +7,7 @@ import {
   Cable,
   LayoutDashboard,
   Package,
+  ShoppingBag,
   Settings,
   Activity,
   ScrollText,
@@ -50,6 +51,11 @@ export const primarySidebarNavigation = [
     title: 'Registry',
     url: '/registry',
     icon: Package,
+  },
+  {
+    title: 'Marketplace',
+    url: '/marketplace',
+    icon: ShoppingBag,
   },
   {
     title: 'Setup',
