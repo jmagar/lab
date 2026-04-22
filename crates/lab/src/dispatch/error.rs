@@ -365,8 +365,14 @@ impl From<lab_apis::mcpregistry::error::RegistryError> for ToolError {
 #[cfg(feature = "mcpregistry")]
 impl From<crate::dispatch::mcpregistry::store::RegistryStoreError> for ToolError {
     fn from(e: crate::dispatch::mcpregistry::store::RegistryStoreError) -> Self {
+        use crate::dispatch::mcpregistry::store::RegistryStoreError;
+        let sdk_kind = match &e {
+            RegistryStoreError::Upstream(_) => "network_error",
+            RegistryStoreError::InvalidCursor(_) => "invalid_param",
+            _ => "internal_error",
+        };
         Self::Sdk {
-            sdk_kind: "internal_error".to_string(),
+            sdk_kind: sdk_kind.to_string(),
             message: format!("registry store: {e}"),
         }
     }
