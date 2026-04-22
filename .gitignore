@@ -28,6 +28,7 @@ backups/
 .omc/
 .lavra/
 .beads/
+plugins/
 .dolt/
 *.db
 *.db-shm
