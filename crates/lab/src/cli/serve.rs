@@ -146,6 +146,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let bearer_token = http_token();
     let auth_config =
         resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
+    // SECURITY: Only log metadata — never resolved secret values.
+    // Safe fields: enum names, booleans, counts. Forbidden: URL strings, token values, key material.
     tracing::info!(
         subsystem = "api_server",
         phase = "auth.config",

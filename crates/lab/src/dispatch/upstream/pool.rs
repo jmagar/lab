@@ -61,12 +61,30 @@ fn upstream_transport(config: &UpstreamConfig) -> &'static str {
     }
 }
 
-fn upstream_target(config: &UpstreamConfig) -> String {
-    config
-        .url
-        .clone()
-        .or_else(|| config.command.clone())
-        .unwrap_or_else(|| "<missing>".to_string())
+/// Strip query strings and fragments from resource URIs before logging.
+///
+/// SECURITY: Upstream MCP servers may return resource URIs containing pre-signed
+/// tokens or OAuth credentials in query parameters. Only scheme+host+path is safe to log.
+fn redact_resource_uri_for_logging(uri: &str) -> &str {
+    let cut = uri.find('?').or_else(|| uri.find('#')).unwrap_or(uri.len());
+    &uri[..cut]
+}
+
+fn upstream_target_redacted(config: &UpstreamConfig) -> String {
+    // SECURITY: Never log raw URLs — they may contain userinfo credentials.
+    // Strip username/password before logging; log the command path for stdio upstreams.
+    match &config.url {
+        Some(url_str) => {
+            if let Ok(mut parsed) = url::Url::parse(url_str) {
+                let _ = parsed.set_username("");
+                let _ = parsed.set_password(None);
+                parsed.to_string()
+            } else {
+                "<invalid-url>".to_string()
+            }
+        }
+        None => config.command.clone().unwrap_or_else(|| "<missing>".to_string()),
+    }
 }
 
 /// Collect upstream peers for a capability in deterministic name order.
@@ -384,7 +402,7 @@ impl UpstreamPool {
                         tracing::info!(
                             upstream = %name,
                             transport = upstream_transport(&config),
-                            target = %upstream_target(&config),
+                            target = %upstream_target_redacted(&config),
                             tool_count = tools.len(),
                             resource_count,
                             prompt_count,
@@ -408,7 +426,7 @@ impl UpstreamPool {
                         tracing::warn!(
                             upstream = %name,
                             transport = upstream_transport(&config),
-                            target = %upstream_target(&config),
+                            target = %upstream_target_redacted(&config),
                             error = %error,
                             "upstream discovery failed"
                         );
@@ -422,7 +440,7 @@ impl UpstreamPool {
                         tracing::warn!(
                             upstream = %name,
                             transport = upstream_transport(&config),
-                            target = %upstream_target(&config),
+                            target = %upstream_target_redacted(&config),
                             timeout_secs = DISCOVERY_TIMEOUT.as_secs(),
                             "upstream discovery timed out"
                         );
@@ -1258,7 +1276,7 @@ impl UpstreamPool {
             upstream = %upstream_name,
             capability = "resources",
             operation = "resource.read",
-            resource_uri = %uri,
+            resource_uri = redact_resource_uri_for_logging(uri),
             subject_scoped = false,
             "upstream.request.start"
         );
@@ -1281,7 +1299,7 @@ impl UpstreamPool {
                     upstream = %upstream_name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = false,
                     elapsed_ms = start.elapsed().as_millis(),
                     kind = "upstream_error",
@@ -1309,7 +1327,7 @@ impl UpstreamPool {
                     upstream = %upstream_name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = false,
                     elapsed_ms = start.elapsed().as_millis(),
                     kind = "response_too_large",
@@ -1327,7 +1345,7 @@ impl UpstreamPool {
                 upstream = %upstream_name,
                 capability = "resources",
                 operation = "resource.read",
-                resource_uri = %uri,
+                resource_uri = redact_resource_uri_for_logging(uri),
                 subject_scoped = false,
                 elapsed_ms = start.elapsed().as_millis(),
                 response_bytes = response_size,
@@ -1353,7 +1371,7 @@ impl UpstreamPool {
             upstream = %config.name,
             capability = "resources",
             operation = "resource.read",
-            resource_uri = %uri,
+            resource_uri = redact_resource_uri_for_logging(uri),
             subject_scoped = true,
             transport = upstream_transport(config),
             "upstream.request.start"
@@ -1377,7 +1395,7 @@ impl UpstreamPool {
                     upstream = %config.name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = true,
                     transport = upstream_transport(config),
                     elapsed_ms = start.elapsed().as_millis(),
@@ -1411,7 +1429,7 @@ impl UpstreamPool {
                         upstream = %config.name,
                         capability = "resources",
                         operation = "resource.read",
-                        resource_uri = %uri,
+                        resource_uri = redact_resource_uri_for_logging(uri),
                         subject_scoped = true,
                         transport = upstream_transport(config),
                         elapsed_ms = start.elapsed().as_millis(),
@@ -1431,7 +1449,7 @@ impl UpstreamPool {
                     upstream = %config.name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = true,
                     transport = upstream_transport(config),
                     elapsed_ms = start.elapsed().as_millis(),
@@ -1451,7 +1469,7 @@ impl UpstreamPool {
                     upstream = %config.name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = true,
                     transport = upstream_transport(config),
                     elapsed_ms = start.elapsed().as_millis(),
