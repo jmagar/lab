@@ -35,7 +35,7 @@ export function WarningsPill({ warnings, className }: WarningsPillProps) {
         <TooltipContent side="top" className="max-w-xs">
           <div className="space-y-1">
             {leadWarning && (
-              <p className="text-xs font-medium text-foreground">{leadWarning.code}</p>
+              <p className="text-xs font-medium text-aurora-text-primary">{leadWarning.code}</p>
             )}
             {warnings.slice(0, 3).map((warning, index) => (
               <p key={index} className="text-xs">

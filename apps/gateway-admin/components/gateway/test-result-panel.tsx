@@ -64,7 +64,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                     ? 'Connection Successful with Warnings'
                     : 'Connection Failed'}
               </p>
-              <p className="text-sm text-muted-foreground mt-0.5">
+              <p className="text-sm text-aurora-text-muted mt-0.5">
                 {testResult.message}
               </p>
               {testResult.detail && (
@@ -78,7 +78,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                 </p>
               )}
               {(isWarning || !testResult.success) && (
-                <p className="mt-2 text-xs text-muted-foreground">
+                <p className="mt-2 text-xs text-aurora-text-muted">
                   {isWarning
                     ? 'The gateway connected, but at least one optional MCP primitive could not be discovered. The note above is the exact operator-facing guidance returned by the gateway backend.'
                     : 'Check the gateway transport, auth source, and any required stdio environment variables. The probe message above is the exact last failure returned by the gateway backend.'}
@@ -93,7 +93,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
             testResult.discovered_resources !== undefined ||
             testResult.discovered_prompts !== undefined) && (
             <div className="space-y-3">
-              <h4 className="text-sm font-medium text-muted-foreground">
+              <h4 className="text-sm font-medium text-aurora-text-muted">
                 {isSuccess ? 'Connection Details' : 'Probe Details'}
               </h4>
               
@@ -101,7 +101,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                 {testResult.latency_ms !== undefined && (
                   <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <Clock className="size-4 text-muted-foreground" />
+                      <Clock className="size-4 text-aurora-text-muted" />
                       <span>Latency</span>
                     </div>
                     <span className="text-sm font-medium tabular-nums">
@@ -113,7 +113,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                 {testResult.discovered_tools !== undefined && (
                   <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <Wrench className="size-4 text-muted-foreground" />
+                      <Wrench className="size-4 text-aurora-text-muted" />
                       <span>Discovered Tools</span>
                     </div>
                     <span className="text-sm font-medium tabular-nums">
@@ -125,7 +125,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                 {testResult.discovered_resources !== undefined && (
                   <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <FileText className="size-4 text-muted-foreground" />
+                      <FileText className="size-4 text-aurora-text-muted" />
                       <span>Discovered Resources</span>
                     </div>
                     <span className="text-sm font-medium tabular-nums">
@@ -137,7 +137,7 @@ export function TestResultPanel({ result, onClose }: TestResultPanelProps) {
                 {testResult.discovered_prompts !== undefined && (
                   <div className="flex items-center justify-between rounded-lg border px-4 py-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <MessageSquare className="size-4 text-muted-foreground" />
+                      <MessageSquare className="size-4 text-aurora-text-muted" />
                       <span>Discovered Prompts</span>
                     </div>
                     <span className="text-sm font-medium tabular-nums">

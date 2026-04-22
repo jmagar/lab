@@ -112,7 +112,7 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
     <>
       <DialogHeader className="shrink-0 space-y-0 border-b border-aurora-border-strong/60 px-6 py-5">
         <div className="flex items-start gap-4">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-aurora-2 border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
             {primaryIcon ? (
               <img
                 src={safeHref(primaryIcon.src) ?? undefined}

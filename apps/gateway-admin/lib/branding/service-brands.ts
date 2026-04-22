@@ -37,7 +37,8 @@ export function isServiceKey(value: string): value is ServiceKey {
   return (SERVICE_KEYS as readonly string[]).includes(value)
 }
 
-const siw = (slug: string) => `https://cdn.simpleicons.org/${slug}/ffffff`
+const selfhst = (slug: string) =>
+  `https://cdn.jsdelivr.net/gh/selfhst/icons@main/png/${slug}.png`
 
 export const SERVICE_BRAND_FALLBACK = '#1d3d4e'
 
@@ -66,27 +67,27 @@ export const SERVICE_BRANDS: Record<ServiceKey, string> = {
 }
 
 export const SERVICE_LOGOS: Record<ServiceKey, string | null> = {
-  apprise: null,
-  arcane: null,
-  bytestash: null,
-  gotify: null,
-  linkding: null,
-  memos: null,
-  tei: null,
-  openai: siw('openai'),
-  overseerr: siw('overseerr'),
-  paperless: siw('paperlessngx'),
-  plex: siw('plex'),
-  prowlarr: siw('prowlarr'),
-  qbittorrent: siw('qbittorrent'),
-  qdrant: siw('qdrant'),
-  radarr: siw('radarr'),
-  sabnzbd: siw('sabnzbd'),
-  sonarr: siw('sonarr'),
-  tailscale: siw('tailscale'),
-  tautulli: siw('tautulli'),
-  unifi: siw('ubiquiti'),
-  unraid: siw('unraid'),
+  apprise:     selfhst('apprise'),
+  arcane:      selfhst('arcane'),
+  bytestash:   selfhst('bytestash'),
+  gotify:      selfhst('gotify'),
+  linkding:    selfhst('linkding'),
+  memos:       selfhst('memos'),
+  tei:         null,
+  openai:      selfhst('openai'),
+  overseerr:   selfhst('overseerr'),
+  paperless:   selfhst('paperless-ngx'),
+  plex:        selfhst('plex'),
+  prowlarr:    selfhst('prowlarr'),
+  qbittorrent: selfhst('qbittorrent'),
+  qdrant:      selfhst('qdrant'),
+  radarr:      selfhst('radarr'),
+  sabnzbd:     selfhst('sabnzbd'),
+  sonarr:      selfhst('sonarr'),
+  tailscale:   selfhst('tailscale'),
+  tautulli:    selfhst('tautulli'),
+  unifi:       selfhst('ubiquiti-unifi'),
+  unraid:      selfhst('unraid'),
 }
 
 export const SERVICE_SVG_FALLBACKS: Partial<Record<ServiceKey, string>> = {

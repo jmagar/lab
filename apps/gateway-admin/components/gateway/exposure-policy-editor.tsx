@@ -161,10 +161,10 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
 
   if (policyLoading) {
     return (
-      <div className="rounded-lg border bg-card p-6">
+      <div className="rounded-lg border bg-aurora-panel-medium p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-6 w-48 bg-muted rounded" />
-          <div className="h-24 bg-muted rounded" />
+          <div className="h-6 w-48 bg-aurora-control-surface rounded" />
+          <div className="h-24 bg-aurora-control-surface rounded" />
         </div>
       </div>
     )
@@ -172,11 +172,11 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border bg-card p-6">
+      <div className="rounded-lg border bg-aurora-panel-medium p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-lg font-semibold">Exposure Policy</h2>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-aurora-text-muted mt-1">
               Control which MCP tools are republished downstream
             </p>
           </div>
@@ -202,13 +202,13 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
               "flex size-10 items-center justify-center rounded-lg transition-colors",
               mode === 'expose_all' 
                 ? 'bg-success/15 text-success' 
-                : 'bg-muted text-muted-foreground'
+                : 'bg-aurora-control-surface text-aurora-text-muted'
             )}>
               <Eye className="size-5" />
             </div>
             <div>
               <Label htmlFor="expose-mode" className="font-medium">Expose All Tools</Label>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-aurora-text-muted">
                 All discovered tools will be available downstream
               </p>
             </div>
@@ -224,21 +224,21 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
         {mode === 'allowlist' && !isLabGateway && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <EyeOff className="size-4 text-muted-foreground" />
+              <EyeOff className="size-4 text-aurora-text-muted" />
               <Label className="font-medium">Allowlist Patterns</Label>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <HelpCircle className="size-4 text-muted-foreground cursor-help" />
+                    <HelpCircle className="size-4 text-aurora-text-muted cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent side="right" className="max-w-xs">
                     <p className="text-sm">
                       Use exact tool names or wildcard patterns:
                     </p>
                     <ul className="text-sm mt-2 space-y-1">
-                      <li><code className="bg-muted px-1 rounded">read_file</code> - exact match</li>
-                      <li><code className="bg-muted px-1 rounded">search_*</code> - prefix wildcard</li>
-                      <li><code className="bg-muted px-1 rounded">*</code> - match all</li>
+                      <li><code className="bg-aurora-control-surface px-1 rounded">read_file</code> - exact match</li>
+                      <li><code className="bg-aurora-control-surface px-1 rounded">search_*</code> - prefix wildcard</li>
+                      <li><code className="bg-aurora-control-surface px-1 rounded">*</code> - match all</li>
                     </ul>
                   </TooltipContent>
                 </Tooltip>
@@ -263,9 +263,9 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
             {/* Pattern list */}
             {patterns.length === 0 ? (
               <div className="rounded-lg border border-dashed p-8 text-center">
-                <EyeOff className="size-8 mx-auto text-muted-foreground mb-3 opacity-50" />
-                <p className="text-muted-foreground">No patterns configured</p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <EyeOff className="size-8 mx-auto text-aurora-text-muted mb-3 opacity-50" />
+                <p className="text-aurora-text-muted">No patterns configured</p>
+                <p className="text-sm text-aurora-text-muted mt-1">
                   Add patterns to specify which tools should be exposed
                 </p>
               </div>
@@ -274,12 +274,12 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                 {patterns.map((pattern, index) => (
                   <div
                     key={index}
-                    className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 group"
+                    className="flex items-center gap-2 rounded-lg border bg-aurora-control-surface/30 px-3 py-2 group"
                   >
-                    <GripVertical className="size-4 text-muted-foreground opacity-50" />
+                    <GripVertical className="size-4 text-aurora-text-muted opacity-50" />
                     <div className="flex items-center gap-2 flex-1">
                       {pattern.includes('*') && (
-                        <Asterisk className="size-3.5 text-muted-foreground" />
+                        <Asterisk className="size-3.5 text-aurora-text-muted" />
                       )}
                       <code className="text-sm font-mono">{pattern}</code>
                     </div>
@@ -304,7 +304,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
 
       {/* Preview Panel */}
       {isLabGateway && mode === 'allowlist' && (
-        <div className="rounded-lg border bg-card p-6">
+        <div className="rounded-lg border bg-aurora-panel-medium p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Available Actions</h3>
             <Badge variant="secondary">
@@ -319,7 +319,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                 return (
                   <label
                     key={action.name}
-                    className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/30"
+                    className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-aurora-control-surface/30"
                   >
                     <Checkbox
                       checked={checked}
@@ -334,7 +334,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground">{action.description}</p>
+                      <p className="text-sm text-aurora-text-muted">{action.description}</p>
                     </div>
                   </label>
                 )
@@ -344,11 +344,11 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
       )}
 
       {!isLabGateway && mode === 'allowlist' && patterns.length > 0 && (
-        <div className="rounded-lg border bg-card p-6">
+        <div className="rounded-lg border bg-aurora-panel-medium p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Preview</h3>
             {isPreviewLoading && (
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              <Loader2 className="size-4 animate-spin text-aurora-text-muted" />
             )}
           </div>
 
@@ -364,7 +364,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-lg border p-3">
-                  <EyeOff className="size-5 text-muted-foreground" />
+                  <EyeOff className="size-5 text-aurora-text-muted" />
                   <div>
                     <p className={cn(AURORA_DISPLAY_NUMBER, 'text-aurora-text-primary')}>{preview.filtered_count}</p>
                     <p className="text-xs text-aurora-text-muted">Filtered</p>
@@ -388,7 +388,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
                     <AlertTriangle className="size-4" />
                     <span className="text-sm font-semibold">Unmatched Patterns</span>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-3">
+                  <p className="text-sm text-aurora-text-muted mb-3">
                     These patterns don&apos;t match any discovered tools:
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -426,7 +426,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
               {/* Filtered tools */}
               {preview.filtered_tools.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-muted-foreground">
+                  <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-aurora-text-muted">
                     <EyeOff className="size-4" />
                     Filtered Tools
                   </h4>
@@ -446,7 +446,7 @@ export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
               )}
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-8 text-aurora-text-muted">
               <p>Preview will appear when patterns are configured</p>
             </div>
           )}

@@ -700,7 +700,7 @@ export function GatewayFormDialog({
                   'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                   envDrawerOpen
                     ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-background text-foreground hover:bg-accent',
+                    : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-primary hover:bg-accent',
                 )}
               >
                 ENV
@@ -712,7 +712,7 @@ export function GatewayFormDialog({
                   'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                   jsonDrawerOpen
                     ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-background text-foreground hover:bg-accent',
+                    : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-primary hover:bg-accent',
                 )}
               >
                 JSON
@@ -753,16 +753,16 @@ export function GatewayFormDialog({
                       type="button"
                       onClick={() => setSelectedService(svc.key)}
                       className={cn(
-                        'flex flex-col items-center gap-1.5 rounded-xl border p-2 text-center transition-colors hover:border-primary/60 hover:bg-accent/30',
+                        'flex flex-col items-center gap-1.5 rounded-aurora-2 border p-2 text-center transition-colors hover:border-primary/60 hover:bg-accent/30',
                         selectedService === svc.key
                           ? 'border-primary bg-primary/10'
-                          : 'border-border bg-background',
+                          : 'border-aurora-border-strong bg-aurora-page-bg',
                       )}
                     >
                       <ServiceIconBox serviceKey={svc.key} />
                       <div className="min-w-0 w-full">
                         <p className="text-xs font-medium leading-tight truncate">{svc.display_name}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{svc.category}</p>
+                        <p className="text-[10px] text-aurora-text-muted truncate">{svc.category}</p>
                       </div>
                     </button>
                   ))}
@@ -812,7 +812,7 @@ export function GatewayFormDialog({
                 <Label htmlFor="enable-virtual-server" className="font-medium">
                   Enable gateway
                 </Label>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-aurora-text-muted">
                   Save canonical service config and expose this Lab service as a visible gateway.
                 </p>
               </div>
@@ -850,18 +850,18 @@ export function GatewayFormDialog({
               onValueChange={(value) => setTransport(value as TransportType)}
               className="grid grid-cols-1 sm:grid-cols-2 gap-3"
             >
-              <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="transport-http">
+              <label className="flex items-start gap-3 rounded-aurora-2 border p-4 cursor-pointer" htmlFor="transport-http">
                 <RadioGroupItem value="http" id="transport-http" />
                 <div className="space-y-0.5">
                   <span className="font-medium text-sm">HTTP</span>
-                  <p className="text-sm text-muted-foreground">Remote server via HTTP or SSE</p>
+                  <p className="text-sm text-aurora-text-muted">Remote server via HTTP or SSE</p>
                 </div>
               </label>
-              <label className="flex items-start gap-3 rounded-xl border p-4 cursor-pointer" htmlFor="transport-stdio">
+              <label className="flex items-start gap-3 rounded-aurora-2 border p-4 cursor-pointer" htmlFor="transport-stdio">
                 <RadioGroupItem value="stdio" id="transport-stdio" />
                 <div className="space-y-0.5">
                   <span className="font-medium text-sm">stdio</span>
-                  <p className="text-sm text-muted-foreground">Local process via stdin/stdout</p>
+                  <p className="text-sm text-aurora-text-muted">Local process via stdin/stdout</p>
                 </div>
               </label>
             </RadioGroup>
@@ -879,7 +879,7 @@ export function GatewayFormDialog({
                       className={`${errors.url ? 'border-destructive' : ''} pr-8`}
                     />
                     {isProbing && (
-                      <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground animate-spin pointer-events-none" />
+                      <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-aurora-text-muted animate-spin pointer-events-none" />
                     )}
                     {!isProbing && oauthProbed?.oauth_discovered && (
                       <CheckCircle2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 text-aurora-success pointer-events-none" />
@@ -929,9 +929,9 @@ export function GatewayFormDialog({
                   <SelectTrigger className="w-full">
                     <SelectValue>
                       <span className="flex items-center gap-2">
-                        {authMode === 'none' && <ShieldOff className="size-4 text-muted-foreground" />}
-                        {authMode === 'bearer' && <KeyRound className="size-4 text-muted-foreground" />}
-                        {authMode === 'oauth' && <ShieldCheck className="size-4 text-muted-foreground" />}
+                        {authMode === 'none' && <ShieldOff className="size-4 text-aurora-text-muted" />}
+                        {authMode === 'bearer' && <KeyRound className="size-4 text-aurora-text-muted" />}
+                        {authMode === 'oauth' && <ShieldCheck className="size-4 text-aurora-text-muted" />}
                         {authMode === 'none' ? 'No auth' : authMode === 'bearer' ? 'Bearer token' : 'OAuth (MCP)'}
                         {authMode === 'oauth' && oauthProbed?.oauth_discovered && (
                           <Badge variant="secondary" className="ml-1 text-xs">Detected</Badge>
@@ -942,19 +942,19 @@ export function GatewayFormDialog({
                   <SelectContent style={{ zIndex: 200 }}>
                     <SelectItem value="none">
                       <span className="flex items-center gap-2">
-                        <ShieldOff className="size-4 text-muted-foreground" />
+                        <ShieldOff className="size-4 text-aurora-text-muted" />
                         No auth
                       </span>
                     </SelectItem>
                     <SelectItem value="bearer">
                       <span className="flex items-center gap-2">
-                        <KeyRound className="size-4 text-muted-foreground" />
+                        <KeyRound className="size-4 text-aurora-text-muted" />
                         Bearer token
                       </span>
                     </SelectItem>
                     <SelectItem value="oauth">
                       <span className="flex items-center gap-2">
-                        <ShieldCheck className="size-4 text-muted-foreground" />
+                        <ShieldCheck className="size-4 text-aurora-text-muted" />
                         OAuth (MCP)
                       </span>
                     </SelectItem>
@@ -984,7 +984,7 @@ export function GatewayFormDialog({
                       </div>
                     ) : (
                       <>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-aurora-text-muted">
                           {!url.trim()
                             ? 'Enter a URL above, then connect.'
                             : oauthState.kind === 'authorizing'
@@ -1016,13 +1016,13 @@ export function GatewayFormDialog({
                 {errors.oauth && <p className="text-sm text-destructive">{errors.oauth}</p>}
 
                 {authMode === 'bearer' && (
-                  <div className="space-y-4 rounded-xl border p-4">
+                  <div className="space-y-4 rounded-aurora-2 border p-4">
                     <RadioGroup value={authSource} onValueChange={(value) => setAuthSource(value as GatewayAuthSource)}>
                       <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer" htmlFor="auth-source-paste">
                         <RadioGroupItem value="paste" id="auth-source-paste" />
                         <div className="space-y-1">
                           <span className="font-medium text-sm">Paste token</span>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-aurora-text-muted">
                             Paste the secret here and Labby will store it in <code>~/.lab/.env</code> for you.
                           </p>
                         </div>
@@ -1031,7 +1031,7 @@ export function GatewayFormDialog({
                         <RadioGroupItem value="env" id="auth-source-env" />
                         <div className="space-y-1">
                           <span className="font-medium text-sm">Use existing env var</span>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-aurora-text-muted">
                             Reference an existing environment variable instead of entering a secret here.
                           </p>
                         </div>
@@ -1060,7 +1060,7 @@ export function GatewayFormDialog({
                           )}
                         </Field>
                         <details className="group">
-                          <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+                          <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-sm text-aurora-text-muted [&::-webkit-details-marker]:hidden">
                             <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
                             Advanced
                           </summary>
@@ -1114,7 +1114,7 @@ export function GatewayFormDialog({
                 <Label htmlFor="proxy-resources" className="font-medium">
                   Proxy Resources
                 </Label>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-aurora-text-muted">
                   Forward MCP resource requests to this gateway
                 </p>
               </div>
@@ -1130,7 +1130,7 @@ export function GatewayFormDialog({
                 <Label htmlFor="proxy-prompts" className="font-medium">
                   Proxy Prompts
                 </Label>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-aurora-text-muted">
                   Forward MCP prompt requests to this gateway
                 </p>
               </div>
@@ -1147,7 +1147,7 @@ export function GatewayFormDialog({
         {/* ENV drawer */}
         <div
           className={cn(
-            'absolute top-0 bottom-0 bg-background border-l border-border rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
             'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
             envDrawerOpen
               ? 'w-[300px] max-[600px]:w-full max-[600px]:h-full'
@@ -1157,19 +1157,19 @@ export function GatewayFormDialog({
           aria-hidden={!envDrawerOpen}
         >
           <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-aurora-text-muted">
               Paste <code>KEY=VALUE</code> lines — Lab detects the service and can pre-fill the form.
             </p>
             <div className="relative">
               <textarea
-                className="w-full min-h-[180px] rounded-md border border-border bg-background px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full min-h-[180px] rounded-md border border-aurora-border-strong bg-aurora-page-bg px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder={'RADARR_URL=http://localhost:7878\nRADARR_API_KEY=abc123'}
                 value={envText}
                 onChange={(e) => setEnvText(e.target.value)}
               />
               {(() => {
                 if (!envText.trim()) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-muted-foreground">Waiting</span>
+                  return <span className="absolute top-2 right-2 text-[10px] text-aurora-text-muted">Waiting</span>
                 }
                 const { detectedServices } = parseEnvText(envText)
                 if (detectedServices.length > 0) {
@@ -1196,10 +1196,10 @@ export function GatewayFormDialog({
               )
             })()}
           </div>
-          <div className="flex gap-2 border-t border-border p-3">
+          <div className="flex gap-2 border-t border-aurora-border-strong p-3">
             <button
               type="button"
-              className="flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+              className="flex-1 rounded-md border border-aurora-border-strong px-3 py-1.5 text-xs hover:bg-accent transition-colors"
               onClick={async () => {
                 try {
                   const text = await navigator.clipboard.readText()
@@ -1225,7 +1225,7 @@ export function GatewayFormDialog({
         {/* JSON drawer */}
         <div
           className={cn(
-            'absolute top-0 bottom-0 bg-background border-l border-border rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
             'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
             jsonDrawerOpen
               ? 'w-[380px] max-[600px]:w-full max-[600px]:h-full'
@@ -1235,11 +1235,11 @@ export function GatewayFormDialog({
           aria-hidden={!jsonDrawerOpen}
         >
           <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-aurora-text-muted">
               Live editor — changes here update the form, and form changes update this JSON automatically.
             </p>
             <div
-              className="relative min-h-[240px] rounded-md border border-border bg-[var(--aurora-control-surface)] overflow-hidden focus-within:ring-2 focus-within:ring-[var(--aurora-accent-primary)]/34"
+              className="relative min-h-[240px] rounded-md border border-aurora-border-strong bg-[var(--aurora-control-surface)] overflow-hidden focus-within:ring-2 focus-within:ring-[var(--aurora-accent-primary)]/34"
             >
               {/* Syntax-highlighted backing layer — clipped by parent overflow:hidden */}
               <pre
@@ -1270,7 +1270,7 @@ export function GatewayFormDialog({
               />
               {(() => {
                 if (!jsonText.trim()) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-muted-foreground z-20">Waiting</span>
+                  return <span className="absolute top-2 right-2 text-[10px] text-aurora-text-muted z-20">Waiting</span>
                 }
                 if (jsonValid) {
                   return <span className="absolute top-2 right-2 text-[10px] text-aurora-success z-20">Valid</span>
@@ -1283,16 +1283,16 @@ export function GatewayFormDialog({
                 <span className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary">
                   {name}
                 </span>
-                <span className="rounded-full bg-muted border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                <span className="rounded-full bg-aurora-control-surface border border-aurora-border-strong px-2 py-0.5 text-xs text-aurora-text-muted">
                   {transport}
                 </span>
               </div>
             )}
           </div>
-          <div className="flex gap-2 border-t border-border p-3">
+          <div className="flex gap-2 border-t border-aurora-border-strong p-3">
             <button
               type="button"
-              className="flex-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+              className="flex-1 rounded-md border border-aurora-border-strong px-3 py-1.5 text-xs hover:bg-accent transition-colors"
               onClick={async () => {
                 try {
                   const text = await navigator.clipboard.readText()

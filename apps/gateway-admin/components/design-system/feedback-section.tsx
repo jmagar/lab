@@ -80,9 +80,9 @@ export function FeedbackSection() {
                 </div>
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
-                <Skeleton className="h-18 rounded-xl bg-aurora-panel-medium" />
-                <Skeleton className="h-18 rounded-xl bg-aurora-panel-medium" />
-                <Skeleton className="h-18 rounded-xl bg-aurora-panel-medium" />
+                <Skeleton className="h-18 rounded-aurora-2 bg-aurora-panel-medium" />
+                <Skeleton className="h-18 rounded-aurora-2 bg-aurora-panel-medium" />
+                <Skeleton className="h-18 rounded-aurora-2 bg-aurora-panel-medium" />
               </div>
             </div>
 

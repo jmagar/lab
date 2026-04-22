@@ -298,7 +298,7 @@ export function LogConsole() {
               <Copy className="size-4" />
               Copy query
             </Button>
-            {copyStatus ? <span className="text-xs text-muted-foreground">{copyStatus}</span> : null}
+            {copyStatus ? <span className="text-xs text-aurora-text-muted">{copyStatus}</span> : null}
             <Button variant="outline" size="sm" asChild>
               <Link href="/activity">Back to activity</Link>
             </Button>

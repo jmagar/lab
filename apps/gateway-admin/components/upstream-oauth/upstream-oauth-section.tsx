@@ -25,7 +25,7 @@ export function UpstreamOauthSection() {
     <section>
       {header}
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {isLoading && <p className="text-sm text-aurora-text-muted">Loading…</p>}
 
       {error && (
         <p className="text-sm text-destructive">
@@ -42,7 +42,7 @@ export function UpstreamOauthSection() {
       )}
 
       {!isLoading && !error && (!upstreams || upstreams.length === 0) && (
-        <p className="text-sm text-muted-foreground">No upstream connections configured.</p>
+        <p className="text-sm text-aurora-text-muted">No upstream connections configured.</p>
       )}
 
       <ConnectUpstreamDialog

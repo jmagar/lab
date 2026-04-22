@@ -77,6 +77,9 @@ Use `Inter` for:
 
 ### Typography Ramp
 
+When a call site uses an `AURORA_DISPLAY_*` token, the token is the **complete** specification. Do not override its size (`text-2xl`, `text-3xl`), weight (`font-semibold`, `font-bold`), or tracking (`tracking-tight`) via additional classes — Tailwind's merge order will silently win and your "token-based" typography will render as something else entirely. Color is the only permitted companion class (e.g. `text-aurora-text-primary`, `text-aurora-warn`). If you need a size the ramp doesn't cover, add a new ramp slot in this document and in `components/aurora/tokens.ts`; do not patch it per call site.
+
+
 #### Display 1
 
 - family: `Manrope`
@@ -136,6 +139,8 @@ Use `Inter` for:
 - weight: `700`
 - tracking: `0.14em` to `0.18em`
 - use uppercase
+
+The single sanctioned Eyebrow implementation is `AURORA_MUTED_LABEL`. Do **not** hand-roll eyebrow styling with `text-xs uppercase tracking-*` — the 1px size delta, the 500-vs-700 weight gap, and the arbitrary tracking value all compound into visible inconsistency. A `text-xs uppercase tracking-[...]` combination in product code is a drift signal and must be migrated.
 
 ## Color Contract
 
@@ -398,6 +403,20 @@ Rules:
 - loading states should be understated
 - success/warning/error states should communicate clearly without breaking palette discipline
 
+## Display Slot Assignments
+
+The Typography ramp defines sizes; this section defines which component types own which ramp slot.
+
+| Component | Required token | Notes |
+|---|---|---|
+| Route-level `<h1>` (top of an admin page, login screen, etc.) | `AURORA_DISPLAY_1` composed with `text-aurora-text-primary` | One Display 1 per route, always. |
+| Section / panel headings inside a page | `AURORA_DISPLAY_2` (or `AURORA_DISPLAY_TITLE` legacy alias) | Panel inspectors, sidebar section titles. |
+| Large metric / stat card numbers | `AURORA_DISPLAY_NUMBER` | Dashboard stats, summary strips. Use tabular numerals. |
+| Category / metadata label above a title | `AURORA_MUTED_LABEL` | See Eyebrow spec. |
+| Card titles rendered through `CardTitle` | Default from the primitive (`font-display tracking-[-0.02em]`); compose an explicit ramp slot when you need a specific size | See Component Contract → Cards. |
+
+A route-level `<h1>` without a Display token is a contract violation. A metric number without `AURORA_DISPLAY_NUMBER` is a contract violation. These two rules are the most common drift source in the current codebase.
+
 ## Page-Level Patterns
 
 ### Logs
@@ -417,6 +436,17 @@ The Gateways page should align with the same Aurora principles while preserving 
 - Aurora filters and pills
 - Tiered panel hierarchy
 - calmer status accents
+
+### Authentication Surfaces
+
+Login, re-auth, and auth-error screens are product surfaces, not a separate marketing shell. They must:
+
+- use `AURORA_PAGE_SHELL` for the backdrop — no bespoke gradients, no `bg-gradient-to-*` with shadcn tokens
+- use `AURORA_STRONG_PANEL` for the centered card (Tier 2 lift — same language as inspectors)
+- follow the Typography ramp: Display 1 for the title, Body for intro copy, `AURORA_MUTED_LABEL` for the category eyebrow
+- route the primary action through the `Button` primitive with `size="lg"`
+
+If the auth surface is imported by a non-Vite test runner (`node:test` + `react-dom/server`) that cannot resolve the `@/` alias, duplicate the `Button` primitive's default+lg class string inline rather than inventing styling. The inline copy must be pure Aurora tokens and must be flagged with a one-line comment explaining why it bypasses the primitive.
 
 ### Design System Sandbox
 
@@ -471,6 +501,22 @@ When implementing or refactoring UI:
 - update `/design-system` when adding or materially changing a shared interaction pattern
 - treat this document as the stable contract and dated exploration docs as supporting material
 - all `overflow-auto`, `overflow-scroll`, `overflow-y-auto`, and `overflow-x-auto` containers must include the `aurora-scrollbar` utility class — this applies the token-backed thin scrollbar style (defined in `app/globals.css`) consistently across all scroll surfaces
+- **shadcn-generic tokens are reserved for `components/ui/` primitives.** Product code — anything under `app/**`, `components/**` except `components/ui/**` — must use the Aurora semantic equivalents:
+
+  | Banned in product code | Use instead |
+  |---|---|
+  | `text-muted-foreground` | `text-aurora-text-muted` |
+  | `text-foreground` | `text-aurora-text-primary` |
+  | `bg-card`, `bg-card/NN` | `bg-aurora-panel-medium` or `bg-aurora-panel-strong` (choose by elevation tier) |
+  | `bg-background` | `bg-aurora-page-bg` |
+  | `bg-muted` | `bg-aurora-control-surface` |
+  | `border-border`, `border-border/NN` | `border-aurora-border-strong` |
+
+  The shadcn tokens exist so the forked primitives stay syncable with upstream; product code must not inherit them. The light-mode remap in `.light` pairs Aurora variables only — shadcn tokens drift in light mode even when they look right in dark.
+
+- **primitive imports must use the `@/` alias.** Relative imports into `components/ui/**` from product code are banned so the import path doesn't encode directory structure. The one exception is auth surfaces imported by `node:test` harnesses — see the Authentication Surfaces section for the escape hatch.
+
+- **no raw hex, rgba, or hsl values in className or inline styles.** All colors come from Aurora tokens. The sole sanctioned exceptions are listed in the Live-Preview Tokens section and the Service Brand Identity section.
 
 ## Approval Rule
 
