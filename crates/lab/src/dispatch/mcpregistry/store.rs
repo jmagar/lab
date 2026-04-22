@@ -279,8 +279,16 @@ impl RegistryStore {
         &self,
         client: &McpRegistryClient,
     ) -> Result<usize, RegistryStoreError> {
+        let started_at = std::time::Instant::now();
         let mut total = 0usize;
+        let mut page_num = 0usize;
         let mut cursor: Option<String> = None;
+
+        tracing::info!(
+            service = "mcpregistry",
+            event = "sync.start",
+            "starting full registry sync from upstream"
+        );
 
         loop {
             let params = ListServersParams {
@@ -296,8 +304,18 @@ impl RegistryStore {
                 .map_err(|_e| RegistryStoreError::Db(rusqlite::Error::InvalidQuery))?;
 
             let page_len = page.servers.len();
+            page_num += 1;
+
             if page_len > 0 {
                 total += self.upsert_page(&page.servers).await?;
+                tracing::debug!(
+                    service = "mcpregistry",
+                    event = "sync.page",
+                    page = page_num,
+                    page_size = page_len,
+                    total_so_far = total,
+                    "upserted page"
+                );
             }
 
             match page.metadata.next_cursor {
@@ -313,6 +331,15 @@ impl RegistryStore {
 
         // Single batch recompute of is_latest after all pages are stored.
         self.update_is_latest().await?;
+
+        tracing::info!(
+            service = "mcpregistry",
+            event = "sync.finish",
+            total_servers = total,
+            pages = page_num,
+            elapsed_ms = started_at.elapsed().as_millis(),
+            "registry sync complete"
+        );
 
         Ok(total)
     }
