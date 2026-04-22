@@ -126,7 +126,14 @@ impl ServerHandler for LabMcpServer {
     }
 
     async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
-        self.peers.write().await.push(context.peer);
+        let mut peers = self.peers.write().await;
+        peers.push(context.peer);
+        tracing::info!(
+            subsystem = "mcp_server",
+            phase = "session.initialized",
+            peer_count = peers.len(),
+            "mcp session connected"
+        );
     }
 
     async fn list_prompts(
@@ -135,6 +142,12 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
         let start = std::time::Instant::now();
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "list_prompts",
+            "dispatch start"
+        );
         let mut prompts = crate::mcp::prompts::list_all().prompts;
 
         if let Some(pool) = self.current_upstream_pool().await {
@@ -183,6 +196,13 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, ErrorData> {
         let start = std::time::Instant::now();
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "get_prompt",
+            prompt = %request.name,
+            "dispatch start"
+        );
         let args = request
             .arguments
             .clone()
@@ -221,6 +241,15 @@ impl ServerHandler for LabMcpServer {
             && let Some(upstream_name) = pool.find_prompt_owner(&request.name).await
         {
             let prompt_name = request.name.clone();
+            tracing::info!(
+                surface = "mcp",
+                service = "lab",
+                action = "get_prompt",
+                prompt = %prompt_name,
+                upstream = %upstream_name,
+                route = "upstream",
+                "dispatch route selected"
+            );
             let outcome = match pool.get_prompt(&upstream_name, request).await {
                 Some(Ok(result)) => {
                     let elapsed_ms = start.elapsed().as_millis();
@@ -228,6 +257,7 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service = "lab",
                         action = "get_prompt",
+                        prompt = %prompt_name,
                         upstream = %upstream_name,
                         elapsed_ms,
                         "prompt proxy ok"
@@ -248,9 +278,11 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service = "lab",
                         action = "get_prompt",
+                        prompt = %prompt_name,
                         upstream = %upstream_name,
                         elapsed_ms,
                         kind = "internal_error",
+                        error = %message,
                         "prompt proxy failed"
                     );
                     self.emit_dispatch_notification(
@@ -308,6 +340,15 @@ impl ServerHandler for LabMcpServer {
                     .find(|config| config.name == upstream_name)
             {
                 let prompt_name = request.name.clone();
+                tracing::info!(
+                    surface = "mcp",
+                    service = "lab",
+                    action = "get_prompt",
+                    prompt = %prompt_name,
+                    upstream = %config.name,
+                    route = "subject_scoped",
+                    "dispatch route selected"
+                );
                 let outcome = match pool
                     .subject_scoped_get_prompt(&config, subject, request)
                     .await
@@ -318,6 +359,7 @@ impl ServerHandler for LabMcpServer {
                             surface = "mcp",
                             service = "lab",
                             action = "get_prompt",
+                            prompt = %prompt_name,
                             upstream = %config.name,
                             elapsed_ms,
                             "subject-scoped prompt proxy ok"
@@ -338,9 +380,11 @@ impl ServerHandler for LabMcpServer {
                             surface = "mcp",
                             service = "lab",
                             action = "get_prompt",
+                            prompt = %prompt_name,
                             upstream = %config.name,
                             elapsed_ms,
                             kind = "upstream_error",
+                            error = %message,
                             "subject-scoped prompt proxy failed"
                         );
                         self.emit_dispatch_notification(
@@ -396,6 +440,12 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         let start = std::time::Instant::now();
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "list_resources",
+            "dispatch start"
+        );
         let mut resources = vec![
             RawResource::new("lab://catalog", "catalog")
                 .with_description("Full discovery document for all services")
@@ -451,10 +501,25 @@ impl ServerHandler for LabMcpServer {
     ) -> Result<ReadResourceResult, ErrorData> {
         let start = std::time::Instant::now();
         let uri = &request.uri;
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "read_resource",
+            resource_uri = %uri,
+            "dispatch start"
+        );
 
         if let Some(pool) = self.current_upstream_pool().await
             && uri.starts_with("lab://upstream/")
         {
+            tracing::info!(
+                surface = "mcp",
+                service = "lab",
+                action = "read_resource",
+                resource_uri = %uri,
+                route = "upstream",
+                "dispatch route selected"
+            );
             let outcome = match pool.read_upstream_resource(uri).await {
                 Some(Ok(result)) => {
                     let elapsed_ms = start.elapsed().as_millis();
@@ -495,6 +560,7 @@ impl ServerHandler for LabMcpServer {
                         resource_uri = %uri,
                         elapsed_ms,
                         kind = "internal_error",
+                        error = %message,
                         "resource proxy failed"
                     );
                     self.emit_dispatch_notification(
@@ -547,6 +613,15 @@ impl ServerHandler for LabMcpServer {
                 .and_then(|rest| rest.split('/').next())
             && let Some(config) = self.oauth_upstream_config(upstream_name).await
         {
+            tracing::info!(
+                surface = "mcp",
+                service = "lab",
+                action = "read_resource",
+                resource_uri = %uri,
+                upstream = %config.name,
+                route = "subject_scoped",
+                "dispatch route selected"
+            );
             let outcome = match pool
                 .subject_scoped_read_resource(&config, subject, uri)
                 .await
@@ -582,6 +657,7 @@ impl ServerHandler for LabMcpServer {
                         resource_uri = %uri,
                         elapsed_ms,
                         kind = "upstream_error",
+                        error = %message,
                         "subject-scoped resource proxy failed"
                     );
                     self.emit_dispatch_notification(
@@ -670,6 +746,12 @@ impl ServerHandler for LabMcpServer {
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         let start = std::time::Instant::now();
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "list_tools",
+            "dispatch start"
+        );
         let schema = Arc::new(action_schema());
         let mut tools = Vec::new();
         for svc in self.registry.services() {
@@ -751,6 +833,11 @@ impl ServerHandler for LabMcpServer {
             .unwrap_or("")
             .to_string();
         let params = args.get("params").cloned().unwrap_or(Value::Null);
+        let instance = params
+            .get("instance")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let param_key_count = params.as_object().map_or(0, serde_json::Map::len);
 
         let svc = self.registry.services().iter().find(|s| s.name == service);
         if svc.is_some() && !self.service_visible_on_mcp(&service).await {
@@ -843,9 +930,31 @@ impl ServerHandler for LabMcpServer {
         }
 
         let start = std::time::Instant::now();
+        let dispatch_action = if svc.is_some() {
+            action.as_str()
+        } else {
+            "call_tool"
+        };
+        tracing::info!(
+            surface = "mcp",
+            service,
+            action = dispatch_action,
+            tool = %service,
+            instance = instance.as_deref(),
+            param_key_count,
+            "dispatch start"
+        );
 
         // Try built-in dispatch first.
         if let Some(entry) = svc {
+            tracing::info!(
+                surface = "mcp",
+                service,
+                action = action.as_str(),
+                tool = %service,
+                route = "builtin",
+                "dispatch route selected"
+            );
             let result = (entry.dispatch)(action.clone(), params)
                 .await
                 .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
@@ -860,15 +969,30 @@ impl ServerHandler for LabMcpServer {
         // Upstream tools don't use lab's action/params wrapper — they receive
         // raw arguments. Use "call_tool" as the action label for logging/envelopes.
         let upstream_action = "call_tool";
+        let upstream_capability = "tools";
+        let upstream_operation = "tool.call";
         if let Some(pool) = self.current_upstream_pool().await
             && let Some((upstream_name, _tool)) = pool.find_tool(&service).await
         {
             let before = self.snapshot_catalog().await;
+            tracing::info!(
+                surface = "mcp",
+                service,
+                action = upstream_action,
+                tool = %service,
+                upstream = %upstream_name,
+                route = "upstream",
+                "dispatch route selected"
+            );
             tracing::debug!(
                 surface = "mcp",
                 service,
                 action = upstream_action,
+                tool = %service,
                 upstream = %upstream_name,
+                capability = upstream_capability,
+                operation = upstream_operation,
+                subject_scoped = false,
                 "proxying to upstream"
             );
 
@@ -902,7 +1026,11 @@ impl ServerHandler for LabMcpServer {
                             surface = "mcp",
                             service,
                             action = upstream_action,
+                            tool = %service,
                             upstream = %upstream_name,
+                            capability = upstream_capability,
+                            operation = upstream_operation,
+                            subject_scoped = false,
                             elapsed_ms,
                             kind,
                             "upstream proxy failed"
@@ -913,7 +1041,11 @@ impl ServerHandler for LabMcpServer {
                             surface = "mcp",
                             service,
                             action = upstream_action,
+                            tool = %service,
                             upstream = %upstream_name,
+                            capability = upstream_capability,
+                            operation = upstream_operation,
+                            subject_scoped = false,
                             elapsed_ms,
                             "upstream proxy ok"
                         );
@@ -939,9 +1071,14 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service,
                         action = upstream_action,
+                        tool = %service,
                         upstream = %upstream_name,
+                        capability = upstream_capability,
+                        operation = upstream_operation,
+                        subject_scoped = false,
                         elapsed_ms,
                         kind = "upstream_error",
+                        error = %e,
                         "upstream proxy failed"
                     );
                     let envelope = build_error(
@@ -980,9 +1117,14 @@ impl ServerHandler for LabMcpServer {
                         surface = "mcp",
                         service,
                         action = upstream_action,
+                        tool = %service,
                         upstream = %upstream_name,
+                        capability = upstream_capability,
+                        operation = upstream_operation,
+                        subject_scoped = false,
                         elapsed_ms,
                         kind = "upstream_error",
+                        error = "upstream disconnected",
                         "upstream not connected"
                     );
                     let envelope = build_error(
@@ -1026,6 +1168,15 @@ impl ServerHandler for LabMcpServer {
                     .into_iter()
                     .find(|config| config.name == upstream_name)
             {
+                tracing::info!(
+                    surface = "mcp",
+                    service,
+                    action = upstream_action,
+                    tool = %service,
+                    upstream = %upstream_name,
+                    route = "subject_scoped",
+                    "dispatch route selected"
+                );
                 let mut upstream_params = CallToolRequestParams::new(service.clone());
                 upstream_params.arguments = raw_arguments;
                 match pool
@@ -1039,8 +1190,13 @@ impl ServerHandler for LabMcpServer {
                         let outcome = if counts_as_failure || kind != "ok" {
                             tracing::warn!(
                                 surface = "mcp",
-                                service = upstream_name,
+                                service,
                                 action = upstream_action,
+                                tool = %service,
+                                upstream = %upstream_name,
+                                capability = upstream_capability,
+                                operation = upstream_operation,
+                                subject_scoped = true,
                                 elapsed_ms,
                                 kind,
                                 "upstream dispatch error"
@@ -1056,8 +1212,13 @@ impl ServerHandler for LabMcpServer {
                         } else {
                             tracing::info!(
                                 surface = "mcp",
-                                service = upstream_name,
+                                service,
                                 action = upstream_action,
+                                tool = %service,
+                                upstream = %upstream_name,
+                                capability = upstream_capability,
+                                operation = upstream_operation,
+                                subject_scoped = true,
                                 elapsed_ms,
                                 "upstream dispatch ok"
                             );
@@ -1077,10 +1238,16 @@ impl ServerHandler for LabMcpServer {
                         let elapsed_ms = start.elapsed().as_millis();
                         tracing::warn!(
                             surface = "mcp",
-                            service = upstream_name,
+                            service,
                             action = upstream_action,
+                            tool = %service,
+                            upstream = %upstream_name,
+                            capability = upstream_capability,
+                            operation = upstream_operation,
+                            subject_scoped = true,
                             elapsed_ms,
                             kind = "upstream_error",
+                            error = %e,
                             "upstream dispatch error"
                         );
                         let envelope = build_error(
@@ -1199,7 +1366,14 @@ fn format_dispatch_result(
 ) -> (CallToolResult, DispatchLogOutcome) {
     match result {
         Ok(v) => {
-            tracing::info!(surface = "mcp", service, action, elapsed_ms, "dispatch ok");
+            tracing::info!(
+                surface = "mcp",
+                service,
+                action,
+                tool = %service,
+                elapsed_ms,
+                "dispatch ok"
+            );
             let envelope = build_success(service, action, &v);
             (
                 CallToolResult::success(vec![Content::text(envelope.to_string())]),
@@ -1214,6 +1388,7 @@ fn format_dispatch_result(
                     surface = "mcp",
                     service,
                     action,
+                    tool = %service,
                     elapsed_ms,
                     kind,
                     "dispatch error"
@@ -1223,6 +1398,7 @@ fn format_dispatch_result(
                     surface = "mcp",
                     service,
                     action,
+                    tool = %service,
                     elapsed_ms,
                     kind,
                     "dispatch error"

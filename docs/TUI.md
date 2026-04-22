@@ -31,7 +31,7 @@ The TUI supports three plugin ecosystems with different conventions.
 
 | Concept | Path / Command |
 |---------|----------------|
-| Manifest | `.claude-plugin/plugin.json` |
+| Manifest | `plugins/.claude-plugin/plugin.json` |
 | Marketplace file | `.claude-plugin/marketplace.json` |
 | Plugin cache | `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` |
 | Marketplace state | `~/.claude/plugins/known_marketplaces.json` |
@@ -78,7 +78,7 @@ When the user provides a repo, the TUI probes for all manifest and marketplace f
 | `.agents/plugins/marketplace.json` only | Codex marketplace preview |
 | `gemini-extension.json` only | Gemini CLI extension preview |
 | Multiple ecosystem files present | Prompt user to choose ecosystem before preview |
-| `.claude-plugin/plugin.json` (no marketplace) | Single Claude Code plugin — synthesize one-entry marketplace |
+| `plugins/.claude-plugin/plugin.json` (no marketplace) | Single Claude Code plugin — synthesize one-entry marketplace |
 | `.codex-plugin/plugin.json` (no marketplace) | Single Codex plugin — synthesize one-entry marketplace |
 
 Synthesizing a single-entry marketplace means the preview screen and confirm flow are identical regardless of whether the repo is a full catalog or a single plugin. No special-casing downstream. Gemini extensions always follow the single-extension path since there is no catalog format.
@@ -166,7 +166,7 @@ Users provide a GitHub `owner/repo` shorthand or any git URL. The TUI previews t
 https://raw.githubusercontent.com/<owner>/<repo>/<branch>/.claude-plugin/marketplace.json
 
 # Claude Code single plugin
-https://raw.githubusercontent.com/<owner>/<repo>/<branch>/.claude-plugin/plugin.json
+https://raw.githubusercontent.com/<owner>/<repo>/<branch>/plugins/.claude-plugin/plugin.json
 
 # Codex marketplace
 https://raw.githubusercontent.com/<owner>/<repo>/<branch>/.agents/plugins/marketplace.json

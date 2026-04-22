@@ -142,7 +142,9 @@ pub fn detect_ecosystems(files: &DetectedFiles) -> Result<Vec<Ecosystem>, String
     let mut detected = Vec::new();
 
     // ClaudeCode: marketplace.json takes priority; single-entry fallback.
-    if files.has(".claude-plugin/marketplace.json") || files.has(".claude-plugin/plugin.json") {
+    if files.has(".claude-plugin/marketplace.json")
+        || files.has("plugins/.claude-plugin/plugin.json")
+    {
         detected.push(Ecosystem::ClaudeCode);
     }
 
@@ -417,7 +419,7 @@ fn manifest_paths_for(ecosystem: Ecosystem) -> Vec<&'static str> {
         Ecosystem::ClaudeCode => {
             vec![
                 ".claude-plugin/marketplace.json",
-                ".claude-plugin/plugin.json",
+                "plugins/.claude-plugin/plugin.json",
             ]
         }
         Ecosystem::Codex => {
@@ -434,7 +436,7 @@ fn manifest_paths_for(ecosystem: Ecosystem) -> Vec<&'static str> {
 fn should_synthesize(ecosystem: Ecosystem, paths: &[&str]) -> bool {
     match ecosystem {
         Ecosystem::ClaudeCode => {
-            paths.contains(&".claude-plugin/plugin.json")
+            paths.contains(&"plugins/.claude-plugin/plugin.json")
                 && !paths.contains(&".claude-plugin/marketplace.json")
         }
         Ecosystem::Codex => {
@@ -564,7 +566,7 @@ async fn read_head_sha(root: &std::path::Path) -> String {
 fn should_synthesize_from_files(ecosystem: Ecosystem, root: &std::path::Path) -> bool {
     match ecosystem {
         Ecosystem::ClaudeCode => {
-            root.join(".claude-plugin/plugin.json").exists()
+            root.join("plugins/.claude-plugin/plugin.json").exists()
                 && !root.join(".claude-plugin/marketplace.json").exists()
         }
         Ecosystem::Codex => {
@@ -874,7 +876,7 @@ mod tests {
 
     #[test]
     fn detect_claude_single_entry() {
-        let files = DetectedFiles::new([".claude-plugin/plugin.json"]);
+        let files = DetectedFiles::new(["plugins/.claude-plugin/plugin.json"]);
         let detected = detect_ecosystems(&files).unwrap();
         assert_eq!(detected, vec![Ecosystem::ClaudeCode]);
     }

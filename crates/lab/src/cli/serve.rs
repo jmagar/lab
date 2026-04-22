@@ -82,6 +82,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         std::env::var("LAB_MCP_TRANSPORT").ok(),
         config.mcp.transport.as_deref(),
     )?;
+    tracing::info!(
+        subsystem = "cli",
+        phase = "serve.start",
+        transport = ?transport,
+        requested_service_count = args.services.len(),
+        "starting serve command"
+    );
     // Resolve host and port here for source-of-truth ordering, but defer
     // address parsing and validation until the actual bind call in run_http.
     // This way an invalid host string only errors when the hosted HTTP app path is chosen.
@@ -95,9 +102,24 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         std::env::var("LAB_MCP_HTTP_PORT").ok(),
         config.mcp.port,
     )?;
+    tracing::info!(
+        subsystem = "startup",
+        phase = "bootstrap.start",
+        transport = ?transport,
+        bind_host = %host,
+        bind_port = port,
+        requested_service_count = args.services.len(),
+        "starting lab serve bootstrap"
+    );
 
     let registry = build_default_registry();
     let registry = filter_registry(registry, &args.services)?;
+    tracing::info!(
+        subsystem = "startup",
+        phase = "bootstrap.registry",
+        selected_service_count = registry.services().len(),
+        "service registry ready"
+    );
     let local_host = resolve_local_hostname().context("resolve local hostname")?;
     let resolved_runtime = resolve_runtime_role(
         &local_host,
@@ -107,6 +129,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             .and_then(|prefs| prefs.master.as_deref()),
     )
     .context("resolve device runtime role")?;
+    tracing::info!(
+        subsystem = "startup",
+        phase = "bootstrap.device-runtime",
+        device_role = ?resolved_runtime.role,
+        local_host = %resolved_runtime.local_host,
+        master_host = %resolved_runtime.master_host,
+        "device runtime resolved"
+    );
     let device_store = Arc::new(DeviceFleetStore::default());
     let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
     let device_role = device_runtime.role();
@@ -116,19 +146,53 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let bearer_token = http_token();
     let auth_config =
         resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
+    tracing::info!(
+        subsystem = "api_server",
+        phase = "auth.config",
+        auth_mode = ?auth_config.mode,
+        public_url_configured = auth_config.public_url.is_some(),
+        bearer_token_configured = bearer_token.is_some(),
+        "http auth configuration resolved"
+    );
     let upstream_oauth_runtime = if stdio_mode {
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "oauth.runtime.disabled",
+            "upstream oauth runtime skipped for stdio transport"
+        );
         None
     } else {
         build_upstream_oauth_runtime(config, &auth_config).await?
     };
     if !config.upstream.is_empty() {
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "discovery.start",
+            upstream_count = config.upstream.len(),
+            oauth_upstream_count = config.upstream.iter().filter(|upstream| upstream.oauth.is_some()).count(),
+            "starting upstream gateway discovery"
+        );
         let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
         if let Some(rt) = &upstream_oauth_runtime {
             pool_builder = pool_builder.with_oauth_client_cache(rt.cache.clone());
         }
         let pool = Arc::new(pool_builder);
         pool.discover_all(&config.upstream).await;
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "discovery.finish",
+            upstream_count = config.upstream.len(),
+            discovered_upstream_count = pool.upstream_count().await,
+            "upstream gateway discovery complete"
+        );
         gateway_runtime.swap(Some(pool)).await;
+    } else {
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "disabled",
+            upstream_count = 0,
+            "gateway client disabled because no upstreams are configured"
+        );
     }
     let notifier = PeerNotifier::default();
     let (notify_tx, notify_rx) = mpsc::unbounded_channel();
@@ -149,6 +213,12 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let gateway_manager = Arc::new(gateway_manager);
     gateway_manager.seed_config(config.clone()).await;
     install_gateway_manager(Arc::clone(&gateway_manager));
+    tracing::info!(
+        subsystem = "gateway_client",
+        phase = "manager.ready",
+        upstream_count = config.upstream.len(),
+        "gateway manager installed"
+    );
     let logs_system = bootstrap_running_log_system(
         resolve_store_path(Some(config)),
         resolve_retention(Some(config)),
@@ -158,6 +228,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     .await?;
 
     if stdio_mode {
+        tracing::info!(
+            subsystem = "api_server",
+            phase = "disabled",
+            "api server disabled for stdio transport"
+        );
+        tracing::info!(
+            subsystem = "web_server",
+            phase = "disabled",
+            "web server disabled for stdio transport"
+        );
         return run_stdio(
             Arc::new(registry),
             Arc::clone(&gateway_manager),
@@ -205,9 +285,31 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     state = state.with_log_system(logs_system);
     state = state.with_device_role(device_role);
     if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
-        tracing::info!(path = %web_assets_dir.display(), "Labby web assets enabled");
+        tracing::info!(
+            subsystem = "web_server",
+            phase = "assets.enabled",
+            path = %web_assets_dir.display(),
+            "web assets detected"
+        );
         state = state.with_web_assets_dir(web_assets_dir);
+    } else {
+        tracing::info!(
+            subsystem = "web_server",
+            phase = "assets.disabled",
+            "no web assets directory found"
+        );
     }
+    tracing::info!(
+        subsystem = "startup",
+        phase = "bootstrap.plan",
+        api_server_enabled = true,
+        web_server_enabled = state.web_assets_dir.is_some(),
+        mcp_server_enabled = matches!(transport, Transport::Http),
+        gateway_client_enabled = !config.upstream.is_empty(),
+        oauth_upstream_enabled = config.upstream.iter().any(|upstream| upstream.oauth.is_some()),
+        web_ui_auth_disabled = state.web_ui_auth_disabled,
+        "startup plan resolved"
+    );
 
     let startup_runtime = device_runtime.clone();
     tokio::spawn(async move {
@@ -249,9 +351,19 @@ async fn build_upstream_oauth_runtime(
     auth_config: &lab_auth::config::AuthConfig,
 ) -> Result<Option<UpstreamOauthRuntime>> {
     let Some(public_url) = auth_config.public_url.as_ref() else {
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "oauth.runtime.disabled",
+            "upstream oauth runtime disabled because no public url is configured"
+        );
         return Ok(None);
     };
     let Ok(encryption_key_raw) = std::env::var("LAB_OAUTH_ENCRYPTION_KEY") else {
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "oauth.runtime.disabled",
+            "upstream oauth runtime disabled because LAB_OAUTH_ENCRYPTION_KEY is unset"
+        );
         return Ok(None);
     };
     anyhow::ensure!(
@@ -282,6 +394,12 @@ async fn build_upstream_oauth_runtime(
         );
     }
     let cache = crate::oauth::upstream::cache::OauthClientCache::new(Arc::clone(&managers));
+    tracing::info!(
+        subsystem = "gateway_client",
+        phase = "oauth.runtime.ready",
+        oauth_upstream_count = managers.len(),
+        "upstream oauth runtime initialized"
+    );
     Ok(Some(UpstreamOauthRuntime {
         managers,
         cache,
@@ -432,6 +550,33 @@ async fn run_http(
     notifier: PeerNotifier,
     mount_http_mcp: bool,
 ) -> Result<ExitCode> {
+    let web_assets_enabled = state.web_assets_dir.is_some();
+    let bearer_token_configured = bearer_token.is_some();
+    tracing::info!(
+        subsystem = "web_server",
+        phase = if web_assets_enabled { "mount.start" } else { "disabled" },
+        bind_host = %host,
+        bind_port = port,
+        "web server startup state resolved"
+    );
+    tracing::info!(
+        subsystem = "mcp_server",
+        phase = if mount_http_mcp { "mount.start" } else { "disabled" },
+        bind_host = %host,
+        bind_port = port,
+        "http mcp server startup state resolved"
+    );
+    tracing::info!(
+        subsystem = "api_server",
+        phase = "router.build.start",
+        bind_host = %host,
+        bind_port = port,
+        cors_origin_count = config_cors_origins.len(),
+        http_mcp_enabled = mount_http_mcp,
+        web_ui_auth_disabled = state.web_ui_auth_disabled,
+        bearer_token_configured,
+        "building http router"
+    );
     let router = build_http_router(
         state,
         bearer_token,
@@ -441,15 +586,54 @@ async fn run_http(
         notifier,
         mount_http_mcp,
     )?;
+    tracing::info!(
+        subsystem = "api_server",
+        phase = "router.build.finish",
+        http_mcp_enabled = mount_http_mcp,
+        "http router ready"
+    );
     // Parse and validate the address at bind time, not at CLI parse time.
     let addr = bind_addr(host, port);
+    tracing::info!(
+        subsystem = "api_server",
+        phase = "listener.bind.start",
+        addr,
+        "binding http listener"
+    );
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .with_context(|| format!("failed to bind HTTP listener on `{addr}`"))?;
     tracing::info!(
+        subsystem = "api_server",
+        phase = "ready",
         addr,
+        route = "/v1,/health,/ready",
+        bearer_token_configured,
+        "api server ready"
+    );
+    tracing::info!(
+        subsystem = "web_server",
+        phase = if web_assets_enabled { "ready" } else { "disabled" },
+        addr,
+        route = "/",
+        "web server ready state resolved"
+    );
+    tracing::info!(
+        subsystem = "mcp_server",
+        phase = if mount_http_mcp { "ready" } else { "disabled" },
+        addr,
+        route = "/mcp",
+        transport = "http",
+        "http mcp server ready state resolved"
+    );
+    tracing::info!(
+        subsystem = "startup",
+        phase = "ready",
+        addr,
+        web_server_enabled = web_assets_enabled,
+        mcp_server_enabled = mount_http_mcp,
         http_mcp_enabled = mount_http_mcp,
-        "lab serve (http) ready"
+        "http, web, and mcp services ready"
     );
     axum::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)
@@ -489,8 +673,25 @@ async fn run_stdio(
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     tracing::info!(
+        subsystem = "mcp_server",
+        phase = "startup.start",
+        transport = "stdio",
         services = registry.services().len(),
-        "lab serve (stdio) ready"
+        device_role = ?device_role,
+        "starting stdio mcp server"
+    );
+    tracing::info!(
+        subsystem = "mcp_server",
+        phase = "ready",
+        transport = "stdio",
+        services = registry.services().len(),
+        "stdio mcp server ready"
+    );
+    tracing::info!(
+        subsystem = "startup",
+        phase = "ready",
+        services = registry.services().len(),
+        "stdio mcp server ready"
     );
     let server = LabMcpServer {
         registry,
@@ -533,15 +734,25 @@ fn build_mcp_service(
     let stateful =
         resolve_stateful_mode(std::env::var("LAB_MCP_STATEFUL").ok(), mcp_config.stateful)?;
 
+    let allowed_hosts = allowed_hosts(
+        mcp_config.allowed_hosts.as_deref().unwrap_or(&[]),
+        state
+            .auth_config
+            .as_ref()
+            .and_then(|cfg| cfg.public_url.as_ref().map(url::Url::as_str)),
+    );
     let config = StreamableHttpServerConfig::default()
-        .with_allowed_hosts(allowed_hosts(
-            mcp_config.allowed_hosts.as_deref().unwrap_or(&[]),
-            state
-                .auth_config
-                .as_ref()
-                .and_then(|cfg| cfg.public_url.as_ref().map(url::Url::as_str)),
-        ))
+        .with_allowed_hosts(allowed_hosts.clone())
         .with_stateful_mode(stateful);
+    tracing::info!(
+        subsystem = "mcp_server",
+        phase = "http.mount",
+        transport = "http",
+        stateful,
+        session_ttl_secs,
+        allowed_host_count = allowed_hosts.len(),
+        "http mcp service configured"
+    );
 
     // All HTTP sessions share the same PeerNotifier (and thus the same peers
     // vec) so that gateway reload notifications reach every connected session.

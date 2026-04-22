@@ -26,6 +26,15 @@ impl PeerNotifier {
 
     async fn notify_catalog_changes(&self, diff: &GatewayCatalogDiff) {
         let peers = self.peers.read().await.clone();
+        tracing::info!(
+            subsystem = "mcp_server",
+            phase = "catalog.notify",
+            peer_count = peers.len(),
+            tools_changed = diff.tools_changed,
+            resources_changed = diff.resources_changed,
+            prompts_changed = diff.prompts_changed,
+            "broadcasting catalog change to connected peers"
+        );
         let mut alive = Vec::with_capacity(peers.len());
         for (index, peer) in peers.iter().enumerate() {
             let peer = peer.clone();

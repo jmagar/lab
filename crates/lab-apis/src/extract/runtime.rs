@@ -292,10 +292,28 @@ pub fn parse_tailscale_ipv4(contents: &str) -> Option<String> {
 }
 
 fn supported_service(name: &str, image: Option<&str>) -> Option<&'static str> {
-    match image {
-        Some(image) => service_from_image(image),
-        None => service_from_name(name),
+    if let Some(image) = image {
+        if let Some(service) = service_from_image(image) {
+            return Some(service);
+        }
+        // For named images that didn't match, don't fall back — the image name
+        // is the ground truth and the container name may be misleading
+        // (e.g. "plex-tvtime" should not match "plex").
+        // Only fall back when the image is an opaque hash ID, which happens
+        // when Docker pulls by digest and strips the repository name.
+        if !is_opaque_image_id(image) {
+            return None;
+        }
     }
+    service_from_name(name)
+}
+
+/// Returns true when `image` is a bare hex digest (Docker short or full ID)
+/// with no repository or tag component. These occur when an image is pulled
+/// by digest and the repository name is not retained in the daemon's metadata.
+fn is_opaque_image_id(image: &str) -> bool {
+    let id = image.strip_prefix("sha256:").unwrap_or(image);
+    id.len() >= 12 && id.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn service_from_image(image: &str) -> Option<&'static str> {
@@ -309,6 +327,9 @@ fn service_from_image(image: &str) -> Option<&'static str> {
         .split(':')
         .next()
         .unwrap_or(image);
+
+    // Strip distribution-specific prefixes (e.g. binhex "arch-prowlarr").
+    let image_name = image_name.strip_prefix("arch-").unwrap_or(image_name);
 
     match image_name {
         "radarr" => Some("radarr"),

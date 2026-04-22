@@ -11,6 +11,22 @@ use serde_json::Value;
 use lab_apis::core::action::ActionSpec;
 
 use crate::dispatch::error::ToolError;
+
+/// Returns a [`clap::builder::PossibleValuesParser`] for the given action catalog.
+///
+/// Use as `#[arg(value_parser = action_parser(ACTIONS))]` on `action` fields in CLI shims.
+pub fn action_parser(actions: &'static [ActionSpec]) -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(actions.iter().map(|a| a.name))
+}
+
+/// Print the canonical `[dry-run]` line for a service/action/params triple.
+#[allow(clippy::print_stdout)]
+pub fn print_dry_run(service: &str, action: &str, params: &Value) {
+    println!(
+        "[dry-run] would dispatch {service} action `{action}` with params: {}",
+        serde_json::to_string(params).unwrap_or_else(|_| "{}".to_string())
+    );
+}
 use crate::dispatch::gateway::current_gateway_manager;
 use crate::output::{OutputFormat, print};
 

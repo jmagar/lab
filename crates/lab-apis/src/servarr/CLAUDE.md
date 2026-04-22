@@ -4,7 +4,7 @@ Radarr, Sonarr, and Prowlarr share ~80% of their API surface: same auth scheme, 
 
 ## Rules
 
-- **Auth header is `X-Api-Key`** (not `Authorization`). Use `Auth::ApiKey { header: "X-Api-Key".into(), value: key }`.
+- **Auth header is `X-Api-Key`** (not `Authorization`). Use `Auth::ApiKey { header: "X-Api-Key".into(), key }`.
 - **Base path is `/api/v3`** for Radarr/Sonarr, `/api/v1` for Prowlarr. Service clients own the version segment; servarr helpers should take a pre-composed base.
 - **`config.xml` parser is shared** — `parse_servarr_config_xml()` lives here and is reused by `extract` for credential discovery. Do not duplicate in individual service crates.
 - **Pagination shape** (`{ page, pageSize, totalRecords, sortKey, sortDirection, records }`) is shared. Define the generic `PagedResponse<T>` here, reuse in all three services.
