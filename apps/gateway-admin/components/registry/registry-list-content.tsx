@@ -9,6 +9,7 @@ import { getRegistryConfig } from '@/lib/api/mcpregistry-client'
 import { fetchRegistryServers, registryServersKey } from '@/lib/hooks/use-registry'
 import type { RegistryServersKey } from '@/lib/hooks/use-registry'
 import { safeHref } from '@/lib/utils/safe-href'
+import { githubAvatarFromRepoUrl } from '@/lib/github-avatar'
 import useSWR from 'swr'
 import useSWRInfinite from 'swr/infinite'
 import { cn } from '@/lib/utils'
@@ -216,7 +217,9 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
               const server = response.server
               const { remotes, icons } = server
               const isHTTP = remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
-              const icon = icons[0] ?? null
+              const ghAvatar = githubAvatarFromRepoUrl(server.repository?.url)
+              const fallbackIcon = icons[0] ?? null
+              const avatarSrc = ghAvatar ?? safeHref(fallbackIcon?.src) ?? null
               const displayName = server.title ?? server.name
               const { text: descText, truncated } = truncateDescription(server.description)
               const isExpanded = expandedDescriptions.has(server.name)
@@ -239,13 +242,13 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                   }}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
-                      {icon ? (
+                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
+                      {avatarSrc ? (
                         <>
                           <img
-                            src={safeHref(icon.src) ?? undefined}
+                            src={avatarSrc}
                             alt=""
-                            className="size-7 rounded object-contain"
+                            className="size-full object-cover"
                             referrerPolicy="no-referrer"
                             loading="lazy"
                             onError={(e) => {
