@@ -43,7 +43,7 @@ export const AURORA_GATEWAY_DISABLED_ROW =
   'border-t border-aurora-border-strong/60 bg-[linear-gradient(180deg,rgba(8,19,27,0.9),rgba(7,16,24,0.96))] text-aurora-text-muted'
 
 export const AURORA_GATEWAY_SUBTLE_SURFACE =
-  'rounded-[0.95rem] border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]'
+  'rounded-aurora-1 border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]'
 
 export function gatewayActionTone(variant: 'default' | 'accent' = 'default') {
   return cn('border', AURORA_CONTROL_SURFACE, controlTone(variant))

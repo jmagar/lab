@@ -144,8 +144,8 @@ export function ConnectUpstreamDialog({ open, onOpenChange, onConnected }: Conne
           </div>
 
           {phase.kind === 'discovered' && (
-            <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-green-700 dark:text-green-400">
+            <div className="rounded-lg border border-aurora-success/30 bg-aurora-success/10 p-4 flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-aurora-success">
                 <ShieldCheck className="size-4" />
                 OAuth discovered
               </div>

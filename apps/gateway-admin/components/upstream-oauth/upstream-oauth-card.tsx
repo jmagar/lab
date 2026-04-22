@@ -54,9 +54,9 @@ export function UpstreamOauthCard({ name }: UpstreamOauthCardProps) {
   const badge = (() => {
     if (!status) return <Badge variant="outline">Loading…</Badge>
     if (status.authenticated && status.expires_within_5m)
-      return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Expiring</Badge>
+      return <Badge variant="outline" className="border-aurora-warn/40 text-aurora-warn">Expiring</Badge>
     if (status.authenticated)
-      return <Badge variant="outline" className="border-green-500 text-green-600">Connected</Badge>
+      return <Badge variant="outline" className="border-aurora-success/40 text-aurora-success">Connected</Badge>
     return <Badge variant="outline" className="text-muted-foreground">Disconnected</Badge>
   })()
 

@@ -27,7 +27,6 @@ mod tui;
 use std::process::ExitCode;
 
 use clap::Parser;
-use is_terminal::IsTerminal;
 use tracing_subscriber::{
     EnvFilter,
     filter::filter_fn,
@@ -38,10 +37,6 @@ use tracing_subscriber::{
 use crate::cli::Cli;
 use crate::dispatch::logs::ingest::LogIngestLayer;
 use crate::log_fmt::formatter::PremiumEventFormatter;
-
-fn human_logs_use_ansi() -> bool {
-    std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none()
-}
 
 fn human_console_target_enabled(target: &str) -> bool {
     target == "lab"
@@ -81,10 +76,9 @@ fn init_tracing(log: &config::LogPreferences) {
             .with(fmt::layer().json().with_writer(std::io::stderr))
             .init();
     } else {
-        let ansi = human_logs_use_ansi();
         let fmt_layer = fmt::layer()
             .with_target(false)
-            .event_format(PremiumEventFormatter { ansi })
+            .event_format(PremiumEventFormatter)
             .with_writer(std::io::stderr)
             .with_filter(filter_fn(|metadata| human_console_target_enabled(metadata.target())));
         tracing_subscriber::registry()

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
+import { ArrowDownUp, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,13 @@ import {
   AURORA_MUTED_LABEL,
   gatewayActionTone,
 } from '@/components/gateway/gateway-theme'
+import type { RegistrySortBy, RegistrySortOrder } from '@/lib/types/registry'
+
+const SORT_OPTIONS: { value: RegistrySortBy; label: string }[] = [
+  { value: 'updated', label: 'Updated' },
+  { value: 'published', label: 'Published' },
+  { value: 'name', label: 'Name' },
+]
 
 interface ServerFiltersProps {
   search: string
@@ -19,7 +26,12 @@ interface ServerFiltersProps {
   onVersionChange: (value: string) => void
   updatedSince: string
   onUpdatedSinceChange: (value: string) => void
-  totalCount?: number
+  sortBy: RegistrySortBy | ''
+  onSortByChange: (value: RegistrySortBy | '') => void
+  order: RegistrySortOrder
+  onOrderChange: (value: RegistrySortOrder) => void
+  totalLoaded?: number
+  hasMore?: boolean
   isLoading?: boolean
 }
 
@@ -30,10 +42,15 @@ export function ServerFilters({
   onVersionChange,
   updatedSince,
   onUpdatedSinceChange,
-  totalCount,
+  sortBy,
+  onSortByChange,
+  order,
+  onOrderChange,
+  totalLoaded,
+  hasMore,
   isLoading,
 }: ServerFiltersProps) {
-  const activeExtraCount = (version ? 1 : 0) + (updatedSince ? 1 : 0)
+  const activeExtraCount = (version ? 1 : 0) + (updatedSince ? 1 : 0) + (sortBy ? 1 : 0)
   const [expanded, setExpanded] = useState(activeExtraCount > 0)
   const hasAny = Boolean(search) || activeExtraCount > 0
 
@@ -41,6 +58,8 @@ export function ServerFilters({
     onSearchChange('')
     onVersionChange('')
     onUpdatedSinceChange('')
+    onSortByChange('')
+    onOrderChange('desc')
   }
 
   return (
@@ -68,7 +87,7 @@ export function ServerFilters({
           aria-controls="registry-extra-filters"
           className={cn(
             gatewayActionTone(activeExtraCount > 0 ? 'accent' : 'default'),
-            'h-11 shrink-0 gap-2 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
+            'h-11 shrink-0 gap-2 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
           )}
         >
           <SlidersHorizontal className="size-4" />
@@ -90,7 +109,7 @@ export function ServerFilters({
             onClick={handleClearAll}
             className={cn(
               gatewayActionTone(),
-              'h-11 shrink-0 gap-1 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
+              'h-11 shrink-0 gap-1 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
             )}
           >
             <X className="size-4" />
@@ -131,12 +150,47 @@ export function ServerFilters({
               )}
             />
           </div>
+
+          <div className="min-w-[180px] flex-1 space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Sort by</p>
+            <div className="flex gap-1">
+              {SORT_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={sortBy === value}
+                  onClick={() => onSortByChange(sortBy === value ? '' : value)}
+                  className={cn(
+                    'h-9 flex-1 rounded border px-2 text-xs transition-colors',
+                    sortBy === value
+                      ? 'border-aurora-accent-strong/60 bg-aurora-accent-strong/15 text-aurora-accent-strong'
+                      : 'border-aurora-border-strong/40 text-aurora-text-muted hover:border-aurora-border-strong hover:text-aurora-text-primary',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                aria-label={order === 'desc' ? 'Sort descending' : 'Sort ascending'}
+                onClick={() => onOrderChange(order === 'desc' ? 'asc' : 'desc')}
+                disabled={!sortBy}
+                className={cn(
+                  'h-9 rounded border px-2 transition-colors disabled:opacity-40',
+                  'border-aurora-border-strong/40 text-aurora-text-muted hover:border-aurora-border-strong hover:text-aurora-text-primary',
+                )}
+              >
+                <ArrowDownUp className={cn('size-3.5', order === 'asc' && 'rotate-180')} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {!isLoading && totalCount !== undefined && (
+      {!isLoading && totalLoaded !== undefined && totalLoaded > 0 && (
         <p className="text-xs text-aurora-text-muted">
-          {totalCount === 0 ? 'No servers found' : `${totalCount} server${totalCount === 1 ? '' : 's'} on this page`}
+          {totalLoaded} server{totalLoaded === 1 ? '' : 's'} loaded{hasMore ? ' — scroll for more' : ''}
+          {sortBy ? ` · sorted by ${sortBy} (${order})` : ''}
         </p>
       )}
     </div>

@@ -2,7 +2,7 @@
 
 **Status:** Active  
 **Scope:** `apps/gateway-admin` web UI  
-**Mode:** Dark mode only  
+**Mode:** Dark (primary) and light  
 **Primary reference sandbox:** `/design-system`
 
 ## Purpose
@@ -18,9 +18,20 @@ Related documents:
 - [Aurora Dark Theme Spec](./superpowers/specs/2026-04-17-aurora-dark-theme-spec.md)
 - [Design System Page Plan](./superpowers/plans/2026-04-17-design-system-page.md)
 
+## Theme Modes
+
+Aurora is designed dark-first. A light remap of the same token system is also supported so users can switch via the theme toggle in the sidebar footer (`next-themes` system/light/dark).
+
+Rules:
+
+- the canonical visual reference is dark; design and review work happens against dark first
+- the light remap lives in `app/globals.css` under `.light` and overrides only the raw Aurora variables; semantic tokens in `:root` already resolve correctly
+- both modes must stay on the same semantic-token surface — do not branch on `dark:` selectors with one-off colors when the Aurora system already provides a token
+- any new Aurora token added to dark mode must be paired with a light-mode value in the same commit
+
 ## Product Direction
 
-Labby uses the `Aurora` dark theme language.
+Labby uses the `Aurora` theme language.
 
 Aurora should feel:
 
@@ -146,7 +157,7 @@ All new page and component styling should use semantic Aurora tokens rather than
 - `--aurora-border-default: #1d3d4e`
 - `--aurora-border-strong: #24536c`
 - `--aurora-text-primary: #e6f4fb`
-- `--aurora-text-muted: #90a9b9`
+- `--aurora-text-muted: #a7bcc9` — lifted from the original `#90a9b9` to clear WCAG AA (≥4.5:1) on `--aurora-panel-medium`. The lighter value is the source of truth.
 
 ### Accent Family
 
@@ -158,8 +169,27 @@ All new page and component styling should use semantic Aurora tokens rather than
 
 - `--aurora-warn: #c6a36b`
 - `--aurora-error: #c78490`
+- `--aurora-success: #7dd3c7` — muted teal in the accent family; used for success/connected/authorized states. Reads calm, not neon.
 - `--aurora-focus-ring: rgba(41, 182, 246, 0.34)`
 - `--aurora-active-glow: 0 0 0 1px rgba(41, 182, 246, 0.18), 0 0 16px rgba(41, 182, 246, 0.08)`
+
+### Interaction Helper Tokens
+
+- `--aurora-hover-bg: #17364b` — single source for hover backgrounds on outline/ghost controls. Use the `bg-aurora-hover-bg` utility, never the raw hex.
+
+### Live-Preview Tokens (restricted scope)
+
+These tokens intentionally sit brighter than the Aurora muted family. They exist so a real-time visualization surface can signal `allowed` / `unmatched` / `highlight` states at a glance. They are **not** general-purpose status colors.
+
+- `--aurora-preview-allowed: #00e676`
+- `--aurora-preview-unmatched: #ff9100`
+- `--aurora-preview-highlight: #ffea00`
+
+Sanctioned use:
+
+- the exposure-policy editor's live-preview surface (`components/gateway/exposure-policy-editor.tsx`)
+
+These are the only place in Labby where saturated/neon color and decorative gradients are allowed. Any new use must be added to this list — do not reach for these tokens for routine status display.
 
 ### Status Guidance
 
@@ -212,19 +242,21 @@ Do not flatten major surfaces into a single visual plane. Toolbar/header layers 
 
 ## Radius Contract
 
-Aurora uses a fixed radius scale.
+Aurora uses a token-backed radius scale exposed as both CSS variables and Tailwind utilities.
 
-- Radius 1: `14px`
-- Radius 2: `18px`
-- Radius 3: `22px`
-- Pill: `999px`
+| Token | Value | Tailwind utility | Use |
+|-------|-------|------------------|-----|
+| `--radius-1` | `14px` | `rounded-aurora-1` | dense controls, small buttons |
+| `--radius-2` | `18px` | `rounded-aurora-2` | inline cards, metadata blocks |
+| `--radius-3` | `22px` | `rounded-aurora-3` | major panels, toolbars, inspectors |
+| `--radius-pill` | `999px` | `rounded-full` | filter chips, compact state badges |
 
-Use:
+Rules:
 
-- Radius 1 for dense controls and small buttons
-- Radius 2 for inline cards and metadata blocks
-- Radius 3 for major panels, toolbars, and inspectors
-- Pill for filter chips and compact state badges
+- new code must reach for the tokens (`rounded-aurora-1/2/3`) before any arbitrary value
+- one remaining arbitrary radius is tolerated as a **legacy tuned variant**: `rounded-[1rem]` (16px) sits between Radius 1 and 2 with no clean home and may be migrated to `rounded-aurora-2` incrementally
+- `Button` defaults to `rounded-md` (~8px) for compact dense controls — this is below Radius 1 by design and stays as-is
+- do not introduce new arbitrary radii outside the table above without updating this contract
 
 ## Spacing Contract
 
@@ -347,6 +379,16 @@ Rules:
 - secondary support panels should use Tier 1 lift unless they are the primary interaction surface
 - avoid mixing many panel languages on a single page
 
+### Cards (`components/ui/card.tsx`)
+
+`CardTitle` defaults to `font-display tracking-[-0.02em]` so card headers automatically pick up Manrope and the Aurora display tracking. Sizing stays the caller's responsibility — compose `AURORA_DISPLAY_2` (or another ramp entry) when an explicit ramp slot is required.
+
+`Card` exposes `variant="medium" | "strong"` mapped to Tier 2 / Tier 3. Use `variant="strong"` for the primary surface on a page; everything else stays on the medium default.
+
+### Service Brand Identity
+
+External-service brand colors (Plex orange, Sonarr cyan, Radarr yellow, etc.) are kept in `lib/branding/service-brands.ts`, not inlined in components. They are the single sanctioned exception to the "no raw hex" rule because they encode third-party brand identity rather than Aurora UI tone.
+
 ### Empty, Loading, Success, Warning, Error States
 
 Rules:
@@ -428,6 +470,7 @@ When implementing or refactoring UI:
 - do not introduce alternate dark themes on a per-page basis
 - update `/design-system` when adding or materially changing a shared interaction pattern
 - treat this document as the stable contract and dated exploration docs as supporting material
+- all `overflow-auto`, `overflow-scroll`, `overflow-y-auto`, and `overflow-x-auto` containers must include the `aurora-scrollbar` utility class — this applies the token-backed thin scrollbar style (defined in `app/globals.css`) consistently across all scroll surfaces
 
 ## Approval Rule
 

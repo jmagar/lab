@@ -213,7 +213,7 @@ fn html_escape(value: &str) -> String {
 
 async fn probe(
     State(state): State<AppState>,
-    Extension(_auth): Extension<crate::api::oauth::AuthContext>,
+    Extension(auth): Extension<crate::api::oauth::AuthContext>,
     Json(body): Json<ProbeRequest>,
 ) -> Result<Json<crate::dispatch::gateway::oauth::ProbeResult>, ToolError> {
     let started = std::time::Instant::now();
@@ -229,6 +229,7 @@ async fn probe(
                 surface = "api",
                 service = "upstream_oauth",
                 action = "probe",
+                subject = %auth.sub,
                 elapsed_ms = started.elapsed().as_millis(),
                 kind = error.kind(),
                 "upstream oauth probe failed"
@@ -238,6 +239,7 @@ async fn probe(
         surface = "api",
         service = "upstream_oauth",
         action = "probe",
+        subject = %auth.sub,
         elapsed_ms = started.elapsed().as_millis(),
         url = %body.url,
         oauth_discovered = result.oauth_discovered,
@@ -274,6 +276,7 @@ async fn start(
                     surface = "api",
                     service = "upstream_oauth",
                     action = "start",
+                    subject = %auth.sub,
                     elapsed_ms = started.elapsed().as_millis(),
                     kind = error.kind(),
                     "upstream oauth start failed"
@@ -283,6 +286,7 @@ async fn start(
         surface = "api",
         service = "upstream_oauth",
         action = "start",
+        subject = %auth.sub,
         elapsed_ms = started.elapsed().as_millis(),
         upstream = %body.upstream,
         "upstream oauth authorization started"
@@ -310,6 +314,7 @@ async fn status(
                 surface = "api",
                 service = "upstream_oauth",
                 action = "status",
+                subject = %auth.sub,
                 elapsed_ms = started.elapsed().as_millis(),
                 kind = error.kind(),
                 "upstream oauth status failed"
@@ -319,6 +324,7 @@ async fn status(
         surface = "api",
         service = "upstream_oauth",
         action = "status",
+        subject = %auth.sub,
         elapsed_ms = started.elapsed().as_millis(),
         upstream = %query.upstream,
         "upstream oauth status retrieved"
@@ -353,6 +359,7 @@ async fn clear(
             surface = "api",
             service = "upstream_oauth",
             action = "clear",
+            subject = %auth.sub,
             elapsed_ms = started.elapsed().as_millis(),
             kind = error.kind(),
             "upstream oauth clear failed"
@@ -363,6 +370,7 @@ async fn clear(
         surface = "api",
         service = "upstream_oauth",
         action = "clear",
+        subject = %auth.sub,
         elapsed_ms = started.elapsed().as_millis(),
         upstream = %query.upstream,
         "upstream oauth credentials cleared"
@@ -470,6 +478,7 @@ async fn callback(
             surface = "api",
             service = "upstream_oauth",
             action = "callback",
+            subject = %subject,
             elapsed_ms = started.elapsed().as_millis(),
             upstream = %upstream,
             kind = error.kind(),
@@ -481,6 +490,7 @@ async fn callback(
             surface = "api",
             service = "upstream_oauth",
             action = "callback",
+            subject = %subject,
             elapsed_ms = started.elapsed().as_millis(),
             upstream = %upstream,
             "upstream oauth callback completed"

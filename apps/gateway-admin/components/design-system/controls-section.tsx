@@ -211,7 +211,7 @@ export function ControlsSection() {
             <p className="text-sm text-aurora-text-muted">{saveDemo.message}</p>
             <div className="flex flex-wrap gap-3">
               <Button
-                className="rounded-[0.95rem] bg-aurora-accent-primary text-[#06253a] hover:bg-aurora-accent-strong"
+                className="rounded-aurora-1 bg-aurora-accent-primary text-primary-foreground hover:bg-aurora-accent-strong"
                 disabled={saveDemo.status === 'loading'}
                 onClick={() => saveDemo.run('success')}
               >
@@ -229,7 +229,7 @@ export function ControlsSection() {
               </Button>
               <Button
                 variant="outline"
-                className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                 disabled={saveDemo.status === 'loading'}
                 onClick={saveDemo.reset}
               >
@@ -244,7 +244,7 @@ export function ControlsSection() {
             <div className="flex flex-wrap gap-3">
               <Button
                 variant="destructive"
-                className="rounded-[0.95rem]"
+                className="rounded-aurora-1"
                 disabled={destructiveDemo.status === 'loading'}
                 onClick={() => destructiveDemo.run('error')}
               >
@@ -253,7 +253,7 @@ export function ControlsSection() {
               </Button>
               <Button
                 variant="outline"
-                className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')}
+                className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                 disabled={destructiveDemo.status === 'loading'}
                 onClick={() => destructiveDemo.run('success')}
               >

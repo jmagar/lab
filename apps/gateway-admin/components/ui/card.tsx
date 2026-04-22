@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
  * Tier naming maps to: medium = Tier 2, strong = Tier 3.
  */
 const cardVariants = cva(
-  'flex flex-col gap-6 rounded-[1.35rem] border bg-card text-card-foreground',
+  'flex flex-col gap-6 rounded-aurora-3 border bg-card text-card-foreground',
   {
     variants: {
       variant: {
@@ -21,7 +21,7 @@ const cardVariants = cva(
           'border-aurora-border-strong bg-aurora-panel-medium shadow-aurora-medium shadow-aurora-highlight-medium',
         /** Tier 3 strong panel — elevated/featured sections. */
         strong:
-          'border-aurora-border-strong bg-aurora-panel-strong rounded-[1.4rem] shadow-aurora-strong shadow-aurora-highlight-strong',
+          'border-aurora-border-strong bg-aurora-panel-strong rounded-aurora-3 shadow-aurora-strong shadow-aurora-highlight-strong',
       },
     },
     defaultVariants: {
@@ -63,7 +63,10 @@ function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="card-title"
-      className={cn('leading-none font-semibold', className)}
+      className={cn(
+        'font-display leading-none font-semibold tracking-[-0.02em]',
+        className,
+      )}
       {...props}
     />
   )

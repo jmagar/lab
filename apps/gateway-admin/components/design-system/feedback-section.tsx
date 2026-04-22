@@ -56,7 +56,7 @@ export function FeedbackSection() {
               aria-pressed={mode === activeMode}
               className={cn(
                 controlTone(mode === activeMode ? 'accent' : 'default'),
-                'rounded-full px-3 py-1.5 text-sm capitalize hover:bg-[#17364b] hover:text-aurora-text-primary',
+                'rounded-full px-3 py-1.5 text-sm capitalize hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
               )}
               onClick={() => setActiveMode(mode)}
             >
@@ -100,7 +100,7 @@ export function FeedbackSection() {
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Button className="rounded-[0.95rem] bg-aurora-accent-primary text-[#06253a] hover:bg-aurora-accent-strong">
+                  <Button className="rounded-aurora-1 bg-aurora-accent-primary text-primary-foreground hover:bg-aurora-accent-strong">
                     Add sample data
                   </Button>
                 </EmptyContent>

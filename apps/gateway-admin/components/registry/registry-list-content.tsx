@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Package, ExternalLink, RefreshCw, XCircle, RotateCcw } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { Package, ExternalLink, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AppHeader } from '@/components/app-header'
 import { ServerFilters } from './server-filters'
 import { getRegistryConfig } from '@/lib/api/mcpregistry-client'
-import { registryServersKey, fetchRegistryServers, type RegistryServersKey } from '@/lib/hooks/use-registry'
+import { fetchRegistryServers, registryServersKey } from '@/lib/hooks/use-registry'
+import type { RegistryServersKey } from '@/lib/hooks/use-registry'
 import { safeHref } from '@/lib/utils/safe-href'
 import useSWR from 'swr'
+import useSWRInfinite from 'swr/infinite'
 import { cn } from '@/lib/utils'
 import {
   AURORA_GATEWAY_ROW,
@@ -16,11 +18,10 @@ import {
   AURORA_MEDIUM_PANEL,
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
-  AURORA_MUTED_LABEL,
 } from '@/components/gateway/gateway-theme'
 import { REGISTRY_META_KEY } from '@/lib/types/registry'
 import { RegistryStatusBadge } from './registry-status-badge'
-import type { ServerResponse } from '@/lib/types/registry'
+import type { ServerResponse, ServerListResponse, RegistrySortBy, RegistrySortOrder } from '@/lib/types/registry'
 
 interface RegistryListContentProps {
   onSelectServer?: (response: ServerResponse) => void
@@ -33,6 +34,27 @@ function truncateDescription(desc: string): { text: string; truncated: boolean }
   return { text: desc.slice(0, DESCRIPTION_CHAR_LIMIT), truncated: true }
 }
 
+function sortKey(response: ServerResponse, by: RegistrySortBy): string {
+  const ext = response._meta?.[REGISTRY_META_KEY]
+  switch (by) {
+    case 'name': return response.server.name
+    case 'published': return ext?.publishedAt ?? ''
+    case 'updated': return ext?.updatedAt ?? ext?.publishedAt ?? ''
+  }
+}
+
+function sortServers(
+  servers: ServerResponse[],
+  by: RegistrySortBy,
+  order: RegistrySortOrder,
+): ServerResponse[] {
+  return [...servers].sort((a, b) => {
+    const ka = sortKey(a, by)
+    const kb = sortKey(b, by)
+    return order === 'desc' ? kb.localeCompare(ka) : ka.localeCompare(kb)
+  })
+}
+
 export function RegistryListContent({ onSelectServer }: RegistryListContentProps) {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -40,68 +62,61 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   const [debouncedVersion, setDebouncedVersion] = useState('')
   const [updatedSince, setUpdatedSince] = useState('')
   const [debouncedUpdatedSince, setDebouncedUpdatedSince] = useState('')
-  const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null])
+  const [sortBy, setSortBy] = useState<RegistrySortBy | ''>('')
+  const [order, setOrder] = useState<RegistrySortOrder>('desc')
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set())
-  const [slowFetch, setSlowFetch] = useState(false)
-  const [verySlowFetch, setVerySlowFetch] = useState(false)
-  const controllerRef = useRef<AbortController | null>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  // Debounce all filter fields 300ms; reset cursor stack on any filter change
+  // Debounce filter fields; sort is client-side so no debounce needed
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
       setDebouncedVersion(version)
       setDebouncedUpdatedSince(updatedSince)
-      setCursorHistory([null])
     }, 300)
     return () => clearTimeout(timer)
   }, [search, version, updatedSince])
 
-  const activeCursor = cursorHistory[cursorHistory.length - 1]
-  const currentPage = cursorHistory.length
-  const key = registryServersKey(debouncedSearch, activeCursor, debouncedVersion, debouncedUpdatedSince)
+  const getKey = useCallback(
+    (pageIndex: number, previousData: ServerListResponse | null): RegistryServersKey | null => {
+      if (previousData && !previousData.metadata.nextCursor) return null
+      const cursor = pageIndex === 0 ? null : (previousData?.metadata.nextCursor ?? null)
+      return registryServersKey(debouncedSearch, cursor, debouncedVersion, debouncedUpdatedSince)
+    },
+    [debouncedSearch, debouncedVersion, debouncedUpdatedSince],
+  )
 
-  // Fetcher with AbortController — aborts prior request on key change
-  const fetcher = useCallback((k: RegistryServersKey) => {
-    controllerRef.current?.abort()
-    controllerRef.current = new AbortController()
-    return fetchRegistryServers(k, controllerRef.current.signal)
-  }, [])
+  const { data: pages, isLoading, isValidating, error, mutate, setSize } = useSWRInfinite<ServerListResponse>(
+    getKey,
+    (key: RegistryServersKey) => fetchRegistryServers(key),
+    { revalidateOnFocus: false, revalidateFirstPage: false },
+  )
 
-  // Cleanup on unmount
-  useEffect(() => () => { controllerRef.current?.abort() }, [])
+  // Flatten all pages then sort client-side — sort covers everything loaded, not just one page
+  const allServers = useMemo(() => {
+    const flat = pages?.flatMap(p => p.servers) ?? []
+    return sortBy ? sortServers(flat, sortBy, order) : flat
+  }, [pages, sortBy, order])
 
-  const { data, isLoading, isValidating, error, mutate } = useSWR(key, fetcher, {
-    revalidateOnFocus: false,
-  })
+  const lastPage = pages?.[pages.length - 1]
+  const hasMore = Boolean(lastPage?.metadata.nextCursor)
+  const totalLoaded = allServers.length
 
-  const { data: config } = useSWR('/registry/config', () => getRegistryConfig(), {
-    revalidateOnFocus: false,
-    revalidateIfStale: false,
-  })
-
-  // 3-stage loading escalation
+  // Sentinel observer — loads next page when the bottom of the list scrolls into view
   useEffect(() => {
-    if (!isLoading) {
-      setSlowFetch(false)
-      setVerySlowFetch(false)
-      return
-    }
-    const t1 = setTimeout(() => setSlowFetch(true), 3000)
-    const t2 = setTimeout(() => setVerySlowFetch(true), 10000)
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-    }
-  }, [isLoading])
-
-  const handleAbort = () => {
-    controllerRef.current?.abort()
-  }
-
-  const handleRetry = () => {
-    void mutate()
-  }
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !isValidating) {
+          setSize(s => s + 1)
+        }
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, isValidating, setSize])
 
   const toggleDescription = (name: string) => {
     setExpandedDescriptions((prev) => {
@@ -112,9 +127,10 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     })
   }
 
-  const servers = data?.servers ?? []
-  const nextCursor = data?.metadata.nextCursor ?? null
-  const totalCount = data?.metadata.count
+  const { data: config } = useSWR('/registry/config', () => getRegistryConfig(), {
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+  })
 
   return (
     <div className={AURORA_PAGE_SHELL}>
@@ -133,7 +149,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRetry}
+              onClick={() => void mutate()}
               disabled={isValidating}
               className="gap-1.5"
             >
@@ -152,12 +168,30 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           onVersionChange={setVersion}
           updatedSince={updatedSince}
           onUpdatedSinceChange={setUpdatedSince}
-          totalCount={totalCount}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          order={order}
+          onOrderChange={setOrder}
+          totalLoaded={totalLoaded}
+          hasMore={hasMore}
           isLoading={isLoading}
         />
 
-        {/* Loading state */}
-        {isLoading && (
+        {/* Error state */}
+        {!isLoading && error && (
+          <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-6 text-center')}>
+            <p className="text-sm text-aurora-error">
+              {error instanceof Error ? error.message : 'Failed to load registry'}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void mutate()} className="gap-1.5">
+              <RotateCcw className="size-4" />
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {/* Initial loading skeletons */}
+        {isLoading && allServers.length === 0 && (
           <div className="space-y-2">
             {Array.from({ length: 6 }, (_, i) => (
               <div
@@ -165,48 +199,20 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                 className="h-20 animate-pulse rounded-lg border border-aurora-border-strong/40 bg-[rgba(14,31,44,0.4)]"
               />
             ))}
-            {slowFetch && (
-              <p className="text-center text-sm text-aurora-text-muted">
-                Still fetching from registry…
-              </p>
-            )}
-            {verySlowFetch && (
-              <div className="flex items-center justify-center gap-3">
-                <Button variant="outline" size="sm" onClick={handleAbort} className="gap-1.5">
-                  <XCircle className="size-4" />
-                  Cancel
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleRetry} className="gap-1.5">
-                  <RotateCcw className="size-4" />
-                  Retry
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Error state */}
-        {!isLoading && error && (
-          <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-6 text-center')}>
-            <p className="text-sm text-aurora-error">{error instanceof Error ? error.message : 'Failed to load registry'}</p>
-            <Button variant="outline" size="sm" onClick={handleRetry} className="gap-1.5">
-              <RotateCcw className="size-4" />
-              Retry
-            </Button>
           </div>
         )}
 
         {/* Empty state */}
-        {!isLoading && !error && servers.length === 0 && data && (
+        {!isLoading && !error && allServers.length === 0 && pages && (
           <div className={cn(AURORA_MEDIUM_PANEL, 'p-10 text-center text-sm text-aurora-text-muted')}>
             No servers found{debouncedSearch ? ` for "${debouncedSearch}"` : ''}.
           </div>
         )}
 
-        {/* Server rows */}
-        {!isLoading && !error && servers.length > 0 && (
+        {/* Server list */}
+        {allServers.length > 0 && (
           <div className="overflow-hidden rounded-lg border border-aurora-border-strong">
-            {servers.map((response) => {
+            {allServers.map((response) => {
               const server = response.server
               const { remotes, icons } = server
               const isHTTP = remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
@@ -233,7 +239,6 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                   }}
                 >
                   <div className="flex items-start gap-4">
-                    {/* Icon */}
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
                       {icon ? (
                         <>
@@ -277,8 +282,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                         <RegistryStatusBadge status={status} />
                       </div>
 
-                      {/* untrusted registry data — do not use dangerouslySetInnerHTML */}
-                      <p className="mt-1 text-sm text-aurora-text-secondary">
+                      <p className="mt-1 text-sm text-aurora-text-muted">
                         {isExpanded ? server.description : descText}
                         {truncated && !isExpanded && '…'}
                       </p>
@@ -315,28 +319,17 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           </div>
         )}
 
-        {/* Pagination */}
-        {!isLoading && !error && (servers.length > 0 || currentPage > 1) && (
-          <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage <= 1}
-              onClick={() => setCursorHistory((h) => h.slice(0, -1))}
-            >
-              ← Back
-            </Button>
-            <span className="text-xs text-aurora-text-muted">Page {currentPage}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={nextCursor === null}
-              onClick={() => { if (nextCursor) setCursorHistory((h) => [...h, nextCursor]) }}
-            >
-              Next →
-            </Button>
-          </div>
-        )}
+        {/* Sentinel + inline loading indicator */}
+        <div ref={sentinelRef} className="flex h-8 items-center justify-center">
+          {isValidating && allServers.length > 0 && (
+            <p className="text-xs text-aurora-text-muted">Loading more…</p>
+          )}
+          {!hasMore && allServers.length > 0 && !isValidating && (
+            <p className="text-xs text-aurora-text-muted">
+              {totalLoaded} server{totalLoaded === 1 ? '' : 's'} loaded
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )
