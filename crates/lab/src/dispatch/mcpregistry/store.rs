@@ -18,8 +18,6 @@ use thiserror::Error;
 use lab_apis::mcpregistry::McpRegistryClient;
 use lab_apis::mcpregistry::types::{ListServersParams, ServerJSON, ServerResponse};
 
-use super::params::{SortBy, SortSpec};
-
 /// Errors produced by [`RegistryStore`] and its helpers.
 #[derive(Debug, Error)]
 pub enum RegistryStoreError {
@@ -68,8 +66,6 @@ pub struct StoreListParams {
     pub cursor: Option<String>,
     /// Page size — clamped server-side to `[1, 100]`; default 20.
     pub limit: Option<u32>,
-    /// Sort specification.
-    pub sort: Option<SortSpec>,
     /// Include rows with `status = 'deleted'`. Default: false.
     pub include_deleted: bool,
 }
@@ -82,7 +78,7 @@ impl StoreListParams {
     #[must_use]
     pub fn with_search(mut self, s: impl Into<String>) -> Self {
         let s = s.into();
-        self.search = if s.len() > 512 { Some(s[..512].to_string()) } else { Some(s) };
+        self.search = Some(truncate_utf8_bytes(s, 512));
         self
     }
 }
@@ -134,7 +130,8 @@ impl RegistryStore {
             let manager =
                 SqliteConnectionManager::file(&path).with_init(|conn| {
                     conn.execute_batch(
-                        "PRAGMA busy_timeout = 5000;\
+                        "PRAGMA journal_mode = WAL;\
+                         PRAGMA busy_timeout = 5000;\
                          PRAGMA foreign_keys = ON;\
                          PRAGMA synchronous = NORMAL;",
                     )
@@ -230,12 +227,7 @@ impl RegistryStore {
     /// `server_json` is re-serialized from the parsed struct — raw upstream
     /// bytes are never stored directly.
     ///
-    /// Returns the count of rows upserted (equal to `servers.len()` since
-    /// `INSERT OR REPLACE` always writes exactly one row per entry).
-    ///
-    /// LEARNED: `INSERT OR REPLACE` returns 2 (delete + insert) when a row is
-    /// replaced, so using `execute()` return values would double-count replacements.
-    /// Returning `servers.len()` directly is the correct count.
+    /// Returns the count of rows upserted (equal to `servers.len()`).
     pub async fn upsert_page(
         &self,
         servers: &[ServerResponse],
@@ -389,17 +381,7 @@ fn list_servers_sync(
         args.push(cursor_data.v.into());
     }
 
-    // ORDER BY — hardcoded from enum match, never interpolated from user input.
-    let order_col = match params.sort.as_ref().map(|s| &s.by) {
-        Some(SortBy::Updated) => "upstream_updated_at",
-        Some(SortBy::Published) => "upstream_updated_at", // published_at not in schema; fall back
-        Some(SortBy::Name) | None => "server_name",
-    };
-    let order_dir = match params.sort.as_ref().map(|s| s.desc) {
-        Some(true) => "DESC",
-        _ => "ASC",
-    };
-    sql.push_str(&format!(" ORDER BY {order_col} {order_dir}, version ASC"));
+    sql.push_str(" ORDER BY server_name ASC, version ASC");
 
     // Fetch limit+1 to detect whether a next page exists, then truncate.
     sql.push_str(&format!(" LIMIT {}", limit + 1));
@@ -534,12 +516,18 @@ fn upsert_page_sync(
             .and_then(|m| m.official.as_ref())
             .and_then(|ext| ext.updated_at.clone());
 
-        let synced_at = chrono::Utc::now().to_rfc3339();
+        let synced_at = jiff::Timestamp::now().to_string();
 
         tx.execute(
-            "INSERT OR REPLACE INTO registry_servers
+            "INSERT INTO registry_servers
              (server_name, version, is_latest, status, server_json, upstream_updated_at, synced_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(server_name, version) DO UPDATE SET
+               is_latest            = excluded.is_latest,
+               status               = excluded.status,
+               server_json          = excluded.server_json,
+               upstream_updated_at  = excluded.upstream_updated_at,
+               synced_at            = excluded.synced_at",
             rusqlite::params![
                 resp.server.name,
                 resp.server.version,
@@ -553,10 +541,6 @@ fn upsert_page_sync(
     }
 
     tx.commit()?;
-
-    // LEARNED: INSERT OR REPLACE returns 2 on conflict (delete + insert), so
-    // summing execute() return values would double-count replacements. Return
-    // servers.len() directly — it is the correct count of logical rows written.
     Ok(servers.len())
 }
 
@@ -573,15 +557,8 @@ fn upsert_page_sync(
 fn update_is_latest_sync(conn: &mut Connection) -> Result<(), RegistryStoreError> {
     let tx = conn.transaction()?;
 
-    // First, clear all is_latest flags.
-    tx.execute_batch("UPDATE registry_servers SET is_latest = 0;")?;
-
-    // Then, for each server_name, find the row(s) the upstream marked is_latest=1
-    // and pick the one with the greatest version as tiebreaker.
     tx.execute_batch(
-        "UPDATE registry_servers
-         SET is_latest = 1
-         WHERE ROWID IN (
+        "WITH latest_rows AS (
              SELECT r.ROWID
              FROM registry_servers r
              WHERE r.is_latest = 1
@@ -593,7 +570,12 @@ fn update_is_latest_sync(conn: &mut Connection) -> Result<(), RegistryStoreError
                      AND r2.is_latest = 1
                      AND r2.status != 'deleted'
                )
-         );",
+         )
+         UPDATE registry_servers
+         SET is_latest = CASE
+             WHEN ROWID IN (SELECT ROWID FROM latest_rows) THEN 1
+             ELSE 0
+         END;",
     )?;
 
     tx.commit()?;
@@ -611,6 +593,22 @@ fn escape_like(s: &str) -> String {
     s.replace('\\', r"\\")
         .replace('%', r"\%")
         .replace('_', r"\_")
+}
+
+fn truncate_utf8_bytes(s: String, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s;
+    }
+
+    let mut cut = 0usize;
+    for (idx, _) in s.char_indices() {
+        if idx > max_bytes {
+            break;
+        }
+        cut = idx;
+    }
+
+    s[..cut].to_string()
 }
 
 // ── Migration ─────────────────────────────────────────────────────────────────
