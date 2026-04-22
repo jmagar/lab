@@ -3,6 +3,7 @@
 //! Feature-gated: only compiled when the `mcpregistry` feature is enabled.
 
 mod catalog;
+pub mod sync;
 pub mod client;
 mod dispatch;
 mod params;
@@ -11,7 +12,7 @@ pub mod store;
 pub use catalog::ACTIONS;
 pub use client::client_from_env;
 pub use dispatch::{dispatch, dispatch_with_client};
-pub use params::validate_registry_url;
+pub use params::{resolve_search_for_rest, validate_registry_url};
 
 #[cfg(test)]
 mod tests {

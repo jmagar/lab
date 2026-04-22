@@ -1,6 +1,3 @@
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use lab_apis::mcpregistry::McpRegistryClient;
 use lab_apis::mcpregistry::types::ServerJSON;
 use serde_json::Value;
@@ -8,25 +5,7 @@ use serde_json::Value;
 use crate::config;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
-use crate::dispatch::mcpregistry::{catalog::ACTIONS, client, params};
-
-// ── Sync rate-limit state ─────────────────────────────────────────────────────
-
-/// Guards against concurrent syncs. Set to `true` while a sync is in progress.
-/// Reset to `false` via `SyncGuard` RAII on completion or panic.
-static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
-
-/// Tracks when the last successful sync completed.
-static LAST_SYNC_AT: OnceLock<std::sync::Mutex<Option<std::time::Instant>>> = OnceLock::new();
-
-/// RAII guard that resets `SYNC_IN_PROGRESS` to `false` on drop, even on panic.
-struct SyncGuard;
-
-impl Drop for SyncGuard {
-    fn drop(&mut self) {
-        SYNC_IN_PROGRESS.store(false, Ordering::Release);
-    }
-}
+use crate::dispatch::mcpregistry::{catalog::ACTIONS, client, params, sync};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 pub async fn dispatch_with_client(
@@ -38,12 +17,13 @@ pub async fn dispatch_with_client(
         "config" => Ok(serde_json::json!({ "url": client::resolved_url() })),
         "server.list" => {
             let p = params::list_servers_params(&params_value)?;
-            let sort = params::parse_sort_params(&params_value)?;
-            let mut resp = client.list_servers(p).await?;
-            if let Some(spec) = sort {
-                sort_servers(&mut resp.servers, &spec);
+            if params_value.get("sort_by").is_some() || params_value.get("order").is_some() {
+                return Err(ToolError::InvalidParam {
+                    message: "sort_by/order are not supported on the paginated registry surface".to_string(),
+                    param: "sort_by".to_string(),
+                });
             }
-            to_json(resp)
+            to_json(client.list_servers(p).await?)
         }
         "server.get" => {
             let name = params::require_name(&params_value)?;
@@ -57,7 +37,7 @@ pub async fn dispatch_with_client(
             let server_json: ServerJSON =
                 serde_json::from_value(params_value["server_json"].clone()).map_err(|e| {
                     ToolError::Sdk {
-                        sdk_kind: "invalid_params".to_string(),
+                        sdk_kind: "invalid_param".to_string(),
                         message: format!("invalid server_json: {e}"),
                     }
                 })?;
@@ -84,7 +64,7 @@ pub async fn dispatch_with_client(
                 install_stdio(pkg, &gateway_name, &params_value, &name)?
             } else {
                 return Err(ToolError::Sdk {
-                    sdk_kind: "no_transport".to_string(),
+                    sdk_kind: "invalid_param".to_string(),
                     message: format!(
                         "server '{name}' has no remotes and no packages — cannot install"
                     ),
@@ -118,40 +98,6 @@ pub async fn dispatch_with_client(
             .await
         }
         "sync" => {
-            // Gate 1: reject if a sync is already in progress.
-            // AcqRel is sufficient — Acquire establishes happens-before with the prior Release
-            // store in SyncGuard::drop; Relaxed on failure is safe (we just read, no ordering needed).
-            if SYNC_IN_PROGRESS
-                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
-                .is_err()
-            {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "rate_limited".to_string(),
-                    message: "sync already in progress".to_string(),
-                });
-            }
-            // RAII guard: resets SYNC_IN_PROGRESS to false on drop, including on panic.
-            // Must be created before any early return so all exit paths reset the flag.
-            let _guard = SyncGuard;
-
-            // Gate 2: minimum 60s between syncs.
-            let last = LAST_SYNC_AT.get_or_init(|| std::sync::Mutex::new(None));
-            {
-                let guard = last.lock().unwrap();
-                if let Some(t) = *guard {
-                    if t.elapsed() < std::time::Duration::from_secs(60) {
-                        // _guard drops here, resetting SYNC_IN_PROGRESS.
-                        return Err(ToolError::Sdk {
-                            sdk_kind: "rate_limited".to_string(),
-                            message: format!(
-                                "sync rate-limited; next allowed in {}s",
-                                60 - t.elapsed().as_secs()
-                            ),
-                        });
-                    }
-                }
-            }
-
             // Open the registry store from config path (no AppState available in MCP/CLI path).
             let db_path = config::registry_db_path();
             let store =
@@ -161,16 +107,7 @@ pub async fn dispatch_with_client(
                         ToolError::internal_message(format!("registry store open: {e}"))
                     })?;
 
-            let count = store.sync_from_upstream(client).await.map_err(|e| {
-                ToolError::internal_message(format!("sync failed: {e}"))
-            })?;
-
-            // Update last sync time only on success.
-            *LAST_SYNC_AT
-                .get_or_init(|| std::sync::Mutex::new(None))
-                .lock()
-                .unwrap() = Some(std::time::Instant::now());
-
+            let count = sync::perform_sync(&store, client, true).await?;
             Ok(serde_json::json!({ "synced": count }))
         }
         unknown => Err(ToolError::UnknownAction {
@@ -240,7 +177,7 @@ fn install_stdio(
 ) -> Result<Value, ToolError> {
     // runtimeHint is required for stdio packages.
     let hint = pkg.runtime_hint.as_deref().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "no_runtime_hint".to_string(),
+        sdk_kind: "invalid_param".to_string(),
         message: format!(
             "server '{server_name}' package has no runtimeHint — cannot build stdio command"
         ),
@@ -333,35 +270,6 @@ fn install_stdio(
         "proxy_resources": false,
         "expose_tools": null,
     }))
-}
-
-fn sort_key(s: &lab_apis::mcpregistry::types::ServerResponse, by: &params::SortBy) -> String {
-    match by {
-        params::SortBy::Name => s.server.name.clone(),
-        params::SortBy::Published => s
-            .meta
-            .as_ref()
-            .and_then(|m| m.official.as_ref())
-            .map(|e| e.published_at.clone())
-            .unwrap_or_default(),
-        params::SortBy::Updated => s
-            .meta
-            .as_ref()
-            .and_then(|m| m.official.as_ref())
-            .map(|e| e.updated_at.as_deref().unwrap_or(&e.published_at).to_string())
-            .unwrap_or_default(),
-    }
-}
-
-fn sort_servers(
-    servers: &mut Vec<lab_apis::mcpregistry::types::ServerResponse>,
-    spec: &params::SortSpec,
-) {
-    servers.sort_by(|a, b| {
-        let ka = sort_key(a, &spec.by);
-        let kb = sort_key(b, &spec.by);
-        if spec.desc { kb.cmp(&ka) } else { ka.cmp(&kb) }
-    });
 }
 
 /// Dispatch one call against the `mcpregistry` service.

@@ -293,11 +293,24 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 let store = Arc::new(store);
                 state = state.with_registry_store(Arc::clone(&store));
                 let sync_store = Arc::clone(&store);
-                let sync_client = crate::dispatch::mcpregistry::client::require_client().ok();
+                let sync_client = match crate::dispatch::mcpregistry::client::require_client() {
+                    Ok(c) => Some(c),
+                    Err(e) => {
+                        tracing::warn!(
+                            service = "mcpregistry",
+                            event = "sync.client.unavailable",
+                            error = %e,
+                            "mcpregistry client unavailable; hourly sync disabled"
+                        );
+                        None
+                    }
+                };
                 Some(tokio::spawn(async move {
                     // Fire immediately at startup — do not wait for the first interval tick.
                     if let Some(ref client) = sync_client {
-                        if let Err(e) = sync_store.sync_from_upstream(client).await {
+                        if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
+                            &sync_store, client, false,
+                        ).await {
                             tracing::warn!(
                                 service = "mcpregistry",
                                 event = "sync.failed",
@@ -315,8 +328,9 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                     loop {
                         interval.tick().await;
                         if let Some(ref client) = sync_client {
-                            if let Err(e) = sync_store.sync_from_upstream(client).await {
-                                // Supervisor: log and continue — never exit on error.
+                            if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
+                                &sync_store, client, false,
+                            ).await {
                                 tracing::warn!(
                                     service = "mcpregistry",
                                     event = "sync.failed",
@@ -882,7 +896,7 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListener> {
     use std::io::ErrorKind;
     match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => return Ok(l),
+        Ok(l) => Ok(l),
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             #[cfg(target_os = "linux")]
             {
