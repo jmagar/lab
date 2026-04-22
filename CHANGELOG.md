@@ -2,9 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.7.1
+## [Unreleased] — 0.7.2
 
-### Changed
+| Commit | Change |
+|--------|--------|
+| `2caf21b` | feat(lab-h5pm.4): dispatch sync action with RAII AtomicBool rate-limit guard |
+| `8233ac5` | feat(registry): use GitHub owner avatar as server image |
+| `0d1acba` | feat(gateway-admin): aurora token sweep + eslint enforcement |
+| `04a0dbd` | feat(lab-h5pm.2): implement RegistryStore query methods, upsert, and full sync |
+| `96ddf66` | feat(lab-h5pm.1): create RegistryStore module skeleton in dispatch layer |
+
+### Highlights
+- **RegistryStore (lab-h5pm)** — SQLite-backed MCP server registry with skeleton, query/upsert/full-sync, and dispatch sync action protected by a RAII AtomicBool rate-limit guard
+- **GitHub owner avatar** — registry list rows and detail header now pull `https://github.com/<owner>.png` from `server.repository.url`, falling back to `icons[0]` then a `Package` lucide icon
+- **Aurora token sweep (product code)** — replaced shadcn-generic tokens (`text-muted-foreground`, `bg-card`, `bg-muted`, `bg-background`, `border-border`, `text-foreground`, `rounded-xl`) with Aurora equivalents across 19 files in `components/` and `app/`
+- **ESLint enforcement** — new `no-restricted-syntax` rule bans the same tokens in `className` literals and template elements, scoped to `app/**` and `components/**` with `components/ui/**` exempted as the sanctioned escape hatch
+- **Design-system contract** — added Authentication Surfaces section, banned-shadcn-token mapping table, eyebrow drift guidance, typography-ramp override rule, and Display Slot Assignments table
+- **Brand icon polish** — gateway form brand chip now renders white-backed with colored border and SVG fill recoloring for stronger contrast
+- **Test-compile repairs** — added `proxy_prompts` to `UpstreamConfig` literals across 4 files + `search` to `StoreListParams` literal; all-features tests compile clean
+
+### Version bumps
+- Rust workspace: `0.7.1 → 0.7.2`
+- gateway-admin: `0.2.1 → 0.2.2`
+
+---
+
+## [0.7.1] — 2026-04-21
+
+| Commit | Change |
+|--------|--------|
+| `52ef7d4` | refactor(ui): complete Aurora token sweep across all shadcn primitives — v0.7.1 |
+
+### Highlights
 - **Aurora token sweep** — complete theming of all `components/ui/` shadcn primitives: toggle, navigation-menu, skeleton, dialog, item, calendar, scroll-area, resizable, badge, checkbox, switch, radio-group, slider, dropdown-menu, select, alert, separator, accordion, progress, tabs, sonner, command, context-menu, menubar
 - **Focus ring normalization** — all Radix primitives now use `aurora-accent-primary` rings instead of shadcn `ring-ring/50` defaults
 - **Hover state normalization** — all `bg-accent`/`focus:bg-accent`/`hover:bg-accent` replaced with `aurora-hover-bg` across all menu and interactive components
