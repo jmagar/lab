@@ -6,6 +6,7 @@ mod catalog;
 pub mod client;
 mod dispatch;
 mod params;
+pub mod store;
 
 pub use catalog::ACTIONS;
 pub use client::client_from_env;

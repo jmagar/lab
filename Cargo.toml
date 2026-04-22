@@ -71,7 +71,7 @@ rmcp         = { version = "1.4", features = [
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 rsa          = "0.10.0-rc.17"
 rand         = "0.9"
-rusqlite     = { version = "0.37", features = ["bundled"] }
+rusqlite     = { version = "0.39", features = ["bundled"] }
 sha2         = "0.10"
 percent-encoding = "2.3"
 uuid         = { version = "1", features = ["v4", "serde"] }

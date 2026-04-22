@@ -360,6 +360,18 @@ impl From<lab_apis::mcpregistry::error::RegistryError> for ToolError {
     }
 }
 
+// RegistryStore errors map to internal_error — they represent persistence
+// failures that callers cannot fix by changing their input.
+#[cfg(feature = "mcpregistry")]
+impl From<crate::dispatch::mcpregistry::store::RegistryStoreError> for ToolError {
+    fn from(e: crate::dispatch::mcpregistry::store::RegistryStoreError) -> Self {
+        Self::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!("registry store: {e}"),
+        }
+    }
+}
+
 // Deploy uses a hand-rolled impl instead of the macro so it can call
 // `redacted_message()` rather than `Display` (which includes host/reason detail
 // that must not escape to MCP or HTTP envelopes).
