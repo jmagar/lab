@@ -151,6 +151,7 @@ pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolErro
 ///
 /// Used exclusively by the `/v0.1/servers` GET surface and the `server.list`
 /// store path — never by the `/v1/mcpregistry` upstream-only dispatch.
+#[allow(dead_code)]
 pub fn store_params_from_dispatch(params: &Value) -> Result<StoreListParams, ToolError> {
     Ok(StoreListParams {
         search: params["search"].as_str().map(str::to_string),

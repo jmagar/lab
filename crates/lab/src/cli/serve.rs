@@ -307,7 +307,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                         }
                     }
                     let mut interval =
-                        tokio::time::interval(std::time::Duration::from_secs(3600));
+                        tokio::time::interval(Duration::from_secs(3600));
                     // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
                     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                     // Consume the immediate tick so the first loop iteration is at T+1h.
@@ -888,7 +888,7 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
             {
                 if reclaim_port_if_lab(port) {
                     for attempt in 1u8..=5 {
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                         match tokio::net::TcpListener::bind(addr).await {
                             Ok(l) => {
                                 tracing::info!(

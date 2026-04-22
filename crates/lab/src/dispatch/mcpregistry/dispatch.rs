@@ -153,7 +153,7 @@ pub async fn dispatch_with_client(
             }
 
             // Open the registry store from config path (no AppState available in MCP/CLI path).
-            let db_path = crate::config::registry_db_path();
+            let db_path = config::registry_db_path();
             let store =
                 crate::dispatch::mcpregistry::store::RegistryStore::open(&db_path)
                     .await
