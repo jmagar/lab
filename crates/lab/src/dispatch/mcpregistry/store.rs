@@ -40,6 +40,9 @@ pub enum RegistryStoreError {
 
     #[error("invalid cursor: {0}")]
     InvalidCursor(String),
+
+    #[error("upstream registry error: {0}")]
+    Upstream(String),
 }
 
 /// Internal cursor representation — base64-encoded JSON in wire form.
@@ -301,7 +304,7 @@ impl RegistryStore {
             let page = client
                 .list_servers(params)
                 .await
-                .map_err(|_e| RegistryStoreError::Db(rusqlite::Error::InvalidQuery))?;
+                .map_err(|e| RegistryStoreError::Upstream(e.to_string()))?;
 
             let page_len = page.servers.len();
             page_num += 1;
