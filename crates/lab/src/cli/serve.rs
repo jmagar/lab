@@ -18,6 +18,7 @@ use tokio::sync::mpsc;
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
 use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::device::enrollment::store::EnrollmentStore;
 use crate::device::runtime::DeviceRuntime;
 use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::SharedServiceClients;
@@ -137,8 +138,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         master_host = %resolved_runtime.master_host,
         "device runtime resolved"
     );
-    let device_store = Arc::new(DeviceFleetStore::default());
     let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
+    let device_store = Arc::new(DeviceFleetStore::default());
+    let enrollment_store = Arc::new(
+        EnrollmentStore::open(device_runtime.home_dir().join(".lab/device-enrollments.json"))
+            .await
+            .context("open device enrollment store")?,
+    );
     let device_role = device_runtime.role();
 
     let stdio_mode = should_run_stdio(transport, args.command.as_ref());
@@ -284,6 +290,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
     state = state.with_device_store(Arc::clone(&device_store));
+    state = state.with_enrollment_store(Arc::clone(&enrollment_store));
     state = state.with_log_system(logs_system);
     #[cfg(feature = "mcpregistry")]
     let _registry_sync_keepalive = {
@@ -386,14 +393,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
 
     let startup_runtime = device_runtime.clone();
     tokio::spawn(async move {
-        if let Err(error) = startup_runtime.send_initial_hello().await {
-            tracing::warn!(error = %error, "initial device hello failed");
-        }
         if let Err(error) = startup_runtime.upload_initial_metadata().await {
             tracing::warn!(error = %error, "initial device metadata upload failed");
         }
         if let Err(error) = startup_runtime.collect_and_flush_bootstrap_logs().await {
-            tracing::warn!(error = %error, "initial device log flush failed");
+            tracing::warn!(error = %error, "initial device bootstrap log queueing failed");
+        }
+        if let Err(error) = startup_runtime.spawn_ws_flush_loop().await {
+            tracing::warn!(error = %error, "device ws flush loop failed to start");
         }
     });
 

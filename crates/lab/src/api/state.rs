@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::config::DeviceRole;
+use crate::device::enrollment::store::EnrollmentStore;
 use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::ServiceClients;
 use crate::registry::{ToolRegistry, build_default_registry};
@@ -44,6 +45,8 @@ pub struct AppState {
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
     /// Shared fleet state store for device runtime ingestion.
     pub device_store: Option<Arc<DeviceFleetStore>>,
+    /// Shared durable enrollment store for fleet websocket admission control.
+    pub enrollment_store: Option<Arc<EnrollmentStore>>,
     /// Shared local-master log runtime used by API SSE and adapter-local lookups.
     pub logs_system: Option<Arc<crate::dispatch::logs::types::LogSystem>>,
     /// Resolved device role for the current process.
@@ -93,6 +96,7 @@ impl AppState {
             oauth_state: None,
             gateway_manager: None,
             device_store: None,
+            enrollment_store: None,
             logs_system: None,
             device_role: None,
             web_assets_dir: None,
@@ -129,6 +133,12 @@ impl AppState {
     #[must_use]
     pub fn with_device_store(mut self, store: Arc<DeviceFleetStore>) -> Self {
         self.device_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_enrollment_store(mut self, store: Arc<EnrollmentStore>) -> Self {
+        self.enrollment_store = Some(store);
         self
     }
 
