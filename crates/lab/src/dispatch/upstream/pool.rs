@@ -638,10 +638,7 @@ impl UpstreamPool {
             .filter(|service| !service.actions.is_empty())
             .cloned()
             .collect();
-        let pool = self.clone();
-        tokio::spawn(async move {
-            pool.register_in_process_service_list(services).await;
-        });
+        self.register_in_process_service_list(services).await;
     }
 
     pub async fn register_in_process_service_peers(&self, registry: &ToolRegistry) {
