@@ -92,7 +92,7 @@ impl DeviceRuntime {
         queue.push(QueuedEnvelope::syslog_batch(payload)).await
     }
 
-    pub async fn collect_and_flush_bootstrap_logs(&self) -> Result<()> {
+    pub async fn collect_and_queue_bootstrap_logs(&self) -> Result<()> {
         if matches!(self.resolved.role, DeviceRole::Master) {
             return Ok(());
         }

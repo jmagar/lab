@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronDown, ChevronRight, Terminal, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Terminal, CheckCircle2, XCircle, Loader2, CircleDashed } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ACPToolUsePart, ACPToolResultPart } from './types'
@@ -19,8 +19,10 @@ export function ToolCallDisplay({ toolUse, toolResult, isPending = false }: Tool
     <Loader2 className="size-3.5 animate-spin text-aurora-accent-primary" />
   ) : toolResult?.is_error ? (
     <XCircle className="size-3.5 text-aurora-error" />
-  ) : (
+  ) : toolResult ? (
     <CheckCircle2 className="size-3.5 text-aurora-success" />
+  ) : (
+    <CircleDashed className="size-3.5 text-aurora-text-muted/60" />
   )
 
   return (

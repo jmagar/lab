@@ -150,6 +150,8 @@ pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolErro
 pub fn store_params_from_dispatch(params: &Value) -> Result<StoreListParams, ToolError> {
     Ok(StoreListParams {
         search: resolve_search(params)?,
+        version: params["version"].as_str().map(str::to_string),
+        updated_since: params["updated_since"].as_str().map(str::to_string),
         cursor: params["cursor"].as_str().map(str::to_string),
         limit: params["limit"].as_u64().map(|v| v.min(100) as u32),
         include_deleted: params["include_deleted"].as_bool().unwrap_or(false),

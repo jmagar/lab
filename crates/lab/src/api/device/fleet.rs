@@ -117,69 +117,9 @@ async fn handle_websocket(
             Message::Text(text) => {
                 let request: RpcRequest =
                     serde_json::from_str(&text).map_err(|error| anyhow::anyhow!(error))?;
-                let response = match request.method.as_str() {
-                    "initialize" => {
-                        let params: InitializeParams =
-                            serde_json::from_value(request.params.unwrap_or(serde_json::Value::Null))
-                                .map_err(|error| anyhow::anyhow!(error))?;
-                        match handle_initialize(&store, &enrollment_store, &params).await {
-                            Ok(initialized) => {
-                                session_device_id = Some(initialized.device_id.clone());
-                                success_response(
-                                    request.id,
-                                    json!({
-                                        "protocolVersion": params.protocol_version,
-                                        "serverInfo": {
-                                            "name": "lab-fleet",
-                                            "version": env!("CARGO_PKG_VERSION"),
-                                        },
-                                        "_meta": {
-                                            "lab.device_id": initialized.device_id,
-                                        }
-                                    }),
-                                )
-                            }
-                            Err(error) => tool_error_response(request.id, &error),
-                        }
-                    }
-                    "fleet/status.push" => {
-                        let device_id = require_initialized_device_id(&session_device_id)?;
-                        let params = request.params.unwrap_or(serde_json::Value::Null);
-                        let status = parse_status_params(params, &device_id)?;
-                        store.record_status(status).await;
-                        success_response(request.id, json!({}))
-                    }
-                    "fleet/metadata.push" => {
-                        let device_id = require_initialized_device_id(&session_device_id)?;
-                        let params = request.params.unwrap_or(serde_json::Value::Null);
-                        let metadata = parse_metadata_params(params, &device_id)?;
-                        store.record_metadata(metadata).await;
-                        success_response(request.id, json!({}))
-                    }
-                    "fleet/log.event" => {
-                        let start = Instant::now();
-                        let device_id = require_initialized_device_id(&session_device_id)?;
-                        let params = request.params.unwrap_or(serde_json::Value::Null);
-                        let events = parse_log_events(params, &device_id)?;
-                        let event_count = events.len();
-                        store.record_logs(&device_id, events).await;
-                        tracing::info!(
-                            surface = "api",
-                            service = "fleet",
-                            action = "ws.log.event",
-                            device_id = %device_id,
-                            event_count,
-                            elapsed_ms = start.elapsed().as_millis(),
-                            "fleet websocket log batch recorded"
-                        );
-                        success_response(request.id, json!({}))
-                    }
-                    other => error_response(
-                        request.id,
-                        -32601,
-                        format!("unsupported fleet websocket method `{other}`"),
-                    ),
-                };
+                let response =
+                    handle_rpc_request(request, &store, &enrollment_store, &mut session_device_id)
+                        .await;
                 socket
                     .send(Message::Text(response.to_string().into()))
                     .await?;
@@ -206,6 +146,100 @@ async fn handle_websocket(
     }
 
     Ok(())
+}
+
+async fn handle_rpc_request(
+    request: RpcRequest,
+    store: &crate::device::store::DeviceFleetStore,
+    enrollment_store: &EnrollmentStore,
+    session_device_id: &mut Option<String>,
+) -> serde_json::Value {
+    match request.method.as_str() {
+        "initialize" => {
+            let params: InitializeParams = match serde_json::from_value(
+                request.params.unwrap_or(serde_json::Value::Null),
+            ) {
+                Ok(params) => params,
+                Err(error) => {
+                    return error_response(
+                        request.id,
+                        -32602,
+                        format!("invalid initialize params: {error}"),
+                    );
+                }
+            };
+
+            match handle_initialize(store, enrollment_store, &params).await {
+                Ok(initialized) => {
+                    *session_device_id = Some(initialized.device_id.clone());
+                    success_response(
+                        request.id,
+                        json!({
+                            "protocolVersion": params.protocol_version,
+                            "serverInfo": {
+                                "name": "lab-fleet",
+                                "version": env!("CARGO_PKG_VERSION"),
+                            },
+                            "_meta": {
+                                "lab.device_id": initialized.device_id,
+                            }
+                        }),
+                    )
+                }
+                Err(error) => tool_error_response(request.id, &error),
+            }
+        }
+        "fleet/status.push" => match require_initialized_device_id(session_device_id)
+            .and_then(|device_id| {
+                let params = request.params.unwrap_or(serde_json::Value::Null);
+                parse_status_params(params, &device_id)
+            }) {
+            Ok(status) => {
+                store.record_status(status).await;
+                success_response(request.id, json!({}))
+            }
+            Err(error) => tool_error_response(request.id, &error),
+        },
+        "fleet/metadata.push" => match require_initialized_device_id(session_device_id)
+            .and_then(|device_id| {
+                let params = request.params.unwrap_or(serde_json::Value::Null);
+                parse_metadata_params(params, &device_id)
+            }) {
+            Ok(metadata) => {
+                store.record_metadata(metadata).await;
+                success_response(request.id, json!({}))
+            }
+            Err(error) => tool_error_response(request.id, &error),
+        },
+        "fleet/log.event" => {
+            let start = Instant::now();
+            match require_initialized_device_id(session_device_id).and_then(|device_id| {
+                let params = request.params.unwrap_or(serde_json::Value::Null);
+                parse_log_events(params, &device_id).map(|events| (device_id, events))
+            }) {
+                Ok((device_id, events)) => {
+                    let event_count = events.len();
+                    store.record_logs(&device_id, events).await;
+                    tracing::info!(
+                        surface = "api",
+                        service = "fleet",
+                        action = "ws.log.event",
+                        device_id = %device_id,
+                        event_count,
+                        elapsed_ms = start.elapsed().as_millis(),
+                        "fleet websocket log batch recorded"
+                    );
+                    success_response(request.id, json!({}))
+                }
+                Err(error) => tool_error_response(request.id, &error),
+            }
+        }
+        other => error_response(
+            request.id,
+            -32601,
+            format!("unsupported fleet websocket method `{other}`"),
+        ),
+    }
 }
 
 async fn handle_initialize(
@@ -733,6 +767,46 @@ mod tests {
         send_initialize(&mut socket, "device-1", "wrong-token").await;
         let response = next_text(&mut socket).await;
         assert_eq!(response["error"]["data"]["kind"], "auth_failed");
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn fleet_methods_before_initialize_return_request_error_without_closing_socket() {
+        let state = approved_ws_state("device-1", "token-1").await;
+        let app = Router::new()
+            .route("/v1/fleet/ws", get(websocket_upgrade))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/fleet/ws")).await.expect("connect");
+
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 99,
+                    "method": "fleet/status.push",
+                    "params": {
+                        "device_id": "device-1",
+                        "connected": true,
+                        "ips": [],
+                    }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send pre-init status");
+        let pre_init_response = next_text(&mut socket).await;
+        assert_eq!(pre_init_response["error"]["data"]["kind"], "auth_failed");
+
+        send_initialize(&mut socket, "device-1", "token-1").await;
+        let init_response = next_text(&mut socket).await;
+        assert!(init_response.get("error").is_none());
 
         server.abort();
     }

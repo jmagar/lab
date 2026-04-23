@@ -39,10 +39,7 @@ pub async fn approve(
     let approved = store
         .approve(&device_id, payload.note)
         .await
-        .map_err(|error| ToolError::Sdk {
-            sdk_kind: "not_found".to_string(),
-            message: error.to_string(),
-        })?;
+        .map_err(|error| map_enrollment_error("approve enrollment", error))?;
     Ok(Json(serde_json::to_value(approved).map_err(|error| {
         ToolError::internal_message(format!("serialize approved enrollment: {error}"))
     })?))
@@ -58,11 +55,20 @@ pub async fn deny(
     let denied = store
         .deny(&device_id, payload.reason)
         .await
-        .map_err(|error| ToolError::Sdk {
-            sdk_kind: "not_found".to_string(),
-            message: error.to_string(),
-        })?;
+        .map_err(|error| map_enrollment_error("deny enrollment", error))?;
     Ok(Json(serde_json::to_value(denied).map_err(|error| {
         ToolError::internal_message(format!("serialize denied enrollment: {error}"))
     })?))
+}
+
+fn map_enrollment_error(context: &str, error: anyhow::Error) -> ToolError {
+    let message = error.to_string();
+    if message.contains("not found") {
+        ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message,
+        }
+    } else {
+        ToolError::internal_message(format!("{context}: {error}"))
+    }
 }

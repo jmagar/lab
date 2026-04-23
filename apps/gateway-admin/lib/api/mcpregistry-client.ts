@@ -1,5 +1,6 @@
 import { performServiceAction, isAbortError } from './service-action-client'
 import { confirmGatewayParams, gatewayHeaders } from './gateway-request'
+import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
 import { RegistryApiError, normalizeServerJSON } from '@/lib/types/registry'
 import type {
   ListServersParams,
@@ -58,10 +59,17 @@ export async function listServers(
 
   const qstr = qs.toString()
   const url = qstr ? `/v0.1/servers?${qstr}` : '/v0.1/servers'
+  const token = process.env.NEXT_PUBLIC_API_TOKEN
+  const standaloneBearerAuth = isStandaloneBearerAuthMode(token)
 
   let response: Response
   try {
-    response = await fetch(url, { headers: gatewayHeaders(), cache: 'no-store', signal })
+    response = await fetch(url, {
+      headers: gatewayHeaders(token, standaloneBearerAuth),
+      cache: 'no-store',
+      credentials: standaloneBearerAuth ? 'omit' : 'include',
+      signal,
+    })
   } catch (error) {
     if (isAbortError(error)) throw error
     const msg = error instanceof Error ? error.message : 'unknown network error'

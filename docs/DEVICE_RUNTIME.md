@@ -72,12 +72,12 @@ The device runtime still exposes `/v1/device/*`, but websocket fleet delivery is
 Write-oriented routes:
 
 - `POST /v1/device/oauth/relay/start`
-- `GET /v1/device/enrollments`
 - `POST /v1/device/enrollments/{device_id}/approve`
 - `POST /v1/device/enrollments/{device_id}/deny`
 
 Read-oriented routes:
 
+- `GET /v1/device/enrollments`
 - `GET /v1/device/devices`
 - `GET /v1/device/devices/{device_id}`
 - `POST /v1/device/logs/search`
@@ -165,7 +165,7 @@ This starts the same local loopback forwarder used by `lab oauth relay-local`, b
 
 ## Auth Expectations
 
-When `LAB_MCP_HTTP_TOKEN` is configured, the master still protects `/v1/*` and master-routed CLI traffic with that bearer token.
+When `LAB_MCP_HTTP_TOKEN` is configured, the master still protects operator `/v1/*` routes and master-routed CLI traffic with that bearer token.
 
 Device-to-master fleet delivery itself does not depend on bearer auth anymore. It is authenticated inside websocket `initialize` using the device token pinned in the enrollment store.
 

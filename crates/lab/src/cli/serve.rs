@@ -396,7 +396,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         if let Err(error) = startup_runtime.upload_initial_metadata().await {
             tracing::warn!(error = %error, "initial device metadata upload failed");
         }
-        if let Err(error) = startup_runtime.collect_and_flush_bootstrap_logs().await {
+        if let Err(error) = startup_runtime.collect_and_queue_bootstrap_logs().await {
             tracing::warn!(error = %error, "initial device bootstrap log queueing failed");
         }
         if let Err(error) = startup_runtime.spawn_ws_flush_loop().await {

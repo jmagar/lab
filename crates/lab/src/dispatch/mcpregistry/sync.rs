@@ -48,7 +48,7 @@ pub async fn perform_sync(
         .is_err()
     {
         return Err(ToolError::Sdk {
-            sdk_kind: "rate_limited".to_string(),
+            sdk_kind: "sync_in_progress".to_string(),
             message: "sync already in progress".to_string(),
         });
     }

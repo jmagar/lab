@@ -180,8 +180,8 @@ impl WsClient {
             validate_success_response(&response, *next_id)?;
             *next_id += 1;
             ack_count += 1;
+            queue.ack_drained(1).await?;
         }
-        queue.ack_drained(ack_count).await?;
         Ok(ack_count)
     }
 
