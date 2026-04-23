@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import type { Marketplace } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
@@ -10,19 +11,23 @@ interface MktSourceCardProps {
 }
 
 function SourceAvatar({ ghUser, name }: { ghUser: string; name: string }) {
+  const [imageFailed, setImageFailed] = useState(false)
   const initials = name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2)
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [ghUser, name])
+
   return (
     <div className="w-12 h-12 rounded-[14px] flex-shrink-0 overflow-hidden border border-white/[0.06] flex items-center justify-center font-display text-lg font-black text-aurora-text-muted bg-aurora-panel-medium">
-      <img
-        src={`https://github.com/${ghUser}.png?size=96`}
-        alt={ghUser}
-        className="w-full h-full object-cover"
-        onError={e => {
-          e.currentTarget.style.display = 'none'
-          const el = e.currentTarget.parentElement
-          if (el) el.textContent = initials
-        }}
-      />
+      {imageFailed ? initials : (
+        <img
+          src={`https://github.com/${ghUser}.png?size=96`}
+          alt={ghUser}
+          className="w-full h-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      )}
     </div>
   )
 }

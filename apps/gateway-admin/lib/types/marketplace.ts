@@ -17,10 +17,10 @@ export interface Marketplace {
   source: MarketplaceSource
   url?: string
   path?: string
-  desc: string
-  autoUpdate: boolean
-  totalPlugins: number
-  lastUpdated: string
+  desc?: string
+  autoUpdate?: boolean
+  totalPlugins?: number
+  lastUpdated?: string
 }
 
 export interface Plugin {
@@ -29,9 +29,9 @@ export interface Plugin {
   marketplaceId: string
   version: string
   description: string
-  mkt: string
-  ver: string
-  desc: string
+  mkt?: string
+  ver?: string
+  desc?: string
   tags: string[]
   installed: boolean
   hasUpdate?: boolean

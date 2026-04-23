@@ -46,8 +46,12 @@ export function detectArtifactLang(path: string): ArtifactLang {
   return 'text'
 }
 
-function normalizeMarketplace(raw: Marketplace): Marketplace {
-  const source = raw.source as MarketplaceSource
+type RawMarketplace = Pick<Marketplace, 'id' | 'name' | 'owner'> & Partial<Marketplace>
+type RawPlugin = Pick<Plugin, 'id' | 'name' | 'tags' | 'installed'> & Partial<Plugin>
+type RawArtifact = Omit<Artifact, 'lang'> & { lang?: ArtifactLang | null }
+
+function normalizeMarketplace(raw: RawMarketplace): Marketplace {
+  const source = (raw.source ?? 'local') as MarketplaceSource
   const githubOwner = source === 'github'
     ? (raw.githubOwner ?? raw.ghUser ?? raw.owner) || undefined
     : undefined
@@ -81,9 +85,9 @@ function normalizeMarketplace(raw: Marketplace): Marketplace {
   }
 }
 
-function normalizePlugin(raw: Plugin): Plugin {
-  const marketplaceId = raw.marketplaceId ?? raw.mkt
-  const version = raw.version ?? raw.ver
+function normalizePlugin(raw: RawPlugin): Plugin {
+  const marketplaceId = raw.marketplaceId ?? raw.mkt ?? ''
+  const version = raw.version ?? raw.ver ?? ''
   const description = raw.description ?? raw.desc ?? ''
 
   return {
@@ -98,12 +102,12 @@ function normalizePlugin(raw: Plugin): Plugin {
 }
 
 export async function fetchMarketplaces(signal?: AbortSignal): Promise<Marketplace[]> {
-  const marketplaces = await marketplaceAction<Marketplace[]>('sources.list', {}, signal)
+  const marketplaces = await marketplaceAction<RawMarketplace[]>('sources.list', {}, signal)
   return marketplaces.map(normalizeMarketplace)
 }
 
 export async function fetchPlugins(signal?: AbortSignal): Promise<Plugin[]> {
-  const plugins = await marketplaceAction<Plugin[]>('plugins.list', {}, signal)
+  const plugins = await marketplaceAction<RawPlugin[]>('plugins.list', {}, signal)
   return plugins.map(normalizePlugin)
 }
 
@@ -113,8 +117,11 @@ export async function getInstalledPluginIds(signal?: AbortSignal): Promise<Set<s
 }
 
 export async function getArtifacts(pluginId: string, signal?: AbortSignal): Promise<Artifact[]> {
-  const artifacts = await marketplaceAction<Artifact[]>('plugin.artifacts', { id: pluginId }, signal)
-  return artifacts.map((artifact) => ({ ...artifact }))
+  const artifacts = await marketplaceAction<RawArtifact[]>('plugin.artifacts', { id: pluginId }, signal)
+  return artifacts.map((artifact) => ({
+    ...artifact,
+    lang: artifact.lang ?? detectArtifactLang(artifact.path),
+  }))
 }
 
 export async function installPlugin(pluginId: string, signal?: AbortSignal): Promise<void> {
@@ -176,10 +183,13 @@ export async function addMarketplace(
       'missing_param',
     )
   }
+  params.autoUpdate = input.autoUpdate
   await marketplaceAction<unknown>('sources.add', params, signal)
   const sources = await fetchMarketplaces(signal)
   const target = input.repo ?? input.url
-  const found = sources.find(m => m.repo === target || m.url === target || m.id === target)
+  const found = sources.find(m =>
+    m.repository === target || m.repo === target || m.remoteUrl === target || m.url === target || m.id === target
+  )
   if (found) return found
   return normalizeMarketplace({
     id: input.repo ?? input.url ?? `custom-${Date.now()}`,

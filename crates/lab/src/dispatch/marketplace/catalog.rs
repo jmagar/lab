@@ -142,6 +142,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 required: false,
                 description: "Git URL (mutually exclusive with `repo`)",
             },
+            ParamSpec {
+                name: "autoUpdate",
+                ty: "boolean",
+                required: false,
+                description: "Persist whether this marketplace should auto-update",
+            },
         ],
         returns: "AddResult",
     },

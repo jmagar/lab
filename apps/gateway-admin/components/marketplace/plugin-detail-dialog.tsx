@@ -64,16 +64,18 @@ export function PluginDetailDialog({
 }: PluginDetailDialogProps) {
   const [tab, setTab] = useState<DialogTab>('info')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [artifactsError, setArtifactsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!plugin) return
     const controller = new AbortController()
     setArtifacts([])
+    setArtifactsError(null)
     getArtifacts(plugin.id, controller.signal)
       .then(setArtifacts)
       .catch(err => {
         if (isAbortError(err)) return
-        setArtifacts([])
+        setArtifactsError(err instanceof Error ? err.message : 'Failed to load plugin files')
       })
     return () => controller.abort()
   }, [plugin?.id])
@@ -85,7 +87,7 @@ export function PluginDetailDialog({
 
   return (
     <Dialog open onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent className="w-[min(1100px,100%)] h-[min(740px,100%)] max-w-[calc(100vw-40px)] max-h-[calc(100vh-40px)] p-0 bg-aurora-panel-strong border-aurora-border-strong rounded-aurora-3 overflow-hidden flex flex-col gap-0 shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong),0_0_0_1px_color-mix(in_srgb,var(--aurora-accent-primary)_4%,transparent),0_40px_100px_color-mix(in_srgb,black_50%,transparent)]">
+      <DialogContent className="h-[min(880px,calc(100vh-32px))] w-[min(1440px,calc(100vw-32px))] max-w-none max-h-none p-0 bg-aurora-panel-strong border-aurora-border-strong rounded-aurora-3 overflow-hidden flex flex-col gap-0 shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong),0_0_0_1px_color-mix(in_srgb,var(--aurora-accent-primary)_4%,transparent),0_40px_100px_color-mix(in_srgb,black_50%,transparent)]">
         <DialogTitle className="sr-only">{plugin.name}</DialogTitle>
 
         {/* Header */}
@@ -150,6 +152,7 @@ export function PluginDetailDialog({
             )}
             <button
               onClick={onClose}
+              aria-label="Close plugin details"
               className="w-[30px] h-[30px] rounded-lg bg-aurora-control-surface border border-aurora-border-default text-aurora-text-muted cursor-pointer flex items-center justify-center transition-[background,color,border-color] duration-150 hover:bg-aurora-hover-bg hover:text-aurora-text-primary hover:border-aurora-border-strong"
             >
               <X className="w-3 h-3 stroke-[2.5]" />
@@ -178,6 +181,13 @@ export function PluginDetailDialog({
         {/* Content */}
         {tab === 'info' ? (
           <PluginInfoPanel plugin={plugin} artifacts={artifacts} />
+        ) : artifactsError ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+            <div className="max-w-md rounded-aurora-2 border border-[color-mix(in_srgb,var(--aurora-error)_28%,transparent)] bg-[color-mix(in_srgb,var(--aurora-error)_7%,transparent)] px-4 py-3 text-sm text-aurora-text-primary">
+              <div className="font-semibold text-aurora-error">Failed to load plugin files</div>
+              <div className="mt-1 text-aurora-text-muted">{artifactsError}</div>
+            </div>
+          </div>
         ) : (
           <PluginFilesPanel pluginId={plugin.id} artifacts={artifacts} />
         )}
