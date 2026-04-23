@@ -1,9 +1,9 @@
 import { Suspense } from 'react'
-import { LogConsole, LogConsoleRouteAdapter } from '@/components/logs/log-console'
+import { LogConsoleRouteAdapter, LogConsoleSkeleton } from '@/components/logs/log-console'
 
 export default function LogsPage() {
   return (
-    <Suspense fallback={<LogConsole />}>
+    <Suspense fallback={<LogConsoleSkeleton />}>
       <LogConsoleRouteAdapter />
     </Suspense>
   )

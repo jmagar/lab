@@ -68,6 +68,52 @@ function queryPreviewForAfterTs(filters: LogFilterState, afterTs: number | null)
   )
 }
 
+export function LogConsoleSkeleton() {
+  return (
+    <div className={`relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary ${AURORA_PAGE_SHELL}`}>
+      <div className={AURORA_PAGE_FRAME}>
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="space-y-2">
+            <div className="h-4 w-16 rounded bg-aurora-panel-medium/80" />
+            <div className="h-8 w-28 rounded bg-aurora-panel-strong/80" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-9 w-28 rounded-aurora-1 border border-aurora-border-default bg-aurora-panel-medium/70" />
+            <div className="h-9 w-32 rounded-aurora-1 border border-aurora-border-default bg-aurora-panel-medium/70" />
+          </div>
+        </div>
+
+        <div className="mb-5 rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium p-4 shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+          <div className="flex flex-wrap gap-3">
+            <div className="h-10 min-w-[220px] flex-1 rounded-aurora-1 bg-aurora-panel-strong/80" />
+            <div className="h-10 w-40 rounded-aurora-1 bg-aurora-panel-strong/80" />
+            <div className="h-10 w-32 rounded-aurora-1 bg-aurora-panel-strong/80" />
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_384px]">
+          <div className="rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium p-4 shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+            <div className="space-y-3">
+              <div className="h-14 rounded-aurora-1 bg-aurora-panel-strong/80" />
+              <div className="h-14 rounded-aurora-1 bg-aurora-panel-strong/70" />
+              <div className="h-14 rounded-aurora-1 bg-aurora-panel-strong/80" />
+              <div className="h-14 rounded-aurora-1 bg-aurora-panel-strong/60" />
+            </div>
+          </div>
+
+          <div className="rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium p-4 shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+            <div className="space-y-3">
+              <div className="h-5 w-24 rounded bg-aurora-panel-strong/80" />
+              <div className="h-20 rounded-aurora-1 bg-aurora-panel-strong/70" />
+              <div className="h-32 rounded-aurora-1 bg-aurora-panel-strong/60" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LogConsole({ initialText = "" }: { initialText?: string }) {
   const [filters, setFilters] = React.useState<LogFilterState>(() => ({
     ...DEFAULT_FILTERS,
@@ -377,6 +423,7 @@ export function LogConsole({ initialText = "" }: { initialText?: string }) {
 
 export function LogConsoleRouteAdapter() {
   const searchParams = useSearchParams()
+  const initialText = (searchParams.get('request') ?? '').trim().slice(0, 500)
 
-  return <LogConsole initialText={searchParams.get('request') ?? ''} />
+  return <LogConsole initialText={initialText} />
 }
