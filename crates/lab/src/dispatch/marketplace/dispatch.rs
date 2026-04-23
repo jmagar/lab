@@ -51,7 +51,8 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
         "sources.add" => {
             let repo = optional_str(&params, "repo")?.map(ToString::to_string);
             let url = optional_str(&params, "url")?.map(ToString::to_string);
-            sources_add(repo, url).await
+            let auto_update = params.get("autoUpdate").and_then(Value::as_bool);
+            sources_add(repo, url, auto_update).await
         }
         "plugins.list" => {
             let filter = optional_str(&params, "marketplace")?.map(ToString::to_string);
@@ -922,7 +923,11 @@ fn detect_lang(p: &Path) -> ArtifactLang {
     }
 }
 
-async fn sources_add(repo: Option<String>, url: Option<String>) -> Result<Value, ToolError> {
+async fn sources_add(
+    repo: Option<String>,
+    url: Option<String>,
+    auto_update: Option<bool>,
+) -> Result<Value, ToolError> {
     let target = match (repo, url) {
         (Some(r), None) => r,
         (None, Some(u)) => u,
@@ -955,12 +960,52 @@ async fn sources_add(repo: Option<String>, url: Option<String>) -> Result<Value,
             message: format!("`claude plugin marketplace add {target}` failed: {stderr}"),
         });
     }
+    if let Some(auto_update) = auto_update {
+        persist_marketplace_auto_update(&target, auto_update)?;
+    }
     Ok(serde_json::json!({
         "ok": true,
         "target": target,
         "stdout": stdout,
         "stderr": stderr,
     }))
+}
+
+fn persist_marketplace_auto_update(target: &str, auto_update: bool) -> Result<(), ToolError> {
+    let path = client::plugins_root()?.join("known_marketplaces.json");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let mut value = read_json(&path)?;
+    let Some(entries) = value.as_object_mut() else {
+        return Ok(());
+    };
+
+    let mut changed = false;
+    for (marketplace_id, entry) in entries {
+        let Some(entry_obj) = entry.as_object_mut() else {
+            continue;
+        };
+        let source = entry_obj.get("source").and_then(Value::as_object);
+        let repo = source
+            .and_then(|source| source.get("repo"))
+            .and_then(Value::as_str);
+        let url = source
+            .and_then(|source| source.get("url"))
+            .and_then(Value::as_str);
+        if marketplace_id == target || repo == Some(target) || url == Some(target) {
+            entry_obj.insert("autoUpdate".to_string(), Value::Bool(auto_update));
+            changed = true;
+        }
+    }
+
+    if !changed {
+        return Ok(());
+    }
+
+    let bytes = serde_json::to_vec_pretty(&value).map_err(io_internal)?;
+    std::fs::write(path, bytes).map_err(io_internal)
 }
 
 async fn plugin_shell(verb: &'static str, id: &str) -> Result<Value, ToolError> {

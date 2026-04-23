@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ShoppingBag } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
@@ -22,9 +22,12 @@ export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModa
   const [name, setName] = useState('')
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [loading, setLoading] = useState(false)
+  const isSubmittingRef = useRef(false)
 
   async function handleSubmit() {
+    if (isSubmittingRef.current || loading) return
     if (!repo.trim() && !url.trim()) return
+    isSubmittingRef.current = true
     setLoading(true)
     try {
       const result = await onAdd({
@@ -38,6 +41,7 @@ export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModa
         onClose()
       }
     } finally {
+      isSubmittingRef.current = false
       setLoading(false)
     }
   }

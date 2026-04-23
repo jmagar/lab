@@ -37,7 +37,7 @@ export function useMarketplaceMutations() {
     try {
       await installPlugin(pluginId)
       await mutatePlugins(async (prev = []) =>
-        prev.map(p => p.id === pluginId ? { ...p, installed: true, installedAt: new Date().toISOString() } : p)
+        prev.map(p => p.id === pluginId ? { ...p, installed: true, hasUpdate: false, installedAt: new Date().toISOString() } : p)
       , { revalidate: false })
       toast.success(`Installed ${pluginName}`)
     } catch {
@@ -49,7 +49,7 @@ export function useMarketplaceMutations() {
     try {
       await uninstallPlugin(pluginId)
       await mutatePlugins(async (prev = []) =>
-        prev.map(p => p.id === pluginId ? { ...p, installed: false } : p)
+        prev.map(p => p.id === pluginId ? { ...p, installed: false, hasUpdate: false, installedAt: undefined } : p)
       , { revalidate: false })
       toast.success(`Removed ${pluginName}`)
     } catch {
@@ -61,6 +61,7 @@ export function useMarketplaceMutations() {
     try {
       const mkt = await addMarketplace(input)
       await mutateMarketplaces(async (prev = []) => [...prev, mkt], { revalidate: false })
+      await mutatePlugins(() => fetchPlugins(), { revalidate: false })
       toast.success(`Added ${mkt.name}`)
       return mkt
     } catch {
