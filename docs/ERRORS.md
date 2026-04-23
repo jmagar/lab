@@ -62,7 +62,8 @@ Dispatch layers may add the following kinds on top of SDK errors:
 - `ssrf_blocked` — registry-sourced URL resolves to a private, loopback, link-local, or ULA address; blocked to prevent SSRF
 - `sync_in_progress` — a registry sync is already running; callers should retry later. HTTP status: 503.
 
-Both use `ToolError::Sdk { sdk_kind, message }`. HTTP status: 422.
+`no_remote_transport` and `ssrf_blocked` use `ToolError::Sdk { sdk_kind, message }`. HTTP status: 422.
+`sync_in_progress` uses `ToolError::Sdk { sdk_kind, message }`. HTTP status: 503.
 
 Additional MCP-only flow-control cases may include:
 
@@ -285,6 +286,7 @@ Default mapping expectations:
 - `unknown_action` -> `400 Bad Request`
 - `unknown_instance` -> `400 Bad Request`
 - `confirmation_required` -> `422 Unprocessable Entity`
+- `sync_in_progress` -> `503 Service Unavailable`
 - `invalid_grant` -> `400 Bad Request`
 - `network_error` -> `502 Bad Gateway`
 - `server_error` -> `502 Bad Gateway`

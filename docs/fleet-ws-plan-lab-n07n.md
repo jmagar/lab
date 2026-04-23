@@ -80,16 +80,7 @@ A bidirectional WebSocket fleet transport that integrates with the existing gate
 
 ## Review Comments (Epic)
 
-- **2026-04-22T22:17:18Z** 
-- **2026-04-22T22:17:19Z** 
-- **2026-04-22T22:17:19Z** 
-- **2026-04-22T22:17:19Z** 
-- **2026-04-22T22:17:20Z** 
-- **2026-04-22T22:17:20Z** 
-- **2026-04-22T22:17:20Z** 
-- **2026-04-22T22:17:21Z** 
-- **2026-04-22T22:17:21Z** 
-- **2026-04-22T22:17:21Z** 
+- No additional review comments were recorded in this placeholder block.
 - **2026-04-22T22:17:22Z** 
 - **2026-04-22T22:17:22Z** 
 - **2026-04-22T22:21:16Z** 
@@ -203,7 +194,7 @@ None. This is the foundation phase.
 - Brainstorm: lab-n07n — locked decisions (JSON-RPC 2.0, fleet-is-gateway, circuit-breaker reuse)
 
 
-## Research Findings (Phase 3)
+## Research Findings (Phase 1)
 
 ### Transport shape (locked)
 - rmcp 1.4 ships NO WebSocket transport; confirmed via crate docs. Use rmcp's `IntoTransport` blanket impl over `futures::Sink + futures::Stream` — wrap `WebSocketStream<TokioStream>` from `tokio-tungstenite`. This is the path of least resistance; avoid implementing the `Transport` trait or `Worker` pattern directly unless a specific need emerges.
@@ -220,7 +211,7 @@ None. This is the foundation phase.
 
 ### Reprobe (new risk mitigation)
 - Thundering-herd risk: at 1000x scale, 10K devices simultaneously reprobe an unhealthy upstream every 30s. REQUIRED: exponential backoff 30s → 60s → 120s → 300s (reset on success) + ±5s jitter. Add `reprobe_attempt_count` to `UpstreamEntry`.
-- UpstreamPool `RwLock<HashMap>` contention emerges at 100x+ (~10% CPU lost to locking at 100x; 20-30% at 1000x). **Out of scope for P1** (stays in epic's Deferred list), but document the expected bottleneck and do NOT add new hot-path writes. Future mitigation: `DashMap` drop-in or 16-shard `RwLock`.
+- UpstreamPool `RwLock<HashMap>` contention emerges at 100x+ (~10% CPU lost to locking at 100x; 20-30% at 1000x). **Accepted into P1 scope** via the Engineering Review Addendum below: land the `DashMap` swap here rather than deferring it to P4, and avoid adding new hot-path writes while the transition is in progress.
 
 ### Frame-level security limits (new, REQUIRED)
 Set on `tokio_tungstenite::tungstenite::protocol::WebSocketConfig`:
@@ -292,10 +283,7 @@ Initial reconnect on timeout-detected disconnect applies `random(0, 5s)` initial
 
 ### Child Bead Comments
 
-- **2026-04-22T22:43:50Z** 
-- **2026-04-22T22:43:51Z** 
-- **2026-04-22T22:43:51Z** 
-- **2026-04-22T22:43:52Z** 
+- No additional child-bead comments were recorded in this placeholder block.
 
 ---
 
@@ -397,7 +385,7 @@ Master validates tailnet identity against peer IP via Tailscale API, validates t
 - Brainstorm: lab-n07n — device-dials-master; durable-queue-retained; replay-all-FIFO
 
 
-## Research Findings (Phase 3)
+## Research Findings (Phase 2)
 
 ### Queue write-amplification (CRITICAL, scope change)
 Current `crates/lab/src/device/queue.rs:126-180` rewrites the **entire** JSONL file on every ack. At realistic scale this becomes:
@@ -498,10 +486,7 @@ Device tracing fmt filter excludes any field matching `token`, `auth`, `secret`,
 
 ### Child Bead Comments
 
-- **2026-04-22T22:44:00Z** 
-- **2026-04-22T22:44:00Z** 
-- **2026-04-22T22:44:00Z** 
-- **2026-04-22T22:44:01Z** 
+- No additional child-bead comments were recorded in this placeholder block.
 
 ---
 
@@ -664,10 +649,7 @@ On slow subscriber drop / output cap / client disconnect, master sends `fleet/co
 
 ### Child Bead Comments
 
-- **2026-04-22T22:44:09Z** 
-- **2026-04-22T22:44:10Z** 
-- **2026-04-22T22:44:10Z** 
-- **2026-04-22T22:44:10Z** 
+- No additional child-bead comments were recorded in this placeholder block.
 
 ---
 
@@ -795,7 +777,7 @@ Deny-by-default: if no matching `peer_policy` entry, the call is rejected.
 - Brainstorm: lab-n07n — deny-by-default allowlist; revocable enrollment
 
 
-## Research Findings (Phase 3)
+## Research Findings (Phase 4)
 
 ### Confused deputy in `fleet/peer.invoke` (CRITICAL, new authz gate)
 **Vulnerability class**: if the handler only verifies "source A can reach target B", an action that B's local policy forbids can still be invoked through the master relay. Master authentication implicitly bypasses B's local checks.
@@ -825,7 +807,7 @@ Deny-by-default for destructive actions regardless of action glob match.
 ### UpstreamPool mutation API (new)
 - `insert_upstream` and `revoke_upstream` must be **atomic relative to discovery**: a device in mid-enroll must not appear half-registered in `connections` while missing from the catalog, and vice versa. Wrap the insert in a single write-lock critical section that covers both maps.
 - Revocation flips health to `Unhealthy` and clears the entry from the routing table, but leaves the WS connection live. Reconnect-after-revoke requires the device to re-enroll (explicit, not automatic).
-- At 100x+ scale, `RwLock<HashMap>` contention on `catalog` is a known bottleneck (10–30% CPU at 1000x). **In scope for this phase** as a quick win: swap `Arc<RwLock<HashMap<...>>>` for `Arc<DashMap<...>>` in the catalog and connections maps. Drop-in replacement; 90% reduction in lock wait time. Adds `dashmap` crate dep (small, well-maintained).
+- At 100x+ scale, `RwLock<HashMap>` contention on `catalog` is a known bottleneck (10–30% CPU at 1000x). The `DashMap` swap was pulled forward into Phase 1 by the Engineering Review Addendum, so Phase 4 should assume the concurrent-map baseline is already in place rather than re-scoping it here.
 
 ### Backpressure on peer.invoke (new)
 - `Semaphore` at the pool level bounds concurrent peer-invoke relays (suggest default: 64). Without it, a single compromised device can starve master's tokio executor (lab-e27 precedent).
@@ -924,10 +906,7 @@ Test: append 100 entries, corrupt one line, assert verify detects.
 
 ### Child Bead Comments
 
-- **2026-04-22T22:44:22Z** 
-- **2026-04-22T22:44:22Z** 
-- **2026-04-22T22:44:22Z** 
-- **2026-04-22T22:44:23Z** 
+- No additional child-bead comments were recorded in this placeholder block.
 
 ---
 
@@ -1029,7 +1008,7 @@ Deprecation:
 - Brainstorm: lab-n07n — UI surfaces + deprecation strategy
 
 
-## Research Findings (Phase 3)
+## Research Findings (Phase 5)
 
 ### Browser fanout disaster (CRITICAL, new transport decision)
 `tokio::sync::broadcast` has no per-subscriber backpressure. At 100x (20 browsers × 1000 devices × 1 msg/s × 300 B = 6 MB/s), a single browser on a slow link (500 ms lag) fills the 32-message buffer, and **all** subscribers get `Lagged` and disconnect — cascade failure.
@@ -1108,8 +1087,4 @@ Add `docs/runbooks/FLEET.md` covering:
 
 ### Child Bead Comments
 
-- **2026-04-22T22:44:32Z** 
-- **2026-04-22T22:44:32Z** 
-- **2026-04-22T22:44:32Z** 
-- **2026-04-22T22:44:33Z** 
-
+- No additional child-bead comments were recorded in this placeholder block.
