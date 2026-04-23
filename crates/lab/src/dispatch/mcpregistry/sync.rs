@@ -39,8 +39,9 @@ fn last_sync_at() -> &'static std::sync::Mutex<Option<std::time::Instant>> {
 /// Attempt a sync, enforcing the concurrent-sync and rate-limit guards.
 ///
 /// - `rate_limit`: when `true`, rejects calls within `MIN_SYNC_INTERVAL` of
-///   the last successful sync. The background supervisor passes `false` since
-///   its interval is already controlled by the `tokio::time::interval` timer.
+///   the last completed rate-limited sync attempt. The background supervisor
+///   passes `false` since its interval is already controlled by the
+///   `tokio::time::interval` timer.
 /// - Returns the count of rows synced on success.
 pub async fn perform_sync(
     store: &RegistryStore,
