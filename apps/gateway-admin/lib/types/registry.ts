@@ -11,6 +11,11 @@ export interface ListServersParams {
   cursor?: string | null
   version?: string
   updated_since?: string
+  featured?: boolean
+  reviewed?: boolean
+  recommended?: boolean
+  hidden?: boolean
+  tag?: string
 }
 
 export interface ServerListResponse {
@@ -66,7 +71,7 @@ export interface LabRegistryMetadata {
   quality?: {
     install_tested?: boolean
     last_install_tested_at?: string | null
-    transport_score?: 'good' | 'mixed' | 'poor' | string | null
+    transport_score?: 'good' | 'mixed' | 'poor' | null
   } | null
   security?: {
     ssrf_reviewed?: boolean
@@ -76,8 +81,13 @@ export interface LabRegistryMetadata {
   ux?: {
     works_in_lab?: boolean
     recommended_for_homelab?: boolean
-    setup_difficulty?: 'easy' | 'medium' | 'hard' | string | null
+    setup_difficulty?: 'easy' | 'medium' | 'hard' | null
   } | null
+  audit?: {
+    updated_at?: string | null
+    updated_by?: string | null
+  } | null
+  extra?: Record<string, unknown> | null
   [key: string]: unknown
 }
 
@@ -175,6 +185,11 @@ export interface RegistryLocalMetaResponse {
   version: string
   namespace: string
   metadata: LabRegistryMetadata | null
+}
+
+export interface RegistryMetaSetOptions {
+  version?: string
+  updated_by?: string
 }
 
 export interface RegistryLocalMetaDeleteResponse {

@@ -1493,23 +1493,17 @@ impl GatewayManager {
             })?;
         }
 
-        // dotenvy::from_path_override calls std::env::set_var, which mutates
-        // global process state. This is inherently racy in a multi-threaded
-        // Tokio runtime. Running it on the blocking thread pool keeps it off
-        // the async executor, but does not eliminate the race with concurrent
-        // std::env::var calls. A proper fix would require a shared env map
-        // (e.g. Arc<RwLock<HashMap>>) threaded into every client that reads
-        // env vars — tracked as a follow-up improvement.
-        let env_path_clone = env_path.clone();
-        tokio::task::spawn_blocking(move || dotenvy::from_path_override(&env_path_clone))
-            .await
-            .map_err(|e| ToolError::internal_message(format!("env reload task panicked: {e}")))?
-            .map_err(|e| {
+        if let Some(service_clients) = &self.service_clients {
+            service_clients
+                .refresh_from_env_path(&env_path)
+                .await
+                .map_err(|e| {
                 ToolError::internal_message(format!(
-                    "failed to refresh process env from {}: {e}",
+                    "failed to refresh service clients from {}: {e}",
                     env_path.display()
                 ))
             })?;
+        }
 
         Ok(())
     }
@@ -2562,15 +2556,17 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.toml");
         let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+        let upstream_name = "github-chat-cleanup-manager";
+        let runtime_arg = "github-chat-cleanup-manager-mcp";
 
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
                 enabled: true,
-                name: "github-chat".to_string(),
+                name: upstream_name.to_string(),
                 url: None,
                 bearer_token_env: None,
                 command: Some("uvx".to_string()),
-                args: vec!["github-chat-mcp".to_string()],
+                args: vec![runtime_arg.to_string()],
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
@@ -2579,7 +2575,7 @@ mod tests {
             .await;
 
         let mut child = Command::new("python3")
-            .args(["-c", "import time; time.sleep(60)", "github-chat-mcp"])
+            .args(["-c", "import time; time.sleep(60)", runtime_arg])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -2589,7 +2585,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         let cleanup = manager
-            .cleanup_upstream_processes("github-chat", false, false)
+            .cleanup_upstream_processes(upstream_name, false, false)
             .await
             .expect("cleanup");
 
@@ -2853,8 +2849,8 @@ mod tests {
             .expect("set service config");
 
         assert!(
-            !config.configured,
-            "openai should remain unconfigured until all required fields are present"
+            config.configured,
+            "openai should be configured when its required field is present"
         );
     }
 

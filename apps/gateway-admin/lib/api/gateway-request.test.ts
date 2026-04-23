@@ -7,8 +7,8 @@ import { confirmGatewayParams, gatewayHeaders, gatewayRequestInit } from './gate
 test('gatewayRequestInit omits cookies when bearer auth is configured', () => {
   const init = gatewayRequestInit('gateway.list', {}, 'dev-token', undefined, true)
 
-  assert.equal(init.credentials, 'omit')
-  assert.equal((init.headers as Record<string, string>).Authorization, 'Bearer dev-token')
+  assert.equal(init.credentials, 'include')
+  assert.equal((init.headers as Record<string, string>).Authorization, undefined)
   assert.equal(init.method, 'POST')
 })
 

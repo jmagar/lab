@@ -7,6 +7,7 @@ import type {
   ListServersParams,
   RegistryLocalMetaDeleteResponse,
   RegistryLocalMetaResponse,
+  RegistryMetaSetOptions,
   ServerListResponse,
   ServerResponse,
   ValidationResult,
@@ -60,6 +61,11 @@ export async function listServers(
   if (params.cursor) qs.set('cursor', params.cursor)
   if (params.version) qs.set('version', params.version)
   if (params.updated_since) qs.set('updated_since', params.updated_since)
+  if (params.featured != null) qs.set('featured', String(params.featured))
+  if (params.reviewed != null) qs.set('reviewed', String(params.reviewed))
+  if (params.recommended != null) qs.set('recommended', String(params.recommended))
+  if (params.hidden != null) qs.set('hidden', String(params.hidden))
+  if (params.tag) qs.set('tag', params.tag)
 
   const qstr = qs.toString()
   const url = qstr ? `/v0.1/servers?${qstr}` : '/v0.1/servers'
@@ -133,12 +139,12 @@ export async function getServerLocalMetadata(
 export async function setServerLocalMetadata(
   name: string,
   metadata: LabRegistryMetadata,
-  version?: string,
+  options?: RegistryMetaSetOptions,
   signal?: AbortSignal,
 ): Promise<RegistryLocalMetaResponse> {
   return registryAction<RegistryLocalMetaResponse>(
     'server.meta.set',
-    { name, version, metadata },
+    { name, version: options?.version, updated_by: options?.updated_by, metadata },
     signal,
   )
 }

@@ -27,6 +27,16 @@ pub struct ListServersParams {
     pub version: Option<String>,
     /// RFC3339 timestamp filter — only servers updated after this time.
     pub updated_since: Option<String>,
+    /// Filter by Lab featured flag.
+    pub featured: Option<bool>,
+    /// Filter by Lab reviewed flag.
+    pub reviewed: Option<bool>,
+    /// Filter by Lab recommended flag.
+    pub recommended: Option<bool>,
+    /// Filter by Lab hidden flag.
+    pub hidden: Option<bool>,
+    /// Filter by a single Lab curation tag.
+    pub tag: Option<String>,
 }
 
 impl ListServersParams {
@@ -47,6 +57,21 @@ impl ListServersParams {
         }
         if let Some(v) = &self.updated_since {
             pairs.push(("updatedSince".to_string(), v.clone()));
+        }
+        if let Some(v) = self.featured {
+            pairs.push(("featured".to_string(), v.to_string()));
+        }
+        if let Some(v) = self.reviewed {
+            pairs.push(("reviewed".to_string(), v.to_string()));
+        }
+        if let Some(v) = self.recommended {
+            pairs.push(("recommended".to_string(), v.to_string()));
+        }
+        if let Some(v) = self.hidden {
+            pairs.push(("hidden".to_string(), v.to_string()));
+        }
+        if let Some(v) = &self.tag {
+            pairs.push(("tag".to_string(), v.clone()));
         }
         pairs
     }
@@ -111,6 +136,109 @@ impl ResponseMeta {
     pub fn extension(&self, namespace: &str) -> Option<&serde_json::Value> {
         self.extensions.get(namespace)
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabRegistryMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub curation: Option<LabRegistryCuration>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust: Option<LabRegistryTrust>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<LabRegistryQuality>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security: Option<LabRegistrySecurity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ux: Option<LabRegistryUx>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audit: Option<LabRegistryAudit>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabRegistryCuration {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub featured: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabRegistryTrust {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_verified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maintainer_known: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LabRegistryTransportScore {
+    Good,
+    Mixed,
+    Poor,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabRegistryQuality {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub install_tested: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_install_tested_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transport_score: Option<LabRegistryTransportScore>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabRegistrySecurity {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ssrf_reviewed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions_reviewed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secrets_reviewed: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LabRegistrySetupDifficulty {
+    Easy,
+    Medium,
+    Hard,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabRegistryUx {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub works_in_lab: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_for_homelab: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_difficulty: Option<LabRegistrySetupDifficulty>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LabRegistryAudit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
 }
 
 /// Registry lifecycle extensions attached to a server version.

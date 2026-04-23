@@ -12,12 +12,22 @@ export const registryServersKey = (
   cursor: string | null,
   version?: string,
   updatedSince?: string,
+  featured?: boolean,
+  reviewed?: boolean,
+  recommended?: boolean,
+  hidden?: boolean,
+  tag?: string,
 ): RegistryServersKey => [
   REGISTRY_SERVERS_KEY,
   query,
   cursor,
   version || undefined,
   updatedSince || undefined,
+  featured ?? undefined,
+  reviewed ?? undefined,
+  recommended ?? undefined,
+  hidden ?? undefined,
+  tag || undefined,
 ]
 
 export const registryServerKey = (name: string): [string, string] => [
@@ -25,11 +35,11 @@ export const registryServerKey = (name: string): [string, string] => [
   name,
 ]
 
-export type RegistryServersKey = [string, string, string | null, string?, string?]
+export type RegistryServersKey = [string, string, string | null, string?, string?, boolean?, boolean?, boolean?, boolean?, string?]
 
 // Fetcher exported so bead 3 can wrap it with an AbortController ref.
 export function fetchRegistryServers(
-  [, query, cursor, version, updatedSince]: RegistryServersKey,
+  [, query, cursor, version, updatedSince, featured, reviewed, recommended, hidden, tag]: RegistryServersKey,
   signal?: AbortSignal,
 ): Promise<ServerListResponse> {
   return listServers(
@@ -41,6 +51,11 @@ export function fetchRegistryServers(
       updated_since: updatedSince && /^\d{4}-\d{2}-\d{2}$/.test(updatedSince)
         ? `${updatedSince}T00:00:00Z`
         : updatedSince,
+      featured,
+      reviewed,
+      recommended,
+      hidden,
+      tag,
     },
     signal,
   )

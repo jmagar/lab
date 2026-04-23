@@ -268,37 +268,6 @@ struct SaveResult {
     saved_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct DeployResult {
-    ok: bool,
-    changed: Vec<String>,
-    skipped: Vec<String>,
-    removed: Vec<String>,
-    failed: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct DeployPreviewResult {
-    changed: Vec<String>,
-    skipped: Vec<String>,
-    removed: Vec<String>,
-    entries: Vec<DeployPreviewEntry>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    target: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct DeployPreviewEntry {
-    path: String,
-    status: &'static str,
-    #[serde(rename = "beforeContent", skip_serializing_if = "Option::is_none")]
-    before_content: Option<String>,
-    #[serde(rename = "afterContent", skip_serializing_if = "Option::is_none")]
-    after_content: Option<String>,
-}
-
 fn load_installed() -> Result<HashMap<String, InstalledRecord>, ToolError> {
     let path = client::plugins_root()?.join("installed_plugins.json");
     if !path.exists() {
@@ -514,33 +483,13 @@ async fn plugin_save(id: &str, rel_path: &str, content: &str) -> Result<Value, T
 async fn plugin_deploy(id: &str) -> Result<Value, ToolError> {
     parse_plugin_id(id)?;
     let id_owned = id.to_string();
-    let result = tokio::task::spawn_blocking(move || -> Result<DeployResult, ToolError> {
+    let result = tokio::task::spawn_blocking(move || -> Result<client::DeployResult, ToolError> {
         let workspace = ensure_workspace_for_plugin(&id_owned)?;
         let target = installed_target_for_plugin(&id_owned)?.ok_or_else(|| ToolError::Sdk {
             sdk_kind: "not_found".into(),
             message: format!("plugin `{id_owned}` must be installed before it can be deployed"),
         })?;
-        let mut changed = Vec::new();
-        let mut skipped = Vec::new();
-        let mut removed = Vec::new();
-        let mut failed = Vec::new();
-        sync_workspace_to_target(
-            &workspace,
-            &target,
-            &workspace,
-            &mut changed,
-            &mut skipped,
-            &mut removed,
-            &mut failed,
-        )?;
-        Ok(DeployResult {
-            ok: failed.is_empty(),
-            changed,
-            skipped,
-            removed,
-            failed,
-            target: Some(target.to_string_lossy().into_owned()),
-        })
+        client::sync_workspace_to_target(&workspace, &target)
     })
     .await
     .map_err(join_err)??;
@@ -550,20 +499,14 @@ async fn plugin_deploy(id: &str) -> Result<Value, ToolError> {
 async fn plugin_deploy_preview(id: &str) -> Result<Value, ToolError> {
     parse_plugin_id(id)?;
     let id_owned = id.to_string();
-    let result = tokio::task::spawn_blocking(move || -> Result<DeployPreviewResult, ToolError> {
+    let result =
+        tokio::task::spawn_blocking(move || -> Result<client::DeployPreviewResult, ToolError> {
         let workspace = ensure_workspace_for_plugin(&id_owned)?;
         let target = installed_target_for_plugin(&id_owned)?.ok_or_else(|| ToolError::Sdk {
             sdk_kind: "not_found".into(),
             message: format!("plugin `{id_owned}` must be installed before deployment can be previewed"),
         })?;
-        let preview = preview_workspace_sync(&workspace, &target, &workspace)?;
-        Ok(DeployPreviewResult {
-            changed: preview.changed,
-            skipped: preview.skipped,
-            removed: preview.removed,
-            entries: preview.entries,
-            target: Some(target.to_string_lossy().into_owned()),
-        })
+        client::preview_workspace_sync(&workspace, &target)
     })
     .await
     .map_err(join_err)??;
@@ -733,170 +676,6 @@ fn resolve_relative_path(root: &Path, rel_path: &str) -> Result<PathBuf, ToolErr
         }
     }
     Ok(root.join(candidate))
-}
-
-fn sync_workspace_to_target(
-    workspace: &Path,
-    target: &Path,
-    current: &Path,
-    changed: &mut Vec<String>,
-    skipped: &mut Vec<String>,
-    removed: &mut Vec<String>,
-    failed: &mut Vec<String>,
-) -> Result<(), ToolError> {
-    let current_rel = current.strip_prefix(workspace).unwrap_or(current);
-    let current_target = if current_rel.as_os_str().is_empty() {
-        target.to_path_buf()
-    } else {
-        target.join(current_rel)
-    };
-
-    std::fs::create_dir_all(&current_target).map_err(io_internal)?;
-    let rd = std::fs::read_dir(current).map_err(io_internal)?;
-    let mut seen_names = std::collections::HashSet::new();
-    for entry in rd.flatten() {
-        let source = entry.path();
-        let file_name = entry.file_name();
-        seen_names.insert(file_name.clone());
-        let rel = source
-            .strip_prefix(workspace)
-            .unwrap_or(&source)
-            .to_string_lossy()
-            .into_owned();
-        let dest = current_target.join(&file_name);
-        if source.is_dir() {
-            std::fs::create_dir_all(&dest).map_err(io_internal)?;
-            sync_workspace_to_target(workspace, target, &source, changed, skipped, removed, failed)?;
-            continue;
-        }
-        let source_bytes = std::fs::read(&source).map_err(io_internal)?;
-        match std::fs::read(&dest) {
-            Ok(existing) if existing == source_bytes => {
-                skipped.push(rel);
-            }
-            Ok(_) | Err(_) => {
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent).map_err(io_internal)?;
-                }
-                match std::fs::write(&dest, &source_bytes) {
-                    Ok(_) => changed.push(rel),
-                    Err(_) => failed.push(rel),
-                }
-            }
-        }
-    }
-
-    let target_rd = std::fs::read_dir(&current_target).map_err(io_internal)?;
-    for entry in target_rd.flatten() {
-        let file_name = entry.file_name();
-        if seen_names.contains(&file_name) {
-            continue;
-        }
-        let stale_path = entry.path();
-        let stale_rel = stale_path
-            .strip_prefix(target)
-            .unwrap_or(&stale_path)
-            .to_string_lossy()
-            .into_owned();
-        let removal = if stale_path.is_dir() {
-            std::fs::remove_dir_all(&stale_path)
-        } else {
-            std::fs::remove_file(&stale_path)
-        };
-        match removal {
-            Ok(()) => removed.push(stale_rel),
-            Err(_) => failed.push(stale_rel),
-        }
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, Default)]
-struct SyncPreview {
-    changed: Vec<String>,
-    skipped: Vec<String>,
-    removed: Vec<String>,
-    entries: Vec<DeployPreviewEntry>,
-}
-
-fn preview_workspace_sync(
-    workspace: &Path,
-    target: &Path,
-    current: &Path,
-) -> Result<SyncPreview, ToolError> {
-    let current_rel = current.strip_prefix(workspace).unwrap_or(current);
-    let current_target = if current_rel.as_os_str().is_empty() {
-        target.to_path_buf()
-    } else {
-        target.join(current_rel)
-    };
-
-    let mut preview = SyncPreview::default();
-    let rd = std::fs::read_dir(current).map_err(io_internal)?;
-    let mut seen_names = std::collections::HashSet::new();
-    for entry in rd.flatten() {
-        let source = entry.path();
-        let file_name = entry.file_name();
-        seen_names.insert(file_name.clone());
-        let rel = source
-            .strip_prefix(workspace)
-            .unwrap_or(&source)
-            .to_string_lossy()
-            .into_owned();
-        let dest = current_target.join(&file_name);
-        if source.is_dir() {
-            let nested = preview_workspace_sync(workspace, target, &source)?;
-            preview.changed.extend(nested.changed);
-            preview.skipped.extend(nested.skipped);
-            preview.removed.extend(nested.removed);
-            preview.entries.extend(nested.entries);
-            continue;
-        }
-        let source_bytes = std::fs::read(&source).map_err(io_internal)?;
-        match std::fs::read(&dest) {
-            Ok(existing) if existing == source_bytes => preview.skipped.push(rel),
-            Ok(_) | Err(_) => {
-                let before_content = std::fs::read_to_string(&dest).ok();
-                let after_content = std::fs::read_to_string(&source).ok();
-                preview.changed.push(rel.clone());
-                preview.entries.push(DeployPreviewEntry {
-                    path: rel,
-                    status: "changed",
-                    before_content,
-                    after_content,
-                });
-            }
-        }
-    }
-
-    if let Ok(target_rd) = std::fs::read_dir(&current_target) {
-        for entry in target_rd.flatten() {
-            let file_name = entry.file_name();
-            if seen_names.contains(&file_name) {
-                continue;
-            }
-            let stale_path = entry.path();
-            let stale_rel = stale_path
-                .strip_prefix(target)
-                .unwrap_or(&stale_path)
-                .to_string_lossy()
-                .into_owned();
-            preview.removed.push(stale_rel);
-            preview.entries.push(DeployPreviewEntry {
-                path: stale_path
-                    .strip_prefix(target)
-                    .unwrap_or(&stale_path)
-                    .to_string_lossy()
-                    .into_owned(),
-                status: "removed",
-                before_content: std::fs::read_to_string(&stale_path).ok(),
-                after_content: None,
-            });
-        }
-    }
-
-    Ok(preview)
 }
 
 fn io_internal(error: impl std::fmt::Display) -> ToolError {

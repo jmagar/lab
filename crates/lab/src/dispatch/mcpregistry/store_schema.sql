@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS registry_server_meta (
     namespace   TEXT NOT NULL,
     meta_json   TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
+    updated_by  TEXT,
     PRIMARY KEY (server_name, version, namespace)
 );
 
