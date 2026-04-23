@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::config::DeviceRole;
+use crate::device::enrollment::store::EnrollmentStore;
 use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::ServiceClients;
 use crate::registry::{ToolRegistry, build_default_registry};
@@ -44,6 +45,8 @@ pub struct AppState {
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
     /// Shared fleet state store for device runtime ingestion.
     pub device_store: Option<Arc<DeviceFleetStore>>,
+    /// Shared durable enrollment store for fleet websocket admission control.
+    pub enrollment_store: Option<Arc<EnrollmentStore>>,
     /// Shared local-master log runtime used by API SSE and adapter-local lookups.
     pub logs_system: Option<Arc<crate::dispatch::logs::types::LogSystem>>,
     /// Resolved device role for the current process.
@@ -52,6 +55,11 @@ pub struct AppState {
     pub web_assets_dir: Option<Arc<PathBuf>>,
     /// When true, `/v1/*` skips auth middleware for hosted UI requests.
     pub web_ui_auth_disabled: bool,
+    /// Shared SQLite-backed MCP registry store for `/v0.1` read endpoints.
+    ///
+    /// `None` when the `mcpregistry` feature is disabled or the store failed to open.
+    #[cfg(feature = "mcpregistry")]
+    pub registry_store: Option<Arc<crate::dispatch::mcpregistry::store::RegistryStore>>,
 }
 
 impl AppState {
@@ -88,10 +96,13 @@ impl AppState {
             oauth_state: None,
             gateway_manager: None,
             device_store: None,
+            enrollment_store: None,
             logs_system: None,
             device_role: None,
             web_assets_dir: None,
             web_ui_auth_disabled: false,
+            #[cfg(feature = "mcpregistry")]
+            registry_store: None,
         }
     }
 
@@ -126,6 +137,12 @@ impl AppState {
     }
 
     #[must_use]
+    pub fn with_enrollment_store(mut self, store: Arc<EnrollmentStore>) -> Self {
+        self.enrollment_store = Some(store);
+        self
+    }
+
+    #[must_use]
     pub fn with_log_system(mut self, system: Arc<crate::dispatch::logs::types::LogSystem>) -> Self {
         self.logs_system = Some(system);
         self
@@ -154,6 +171,17 @@ impl AppState {
     #[must_use]
     pub fn is_master(&self) -> bool {
         !matches!(self.device_role, Some(DeviceRole::NonMaster))
+    }
+
+    /// Attach the shared MCP registry store for `/v0.1` read endpoints.
+    #[cfg(feature = "mcpregistry")]
+    #[must_use]
+    pub fn with_registry_store(
+        mut self,
+        store: Arc<crate::dispatch::mcpregistry::store::RegistryStore>,
+    ) -> Self {
+        self.registry_store = Some(store);
+        self
     }
 }
 

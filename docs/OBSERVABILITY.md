@@ -132,14 +132,16 @@ Device-runtime HTTP handlers participate in the same API dispatch contract.
 
 At minimum, the following actions must be traceable on the master:
 
-- `device.hello`
 - `device.status`
 - `device.metadata`
 - `device.syslog.batch`
 - `device.logs.search`
 - `device.oauth.relay.start`
+- `fleet.ws.initialize`
+- `fleet.ws.enrollment_required`
+- `fleet.ws.log.event`
 
-Non-master startup warnings for failed hello, metadata upload, or bootstrap log flush must be logged without leaking tokens or raw secret config content.
+Non-master startup warnings for failed websocket connect, initialize, metadata upload, status push, or bootstrap log delivery must be logged without leaking device tokens or raw secret config content.
 
 ### Shared Outbound Requests
 
@@ -344,6 +346,20 @@ Additional rules:
 - do not log raw discovered MCP config file contents; only metadata such as path, source, and hash are acceptable
 - do not persist bearer tokens, cookies, authorization headers, or raw secret material in the local log store
 - do not fan out unredacted structured fields to live SSE subscribers
+- upstream-controlled field values (tool names, prompt names, resource URIs from external MCP servers)
+  must be sanitized before rendering in human log output — strip Unicode control characters except
+  tab and newline to prevent ANSI escape injection. `sanitize_field_value()` in
+  `log_fmt/formatter.rs` is the canonical implementation; apply it before any terminal styling.
+- `resource_uri` field values must have query strings and fragments stripped before logging
+  (`redact_resource_uri_for_logging()` in `dispatch/upstream/pool.rs`). Pre-signed S3 tokens,
+  OAuth params, and similar credential-bearing query parameters must not appear in log output.
+- upstream URL values must have userinfo (username:password) stripped before logging
+  (`upstream_target_redacted()` in `dispatch/upstream/pool.rs`).
+
+Shell wrapper boundary: the user-installed `lab` shell wrapper emits CLI-PREFLIGHT output via `printf` to
+stderr before the Rust binary starts. This output is pre-binary and therefore not processed by
+`init_tracing()`, `LogIngestLayer`, or any redaction rules. Treat it as an unstructured stderr
+boundary — it must not emit credential-bearing content.
 
 ### Upstream OAuth Redaction
 

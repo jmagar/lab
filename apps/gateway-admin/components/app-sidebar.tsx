@@ -7,6 +7,7 @@ import {
   Cable,
   LayoutDashboard,
   Package,
+  ShoppingBag,
   Settings,
   Activity,
   ScrollText,
@@ -50,6 +51,11 @@ export const primarySidebarNavigation = [
     title: 'Registry',
     url: '/registry',
     icon: Package,
+  },
+  {
+    title: 'Marketplace',
+    url: '/marketplace',
+    icon: ShoppingBag,
   },
   {
     title: 'Setup',
@@ -169,7 +175,7 @@ export function AppSidebar() {
                   </div>
                 </div>
                 <button
-                  className="mt-3 text-xs text-muted-foreground transition hover:text-foreground"
+                  className="mt-3 text-xs text-aurora-text-muted transition hover:text-aurora-text-primary"
                   onClick={() => {
                     void logoutBrowserSession()
                   }}
@@ -182,7 +188,7 @@ export function AppSidebar() {
           ) : null}
           <SidebarMenuItem>
             <div className="flex items-center justify-between px-2 py-1">
-              <span className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+              <span className="text-xs text-aurora-text-muted group-data-[collapsible=icon]:hidden">
                 Theme
               </span>
               <ThemeToggle />

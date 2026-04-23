@@ -12,4 +12,6 @@
 #[allow(dead_code)]
 pub mod pool;
 #[allow(dead_code)]
+pub mod transport;
+#[allow(dead_code)]
 pub mod types;

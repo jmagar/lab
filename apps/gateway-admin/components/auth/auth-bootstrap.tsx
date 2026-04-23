@@ -26,7 +26,7 @@ export function AuthBootstrap({ children }: AuthBootstrapProps) {
 
   if (session.status === 'loading') {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+      <div className="flex min-h-screen items-center justify-center text-sm text-aurora-text-muted">
         Checking session…
       </div>
     )

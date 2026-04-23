@@ -56,7 +56,7 @@ export function FeedbackSection() {
               aria-pressed={mode === activeMode}
               className={cn(
                 controlTone(mode === activeMode ? 'accent' : 'default'),
-                'rounded-full px-3 py-1.5 text-sm capitalize hover:bg-[#17364b] hover:text-aurora-text-primary',
+                'rounded-full px-3 py-1.5 text-sm capitalize hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
               )}
               onClick={() => setActiveMode(mode)}
             >
@@ -80,9 +80,9 @@ export function FeedbackSection() {
                 </div>
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
-                <Skeleton className="h-18 rounded-xl bg-aurora-panel-medium" />
-                <Skeleton className="h-18 rounded-xl bg-aurora-panel-medium" />
-                <Skeleton className="h-18 rounded-xl bg-aurora-panel-medium" />
+                <Skeleton className="h-18 rounded-aurora-2 bg-aurora-panel-medium" />
+                <Skeleton className="h-18 rounded-aurora-2 bg-aurora-panel-medium" />
+                <Skeleton className="h-18 rounded-aurora-2 bg-aurora-panel-medium" />
               </div>
             </div>
 
@@ -100,7 +100,7 @@ export function FeedbackSection() {
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Button className="rounded-[0.95rem] bg-aurora-accent-primary text-[#06253a] hover:bg-aurora-accent-strong">
+                  <Button className="rounded-aurora-1 bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong">
                     Add sample data
                   </Button>
                 </EmptyContent>

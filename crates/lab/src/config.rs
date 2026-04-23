@@ -143,7 +143,7 @@ fn default_true() -> bool {
 pub struct UpstreamConfig {
     /// Human-readable name for this upstream (used as tool-name prefix).
     pub name: String,
-    /// URL of the upstream MCP server (must be `http://` or `https://`).
+    /// URL of the upstream MCP server (must be `http://`, `https://`, `ws://`, or `wss://`).
     /// For stdio upstreams, omit `url` and use `command`/`args` fields instead.
     #[serde(default)]
     pub url: Option<String>,
@@ -191,11 +191,11 @@ impl UpstreamConfig {
                     name: self.name.clone(),
                     url: raw.to_string(),
                 })?;
-            // Only http:// and https:// are allowed for upstream MCP servers.
+            // Only HTTP(S) and WebSocket upstream URLs are allowed.
             // Other schemes (file://, ftp://, etc.) are rejected at validation time
             // rather than discovered at connection time.
             let scheme = canonical.split("://").next().unwrap_or("");
-            if scheme != "http" && scheme != "https" {
+            if scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss" {
                 return Err(ConfigError::InvalidUrl {
                     name: self.name.clone(),
                     url: raw.to_string(),
@@ -673,6 +673,16 @@ pub fn config_toml_path() -> Option<PathBuf> {
         .into_iter()
         .find(|path| path.exists())
         .or_else(|| home_dir().map(|home| home.join(".config").join("lab").join("config.toml")))
+}
+
+/// Path to the SQLite registry database: `~/.lab/registry.db`.
+///
+/// Creates no files — callers are responsible for opening/creating the store.
+pub fn registry_db_path() -> PathBuf {
+    home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".lab")
+        .join("registry.db")
 }
 
 /// A string value that redacts itself in `Debug` and `Display` output.

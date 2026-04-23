@@ -18,11 +18,16 @@ use rmcp::transport::streamable_http_client::{
 };
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
+use tokio_util::sync::CancellationToken;
 use tokio::sync::RwLock;
 
 use crate::config::UpstreamConfig;
 use crate::oauth::upstream::cache::OauthClientCache;
 
+use super::transport::websocket::{
+    WebSocketTransportConfig, connect as connect_websocket_transport, jitter_delay, parse_ws_url,
+    reprobe_backoff,
+};
 use super::types;
 use super::types::{
     ToolExposurePolicy, UpstreamCapability, UpstreamEntry, UpstreamHealth, UpstreamTool,
@@ -54,19 +59,51 @@ fn max_response_bytes() -> usize {
 }
 
 fn upstream_transport(config: &UpstreamConfig) -> &'static str {
-    if config.url.is_some() {
+    if config.url.as_deref().is_some_and(is_websocket_url) {
+        "websocket"
+    } else if config.url.is_some() {
         "http"
     } else {
         "stdio"
     }
 }
 
-fn upstream_target(config: &UpstreamConfig) -> String {
-    config
-        .url
-        .clone()
-        .or_else(|| config.command.clone())
-        .unwrap_or_else(|| "<missing>".to_string())
+fn is_websocket_url(url: &str) -> bool {
+    matches!(
+        url::Url::parse(url)
+            .ok()
+            .map(|parsed| parsed.scheme().to_string())
+            .as_deref(),
+        Some("ws" | "wss")
+    )
+}
+
+/// Strip query strings and fragments from resource URIs before logging.
+///
+/// SECURITY: Upstream MCP servers may return resource URIs containing pre-signed
+/// tokens or OAuth credentials in query parameters. Only scheme+host+path is safe to log.
+pub(crate) fn redact_resource_uri_for_logging(uri: &str) -> &str {
+    let cut = uri.find('?').or_else(|| uri.find('#')).unwrap_or(uri.len());
+    &uri[..cut]
+}
+
+fn upstream_target_redacted(config: &UpstreamConfig) -> String {
+    // SECURITY: Never log raw URLs — they may contain userinfo credentials.
+    // Strip username/password before logging; log the command path for stdio upstreams.
+    match &config.url {
+        Some(url_str) => {
+            if let Ok(mut parsed) = url::Url::parse(url_str) {
+                let _ = parsed.set_username("");
+                let _ = parsed.set_password(None);
+                parsed.set_query(None);
+                parsed.set_fragment(None);
+                parsed.to_string()
+            } else {
+                "<invalid-url>".to_string()
+            }
+        }
+        None => config.command.clone().unwrap_or_else(|| "<missing>".to_string()),
+    }
 }
 
 /// Collect upstream peers for a capability in deterministic name order.
@@ -242,7 +279,7 @@ fn rewrite_resource_uri(resource: &mut Resource, upstream_name: &str) {
     let bare_uri = resource
         .uri
         .strip_prefix("lab://upstream/")
-        .and_then(|rest| rest.splitn(2, '/').nth(1).or(Some(rest)))
+        .and_then(|rest| rest.split_once('/').map(|x| x.1).or(Some(rest)))
         .unwrap_or(resource.uri.as_str());
     resource.uri = format!("lab://upstream/{upstream_name}/{bare_uri}");
 }
@@ -260,6 +297,8 @@ pub struct UpstreamPool {
     /// Per-upstream OAuth managers, keyed by upstream name.
     /// `None` when the server was started without OAuth support.
     oauth_client_cache: Option<OauthClientCache>,
+    /// Background reprobe task cancellation tokens, keyed by upstream name.
+    probe_tasks: Arc<RwLock<HashMap<String, CancellationToken>>>,
 }
 
 /// A live connection to an upstream MCP server.
@@ -285,6 +324,7 @@ impl UpstreamPool {
             connections: Arc::new(RwLock::new(HashMap::new())),
             resource_upstreams: Arc::new(RwLock::new(Vec::new())),
             oauth_client_cache: None,
+            probe_tasks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -357,6 +397,7 @@ impl UpstreamPool {
             }
 
             let config = config.clone();
+            let probe_config = config.clone();
             let oauth_client_cache = oauth_client_cache.clone();
             futures.push(async move {
                 let name = config.name.clone();
@@ -384,7 +425,7 @@ impl UpstreamPool {
                         tracing::info!(
                             upstream = %name,
                             transport = upstream_transport(&config),
-                            target = %upstream_target(&config),
+                            target = %upstream_target_redacted(&config),
                             tool_count = tools.len(),
                             resource_count,
                             prompt_count,
@@ -408,7 +449,7 @@ impl UpstreamPool {
                         tracing::warn!(
                             upstream = %name,
                             transport = upstream_transport(&config),
-                            target = %upstream_target(&config),
+                            target = %upstream_target_redacted(&config),
                             error = %error,
                             "upstream discovery failed"
                         );
@@ -422,7 +463,7 @@ impl UpstreamPool {
                         tracing::warn!(
                             upstream = %name,
                             transport = upstream_transport(&config),
-                            target = %upstream_target(&config),
+                            target = %upstream_target_redacted(&config),
                             timeout_secs = DISCOVERY_TIMEOUT.as_secs(),
                             "upstream discovery timed out"
                         );
@@ -430,6 +471,8 @@ impl UpstreamPool {
                     }
                 }
             });
+
+            self.ensure_probe_task(probe_config);
         }
 
         // Track all tool names across upstreams to detect duplicates.
@@ -533,6 +576,122 @@ impl UpstreamPool {
                     self.catalog.write().await.insert(name, entry);
                 }
             }
+        }
+    }
+
+    fn ensure_probe_task(&self, config: UpstreamConfig) {
+        if config.oauth.is_some() {
+            return;
+        }
+
+        let pool = self.clone();
+        tokio::spawn(async move {
+            let mut tasks = pool.probe_tasks.write().await;
+            if tasks.contains_key(&config.name) {
+                return;
+            }
+            let cancel = CancellationToken::new();
+            tasks.insert(config.name.clone(), cancel.clone());
+            drop(tasks);
+
+            let mut attempt = 0_u32;
+            loop {
+                let base = reprobe_backoff(attempt);
+                let sleep_for = if attempt == 0 {
+                    types::REPROBE_INTERVAL
+                } else {
+                    jitter_delay(base, stable_jitter_seed(&config.name, attempt))
+                };
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = tokio::time::sleep(sleep_for) => {}
+                }
+
+                match pool.reprobe_upstream(&config).await {
+                    Ok(true) => attempt = 0,
+                    Ok(false) => {}
+                    Err(error) => {
+                        attempt = attempt.saturating_add(1);
+                        tracing::warn!(
+                            upstream = %config.name,
+                            transport = upstream_transport(&config),
+                            attempt,
+                            error = %error,
+                            "upstream reprobe failed"
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    async fn reprobe_upstream(&self, config: &UpstreamConfig) -> anyhow::Result<bool> {
+        let existing_peer = {
+            let connections = self.connections.read().await;
+            connections.get(&config.name).map(|connection| connection.peer.clone())
+        };
+
+        if let Some(peer) = existing_peer {
+            match tokio::time::timeout(DISCOVERY_TIMEOUT, peer.list_all_tools()).await {
+                Ok(Ok(tools)) => {
+                    self.replace_catalog_tools(config, tools).await;
+                    self.record_success_for(&config.name, UpstreamCapability::Tools)
+                        .await;
+                    return Ok(true);
+                }
+                Ok(Err(error)) => {
+                    self.record_failure_for(
+                        &config.name,
+                        UpstreamCapability::Tools,
+                        format!("upstream heartbeat failed: {error}"),
+                    )
+                    .await;
+                }
+                Err(_) => {
+                    self.record_failure_for(
+                        &config.name,
+                        UpstreamCapability::Tools,
+                        "upstream heartbeat timed out",
+                    )
+                    .await;
+                }
+            }
+        }
+
+        let (conn, tools) = connect_upstream(config, None, self.oauth_client_cache.as_ref()).await?;
+        {
+            let mut connections = self.connections.write().await;
+            connections.insert(config.name.clone(), conn);
+        }
+        self.replace_catalog_tools(config, tools).await;
+        self.record_success_for(&config.name, UpstreamCapability::Tools)
+            .await;
+        Ok(true)
+    }
+
+    async fn replace_catalog_tools(&self, config: &UpstreamConfig, tools: Vec<rmcp::model::Tool>) {
+        let exposure_policy = resolve_exposure_policy(&config.name, config.expose_tools.clone());
+        let upstream_name: Arc<str> = Arc::from(config.name.as_str());
+        let tools = tools
+            .into_iter()
+            .map(|tool| {
+                let name = tool.name.to_string();
+                (
+                    name,
+                    UpstreamTool {
+                        input_schema: (!tool.input_schema.is_empty())
+                            .then(|| Value::Object((*tool.input_schema).clone())),
+                        tool,
+                        upstream_name: Arc::clone(&upstream_name),
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        let mut catalog = self.catalog.write().await;
+        if let Some(entry) = catalog.get_mut(&config.name) {
+            entry.tools = tools;
+            entry.exposure_policy = exposure_policy;
         }
     }
 
@@ -1258,7 +1417,7 @@ impl UpstreamPool {
             upstream = %upstream_name,
             capability = "resources",
             operation = "resource.read",
-            resource_uri = %uri,
+            resource_uri = redact_resource_uri_for_logging(uri),
             subject_scoped = false,
             "upstream.request.start"
         );
@@ -1281,7 +1440,7 @@ impl UpstreamPool {
                     upstream = %upstream_name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = false,
                     elapsed_ms = start.elapsed().as_millis(),
                     kind = "upstream_error",
@@ -1309,7 +1468,7 @@ impl UpstreamPool {
                     upstream = %upstream_name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = false,
                     elapsed_ms = start.elapsed().as_millis(),
                     kind = "response_too_large",
@@ -1327,7 +1486,7 @@ impl UpstreamPool {
                 upstream = %upstream_name,
                 capability = "resources",
                 operation = "resource.read",
-                resource_uri = %uri,
+                resource_uri = redact_resource_uri_for_logging(uri),
                 subject_scoped = false,
                 elapsed_ms = start.elapsed().as_millis(),
                 response_bytes = response_size,
@@ -1353,7 +1512,7 @@ impl UpstreamPool {
             upstream = %config.name,
             capability = "resources",
             operation = "resource.read",
-            resource_uri = %uri,
+            resource_uri = redact_resource_uri_for_logging(uri),
             subject_scoped = true,
             transport = upstream_transport(config),
             "upstream.request.start"
@@ -1377,7 +1536,7 @@ impl UpstreamPool {
                     upstream = %config.name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = true,
                     transport = upstream_transport(config),
                     elapsed_ms = start.elapsed().as_millis(),
@@ -1411,7 +1570,7 @@ impl UpstreamPool {
                         upstream = %config.name,
                         capability = "resources",
                         operation = "resource.read",
-                        resource_uri = %uri,
+                        resource_uri = redact_resource_uri_for_logging(uri),
                         subject_scoped = true,
                         transport = upstream_transport(config),
                         elapsed_ms = start.elapsed().as_millis(),
@@ -1431,7 +1590,7 @@ impl UpstreamPool {
                     upstream = %config.name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = true,
                     transport = upstream_transport(config),
                     elapsed_ms = start.elapsed().as_millis(),
@@ -1451,7 +1610,7 @@ impl UpstreamPool {
                     upstream = %config.name,
                     capability = "resources",
                     operation = "resource.read",
-                    resource_uri = %uri,
+                    resource_uri = redact_resource_uri_for_logging(uri),
                     subject_scoped = true,
                     transport = upstream_transport(config),
                     elapsed_ms = start.elapsed().as_millis(),
@@ -1805,10 +1964,14 @@ fn validate_upstream_config(config: &UpstreamConfig) -> Result<(), String> {
     }
 
     if let Some(ref url_str) = config.url {
-        // Reject non-HTTP schemes
-        if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
+        // Reject schemes outside the supported HTTP and WebSocket transports.
+        if !url_str.starts_with("http://")
+            && !url_str.starts_with("https://")
+            && !url_str.starts_with("ws://")
+            && !url_str.starts_with("wss://")
+        {
             return Err(format!(
-                "upstream URL must use http:// or https:// scheme, got: {url_str}"
+                "upstream URL must use http://, https://, ws://, or wss:// scheme, got: {url_str}"
             ));
         }
         // Parse with url::Url to reliably check the host.
@@ -1833,12 +1996,67 @@ async fn connect_upstream(
     oauth_client_cache: Option<&OauthClientCache>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     if let Some(ref url) = config.url {
-        connect_http_upstream(url, config, subject, oauth_client_cache).await
+        if is_websocket_url(url) {
+            connect_websocket_upstream(url, config).await
+        } else {
+            connect_http_upstream(url, config, subject, oauth_client_cache).await
+        }
     } else if let Some(ref command) = config.command {
         connect_stdio_upstream(command, &config.args, config).await
     } else {
         anyhow::bail!("upstream {} has neither url nor command", config.name)
     }
+}
+
+async fn connect_websocket_upstream(
+    url: &str,
+    config: &UpstreamConfig,
+) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    if config.oauth.is_some() {
+        anyhow::bail!(
+            "upstream {} declares oauth, but websocket upstream oauth is not yet supported",
+            config.name
+        );
+    }
+
+    let parsed = parse_ws_url(url).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let authorization = config
+        .bearer_token_env
+        .as_deref()
+        .and_then(|env_name| std::env::var(env_name).ok())
+        .map(|token| {
+            if token
+                .get(..7)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer "))
+            {
+                token
+            } else {
+                format!("Bearer {}", token.trim())
+            }
+        });
+    let transport = connect_websocket_transport(
+        WebSocketTransportConfig::new(parsed.to_string()).with_authorization(authorization),
+    );
+    let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(transport).await?;
+    let peer = service.peer().clone();
+    let tools = peer.list_all_tools().await?;
+
+    Ok((
+        UpstreamConnection {
+            _service: service,
+            peer,
+        },
+        tools,
+    ))
+}
+
+fn stable_jitter_seed(name: &str, attempt: u32) -> u64 {
+    let mut hash = 1_469_598_103_934_665_603_u64;
+    for byte in name.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(1_099_511_628_211);
+    }
+    hash ^ u64::from(attempt)
 }
 
 /// Connect to an HTTP upstream MCP server.
@@ -1994,6 +2212,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2009,6 +2228,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2025,6 +2245,7 @@ mod tests {
                 command: None,
                 args: vec![],
                 proxy_resources: false,
+                proxy_prompts: false,
                 expose_tools: None,
                 oauth: None,
             };
@@ -2044,10 +2265,29 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
         assert!(validate_upstream_config(&config).is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_valid_websocket_urls() {
+        for url in ["ws://localhost:8080/mcp", "wss://example.com/socket"] {
+            let config = UpstreamConfig {
+                name: "test".into(),
+                url: Some(url.into()),
+                bearer_token_env: None,
+                command: None,
+                args: vec![],
+                proxy_resources: false,
+                proxy_prompts: false,
+                expose_tools: None,
+                oauth: None,
+            };
+            assert!(validate_upstream_config(&config).is_ok(), "{url} should validate");
+        }
     }
 
     #[test]
@@ -2059,6 +2299,7 @@ mod tests {
             command: Some("my-mcp-server".into()),
             args: vec!["--port".into(), "8080".into()],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2074,6 +2315,7 @@ mod tests {
             command: Some("my-mcp-server".into()),
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2089,6 +2331,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: None,
         };
@@ -2103,6 +2346,7 @@ mod tests {
             command: None,
             args: vec![],
             proxy_resources: false,
+            proxy_prompts: false,
             expose_tools: None,
             oauth: Some(UpstreamOauthConfig {
                 mode: UpstreamOauthMode::AuthorizationCodePkce,

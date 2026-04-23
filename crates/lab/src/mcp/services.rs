@@ -6,6 +6,7 @@
 
 #[cfg(feature = "deploy")]
 pub mod deploy;
+pub mod device;
 pub mod extract;
 pub mod gateway;
 pub mod logs;
@@ -69,9 +70,4 @@ pub mod tei;
 #[cfg(feature = "apprise")]
 pub mod apprise;
 
-#[cfg(feature = "tailscale")]
-pub mod tailscale;
-
-#[cfg(feature = "tautulli")]
-pub mod tautulli;
 // [lab-scaffold: mcp-services]

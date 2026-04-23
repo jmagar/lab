@@ -76,10 +76,10 @@ export function NavigationSection() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm font-medium text-aurora-text-primary">Tabs</p>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')}>
+                <Button variant="outline" className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
                   Filter logs
                 </Button>
-                <Button className="rounded-[0.95rem] bg-aurora-accent-primary text-[#06253a] hover:bg-aurora-accent-strong">
+                <Button className="rounded-aurora-1 bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong">
                   Create gateway
                 </Button>
               </div>

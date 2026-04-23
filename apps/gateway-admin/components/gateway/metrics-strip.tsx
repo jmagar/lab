@@ -35,7 +35,7 @@ export function MetricsStrip({
               'flex items-center justify-between gap-3',
               item.tone === 'success'
                 ? 'text-aurora-success'
-                : 'text-muted-foreground',
+                : 'text-aurora-text-muted',
             )}
           >
             <span className="uppercase tracking-[0.18em]">{item.label}</span>
@@ -66,7 +66,7 @@ export function MetricsStrip({
                   'flex items-center gap-1.5',
                   item.tone === 'success'
                     ? 'text-aurora-success'
-                    : 'text-muted-foreground',
+                    : 'text-aurora-text-muted',
                 )}
               >
                 <Icon className="size-3.5" />

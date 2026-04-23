@@ -160,14 +160,13 @@ impl UpstreamOauthManager {
         );
 
         self.verify_s256(&metadata.code_challenge_methods_supported)
-            .map_err(|e| {
+            .inspect_err(|e| {
                 tracing::warn!(
                     upstream = %self.upstream.name,
                     subject,
                     kind = e.kind(),
                     "upstream oauth: S256 PKCE verification failed"
                 );
-                e
             })?;
         manager.set_metadata(metadata);
 

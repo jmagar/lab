@@ -232,6 +232,15 @@ pub fn build_default_registry() -> ToolRegistry {
         dispatch: dispatch_fn!(crate::mcp::services::logs::dispatch),
     });
 
+    reg.register(RegisteredService {
+        name: "device",
+        description: "Manage fleet device enrollments",
+        category: "bootstrap",
+        status: "available",
+        actions: crate::mcp::services::device::ACTIONS,
+        dispatch: dispatch_fn!(crate::mcp::services::device::dispatch),
+    });
+
     register_service!(
         reg,
         "radarr",
@@ -532,6 +541,7 @@ mod tests {
         let http_router_services: std::collections::HashSet<&'static str> = {
             let mut s = std::collections::HashSet::new();
             s.insert(lab_apis::extract::META.name); // always-on
+            s.insert("device");
             s.insert("gateway");
             s.insert("logs");
             #[cfg(feature = "radarr")]

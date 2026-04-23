@@ -66,7 +66,7 @@ export function PatternsSection() {
                   type="button"
                   className={cn(
                     `${AURORA_TAIL_ROW} w-full px-4 py-3 text-left transition hover:bg-[rgba(7,17,26,0.52)]`,
-                    event.event_id === selectedEventId ? 'bg-[rgba(41,182,246,0.12)] shadow-[inset_2px_0_0_#29b6f6]' : '',
+                    event.event_id === selectedEventId ? 'bg-aurora-accent-primary/12 shadow-[inset_2px_0_0_var(--aurora-accent-primary)]' : '',
                   )}
                   onClick={() => setSelectedEventId(event.event_id)}
                 >
@@ -114,10 +114,10 @@ export function PatternsSection() {
                   className={cn(AURORA_MESSAGE_SURFACE, 'pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
                 />
               </label>
-              <Button variant="outline" className={cn(controlTone(), 'rounded-[0.95rem] hover:bg-[#17364b] hover:text-aurora-text-primary')}>
+              <Button variant="outline" className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
                 Health: all
               </Button>
-              <Button className="rounded-[0.95rem] bg-aurora-accent-primary text-[#06253a] hover:bg-aurora-accent-strong">
+              <Button className="rounded-aurora-1 bg-aurora-accent-primary text-primary-foreground hover:bg-aurora-accent-strong">
                 Add gateway
               </Button>
             </div>

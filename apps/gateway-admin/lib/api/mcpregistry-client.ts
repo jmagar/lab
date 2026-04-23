@@ -1,5 +1,6 @@
-import { performServiceAction } from './service-action-client'
-import { confirmGatewayParams } from './gateway-request'
+import { performServiceAction, isAbortError } from './service-action-client'
+import { confirmGatewayParams, gatewayHeaders } from './gateway-request'
+import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
 import { RegistryApiError, normalizeServerJSON } from '@/lib/types/registry'
 import type {
   ListServersParams,
@@ -12,6 +13,7 @@ import type { Gateway } from '@/lib/types/gateway'
 
 type RawServerResponse = Omit<ServerResponse, 'server'> & { server: ServerJSON }
 type RawServerListResponse = Omit<ServerListResponse, 'servers'> & { servers: RawServerResponse[] }
+type RestServerListRaw = { servers: ServerJSON[]; next_cursor: string | null }
 
 function normalizeResponse(raw: RawServerResponse): ServerResponse {
   return { ...raw, server: normalizeServerJSON(raw.server) }
@@ -48,8 +50,40 @@ export async function listServers(
   params: ListServersParams,
   signal?: AbortSignal,
 ): Promise<ServerListResponse> {
-  const raw = await registryAction<RawServerListResponse>('server.list', params, signal)
-  return { ...raw, servers: raw.servers.map(normalizeResponse) }
+  const qs = new URLSearchParams()
+  if (params.search) qs.set('search', params.search)
+  if (params.limit != null) qs.set('limit', String(params.limit))
+  if (params.cursor) qs.set('cursor', params.cursor)
+  if (params.version) qs.set('version', params.version)
+  if (params.updated_since) qs.set('updated_since', params.updated_since)
+
+  const qstr = qs.toString()
+  const url = qstr ? `/v0.1/servers?${qstr}` : '/v0.1/servers'
+  const token = process.env.NEXT_PUBLIC_API_TOKEN
+  const standaloneBearerAuth = isStandaloneBearerAuthMode(token)
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: gatewayHeaders(token, standaloneBearerAuth),
+      cache: 'no-store',
+      credentials: standaloneBearerAuth ? 'omit' : 'include',
+      signal,
+    })
+  } catch (error) {
+    if (isAbortError(error)) throw error
+    const msg = error instanceof Error ? error.message : 'unknown network error'
+    throw createRegistryError(`Registry list failed: ${msg}`, 502, 'backend_unreachable')
+  }
+
+  if (!response.ok) {
+    const body = await (response.json() as Promise<{ message?: string; kind?: string }>).catch((): { message?: string; kind?: string } => ({}))
+    throw createRegistryError(body.message ?? 'Failed to list servers', response.status, body.kind)
+  }
+
+  const raw = await (response.json() as Promise<RestServerListRaw>)
+  const servers: ServerResponse[] = raw.servers.map((s) => ({ server: normalizeServerJSON(s), _meta: null }))
+  return { servers, metadata: { count: servers.length, nextCursor: raw.next_cursor } }
 }
 
 export async function getServer(

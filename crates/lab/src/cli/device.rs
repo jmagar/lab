@@ -4,8 +4,6 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 
 use crate::config::LabConfig;
-use crate::device::checkin::DeviceHello;
-use crate::device::identity::resolve_local_hostname;
 use crate::device::master_client::MasterClient;
 use crate::output::{OutputFormat, print};
 
@@ -21,14 +19,31 @@ pub enum DeviceCommand {
     List,
     /// Get details for a specific device by `device_id`.
     Get { device_id: String },
-    /// Register this device with the master (phone home).
-    Hello {
-        /// Master base URL (e.g. http://dookie:8765). Defaults to config.
+    /// Manage pending, approved, and denied device enrollments.
+    Enrollments(EnrollmentArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct EnrollmentArgs {
+    #[command(subcommand)]
+    pub command: EnrollmentCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum EnrollmentCommand {
+    /// List pending, approved, and denied enrollments.
+    List,
+    /// Approve a pending enrollment.
+    Approve {
+        device_id: String,
         #[arg(long)]
-        master: Option<String>,
-        /// Override the device ID sent to the master. Defaults to local hostname.
+        note: Option<String>,
+    },
+    /// Deny a pending or approved enrollment.
+    Deny {
+        device_id: String,
         #[arg(long)]
-        device_id: Option<String>,
+        reason: Option<String>,
     },
 }
 
@@ -40,30 +55,19 @@ pub async fn run(args: DeviceArgs, format: OutputFormat, config: &LabConfig) -> 
         DeviceCommand::Get { device_id } => {
             print(&fetch_device(config, &device_id).await?, format)?;
         }
-        DeviceCommand::Hello { master, device_id } => {
-            send_hello(config, master, device_id).await?;
-        }
+        DeviceCommand::Enrollments(args) => match args.command {
+            EnrollmentCommand::List => {
+                print(&fetch_enrollments(config).await?, format)?;
+            }
+            EnrollmentCommand::Approve { device_id, note } => {
+                print(&approve_enrollment(config, &device_id, note.as_deref()).await?, format)?;
+            }
+            EnrollmentCommand::Deny { device_id, reason } => {
+                print(&deny_enrollment(config, &device_id, reason.as_deref()).await?, format)?;
+            }
+        },
     }
     Ok(ExitCode::SUCCESS)
-}
-
-pub async fn send_hello(
-    config: &LabConfig,
-    master: Option<String>,
-    device_id: Option<String>,
-) -> Result<()> {
-    let client = match master {
-        Some(url) => MasterClient::with_bearer_token(url, None)?,
-        None => MasterClient::from_config(config, None)?,
-    };
-    let payload = DeviceHello {
-        device_id: device_id.unwrap_or_else(|| {
-            resolve_local_hostname().unwrap_or_else(|_| "unknown".to_string())
-        }),
-        role: "non-master".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    client.post_hello(&payload).await
 }
 
 pub async fn fetch_devices(config: &LabConfig) -> Result<serde_json::Value> {
@@ -75,5 +79,31 @@ pub async fn fetch_devices(config: &LabConfig) -> Result<serde_json::Value> {
 pub async fn fetch_device(config: &LabConfig, device_id: &str) -> Result<serde_json::Value> {
     MasterClient::from_config(config, None)?
         .fetch_device(device_id)
+        .await
+}
+
+pub async fn fetch_enrollments(config: &LabConfig) -> Result<serde_json::Value> {
+    MasterClient::from_config(config, None)?
+        .fetch_enrollments()
+        .await
+}
+
+pub async fn approve_enrollment(
+    config: &LabConfig,
+    device_id: &str,
+    note: Option<&str>,
+) -> Result<serde_json::Value> {
+    MasterClient::from_config(config, None)?
+        .approve_enrollment(device_id, note)
+        .await
+}
+
+pub async fn deny_enrollment(
+    config: &LabConfig,
+    device_id: &str,
+    reason: Option<&str>,
+) -> Result<serde_json::Value> {
+    MasterClient::from_config(config, None)?
+        .deny_enrollment(device_id, reason)
         .await
 }
