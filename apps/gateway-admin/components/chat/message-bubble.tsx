@@ -17,7 +17,9 @@ function CopyButton({ text }: { text: string }) {
       await navigator.clipboard.writeText(text)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
-    } catch {}
+    } catch {
+      setCopied(false)
+    }
   }
 
   return (
@@ -30,6 +32,15 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? <Check className="size-3 text-aurora-success" /> : <Copy className="size-3" />}
     </Button>
+  )
+}
+
+function StreamingCursor() {
+  return (
+    <span
+      aria-hidden="true"
+      className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse rounded-sm bg-aurora-accent-primary align-middle"
+    />
   )
 }
 
@@ -54,7 +65,7 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
         {isUser ? 'U' : 'A'}
       </div>
 
-      <div className={cn('flex min-w-0 max-w-[80%] flex-col gap-2', isUser && 'items-end')}>
+      <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2 sm:max-w-[80%]', isUser && 'items-end')}>
         {!isUser && message.thoughts.length > 0 && (
           <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
             <div className="overflow-hidden rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
@@ -121,13 +132,13 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
                 : 'border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
             )}
           >
-            <p className="whitespace-pre-wrap text-[13px] leading-[1.55] text-aurora-text-primary">{message.text}</p>
+            <p className="whitespace-pre-wrap text-[13px] leading-[1.55] text-aurora-text-primary">
+              {message.text}
+              {message.isStreaming ? <StreamingCursor /> : null}
+            </p>
             <div className="absolute right-2 top-2">
               <CopyButton text={message.text} />
             </div>
-            {message.isStreaming && (
-              <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse rounded-sm bg-aurora-accent-primary align-middle" />
-            )}
           </div>
         )}
       </div>

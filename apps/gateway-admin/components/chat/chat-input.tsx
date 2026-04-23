@@ -26,6 +26,8 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   const [activeAgentIndex, setActiveAgentIndex] = React.useState(0)
   const pickerId = React.useId()
 
+  optionRefs.current.length = agents.length
+
   const handleSend = async () => {
     const trimmed = value.trim()
     if (!trimmed || disabled || sending) return
@@ -86,7 +88,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   }
 
   const handleAgentTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       setAgentPickerOpen(true)
     }
@@ -131,7 +133,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   }
 
   return (
-    <div className="shrink-0 border-t border-aurora-border-default bg-aurora-nav-bg px-4 py-3">
+    <div className="shrink-0 border-t border-aurora-border-default bg-aurora-nav-bg px-3 py-2 sm:px-4 sm:py-3">
       <div
         className={cn(
           'relative flex flex-col gap-0 rounded-aurora-2 border border-aurora-border-strong',
@@ -157,7 +159,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           style={{ minHeight: '44px', maxHeight: '200px' }}
         />
 
-        <div className="flex items-center gap-2 px-3 pb-2">
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2 sm:gap-2">
           <TooltipProvider delayDuration={400}>
             <Tooltip>
               <TooltipTrigger asChild>
