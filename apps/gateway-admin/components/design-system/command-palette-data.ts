@@ -134,7 +134,7 @@ export const commandPaletteItems: CommandPaletteItem[] = [
     priority: 92,
     service: 'gateway',
     entityId: 'edge-proxy-prod',
-    recentTimestamp: '4m ago',
+    recentTimestamp: '2026-04-23T15:56:00Z',
   },
   {
     id: 'recent-logs-errors',
@@ -148,6 +148,6 @@ export const commandPaletteItems: CommandPaletteItem[] = [
     priority: 72,
     service: 'logs',
     entityId: 'logs-errors',
-    recentTimestamp: '12m ago',
+    recentTimestamp: '2026-04-23T15:48:00Z',
   },
 ]

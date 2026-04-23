@@ -1,5 +1,6 @@
 'use client'
 
+import { formatDistanceToNow } from 'date-fns'
 import {
   ArrowUpRight,
   Cable,
@@ -48,6 +49,9 @@ export function CommandPaletteRow({
   onSelect,
 }: CommandPaletteRowProps) {
   const Icon = ICONS[item.icon]
+  const recentLabel = item.recentTimestamp
+    ? formatDistanceToNow(new Date(item.recentTimestamp), { addSuffix: true })
+    : null
 
   return (
     <CommandItem
@@ -58,7 +62,7 @@ export function CommandPaletteRow({
       className={cn(
         'rounded-aurora-2 border border-aurora-border-strong/80 bg-aurora-control-surface px-3 py-3 text-aurora-text-primary transition-[border-color,background-color,box-shadow] hover:bg-aurora-hover-bg',
         active
-          ? 'border-aurora-accent-primary/30 bg-[linear-gradient(180deg,rgba(16,35,48,0.96),rgba(11,25,35,0.98))] shadow-[var(--aurora-active-glow)]'
+          ? 'border-aurora-accent-primary/40 bg-aurora-panel-medium shadow-[var(--aurora-active-glow)]'
           : '',
       )}
     >
@@ -83,7 +87,7 @@ export function CommandPaletteRow({
         </span>
       </div>
       <CommandShortcut className="text-[11px] tracking-[0.08em] text-aurora-text-muted">
-        {item.actionHint}
+        {recentLabel ?? item.actionHint}
       </CommandShortcut>
     </CommandItem>
   )

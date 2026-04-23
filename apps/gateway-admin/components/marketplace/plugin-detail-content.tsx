@@ -176,8 +176,8 @@ export function PluginDetailContent({ pluginId }: { pluginId: string }) {
                       confirmLabel: 'Remove',
                       destructive: true,
                       onConfirm: async () => {
-                        setConfirm(null)
                         await uninstall(plugin.id, plugin.name)
+                        setConfirm(null)
                       },
                     })}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,var(--aurora-error)_30%,transparent)] bg-transparent px-[14px] py-1.5 text-[13px] font-semibold text-aurora-error transition-all duration-150 hover:bg-[color-mix(in_srgb,var(--aurora-error)_8%,transparent)]"
