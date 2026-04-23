@@ -25,17 +25,17 @@ test('buildGatewayEndpointPreview joins stdio command and args for stdio gateway
   )
 })
 
-test('buildGatewayEndpointPreview falls back to virtual server label for lab gateways without url', () => {
+test('buildGatewayEndpointPreview returns lab serve command for in-process gateways', () => {
   const gateway = {
     ...mockGateways[0],
     name: 'radarr',
-    transport: 'lab_service' as const,
+    transport: 'in_process' as const,
     config: {
       proxy_resources: true,
     },
   }
 
-  assert.equal(buildGatewayEndpointPreview(gateway), 'radarr virtual server')
+  assert.equal(buildGatewayEndpointPreview(gateway), 'lab serve mcp --stdio --services radarr')
 })
 
 test('filterGatewayTools matches name and description case-insensitively', () => {

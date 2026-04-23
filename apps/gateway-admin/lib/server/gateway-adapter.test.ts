@@ -199,20 +199,20 @@ test('normalizeServerView maps unified server rows into list-friendly gateway ca
   const gateway = normalizeServerView({
     id: 'plex',
     name: 'plex',
-    source: 'lab_service',
+    source: 'in_process',
     configured: true,
     enabled: false,
     connected: false,
     warnings: [],
     config_summary: {
-      transport: 'lab_service',
+      transport: 'in_process',
       target: 'plex',
     },
   })
 
   assert.equal(gateway.id, 'plex')
-  assert.equal(gateway.transport, 'lab_service')
-  assert.equal(gateway.source, 'lab_service')
+  assert.equal(gateway.transport, 'in_process')
+  assert.equal(gateway.source, 'in_process')
   assert.equal(gateway.enabled, false)
   assert.equal(gateway.surfaces?.mcp.enabled, false)
   assert.equal(gateway.status.connected, false)
@@ -225,13 +225,13 @@ test('normalizeServerView can include compiled lab-service tools', () => {
     {
       id: 'plex',
       name: 'plex',
-      source: 'lab_service',
+      source: 'in_process',
       configured: true,
       enabled: true,
       connected: true,
       warnings: [],
       config_summary: {
-        transport: 'lab_service',
+        transport: 'in_process',
         target: 'plex',
       },
     },
@@ -266,6 +266,99 @@ test('normalizeServerView can include compiled lab-service tools', () => {
         matched_by: '*',
       },
     ]
+  )
+})
+
+test('normalizeServerView applies virtual-server MCP policy to lab-service tools', () => {
+  const gateway = normalizeServerView(
+    {
+      id: 'github-chat',
+      name: 'github-chat',
+      source: 'in_process',
+      configured: true,
+      enabled: true,
+      connected: true,
+      discovered_tool_count: 2,
+      exposed_tool_count: 1,
+      surfaces: {
+        cli: { enabled: false, connected: false },
+        api: { enabled: false, connected: false },
+        mcp: { enabled: true, connected: true },
+        webui: { enabled: false, connected: false },
+      },
+      warnings: [],
+      config_summary: {
+        transport: 'in_process',
+        target: 'github-chat',
+      },
+    },
+    {
+      tools: [
+        { name: 'index_repository', description: 'Index a GitHub repository', destructive: false },
+        { name: 'query_repository', description: 'Query a GitHub repository', destructive: false },
+      ],
+      allowed_actions: ['query_repository'],
+    }
+  )
+
+  assert.equal(gateway.status.discovered_tool_count, 2)
+  assert.equal(gateway.status.exposed_tool_count, 1)
+  assert.deepEqual(
+    gateway.discovery.tools.map((tool) => ({
+      name: tool.name,
+      exposed: tool.exposed,
+      matched_by: tool.matched_by,
+    })),
+    [
+      {
+        name: 'index_repository',
+        exposed: false,
+        matched_by: null,
+      },
+      {
+        name: 'query_repository',
+        exposed: true,
+        matched_by: 'query_repository',
+      },
+    ]
+  )
+})
+
+test('normalizeServerView hides lab-service tools when MCP surface is disabled', () => {
+  const gateway = normalizeServerView(
+    {
+      id: 'github-chat',
+      name: 'github-chat',
+      source: 'in_process',
+      configured: true,
+      enabled: true,
+      connected: false,
+      discovered_tool_count: 2,
+      exposed_tool_count: 0,
+      surfaces: {
+        cli: { enabled: false, connected: false },
+        api: { enabled: false, connected: false },
+        mcp: { enabled: false, connected: false },
+        webui: { enabled: false, connected: false },
+      },
+      warnings: [],
+      config_summary: {
+        transport: 'in_process',
+        target: 'github-chat',
+      },
+    },
+    {
+      tools: [
+        { name: 'index_repository', description: 'Index a GitHub repository', destructive: false },
+        { name: 'query_repository', description: 'Query a GitHub repository', destructive: false },
+      ],
+      allowed_actions: [],
+    }
+  )
+
+  assert.deepEqual(
+    gateway.discovery.tools.map((tool) => tool.exposed),
+    [false, false]
   )
 })
 

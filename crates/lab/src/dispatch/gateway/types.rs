@@ -27,6 +27,8 @@ impl CatalogChangeNotifier {
 pub struct GatewayConfigView {
     pub name: String,
     #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
     pub url: Option<String>,
     #[serde(default)]
     pub command: Option<String>,
@@ -118,4 +120,94 @@ pub struct GatewayToolExposureRowView {
     pub exposed: bool,
     #[serde(default)]
     pub matched_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayCleanupMatchView {
+    pub pattern: String,
+    #[serde(default)]
+    pub pids: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayCleanupView {
+    pub upstream: String,
+    #[serde(default)]
+    pub aggressive: bool,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub gateway_matched: usize,
+    #[serde(default)]
+    pub local_matched: usize,
+    #[serde(default)]
+    pub aggressive_matched: usize,
+    #[serde(default)]
+    pub gateway_killed: usize,
+    #[serde(default)]
+    pub local_killed: usize,
+    #[serde(default)]
+    pub aggressive_killed: usize,
+    #[serde(default)]
+    pub gateway_matches: Vec<GatewayCleanupMatchView>,
+    #[serde(default)]
+    pub local_matches: Vec<GatewayCleanupMatchView>,
+    #[serde(default)]
+    pub aggressive_matches: Vec<GatewayCleanupMatchView>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatewayRuntimeOwnerView {
+    pub surface: String,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub client_name: Option<String>,
+    #[serde(default)]
+    pub raw: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayMcpRuntimeView {
+    pub name: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub connected: bool,
+    #[serde(default)]
+    pub discovered_tool_count: usize,
+    #[serde(default)]
+    pub exposed_tool_count: usize,
+    #[serde(default)]
+    pub discovered_resource_count: usize,
+    #[serde(default)]
+    pub exposed_resource_count: usize,
+    #[serde(default)]
+    pub discovered_prompt_count: usize,
+    #[serde(default)]
+    pub exposed_prompt_count: usize,
+    #[serde(default)]
+    pub likely_stale_count: usize,
+    #[serde(default)]
+    pub pid: Option<u32>,
+    #[serde(default)]
+    pub pgid: Option<u32>,
+    #[serde(default)]
+    pub age_seconds: Option<u64>,
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub owner: Option<GatewayRuntimeOwnerView>,
+    #[serde(default)]
+    pub transport: Option<String>,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub runtime_state_path: Option<String>,
+    #[serde(default)]
+    pub reconciled_at: Option<String>,
 }

@@ -256,7 +256,20 @@ struct ClaudeMarketplaceIndex {
 }
 
 #[derive(Debug, Deserialize)]
+struct ClaudeMarketplaceMetadata {
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ClaudePluginManifest {
+    name: Option<String>,
+    metadata: Option<ClaudeMarketplaceMetadata>,
+    #[serde(default)]
+    plugins: Vec<ClaudeMarketplacePlugin>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeMarketplacePlugin {
     name: Option<String>,
     description: Option<String>,
     version: Option<String>,
@@ -379,10 +392,14 @@ impl MarketplaceLoader {
         let Ok(data) = std::fs::read_to_string(&path) else {
             return IndexSet::new();
         };
-        let Ok(map) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&data) else {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&data) else {
             return IndexSet::new();
         };
-        map.keys().map(|k| PluginId::new(k)).collect()
+        value
+            .get("plugins")
+            .and_then(serde_json::Value::as_object)
+            .map(|plugins| plugins.keys().map(|k| PluginId::new(k)).collect())
+            .unwrap_or_default()
     }
 
     /// Codex: `~/.codex/config.toml` — TOML, section names are plugin ids.
@@ -423,35 +440,75 @@ async fn load_claude_plugins() -> Vec<(MarketplacePlugin, bool)> {
     let Ok(data) = tokio::fs::read_to_string(&index_path).await else {
         return vec![];
     };
-    let Ok(entries) = serde_json::from_str::<Vec<ClaudeMarketplaceIndex>>(&data) else {
+    let Ok(entries) = serde_json::from_str::<HashMap<String, ClaudeMarketplaceIndex>>(&data) else {
         return vec![];
     };
 
     let mut plugins = Vec::new();
-    for entry in entries {
+    for (marketplace_id, entry) in entries {
         let Some(loc) = entry.install_location else {
             continue;
         };
-        let manifest_path = PathBuf::from(&loc).join(".claude-plugin/marketplace.json");
+        let manifest_root = PathBuf::from(&loc);
+        let manifest_path = [
+            manifest_root.join(".claude-plugin/marketplace.json"),
+            manifest_root.join("marketplace.json"),
+        ]
+        .into_iter()
+        .find(|path| path.exists());
+        let Some(manifest_path) = manifest_path else {
+            continue;
+        };
         let Ok(mdata) = tokio::fs::read_to_string(&manifest_path).await else {
             continue;
         };
         let Ok(manifest) = serde_json::from_str::<ClaudePluginManifest>(&mdata) else {
             continue;
         };
-        let name = manifest.name.unwrap_or_else(|| loc.clone());
-        let id = PluginId::new(&name).to_string();
-        plugins.push((
-            MarketplacePlugin {
-                id,
-                name,
-                description: manifest.description.unwrap_or_default(),
-                version: manifest.version,
-                ecosystem: Ecosystem::ClaudeCode,
-                install_state: InstallState::Available,
-            },
-            false,
-        ));
+        let fallback_description = manifest
+            .metadata
+            .and_then(|metadata| metadata.description)
+            .unwrap_or_default();
+        let fallback_name = manifest.name.unwrap_or_else(|| marketplace_id.clone());
+        let mut emitted_plugin = false;
+
+        for plugin in manifest.plugins {
+            let Some(name) = plugin.name else {
+                continue;
+            };
+            let id = PluginId::new(&format!("{name}@{marketplace_id}")).to_string();
+            emitted_plugin = true;
+            plugins.push((
+                MarketplacePlugin {
+                    id,
+                    name,
+                    description: if plugin.description.is_some() {
+                        plugin.description.unwrap_or_default()
+                    } else {
+                        fallback_description.clone()
+                    },
+                    version: plugin.version,
+                    ecosystem: Ecosystem::ClaudeCode,
+                    install_state: InstallState::Available,
+                },
+                false,
+            ));
+        }
+
+        if !emitted_plugin {
+            let id = PluginId::new(&format!("{fallback_name}@{marketplace_id}")).to_string();
+            plugins.push((
+                MarketplacePlugin {
+                    id,
+                    name: fallback_name,
+                    description: fallback_description,
+                    version: None,
+                    ecosystem: Ecosystem::ClaudeCode,
+                    install_state: InstallState::Available,
+                },
+                false,
+            ));
+        }
     }
     plugins
 }

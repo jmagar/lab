@@ -5,7 +5,9 @@ use serde_json::Value;
 use crate::config;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
-use crate::dispatch::mcpregistry::{catalog::ACTIONS, client, params, sync};
+use crate::dispatch::mcpregistry::{
+    LAB_REGISTRY_META_NAMESPACE, catalog::ACTIONS, client, params, sync,
+};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 pub async fn dispatch_with_client(
@@ -15,6 +17,9 @@ pub async fn dispatch_with_client(
 ) -> Result<Value, ToolError> {
     match action {
         "config" => Ok(serde_json::json!({ "url": client::resolved_url() })),
+        "server.meta.get" => dispatch_local(action, params_value).await,
+        "server.meta.set" => dispatch_local(action, params_value).await,
+        "server.meta.delete" => dispatch_local(action, params_value).await,
         "server.list" => {
             let p = params::list_servers_params(&params_value)?;
             if let Some(param) = ["sort_by", "order"]
@@ -110,7 +115,7 @@ pub async fn dispatch_with_client(
                         ToolError::internal_message(format!("registry store open: {e}"))
                     })?;
 
-            let count = sync::perform_sync(&store, client, true).await?;
+            let count = sync::perform_sync(&store, client, true, "manual").await?;
             Ok(serde_json::json!({ "synced": count }))
         }
         unknown => Err(ToolError::UnknownAction {
@@ -295,5 +300,115 @@ pub async fn dispatch(action: &str, params_value: Value) -> Result<Value, ToolEr
         }
         _ => {}
     }
+    if matches!(action, "config" | "server.meta.get" | "server.meta.set" | "server.meta.delete") {
+        return dispatch_local(action, params_value).await;
+    }
     dispatch_with_client(&client::require_client()?, action, params_value).await
+}
+
+async fn dispatch_local(action: &str, params_value: Value) -> Result<Value, ToolError> {
+    match action {
+        "config" => Ok(serde_json::json!({ "url": client::resolved_url() })),
+        "server.meta.get" => {
+            let name = params::require_name(&params_value)?;
+            let requested_version = params_value["version"].as_str().unwrap_or("latest");
+            let store = crate::dispatch::mcpregistry::store::RegistryStore::open(
+                &config::registry_db_path(),
+            )
+            .await?;
+            let server = store
+                .get_server(&name, requested_version)
+                .await?
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: format!(
+                        "server '{name}' version '{requested_version}' not found in local registry store"
+                    ),
+                })?;
+            let resolved_version = server.server.version.clone();
+            let metadata = store.get_local_metadata(&name, &resolved_version).await?;
+            Ok(serde_json::json!({
+                "name": name,
+                "version": resolved_version,
+                "namespace": LAB_REGISTRY_META_NAMESPACE,
+                "metadata": metadata,
+            }))
+        }
+        "server.meta.set" => {
+            let name = params::require_name(&params_value)?;
+            let requested_version = params_value["version"].as_str().unwrap_or("latest");
+            let metadata = params_value
+                .get("metadata")
+                .cloned()
+                .ok_or_else(|| ToolError::MissingParam {
+                    message: "missing required parameter `metadata`".to_string(),
+                    param: "metadata".to_string(),
+                })?;
+            let metadata = params::parse_lab_metadata(&metadata)?;
+            let updated_by = params_value
+                .get("updated_by")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("unknown");
+
+            let store = crate::dispatch::mcpregistry::store::RegistryStore::open(
+                &config::registry_db_path(),
+            )
+            .await?;
+            let server = store
+                .get_server(&name, requested_version)
+                .await?
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: format!(
+                        "server '{name}' version '{requested_version}' not found in local registry store"
+                    ),
+                })?;
+            let resolved_version = server.server.version.clone();
+            let metadata_value = serde_json::to_value(metadata)
+                .map_err(|e| ToolError::internal_message(format!("serialize lab metadata: {e}")))?;
+            store
+                .set_local_metadata(&name, &resolved_version, &metadata_value, Some(updated_by))
+                .await?;
+            let current = store.get_local_metadata(&name, &resolved_version).await?;
+            Ok(serde_json::json!({
+                "name": name,
+                "version": resolved_version,
+                "namespace": LAB_REGISTRY_META_NAMESPACE,
+                "metadata": current,
+            }))
+        }
+        "server.meta.delete" => {
+            let name = params::require_name(&params_value)?;
+            let requested_version = params_value["version"].as_str().unwrap_or("latest");
+            let store = crate::dispatch::mcpregistry::store::RegistryStore::open(
+                &config::registry_db_path(),
+            )
+            .await?;
+            let server = store
+                .get_server(&name, requested_version)
+                .await?
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: format!(
+                        "server '{name}' version '{requested_version}' not found in local registry store"
+                    ),
+                })?;
+            let resolved_version = server.server.version.clone();
+            let deleted = store
+                .delete_local_metadata(&name, &resolved_version)
+                .await?;
+            Ok(serde_json::json!({
+                "name": name,
+                "version": resolved_version,
+                "namespace": LAB_REGISTRY_META_NAMESPACE,
+                "deleted": deleted,
+            }))
+        }
+        _ => Err(ToolError::UnknownAction {
+            message: format!("unknown action '{action}'"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
+    }
 }

@@ -11,6 +11,10 @@ export function extractActionUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/extract`
 }
 
+export function marketplaceActionUrl(baseUrl?: string): string {
+  return `${normalizeGatewayApiBase(baseUrl)}/marketplace`
+}
+
 export function gatewayDetailHref(id: string): string {
   return `/gateway/?id=${encodeURIComponent(id)}`
 }

@@ -59,7 +59,7 @@ function NavigationMenuItem({
 }
 
 const navigationMenuTriggerStyle = cva(
-  'group inline-flex h-9 w-max items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium hover:bg-aurora-hover-bg hover:text-aurora-text-primary focus:bg-aurora-hover-bg focus:text-aurora-text-primary disabled:pointer-events-none disabled:opacity-50 data-[state=open]:text-aurora-text-primary data-[state=open]:bg-aurora-hover-bg/50 focus-visible:ring-aurora-accent-primary/34 outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1',
+  'group inline-flex h-9 w-max items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium hover:bg-aurora-hover-bg hover:text-aurora-text-primary focus:bg-aurora-hover-bg focus:text-aurora-text-primary disabled:pointer-events-none disabled:opacity-50 data-[state=open]:text-aurora-text-primary data-[state=open]:bg-aurora-hover-bg/50 data-[state=open]:hover:bg-aurora-hover-bg data-[state=open]:focus:bg-aurora-hover-bg focus-visible:ring-aurora-accent-primary/34 outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1',
 )
 
 function NavigationMenuTrigger({
@@ -127,7 +127,7 @@ function NavigationMenuLink({
     <NavigationMenuPrimitive.Link
       data-slot="navigation-menu-link"
       className={cn(
-        "data-[active=true]:focus:bg-aurora-hover-bg data-[active=true]:hover:bg-aurora-hover-bg data-[active=true]:bg-aurora-hover-bg/50 data-[active=true]:text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary focus:bg-aurora-hover-bg focus:text-aurora-text-primary focus-visible:ring-aurora-accent-primary/34 [&_svg:not([class*='text-'])]:text-muted-foreground flex flex-col gap-1 rounded-sm p-2 text-sm transition-all outline-none focus-visible:ring-[3px] focus-visible:outline-1 [&_svg:not([class*='size-'])]:size-4",
+        "data-[active]:focus:bg-aurora-hover-bg data-[active]:hover:bg-aurora-hover-bg data-[active]:bg-aurora-hover-bg/50 data-[active]:text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary focus:bg-aurora-hover-bg focus:text-aurora-text-primary focus-visible:ring-aurora-accent-primary/34 [&_svg:not([class*='text-'])]:text-muted-foreground flex flex-col gap-1 rounded-sm p-2 text-sm transition-all outline-none focus-visible:ring-[3px] focus-visible:outline-1 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

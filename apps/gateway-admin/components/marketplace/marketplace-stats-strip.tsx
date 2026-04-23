@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Download, ShoppingBag, RefreshCw } from 'lucide-react'
 import type { Plugin, Marketplace } from '@/lib/types/marketplace'
 
@@ -11,9 +12,9 @@ interface MarketplaceStatsStripProps {
 }
 
 interface ChipProps {
-  value: React.ReactNode
+  value: ReactNode
   label: string
-  icon: React.ReactNode
+  icon: ReactNode
   iconBg: string
   iconColor: string
   valueColor?: string

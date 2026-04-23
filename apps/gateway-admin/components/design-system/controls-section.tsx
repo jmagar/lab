@@ -20,6 +20,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
+  AURORA_ACCENT_CTA,
   AURORA_CONTROL_SURFACE,
   AURORA_DISPLAY_2,
   AURORA_MEDIUM_PANEL,
@@ -211,7 +212,7 @@ export function ControlsSection() {
             <p className="text-sm text-aurora-text-muted">{saveDemo.message}</p>
             <div className="flex flex-wrap gap-3">
               <Button
-                className="rounded-aurora-1 bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong"
+                className={AURORA_ACCENT_CTA}
                 disabled={saveDemo.status === 'loading'}
                 onClick={() => saveDemo.run('success')}
               >

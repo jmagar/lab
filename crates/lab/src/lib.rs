@@ -1,5 +1,6 @@
 #![allow(clippy::multiple_crate_versions)]
 
+pub mod acp;
 #[allow(unreachable_pub)]
 pub mod api;
 #[allow(unreachable_pub)]
@@ -17,6 +18,8 @@ pub mod mcp;
 #[allow(unreachable_pub)]
 pub mod oauth;
 pub mod output;
+#[allow(unreachable_pub)]
+pub mod process;
 #[allow(unreachable_pub)]
 pub mod registry;
 #[allow(unreachable_pub)]

@@ -1,6 +1,7 @@
 //! Shared types for outbound upstream OAuth.
 
 use axum::http::StatusCode;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Stable error kinds for upstream OAuth flows.
@@ -65,7 +66,7 @@ impl OauthError {
 }
 
 /// Return value of [`manager::UpstreamOauthManager::begin_authorization`].
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct BeginAuthorization {
     /// URL the operator's browser must navigate to.
     pub authorization_url: String,

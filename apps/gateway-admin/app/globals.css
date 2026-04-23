@@ -92,6 +92,47 @@
   --radius-3: 22px;
 }
 
+.aurora-text-surface .cm-editor {
+  height: 100%;
+  background: transparent;
+  color: var(--aurora-text-primary);
+}
+
+.aurora-text-surface .cm-scroller {
+  overflow: auto;
+  font-family: var(--font-geist-mono, ui-monospace, SFMono-Regular, monospace);
+}
+
+.aurora-text-surface .cm-gutters {
+  background: var(--aurora-control-surface);
+  border-right: 1px solid var(--aurora-border-default);
+}
+
+.aurora-text-surface .cm-lineNumbers .cm-gutterElement {
+  color: var(--aurora-text-muted);
+}
+
+.aurora-text-surface .cm-panels,
+.aurora-text-surface .cm-tooltip,
+.aurora-text-surface .cm-search {
+  background: var(--aurora-panel-strong);
+  color: var(--aurora-text-primary);
+  border-color: var(--aurora-border-strong);
+}
+
+.aurora-text-surface .cm-tooltip-autocomplete ul li[aria-selected='true'] {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 18%, transparent);
+  color: var(--aurora-text-primary);
+}
+
+.aurora-text-surface .cm-selectionBackground {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 22%, transparent) !important;
+}
+
+.aurora-text-surface .cm-cursor {
+  border-left-color: var(--aurora-text-primary) !important;
+}
+
 .dark {
   /* Core surfaces — remapped to Aurora tokens */
   --background: var(--aurora-page-bg);

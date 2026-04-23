@@ -48,12 +48,30 @@ function renderMd(md: string): string {
 
 function CountChip({ value, label }: { value: number; label: string }) {
   if (value === 0) return null
+
+  const icon = {
+    agent: <Bot className="size-3.5" />,
+    agents: <Bot className="size-3.5" />,
+    command: <Terminal className="size-3.5" />,
+    commands: <Terminal className="size-3.5" />,
+    skill: <Zap className="size-3.5" />,
+    skills: <Zap className="size-3.5" />,
+    hook: <Link2 className="size-3.5" />,
+    hooks: <Link2 className="size-3.5" />,
+  }[label]
+
   return (
-    <div className="flex items-baseline gap-[5px] px-[14px] py-2 rounded-aurora-2 bg-aurora-control-surface border border-aurora-border-default">
+    <div
+      className="flex items-center gap-[8px] px-[14px] py-2 rounded-aurora-2 bg-aurora-control-surface border border-aurora-border-default"
+      title={label}
+      aria-label={`${value} ${label}`}
+    >
+      <span className="text-aurora-text-muted flex-shrink-0" aria-hidden="true">
+        {icon}
+      </span>
       <span className="font-display text-[22px] font-bold tracking-[-0.02em] text-aurora-text-primary leading-none">
         {value}
       </span>
-      <span className="text-[11px] text-aurora-text-muted">{label}</span>
     </div>
   )
 }
@@ -133,10 +151,10 @@ export function PluginInfoPanel({ plugin, artifacts }: PluginInfoPanelProps) {
               <div
                 key={`${item.type}-${item.name}`}
                 className="flex items-center gap-[10px] px-3 py-2 bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 transition-[border-color,background] duration-150 hover:bg-aurora-hover-bg hover:border-aurora-border-strong"
+                title={item.type}
               >
                 <span className="text-aurora-text-muted flex-shrink-0">{TYPE_ICON[item.type] ?? <FileText className="w-4 h-4" />}</span>
                 <span className="text-[12px] font-semibold text-aurora-text-primary flex-1 min-w-0 truncate">{item.name}</span>
-                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted flex-shrink-0">{item.type}</span>
               </div>
             ))}
           </div>

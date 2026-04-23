@@ -143,6 +143,9 @@ fn default_true() -> bool {
 pub struct UpstreamConfig {
     /// Human-readable name for this upstream (used as tool-name prefix).
     pub name: String,
+    /// Whether this upstream is enabled for discovery and proxying. Defaults to true.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     /// URL of the upstream MCP server (must be `http://`, `https://`, `ws://`, or `wss://`).
     /// For stdio upstreams, omit `url` and use `command`/`args` fields instead.
     #[serde(default)]

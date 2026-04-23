@@ -1,14 +1,20 @@
 //! Per-service HTTP route handlers.
 //!
-//! Each module exposes `pub fn routes(state: AppState) -> Router` that mounts
-//! a single `POST /` handler dispatching on `action` — identical shape to MCP.
+//! Versioned REST and action-dispatch route modules for the HTTP API.
+//!
+//! Most service modules expose `pub fn routes(state: AppState) -> Router` that
+//! mounts a `POST /` action-dispatch handler matching the MCP `action + params`
+//! shape. Modules may also expose versioned REST routers such as
+//! `registry_v01`, which serves `/v0.1/servers/*`.
 
 /// Shared dispatch wrapper: confirmation gate, timing, logging.
 pub mod helpers;
 
+pub mod acp;
 pub mod extract;
 pub mod gateway;
 pub mod logs;
+pub mod marketplace;
 
 #[cfg(feature = "radarr")]
 pub mod radarr;

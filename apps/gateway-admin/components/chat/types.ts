@@ -1,5 +1,4 @@
-// ACP (Agent Client Protocol) shaped types for the chat UI mockup.
-// Shaped to match ACP's run/message/part model so wiring up a real backend is minimal.
+import type { BridgeEvent, BridgeSessionStatus } from '@/lib/acp/types'
 
 export interface ACPAgent {
   id: string
@@ -16,63 +15,41 @@ export interface ACPProject {
   collapsed?: boolean
 }
 
-export type ACPRunStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+export type ACPRunStatus = BridgeSessionStatus
 
 export interface ACPRun {
   id: string
   projectId: string
   agentId: string
+  provider: string
   title: string
   createdAt: Date
   updatedAt: Date
   status: ACPRunStatus
+  providerSessionId: string
+  cwd: string
 }
 
-export type ACPPartType = 'text' | 'tool_use' | 'tool_result' | 'thinking'
-
-export interface ACPTextPart {
-  type: 'text'
-  text: string
-}
-
-export interface ACPThinkingPart {
-  type: 'thinking'
-  thinking: string
-}
-
-export interface ACPToolUsePart {
-  type: 'tool_use'
+export interface TranscriptToolCall {
   id: string
-  name: string
-  input: Record<string, unknown>
+  title: string
+  status?: 'pending' | 'in_progress' | 'completed' | 'failed' | 'idle' | 'running' | 'cancelled'
+  kind?: string | null
+  input?: unknown
+  output?: unknown
+  content?: unknown[] | null
+  locations: string[]
 }
-
-export interface ACPToolResultPart {
-  type: 'tool_result'
-  tool_use_id: string
-  name: string
-  content: string
-  is_error?: boolean
-}
-
-export type ACPPart = ACPTextPart | ACPThinkingPart | ACPToolUsePart | ACPToolResultPart
-
-export type ACPRole = 'user' | 'assistant'
 
 export interface ACPMessage {
   id: string
   runId: string
-  role: ACPRole
-  parts: ACPPart[]
+  role: 'user' | 'assistant' | 'system'
+  text: string
   createdAt: Date
   isStreaming?: boolean
+  thoughts: string[]
+  toolCalls: TranscriptToolCall[]
 }
 
-export interface ChatState {
-  projects: ACPProject[]
-  runs: ACPRun[]
-  messages: Record<string, ACPMessage[]>
-  agents: ACPAgent[]
-  selectedRunId: string | null
-  selectedProjectId: string | null
-}
+export type ActivityItem = BridgeEvent

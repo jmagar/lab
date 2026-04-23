@@ -50,6 +50,7 @@ lab
 ├── scaffold
 ├── extract
 ├── oauth
+├── mcpregistry meta
 ├── help
 └── completions
 ```
@@ -66,6 +67,7 @@ Examples:
 - `lab unraid array`
 - `lab openai models`
 - `lab qdrant collections`
+- `lab mcpregistry meta set io.github.user/server --featured true --reviewed true`
 
 The CLI must not invent a second semantic model that drifts from MCP or the SDK.
 
@@ -77,6 +79,7 @@ Supported output modes are:
 - JSON
 
 The canonical serialization and output-boundary contract lives in [SERIALIZATION.md](./SERIALIZATION.md).
+The canonical human-readable output language and color policy live in [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md).
 
 Rules:
 
@@ -90,6 +93,33 @@ Rules:
 - use `owo-colors`
 - disable color automatically when stdout is not a TTY
 - honor `NO_COLOR`
+- expose a shared `--color=auto|plain|color` policy rather than per-command color toggles
+
+Examples:
+
+```bash
+# default interactive behavior
+lab doctor
+
+# force plain text even on a TTY
+lab doctor --color=plain
+
+# force styling for pagers like less -R
+lab doctor --color=color | less -R
+
+# pipes stay plain by default in auto mode
+lab doctor | jq
+
+# NO_COLOR still disables styling unless the user explicitly forces color
+NO_COLOR=1 lab doctor
+```
+
+Rules:
+
+- `--json` remains unstyled machine output
+- `--color=auto` is the default and must remain pipe-safe
+- `--color=plain` is the deterministic script and CI escape hatch
+- `--color=color` is the explicit operator override
 
 ## Destructive Operations
 
@@ -210,6 +240,25 @@ Expected `.mcp.json` behavior:
 5. back up before mutation
 6. write atomically
 7. verify the rewritten file parses
+
+## `lab mcpregistry meta`
+
+`lab mcpregistry meta` is the typed operator surface for Lab-owned registry metadata.
+
+Commands:
+
+- `lab mcpregistry meta get <name> [--version <version>]`
+- `lab mcpregistry meta set <name> [typed flags]`
+- `lab mcpregistry meta delete <name> [--version <version>]`
+
+Rules:
+
+- use typed flags for the first-class metadata contract where possible
+- use `--json` only for advanced cases that do not fit the typed surface
+- the CLI sets a stable audit actor label when writing metadata
+- metadata validation is enforced by the shared dispatch layer, not by ad hoc CLI checks
+
+See [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md) for the contract and allowed fields.
 
 ## Shell Completions
 

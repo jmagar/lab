@@ -12,7 +12,7 @@ const gatewayFixtures: Gateway[] = [
     id: 'gw_lab',
     name: 'Lab Core',
     transport: 'stdio',
-    source: 'lab_service',
+    source: 'in_process',
     configured: true,
     enabled: true,
     config: { command: 'lab service mcp --stdio --services chrome-dev-tools' },
@@ -85,7 +85,7 @@ test('gateway list view renders quick-lens cards and primary actions', () => {
           {
             gatewayId: 'gw_lab',
             gatewayName: 'Lab Core',
-            source: 'lab_service',
+            source: 'in_process',
             sourceFacet: 'lab',
             transport: 'stdio',
             toolName: 'click',
@@ -106,18 +106,18 @@ test('gateway list view renders quick-lens cards and primary actions', () => {
         onEdit={() => {}}
         onTest={() => {}}
         onReload={() => {}}
+        onToggleEnabled={() => {}}
         onDelete={() => {}}
       />
     </SidebarProvider>,
   )
 
-  assert.match(markup, /Configured/)
-  assert.match(markup, /Healthy/)
-  assert.match(markup, /Disconnected/)
-  assert.match(markup, /Discovered tools/)
-  assert.match(markup, /aria-label="Comfortable density"/)
-  assert.match(markup, /aria-label="Condensed density"/)
-  assert.match(markup, /aria-label="Open filters"/)
+  assert.match(markup, /data-mobile-summary="configured"/)
+  assert.match(markup, /data-mobile-summary="healthy"/)
+  assert.match(markup, /data-mobile-summary="disconnected"/)
+  assert.match(markup, /data-mobile-summary="tools"/)
+  assert.match(markup, /aria-label="Switch to tools view"/)
   assert.match(markup, /Add Gateway/)
+  assert.match(markup, /Search gateways, commands, or endpoints/)
   assert.match(markup, />2</)
 })

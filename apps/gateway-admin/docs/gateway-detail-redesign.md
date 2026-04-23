@@ -30,7 +30,7 @@ Reorganize the gateway detail page to surface useful information immediately, re
 
 **File:** `lib/api/gateway-mobile.ts`
 
-- Replace `"<name> virtual server"` with `lab serve mcp --stdio --services <name>` so the row shows the actual connect command.
+- Replace `"<name> in-process service"` with `lab serve mcp --stdio --services <name>` so the row shows the actual connect command.
 
 ---
 
@@ -157,16 +157,16 @@ Each row appends the full upstream prefix again, making URIs exponentially longe
 
 ---
 
-### 10. Detail View — Tools vs. Actions Distinction for Lab Virtual Servers
+### 10. Detail View — Tools vs. Actions Distinction for In-Process Services
 
-**Current state:** For a lab virtual server (e.g. `plex`), the "Tools" count shows 29 because the virtual server exposes 29 actions mapped as MCP tools (one per service action). The custom gateway (plex as STDIO upstream running `lab serve mcp --stdio --services plex`) shows 1 tool (the `plex` MCP tool that dispatches via `action` parameter).
+**Current state:** For a lab in-process service (e.g. `plex`), the "Tools" count shows 29 because the in-process service exposes 29 actions mapped as MCP tools (one per service action). The custom gateway (plex as STDIO upstream running `lab serve mcp --stdio --services plex`) shows 1 tool (the `plex` MCP tool that dispatches via `action` parameter).
 
 **User concern:** These are architecturally different:
 - **Custom STDIO gateway**: 1 MCP tool (`plex`) with N sub-actions dispatched via `action` parameter — tool count = 1, action count = N
-- **Virtual server**: N tools, each mapping directly to a service action — tool count = N
+- **In-process service**: N tools, each mapping directly to a service action — tool count = N
 
 **Display change:**
-- For `source === 'lab_service'` gateways, rename the "Tools" tab label to "Actions" and show the action count.
+- For `source === 'in_process'` gateways, rename the "Tools" tab label to "Actions" and show the action count.
 - The `SurfaceRatio` component used in the list view should also show "Actions" label for lab services instead of "Tools".
 - For custom gateways using lab's `action + params` dispatch pattern: if `discovered_tool_count === 1` and the single tool has sub-actions discoverable via `help`, consider showing "1 tool / N actions". This requires the upstream pool to surface sub-action counts, which is a backend enhancement — defer to a follow-up.
 
@@ -181,7 +181,7 @@ Each row appends the full upstream prefix again, making URIs exponentially longe
 **Backend (`crates/lab/src/dispatch/gateway/manager.rs` or `api/router.rs`):**
 - On `POST /gateways` (add gateway), check whether a gateway with the same name already exists.
 - Return `409 Conflict` with a structured error: `{ "kind": "conflict", "message": "A gateway named 'plex' already exists.", "existing_id": "plex" }`.
-- Same check on virtual server enable if a custom gateway with the same name exists.
+- Same check on in-process service enable if a custom gateway with the same name exists.
 
 **Frontend (`components/gateway/gateway-form-dialog.tsx`):**
 - On submit, catch `409` responses and display an inline error: `"A gateway named '<name>' already exists. Choose a different name or remove the existing gateway first."`
@@ -191,6 +191,6 @@ Each row appends the full upstream prefix again, making URIs exponentially longe
 
 ## Non-goals (questions, not changes)
 
-- **Why does the virtual server not expose resources/prompts?** This is a probe behavior difference: the virtual server health check hits `GET /healthz` directly and does not run a full MCP `initialize` + `resources/list` + `prompts/list` probe. The STDIO upstream does run the full MCP handshake, so it discovers resources and prompts. Not a UI issue — architectural note only.
+- **Why does the in-process service not expose resources/prompts?** This is a probe behavior difference: the in-process service health check hits `GET /healthz` directly and does not run a full MCP `initialize` + `resources/list` + `prompts/list` probe. The STDIO upstream does run the full MCP handshake, so it discovers resources and prompts. Not a UI issue — architectural note only.
 
 - **Action count for non-lab MCP servers using `action + params` dispatch**: Requires backend support to surface sub-action counts from the upstream's `help` response. Deferred.

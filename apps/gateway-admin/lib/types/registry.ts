@@ -2,13 +2,20 @@
 // JSON field names follow serde rename annotations in the Rust source.
 
 export const REGISTRY_META_KEY = 'io.modelcontextprotocol.registry/official'
+export const LAB_REGISTRY_META_KEY = 'tv.tootie.lab/registry'
 
 export interface ListServersParams {
   search?: string
+  owner?: string
   limit?: number
   cursor?: string | null
   version?: string
   updated_since?: string
+  featured?: boolean
+  reviewed?: boolean
+  recommended?: boolean
+  hidden?: boolean
+  tag?: string
 }
 
 export interface ServerListResponse {
@@ -44,6 +51,44 @@ export function normalizeServerJSON(server: ServerJSON): NormalizedServerJSON {
 
 export interface ResponseMeta {
   'io.modelcontextprotocol.registry/official'?: RegistryExtensions | null
+  'tv.tootie.lab/registry'?: LabRegistryMetadata | null
+  [key: string]: unknown
+}
+
+export interface LabRegistryMetadata {
+  curation?: {
+    featured?: boolean
+    hidden?: boolean
+    tags?: string[]
+    notes?: string | null
+  } | null
+  trust?: {
+    reviewed?: boolean
+    reviewed_at?: string | null
+    source_verified?: boolean
+    maintainer_known?: boolean
+  } | null
+  quality?: {
+    install_tested?: boolean
+    last_install_tested_at?: string | null
+    transport_score?: 'good' | 'mixed' | 'poor' | null
+  } | null
+  security?: {
+    ssrf_reviewed?: boolean
+    permissions_reviewed?: boolean
+    secrets_reviewed?: boolean
+  } | null
+  ux?: {
+    works_in_lab?: boolean
+    recommended_for_homelab?: boolean
+    setup_difficulty?: 'easy' | 'medium' | 'hard' | null
+  } | null
+  audit?: {
+    updated_at?: string | null
+    updated_by?: string | null
+  } | null
+  extra?: Record<string, unknown> | null
+  [key: string]: unknown
 }
 
 export interface RegistryExtensions {
@@ -133,6 +178,25 @@ export interface ValidationIssue {
   field?: string | null
   message: string
   severity?: string | null
+}
+
+export interface RegistryLocalMetaResponse {
+  name: string
+  version: string
+  namespace: string
+  metadata: LabRegistryMetadata | null
+}
+
+export interface RegistryMetaSetOptions {
+  version?: string
+  updated_by?: string
+}
+
+export interface RegistryLocalMetaDeleteResponse {
+  name: string
+  version: string
+  namespace: string
+  deleted: boolean
 }
 
 export class RegistryApiError extends Error implements RegistryError {

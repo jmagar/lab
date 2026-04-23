@@ -23,6 +23,18 @@ It is not intended to replicate every CLI or MCP operation.
 - `crossterm`
 - always compiled
 
+## Theme Boundary
+
+The TUI should align with the CLI design system at the semantic-token level, not by reusing the CLI renderer directly.
+
+Rules:
+
+- reuse Aurora terminal palette values where they make sense
+- reuse semantic token names and status meaning
+- do not reuse the CLI string-rendering helpers or plain-text fallback API from `crates/lab/src/output/`
+- TUI rendering owns its own `ratatui` style mapping, layout, and interaction treatment
+- future TUI theme work should treat the CLI contract as a palette and semantics reference, not as a component library
+
 ## Supported Ecosystems
 
 The TUI supports three plugin ecosystems with different conventions.

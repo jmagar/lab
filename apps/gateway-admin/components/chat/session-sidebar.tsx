@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Database, Plus, MoreHorizontal, Search, Spar
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -13,6 +14,7 @@ import { formatTimeAgo } from './mock-data'
 import type { ACPProject, ACPRun, ACPRunStatus } from './types'
 
 interface SessionSidebarProps {
+  className?: string
   projects: ACPProject[]
   runs: ACPRun[]
   selectedRunId: string | null
@@ -82,6 +84,8 @@ function ProjectGroup({
   onSelectRun: (runId: string, projectId: string) => void
   onNewRun: (projectId: string) => void
 }) {
+  // Seed `open` from `project.collapsed` once per `project.id`; after mount the
+  // local row toggle wins so parent prop churn does not clobber user intent.
   const [open, setOpen] = React.useState(!(project.collapsed ?? false))
 
   return (
@@ -160,6 +164,7 @@ function ProjectGroup({
 }
 
 export function SessionSidebar({
+  className,
   projects,
   runs,
   selectedRunId,
@@ -170,29 +175,37 @@ export function SessionSidebar({
   const activeProjectId = selectedProjectId
   const [search, setSearch] = React.useState('')
 
-  const filteredProjects = React.useMemo(() => {
-    if (!search.trim()) return projects
-    const q = search.toLowerCase()
-    return projects.filter((p) => {
-      const projectRuns = runs.filter((r) => r.projectId === p.id)
-      return p.name.toLowerCase().includes(q) || projectRuns.some((r) => r.title.toLowerCase().includes(q))
+  const visibleProjects = React.useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase()
+
+    return projects.flatMap((project) => {
+      const projectRuns = runs.filter((run) => run.projectId === project.id)
+      if (!normalizedSearch) {
+        return [{ project, matchingRuns: projectRuns }]
+      }
+
+      const projectMatches = project.name.toLowerCase().includes(normalizedSearch)
+      const matchingRuns = projectMatches
+        ? projectRuns
+        : projectRuns.filter((run) => run.title.toLowerCase().includes(normalizedSearch))
+
+      return projectMatches || matchingRuns.length > 0
+        ? [{ project, matchingRuns }]
+        : []
     })
   }, [projects, runs, search])
 
-  const getRunsForProject = (projectId: string) => {
-    const q = search.trim().toLowerCase()
-    return runs
-      .filter((r) => r.projectId === projectId)
-      .filter((r) => !q || r.title.toLowerCase().includes(q) || projects.find((p) => p.id === projectId)?.name.toLowerCase().includes(q))
-  }
-
   return (
-    <div className="flex h-full w-[272px] shrink-0 flex-col border-r border-aurora-border-default bg-aurora-nav-bg">
+    <div className={cn('flex h-full w-full shrink-0 flex-col border-r border-aurora-border-default bg-aurora-nav-bg md:w-[272px]', className)}>
       {/* Search */}
       <div className="shrink-0 px-3 py-3">
         <div className="relative">
+          <Label htmlFor="session-search" className="sr-only">
+            Search sessions
+          </Label>
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-aurora-text-muted/50" />
           <Input
+            id="session-search"
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -202,13 +215,13 @@ export function SessionSidebar({
       </div>
 
       {/* Project list */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-1 px-2 pb-4">
-          {filteredProjects.map((project) => (
+          {visibleProjects.map(({ project, matchingRuns }) => (
             <ProjectGroup
               key={project.id}
               project={project}
-              runs={getRunsForProject(project.id)}
+              runs={matchingRuns}
               selectedRunId={selectedRunId}
               isActiveProject={activeProjectId === project.id}
               onSelectRun={onSelectRun}

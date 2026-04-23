@@ -986,6 +986,11 @@ impl ServerHandler for LabMcpServer {
                 route = "builtin",
                 "dispatch route selected"
             );
+            let params = if service == "gateway" {
+                inject_gateway_origin_param(params, self.request_subject(&context))
+            } else {
+                params
+            };
             let result = (entry.dispatch)(action.clone(), params)
                 .await
                 .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
@@ -1321,6 +1326,26 @@ impl ServerHandler for LabMcpServer {
 }
 
 use crate::mcp::catalog::CatalogSnapshot;
+
+fn inject_gateway_origin_param(params: Value, subject: Option<&str>) -> Value {
+    let raw = subject
+        .map(|value| format!("mcp:{value}"))
+        .unwrap_or_else(|| "mcp:anonymous".to_string());
+    let Some(mut object) = params.as_object().cloned() else {
+        return params;
+    };
+    object
+        .entry("owner".to_string())
+        .or_insert_with(|| serde_json::json!({
+            "surface": "mcp",
+            "subject": subject,
+            "raw": raw,
+        }));
+    object
+        .entry("origin".to_string())
+        .or_insert_with(|| Value::String(raw));
+    Value::Object(object)
+}
 
 fn redact_subject_for_logging(subject: &str) -> String {
     let digest = Sha256::digest(subject.as_bytes());

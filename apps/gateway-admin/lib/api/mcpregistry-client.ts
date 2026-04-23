@@ -3,7 +3,11 @@ import { confirmGatewayParams, gatewayHeaders } from './gateway-request'
 import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
 import { RegistryApiError, normalizeServerJSON } from '@/lib/types/registry'
 import type {
+  LabRegistryMetadata,
   ListServersParams,
+  RegistryLocalMetaDeleteResponse,
+  RegistryLocalMetaResponse,
+  RegistryMetaSetOptions,
   ServerListResponse,
   ServerResponse,
   ValidationResult,
@@ -13,7 +17,7 @@ import type { Gateway } from '@/lib/types/gateway'
 
 type RawServerResponse = Omit<ServerResponse, 'server'> & { server: ServerJSON }
 type RawServerListResponse = Omit<ServerListResponse, 'servers'> & { servers: RawServerResponse[] }
-type RestServerListRaw = { servers: ServerJSON[]; next_cursor: string | null }
+type RestServerListRaw = { servers: RawServerResponse[]; next_cursor: string | null }
 
 function normalizeResponse(raw: RawServerResponse): ServerResponse {
   return { ...raw, server: normalizeServerJSON(raw.server) }
@@ -52,10 +56,16 @@ export async function listServers(
 ): Promise<ServerListResponse> {
   const qs = new URLSearchParams()
   if (params.search) qs.set('search', params.search)
+  if (params.owner) qs.set('owner', params.owner)
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.cursor) qs.set('cursor', params.cursor)
   if (params.version) qs.set('version', params.version)
   if (params.updated_since) qs.set('updated_since', params.updated_since)
+  if (params.featured != null) qs.set('featured', String(params.featured))
+  if (params.reviewed != null) qs.set('reviewed', String(params.reviewed))
+  if (params.recommended != null) qs.set('recommended', String(params.recommended))
+  if (params.hidden != null) qs.set('hidden', String(params.hidden))
+  if (params.tag) qs.set('tag', params.tag)
 
   const qstr = qs.toString()
   const url = qstr ? `/v0.1/servers?${qstr}` : '/v0.1/servers'
@@ -82,7 +92,7 @@ export async function listServers(
   }
 
   const raw = await (response.json() as Promise<RestServerListRaw>)
-  const servers: ServerResponse[] = raw.servers.map((s) => ({ server: normalizeServerJSON(s), _meta: null }))
+  const servers: ServerResponse[] = raw.servers.map(normalizeResponse)
   return { servers, metadata: { count: servers.length, nextCursor: raw.next_cursor } }
 }
 
@@ -107,6 +117,43 @@ export async function validateServer(
   signal?: AbortSignal,
 ): Promise<ValidationResult> {
   return registryAction<ValidationResult>('server.validate', { server_json: serverJson }, signal)
+}
+
+export async function getServerLocalMetadata(
+  name: string,
+  version?: string,
+  signal?: AbortSignal,
+): Promise<RegistryLocalMetaResponse> {
+  return registryAction<RegistryLocalMetaResponse>(
+    'server.meta.get',
+    { name, version },
+    signal,
+  )
+}
+
+export async function setServerLocalMetadata(
+  name: string,
+  metadata: LabRegistryMetadata,
+  options?: RegistryMetaSetOptions,
+  signal?: AbortSignal,
+): Promise<RegistryLocalMetaResponse> {
+  return registryAction<RegistryLocalMetaResponse>(
+    'server.meta.set',
+    { name, version: options?.version, updated_by: options?.updated_by, metadata },
+    signal,
+  )
+}
+
+export async function deleteServerLocalMetadata(
+  name: string,
+  version?: string,
+  signal?: AbortSignal,
+): Promise<RegistryLocalMetaDeleteResponse> {
+  return registryAction<RegistryLocalMetaDeleteResponse>(
+    'server.meta.delete',
+    { name, version },
+    signal,
+  )
 }
 
 export interface InstallServerParams {

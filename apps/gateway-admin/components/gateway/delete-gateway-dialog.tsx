@@ -52,7 +52,7 @@ export function DeleteGatewayDialog({
             <AlertDialogTitle>Remove Gateway</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="pt-2">
-            Are you sure you want to remove <strong>{gateway?.name}</strong>? This action cannot be undone and will disconnect all upstream MCP tools from this gateway.
+            Are you sure you want to remove <strong>{gateway?.name}</strong>? This action cannot be undone and permanently deletes the gateway configuration.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error ? (

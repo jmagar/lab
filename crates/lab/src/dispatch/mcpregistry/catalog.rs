@@ -69,6 +69,36 @@ pub const ACTIONS: &[ActionSpec] = &[
                 required: false,
                 description: "ISO 8601 datetime; return only servers updated after this time",
             },
+            ParamSpec {
+                name: "featured",
+                ty: "boolean",
+                required: false,
+                description: "Filter by Lab metadata curation.featured",
+            },
+            ParamSpec {
+                name: "reviewed",
+                ty: "boolean",
+                required: false,
+                description: "Filter by Lab metadata trust.reviewed",
+            },
+            ParamSpec {
+                name: "recommended",
+                ty: "boolean",
+                required: false,
+                description: "Filter by Lab metadata ux.recommended_for_homelab",
+            },
+            ParamSpec {
+                name: "hidden",
+                ty: "boolean",
+                required: false,
+                description: "Filter by Lab metadata curation.hidden",
+            },
+            ParamSpec {
+                name: "tag",
+                ty: "string",
+                required: false,
+                description: "Filter by a Lab metadata curation tag",
+            },
         ],
     },
     ActionSpec {
@@ -94,6 +124,78 @@ pub const ACTIONS: &[ActionSpec] = &[
             required: true,
             description: "Server name to list versions for",
         }],
+    },
+    ActionSpec {
+        name: "server.meta.get",
+        description: "Get Lab-owned local metadata for a stored registry server version from the local registry mirror.",
+        destructive: false,
+        returns: "RegistryLocalMeta",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Version string to read; defaults to `latest` in the local mirror",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "server.meta.set",
+        description: "Set Lab-owned local metadata for a stored registry server version under `_meta[\"tv.tootie.lab/registry\"]`.",
+        destructive: false,
+        returns: "RegistryLocalMeta",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Version string to update; defaults to `latest` in the local mirror",
+            },
+            ParamSpec {
+                name: "metadata",
+                ty: "object",
+                required: true,
+                description: "Lab-owned metadata object stored under `_meta[\"tv.tootie.lab/registry\"]`",
+            },
+            ParamSpec {
+                name: "updated_by",
+                ty: "string",
+                required: false,
+                description: "Audit actor label for this metadata update",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "server.meta.delete",
+        description: "Delete Lab-owned local metadata for a stored registry server version under `_meta[\"tv.tootie.lab/registry\"]`.",
+        destructive: false,
+        returns: "RegistryLocalMetaDeleteResult",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Version string to delete; defaults to `latest` in the local mirror",
+            },
+        ],
     },
     ActionSpec {
         name: "server.install",

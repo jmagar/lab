@@ -39,6 +39,7 @@ import {
   type ToolFilterState,
   type ToolsExposureFilter,
 } from './gateway-list-state'
+import { DisableGatewayDialog } from './disable-gateway-dialog'
 import { EmptyState } from './empty-state'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { GatewayFilters } from './gateway-filters'
@@ -47,6 +48,7 @@ import { GatewayTable } from './gateway-table'
 import { GatewayTableSkeleton } from './table-skeleton'
 import { GatewayToolsTable } from './gateway-tools-table'
 import { TestResultPanel } from './test-result-panel'
+import { CleanupResultPanel } from './cleanup-result-panel'
 import { AURORA_GATEWAY_STAT, gatewayActionTone } from './gateway-theme'
 
 const DEFAULT_GATEWAY_LENS: GatewayPrimaryLens = 'configured'
@@ -72,6 +74,11 @@ function buildDefaultGatewayFilters(primaryLens: GatewayPrimaryLens): GatewayFil
 
 function toggleArrayValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
+}
+
+type CleanupHistoryEntry = {
+  label: string
+  occurredAt: string
 }
 
 interface GatewaySummary {
@@ -108,12 +115,14 @@ export interface GatewayListViewProps {
   onEdit: (gateway: Gateway) => void
   onTest: (gateway: Gateway) => void
   onReload: (gateway: Gateway) => void
+  onCleanup: (gateway: Gateway, aggressive: boolean, dryRun: boolean) => void
+  onToggleEnabled: (gateway: Gateway) => void
   onDelete: (gateway: Gateway) => void
 }
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
-  const { testGateway, reloadGateway, removeGateway, createGateway, updateGateway, disableVirtualServer } =
+  const { testGateway, reloadGateway, cleanupGateway, removeGateway, createGateway, updateGateway, enableGateway, disableGateway } =
     useGatewayMutations()
 
   const [primaryView, setPrimaryView] = useState<GatewayPrimaryLens | 'tools'>(DEFAULT_GATEWAY_LENS)
@@ -127,10 +136,18 @@ export function GatewayListContent() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingGateway, setEditingGateway] = useState<Gateway | null>(null)
   const [deleteGateway, setDeleteGateway] = useState<Gateway | null>(null)
+  const [disableGatewayTarget, setDisableGatewayTarget] = useState<Gateway | null>(null)
   const [testResult, setTestResult] = useState<{
     gateway: Gateway
     result: Awaited<ReturnType<typeof testGateway>>
   } | null>(null)
+  const [cleanupResult, setCleanupResult] = useState<{
+    gateway: Gateway
+    result: Awaited<ReturnType<typeof cleanupGateway>>
+  } | null>(null)
+  const [cleanupSummaryByGatewayId, setCleanupSummaryByGatewayId] = useState<
+    Record<string, { preview?: CleanupHistoryEntry; cleanup?: CleanupHistoryEntry }>
+  >({})
 
   const items = gateways ?? []
 
@@ -299,16 +316,98 @@ export function GatewayListContent() {
     if (!deleteGateway) return
 
     try {
-      if (deleteGateway.source === 'lab_service') {
-        await disableVirtualServer(deleteGateway.id)
-        toast.success('Lab gateway disabled successfully')
-      } else {
-        await removeGateway(deleteGateway.id)
-        toast.success('Gateway removed successfully')
-      }
+      await removeGateway(deleteGateway.id)
+      toast.success('Gateway removed successfully')
       setDeleteGateway(null)
     } catch (requestError) {
       toast.error(getErrorMessage(requestError, 'Failed to remove gateway'))
+    }
+  }
+
+  const handleCleanup = async (gateway: Gateway, aggressive: boolean, dryRun: boolean) => {
+    try {
+      const result = await cleanupGateway(gateway.id, aggressive, dryRun)
+      setCleanupResult({ gateway, result })
+      const occurredAt = new Date().toISOString()
+      const totalMatched =
+        (result.gateway_matched ?? result.gateway_killed) +
+        (result.local_matched ?? result.local_killed) +
+        (result.aggressive_matched ?? result.aggressive_killed)
+      const totalKilled =
+        result.gateway_killed + result.local_killed + result.aggressive_killed
+      setCleanupSummaryByGatewayId((current) => ({
+        ...current,
+        [gateway.id]: {
+          ...current[gateway.id],
+          ...(dryRun
+            ? {
+                preview: {
+                  label: aggressive
+                    ? `last preview: ${totalMatched} matched (aggressive)`
+                    : `last preview: ${totalMatched} matched`,
+                  occurredAt,
+                },
+              }
+            : {
+                cleanup: {
+                  label: aggressive
+                    ? `last cleanup: ${totalKilled} killed (aggressive)`
+                    : `last cleanup: ${totalKilled} killed`,
+                  occurredAt,
+                },
+              }),
+        },
+      }))
+      if (dryRun) {
+        toast.success(
+          aggressive
+            ? `Aggressive cleanup preview completed. ${totalMatched} processes matched.`
+            : `Runtime cleanup preview completed. ${totalMatched} processes matched.`,
+        )
+      } else {
+        toast.success(
+          aggressive
+            ? `Aggressive cleanup completed. ${totalKilled} processes terminated.`
+            : `Runtime cleanup completed. ${totalKilled} processes terminated.`,
+        )
+      }
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to cleanup gateway runtime'))
+    }
+  }
+
+  const handleClearCleanupHistory = (gateway: Gateway) => {
+    setCleanupSummaryByGatewayId((current) => {
+      const next = { ...current }
+      delete next[gateway.id]
+      return next
+    })
+    toast.success('Cleared row cleanup history')
+  }
+
+  const handleToggleEnabled = async (gateway: Gateway) => {
+    if (gateway.enabled ?? true) {
+      setDisableGatewayTarget(gateway)
+      return
+    }
+
+    try {
+      await enableGateway(gateway.id)
+      toast.success('Gateway enabled. Catalog change sent to clients.')
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to update gateway state'))
+    }
+  }
+
+  const handleDisableConfirm = async () => {
+    if (!disableGatewayTarget) return
+
+    try {
+      await disableGateway(disableGatewayTarget.id)
+      toast.success('Gateway disabled. Catalog change sent and runtime cleanup requested.')
+      setDisableGatewayTarget(null)
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to disable gateway'))
     }
   }
 
@@ -351,6 +450,7 @@ export function GatewayListContent() {
         itemsCount={items.length}
         filteredGateways={filteredGateways}
         filteredToolRows={filteredToolRows}
+        cleanupSummaryByGatewayId={cleanupSummaryByGatewayId}
         onPrimaryLensChange={handlePrimaryLens}
         onBackToGateways={handleBackToGateways}
         onMobileSheetOpenChange={setMobileSheetOpen}
@@ -364,6 +464,9 @@ export function GatewayListContent() {
         onEdit={handleEdit}
         onTest={handleTest}
         onReload={handleReload}
+        onCleanup={handleCleanup}
+        onClearCleanupHistory={handleClearCleanupHistory}
+        onToggleEnabled={handleToggleEnabled}
         onDelete={setDeleteGateway}
       />
 
@@ -380,7 +483,14 @@ export function GatewayListContent() {
         onConfirm={handleDelete}
       />
 
+      <DisableGatewayDialog
+        gateway={disableGatewayTarget}
+        onOpenChange={(open: boolean) => !open && setDisableGatewayTarget(null)}
+        onConfirm={handleDisableConfirm}
+      />
+
       <TestResultPanel result={testResult} onClose={() => setTestResult(null)} />
+      <CleanupResultPanel result={cleanupResult} onClose={() => setCleanupResult(null)} />
     </>
   )
 }
@@ -412,6 +522,8 @@ export function GatewayListView({
   onEdit,
   onTest,
   onReload,
+  onCleanup,
+  onToggleEnabled,
   onDelete,
 }: GatewayListViewProps) {
   return (
@@ -434,57 +546,72 @@ export function GatewayListView({
                 Back to gateways
               </Button>
             ) : null}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onMobileSheetOpenChange(true)}
-              className={cn(
-                gatewayActionTone(),
-                'size-10 lg:hidden hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
-              )}
-              aria-label="Open filters"
-            >
-              <SlidersHorizontal className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onDensityChange('comfortable')}
-              className={cn(
-                gatewayActionTone(),
-                'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
-                density === 'comfortable' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
-              )}
-              aria-label="Comfortable density"
-              aria-pressed={density === 'comfortable'}
-              title="Comfortable density"
-            >
-              <LayoutList className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onDensityChange('condensed')}
-              className={cn(
-                gatewayActionTone(),
-                'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
-                density === 'condensed' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
-              )}
-              aria-label="Condensed density"
-              aria-pressed={density === 'condensed'}
-              title="Condensed density"
-            >
-              <Rows3 className="size-4" />
-            </Button>
+            {!showToolsView ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onPrimaryLensChange('tools')}
+                  className={cn(
+                    gatewayActionTone(),
+                    'size-10 lg:hidden hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                  )}
+                  aria-label="Switch to tools view"
+                >
+                  <SlidersHorizontal className="size-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onDensityChange('comfortable')}
+                  className={cn(
+                    gatewayActionTone(),
+                    'hidden size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary lg:inline-flex',
+                    density === 'comfortable' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
+                  )}
+                  aria-label="Comfortable density"
+                  aria-pressed={density === 'comfortable'}
+                  title="Comfortable density"
+                >
+                  <LayoutList className="size-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onDensityChange('condensed')}
+                  className={cn(
+                    gatewayActionTone(),
+                    'hidden size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary lg:inline-flex',
+                    density === 'condensed' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
+                  )}
+                  aria-label="Condensed density"
+                  aria-pressed={density === 'condensed'}
+                  title="Condensed density"
+                >
+                  <Rows3 className="size-4" />
+                </Button>
+              </>
+            ) : null}
             <Button
               onClick={onCreate}
               className={cn(
                 gatewayActionTone('accent'),
-                'border px-4 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                'hidden border px-4 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary sm:inline-flex',
               )}
             >
               <Plus className="mr-2 size-4" />
               Add Gateway
+            </Button>
+            <Button
+              onClick={onCreate}
+              size="icon"
+              className={cn(
+                gatewayActionTone('accent'),
+                'border sm:hidden',
+              )}
+              aria-label="Add gateway"
+            >
+              <Plus className="size-4" />
             </Button>
           </div>
         }
@@ -497,7 +624,40 @@ export function GatewayListView({
         )}
       >
         <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
-          <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-2 lg:hidden')}>
+            <div className="grid grid-cols-4 gap-1">
+              <MobileSummaryChip
+                metric="configured"
+                value={summary.configured}
+                icon={<Cable className="size-3.5" />}
+                active={!showToolsView && gatewayFilters.primaryLens === 'configured'}
+                onClick={() => onPrimaryLensChange('configured')}
+              />
+              <MobileSummaryChip
+                metric="healthy"
+                value={summary.healthy}
+                icon={<Activity className="size-3.5" />}
+                active={!showToolsView && gatewayFilters.primaryLens === 'healthy'}
+                onClick={() => onPrimaryLensChange('healthy')}
+              />
+              <MobileSummaryChip
+                metric="disconnected"
+                value={summary.disconnected}
+                icon={<TriangleAlert className="size-3.5" />}
+                active={!showToolsView && gatewayFilters.primaryLens === 'disconnected'}
+                onClick={() => onPrimaryLensChange('disconnected')}
+              />
+              <MobileSummaryChip
+                metric="tools"
+                value={summary.tools}
+                icon={<Wrench className="size-3.5" />}
+                active={showToolsView}
+                onClick={() => onPrimaryLensChange('tools')}
+              />
+            </div>
+          </section>
+
+          <section className={cn(AURORA_MEDIUM_PANEL, 'hidden p-5 lg:block')}>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 label="Configured"
@@ -597,6 +757,8 @@ export function GatewayListView({
                   onEdit={onEdit}
                   onTest={onTest}
                   onReload={onReload}
+                  onCleanup={onCleanup}
+                  onToggleEnabled={onToggleEnabled}
                   onDelete={onDelete}
                 />
               )}
@@ -629,7 +791,9 @@ function SummaryCard({
       onClick={onClick}
       className={cn(
         AURORA_GATEWAY_STAT,
-        'text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        'cursor-pointer text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        !active &&
+          'bg-aurora-panel/72 hover:border-aurora-accent-primary/28 hover:bg-aurora-hover-bg hover:shadow-[0_0_0_1px_rgba(87,190,255,0.08)]',
         active && 'border-aurora-accent-primary/40 bg-aurora-accent-primary/8 shadow-[inset_0_0_0_1px_rgba(87,190,255,0.12)]',
       )}
       aria-pressed={active}
@@ -643,6 +807,38 @@ function SummaryCard({
         </div>
         {icon}
       </div>
+    </button>
+  )
+}
+
+function MobileSummaryChip({
+  metric,
+  value,
+  icon,
+  active,
+  onClick,
+}: {
+  metric: 'configured' | 'healthy' | 'disconnected' | 'tools'
+  value: number
+  icon: ReactNode
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      data-mobile-summary={metric}
+      onClick={onClick}
+      className={cn(
+        'flex h-10 items-center justify-center gap-1.5 rounded-aurora-1 border px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        active
+          ? 'border-aurora-accent-primary/36 bg-aurora-accent-primary/12 text-aurora-text-primary'
+          : 'border-aurora-border-strong bg-aurora-control-surface text-aurora-text-muted hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+      )}
+      aria-pressed={active}
+    >
+      {icon}
+      <span className={cn(AURORA_DISPLAY_NUMBER, 'text-sm leading-none text-current')}>{value}</span>
     </button>
   )
 }

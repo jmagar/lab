@@ -3,10 +3,43 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::config::{UpstreamConfig, UpstreamOauthConfig};
+use crate::dispatch::upstream::types::UpstreamRuntimeOwner;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayRuntimeOwnerParams {
+    pub surface: String,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub client_name: Option<String>,
+    #[serde(default)]
+    pub raw: Option<String>,
+}
+
+impl From<GatewayRuntimeOwnerParams> for UpstreamRuntimeOwner {
+    fn from(value: GatewayRuntimeOwnerParams) -> Self {
+        Self {
+            surface: value.surface,
+            subject: value.subject,
+            request_id: value.request_id,
+            session_id: value.session_id,
+            client_name: value.client_name,
+            raw: value.raw,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayNameParams {
     pub name: String,
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub owner: Option<GatewayRuntimeOwnerParams>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,12 +84,18 @@ pub struct GatewayAddParams {
     pub spec: UpstreamConfig,
     #[serde(default)]
     pub bearer_token_value: Option<String>,
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub owner: Option<GatewayRuntimeOwnerParams>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayUpdatePatch {
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
     #[serde(default)]
     pub url: Option<Option<String>>,
     #[serde(default)]
@@ -96,10 +135,51 @@ pub struct GatewayUpdateParams {
     pub patch: GatewayUpdatePatch,
     #[serde(default)]
     pub bearer_token_value: Option<String>,
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub owner: Option<GatewayRuntimeOwnerParams>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayReloadParams {
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub owner: Option<GatewayRuntimeOwnerParams>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayStatusParams {
     #[serde(default)]
     pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayMcpToggleParams {
+    pub name: String,
+    #[serde(default)]
+    pub cleanup: bool,
+    #[serde(default)]
+    pub aggressive: bool,
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub owner: Option<GatewayRuntimeOwnerParams>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayMcpCleanupParams {
+    pub name: String,
+    #[serde(default)]
+    pub aggressive: bool,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GatewayOauthNameParams {
+    pub upstream: String,
+    #[serde(default)]
+    pub subject: Option<String>,
 }

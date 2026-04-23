@@ -5,9 +5,10 @@ import type { TransportType } from '@/lib/types/gateway'
 interface TransportBadgeProps {
   transport: TransportType
   className?: string
+  iconOnly?: boolean
 }
 
-export function TransportBadge({ transport, className }: TransportBadgeProps) {
+export function TransportBadge({ transport, className, iconOnly = false }: TransportBadgeProps) {
   const config = (() => {
     switch (transport) {
       case 'http':
@@ -24,7 +25,7 @@ export function TransportBadge({ transport, className }: TransportBadgeProps) {
             'border-aurora-border-strong bg-[linear-gradient(180deg,rgba(17,32,44,0.98),rgba(11,22,30,0.98))] text-aurora-text-muted shadow-[0_8px_16px_rgba(0,0,0,0.14),var(--aurora-highlight-medium)]',
           icon: Terminal,
         }
-      case 'lab_service':
+      case 'in_process':
         return {
           label: 'Lab',
           className:
@@ -43,13 +44,15 @@ export function TransportBadge({ transport, className }: TransportBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em]',
+        'inline-flex items-center gap-1 rounded-full border px-2 py-[5px] text-[10px] font-medium uppercase tracking-[0.14em]',
         config.className,
         className
       )}
+      title={config.label}
+      aria-label={config.label}
     >
-      <Icon className="size-3" />
-      {config.label}
+      <Icon className="size-[11px]" />
+      {!iconOnly ? config.label : null}
     </span>
   )
 }

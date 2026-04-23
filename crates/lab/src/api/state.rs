@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
 use crate::config::DeviceRole;
+use crate::acp::registry::AcpSessionRegistry;
 use crate::device::enrollment::store::EnrollmentStore;
 use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::ServiceClients;
@@ -49,6 +50,8 @@ pub struct AppState {
     pub enrollment_store: Option<Arc<EnrollmentStore>>,
     /// Shared local-master log runtime used by API SSE and adapter-local lookups.
     pub logs_system: Option<Arc<crate::dispatch::logs::types::LogSystem>>,
+    /// Shared ACP session registry for browser chat/session routes.
+    pub acp_registry: Arc<AcpSessionRegistry>,
     /// Resolved device role for the current process.
     pub device_role: Option<DeviceRole>,
     /// Optional directory containing exported Labby web assets.
@@ -98,6 +101,7 @@ impl AppState {
             device_store: None,
             enrollment_store: None,
             logs_system: None,
+            acp_registry: Arc::new(AcpSessionRegistry::new()),
             device_role: None,
             web_assets_dir: None,
             web_ui_auth_disabled: false,

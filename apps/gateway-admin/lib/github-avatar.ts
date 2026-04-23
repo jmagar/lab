@@ -1,5 +1,17 @@
 const GITHUB_HOSTS = new Set(['github.com', 'www.github.com'])
 
+function normalizeGithubRepoUrl(repoUrl: string): string | null {
+  const trimmed = repoUrl.trim()
+  if (!trimmed) return null
+
+  const sshMatch = /^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i.exec(trimmed)
+  if (sshMatch?.[1] && sshMatch[2]) {
+    return `https://github.com/${sshMatch[1]}/${sshMatch[2]}`
+  }
+
+  return trimmed
+}
+
 /**
  * Derive a GitHub avatar URL from a repository URL.
  *
@@ -11,7 +23,9 @@ export function githubAvatarFromRepoUrl(repoUrl: string | undefined | null): str
   if (!repoUrl) return null
   let parsed: URL
   try {
-    parsed = new URL(repoUrl)
+    const normalized = normalizeGithubRepoUrl(repoUrl)
+    if (!normalized) return null
+    parsed = new URL(normalized)
   } catch {
     return null
   }

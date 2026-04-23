@@ -1,5 +1,9 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 /** @type {import('next').NextConfig} */
 const allowedDevOrigins = ['127.0.0.1', 'localhost']
+const dirname = path.dirname(fileURLToPath(import.meta.url))
 
 if (process.env.LAB_ALLOWED_DEV_ORIGINS) {
   for (const origin of process.env.LAB_ALLOWED_DEV_ORIGINS.split(',')) {
@@ -13,7 +17,7 @@ if (process.env.LAB_ALLOWED_DEV_ORIGINS) {
 const nextConfig = {
   output: 'export',
   turbopack: {
-    root: import.meta.dirname,
+    root: dirname,
   },
   trailingSlash: true,
   allowedDevOrigins,

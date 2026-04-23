@@ -1,11 +1,11 @@
-export function hasApiTokenAuth(token = process.env.NEXT_PUBLIC_API_TOKEN) {
-  return typeof token === 'string' && token.trim().length > 0
+export function hasApiTokenAuth(_token?: string) {
+  return false
 }
 
 export function isStandaloneBearerAuthMode(
-  token = process.env.NEXT_PUBLIC_API_TOKEN,
+  _token?: string,
 ) {
-  return hasApiTokenAuth(token)
+  return false
 }
 
 export function hasMockDataAuthMode(mockData = process.env.NEXT_PUBLIC_MOCK_DATA) {
@@ -13,8 +13,8 @@ export function hasMockDataAuthMode(mockData = process.env.NEXT_PUBLIC_MOCK_DATA
 }
 
 export function shouldBypassBrowserSessionAuth(
-  token = process.env.NEXT_PUBLIC_API_TOKEN,
+  _token?: string,
   mockData = process.env.NEXT_PUBLIC_MOCK_DATA,
 ) {
-  return isStandaloneBearerAuthMode(token) || hasMockDataAuthMode(mockData)
+  return hasMockDataAuthMode(mockData)
 }

@@ -333,6 +333,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         }
 
         v1 = v1
+            .nest("/acp", services::acp::routes(state.clone()))
             .nest("/gateway", services::gateway::routes(state.clone()))
             .route(
                 "/openapi.json",
@@ -353,7 +354,8 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
                 "/docs",
                 get(|| async { Html(include_str!("openapi_docs.html")) }),
             )
-            .nest("/extract", services::extract::routes(state.clone()));
+            .nest("/extract", services::extract::routes(state.clone()))
+            .nest("/marketplace", services::marketplace::routes(state.clone()));
 
         if state
             .registry

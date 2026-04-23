@@ -20,7 +20,7 @@ import {
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
 } from '@/components/gateway/gateway-theme'
-import { REGISTRY_META_KEY } from '@/lib/types/registry'
+import { LAB_REGISTRY_META_KEY, REGISTRY_META_KEY } from '@/lib/types/registry'
 import { RegistryStatusBadge } from './registry-status-badge'
 import type { ServerResponse, ServerListResponse } from '@/lib/types/registry'
 
@@ -42,6 +42,12 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   const [debouncedVersion, setDebouncedVersion] = useState('')
   const [updatedSince, setUpdatedSince] = useState('')
   const [debouncedUpdatedSince, setDebouncedUpdatedSince] = useState('')
+  const [tag, setTag] = useState('')
+  const [debouncedTag, setDebouncedTag] = useState('')
+  const [featuredOnly, setFeaturedOnly] = useState(false)
+  const [hiddenOnly, setHiddenOnly] = useState(false)
+  const [reviewedOnly, setReviewedOnly] = useState(false)
+  const [recommendedOnly, setRecommendedOnly] = useState(false)
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set())
   const sentinelRef = useRef<HTMLDivElement>(null)
   const pagingRef = useRef(false)
@@ -52,17 +58,28 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
       setDebouncedSearch(search)
       setDebouncedVersion(version)
       setDebouncedUpdatedSince(updatedSince)
+      setDebouncedTag(tag)
     }, 300)
     return () => clearTimeout(timer)
-  }, [search, version, updatedSince])
+  }, [search, version, updatedSince, tag])
 
   const getKey = useCallback(
     (pageIndex: number, previousData: ServerListResponse | null): RegistryServersKey | null => {
       if (previousData && !previousData.metadata.nextCursor) return null
       const cursor = pageIndex === 0 ? null : (previousData?.metadata.nextCursor ?? null)
-      return registryServersKey(debouncedSearch, cursor, debouncedVersion, debouncedUpdatedSince)
+      return registryServersKey(
+        debouncedSearch,
+        cursor,
+        debouncedVersion,
+        debouncedUpdatedSince,
+        featuredOnly || undefined,
+        reviewedOnly || undefined,
+        recommendedOnly || undefined,
+        hiddenOnly || undefined,
+        debouncedTag || undefined,
+      )
     },
-    [debouncedSearch, debouncedVersion, debouncedUpdatedSince],
+    [debouncedSearch, debouncedVersion, debouncedUpdatedSince, featuredOnly, reviewedOnly, recommendedOnly, hiddenOnly, debouncedTag],
   )
 
   const { data: pages, isLoading, isValidating, error, mutate, setSize } = useSWRInfinite<ServerListResponse>(
@@ -72,10 +89,11 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   )
 
   const allServers = pages?.flatMap((page) => page.servers) ?? []
+  const visibleServers = allServers
 
   const lastPage = pages?.[pages.length - 1]
   const hasMore = Boolean(lastPage?.metadata.nextCursor)
-  const totalLoaded = allServers.length
+  const totalLoaded = visibleServers.length
 
   // Sentinel observer — loads next page when the bottom of the list scrolls into view
   useEffect(() => {
@@ -83,7 +101,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     if (!el) return
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && hasMore && !isValidating) {
+        if (entry.isIntersecting && hasMore && !isValidating && !error) {
           if (pagingRef.current) return
           pagingRef.current = true
           setSize(s => s + 1)
@@ -93,13 +111,13 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [hasMore, isValidating, setSize])
+  }, [error, hasMore, isValidating, setSize])
 
   useEffect(() => {
-    if (!isValidating) {
+    if (!isValidating && !error) {
       pagingRef.current = false
     }
-  }, [isValidating])
+  }, [error, isValidating])
 
   const toggleDescription = (name: string) => {
     setExpandedDescriptions((prev) => {
@@ -151,10 +169,29 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           onVersionChange={setVersion}
           updatedSince={updatedSince}
           onUpdatedSinceChange={setUpdatedSince}
+          hiddenOnly={hiddenOnly}
+          onHiddenOnlyChange={setHiddenOnly}
+          tag={tag}
+          onTagChange={setTag}
           totalLoaded={totalLoaded}
           hasMore={hasMore}
           isLoading={isLoading}
         />
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant={featuredOnly ? 'default' : 'outline'} size="sm" onClick={() => setFeaturedOnly((v) => !v)}>
+            Featured
+          </Button>
+          <Button type="button" variant={reviewedOnly ? 'default' : 'outline'} size="sm" onClick={() => setReviewedOnly((v) => !v)}>
+            Reviewed
+          </Button>
+          <Button type="button" variant={recommendedOnly ? 'default' : 'outline'} size="sm" onClick={() => setRecommendedOnly((v) => !v)}>
+            Recommended
+          </Button>
+          <Button type="button" variant={hiddenOnly ? 'default' : 'outline'} size="sm" onClick={() => setHiddenOnly((v) => !v)}>
+            Hidden
+          </Button>
+        </div>
 
         {/* Error state */}
         {!isLoading && error && (
@@ -162,7 +199,15 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
             <p className="text-sm text-aurora-error">
               {error instanceof Error ? error.message : 'Failed to load registry'}
             </p>
-            <Button variant="outline" size="sm" onClick={() => void mutate()} className="gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                pagingRef.current = false
+                void mutate()
+              }}
+              className="gap-1.5"
+            >
               <RotateCcw className="size-4" />
               Retry
             </Button>
@@ -182,27 +227,29 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
         )}
 
         {/* Empty state */}
-        {!isLoading && !error && allServers.length === 0 && pages && (
+        {!isLoading && !error && visibleServers.length === 0 && pages && (
           <div className={cn(AURORA_MEDIUM_PANEL, 'p-10 text-center text-sm text-aurora-text-muted')}>
             No servers found{debouncedSearch ? ` for "${debouncedSearch}"` : ''}.
           </div>
         )}
 
         {/* Server list */}
-        {allServers.length > 0 && (
+        {visibleServers.length > 0 && (
           <div className="overflow-hidden rounded-lg border border-aurora-border-strong">
-            {allServers.map((response) => {
+            {visibleServers.map((response) => {
               const server = response.server
               const { remotes, icons } = server
               const isHTTP = remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
               const ghAvatar = githubAvatarFromRepoUrl(server.repository?.url)
               const fallbackIcon = icons[0] ?? null
-              const avatarSrc = ghAvatar ?? safeHref(fallbackIcon?.src) ?? null
+              const fallbackIconHref = safeHref(fallbackIcon?.src)
+              const avatarSrc = ghAvatar ?? fallbackIconHref ?? null
               const displayName = server.title ?? server.name
               const { text: descText, truncated } = truncateDescription(server.description)
               const isExpanded = expandedDescriptions.has(server.name)
               const repoHref = safeHref(server.repository?.url)
               const status = response._meta?.[REGISTRY_META_KEY]?.status ?? 'active'
+              const labMeta = response._meta?.[LAB_REGISTRY_META_KEY]
               const isDeleted = status === 'deleted'
 
               return (
@@ -230,12 +277,14 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                             referrerPolicy="no-referrer"
                             loading="lazy"
                             onError={(e) => {
-                              if (ghAvatar && fallbackIcon?.src && e.currentTarget.src !== fallbackIcon.src) {
-                                e.currentTarget.src = fallbackIcon.src
+                              const img = e.currentTarget
+                              if (ghAvatar && fallbackIconHref && img.dataset.fallbackApplied !== 'true') {
+                                img.dataset.fallbackApplied = 'true'
+                                img.src = fallbackIconHref
                                 return
                               }
-                              e.currentTarget.style.display = 'none'
-                              ;(e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
+                              img.style.display = 'none'
+                              ;(img.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
                             }}
                           />
                           <Package className="size-5 text-aurora-text-muted" style={{ display: 'none' }} />
@@ -265,6 +314,21 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                           {isHTTP ? 'HTTP' : 'stdio only'}
                         </span>
                         <RegistryStatusBadge status={status} />
+                        {labMeta?.curation?.featured && (
+                          <span className="rounded-full border border-aurora-accent-primary/30 bg-aurora-accent-primary/10 px-2 py-0.5 text-xs font-medium text-aurora-accent-primary">
+                            Featured
+                          </span>
+                        )}
+                        {labMeta?.trust?.reviewed && (
+                          <span className="rounded-full border border-aurora-success/30 bg-aurora-success/10 px-2 py-0.5 text-xs font-medium text-aurora-success">
+                            Reviewed
+                          </span>
+                        )}
+                        {labMeta?.ux?.recommended_for_homelab && (
+                          <span className="rounded-full border border-aurora-warn/30 bg-aurora-warn/10 px-2 py-0.5 text-xs font-medium text-aurora-warn">
+                            Recommended
+                          </span>
+                        )}
                       </div>
 
                       <p className="mt-1 text-sm text-aurora-text-muted">
@@ -306,10 +370,10 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
 
         {/* Sentinel + inline loading indicator */}
         <div ref={sentinelRef} className="flex h-8 items-center justify-center">
-          {isValidating && allServers.length > 0 && (
+          {isValidating && visibleServers.length > 0 && (
             <p className="text-xs text-aurora-text-muted">Loading more…</p>
           )}
-          {!hasMore && allServers.length > 0 && !isValidating && (
+          {!hasMore && visibleServers.length > 0 && !isValidating && (
             <p className="text-xs text-aurora-text-muted">
               {totalLoaded} server{totalLoaded === 1 ? '' : 's'} loaded
             </p>
