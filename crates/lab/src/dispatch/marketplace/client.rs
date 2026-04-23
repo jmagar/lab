@@ -6,6 +6,7 @@
 //! `claude plugin install/uninstall`.
 
 use std::collections::HashSet;
+use std::io::{BufReader, Read};
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -152,11 +153,10 @@ fn sync_tree_to_target(
             continue;
         }
 
-        let source_bytes = std::fs::read(&source).map_err(io_internal)?;
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent).map_err(io_internal)?;
         }
-        match std::fs::write(&dest, &source_bytes) {
+        match std::fs::copy(&source, &dest) {
             Ok(_) => changed.push(rel),
             Err(_) => failed.push(rel),
         }
@@ -269,9 +269,26 @@ fn files_match(source: &Path, dest: &Path) -> Result<bool, ToolError> {
     if source_meta.len() != dest_meta.len() {
         return Ok(false);
     }
-    let source_bytes = std::fs::read(source).map_err(io_internal)?;
-    let dest_bytes = std::fs::read(dest).map_err(io_internal)?;
-    Ok(source_bytes == dest_bytes)
+    let source_file = std::fs::File::open(source).map_err(io_internal)?;
+    let dest_file = std::fs::File::open(dest).map_err(io_internal)?;
+    let mut source_reader = BufReader::new(source_file);
+    let mut dest_reader = BufReader::new(dest_file);
+    let mut source_buf = [0_u8; 8192];
+    let mut dest_buf = [0_u8; 8192];
+
+    loop {
+        let source_read = source_reader.read(&mut source_buf).map_err(io_internal)?;
+        let dest_read = dest_reader.read(&mut dest_buf).map_err(io_internal)?;
+        if source_read != dest_read {
+            return Ok(false);
+        }
+        if source_read == 0 {
+            return Ok(true);
+        }
+        if source_buf[..source_read] != dest_buf[..dest_read] {
+            return Ok(false);
+        }
+    }
 }
 
 fn read_text_if_present(path: &Path) -> Option<String> {
@@ -286,7 +303,7 @@ fn io_internal(error: impl std::fmt::Display) -> ToolError {
 }
 
 #[cfg(test)]
-pub(super) fn with_test_plugins_root<T>(home: &std::path::Path, run: impl FnOnce() -> T) -> T {
+pub(super) fn with_test_plugins_root<T>(home: &Path, run: impl FnOnce() -> T) -> T {
     let _guard = TEST_PLUGINS_ROOT_LOCK.lock().unwrap();
     let plugins_root = home.join(".claude").join("plugins");
     let previous = {

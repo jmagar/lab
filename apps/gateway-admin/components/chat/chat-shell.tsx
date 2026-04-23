@@ -27,6 +27,10 @@ const ACP_AGENT: ACPAgent = {
   capabilities: ['tool_use', 'streaming', 'permissions', 'plans'],
 }
 
+type SessionCreationIntent = 'bootstrap' | 'manual' | 'send'
+type CreateSessionOptions = { closeSessionPanel?: boolean }
+type CreateSessionFn = (options?: CreateSessionOptions) => Promise<ACPRun>
+
 export function shouldAutoCreateInitialRun(
   providerReady: boolean,
   runCount: number,
@@ -37,6 +41,38 @@ export function shouldAutoCreateInitialRun(
 
 export function integrateCreatedRun(current: ACPRun[], run: ACPRun) {
   return [run, ...current.filter((existing) => existing.id !== run.id)]
+}
+
+export function sessionCreationOptionsForIntent(
+  intent: SessionCreationIntent,
+  isMobileViewport: boolean,
+): CreateSessionOptions | undefined {
+  if (intent === 'bootstrap') {
+    return undefined
+  }
+
+  return { closeSessionPanel: isMobileViewport }
+}
+
+export async function createSessionForIntent(
+  createSession: CreateSessionFn,
+  intent: SessionCreationIntent,
+  isMobileViewport: boolean,
+) {
+  return createSession(sessionCreationOptionsForIntent(intent, isMobileViewport))
+}
+
+export async function ensurePromptRunId(
+  selectedRunId: string | null,
+  createSession: CreateSessionFn,
+  isMobileViewport: boolean,
+) {
+  if (selectedRunId) {
+    return selectedRunId
+  }
+
+  const run = await createSessionForIntent(createSession, 'send', isMobileViewport)
+  return run.id
 }
 
 function toRun(session: BridgeSessionSummary): ACPRun {
@@ -170,7 +206,7 @@ export function ChatShell() {
       return
     }
     void (async () => {
-      await createSession()
+      await createSessionForIntent(createSession, 'bootstrap', false)
     })()
   }, [createSession, providerHealth?.ready, runs.length, selectedRunId])
 
@@ -182,15 +218,11 @@ export function ChatShell() {
   }
 
   const handleNewRun = async () => {
-    await createSession({ closeSessionPanel: isMobileViewport })
+    await createSessionForIntent(createSession, 'manual', isMobileViewport)
   }
 
   const handleSend = async (text: string) => {
-    let runId = selectedRunId
-    if (!runId) {
-      const run = await createSession({ closeSessionPanel: isMobileViewport })
-      runId = run.id
-    }
+    const runId = await ensurePromptRunId(selectedRunId, createSession, isMobileViewport)
 
     await fetchAcp(`/sessions/${runId}/prompt`, {
       method: 'POST',

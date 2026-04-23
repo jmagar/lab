@@ -1,18 +1,14 @@
 import type { ProbeResponse, StartResponse, UpstreamEntry, UpstreamOauthStatus } from '@/lib/types/upstream-oauth'
-import { isStandaloneBearerAuthMode } from '../auth/auth-mode'
 import { normalizeGatewayApiBase } from './gateway-config'
 import { gatewayHeaders } from './gateway-request'
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = process.env.NEXT_PUBLIC_API_TOKEN
-  const standaloneBearerAuth = isStandaloneBearerAuthMode(token)
-  const credentials: RequestCredentials = standaloneBearerAuth ? 'omit' : 'include'
   const base = normalizeGatewayApiBase()
 
   const res = await fetch(`${base}${path}`, {
-    credentials,
+    credentials: 'include',
     ...init,
-    headers: { ...gatewayHeaders(token, standaloneBearerAuth), ...init?.headers },
+    headers: { ...gatewayHeaders(), ...init?.headers },
   })
   if (!res.ok) {
     let body: { kind?: string; message?: string } = {}

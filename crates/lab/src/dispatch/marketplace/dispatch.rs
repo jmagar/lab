@@ -16,22 +16,7 @@ use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::params::parse_plugin_id;
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    let start = std::time::Instant::now();
-    let result = dispatch_inner(action, params).await;
-    let elapsed_ms = start.elapsed().as_millis();
-
-    match &result {
-        Ok(_) => tracing::info!(service = "marketplace", action, elapsed_ms, "dispatch ok"),
-        Err(err) => {
-            let k = err.kind();
-            if err.is_internal() {
-                tracing::error!(service = "marketplace", action, elapsed_ms, kind = k, "dispatch error");
-            } else {
-                tracing::warn!(service = "marketplace", action, elapsed_ms, kind = k, "dispatch error");
-            }
-        }
-    }
-    result
+    dispatch_inner(action, params).await
 }
 
 async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError> {

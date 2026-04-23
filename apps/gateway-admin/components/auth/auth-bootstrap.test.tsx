@@ -55,3 +55,21 @@ test('AuthBootstrap renders the auth_error login screen instead of the generic e
   assert.match(markup, /Request ID: req-auth-123/)
   assert.match(markup, /Sign in again/)
 })
+
+test('AuthBootstrap does not bypass hosted auth when NEXT_PUBLIC_API_TOKEN is set', () => {
+  __setBrowserSessionStateForTests({ status: 'unauthenticated' })
+
+  const markup = withAuthEnv(() => {
+    process.env.NEXT_PUBLIC_API_TOKEN = 'dev-token'
+
+    return renderToStaticMarkup(
+      React.createElement(
+        AuthBootstrap,
+        null,
+        React.createElement('div', null, 'children'),
+      ),
+    )
+  })
+
+  assert.equal(markup.includes('children'), false)
+})
