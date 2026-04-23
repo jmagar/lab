@@ -887,7 +887,7 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             #[cfg(target_os = "linux")]
             {
-                if reclaim_port_if_lab(port) {
+                if reclaim_port_if_lab(addr, port) {
                     for attempt in 1u8..=5 {
                         tokio::time::sleep(Duration::from_millis(100)).await;
                         match tokio::net::TcpListener::bind(addr).await {
@@ -919,7 +919,16 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
 /// On Linux, find the PID holding `port`, confirm it's a `lab` process, and
 /// send SIGTERM. Returns `true` if a signal was sent.
 #[cfg(target_os = "linux")]
-fn reclaim_port_if_lab(port: u16) -> bool {
+fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
+    if addr.contains(':') || !matches!(addr, "127.0.0.1" | "localhost") {
+        tracing::debug!(
+            subsystem = "api_server",
+            phase = "listener.reclaim.lookup",
+            addr,
+            port,
+            "port reclaim is scanning both IPv4 and IPv6 listener tables"
+        );
+    }
     let Some(pid) = find_pid_for_port(port) else {
         return false;
     };
@@ -970,23 +979,14 @@ fn is_lab_executable(path: &std::path::Path) -> bool {
     )
 }
 
-/// Walk `/proc/net/tcp` (IPv4) to find the inode for a listening port, then
-/// resolve it to a PID by scanning `/proc/*/fd/`.
+/// Walk `/proc/net/tcp` and `/proc/net/tcp6` to find the inode for a listening
+/// port, then resolve it to a PID by scanning `/proc/*/fd/`.
 #[cfg(target_os = "linux")]
 fn find_pid_for_port(port: u16) -> Option<u32> {
     let hex_port = format!("{port:04X}");
-    let tcp = std::fs::read_to_string("/proc/net/tcp").ok()?;
-    let inode = tcp.lines().skip(1).find_map(|line| {
-        let cols: Vec<&str> = line.split_whitespace().collect();
-        let local = cols.get(1)?;
-        let inode_col = cols.get(9)?;
-        let port_part = local.split(':').nth(1)?;
-        if port_part.eq_ignore_ascii_case(&hex_port) {
-            inode_col.parse::<u64>().ok()
-        } else {
-            None
-        }
-    })?;
+    let inode = ["/proc/net/tcp", "/proc/net/tcp6"]
+        .into_iter()
+        .find_map(|path| find_listening_inode(path, &hex_port))?;
 
     let target = format!("socket:[{inode}]");
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
@@ -1003,6 +1003,23 @@ fn find_pid_for_port(port: u16) -> Option<u32> {
         }
     }
     None
+}
+
+#[cfg(target_os = "linux")]
+fn find_listening_inode(path: &str, hex_port: &str) -> Option<u64> {
+    let table = std::fs::read_to_string(path).ok()?;
+    table.lines().skip(1).find_map(|line| {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        let local = cols.get(1)?;
+        let state = cols.get(3)?;
+        let inode_col = cols.get(9)?;
+        let port_part = local.split(':').nth(1)?;
+        if state.eq_ignore_ascii_case("0A") && port_part.eq_ignore_ascii_case(hex_port) {
+            inode_col.parse::<u64>().ok()
+        } else {
+            None
+        }
+    })
 }
 
 #[cfg(test)]

@@ -9,15 +9,11 @@ use tempfile::NamedTempFile;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{
-    action_schema, env_non_empty, help_payload, optional_str, require_str, to_json,
+    action_schema, help_payload, optional_str, require_str, to_json,
 };
 use crate::dispatch::marketplace::catalog::ACTIONS;
+use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::params::parse_plugin_id;
-
-#[cfg(test)]
-static TEST_PLUGINS_ROOT_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
-#[cfg(test)]
-static TEST_PLUGINS_ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     let start = std::time::Instant::now();
@@ -103,21 +99,6 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
     }
 }
 
-// ---------- paths ----------
-
-fn plugins_root() -> Result<PathBuf, ToolError> {
-    #[cfg(test)]
-    if let Some(path) = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap().clone() {
-        return Ok(path);
-    }
-
-    let home = env_non_empty("HOME").ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: "HOME env var not set".into(),
-    })?;
-    Ok(PathBuf::from(home).join(".claude").join("plugins"))
-}
-
 fn read_json(path: &Path) -> Result<Value, ToolError> {
     let bytes = std::fs::read(path).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".into(),
@@ -132,7 +113,7 @@ fn read_json(path: &Path) -> Result<Value, ToolError> {
 // ---------- internal raw types (from ~/.claude/plugins/*.json) ----------
 
 fn load_known_marketplaces() -> Result<Vec<Marketplace>, ToolError> {
-    let path = plugins_root()?.join("known_marketplaces.json");
+    let path = client::plugins_root()?.join("known_marketplaces.json");
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -324,7 +305,7 @@ struct DeployPreviewEntry {
 }
 
 fn load_installed() -> Result<HashMap<String, InstalledRecord>, ToolError> {
-    let path = plugins_root()?.join("installed_plugins.json");
+    let path = client::plugins_root()?.join("installed_plugins.json");
     if !path.exists() {
         return Ok(HashMap::new());
     }
@@ -431,7 +412,7 @@ async fn plugins_list(filter: Option<String>) -> Result<Value, ToolError> {
                     continue;
                 }
             }
-            let install_loc = plugins_root()?
+            let install_loc = client::plugins_root()?
                 .join("marketplaces")
                 .join(&m.id);
             let Some(manifest) = read_marketplace_manifest(&install_loc) else {
@@ -455,7 +436,7 @@ async fn plugin_get(id: &str) -> Result<Value, ToolError> {
     let (name, mkt) = (name.to_string(), mkt.to_string());
     let found = tokio::task::spawn_blocking(move || -> Result<Option<Plugin>, ToolError> {
         let installed = load_installed()?;
-        let install_loc = plugins_root()?.join("marketplaces").join(&mkt);
+        let install_loc = client::plugins_root()?.join("marketplaces").join(&mkt);
         let Some(manifest) = read_marketplace_manifest(&install_loc) else {
             return Ok(None);
         };
@@ -594,13 +575,28 @@ async fn plugin_deploy_preview(id: &str) -> Result<Value, ToolError> {
     to_json(result)
 }
 
+const MAX_ARTIFACTS: usize = 200;
+const MAX_ARTIFACT_BYTES: u64 = 256 * 1024;
+
 fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
     let mut out = Vec::new();
+    walk_artifacts_into(root, dir, &mut out)?;
+    Ok(out)
+}
+
+fn walk_artifacts_into(root: &Path, dir: &Path, out: &mut Vec<Artifact>) -> Result<(), ToolError> {
+    if out.len() >= MAX_ARTIFACTS {
+        return Ok(());
+    }
+
     let rd = std::fs::read_dir(dir).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: format!("read_dir {}: {e}", dir.display()),
     })?;
     for entry in rd.flatten() {
+        if out.len() >= MAX_ARTIFACTS {
+            break;
+        }
         let p = entry.path();
         let name = entry.file_name();
         let name = name.to_string_lossy();
@@ -608,17 +604,11 @@ fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
             continue;
         }
         if p.is_dir() {
-            out.extend(walk_artifacts(root, &p)?);
+            walk_artifacts_into(root, &p, out)?;
             continue;
         }
-        if out.len() >= 200 {
-            break;
-        }
-        let meta = entry.metadata().ok();
-        if let Some(m) = meta {
-            if m.len() > 256 * 1024 {
-                continue;
-            }
+        if entry.metadata().ok().is_some_and(|m| m.len() > MAX_ARTIFACT_BYTES) {
+            continue;
         }
         let rel = p
             .strip_prefix(root)
@@ -626,18 +616,39 @@ fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
             .to_string_lossy()
             .into_owned();
         let lang = detect_lang(&p);
-        let content = std::fs::read_to_string(&p).unwrap_or_default();
-        out.push(Artifact {
-            path: rel,
-            lang,
-            content,
-        });
+        let bytes = match std::fs::read(&p) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "artifact.read.skipped",
+                    path = %p.display(),
+                    error = %error,
+                    "skipping unreadable artifact"
+                );
+                continue;
+            }
+        };
+        let content = match String::from_utf8(bytes) {
+            Ok(content) => content,
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "artifact.read.skipped",
+                    path = %p.display(),
+                    error = %error,
+                    "skipping non-utf8 artifact"
+                );
+                continue;
+            }
+        };
+        out.push(Artifact { path: rel, lang, content });
     }
-    Ok(out)
+    Ok(())
 }
 
 fn workspace_root() -> Result<PathBuf, ToolError> {
-    Ok(plugins_root()?.join("workspaces"))
+    Ok(client::plugins_root()?.join("workspaces"))
 }
 
 fn workspace_dir_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
@@ -655,7 +666,10 @@ fn sanitize_plugin_id(id: &str) -> String {
 
 fn source_path_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
     let (name, marketplace) = parse_plugin_id(id)?;
-    let candidate = plugins_root()?.join("marketplaces").join(marketplace).join(name);
+    let candidate = client::plugins_root()?
+        .join("marketplaces")
+        .join(marketplace)
+        .join(name);
     if candidate.exists() {
         return Ok(candidate);
     }
@@ -990,16 +1004,7 @@ mod tests {
     use tokio::runtime::Builder;
 
     fn with_home<T>(home: &Path, run: impl FnOnce() -> T) -> T {
-        let _guard = TEST_PLUGINS_ROOT_LOCK.lock().unwrap();
-        let plugins_root = home.join(".claude").join("plugins");
-        let previous = {
-            let mut slot = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap();
-            std::mem::replace(&mut *slot, Some(plugins_root))
-        };
-        let result = run();
-        let mut slot = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap();
-        *slot = previous;
-        result
+        client::with_test_plugins_root(home, run)
     }
 
     fn dispatch_with_home(home: &Path, action: &str, params: Value) -> Result<Value, ToolError> {

@@ -7,6 +7,7 @@
 
 use std::path::Path;
 use std::time::Duration;
+use std::collections::HashSet;
 
 use base64::Engine as _;
 use r2d2::Pool;
@@ -264,10 +265,9 @@ impl RegistryStore {
 
     /// Full resync from the upstream MCP registry.
     ///
-    /// Cursor-paginates through all pages at 100 servers/page. For each page,
-    /// upserts into the store (pool.get() happens inside spawn_blocking, NEVER
-    /// at an HTTP await point). After all pages, runs a single batch
-    /// `update_is_latest` pass.
+    /// Cursor-paginates through all pages at 100 servers/page, stages the full
+    /// upstream result set in memory, then performs a single store update once
+    /// the crawl completes successfully.
     ///
     /// Returns total count of rows upserted across all pages.
     pub async fn sync_from_upstream(
@@ -278,6 +278,8 @@ impl RegistryStore {
         let mut total = 0usize;
         let mut page_num = 0usize;
         let mut cursor: Option<String> = None;
+        let mut seen_cursors = HashSet::new();
+        let mut staged = Vec::new();
 
         tracing::info!(
             service = "mcpregistry",
@@ -302,19 +304,27 @@ impl RegistryStore {
             page_num += 1;
 
             if page_len > 0 {
-                total += self.upsert_page(&page.servers).await?;
+                total += page_len;
+                staged.extend(page.servers);
                 tracing::debug!(
                     service = "mcpregistry",
                     event = "sync.page",
                     page = page_num,
                     page_size = page_len,
                     total_so_far = total,
-                    "upserted page"
+                    "staged page"
                 );
             }
 
             match page.metadata.next_cursor {
-                Some(c) if !c.is_empty() => cursor = Some(c),
+                Some(c) if !c.is_empty() => {
+                    if cursor.as_deref() == Some(c.as_str()) || !seen_cursors.insert(c.clone()) {
+                        return Err(RegistryStoreError::Upstream(format!(
+                            "non-advancing cursor returned by upstream: {c}"
+                        )));
+                    }
+                    cursor = Some(c);
+                }
                 _ => break,
             }
 
@@ -324,7 +334,9 @@ impl RegistryStore {
             }
         }
 
-        // Single batch recompute of is_latest after all pages are stored.
+        if !staged.is_empty() {
+            self.upsert_page(&staged).await?;
+        }
         self.update_is_latest().await?;
 
         tracing::info!(

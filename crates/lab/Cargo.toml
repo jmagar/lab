@@ -69,8 +69,8 @@ regex                        = { version = "1", optional = true }
 rmcp.workspace               = true
 jsonwebtoken.workspace       = true
 rusqlite.workspace           = true
-r2d2                         = { version = "0.8", optional = true }
-r2d2_sqlite                  = { version = "0.33", optional = true }
+r2d2                         = "0.8"
+r2d2_sqlite                  = "0.33"
 uuid.workspace               = true
 
 axum.workspace               = true
@@ -117,7 +117,7 @@ gotify      = ["lab-apis/gotify"]
 apprise     = ["lab-apis/apprise"]
 
 # bootstrap / registry
-mcpregistry = ["lab-apis/mcpregistry", "dep:r2d2", "dep:r2d2_sqlite"]
+mcpregistry = ["lab-apis/mcpregistry"]
 
 # ai / vector / inference
 openai      = ["lab-apis/openai"]
