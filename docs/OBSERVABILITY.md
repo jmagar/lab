@@ -132,14 +132,16 @@ Device-runtime HTTP handlers participate in the same API dispatch contract.
 
 At minimum, the following actions must be traceable on the master:
 
-- `device.hello`
 - `device.status`
 - `device.metadata`
 - `device.syslog.batch`
 - `device.logs.search`
 - `device.oauth.relay.start`
+- `fleet.ws.initialize`
+- `fleet.ws.enrollment_required`
+- `fleet.ws.log.event`
 
-Non-master startup warnings for failed hello, metadata upload, or bootstrap log flush must be logged without leaking tokens or raw secret config content.
+Non-master startup warnings for failed websocket connect, initialize, metadata upload, status push, or bootstrap log delivery must be logged without leaking device tokens or raw secret config content.
 
 ### Shared Outbound Requests
 
