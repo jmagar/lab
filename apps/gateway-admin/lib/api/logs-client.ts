@@ -1,6 +1,5 @@
 import { normalizeGatewayApiBase } from './gateway-config.ts'
 import { gatewayRequestInit } from './gateway-request.ts'
-import { isStandaloneBearerAuthMode } from '../auth/auth-mode.ts'
 import type { LogSearchQuery, LogSearchResult, LogStoreStats } from '../types/logs.ts'
 
 export type LogsRequestOptions = {
@@ -17,9 +16,9 @@ export function logsActionUrl(baseUrl?: string) {
 export function logsRequestInit(
   action: string,
   params: object,
-  token = process.env.NEXT_PUBLIC_API_TOKEN,
+  token?: string,
   signal?: AbortSignal,
-  standaloneBearerAuth = isStandaloneBearerAuthMode(token),
+  standaloneBearerAuth = false,
 ): RequestInit {
   return gatewayRequestInit(action, params, token, signal, standaloneBearerAuth)
 }

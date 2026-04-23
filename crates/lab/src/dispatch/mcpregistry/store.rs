@@ -6,13 +6,14 @@
 //! `Pool::get()` is blocking.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use base64::Engine as _;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -113,6 +114,13 @@ struct LocalMetadataRecord {
     updated_by: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SyncStats {
+    pub inserted: usize,
+    pub updated: usize,
+    pub deleted: usize,
+}
+
 /// SQLite-backed store for registry server records.
 ///
 /// Cloning the store is cheap — the inner `Pool` is `Arc`-backed.
@@ -122,11 +130,15 @@ struct LocalMetadataRecord {
 #[allow(dead_code)]
 pub struct RegistryStore {
     pool: Pool<SqliteConnectionManager>,
+    path: PathBuf,
 }
 
 impl Clone for RegistryStore {
     fn clone(&self) -> Self {
-        Self { pool: self.pool.clone() }
+        Self {
+            pool: self.pool.clone(),
+            path: self.path.clone(),
+        }
     }
 }
 
@@ -179,9 +191,14 @@ impl RegistryStore {
             migrate(&conn)?;
             drop(conn);
 
-            Ok(Self { pool })
+            Ok(Self { pool, path })
         })
         .await?
+    }
+
+    #[must_use]
+    pub fn db_path(&self) -> &Path {
+        &self.path
     }
 
     /// Acquire a pooled connection for use inside a `spawn_blocking` closure.
@@ -305,22 +322,21 @@ impl RegistryStore {
     /// `server_json` is re-serialized from the parsed struct — raw upstream
     /// bytes are never stored directly.
     ///
-    /// Returns the count of rows upserted (equal to `servers.len()`).
+    /// Returns insert/update/delete counts observed during the upsert.
     pub async fn upsert_page(
         &self,
         servers: &[ServerResponse],
-    ) -> Result<usize, RegistryStoreError> {
+    ) -> Result<SyncStats, RegistryStoreError> {
         if servers.is_empty() {
-            return Ok(0);
+            return Ok(SyncStats::default());
         }
         let pool = self.pool.clone();
         let servers = servers.to_vec();
-        tokio::task::spawn_blocking(move || {
+        Ok(tokio::task::spawn_blocking(move || -> Result<SyncStats, RegistryStoreError> {
             let mut conn = pool.get()?;
-            let count = upsert_page_sync(&mut conn, &servers)?;
-            Ok(count)
+            Ok(upsert_page_sync(&mut conn, &servers)?)
         })
-        .await?
+        .await??)
     }
 
     /// Recompute `is_latest` for all servers in a single batch UPDATE.
@@ -350,6 +366,7 @@ impl RegistryStore {
     pub async fn sync_from_upstream(
         &self,
         client: &McpRegistryClient,
+        trigger: &'static str,
     ) -> Result<usize, RegistryStoreError> {
         let started_at = std::time::Instant::now();
         let mut total = 0usize;
@@ -357,10 +374,13 @@ impl RegistryStore {
         let mut cursor: Option<String> = None;
         let mut seen_cursors = HashSet::new();
         let mut staged = Vec::new();
+        let mut sync_stats = SyncStats::default();
 
         tracing::info!(
             service = "mcpregistry",
             event = "sync.start",
+            trigger,
+            db_path = %self.db_path().display(),
             "starting full registry sync from upstream"
         );
 
@@ -412,15 +432,20 @@ impl RegistryStore {
         }
 
         if !staged.is_empty() {
-            self.upsert_page(&staged).await?;
+            sync_stats = self.upsert_page(&staged).await?;
         }
         self.update_is_latest().await?;
 
         tracing::info!(
             service = "mcpregistry",
             event = "sync.finish",
+            trigger,
+            db_path = %self.db_path().display(),
             total_servers = total,
             pages = page_num,
+            inserted = sync_stats.inserted,
+            updated = sync_stats.updated,
+            deleted = sync_stats.deleted,
             elapsed_ms = started_at.elapsed().as_millis(),
             "registry sync complete"
         );
@@ -700,8 +725,9 @@ fn list_versions_sync(
 fn upsert_page_sync(
     conn: &mut Connection,
     servers: &[ServerResponse],
-) -> rusqlite::Result<usize> {
+) -> rusqlite::Result<SyncStats> {
     let tx = conn.transaction()?;
+    let mut stats = SyncStats::default();
 
     for resp in servers {
         let server_json = serde_json::to_string(&resp.server)
@@ -734,6 +760,23 @@ fn upsert_page_sync(
             .and_then(|m| m.official.as_ref())
             .and_then(|ext| ext.updated_at.clone());
 
+        let existing = tx
+            .query_row(
+                "SELECT status, server_json, response_meta_json, upstream_updated_at
+                 FROM registry_servers
+                 WHERE server_name = ?1 AND version = ?2",
+                rusqlite::params![resp.server.name, resp.server.version],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                },
+            )
+            .optional()?;
+
         let synced_at = jiff::Timestamp::now().to_string();
 
         tx.execute(
@@ -758,10 +801,32 @@ fn upsert_page_sync(
                 synced_at,
             ],
         )?;
+
+        match existing {
+            None => {
+                stats.inserted += 1;
+                if status == "deleted" {
+                    stats.deleted += 1;
+                }
+            }
+            Some((existing_status, existing_server_json, existing_meta_json, existing_updated_at)) => {
+                let changed = existing_status != status
+                    || existing_server_json != server_json
+                    || existing_meta_json != response_meta_json
+                    || existing_updated_at != updated_at;
+                if changed {
+                    if existing_status != "deleted" && status == "deleted" {
+                        stats.deleted += 1;
+                    } else {
+                        stats.updated += 1;
+                    }
+                }
+            }
+        }
     }
 
     tx.commit()?;
-    Ok(servers.len())
+    Ok(stats)
 }
 
 /// Recompute `is_latest` in a single batch UPDATE.
@@ -1139,8 +1204,10 @@ mod tests {
         let store = temp_store().await;
 
         let resp = make_server_response("io.github.user/weather", "1.0.0", true);
-        let count = store.upsert_page(&[resp]).await.unwrap();
-        assert_eq!(count, 1);
+        let stats = store.upsert_page(&[resp]).await.unwrap();
+        assert_eq!(stats.inserted, 1);
+        assert_eq!(stats.updated, 0);
+        assert_eq!(stats.deleted, 0);
 
         let result = store
             .get_server("io.github.user/weather", "latest")

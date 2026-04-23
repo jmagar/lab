@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Cable,
+  MessageSquareText,
   LayoutDashboard,
   Package,
   ShoppingBag,
@@ -56,6 +57,11 @@ export const primarySidebarNavigation = [
     title: 'Marketplace',
     url: '/marketplace',
     icon: ShoppingBag,
+  },
+  {
+    title: 'Chat',
+    url: '/chat',
+    icon: MessageSquareText,
   },
   {
     title: 'Setup',

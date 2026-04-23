@@ -297,7 +297,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                     Ok(sync_client) => Some(tokio::spawn(async move {
                         // Fire immediately at startup — do not wait for the first interval tick.
                         if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                            &sync_store, &sync_client, false,
+                            &sync_store, &sync_client, false, "startup",
                         ).await {
                             tracing::warn!(
                                 service = "mcpregistry",
@@ -315,7 +315,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                         loop {
                             interval.tick().await;
                             if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                                &sync_store, &sync_client, false,
+                                &sync_store, &sync_client, false, "hourly",
                             ).await {
                                 tracing::warn!(
                                     service = "mcpregistry",

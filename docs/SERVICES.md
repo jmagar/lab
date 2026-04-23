@@ -17,7 +17,22 @@ Most service integrations provide:
 - an MCP dispatch shim
 - an API shim when the service is exposed over HTTP
 
-Product-local surfaces such as `gateway` are allowed to live entirely in `lab` when they manage product behavior rather than wrapping an upstream service API.
+Product-local surfaces are split into two categories:
+
+- product-local control-plane surfaces, which may live entirely in `lab` when
+  they primarily coordinate runtime behavior inside the product
+- product-local capability modules, whose core logic still belongs in
+  `lab-apis` even when they do not wrap a conventional upstream HTTP API
+
+`gateway` is the reference control-plane surface and is allowed to live
+entirely in `lab`.
+
+`extract` is the reference non-HTTP capability module and keeps its core logic
+in `lab-apis`.
+
+The ACP/chat work should follow the capability-module pattern for ACP itself:
+- `acp` becomes the first-class capability/service
+- `chat` remains the UI route and presentation layer over that service
 
 ## Feature Gates
 
@@ -154,4 +169,22 @@ The service set is grouped conceptually, not implemented as unrelated one-offs.
 
 ## Synthetic Service
 
-[`EXTRACT.md`](./EXTRACT.md) documents `extract`, which is not a remote API service but still follows the shared dispatch model for consistency. [`GATEWAY.md`](./GATEWAY.md) documents a product-local management surface that edits and reloads `[[upstream]]` config and therefore does not fit the usual `lab-apis` service shape.
+[`EXTRACT.md`](./EXTRACT.md) documents `extract`, which is not a remote API
+service but still follows the shared dispatch model for consistency.
+[`GATEWAY.md`](./GATEWAY.md) documents a product-local management surface that
+edits and reloads `[[upstream]]` config and therefore does not fit the usual
+`lab-apis` service shape. [`acp/README.md`](./acp/README.md) documents ACP as a
+product-local capability service whose core logic belongs in `lab-apis` while
+its adapters and registration live in `lab`.
+
+## Chat / ACP Surface
+
+The `/chat` experience is currently a product-local UI surface rather than a first-class service integration:
+
+- it is wired to the gateway backend and ACP bridge endpoints
+- its behavior lives in `apps/gateway-admin` plus supporting Rust API routes
+- it does not yet have the full first-class `acp` service shape
+- the intended promotion path is `acp` as the first-class service and `chat` as
+  the UI over it
+
+If we promote chat to a service later, it should follow `SERVICE_ONBOARDING.md` and `DISPATCH.md` like any other first-class integration.

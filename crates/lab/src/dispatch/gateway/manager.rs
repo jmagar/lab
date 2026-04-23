@@ -2835,22 +2835,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn service_config_get_requires_all_required_fields_for_configured_state() {
+    async fn service_config_get_marks_service_unconfigured_when_required_fields_are_missing() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("config.toml");
         let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
 
         let mut values = BTreeMap::new();
-        values.insert("OPENAI_API_KEY".to_string(), "token".to_string());
+        values.insert("PLEX_TOKEN".to_string(), "token".to_string());
 
         let config = manager
-            .set_service_config("openai", &values)
+            .set_service_config("plex", &values)
             .await
             .expect("set service config");
 
         assert!(
-            config.configured,
-            "openai should be configured when its required field is present"
+            !config.configured,
+            "plex should remain unconfigured until every required field is present"
         );
     }
 
@@ -2908,6 +2908,27 @@ mod tests {
         assert_eq!(
             values.get("LAB_GW_GITHUB_AUTH_HEADER").map(String::as_str),
             Some("Bearer ghp_secret")
+        );
+    }
+
+    #[tokio::test]
+    async fn incomplete_service_does_not_appear_in_list_before_virtual_server_enablement() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = BTreeMap::new();
+        values.insert("PLEX_TOKEN".to_string(), "token".to_string());
+
+        manager
+            .set_service_config("plex", &values)
+            .await
+            .expect("set service config");
+
+        let servers = manager.list().await.expect("list");
+        assert!(
+            servers.iter().all(|server| server.id != "plex"),
+            "incomplete services should not appear in the gateway catalog"
         );
     }
 

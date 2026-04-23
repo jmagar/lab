@@ -85,6 +85,14 @@ impl RequestLogContext {
     fn elapsed_ms(&self) -> u128 {
         self.start.elapsed().as_millis()
     }
+
+    fn success_log_level(&self) -> Level {
+        if self.method == "GET" && self.path == "/v0.1/servers" {
+            Level::DEBUG
+        } else {
+            Level::INFO
+        }
+    }
 }
 
 impl HttpClient {
@@ -681,13 +689,23 @@ impl HttpClient {
         request: RequestBuilder,
         ctx: &RequestLogContext,
     ) -> Result<Response, ApiError> {
-        event!(
-            Level::INFO,
-            method = ctx.method,
-            path = ctx.path.as_str(),
-            host = ctx.host.as_str(),
-            "request.start"
-        );
+        if matches!(ctx.success_log_level(), Level::DEBUG) {
+            event!(
+                Level::DEBUG,
+                method = ctx.method,
+                path = ctx.path.as_str(),
+                host = ctx.host.as_str(),
+                "request.start"
+            );
+        } else {
+            event!(
+                Level::INFO,
+                method = ctx.method,
+                path = ctx.path.as_str(),
+                host = ctx.host.as_str(),
+                "request.start"
+            );
+        }
         request.send().await.map_err(|e| {
             let err = ApiError::Network(e.to_string());
             Self::log_error(ctx, &err);
@@ -696,15 +714,27 @@ impl HttpClient {
     }
 
     fn log_finish(ctx: &RequestLogContext, status: u16) {
-        event!(
-            Level::INFO,
-            method = ctx.method,
-            path = ctx.path.as_str(),
-            host = ctx.host.as_str(),
-            status,
-            elapsed_ms = ctx.elapsed_ms(),
-            "request.finish"
-        );
+        if matches!(ctx.success_log_level(), Level::DEBUG) {
+            event!(
+                Level::DEBUG,
+                method = ctx.method,
+                path = ctx.path.as_str(),
+                host = ctx.host.as_str(),
+                status,
+                elapsed_ms = ctx.elapsed_ms(),
+                "request.finish"
+            );
+        } else {
+            event!(
+                Level::INFO,
+                method = ctx.method,
+                path = ctx.path.as_str(),
+                host = ctx.host.as_str(),
+                status,
+                elapsed_ms = ctx.elapsed_ms(),
+                "request.finish"
+            );
+        }
     }
 
     fn log_error(ctx: &RequestLogContext, err: &ApiError) {

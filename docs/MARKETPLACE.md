@@ -282,6 +282,12 @@ The gateway admin UI at `/marketplace` consumes the HTTP API and presents:
 
 The frontend never talks to `~/.claude/` directly — every read and write goes through `/v1/marketplace`.
 
+Deploy preview and deploy use a cheap-first sync model:
+- file metadata is checked before file contents are read
+- unchanged files are short-circuited without a full content read
+- only potentially changed files are compared more deeply
+- this keeps large plugin workspaces responsive while preserving explicit `Save` and `Deploy` semantics
+
 ## Safety
 
 - No action reads or writes anywhere outside `~/.claude/plugins/` for the observational commands.

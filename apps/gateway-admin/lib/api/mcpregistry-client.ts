@@ -1,6 +1,5 @@
 import { performServiceAction, isAbortError } from './service-action-client'
 import { confirmGatewayParams } from './gateway-request'
-import { isStandaloneBearerAuthMode } from '../auth/auth-mode.ts'
 import { RegistryApiError, normalizeServerJSON } from '@/lib/types/registry'
 import type {
   LabRegistryMetadata,
@@ -69,20 +68,12 @@ export async function listServers(
 
   const qstr = qs.toString()
   const url = qstr ? `/v0.1/servers?${qstr}` : '/v0.1/servers'
-  const token = process.env.NEXT_PUBLIC_API_TOKEN
-  const standaloneBearerAuth = isStandaloneBearerAuthMode(token)
-  const headers: HeadersInit = {}
-
-  if (standaloneBearerAuth && token) {
-    headers.Authorization = `Bearer ${token}`
-  }
 
   let response: Response
   try {
     response = await fetch(url, {
-      headers,
       cache: 'no-store',
-      credentials: standaloneBearerAuth ? 'omit' : 'include',
+      credentials: 'include',
       signal,
     })
   } catch (error) {

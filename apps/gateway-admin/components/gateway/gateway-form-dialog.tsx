@@ -1149,13 +1149,12 @@ export function GatewayFormDialog({
         {/* ENV drawer */}
         <div
           className={cn(
-            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col sm:left-full',
             'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
             envDrawerOpen
               ? 'w-[300px] max-[600px]:w-full max-[600px]:h-full'
               : 'w-0',
           )}
-          style={{ left: '100%' }}
           aria-hidden={!envDrawerOpen}
         >
           <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">
@@ -1230,13 +1229,12 @@ export function GatewayFormDialog({
         {/* JSON drawer */}
         <div
           className={cn(
-            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col sm:left-full',
             'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
             jsonDrawerOpen
               ? 'w-[380px] max-[600px]:w-full max-[600px]:h-full'
               : 'w-0',
           )}
-          style={{ left: '100%' }}
           aria-hidden={!jsonDrawerOpen}
         >
           <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">

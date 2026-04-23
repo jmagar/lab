@@ -1,7 +1,7 @@
 import { getSessionCsrfToken } from '../auth/session.ts'
 
 export function gatewayHeaders(
-  _token = process.env.NEXT_PUBLIC_API_TOKEN,
+  _token?: string,
   _standaloneBearerAuth = false,
 ): HeadersInit {
   const headers: HeadersInit = {
@@ -24,7 +24,7 @@ export function confirmGatewayParams<T extends object>(params: T): T & { confirm
 export function gatewayRequestInit(
   action: string,
   params: object,
-  _token = process.env.NEXT_PUBLIC_API_TOKEN,
+  _token?: string,
   signal?: AbortSignal,
   _standaloneBearerAuth = false,
 ): RequestInit {

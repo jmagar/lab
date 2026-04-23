@@ -214,6 +214,7 @@ test('connectLogStream honors explicit standalone bearer opt-out and handles mal
 
     assert.deepEqual(errorMessages, [
       'received malformed log event',
+      'live stream reconnecting…',
       'live stream disconnected',
     ])
     assert.equal(laggedCount, 3)

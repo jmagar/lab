@@ -12,6 +12,56 @@ export type SessionEventConnectionState = 'idle' | 'connecting' | 'open' | 'erro
 const sessionEventCache = new Map<string, BridgeEvent[]>()
 const sessionLastSeqCache = new Map<string, number>()
 
+export function buildSessionEventsUrl(
+  acpBase: string,
+  sessionId: string,
+  lastSeq: number,
+  origin: string,
+) {
+  const url = new URL(`${acpBase}/sessions/${sessionId}/events`, origin)
+  url.searchParams.set('since', String(lastSeq))
+  return url.toString()
+}
+
+export function consumeSessionEventBuffer(buffer: string, lastSeq: number) {
+  const events: BridgeEvent[] = []
+  let nextBuffer = buffer
+  let nextLastSeq = lastSeq
+
+  while (true) {
+    const boundary = nextBuffer.indexOf('\n\n')
+    if (boundary < 0) {
+      break
+    }
+
+    const rawEvent = nextBuffer.slice(0, boundary)
+    nextBuffer = nextBuffer.slice(boundary + 2)
+
+    const dataLines = rawEvent
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+
+    if (dataLines.length === 0) {
+      continue
+    }
+
+    const event = JSON.parse(dataLines.join('\n')) as BridgeEvent
+    if (event.seq <= nextLastSeq) {
+      continue
+    }
+
+    nextLastSeq = event.seq
+    events.push(event)
+  }
+
+  return {
+    buffer: nextBuffer,
+    events,
+    lastSeq: nextLastSeq,
+  }
+}
+
 export function useSessionEvents(sessionId: string | null) {
   const acpBase = React.useMemo(() => `${normalizeGatewayApiBase()}/acp`, [])
   const standaloneBearerAuth = React.useMemo(() => isStandaloneBearerAuthMode(), [])
@@ -42,8 +92,12 @@ export function useSessionEvents(sessionId: string | null) {
     lastSeqRef.current = cachedLastSeq
 
     const abortController = new AbortController()
-    const url = new URL(`${acpBase}/sessions/${sessionId}/events`, window.location.origin)
-    url.searchParams.set('since', String(lastSeqRef.current))
+    const url = buildSessionEventsUrl(
+      acpBase,
+      sessionId,
+      lastSeqRef.current,
+      window.location.origin,
+    )
 
     void (async () => {
       try {
@@ -65,6 +119,20 @@ export function useSessionEvents(sessionId: string | null) {
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
+        const applyBuffer = () => {
+          const consumed = consumeSessionEventBuffer(buffer, lastSeqRef.current)
+          buffer = consumed.buffer
+
+          for (const event of consumed.events) {
+            lastSeqRef.current = event.seq
+            sessionLastSeqCache.set(sessionId, event.seq)
+            setEvents((current) => {
+              const next = appendSessionEvent(current, event)
+              sessionEventCache.set(sessionId, next)
+              return next
+            })
+          }
+        }
 
         while (true) {
           const { done, value } = await reader.read()
@@ -73,44 +141,11 @@ export function useSessionEvents(sessionId: string | null) {
           }
 
           buffer += decoder.decode(value, { stream: true })
-
-          while (true) {
-            const boundary = buffer.indexOf('\n\n')
-            if (boundary < 0) {
-              break
-            }
-
-            const rawEvent = buffer.slice(0, boundary)
-            buffer = buffer.slice(boundary + 2)
-
-            const dataLines = rawEvent
-              .split('\n')
-              .filter((line) => line.startsWith('data:'))
-              .map((line) => line.slice(5).trimStart())
-
-            if (dataLines.length === 0) {
-              continue
-            }
-
-            try {
-              const event = JSON.parse(dataLines.join('\n')) as BridgeEvent
-              if (event.seq <= lastSeqRef.current) {
-                continue
-              }
-
-              lastSeqRef.current = event.seq
-              sessionLastSeqCache.set(sessionId, event.seq)
-              setEvents((current) => {
-                const next = appendSessionEvent(current, event)
-                sessionEventCache.set(sessionId, next)
-                return next
-              })
-            } catch {
-              setConnectionState('error')
-              return
-            }
-          }
+          applyBuffer()
         }
+
+        buffer += decoder.decode()
+        applyBuffer()
       } catch {
         if (!abortController.signal.aborted) {
           setConnectionState('error')

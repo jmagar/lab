@@ -47,6 +47,7 @@ pub async fn perform_sync(
     store: &RegistryStore,
     client: &McpRegistryClient,
     rate_limit: bool,
+    trigger: &'static str,
 ) -> Result<usize, ToolError> {
     if SYNC_IN_PROGRESS
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
@@ -72,7 +73,7 @@ pub async fn perform_sync(
         }
     }
 
-    let sync_result = store.sync_from_upstream(client).await.map_err(|e| {
+    let sync_result = store.sync_from_upstream(client, trigger).await.map_err(|e| {
         ToolError::internal_message(format!("sync failed: {e}"))
     });
 

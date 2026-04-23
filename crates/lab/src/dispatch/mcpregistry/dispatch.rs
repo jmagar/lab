@@ -115,7 +115,7 @@ pub async fn dispatch_with_client(
                         ToolError::internal_message(format!("registry store open: {e}"))
                     })?;
 
-            let count = sync::perform_sync(&store, client, true).await?;
+            let count = sync::perform_sync(&store, client, true, "manual").await?;
             Ok(serde_json::json!({ "synced": count }))
         }
         unknown => Err(ToolError::UnknownAction {

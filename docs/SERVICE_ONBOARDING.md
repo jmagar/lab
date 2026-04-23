@@ -930,6 +930,15 @@ For these modules:
 - CLI, MCP, and API remain thin adapters
 - the module is not required to use `HttpClient`
 
+Exception:
+
+- product-local control-plane surfaces that primarily coordinate runtime state
+  inside `lab` rather than implement a reusable capability module may live
+  entirely in `lab`
+- `gateway` is the reference exception for that case
+- capability-style local services such as `extract` and `acp` are not part of
+  that exception and should keep core logic in `lab-apis`
+
 What still applies:
 
 - [DISPATCH.md](./DISPATCH.md)
@@ -944,7 +953,9 @@ What changes:
 - the source contract may be a documented file, parser, or workflow contract rather than an OpenAPI or vendor REST spec
 - observability must instrument the real execution boundary for the module, not fabricate fake HTTP request logs
 
-`extract` is the reference pattern for this class of module.
+`extract` is the reference pattern for this class of module. `gateway` is the
+reference exception for a product-local control-plane surface that remains in
+`lab`.
 
 ## Related Docs
 

@@ -51,13 +51,7 @@ There is also a repo shortcut for that local ACP UI mode:
 just chat-local
 ```
 
-If the backend is protected by a static bearer token, set `NEXT_PUBLIC_API_TOKEN`. Bearer mode activates automatically — no additional flag required. This is suitable for local development, smoke testing, and browser automation against OAuth-protected deployments. The token is embedded into the browser bundle, so it should not be used for production hosted deployments where Rust-owned browser session auth is preferred.
-
-```bash
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8765/v1 \
-NEXT_PUBLIC_API_TOKEN=your-local-dev-token \
-pnpm dev
-```
+Browser-facing bearer mode is intentionally disabled in the current UI. The chat and gateway screens always use the Rust-owned browser session flow plus CSRF headers when talking to `/v1/*`. If you need a local-only backend bypass, use `LAB_WEB_UI_DISABLE_AUTH=true` on the Rust side rather than embedding a public browser token.
 
 When the frontend and Rust backend run on different origins during local development, the backend must allow the frontend origin through CORS:
 
@@ -122,3 +116,8 @@ By default, the bridge launches `codex-acp` from the Rust backend via `npx @zed-
 - `GET /v1/acp/sessions/{sessionId}/events`
 
 The static browser app consumes live ACP session updates over SSE from the Rust API and renders them into the transcript lane plus the `Reasoning & Activity` timeline.
+
+ACP event handling details:
+- reconnects resume from the last seen sequence number for the active session
+- the client keeps a bounded in-memory history instead of growing without limit
+- duplicate or out-of-order events are ignored
