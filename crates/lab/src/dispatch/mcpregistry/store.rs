@@ -375,7 +375,11 @@ fn list_servers_sync(
     }
 
     if let Some(updated_since) = &params.updated_since {
-        sql.push_str(" AND upstream_updated_at IS NOT NULL AND upstream_updated_at >= ?");
+        sql.push_str(
+            " AND upstream_updated_at IS NOT NULL \
+              AND julianday(upstream_updated_at) IS NOT NULL \
+              AND julianday(upstream_updated_at) >= julianday(?)",
+        );
         args.push(updated_since.clone().into());
     }
 
@@ -919,6 +923,34 @@ mod tests {
             .await
             .unwrap();
         assert!(no_match.servers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_servers_updated_since_handles_rfc3339_offsets() {
+        use lab_apis::mcpregistry::types::{RegistryExtensions, ResponseMeta};
+
+        let store = temp_store().await;
+        let mut response = make_server_response("io.github.user/weather", "1.0.0", true);
+        response.meta = Some(ResponseMeta {
+            official: Some(RegistryExtensions {
+                is_latest: true,
+                published_at: "2025-02-01T00:00:00Z".to_string(),
+                status: "active".to_string(),
+                status_changed_at: "2025-02-01T00:00:00Z".to_string(),
+                status_message: None,
+                updated_at: Some("2025-02-01T01:00:00+01:00".to_string()),
+            }),
+        });
+        store.upsert_page(&[response]).await.unwrap();
+
+        let filtered = store
+            .list_servers(StoreListParams {
+                updated_since: Some("2025-01-31T23:30:00Z".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(filtered.servers.len(), 1);
     }
 
     #[tokio::test]

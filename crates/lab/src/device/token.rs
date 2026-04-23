@@ -23,7 +23,7 @@ pub async fn load_or_create(path: impl AsRef<Path>) -> Result<String> {
     let token = Uuid::new_v4().to_string();
     let tmp_path = temp_path(path);
     let mut open_options = fs::OpenOptions::new();
-    open_options.create(true).truncate(true).write(true);
+    open_options.create_new(true).write(true);
     #[cfg(unix)]
     {
         open_options.mode(0o600);
@@ -48,7 +48,7 @@ pub async fn load_or_create(path: impl AsRef<Path>) -> Result<String> {
 
 fn temp_path(path: &Path) -> PathBuf {
     let file_name = path.file_name().and_then(|value| value.to_str()).unwrap_or("device-token");
-    path.with_file_name(format!("{file_name}.tmp"))
+    path.with_file_name(format!("{file_name}.{}.tmp", Uuid::new_v4()))
 }
 
 #[cfg(test)]

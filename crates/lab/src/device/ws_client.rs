@@ -172,16 +172,23 @@ impl WsClient {
         let mut ack_count = 0usize;
         for envelope in drained {
             let request = queue_envelope_to_request(&envelope, *next_id)?;
-            socket
-                .send(Message::Text(serde_json::to_string(&request)?.into()))
-                .await
-                .context("send websocket queue request")?;
-            let response = next_text_message(socket).await?;
-            validate_success_response(&response, *next_id)?;
+            let result: Result<()> = async {
+                socket
+                    .send(Message::Text(serde_json::to_string(&request)?.into()))
+                    .await
+                    .context("send websocket queue request")?;
+                let response = next_text_message(socket).await?;
+                validate_success_response(&response, *next_id)
+            }
+            .await;
+            if let Err(error) = result {
+                queue.ack_drained(ack_count).await?;
+                return Err(error);
+            }
             *next_id += 1;
             ack_count += 1;
-            queue.ack_drained(1).await?;
         }
+        queue.ack_drained(ack_count).await?;
         Ok(ack_count)
     }
 
