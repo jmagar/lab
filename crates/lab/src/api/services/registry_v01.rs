@@ -33,6 +33,10 @@ pub struct ListServersQuery {
     pub cursor: Option<String>,
     /// Max results per page (server-side clamped to 1–100, default 20).
     pub limit: Option<u32>,
+    /// Exact version match on the stored registry snapshot.
+    pub version: Option<String>,
+    /// Inclusive lower bound on the upstream registry updated timestamp.
+    pub updated_since: Option<String>,
     /// Include servers with `status = 'deleted'`.
     #[serde(default)]
     pub include_deleted: bool,
@@ -58,6 +62,8 @@ async fn list_servers(
         limit: query.limit,
         include_deleted: query.include_deleted,
         search: None,
+        version: query.version,
+        updated_since: query.updated_since,
     };
     let effective_search = crate::dispatch::mcpregistry::resolve_search_for_rest(
         query.search.as_deref(),

@@ -58,9 +58,10 @@ export function matchesGatewayStatusFacet(
 }
 
 function toolMatchesSearch(tool: DiscoveredTool, gateway: Gateway, search: string): boolean {
-  if (!search) return true
+  const normalizedSearch = search.trim().toLowerCase()
+  if (!normalizedSearch) return true
   const haystack = [tool.name, tool.description ?? '', gateway.name].join(' ').toLowerCase()
-  return haystack.includes(search.toLowerCase())
+  return haystack.includes(normalizedSearch)
 }
 
 export function aggregateToolsFromGateways(gateways: Gateway[]): ToolInventoryRow[] {
@@ -110,8 +111,9 @@ export function filterGateways(gateways: Gateway[], state: GatewayFilterState): 
 export function filterTools(rows: ToolInventoryRow[], state: ToolFilterState): ToolInventoryRow[] {
   return rows.filter((row) => {
     const haystack = [row.toolName, row.description, row.gatewayName].join(' ').toLowerCase()
+    const normalizedSearch = state.search.trim().toLowerCase()
 
-    if (state.search && !haystack.includes(state.search.toLowerCase())) return false
+    if (normalizedSearch && !haystack.includes(normalizedSearch)) return false
     if (state.gatewayIds.length > 0 && !state.gatewayIds.includes(row.gatewayId)) return false
     if (state.exposure === 'exposed' && !row.exposed) return false
     if (state.exposure === 'hidden' && row.exposed) return false

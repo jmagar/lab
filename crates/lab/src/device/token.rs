@@ -22,7 +22,14 @@ pub async fn load_or_create(path: impl AsRef<Path>) -> Result<String> {
 
     let token = Uuid::new_v4().to_string();
     let tmp_path = temp_path(path);
-    let mut file = fs::File::create(&tmp_path)
+    let mut open_options = fs::OpenOptions::new();
+    open_options.create(true).truncate(true).write(true);
+    #[cfg(unix)]
+    {
+        open_options.mode(0o600);
+    }
+    let mut file = open_options
+        .open(&tmp_path)
         .await
         .with_context(|| format!("create {}", tmp_path.display()))?;
     file.write_all(token.as_bytes())
@@ -35,16 +42,6 @@ pub async fn load_or_create(path: impl AsRef<Path>) -> Result<String> {
     fs::rename(&tmp_path, path)
         .await
         .with_context(|| format!("rename {} -> {}", tmp_path.display(), path.display()))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        let permissions = std::fs::Permissions::from_mode(0o600);
-        fs::set_permissions(path, permissions)
-            .await
-            .with_context(|| format!("chmod {}", path.display()))?;
-    }
 
     Ok(token)
 }

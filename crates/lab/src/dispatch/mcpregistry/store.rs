@@ -62,6 +62,10 @@ struct CursorData {
 pub struct StoreListParams {
     /// Substring search on server_name (max 512 bytes enforced at construction).
     pub search: Option<String>,
+    /// Exact version match on the stored `version` column.
+    pub version: Option<String>,
+    /// Inclusive lower bound on `upstream_updated_at` (RFC 3339 string compare).
+    pub updated_since: Option<String>,
     /// Opaque pagination cursor from a previous `PagedServers.next_cursor`.
     pub cursor: Option<String>,
     /// Page size — clamped server-side to `[1, 100]`; default 20.
@@ -363,6 +367,16 @@ fn list_servers_sync(
         let escaped = escape_like(search);
         sql.push_str(" AND server_name LIKE '%' || ?  || '%' ESCAPE '\\'");
         args.push(escaped.into());
+    }
+
+    if let Some(version) = &params.version {
+        sql.push_str(" AND version = ?");
+        args.push(version.clone().into());
+    }
+
+    if let Some(updated_since) = &params.updated_since {
+        sql.push_str(" AND upstream_updated_at IS NOT NULL AND upstream_updated_at >= ?");
+        args.push(updated_since.clone().into());
     }
 
     // Cursor: base64-decode → {"s": name, "v": version} → compound WHERE clause.
@@ -854,6 +868,57 @@ mod tests {
         // Only the active server should appear.
         assert_eq!(page.servers.len(), 1);
         assert_eq!(page.servers[0].name, "io.github.user/active");
+    }
+
+    #[tokio::test]
+    async fn list_servers_filters_by_version_and_updated_since() {
+        use lab_apis::mcpregistry::types::{RegistryExtensions, ResponseMeta};
+
+        let store = temp_store().await;
+        let mut older = make_server_response("io.github.user/weather", "1.0.0", false);
+        older.meta = Some(ResponseMeta {
+            official: Some(RegistryExtensions {
+                is_latest: false,
+                published_at: "2025-01-01T00:00:00Z".to_string(),
+                status: "active".to_string(),
+                status_changed_at: "2025-01-01T00:00:00Z".to_string(),
+                status_message: None,
+                updated_at: Some("2025-01-15T00:00:00Z".to_string()),
+            }),
+        });
+        let mut newer = make_server_response("io.github.user/weather", "2.0.0", true);
+        newer.meta = Some(ResponseMeta {
+            official: Some(RegistryExtensions {
+                is_latest: true,
+                published_at: "2025-02-01T00:00:00Z".to_string(),
+                status: "active".to_string(),
+                status_changed_at: "2025-02-01T00:00:00Z".to_string(),
+                status_message: None,
+                updated_at: Some("2025-02-15T00:00:00Z".to_string()),
+            }),
+        });
+        store.upsert_page(&[older, newer]).await.unwrap();
+
+        let filtered = store
+            .list_servers(StoreListParams {
+                version: Some("2.0.0".to_string()),
+                updated_since: Some("2025-02-01T00:00:00Z".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(filtered.servers.len(), 1);
+        assert_eq!(filtered.servers[0].version, "2.0.0");
+
+        let no_match = store
+            .list_servers(StoreListParams {
+                version: Some("1.0.0".to_string()),
+                updated_since: Some("2025-02-01T00:00:00Z".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(no_match.servers.is_empty());
     }
 
     #[tokio::test]

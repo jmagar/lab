@@ -2,7 +2,7 @@
 
 ## What is this?
 
-`lab` is a pluggable homelab CLI + MCP server SDK in Rust. One binary, **25 services** (23 feature-gated + always-on `extract` and `device_runtime`), runtime MCP tool selection via a single tool per service with an `action` + `params` dispatch shape (~25 MCP tools max, not hundreds).
+`lab` is a pluggable homelab CLI + MCP server SDK in Rust. One binary, **25 service integrations** (23 feature-gated + always-on `extract` and `device_runtime`) plus always-on operator tools like `gateway`, `logs`, and `device`; MCP dispatch still uses a single tool per runtime service with an `action` + `params` shape instead of hundreds of per-method tools.
 
 Start with `docs/README.md` for the docs index. The topic docs in `docs/` are the source of truth; if this file disagrees with them, this file is stale.
 
