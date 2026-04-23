@@ -14,7 +14,7 @@ test('gateway tools table renders dense operational rows and exposure state', ()
           gatewayName: 'Lab Core',
           source: 'in_process',
           sourceFacet: 'lab',
-          transport: 'stdio',
+          transport: 'in_process',
           toolName: 'unifi',
           description: 'UniFi Network Application local API',
           exposed: true,

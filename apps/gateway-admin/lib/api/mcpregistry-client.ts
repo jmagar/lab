@@ -1,5 +1,5 @@
 import { performServiceAction, isAbortError } from './service-action-client'
-import { confirmGatewayParams, gatewayHeaders } from './gateway-request'
+import { confirmGatewayParams } from './gateway-request'
 import { isStandaloneBearerAuthMode } from '../auth/auth-mode.ts'
 import { RegistryApiError, normalizeServerJSON } from '@/lib/types/registry'
 import type {
@@ -52,6 +52,7 @@ export async function listServers(
 ): Promise<ServerListResponse> {
   const qs = new URLSearchParams()
   if (params.search) qs.set('search', params.search)
+  if (params.owner) qs.set('owner', params.owner)
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.cursor) qs.set('cursor', params.cursor)
   if (params.version) qs.set('version', params.version)
