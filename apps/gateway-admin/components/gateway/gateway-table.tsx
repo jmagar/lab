@@ -279,211 +279,159 @@ export function GatewayTable({
 
   return (
     <>
-      <div className="space-y-3 p-3 md:hidden">
-        {gateways.map((gateway) => {
-          const supportsProbeControls = gateway.source !== 'in_process'
-          const isDisabled = !(gateway.enabled ?? true)
-          const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
-          const endpointPreview = buildGatewayEndpointPreview(gateway)
-          const launcherState = isDisabled ? 'deactivated' : 'active'
-          const runtimeChips = runtimeBadges(gateway)
-          const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
-          const cleanupBadge = cleanupBadgeLabel(cleanupSummary?.cleanup, 'cleanup')
-          const previewBadge = cleanupBadgeLabel(cleanupSummary?.preview, 'preview')
+      <div className={cn(AURORA_STRONG_PANEL, 'overflow-hidden md:hidden')}>
+        <div className="grid grid-cols-[minmax(0,1fr)_96px_28px] gap-2 border-b border-aurora-border-strong px-3 py-2">
+          <div className={AURORA_MUTED_LABEL}>Gateway</div>
+          <div className={cn(AURORA_MUTED_LABEL, 'text-right')}>State</div>
+          <div />
+        </div>
+        <div className="divide-y divide-aurora-border-strong/70">
+          {gateways.map((gateway) => {
+            const supportsProbeControls = gateway.source !== 'in_process'
+            const isDisabled = !(gateway.enabled ?? true)
+            const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
+            const endpointPreview = buildGatewayEndpointPreview(gateway)
+            const runtimeLabel = runtimeAgeLabel(gateway) ?? 'live'
+            const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
 
-          return (
-            <article
-              key={gateway.id}
-              className={cn(
-                isDisabled ? AURORA_GATEWAY_MUTED_CARD : AURORA_GATEWAY_CARD,
-                density === 'condensed' ? 'p-3' : 'p-4',
-                'text-aurora-text-primary',
-                isDisabled && 'text-aurora-text-muted',
-              )}
-            >
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className={cn('size-2 rounded-full', statusTone.dot)} aria-label={statusTone.label} title={statusTone.label} />
-                        <Link
-                          href={gatewayDetailHref(gateway.id)}
-                          className={cn(
-                            AURORA_DISPLAY_2,
-                            density === 'condensed' ? 'text-[15px]' : 'text-base',
-                            'min-w-0 max-w-full break-words font-semibold text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
-                          )}
-                        >
-                          {gateway.name}
-                        </Link>
-                        {isDisabled ? (
-                          <Badge className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] text-[10px] uppercase tracking-[0.16em] text-aurora-text-muted">
-                            Disabled
-                          </Badge>
-                        ) : null}
-                        <TransportBadge transport={gateway.transport} />
-                        <WarningsPill warnings={gateway.warnings} />
-                        {runtimeChips}
-                        {cleanupSummary ? (
-                          <Badge
-                            className="rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-[0.16em] text-emerald-200"
-                            title={cleanupSummary}
-                          >
-                            {cleanupSummary}
-                          </Badge>
-                        ) : null}
-                        {density === 'condensed' ? (
-                          <span className="min-w-0 truncate text-[13px] text-aurora-text-muted">{endpointPreview} • {launcherState}</span>
-                        ) : null}
-                      </div>
-                      {density === 'comfortable' ? (
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-aurora-text-muted">
-                          <span className="truncate" title={endpointPreview}>{endpointPreview}</span>
-                          <span>{launcherState}</span>
-                        </div>
+            return (
+              <div key={gateway.id} className={cn(AURORA_GATEWAY_ROW, isDisabled && AURORA_GATEWAY_DISABLED_ROW)}>
+                <div className={cn('grid grid-cols-[minmax(0,1fr)_96px_28px] gap-2 px-3', density === 'condensed' ? 'py-2' : 'py-2.5')}>
+                  <Link href={gatewayDetailHref(gateway.id)} className="min-w-0 space-y-1.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={cn('size-2 rounded-full', statusTone.dot)} aria-label={statusTone.label} title={statusTone.label} />
+                      <span className="truncate text-[13px] font-semibold text-aurora-text-primary">{gateway.name}</span>
+                      {isDisabled ? (
+                        <span className="rounded-full border border-aurora-border-strong px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-aurora-text-muted">
+                          Off
+                        </span>
                       ) : null}
                     </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className={cn(gatewayActionTone(), 'size-9 shrink-0 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                        >
-                          <MoreHorizontal className="size-4" />
-                          <span className="sr-only">More actions</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={gatewayDetailHref(gateway.id)}>
-                            <Eye className="size-4 mr-2" />
-                            View details
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onEdit(gateway)}>
-                          <Pencil className="size-4 mr-2" />
-                          Edit gateway
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onToggleEnabled(gateway)}>
-                          {gateway.enabled ?? true ? (
-                            <>
-                              <Trash2 className="size-4 mr-2" />
-                              Disable gateway
-                            </>
-                          ) : (
-                            <>
-                              <Play className="size-4 mr-2" />
-                              Enable gateway
-                            </>
-                          )}
-                        </DropdownMenuItem>
-                        {supportsProbeControls ? (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => onTest(gateway)}>
-                              <Play className="size-4 mr-2" />
-                              Test connection
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onReload(gateway)}>
-                              <RefreshCw className="size-4 mr-2" />
-                              Reload gateway
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onCleanup(gateway, false, true)}>
-                              <Search className="size-4 mr-2" />
-                              Preview cleanup
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onCleanup(gateway, false, false)}>
-                              <Wrench className="size-4 mr-2" />
-                              Cleanup runtime
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onCleanup(gateway, true, true)}>
-                              <Search className="size-4 mr-2" />
-                              Preview aggressive cleanup
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onCleanup(gateway, true, false)}>
-                              <TriangleAlert className="size-4 mr-2" />
-                              Aggressive cleanup
-                            </DropdownMenuItem>
-                            {cleanupSummary ? (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => onClearCleanupHistory(gateway)}>
-                                  <Trash2 className="size-4 mr-2" />
-                                  Clear cleanup history
-                                </DropdownMenuItem>
-                              </>
-                            ) : null}
-                          </>
-                        ) : null}
-                        {gateway.source !== 'in_process' ? (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-aurora-error focus:text-aurora-error">
-                              <Trash2 className="size-4 mr-2" />
-                              Remove gateway
-                            </DropdownMenuItem>
-                          </>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div className={cn(AURORA_GATEWAY_SUBTLE_SURFACE, 'flex flex-wrap items-center gap-2 p-3')}>
-                    <SurfaceRatio icon={Wrench} label="Tools" exposed={gateway.status.exposed_tool_count} total={gateway.status.discovered_tool_count} />
-                    <SurfaceRatio icon={FileText} label="Resources" exposed={gateway.status.exposed_resource_count} total={gateway.status.discovered_resource_count} />
-                    <SurfaceRatio icon={MessageSquare} label="Prompts" exposed={gateway.status.exposed_prompt_count} total={gateway.status.discovered_prompt_count} />
-                  </div>
-
-                  {density === 'comfortable' && supportsProbeControls ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                        onClick={() => onToggleEnabled(gateway)}
-                      >
-                        <Power className="size-3.5 mr-1.5" />
-                        {gateway.enabled ?? true ? 'Disable' : 'Enable'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                        onClick={() => handleAction(gateway, 'test', onTest)}
-                        disabled={isLoading(gateway.id, 'test')}
-                      >
-                        <Play className={`size-3.5 mr-1.5 ${isLoading(gateway.id, 'test') ? 'animate-pulse' : ''}`} />
-                        Test
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                        onClick={() => handleAction(gateway, 'reload', onReload)}
-                        disabled={isLoading(gateway.id, 'reload')}
-                      >
-                        <RefreshCw className={`size-3.5 mr-1.5 ${isLoading(gateway.id, 'reload') ? 'animate-spin' : ''}`} />
-                        Reload
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                        onClick={() => onCleanup(gateway, false, false)}
-                      >
-                        <Wrench className="size-3.5 mr-1.5" />
-                        Cleanup
-                      </Button>
+                    <div className="truncate text-[10px] text-aurora-text-muted" title={endpointPreview}>
+                      {endpointPreview}
                     </div>
-                  ) : null}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-aurora-text-muted">
+                      <span data-mobile-metric="tools" className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <Wrench className="size-3 text-aurora-text-muted" />
+                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{gateway.status.exposed_tool_count}</strong>
+                        <span>tools</span>
+                      </span>
+                      <span data-mobile-metric="resources" className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <FileText className="size-3 text-aurora-text-muted" />
+                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{gateway.status.exposed_resource_count}</strong>
+                        <span>res</span>
+                      </span>
+                      <span data-mobile-metric="prompts" className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <MessageSquare className="size-3 text-aurora-text-muted" />
+                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{gateway.status.exposed_prompt_count}</strong>
+                        <span>prompts</span>
+                      </span>
+                      <span data-mobile-metric="runtime" className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <RefreshCw className="size-3 text-aurora-text-muted" />
+                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{runtimeLabel}</strong>
+                      </span>
+                    </div>
+                  </Link>
+
+                  <div className="space-y-1 text-right">
+                    <div className="inline-flex items-center justify-end gap-1 text-[11px] font-semibold text-aurora-text-primary">
+                      <span className={cn('size-1.5 rounded-full', statusTone.dot)} />
+                      <span>{statusTone.label}</span>
+                    </div>
+                    <div className="text-[9px] uppercase tracking-[0.12em] text-aurora-text-muted">
+                      {cleanupSummary ?? (isDisabled ? 'disabled' : gateway.warnings.length > 0 ? `${gateway.warnings.length} warn` : 'clean')}
+                    </div>
+                  </div>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className={cn(gatewayActionTone(), 'size-7 shrink-0 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                        <span className="sr-only">More actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link href={gatewayDetailHref(gateway.id)}>
+                          <Eye className="size-4 mr-2" />
+                          View details
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onEdit(gateway)}>
+                        <Pencil className="size-4 mr-2" />
+                        Edit gateway
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onToggleEnabled(gateway)}>
+                        {gateway.enabled ?? true ? (
+                          <>
+                            <Trash2 className="size-4 mr-2" />
+                            Disable gateway
+                          </>
+                        ) : (
+                          <>
+                            <Play className="size-4 mr-2" />
+                            Enable gateway
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      {supportsProbeControls ? (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => onTest(gateway)}>
+                            <Play className="size-4 mr-2" />
+                            Test connection
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onReload(gateway)}>
+                            <RefreshCw className="size-4 mr-2" />
+                            Reload gateway
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onCleanup(gateway, false, true)}>
+                            <Search className="size-4 mr-2" />
+                            Preview cleanup
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onCleanup(gateway, false, false)}>
+                            <Wrench className="size-4 mr-2" />
+                            Cleanup runtime
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onCleanup(gateway, true, true)}>
+                            <Search className="size-4 mr-2" />
+                            Preview aggressive cleanup
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onCleanup(gateway, true, false)}>
+                            <TriangleAlert className="size-4 mr-2" />
+                            Aggressive cleanup
+                          </DropdownMenuItem>
+                          {cleanupSummary ? (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => onClearCleanupHistory(gateway)}>
+                                <Trash2 className="size-4 mr-2" />
+                                Clear cleanup history
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {gateway.source !== 'in_process' ? (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-aurora-error focus:text-aurora-error">
+                            <Trash2 className="size-4 mr-2" />
+                            Remove gateway
+                          </DropdownMenuItem>
+                        </>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
-            </article>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
       <div className={cn(AURORA_STRONG_PANEL, 'hidden overflow-hidden md:block')}>

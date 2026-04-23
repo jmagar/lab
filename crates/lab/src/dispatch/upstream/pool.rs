@@ -73,6 +73,30 @@ fn upstream_transport(config: &UpstreamConfig) -> &'static str {
     }
 }
 
+fn configured_bearer_token(env_name: &str) -> Option<String> {
+    let token = std::env::var(env_name).ok().or_else(|| {
+        crate::config::dotenv_path().and_then(|path| {
+            dotenvy::from_path_iter(path).ok().and_then(|iter| {
+                iter.filter_map(Result::ok)
+                    .find_map(|(key, value)| (key == env_name).then_some(value))
+            })
+        })
+    })?;
+    let token = token.trim();
+    if token.is_empty() {
+        return None;
+    }
+    let raw = if token
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer "))
+    {
+        token[7..].trim()
+    } else {
+        token
+    };
+    (!raw.is_empty()).then(|| raw.to_string())
+}
+
 /// Strip query strings and fragments from resource URIs before logging.
 ///
 /// SECURITY: Upstream MCP servers may return resource URIs containing pre-signed
@@ -2146,23 +2170,8 @@ async fn connect_http_upstream(
     // Non-OAuth path: optionally inject a static bearer token from env.
     let mut transport_config = transport_config;
     if let Some(ref env_name) = config.bearer_token_env {
-        if let Ok(token) = std::env::var(env_name) {
-            let token = token.trim();
-            if !token.is_empty() {
-                // rmcp calls `.bearer_auth(value)` which prepends "Bearer "
-                // automatically, so store only the raw token.
-                let raw = if token
-                    .get(..7)
-                    .is_some_and(|s| s.eq_ignore_ascii_case("bearer "))
-                {
-                    token[7..].trim()
-                } else {
-                    token
-                };
-                if !raw.is_empty() {
-                    transport_config.auth_header = Some(raw.to_string());
-                }
-            }
+        if let Some(token) = configured_bearer_token(env_name) {
+            transport_config.auth_header = Some(token);
         } else {
             tracing::warn!(
                 upstream = %config.name,
@@ -2207,7 +2216,7 @@ async fn connect_stdio_upstream(
 
     // Set bearer token env var on the child if configured
     if let Some(ref env_name) = config.bearer_token_env
-        && let Ok(token) = std::env::var(env_name)
+        && let Some(token) = configured_bearer_token(env_name)
     {
         cmd.env(env_name, &token);
     }

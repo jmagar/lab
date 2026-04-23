@@ -42,7 +42,10 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   const [debouncedVersion, setDebouncedVersion] = useState('')
   const [updatedSince, setUpdatedSince] = useState('')
   const [debouncedUpdatedSince, setDebouncedUpdatedSince] = useState('')
+  const [tag, setTag] = useState('')
+  const [debouncedTag, setDebouncedTag] = useState('')
   const [featuredOnly, setFeaturedOnly] = useState(false)
+  const [hiddenOnly, setHiddenOnly] = useState(false)
   const [reviewedOnly, setReviewedOnly] = useState(false)
   const [recommendedOnly, setRecommendedOnly] = useState(false)
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set())
@@ -55,17 +58,28 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
       setDebouncedSearch(search)
       setDebouncedVersion(version)
       setDebouncedUpdatedSince(updatedSince)
+      setDebouncedTag(tag)
     }, 300)
     return () => clearTimeout(timer)
-  }, [search, version, updatedSince])
+  }, [search, version, updatedSince, tag])
 
   const getKey = useCallback(
     (pageIndex: number, previousData: ServerListResponse | null): RegistryServersKey | null => {
       if (previousData && !previousData.metadata.nextCursor) return null
       const cursor = pageIndex === 0 ? null : (previousData?.metadata.nextCursor ?? null)
-      return registryServersKey(debouncedSearch, cursor, debouncedVersion, debouncedUpdatedSince)
+      return registryServersKey(
+        debouncedSearch,
+        cursor,
+        debouncedVersion,
+        debouncedUpdatedSince,
+        featuredOnly || undefined,
+        reviewedOnly || undefined,
+        recommendedOnly || undefined,
+        hiddenOnly || undefined,
+        debouncedTag || undefined,
+      )
     },
-    [debouncedSearch, debouncedVersion, debouncedUpdatedSince],
+    [debouncedSearch, debouncedVersion, debouncedUpdatedSince, featuredOnly, reviewedOnly, recommendedOnly, hiddenOnly, debouncedTag],
   )
 
   const { data: pages, isLoading, isValidating, error, mutate, setSize } = useSWRInfinite<ServerListResponse>(
@@ -75,13 +89,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   )
 
   const allServers = pages?.flatMap((page) => page.servers) ?? []
-  const visibleServers = allServers.filter((response) => {
-    const labMeta = response._meta?.[LAB_REGISTRY_META_KEY]
-    if (featuredOnly && !labMeta?.curation?.featured) return false
-    if (reviewedOnly && !labMeta?.trust?.reviewed) return false
-    if (recommendedOnly && !labMeta?.ux?.recommended_for_homelab) return false
-    return true
-  })
+  const visibleServers = allServers
 
   const lastPage = pages?.[pages.length - 1]
   const hasMore = Boolean(lastPage?.metadata.nextCursor)
@@ -161,6 +169,10 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           onVersionChange={setVersion}
           updatedSince={updatedSince}
           onUpdatedSinceChange={setUpdatedSince}
+          hiddenOnly={hiddenOnly}
+          onHiddenOnlyChange={setHiddenOnly}
+          tag={tag}
+          onTagChange={setTag}
           totalLoaded={totalLoaded}
           hasMore={hasMore}
           isLoading={isLoading}
@@ -175,6 +187,9 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           </Button>
           <Button type="button" variant={recommendedOnly ? 'default' : 'outline'} size="sm" onClick={() => setRecommendedOnly((v) => !v)}>
             Recommended
+          </Button>
+          <Button type="button" variant={hiddenOnly ? 'default' : 'outline'} size="sm" onClick={() => setHiddenOnly((v) => !v)}>
+            Hidden
           </Button>
         </div>
 

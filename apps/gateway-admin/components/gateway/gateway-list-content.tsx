@@ -546,27 +546,27 @@ export function GatewayListView({
                 Back to gateways
               </Button>
             ) : null}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onMobileSheetOpenChange(true)}
-              className={cn(
-                gatewayActionTone(),
-                'size-10 lg:hidden hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
-              )}
-              aria-label="Open filters"
-            >
-              <SlidersHorizontal className="size-4" />
-            </Button>
             {!showToolsView ? (
               <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onPrimaryLensChange('tools')}
+                  className={cn(
+                    gatewayActionTone(),
+                    'size-10 lg:hidden hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                  )}
+                  aria-label="Switch to tools view"
+                >
+                  <SlidersHorizontal className="size-4" />
+                </Button>
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={() => onDensityChange('comfortable')}
                   className={cn(
                     gatewayActionTone(),
-                    'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                    'hidden size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary lg:inline-flex',
                     density === 'comfortable' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
                   )}
                   aria-label="Comfortable density"
@@ -581,7 +581,7 @@ export function GatewayListView({
                   onClick={() => onDensityChange('condensed')}
                   className={cn(
                     gatewayActionTone(),
-                    'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                    'hidden size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary lg:inline-flex',
                     density === 'condensed' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
                   )}
                   aria-label="Condensed density"
@@ -596,11 +596,22 @@ export function GatewayListView({
               onClick={onCreate}
               className={cn(
                 gatewayActionTone('accent'),
-                'border px-4 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                'hidden border px-4 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary sm:inline-flex',
               )}
             >
               <Plus className="mr-2 size-4" />
               Add Gateway
+            </Button>
+            <Button
+              onClick={onCreate}
+              size="icon"
+              className={cn(
+                gatewayActionTone('accent'),
+                'border sm:hidden',
+              )}
+              aria-label="Add gateway"
+            >
+              <Plus className="size-4" />
             </Button>
           </div>
         }
@@ -613,7 +624,40 @@ export function GatewayListView({
         )}
       >
         <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
-          <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-2 lg:hidden')}>
+            <div className="grid grid-cols-4 gap-1">
+              <MobileSummaryChip
+                metric="configured"
+                value={summary.configured}
+                icon={<Cable className="size-3.5" />}
+                active={!showToolsView && gatewayFilters.primaryLens === 'configured'}
+                onClick={() => onPrimaryLensChange('configured')}
+              />
+              <MobileSummaryChip
+                metric="healthy"
+                value={summary.healthy}
+                icon={<Activity className="size-3.5" />}
+                active={!showToolsView && gatewayFilters.primaryLens === 'healthy'}
+                onClick={() => onPrimaryLensChange('healthy')}
+              />
+              <MobileSummaryChip
+                metric="disconnected"
+                value={summary.disconnected}
+                icon={<TriangleAlert className="size-3.5" />}
+                active={!showToolsView && gatewayFilters.primaryLens === 'disconnected'}
+                onClick={() => onPrimaryLensChange('disconnected')}
+              />
+              <MobileSummaryChip
+                metric="tools"
+                value={summary.tools}
+                icon={<Wrench className="size-3.5" />}
+                active={showToolsView}
+                onClick={() => onPrimaryLensChange('tools')}
+              />
+            </div>
+          </section>
+
+          <section className={cn(AURORA_MEDIUM_PANEL, 'hidden p-5 lg:block')}>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 label="Configured"
@@ -763,6 +807,38 @@ function SummaryCard({
         </div>
         {icon}
       </div>
+    </button>
+  )
+}
+
+function MobileSummaryChip({
+  metric,
+  value,
+  icon,
+  active,
+  onClick,
+}: {
+  metric: 'configured' | 'healthy' | 'disconnected' | 'tools'
+  value: number
+  icon: ReactNode
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      data-mobile-summary={metric}
+      onClick={onClick}
+      className={cn(
+        'flex h-10 items-center justify-center gap-1.5 rounded-aurora-1 border px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        active
+          ? 'border-aurora-accent-primary/36 bg-aurora-accent-primary/12 text-aurora-text-primary'
+          : 'border-aurora-border-strong bg-aurora-control-surface text-aurora-text-muted hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+      )}
+      aria-pressed={active}
+    >
+      {icon}
+      <span className={cn(AURORA_DISPLAY_NUMBER, 'text-sm leading-none text-current')}>{value}</span>
     </button>
   )
 }

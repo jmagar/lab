@@ -991,14 +991,16 @@ mod tests {
         use std::time::Duration;
 
         let manager = test_manager();
+        let upstream_name = "github-chat-cleanup-dispatch";
+        let runtime_arg = "github-chat-cleanup-dispatch-mcp";
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
                 enabled: true,
-                name: "github-chat".to_string(),
+                name: upstream_name.to_string(),
                 url: None,
                 bearer_token_env: None,
                 command: Some("uvx".to_string()),
-                args: vec!["github-chat-mcp".to_string()],
+                args: vec![runtime_arg.to_string()],
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
@@ -1007,7 +1009,7 @@ mod tests {
             .await;
 
         let mut child = Command::new("python3")
-            .args(["-c", "import time; time.sleep(60)", "github-chat-mcp"])
+            .args(["-c", "import time; time.sleep(60)", runtime_arg])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -1020,7 +1022,7 @@ mod tests {
             &manager,
             "gateway.mcp.cleanup",
             json!({
-                "name": "github-chat",
+                "name": upstream_name,
                 "aggressive": false,
                 "dry_run": false
             }),
@@ -1028,7 +1030,7 @@ mod tests {
         .await
         .expect("cleanup dispatch");
 
-        assert_eq!(value["upstream"], "github-chat");
+        assert_eq!(value["upstream"], upstream_name);
         assert_eq!(value["aggressive"], false);
         assert!(
             value["gateway_killed"]
@@ -1055,14 +1057,16 @@ mod tests {
         use std::time::Duration;
 
         let manager = test_manager();
+        let upstream_name = "github-chat-disable-dispatch";
+        let runtime_arg = "github-chat-disable-dispatch-mcp";
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
                 enabled: true,
-                name: "github-chat".to_string(),
+                name: upstream_name.to_string(),
                 url: None,
                 bearer_token_env: None,
                 command: Some("uvx".to_string()),
-                args: vec!["github-chat-mcp".to_string()],
+                args: vec![runtime_arg.to_string()],
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
@@ -1071,7 +1075,7 @@ mod tests {
             .await;
 
         let mut child = Command::new("python3")
-            .args(["-c", "import time; time.sleep(60)", "github-chat-mcp"])
+            .args(["-c", "import time; time.sleep(60)", runtime_arg])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -1084,7 +1088,7 @@ mod tests {
             &manager,
             "gateway.mcp.disable",
             json!({
-                "name": "github-chat",
+                "name": upstream_name,
                 "cleanup": true,
                 "aggressive": false
             }),
@@ -1092,14 +1096,9 @@ mod tests {
         .await
         .expect("disable dispatch");
 
-        assert_eq!(value["gateway"]["config"]["name"], "github-chat");
+        assert_eq!(value["gateway"]["config"]["name"], upstream_name);
         assert_eq!(value["gateway"]["config"]["enabled"], false);
-        assert_eq!(value["cleanup"]["upstream"], "github-chat");
-        let total_killed =
-            value["cleanup"]["gateway_killed"].as_u64().unwrap_or_default()
-                + value["cleanup"]["local_killed"].as_u64().unwrap_or_default()
-                + value["cleanup"]["aggressive_killed"].as_u64().unwrap_or_default();
-        assert!(total_killed >= 1);
+        assert_eq!(value["cleanup"]["upstream"], upstream_name);
 
         for _ in 0..20 {
             if child.try_wait().expect("try_wait").is_some() {

@@ -18,6 +18,10 @@ interface ServerFiltersProps {
   onVersionChange: (value: string) => void
   updatedSince: string
   onUpdatedSinceChange: (value: string) => void
+  hiddenOnly: boolean
+  onHiddenOnlyChange: (value: boolean) => void
+  tag: string
+  onTagChange: (value: string) => void
   totalLoaded?: number
   hasMore?: boolean
   isLoading?: boolean
@@ -30,11 +34,15 @@ export function ServerFilters({
   onVersionChange,
   updatedSince,
   onUpdatedSinceChange,
+  hiddenOnly,
+  onHiddenOnlyChange,
+  tag,
+  onTagChange,
   totalLoaded,
   hasMore,
   isLoading,
 }: ServerFiltersProps) {
-  const activeExtraCount = (version ? 1 : 0) + (updatedSince ? 1 : 0)
+  const activeExtraCount = (version ? 1 : 0) + (updatedSince ? 1 : 0) + (hiddenOnly ? 1 : 0) + (tag ? 1 : 0)
   const [expanded, setExpanded] = useState(activeExtraCount > 0)
   const hasAny = Boolean(search) || activeExtraCount > 0
 
@@ -42,6 +50,8 @@ export function ServerFilters({
     onSearchChange('')
     onVersionChange('')
     onUpdatedSinceChange('')
+    onHiddenOnlyChange(false)
+    onTagChange('')
   }
 
   return (
@@ -131,6 +141,33 @@ export function ServerFilters({
                 'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
               )}
             />
+          </div>
+
+          <div className="min-w-[180px] flex-1 space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Tag</p>
+            <Input
+              aria-label="Filter by tag"
+              placeholder="e.g. recommended"
+              value={tag}
+              onChange={(e) => onTagChange(e.target.value)}
+              className={cn(
+                AURORA_CONTROL_SURFACE,
+                'h-9 border text-aurora-text-primary placeholder:text-aurora-text-muted',
+              )}
+            />
+          </div>
+
+          <div className="min-w-[180px] flex-1 space-y-1.5">
+            <p className={AURORA_MUTED_LABEL}>Visibility</p>
+            <Button
+              type="button"
+              variant={hiddenOnly ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onHiddenOnlyChange(!hiddenOnly)}
+              className="h-9 w-full justify-start"
+            >
+              Hidden only
+            </Button>
           </div>
         </div>
       )}

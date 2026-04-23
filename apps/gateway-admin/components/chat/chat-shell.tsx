@@ -27,6 +27,18 @@ const ACP_AGENT: ACPAgent = {
   capabilities: ['tool_use', 'streaming', 'permissions', 'plans'],
 }
 
+export function shouldAutoCreateInitialRun(
+  providerReady: boolean,
+  runCount: number,
+  selectedRunId: string | null,
+) {
+  return providerReady && runCount === 0 && !selectedRunId
+}
+
+export function integrateCreatedRun(current: ACPRun[], run: ACPRun) {
+  return [run, ...current.filter((existing) => existing.id !== run.id)]
+}
+
 function toRun(session: BridgeSessionSummary): ACPRun {
   return {
     id: session.id,
@@ -119,6 +131,24 @@ export function ChatShell() {
     setProviderHealth(payload.provider)
   }, [fetchAcp])
 
+  const createSession = React.useCallback(
+    async (options?: { closeSessionPanel?: boolean }) => {
+      const response = await fetchAcp('/sessions', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+      const payload = (await response.json()) as { session: BridgeSessionSummary }
+      const run = toRun(payload.session)
+      setRuns((current) => integrateCreatedRun(current, run))
+      setSelectedRunId(run.id)
+      if (options?.closeSessionPanel) {
+        setSessionPanelOpen(false)
+      }
+      return run
+    },
+    [fetchAcp],
+  )
+
   React.useEffect(() => {
     void refreshProvider()
     void refreshSessions()
@@ -136,23 +166,13 @@ export function ChatShell() {
   }, [])
 
   React.useEffect(() => {
-    if (!providerHealth?.ready) {
-      return
-    }
-    if (runs.length > 0 || selectedRunId) {
+    if (!shouldAutoCreateInitialRun(Boolean(providerHealth?.ready), runs.length, selectedRunId)) {
       return
     }
     void (async () => {
-      const response = await fetchAcp('/sessions', {
-        method: 'POST',
-        body: JSON.stringify({}),
-      })
-      const payload = (await response.json()) as { session: BridgeSessionSummary }
-      const run = toRun(payload.session)
-      setRuns([run])
-      setSelectedRunId(run.id)
+      await createSession()
     })()
-  }, [fetchAcp, providerHealth?.ready, runs.length, selectedRunId])
+  }, [createSession, providerHealth?.ready, runs.length, selectedRunId])
 
   const handleSelectRun = (runId: string) => {
     setSelectedRunId(runId)
@@ -162,30 +182,13 @@ export function ChatShell() {
   }
 
   const handleNewRun = async () => {
-    const response = await fetchAcp('/sessions', {
-      method: 'POST',
-      body: JSON.stringify({}),
-    })
-    const payload = (await response.json()) as { session: BridgeSessionSummary }
-    const run = toRun(payload.session)
-    setRuns((current) => [run, ...current])
-    setSelectedRunId(run.id)
-    if (isMobileViewport) {
-      setSessionPanelOpen(false)
-    }
+    await createSession({ closeSessionPanel: isMobileViewport })
   }
 
   const handleSend = async (text: string) => {
     let runId = selectedRunId
     if (!runId) {
-      const response = await fetchAcp('/sessions', {
-        method: 'POST',
-        body: JSON.stringify({}),
-      })
-      const payload = (await response.json()) as { session: BridgeSessionSummary }
-      const run = toRun(payload.session)
-      setRuns((current) => [run, ...current])
-      setSelectedRunId(run.id)
+      const run = await createSession({ closeSessionPanel: isMobileViewport })
       runId = run.id
     }
 

@@ -344,12 +344,12 @@ async fn dispatch_local(action: &str, params_value: Value) -> Result<Value, Tool
                     message: "missing required parameter `metadata`".to_string(),
                     param: "metadata".to_string(),
                 })?;
-            if !metadata.is_object() {
-                return Err(ToolError::InvalidParam {
-                    message: "`metadata` must be a JSON object".to_string(),
-                    param: "metadata".to_string(),
-                });
-            }
+            let metadata = params::parse_lab_metadata(&metadata)?;
+            let updated_by = params_value
+                .get("updated_by")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("unknown");
 
             let store = crate::dispatch::mcpregistry::store::RegistryStore::open(
                 &config::registry_db_path(),
@@ -365,14 +365,17 @@ async fn dispatch_local(action: &str, params_value: Value) -> Result<Value, Tool
                     ),
                 })?;
             let resolved_version = server.server.version.clone();
+            let metadata_value = serde_json::to_value(metadata)
+                .map_err(|e| ToolError::internal_message(format!("serialize lab metadata: {e}")))?;
             store
-                .set_local_metadata(&name, &resolved_version, &metadata)
+                .set_local_metadata(&name, &resolved_version, &metadata_value, Some(updated_by))
                 .await?;
+            let current = store.get_local_metadata(&name, &resolved_version).await?;
             Ok(serde_json::json!({
                 "name": name,
                 "version": resolved_version,
                 "namespace": LAB_REGISTRY_META_NAMESPACE,
-                "metadata": metadata,
+                "metadata": current,
             }))
         }
         "server.meta.delete" => {

@@ -6,6 +6,7 @@ import {
   Cable,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   UserRoundCheck,
   Wrench,
 } from 'lucide-react'
@@ -94,32 +95,45 @@ export function PatternsSection() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
           <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 px-4 py-4')}>
             <p className="text-sm font-medium text-aurora-text-primary">Gateway toolbar pattern</p>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {toolbarSummaryChips.map((chip) => (
-                <div key={chip.label} className="inline-flex items-center gap-2 rounded-full border border-aurora-border-strong bg-aurora-control-surface px-3 py-1.5 text-sm font-medium text-aurora-text-primary">
+                <button key={chip.label} type="button" className="inline-flex items-center justify-center gap-1 rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-2 py-2 text-sm font-medium text-aurora-text-primary">
                   {chip.tone === 'success' ? <ShieldCheck className="size-4 text-success" /> : null}
                   {chip.tone === 'warning' ? <AlertTriangle className="size-4 text-warning" /> : null}
                   {chip.tone === 'info' ? <Wrench className="size-4 text-aurora-accent-primary" /> : null}
                   {chip.tone === 'default' ? <Cable className="size-4 text-aurora-text-muted" /> : null}
-                  <span>{chip.label}</span>
-                </div>
+                  <span className="font-semibold">{chip.label.split(' ')[0]}</span>
+                </button>
               ))}
             </div>
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
-              <label className="relative">
+            <div className="space-y-2">
+              <label className="relative block">
                 <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
                 <Input
                   aria-label="Search gateways"
                   defaultValue="plex"
-                  className={cn(AURORA_MESSAGE_SURFACE, 'pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
+                  className={cn(AURORA_MESSAGE_SURFACE, 'pr-20 pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
                 />
+                <div className="absolute inset-y-0 right-1 flex items-center gap-1">
+                  <Button variant="outline" size="icon" className={cn(controlTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
+                    <SlidersHorizontal className="size-3.5" />
+                  </Button>
+                  <Button variant="outline" size="icon" className={cn(controlTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
+                    <Wrench className="size-3.5" />
+                  </Button>
+                </div>
               </label>
-              <Button variant="outline" className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
-                Health: all
-              </Button>
-              <Button className="rounded-aurora-1 bg-aurora-accent-primary text-primary-foreground hover:bg-aurora-accent-strong">
-                Add gateway
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" className={cn(controlTone(), 'rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
+                  Healthy
+                </Button>
+                <Button variant="outline" size="sm" className={cn(controlTone(), 'rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
+                  HTTP
+                </Button>
+                <Button className="ml-auto rounded-aurora-1 bg-aurora-accent-primary text-primary-foreground hover:bg-aurora-accent-strong">
+                  Add gateway
+                </Button>
+              </div>
             </div>
           </div>
 

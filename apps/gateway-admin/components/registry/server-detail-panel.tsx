@@ -15,7 +15,11 @@ import {
   Package,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -63,6 +67,7 @@ interface ServerDetailPanelProps {
 
 const MAX_SCHEMA_RESPONSE_BYTES = 256 * 1024
 const textEncoder = new TextEncoder()
+const EMPTY_LAB_METADATA_JSON = '{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}'
 
 export function ServerDetailPanel({ server, extensions, labMetadata, onLabMetadataChange, onClose }: ServerDetailPanelProps) {
   const open = server !== null
@@ -105,15 +110,16 @@ function PanelBody({
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [editableLabMetadata, setEditableLabMetadata] = useState<LabRegistryMetadata | null>(labMetadata)
   const [labMetadataDraft, setLabMetadataDraft] = useState(
-    labMetadata ? JSON.stringify(labMetadata, null, 2) : '{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}',
+    labMetadata ? JSON.stringify(labMetadata, null, 2) : EMPTY_LAB_METADATA_JSON,
   )
   const [labMetadataSaving, setLabMetadataSaving] = useState(false)
   const [labMetadataError, setLabMetadataError] = useState<string | null>(null)
+  const [advancedMetadataOpen, setAdvancedMetadataOpen] = useState(false)
 
   useEffect(() => {
     setEditableLabMetadata(labMetadata)
     setLabMetadataDraft(
-      labMetadata ? JSON.stringify(labMetadata, null, 2) : '{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}',
+      labMetadata ? JSON.stringify(labMetadata, null, 2) : EMPTY_LAB_METADATA_JSON,
     )
     setLabMetadataError(null)
   }, [labMetadata, server.name])
@@ -163,8 +169,30 @@ function PanelBody({
   const displayedLabMetadata = editableLabMetadata
   const canonicalLabMetadataDraft = displayedLabMetadata
     ? JSON.stringify(displayedLabMetadata, null, 2)
-    : '{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}'
+    : EMPTY_LAB_METADATA_JSON
   const labMetadataDirty = labMetadataDraft !== canonicalLabMetadataDraft
+  const editableLabMetadataView = editableLabMetadata ?? createDefaultLabMetadata()
+
+  function updateLabMetadata(mutator: (current: LabRegistryMetadata) => LabRegistryMetadata) {
+    setEditableLabMetadata((currentValue) => {
+      const next = mutator(normalizeLabMetadata(currentValue))
+      setLabMetadataDraft(JSON.stringify(next, null, 2))
+      return next
+    })
+    setLabMetadataError(null)
+  }
+
+  function handleLabMetadataDraftChange(nextDraft: string) {
+    setLabMetadataDraft(nextDraft)
+    try {
+      const parsed = JSON.parse(nextDraft) as LabRegistryMetadata
+      if (parsed && !Array.isArray(parsed) && typeof parsed === 'object') {
+        setEditableLabMetadata(parsed)
+      }
+    } catch {
+      // Keep the last valid structured state while the advanced editor is mid-edit.
+    }
+  }
 
   async function saveLabMetadata() {
     setLabMetadataSaving(true)
@@ -174,7 +202,11 @@ function PanelBody({
       if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
         throw new Error('Metadata must be a JSON object')
       }
-      const result = await setServerLocalMetadata(server.name, parsed, server.version)
+      const result = await setServerLocalMetadata(
+        server.name,
+        parsed,
+        { version: server.version, updated_by: 'gateway-admin' },
+      )
       setEditableLabMetadata(result.metadata)
       setLabMetadataDraft(JSON.stringify(result.metadata, null, 2))
       onLabMetadataChange?.(result.metadata)
@@ -191,7 +223,7 @@ function PanelBody({
     try {
       await deleteServerLocalMetadata(server.name, server.version)
       setEditableLabMetadata(null)
-      setLabMetadataDraft('{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}')
+      setLabMetadataDraft(EMPTY_LAB_METADATA_JSON)
       onLabMetadataChange?.(null)
     } catch (error) {
       setLabMetadataError(error instanceof Error ? error.message : 'Failed to delete metadata')
@@ -402,6 +434,8 @@ function PanelBody({
                 <MetaRow label="Setup difficulty" value={displayedLabMetadata.ux?.setup_difficulty ?? null} />
                 <TimeRow label="Reviewed at" iso={displayedLabMetadata.trust?.reviewed_at ?? null} />
                 <TimeRow label="Install tested at" iso={displayedLabMetadata.quality?.last_install_tested_at ?? null} />
+                <TimeRow label="Updated at" iso={displayedLabMetadata.audit?.updated_at ?? null} />
+                <MetaRow label="Updated by" value={displayedLabMetadata.audit?.updated_by ?? null} />
               </dl>
               {displayedLabMetadata.curation?.tags && displayedLabMetadata.curation.tags.length > 0 && (
                 <div className="space-y-1">
@@ -440,16 +474,44 @@ function PanelBody({
 
         <Section label="Edit Lab metadata">
           <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-4')}>
-            <div className="h-72">
-              <TextSurface
-                path={`registry/${server.name.replaceAll('/', '__')}.lab-meta.json`}
-                value={labMetadataDraft}
-                mode="edit"
-                language="json"
-                dirty={labMetadataDirty}
-                onChange={setLabMetadataDraft}
-                onSave={() => void saveLabMetadata()}
-              />
+            <StructuredMetadataEditor
+              metadata={editableLabMetadataView}
+              onChange={updateLabMetadata}
+            />
+            <div className="rounded-aurora-2 border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.45)]">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+                onClick={() => setAdvancedMetadataOpen((value) => !value)}
+                aria-expanded={advancedMetadataOpen}
+              >
+                <div>
+                  <p className="text-sm font-medium text-aurora-text-primary">Advanced JSON</p>
+                  <p className="mt-1 text-xs text-aurora-text-muted">
+                    Use CodeMirror for fields outside the structured form.
+                  </p>
+                </div>
+                {advancedMetadataOpen ? (
+                  <ChevronDown className="size-4 text-aurora-text-muted" />
+                ) : (
+                  <ChevronRight className="size-4 text-aurora-text-muted" />
+                )}
+              </button>
+              {advancedMetadataOpen && (
+                <div className="border-t border-aurora-border-strong/40 p-4 pt-3">
+                  <div className="h-72">
+                    <TextSurface
+                      path={`registry/${server.name.replaceAll('/', '__')}.lab-meta.json`}
+                      value={labMetadataDraft}
+                      mode="edit"
+                      language="json"
+                      dirty={labMetadataDirty}
+                      onChange={handleLabMetadataDraftChange}
+                      onSave={() => void saveLabMetadata()}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             {labMetadataError && (
               <p className="text-xs text-aurora-error">{labMetadataError}</p>
@@ -495,6 +557,252 @@ function PanelBody({
       />
     </>
   )
+}
+
+function StructuredMetadataEditor({
+  metadata,
+  onChange,
+}: {
+  metadata: LabRegistryMetadata
+  onChange: (mutator: (current: LabRegistryMetadata) => LabRegistryMetadata) => void
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-2">
+        <ToggleField
+          label="Featured"
+          description="Highlight this server in the registry list."
+          checked={metadata.curation?.featured ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            curation: { ...current.curation, featured: checked },
+          }))}
+        />
+        <ToggleField
+          label="Hidden"
+          description="Hide this server from normal curation views."
+          checked={metadata.curation?.hidden ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            curation: { ...current.curation, hidden: checked },
+          }))}
+        />
+        <ToggleField
+          label="Reviewed"
+          description="Marks that Lab has reviewed this server."
+          checked={metadata.trust?.reviewed ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            trust: { ...current.trust, reviewed: checked },
+          }))}
+        />
+        <ToggleField
+          label="Source verified"
+          description="Repository and package source were checked."
+          checked={metadata.trust?.source_verified ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            trust: { ...current.trust, source_verified: checked },
+          }))}
+        />
+        <ToggleField
+          label="Maintainer known"
+          description="Maintainer identity is known and stable."
+          checked={metadata.trust?.maintainer_known ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            trust: { ...current.trust, maintainer_known: checked },
+          }))}
+        />
+        <ToggleField
+          label="Install tested"
+          description="Install flow was tested in Lab."
+          checked={metadata.quality?.install_tested ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            quality: { ...current.quality, install_tested: checked },
+          }))}
+        />
+        <ToggleField
+          label="SSRF reviewed"
+          description="Remote URL and network behavior were reviewed."
+          checked={metadata.security?.ssrf_reviewed ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            security: { ...current.security, ssrf_reviewed: checked },
+          }))}
+        />
+        <ToggleField
+          label="Permissions reviewed"
+          description="Requested permissions were checked."
+          checked={metadata.security?.permissions_reviewed ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            security: { ...current.security, permissions_reviewed: checked },
+          }))}
+        />
+        <ToggleField
+          label="Secrets reviewed"
+          description="Secret handling and auth inputs were reviewed."
+          checked={metadata.security?.secrets_reviewed ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            security: { ...current.security, secrets_reviewed: checked },
+          }))}
+        />
+        <ToggleField
+          label="Works in Lab"
+          description="Confirmed working in the Lab product flow."
+          checked={metadata.ux?.works_in_lab ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            ux: { ...current.ux, works_in_lab: checked },
+          }))}
+        />
+        <ToggleField
+          label="Recommended"
+          description="Recommended for homelab operators."
+          checked={metadata.ux?.recommended_for_homelab ?? false}
+          onCheckedChange={(checked) => onChange((current) => ({
+            ...current,
+            ux: { ...current.ux, recommended_for_homelab: checked },
+          }))}
+        />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <FormField label="Tags" description="Comma-separated curation tags.">
+          <Input
+            value={(metadata.curation?.tags ?? []).join(', ')}
+            onChange={(event) => {
+              const tags = event.target.value
+                .split(',')
+                .map((value) => value.trim())
+                .filter(Boolean)
+              onChange((current) => ({
+                ...current,
+                curation: { ...current.curation, tags },
+              }))
+            }}
+            placeholder="recommended, stable, homelab"
+          />
+        </FormField>
+        <FormField label="Transport score" description="Operational transport quality summary.">
+          <Input
+            value={metadata.quality?.transport_score ?? ''}
+            onChange={(event) => onChange((current) => ({
+              ...current,
+              quality: { ...current.quality, transport_score: stringOrUndefined(event.target.value) },
+            }))}
+            placeholder="good"
+          />
+        </FormField>
+        <FormField label="Setup difficulty" description="Operator setup complexity.">
+          <Input
+            value={metadata.ux?.setup_difficulty ?? ''}
+            onChange={(event) => onChange((current) => ({
+              ...current,
+              ux: { ...current.ux, setup_difficulty: stringOrUndefined(event.target.value) },
+            }))}
+            placeholder="easy"
+          />
+        </FormField>
+        <FormField label="Reviewed at" description="RFC3339 timestamp.">
+          <Input
+            value={metadata.trust?.reviewed_at ?? ''}
+            onChange={(event) => onChange((current) => ({
+              ...current,
+              trust: { ...current.trust, reviewed_at: stringOrUndefined(event.target.value) },
+            }))}
+            placeholder="2026-04-23T15:00:00Z"
+          />
+        </FormField>
+        <FormField label="Install tested at" description="RFC3339 timestamp.">
+          <Input
+            value={metadata.quality?.last_install_tested_at ?? ''}
+            onChange={(event) => onChange((current) => ({
+              ...current,
+              quality: { ...current.quality, last_install_tested_at: stringOrUndefined(event.target.value) },
+            }))}
+            placeholder="2026-04-23T15:00:00Z"
+          />
+        </FormField>
+      </div>
+
+      <FormField label="Notes" description="Freeform operator notes for this server.">
+        <Textarea
+          value={metadata.curation?.notes ?? ''}
+          onChange={(event) => onChange((current) => ({
+            ...current,
+            curation: { ...current.curation, notes: stringOrUndefined(event.target.value) },
+          }))}
+          placeholder="Known caveats, operator guidance, or review notes."
+          rows={4}
+        />
+      </FormField>
+    </div>
+  )
+}
+
+function FormField({
+  label,
+  description,
+  children,
+}: {
+  label: string
+  description?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label className="text-xs font-medium text-aurora-text-primary">{label}</Label>
+        {description && <p className="text-xs text-aurora-text-muted">{description}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function ToggleField({
+  label,
+  description,
+  checked,
+  onCheckedChange,
+}: {
+  label: string
+  description: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-aurora-2 border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.45)] p-3">
+      <div className="space-y-1">
+        <Label className="text-xs font-medium text-aurora-text-primary">{label}</Label>
+        <p className="text-xs leading-relaxed text-aurora-text-muted">{description}</p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  )
+}
+
+function createDefaultLabMetadata(): LabRegistryMetadata {
+  return {
+    curation: {
+      featured: false,
+      tags: [],
+    },
+  }
+}
+
+function normalizeLabMetadata(metadata: LabRegistryMetadata | null): LabRegistryMetadata {
+  if (metadata) return metadata
+  return createDefaultLabMetadata()
+}
+
+function stringOrUndefined(value: string): string | undefined {
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
 }
 
 function BooleanRow({ label, value }: { label: string; value?: boolean | null }) {

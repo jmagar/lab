@@ -669,8 +669,8 @@ export function GatewayFormDialog({
           )}
         >
         <DialogHeader className="shrink-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-1">
               <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
               <DialogDescription>
                 {isEditing
@@ -681,33 +681,39 @@ export function GatewayFormDialog({
               </DialogDescription>
             </div>
             <div
-              className="flex gap-1.5 shrink-0 mr-8"
-              style={{ visibility: mode === 'custom' ? 'visible' : 'hidden' }}
+              className={cn(
+                'flex shrink-0 items-center gap-1.5 sm:mr-8',
+                mode === 'custom' ? 'visible' : 'invisible pointer-events-none',
+              )}
             >
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={toggleEnvDrawer}
                 className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  'h-8 rounded-full px-3 text-xs font-medium',
                   envDrawerOpen
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-primary hover:bg-accent',
+                    ? 'border-aurora-accent-primary/36 bg-aurora-accent-primary/12 text-aurora-text-primary'
+                    : 'border-aurora-border-strong bg-aurora-control-surface text-aurora-text-primary hover:bg-aurora-hover-bg',
                 )}
               >
                 ENV
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={toggleJsonDrawer}
                 className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  'h-8 rounded-full px-3 text-xs font-medium',
                   jsonDrawerOpen
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-primary hover:bg-accent',
+                    ? 'border-aurora-accent-primary/36 bg-aurora-accent-primary/12 text-aurora-text-primary'
+                    : 'border-aurora-border-strong bg-aurora-control-surface text-aurora-text-primary hover:bg-aurora-hover-bg',
                 )}
               >
                 JSON
-              </button>
+              </Button>
             </div>
           </div>
         </DialogHeader>

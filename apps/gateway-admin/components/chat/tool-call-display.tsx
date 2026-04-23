@@ -7,148 +7,21 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  Search,
-  Wrench,
-  FileText,
-  Pencil,
-  Image as ImageIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { TranscriptToolCall } from './types'
 import { AURORA_MUTED_LABEL } from '@/components/aurora/tokens'
+import { getInlineArtifact, getToolPresentation, toDomainChip } from './tool-call-presentation'
 
 interface ToolCallDisplayProps {
   toolCall: TranscriptToolCall
 }
 
-function actionLabel(toolCall: TranscriptToolCall) {
-  const title = toolCall.title.toLowerCase()
-  const kind = toolCall.kind?.toLowerCase() ?? ''
-
-  if (title.includes('skill')) return 'Reading workflow guidance'
-  if (title.includes('search') || kind.includes('search')) return toolCall.title
-  if (title.includes('photo') || title.includes('image')) return toolCall.title
-  if (title.includes('edit') || title.includes('patch') || title.includes('write')) return toolCall.title
-  if (title.includes('read') || title.includes('file') || kind.includes('read')) return title.startsWith('read') ? toolCall.title : `Reading ${toolCall.title}`
-
-  return toolCall.title
-}
-
-function flattenText(value: unknown): string[] {
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    return trimmed ? [trimmed] : []
-  }
-
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => flattenText(item))
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).flatMap((item) => flattenText(item))
-  }
-
-  return []
-}
-
-function findUrls(value: unknown): string[] {
-  const urls = new Set<string>()
-  const urlPattern = /https?:\/\/[^\s"'<>]+/g
-
-  for (const text of flattenText(value)) {
-    for (const match of text.matchAll(urlPattern)) {
-      urls.add(match[0])
-    }
-  }
-
-  return [...urls]
-}
-
-function toDomainChip(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
-}
-
-function getParsedCommands(toolCall: TranscriptToolCall) {
-  const input =
-    toolCall.input && typeof toolCall.input === 'object'
-      ? (toolCall.input as Record<string, unknown>)
-      : null
-  const parsed =
-    input && Array.isArray(input.parsed_cmd)
-      ? (input.parsed_cmd as Array<Record<string, unknown>>)
-      : []
-
-  return parsed
-    .map((entry) => {
-      const cmd = typeof entry.cmd === 'string' ? entry.cmd : null
-      const path = typeof entry.path === 'string' ? entry.path : null
-      const name = typeof entry.name === 'string' ? entry.name : path?.split('/').at(-1) ?? null
-      const type = typeof entry.type === 'string' ? entry.type : null
-
-      return { cmd, path, name, type }
-    })
-    .filter((entry) => entry.cmd || entry.path || entry.name)
-}
-
-function getInlineArtifact(toolCall: TranscriptToolCall) {
-  const content = Array.isArray(toolCall.content) ? toolCall.content : []
-  const inputText = flattenText(toolCall.input)
-  const outputText = flattenText(toolCall.output)
-  const contentText = flattenText(content)
-  const textSnippets = [...inputText, ...contentText, ...outputText]
-    .map((text) => text.replace(/\s+/g, ' ').trim())
-    .filter((text) => text.length > 0)
-    .filter((text, index, values) => values.indexOf(text) === index)
-
-  const urls = [
-    ...findUrls(toolCall.input),
-    ...findUrls(content),
-    ...findUrls(toolCall.output),
-  ].filter((url, index, values) => values.indexOf(url) === index)
-
-  const imageUrl =
-    urls.find((url) => /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url)) ??
-    urls.find((url) => /image|photo|avatar/i.test(url))
-
-  const commands = getParsedCommands(toolCall)
-  const summary =
-    textSnippets.find((text) => text.length > 48 && !text.startsWith('{') && !text.startsWith('[')) ??
-    null
-
-  return {
-    commands,
-    summary,
-    imageUrl: imageUrl ?? null,
-    links: urls.filter((url) => url !== imageUrl).slice(0, 4),
-  }
-}
-
 export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
   const [open, setOpen] = React.useState(false)
   const artifact = React.useMemo(() => getInlineArtifact(toolCall), [toolCall])
-
-  const activityIcon = (() => {
-    const title = toolCall.title.toLowerCase()
-    const kind = toolCall.kind?.toLowerCase() ?? ''
-    if (title.includes('search') || kind.includes('search')) {
-      return Search
-    }
-    if (title.includes('image') || title.includes('photo') || kind.includes('image')) {
-      return ImageIcon
-    }
-    if (title.includes('edit') || title.includes('write') || title.includes('patch')) {
-      return Pencil
-    }
-    if (title.includes('read') || title.includes('file') || kind.includes('read')) {
-      return FileText
-    }
-    return Wrench
-  })()
+  const presentation = React.useMemo(() => getToolPresentation(toolCall, artifact), [artifact, toolCall])
 
   const statusTone =
     toolCall.status === 'failed'
@@ -176,14 +49,14 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
           )}
         >
           <span className="relative z-10 mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-aurora-page-bg">
-            {React.createElement(activityIcon, {
-              className: cn('size-4 shrink-0', statusTone),
+            {React.createElement(presentation.icon, {
+              className: cn('size-4 shrink-0', statusTone, presentation.accentClassName),
             })}
           </span>
           <div className="min-w-0 flex-1 rounded-aurora-1 px-1 py-0.5 transition-colors group-hover:bg-aurora-hover-bg/30">
             <div className="flex min-w-0 items-start gap-2">
               <span className="flex-1 text-[14px] leading-[1.45] text-aurora-text-primary">
-                {actionLabel(toolCall)}
+                {presentation.label}
               </span>
               <span className="mt-0.5 shrink-0">{statusIcon}</span>
               {open ? (
@@ -194,6 +67,8 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
             </div>
             <div className="mt-1">
               <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/55')}>
+                {presentation.category}
+                {' · '}
                 {toolCall.status === 'completed'
                   ? 'completed'
                   : toolCall.status === 'failed'
@@ -219,7 +94,13 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                 {artifact.commands.slice(0, 2).map((command, index) => (
                   <div
                     key={`${command.cmd ?? command.path ?? 'command'}-${index}`}
-                    className="rounded-aurora-1 border border-aurora-border-default/70 bg-aurora-control-surface px-2.5 py-2"
+                    className={cn(
+                      'rounded-aurora-1 border border-aurora-border-default/70 bg-aurora-control-surface px-2.5 py-2',
+                      presentation.category === 'command' && 'bg-emerald-500/5',
+                      presentation.category === 'read' && 'bg-sky-500/5',
+                      presentation.category === 'search' && 'bg-cyan-500/5',
+                      presentation.category === 'edit' && 'bg-orange-500/5',
+                    )}
                   >
                     <p className="text-[12px] font-medium text-aurora-text-primary">
                       {command.type === 'read'
@@ -239,6 +120,48 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                 ))}
               </div>
             )}
+            {artifact.filePreview ? (
+              <div className="mt-2 overflow-hidden rounded-aurora-2 border border-aurora-border-default/70 bg-aurora-control-surface">
+                <div className="border-b border-aurora-border-default/60 px-2.5 py-2">
+                  <p className="text-[12px] font-medium text-aurora-text-primary">
+                    {artifact.filePreview.title}
+                  </p>
+                  {artifact.filePreview.path ? (
+                    <p className="mt-1 truncate text-[11px] leading-[1.45] text-aurora-text-muted">
+                      {artifact.filePreview.path}
+                    </p>
+                  ) : null}
+                </div>
+                {artifact.filePreview.snippet ? (
+                  <pre className="aurora-scrollbar overflow-x-auto whitespace-pre-wrap px-2.5 py-2 font-mono text-[11px] leading-[1.5] text-aurora-text-muted">
+                    {artifact.filePreview.snippet}
+                  </pre>
+                ) : null}
+              </div>
+            ) : null}
+            {artifact.diffPreview ? (
+              <div className="mt-2 overflow-hidden rounded-aurora-2 border border-orange-500/20 bg-orange-500/5">
+                <div className="border-b border-orange-500/10 px-2.5 py-2">
+                  <p className="text-[12px] font-medium text-aurora-text-primary">
+                    {artifact.diffPreview.title}
+                  </p>
+                </div>
+                <div className="space-y-1 px-2.5 py-2 font-mono text-[11px] leading-[1.5]">
+                  {artifact.diffPreview.snippet.map((line, index) => (
+                    <p
+                      key={`${toolCall.id}-diff-${index}`}
+                      className={cn(
+                        line.startsWith('+') && 'text-emerald-300',
+                        line.startsWith('-') && 'text-rose-300',
+                        !line.startsWith('+') && !line.startsWith('-') && 'text-aurora-text-muted',
+                      )}
+                    >
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {artifact.links.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {artifact.links.map((url) => (
@@ -265,7 +188,14 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
               </div>
             ) : null}
             {artifact.summary ? (
-              <p className="mt-2 text-[12px] leading-[1.55] text-aurora-text-muted">
+              <p
+                className={cn(
+                  'mt-2 rounded-aurora-1 border border-aurora-border-default/70 px-2.5 py-2 text-[12px] leading-[1.55] text-aurora-text-muted',
+                  presentation.category === 'review' && 'bg-orange-500/5',
+                  presentation.category === 'media' && 'bg-pink-500/5',
+                  presentation.category === 'source' && 'bg-emerald-500/5',
+                )}
+              >
                 {artifact.summary}
               </p>
             ) : null}

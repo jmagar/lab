@@ -35,6 +35,22 @@ In hosted mode, the UI expects Rust-owned browser session auth:
 - `POST /auth/logout` clears the browser session
 - `/v1/*` uses same-origin requests with `credentials: 'include'`
 
+For local binary-served UI work, keep the same-origin `/v1` path and start `lab serve` with web auth disabled for the browser surface only:
+
+```bash
+LAB_WEB_UI_DISABLE_AUTH=true \
+LAB_MCP_HTTP_TOKEN=your-local-dev-token \
+cargo run --bin lab -- serve --host 0.0.0.0 --port 8765
+```
+
+That mode keeps the MCP/backend token in place while making `/auth/session` and `/v1/*` immediately usable from the exported `/chat` UI on the same origin. Hosted deployments should leave `LAB_WEB_UI_DISABLE_AUTH` unset so browser OAuth remains active.
+
+There is also a repo shortcut for that local ACP UI mode:
+
+```bash
+just chat-local
+```
+
 If the backend is protected by a static bearer token, set `NEXT_PUBLIC_API_TOKEN`. Bearer mode activates automatically — no additional flag required. This is suitable for local development, smoke testing, and browser automation against OAuth-protected deployments. The token is embedded into the browser bundle, so it should not be used for production hosted deployments where Rust-owned browser session auth is preferred.
 
 ```bash

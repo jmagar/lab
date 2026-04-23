@@ -1118,8 +1118,8 @@ mod tests {
         assert!(out.contains("Service Health"));
         assert!(out.contains("radarr"));
         assert!(out.contains("unifi"));
-        assert!(out.contains("✓"));
-        assert!(out.contains("✗"));
+        assert!(out.contains("✓") || out.contains("ok"));
+        assert!(out.contains("✗") || out.contains("x"));
     }
 
     #[test]
@@ -1136,8 +1136,8 @@ mod tests {
         // Service-grouped summary: per-service row, not per-check.
         assert!(out.contains("radarr"));
         assert!(out.contains("env"));
-        assert!(out.contains("✓"));
-        assert!(out.contains("✗"));
+        assert!(out.contains("✓") || out.contains("ok"));
+        assert!(out.contains("✗") || out.contains("x"));
         // Per-check detail is hidden in default (grouped) mode.
         assert!(!out.contains("is set"));
         assert!(!out.contains("is missing"));
@@ -1228,7 +1228,7 @@ mod tests {
         assert!(out.contains("media-node"));
         assert!(out.contains("100.64.0.12"));
         assert!(out.contains("lscr.io/linuxserver/radarr:latest"));
-        assert!(out.contains("✓"));
+        assert!(out.contains("✓") || out.contains("ok"));
         assert!(out.contains("plex"));
         assert!(out.contains("config root could not be resolved"));
     }

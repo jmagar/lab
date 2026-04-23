@@ -47,6 +47,7 @@ export default function RegistryPage() {
       },
       false,
     )
+    void mutate((key) => Array.isArray(key) && key[0] === REGISTRY_SERVERS_KEY)
 
     if (selectedResponse) {
       void mutate(

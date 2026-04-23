@@ -2,10 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.7.3
+## [Unreleased] — 0.8.0
 
 | Commit | Change |
 |--------|--------|
+| `0cad306` | Finalize remaining gateway admin and registry work |
+| `47171c0` | fix: address remaining marketplace and upstream review comments |
+| `4392a42` | fix: address gateway plan and docs review comments |
+| `867dda3` | fix: address gateway admin design-system review comments |
+| `ccafbdb` | fix: address gateway admin registry review comments |
+| `91188af` | fix: address gateway admin chat and logs review comments |
+| `410acdb` | Finalize remaining chat, marketplace, and deploy updates |
+| `38fd124` | fix: address PR comments for gateway policy and browser session auth |
+| `997110e` | fix: address PR comments for marketplace client and dialog flows |
+| `6ae4bd9` | fix: address PR comments for registry and marketplace dispatch |
+| `a51056f` | fix: address PR comments for gateway and registry docs |
+| `e5dec3d` | Add gateway ACP, marketplace, and CLI UI updates |
+| `9a0f23b` | Address PR review feedback |
+| `681986c` | feat(gateway-chat-registry-log-ui): marketplace UI, gateway/chat/registry/log component polish, mcpregistry fixes — v0.7.3 |
 | `802d67e` | feat(marketplace): route + sidebar nav entry — Marketplace page complete |
 | `3674c5b` | feat(marketplace): all UI components — cards, panels, dialogs, modal |
 | `120bf6a` | feat(marketplace): types, API client (mock data), and SWR hooks |
@@ -24,6 +38,10 @@ All notable changes to this project will be documented in this file.
 
 ### Highlights
 
+- **Registry metadata curation** — Lab-owned `_meta["tv.tootie.lab/registry"]` contract, validation, audit fields, server-side metadata filters, typed CLI metadata commands, and gateway-admin structured metadata editing
+- **Gateway admin refinements** — registry detail/editor upgrades, gateway filter/table improvements, chat shell and tool-call presentation cleanup, and additional tests across chat and gateway views
+- **Marketplace and upstream hardening** — marketplace client/dispatch cleanup, upstream pool adjustments, browser session auth fixes, and follow-up review-driven repairs
+- **CLI and docs** — `lab mcpregistry meta get/set/delete`, metadata contract docs, and CLI coverage for the registry metadata surface
 - **Marketplace UI** — full Marketplace page: types, mock API client, SWR hooks, card/panel/dialog/modal components, route + sidebar nav entry
 - **Gateway admin REST wiring** — listServers now calls GET /v0.1/servers; gateway/registry/log/chat UI components updated (filters, table, detail panel, session sidebar, log console)
 - **Chat UI improvements** — chat-input, chat-shell, message-bubble, message-thread, settings-panel refined; gateway tools table added
@@ -33,8 +51,8 @@ All notable changes to this project will be documented in this file.
 
 ### Version bumps
 
-- Rust workspace: `0.7.2 → 0.7.3`
-- gateway-admin: `0.2.2 → 0.2.3`
+- Rust workspace: `0.7.3 → 0.8.0`
+- gateway-admin: `0.2.3 → 0.3.0`
 
 ---
 

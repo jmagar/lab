@@ -1,8 +1,31 @@
 import type { BridgeEvent, BridgeSessionSummary } from '@/lib/acp/types'
 import type { ACPMessage, TranscriptToolCall } from '@/components/chat/types'
 
+export const MAX_SESSION_EVENTS = 500
+
 function toDate(value: string) {
   return new Date(value)
+}
+
+export function appendSessionEvent(
+  current: BridgeEvent[],
+  incoming: BridgeEvent,
+  maxEvents = MAX_SESSION_EVENTS,
+) {
+  const lastEvent = current.at(-1)
+  if (lastEvent && incoming.seq <= lastEvent.seq) {
+    return current
+  }
+
+  const next = [...current, incoming]
+  if (next.length <= maxEvents) {
+    return next
+  }
+  return next.slice(next.length - maxEvents)
+}
+
+export function resolveLastSessionEventSeq(events: BridgeEvent[], cachedLastSeq = 0) {
+  return Math.max(cachedLastSeq, events.at(-1)?.seq ?? 0)
 }
 
 function upsertToolCall(toolCalls: TranscriptToolCall[], event: BridgeEvent): TranscriptToolCall[] {
@@ -169,7 +192,7 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
 
 export function toProjects(sessions: BridgeSessionSummary[]) {
   if (sessions.length === 0) {
-  return [{ id: 'workspace', name: 'workspace', agentId: 'codex' }]
+    return [{ id: 'workspace', name: 'workspace', agentId: 'codex' }]
   }
 
   const projectName = sessions[0]?.cwd.split('/').filter(Boolean).at(-1) ?? 'workspace'

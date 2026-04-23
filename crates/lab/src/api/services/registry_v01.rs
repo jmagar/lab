@@ -36,6 +36,11 @@ pub struct ListServersQuery {
     /// Include servers with `status = 'deleted'`.
     #[serde(default)]
     pub include_deleted: bool,
+    pub featured: Option<bool>,
+    pub reviewed: Option<bool>,
+    pub recommended: Option<bool>,
+    pub hidden: Option<bool>,
+    pub tag: Option<String>,
 }
 
 /// Maximum length allowed for a `:serverName` path parameter (bytes).
@@ -58,6 +63,11 @@ async fn list_servers(
         limit: query.limit,
         include_deleted: query.include_deleted,
         search: None,
+        featured: query.featured,
+        reviewed: query.reviewed,
+        recommended: query.recommended,
+        hidden: query.hidden,
+        tag: query.tag,
     };
     let effective_search = crate::dispatch::mcpregistry::resolve_search_for_rest(
         query.search.as_deref(),

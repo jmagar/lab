@@ -68,18 +68,20 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
       <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
         {!isUser && message.thoughts.length > 0 && (
           <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
-            <div className="overflow-hidden rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+            <div className="overflow-hidden rounded-aurora-2 border border-aurora-border-default/80 bg-[linear-gradient(180deg,rgba(16,23,31,0.98),rgba(11,18,25,0.98))] shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
               <CollapsibleTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-aurora-hover-bg/40"
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-aurora-hover-bg/25"
                 >
-                  <Brain className="size-4 shrink-0 text-aurora-accent-primary/75" />
+                  <Brain className="size-4 shrink-0 text-aurora-text-muted/80" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-semibold leading-[1.2] text-aurora-text-primary">
-                      {message.isStreaming ? 'Reasoning in progress' : 'Reasoning'}
+                      {message.isStreaming
+                        ? `Thought for ${Math.max(1, message.thoughts.length)} second${message.thoughts.length === 1 ? '' : 's'}`
+                        : 'Reasoning'}
                     </p>
-                    <p className={cn(AURORA_MUTED_LABEL, 'mt-1 text-aurora-text-muted/60')}>
+                    <p className={cn(AURORA_MUTED_LABEL, 'mt-1 text-aurora-text-muted/55')}>
                       {message.isStreaming
                         ? 'live'
                         : `${message.thoughts.length} step${message.thoughts.length === 1 ? '' : 's'}`}
@@ -93,12 +95,12 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
                 </button>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="border-t border-aurora-border-default/70 px-4 py-3">
-                  <div className="space-y-3">
+                <div className="border-t border-aurora-border-default/60 px-4 py-3">
+                  <div className="space-y-4">
                     {message.thoughts.map((thought, index) => (
                       <p
                         key={`${message.id}-thought-${index}`}
-                        className="whitespace-pre-wrap text-[14px] leading-[1.55] text-aurora-text-primary"
+                        className="whitespace-pre-wrap text-[14px] leading-[1.7] text-aurora-text-primary"
                       >
                         {thought}
                       </p>

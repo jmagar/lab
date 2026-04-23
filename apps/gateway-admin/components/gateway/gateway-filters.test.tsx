@@ -25,8 +25,10 @@ test('gateway filters render aurora checkbox groups and clear state affordance',
 
   assert.match(markup, /bg-aurora-panel-medium/)
   assert.match(markup, /bg-aurora-control-surface/)
+  assert.match(markup, /data-mobile-search="gateways"/)
   assert.match(markup, /Search gateways/)
   assert.match(markup, /Clear filters/i)
+  assert.match(markup, /aria-label="Open filters"/)
   assert.match(markup, /type="checkbox"/)
   assert.match(markup, /Configured/)
   assert.doesNotMatch(markup, /role="combobox"/)
@@ -52,5 +54,7 @@ test('tools filters render exposure segmented control and gateway facets', () =>
 
   assert.match(markup, /Exposed only/)
   assert.match(markup, /Lab Core/)
+  assert.match(markup, /data-mobile-search="tools"/)
+  assert.match(markup, /aria-label="Open filters"/)
   assert.match(markup, /Search tools, descriptions, or gateways/)
 })
