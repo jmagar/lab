@@ -1,20 +1,20 @@
-# Adversarial Review: Virtual Service Gateway Implementation Plan
+# Adversarial Review: In-Process Service Gateway Implementation Plan
 
 **Date:** 2026-04-14
-**Plan:** `docs/superpowers/plans/2026-04-14-virtual-service-gateway-implementation.md`
-**Spec:** `docs/superpowers/specs/2026-04-14-virtual-service-gateway-contract.md`
+**Plan:** `docs/superpowers/plans/2026-04-14-virtual-service-gateway-implementation.md` (legacy filename)
+**Spec:** `docs/superpowers/specs/2026-04-14-virtual-service-gateway-contract.md` (legacy filename)
 **Review stance:** hostile execution review focused on hidden coupling, stale runtime state, and scope leakage
 
 ## Findings
 
 ### 1. Canonical service config can easily become split-brain
 
-The plan correctly says service credentials are canonical and must not be duplicated into virtual-server state, but the implementation risk is high because current Lab services are mostly env-driven and do not already expose a first-class mutable service-config store through the gateway domain.
+The plan correctly says service credentials are canonical and must not be duplicated into in-process-service state, but the implementation risk is high because current Lab services are mostly env-driven and do not already expose a first-class mutable service-config store through the gateway domain.
 
 Failure mode:
 
 - the UI writes `.env`
-- virtual-server state is written elsewhere
+- in-process-service state is written elsewhere
 - the runtime reads one source for list/detail state and another source for actual client construction
 - the operator sees a configured service that does not actually match the live client
 
