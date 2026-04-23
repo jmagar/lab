@@ -2,6 +2,12 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
+#[cfg(unix)]
+use nix::errno::Errno;
+#[cfg(unix)]
+use nix::sys::signal::{Signal, kill as unix_kill};
+#[cfg(unix)]
+use nix::unistd::Pid;
 use tokio::sync::RwLock;
 use url::Url;
 
@@ -15,6 +21,7 @@ use crate::dispatch::gateway::oauth::UpstreamOauthStatusView;
 use crate::dispatch::upstream::pool::{
     UpstreamCachedSummary, UpstreamPool, in_process_upstream_name,
 };
+use crate::dispatch::upstream::types::UpstreamRuntimeOwner;
 use crate::oauth::upstream::cache::OauthClientCache;
 use crate::oauth::upstream::encryption::EncryptionKey;
 use crate::oauth::upstream::manager::UpstreamOauthManager;
@@ -94,6 +101,34 @@ pub struct GatewayManager {
     oauth_sqlite: Option<lab_auth::sqlite::SqliteStore>,
     oauth_key: Option<EncryptionKey>,
     oauth_redirect_uri: Option<Arc<String>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct PersistedGatewayRuntimeState {
+    #[serde(default)]
+    reconciled_at_epoch_secs: Option<u64>,
+    #[serde(default)]
+    entries: Vec<PersistedGatewayRuntimeEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct PersistedGatewayRuntimeEntry {
+    upstream: String,
+    pid: u32,
+    #[serde(default)]
+    pgid: Option<u32>,
+    #[serde(default)]
+    started_at_epoch_secs: Option<u64>,
+    #[serde(default)]
+    observed_at_epoch_secs: u64,
+    #[serde(default)]
+    origin: Option<String>,
+    #[serde(default)]
+    owner: Option<crate::dispatch::gateway::types::GatewayRuntimeOwnerView>,
+    #[serde(default)]
+    transport: Option<String>,
+    #[serde(default)]
+    target: Option<String>,
 }
 
 impl GatewayManager {
@@ -368,6 +403,7 @@ impl GatewayManager {
                         }
                     };
                     let config = UpstreamConfig {
+                        enabled: true,
                         name: name.clone(),
                         url: Some(url.to_string()),
                         bearer_token_env: None,
@@ -1032,6 +1068,8 @@ impl GatewayManager {
         &self,
         mut spec: UpstreamConfig,
         bearer_token_value: Option<String>,
+        origin: Option<&str>,
+        owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayView, ToolError> {
         tracing::info!(
             action = "gateway.add",
@@ -1063,7 +1101,7 @@ impl GatewayManager {
             insert_upstream(&mut cfg, spec.clone())?;
         }
         self.persist_config(cfg).await?;
-        let diff = self.reload().await?;
+        let diff = self.reload_with_origin(origin, owner).await?;
         tracing::info!(
             action = "gateway.add",
             phase = "finish",
@@ -1082,6 +1120,8 @@ impl GatewayManager {
         name: &str,
         patch: GatewayUpdatePatch,
         bearer_token_value: Option<String>,
+        origin: Option<&str>,
+        owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayView, ToolError> {
         let mut patch = patch;
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
@@ -1138,7 +1178,7 @@ impl GatewayManager {
             update_upstream(&mut cfg, name, patch)?;
         }
         self.persist_config(cfg).await?;
-        let diff = self.reload().await?;
+        let diff = self.reload_with_origin(origin, owner).await?;
         tracing::info!(
             action = "gateway.update",
             phase = "finish",
@@ -1152,7 +1192,12 @@ impl GatewayManager {
         self.get(&updated_name).await
     }
 
-    pub async fn remove(&self, name: &str) -> Result<GatewayView, ToolError> {
+    pub async fn remove(
+        &self,
+        name: &str,
+        origin: Option<&str>,
+        owner: Option<UpstreamRuntimeOwner>,
+    ) -> Result<GatewayView, ToolError> {
         tracing::info!(
             action = "gateway.remove",
             phase = "start",
@@ -1162,7 +1207,7 @@ impl GatewayManager {
         let mut cfg = self.config.read().await.clone();
         let removed = remove_upstream(&mut cfg, name)?;
         self.persist_config(cfg).await?;
-        let diff = self.reload().await?;
+        let diff = self.reload_with_origin(origin, owner).await?;
         tracing::info!(
             action = "gateway.remove",
             phase = "finish",
@@ -1182,7 +1227,11 @@ impl GatewayManager {
         })
     }
 
-    pub async fn reload(&self) -> Result<GatewayCatalogDiff, ToolError> {
+    pub async fn reload_with_origin(
+        &self,
+        origin: Option<&str>,
+        owner: Option<UpstreamRuntimeOwner>,
+    ) -> Result<GatewayCatalogDiff, ToolError> {
         tracing::info!(
             action = "gateway.reload",
             phase = "config.load.start",
@@ -1235,10 +1284,15 @@ impl GatewayManager {
             "gateway reconcile"
         );
         let fresh_pool = {
-            let pool = Arc::new(match &self.oauth_client_cache {
+            let base_pool = match &self.oauth_client_cache {
                 Some(cache) => UpstreamPool::new().with_oauth_client_cache(cache.clone()),
                 None => UpstreamPool::new(),
-            });
+            };
+            let pool = Arc::new(
+                base_pool
+                    .with_runtime_origin(runtime_origin_tag(origin))
+                    .with_runtime_owner(owner),
+            );
             pool.discover_all_with_in_process_peers(&cfg.upstream, builtin_service_registry())
                 .await;
             Some(pool)
@@ -1256,6 +1310,10 @@ impl GatewayManager {
         );
         self.runtime.swap(fresh_pool).await;
         *self.config.write().await = cfg;
+        let current_cfg = self.config.read().await.clone();
+        let current_pool = self.runtime.current_pool().await;
+        self.reconcile_runtime_state(&current_cfg, current_pool.as_deref())
+            .await?;
         let diff = diff_catalogs(&before, &after);
         self.notify_catalog_changes(&diff);
         tracing::info!(
@@ -1478,6 +1536,99 @@ impl GatewayManager {
         );
         Ok(())
     }
+
+    fn runtime_state_path(&self) -> PathBuf {
+        let parent = self
+            .path
+            .parent()
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let stem = self
+            .path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("gateway");
+        parent.join(format!("{stem}.runtime.json"))
+    }
+
+    async fn load_runtime_state(&self) -> PersistedGatewayRuntimeState {
+        let path = self.runtime_state_path();
+        let Ok(raw) = tokio::fs::read_to_string(path).await else {
+            return PersistedGatewayRuntimeState::default();
+        };
+        serde_json::from_str(&raw).unwrap_or_default()
+    }
+
+    async fn persist_runtime_state(
+        &self,
+        state: &PersistedGatewayRuntimeState,
+    ) -> Result<(), ToolError> {
+        let path = self.runtime_state_path();
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|error| {
+                ToolError::internal_message(format!(
+                    "failed to create runtime state directory {}: {error}",
+                    parent.display()
+                ))
+            })?;
+        }
+        let body = serde_json::to_vec_pretty(state).map_err(|error| {
+            ToolError::internal_message(format!("failed to serialize runtime state: {error}"))
+        })?;
+        tokio::fs::write(&path, body).await.map_err(|error| {
+            ToolError::internal_message(format!(
+                "failed to write runtime state {}: {error}",
+                path.display()
+            ))
+        })
+    }
+
+    async fn reconcile_runtime_state(
+        &self,
+        cfg: &LabConfig,
+        pool: Option<&UpstreamPool>,
+    ) -> Result<PersistedGatewayRuntimeState, ToolError> {
+        let mut state = self.load_runtime_state().await;
+        state.entries.retain(|entry| process_is_alive(entry.pid));
+
+        if let Some(pool) = pool {
+            for upstream in &cfg.upstream {
+                if let Some(runtime) = pool.upstream_runtime_metadata(&upstream.name).await
+                    && let Some(pid) = runtime.pid
+                {
+                    state
+                        .entries
+                        .retain(|entry| !(entry.upstream == upstream.name && entry.pid == pid));
+                    state.entries.push(PersistedGatewayRuntimeEntry {
+                        upstream: upstream.name.clone(),
+                        pid,
+                        pgid: runtime.pgid,
+                        started_at_epoch_secs: runtime
+                            .started_at
+                            .and_then(system_time_to_epoch_secs),
+                        observed_at_epoch_secs: epoch_now_secs(),
+                        origin: runtime.origin.clone(),
+                        owner: runtime.owner.as_ref().map(runtime_owner_view),
+                        transport: Some(if upstream.command.is_some() {
+                            "stdio".to_string()
+                        } else {
+                            "http".to_string()
+                        }),
+                        target: redacted_gateway_target(upstream),
+                    });
+                }
+            }
+        }
+
+        state.reconciled_at_epoch_secs = Some(epoch_now_secs());
+        state.entries.sort_by(|left, right| {
+            left.upstream
+                .cmp(&right.upstream)
+                .then(left.pid.cmp(&right.pid))
+        });
+        self.persist_runtime_state(&state).await?;
+        Ok(state)
+    }
 }
 
 fn resolve_gateway_bearer_env_name(
@@ -1530,6 +1681,7 @@ fn find_virtual_server_for_service<'a>(
 fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
     GatewayConfigView {
         name: upstream.name.clone(),
+        enabled: upstream.enabled,
         url: upstream.url.as_deref().map(redact_gateway_url),
         command: upstream.command.as_deref().map(redact_gateway_stdio_value),
         args: upstream
@@ -1682,14 +1834,15 @@ async fn server_view_from_upstream(
     let connected = summary.exposed_tool_count > 0
         || summary.exposed_resource_count > 0
         || summary.exposed_prompt_count > 0;
+    let enabled = upstream.enabled;
 
     ServerView {
         id: upstream.name.clone(),
         name: upstream.name.clone(),
         source: "custom_gateway".to_string(),
         configured: true,
-        enabled: true,
-        connected,
+        enabled,
+        connected: enabled && connected,
         discovered_tool_count: summary.discovered_tool_count,
         exposed_tool_count: summary.exposed_tool_count,
         discovered_resource_count: summary.discovered_resource_count,
@@ -1698,8 +1851,8 @@ async fn server_view_from_upstream(
         exposed_prompt_count: summary.exposed_prompt_count,
         surfaces: SurfaceStatesView {
             mcp: SurfaceStateView {
-                enabled: true,
-                connected,
+                enabled,
+                connected: enabled && connected,
             },
             ..SurfaceStatesView::default()
         },
@@ -1721,6 +1874,334 @@ async fn server_view_from_upstream(
             target: redacted_gateway_target(upstream),
         },
     }
+}
+
+impl GatewayManager {
+    pub async fn mcp_runtime_list(
+        &self,
+    ) -> Result<Vec<super::types::GatewayMcpRuntimeView>, ToolError> {
+        let cfg = self.config.read().await.clone();
+        let pool = self.runtime.current_pool().await;
+        let persisted = self.reconcile_runtime_state(&cfg, pool.as_deref()).await?;
+        let mut rows = Vec::with_capacity(cfg.upstream.len());
+        for upstream in &cfg.upstream {
+            let summary = upstream_summary(pool.as_deref(), &upstream.name).await;
+            let runtime = match pool.as_deref() {
+                Some(pool) => pool.upstream_runtime_metadata(&upstream.name).await,
+                None => None,
+            };
+            let live_pid = runtime.as_ref().and_then(|meta| meta.pid);
+            let persisted_rows: Vec<&PersistedGatewayRuntimeEntry> = persisted
+                .entries
+                .iter()
+                .filter(|entry| entry.upstream == upstream.name)
+                .collect();
+            let stale_count = persisted_rows
+                .iter()
+                .filter(|entry| Some(entry.pid) != live_pid)
+                .count();
+            let fallback = if let Some(pid) = live_pid {
+                persisted_rows.into_iter().find(|entry| entry.pid == pid)
+            } else {
+                persisted_rows.into_iter().max_by_key(|entry| {
+                    entry
+                        .started_at_epoch_secs
+                        .unwrap_or(entry.observed_at_epoch_secs)
+                })
+            };
+            let connected = upstream.enabled
+                && (summary.exposed_tool_count > 0
+                    || summary.exposed_resource_count > 0
+                    || summary.exposed_prompt_count > 0);
+            rows.push(super::types::GatewayMcpRuntimeView {
+                name: upstream.name.clone(),
+                enabled: upstream.enabled,
+                connected,
+                discovered_tool_count: summary.discovered_tool_count,
+                exposed_tool_count: summary.exposed_tool_count,
+                discovered_resource_count: summary.discovered_resource_count,
+                exposed_resource_count: summary.exposed_resource_count,
+                discovered_prompt_count: summary.discovered_prompt_count,
+                exposed_prompt_count: summary.exposed_prompt_count,
+                likely_stale_count: stale_count,
+                pid: live_pid.or_else(|| fallback.map(|entry| entry.pid)),
+                pgid: runtime
+                    .as_ref()
+                    .and_then(|meta| meta.pgid)
+                    .or_else(|| fallback.and_then(|entry| entry.pgid)),
+                age_seconds: runtime
+                    .as_ref()
+                    .and_then(|meta| meta.started_at)
+                    .and_then(|started_at| std::time::SystemTime::now().duration_since(started_at).ok())
+                    .map(|elapsed: std::time::Duration| elapsed.as_secs())
+                    .or_else(|| {
+                        fallback
+                            .and_then(|entry| entry.started_at_epoch_secs)
+                            .and_then(age_from_epoch_secs)
+                    }),
+                origin: runtime
+                    .as_ref()
+                    .and_then(|meta| meta.origin.clone())
+                    .or_else(|| fallback.and_then(|entry| entry.origin.clone())),
+                owner: runtime
+                    .as_ref()
+                    .and_then(|meta| meta.owner.as_ref().map(runtime_owner_view))
+                    .or_else(|| fallback.and_then(|entry| entry.owner.clone())),
+                transport: Some(if upstream.command.is_some() {
+                    "stdio".to_string()
+                } else {
+                    "http".to_string()
+                }),
+                target: fallback
+                    .and_then(|entry| entry.target.clone())
+                    .or_else(|| redacted_gateway_target(upstream)),
+                runtime_state_path: Some(self.runtime_state_path().display().to_string()),
+                reconciled_at: persisted
+                    .reconciled_at_epoch_secs
+                    .and_then(epoch_secs_to_rfc3339),
+                ..Default::default()
+            });
+        }
+        Ok(rows)
+    }
+
+    pub async fn cleanup_upstream_processes(
+        &self,
+        name: &str,
+        aggressive: bool,
+    ) -> Result<super::types::GatewayCleanupView, ToolError> {
+        let upstream = self
+            .config
+            .read()
+            .await
+            .upstream
+            .iter()
+            .find(|existing| existing.name == name)
+            .cloned()
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("gateway `{name}` not found"),
+            })?;
+
+        let gateway_patterns = upstream_cleanup_patterns(&upstream, false);
+        let local_patterns = local_cleanup_patterns();
+        let aggressive_patterns = if aggressive {
+            upstream_cleanup_patterns(&upstream, true)
+        } else {
+            Vec::new()
+        };
+
+        let view = super::types::GatewayCleanupView {
+            upstream: upstream.name,
+            aggressive,
+            gateway_killed: kill_matching_processes(&gateway_patterns),
+            local_killed: kill_matching_processes(&local_patterns),
+            aggressive_killed: if aggressive {
+                kill_matching_processes(&aggressive_patterns)
+            } else {
+                0
+            },
+        };
+
+        let cfg = self.config.read().await.clone();
+        let current_pool = self.runtime.current_pool().await;
+        self.reconcile_runtime_state(&cfg, current_pool.as_deref())
+            .await?;
+
+        Ok(view)
+    }
+}
+
+fn local_cleanup_patterns() -> Vec<String> {
+    vec![
+        "lab serve mcp --stdio".to_string(),
+        "target/debug/lab serve mcp --stdio".to_string(),
+    ]
+}
+
+fn upstream_cleanup_patterns(upstream: &UpstreamConfig, aggressive: bool) -> Vec<String> {
+    let mut patterns = Vec::new();
+    let command = upstream.command.as_deref().unwrap_or("");
+    let joined_args = upstream.args.join(" ");
+    let joined = if command.is_empty() {
+        joined_args.clone()
+    } else if joined_args.is_empty() {
+        command.to_string()
+    } else {
+        format!("{command} {joined_args}")
+    };
+    if let Some(command) = upstream.command.as_deref() {
+        let mut joined = command.to_string();
+        for arg in &upstream.args {
+            joined.push(' ');
+            joined.push_str(arg);
+        }
+        patterns.push(joined);
+        for arg in &upstream.args {
+            if arg.contains("mcp") || arg.contains(&upstream.name) {
+                patterns.push(arg.clone());
+            }
+        }
+    }
+    if joined.contains("chrome-devtools-mcp") || upstream.name.contains("chrome-devtools") {
+        patterns.push("chrome-devtools-mcp".to_string());
+        patterns.push("chrome-devtools".to_string());
+        patterns.push("chrome-devtools-mcp/build/src/telemetry/watchdog/main.js".to_string());
+        patterns.push("npm exec chrome-devtools-mcp@latest".to_string());
+    }
+    if joined.contains("github-chat-mcp") || upstream.name.contains("github-chat") {
+        patterns.push("github-chat-mcp".to_string());
+        patterns.push("uvx github-chat-mcp".to_string());
+        patterns.push("uv tool uvx github-chat-mcp".to_string());
+        patterns.push("uv run github-chat-mcp".to_string());
+        patterns.push("github-chat".to_string());
+        patterns.push("/github-chat-mcp".to_string());
+    }
+    if aggressive {
+        patterns.push(upstream.name.clone());
+    }
+    patterns.sort();
+    patterns.dedup();
+    patterns
+}
+
+fn epoch_now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
+}
+
+fn system_time_to_epoch_secs(time: std::time::SystemTime) -> Option<u64> {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|elapsed| elapsed.as_secs())
+}
+
+fn age_from_epoch_secs(epoch_secs: u64) -> Option<u64> {
+    let started_at =
+        std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_secs(epoch_secs))?;
+    std::time::SystemTime::now()
+        .duration_since(started_at)
+        .ok()
+        .map(|elapsed| elapsed.as_secs())
+}
+
+fn epoch_secs_to_rfc3339(epoch_secs: u64) -> Option<String> {
+    let seconds = i64::try_from(epoch_secs).ok()?;
+    let timestamp = jiff::Timestamp::from_second(seconds).ok()?;
+    Some(timestamp.to_string())
+}
+
+fn runtime_origin_tag(origin: Option<&str>) -> Option<String> {
+    origin
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn runtime_owner_view(
+    owner: &UpstreamRuntimeOwner,
+) -> crate::dispatch::gateway::types::GatewayRuntimeOwnerView {
+    crate::dispatch::gateway::types::GatewayRuntimeOwnerView {
+        surface: owner.surface.clone(),
+        subject: owner.subject.clone(),
+        request_id: owner.request_id.clone(),
+        session_id: owner.session_id.clone(),
+        client_name: owner.client_name.clone(),
+        raw: owner.raw.clone(),
+    }
+}
+
+#[cfg(unix)]
+fn process_is_alive(pid: u32) -> bool {
+    matches!(send_unix_signal(pid, None), Ok(()) | Err(Errno::EPERM))
+}
+
+#[cfg(not(unix))]
+fn process_is_alive(_pid: u32) -> bool {
+    false
+}
+
+fn kill_matching_processes(patterns: &[String]) -> usize {
+    count_or_kill_matching_processes(patterns, true)
+}
+
+fn count_or_kill_matching_processes(patterns: &[String], kill: bool) -> usize {
+    let excluded_pids = current_and_parent_pids();
+    let mut matched = std::collections::HashSet::new();
+    for pattern in patterns {
+        if pattern.trim().is_empty() {
+            continue;
+        }
+        let output = match std::process::Command::new("pgrep")
+            .args(["-af", pattern])
+            .output()
+        {
+            Ok(output) => output,
+            Err(_) => continue,
+        };
+        if !output.status.success() && output.stdout.is_empty() {
+            continue;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            let mut parts = line.splitn(2, ' ');
+            let Some(pid) = parts.next() else {
+                continue;
+            };
+            if excluded_pids.contains(pid) {
+                continue;
+            }
+            if matched.insert(pid.to_string()) && kill {
+                let _ = terminate_process(pid.parse::<u32>().unwrap_or_default());
+            }
+        }
+    }
+    matched.len()
+}
+
+#[cfg(unix)]
+fn current_and_parent_pids() -> std::collections::HashSet<String> {
+    let mut pids = std::collections::HashSet::from([std::process::id().to_string()]);
+    let parent = nix::unistd::getppid();
+    if parent.as_raw() > 0 {
+        pids.insert(parent.as_raw().to_string());
+    }
+    pids
+}
+
+#[cfg(not(unix))]
+fn current_and_parent_pids() -> std::collections::HashSet<String> {
+    std::collections::HashSet::from([std::process::id().to_string()])
+}
+
+#[cfg(unix)]
+fn send_unix_signal(pid: u32, signal: Option<Signal>) -> Result<(), Errno> {
+    if pid == 0 {
+        return Err(Errno::EINVAL);
+    }
+
+    let Ok(raw_pid) = i32::try_from(pid) else {
+        return Err(Errno::EINVAL);
+    };
+
+    unix_kill(Pid::from_raw(raw_pid), signal)
+}
+
+#[cfg(not(unix))]
+fn send_unix_signal(_pid: u32, _signal: Option<()>) -> Result<(), ()> {
+    Err(())
+}
+
+#[cfg(unix)]
+fn terminate_process(pid: u32) -> Result<(), Errno> {
+    send_unix_signal(pid, Some(Signal::SIGKILL))
+}
+
+#[cfg(not(unix))]
+fn terminate_process(_pid: u32) -> Result<(), ()> {
+    Ok(())
 }
 
 fn server_view_from_virtual_server(
@@ -1953,6 +2434,29 @@ mod tests {
         assert!(!diff.prompts_changed);
     }
 
+    #[test]
+    fn github_chat_cleanup_patterns_cover_uv_wrappers() {
+        let upstream = UpstreamConfig {
+            enabled: true,
+            name: "github-chat".to_string(),
+            url: None,
+            bearer_token_env: None,
+            command: Some("uvx".to_string()),
+            args: vec!["github-chat-mcp".to_string()],
+            proxy_resources: false,
+            proxy_prompts: false,
+            expose_tools: None,
+            oauth: None,
+        };
+
+        let patterns = upstream_cleanup_patterns(&upstream, false);
+        assert!(patterns.contains(&"github-chat-mcp".to_string()));
+        assert!(patterns.contains(&"uvx github-chat-mcp".to_string()));
+        assert!(patterns.contains(&"uv tool uvx github-chat-mcp".to_string()));
+        assert!(patterns.contains(&"uv run github-chat-mcp".to_string()));
+        assert!(patterns.contains(&"github-chat".to_string()));
+    }
+
     #[tokio::test]
     async fn runtime_handle_starts_without_pool() {
         let handle = GatewayRuntimeHandle::default();
@@ -1978,6 +2482,7 @@ mod tests {
 
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
                 name: "fixture-http".to_string(),
                 url: Some("http://127.0.0.1:9001".to_string()),
                 bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -2005,6 +2510,7 @@ mod tests {
 
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
                 name: "fixture-stdio".to_string(),
                 url: None,
                 bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -2038,6 +2544,7 @@ mod tests {
     #[tokio::test]
     async fn server_view_redacts_sensitive_target_url_components() {
         let upstream = UpstreamConfig {
+            enabled: true,
             name: "fixture-http".to_string(),
             url: Some("http://user:pass@127.0.0.1:9001/callback?token=secret&mode=1".to_string()),
             bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -2060,6 +2567,7 @@ mod tests {
     #[tokio::test]
     async fn server_view_redacts_invalid_target_urls() {
         let upstream = UpstreamConfig {
+            enabled: true,
             name: "fixture-http".to_string(),
             url: Some("http://user:pass@[::1".to_string()),
             bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -2082,6 +2590,7 @@ mod tests {
     #[tokio::test]
     async fn server_view_redacts_stdio_env_targets() {
         let upstream = UpstreamConfig {
+            enabled: true,
             name: "fixture-stdio".to_string(),
             url: None,
             bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -2189,6 +2698,7 @@ mod tests {
         let gateway = manager
             .add(
                 UpstreamConfig {
+                    enabled: true,
                     name: "github".to_string(),
                     url: Some("https://api.githubcopilot.com/mcp/".to_string()),
                     bearer_token_env: None,
@@ -2200,6 +2710,8 @@ mod tests {
                     oauth: None,
                 },
                 Some("ghp_secret".to_string()),
+                None,
+                None,
             )
             .await
             .expect("add gateway");
@@ -2259,6 +2771,8 @@ mod tests {
                 surfaces: VirtualServerSurfacesConfig::default(),
                 mcp_policy: None,
             },
+            UpstreamCachedSummary::default(),
+            None,
             Some(&ServiceHealth {
                 service: "plex".to_string(),
                 reachable: true,
@@ -2282,6 +2796,8 @@ mod tests {
                 surfaces: VirtualServerSurfacesConfig::default(),
                 mcp_policy: None,
             },
+            UpstreamCachedSummary::default(),
+            None,
             Some(&ServiceHealth {
                 service: "unraid".to_string(),
                 reachable: true,
@@ -2359,6 +2875,15 @@ mod tests {
                 },
                 mcp_policy: None,
             },
+            UpstreamCachedSummary {
+                discovered_tool_count: 5,
+                exposed_tool_count: 5,
+                discovered_resource_count: 0,
+                exposed_resource_count: 0,
+                discovered_prompt_count: 0,
+                exposed_prompt_count: 0,
+            },
+            None,
             Some(&ServiceHealth {
                 service: "plex".to_string(),
                 reachable: true,
@@ -2391,6 +2916,15 @@ mod tests {
                     allowed_actions: vec!["server.info".to_string()],
                 }),
             },
+            UpstreamCachedSummary {
+                discovered_tool_count: 5,
+                exposed_tool_count: 3,
+                discovered_resource_count: 0,
+                exposed_resource_count: 0,
+                discovered_prompt_count: 0,
+                exposed_prompt_count: 0,
+            },
+            None,
             Some(&ServiceHealth {
                 service: "plex".to_string(),
                 reachable: true,
@@ -2537,6 +3071,7 @@ mod tests {
             &path,
             &LabConfig {
                 upstream: vec![UpstreamConfig {
+                    enabled: true,
                     name: "kept".to_string(),
                     url: Some("https://fixture.example.com:7001".to_string()),
                     bearer_token_env: None,
@@ -2565,6 +3100,7 @@ mod tests {
         manager
             .seed_config(LabConfig {
                 upstream: vec![UpstreamConfig {
+                    enabled: true,
                     name: "removed".to_string(),
                     url: Some("http://127.0.0.1:7000".to_string()),
                     bearer_token_env: None,
@@ -2573,9 +3109,9 @@ mod tests {
                     proxy_resources: false,
                     proxy_prompts: false,
                     expose_tools: None,
-                    oauth: Some(crate::config::UpstreamOauthConfig {
-                        mode: crate::config::UpstreamOauthMode::AuthorizationCodePkce,
-                        registration: crate::config::UpstreamOauthRegistration::Dynamic,
+                    oauth: Some(UpstreamOauthConfig {
+                        mode: UpstreamOauthMode::AuthorizationCodePkce,
+                        registration: UpstreamOauthRegistration::Dynamic,
                         scopes: None,
                     }),
                 }],
@@ -2584,7 +3120,10 @@ mod tests {
             .await;
 
         assert_eq!(cache.len(), 1);
-        manager.reload().await.expect("reload");
+        manager
+            .reload_with_origin(None, None)
+            .await
+            .expect("reload");
         assert!(cache.is_empty());
     }
 
@@ -2626,6 +3165,7 @@ mod tests {
         let server = server_view_from_upstream(
             Some(&pool),
             &UpstreamConfig {
+                enabled: true,
                 name: "partial-upstream".to_string(),
                 url: Some("http://127.0.0.1:8080/mcp".to_string()),
                 bearer_token_env: None,
@@ -2684,6 +3224,7 @@ mod tests {
         let server = server_view_from_upstream(
             Some(&pool),
             &UpstreamConfig {
+                enabled: true,
                 name: "partial-upstream".to_string(),
                 url: Some("http://127.0.0.1:8080/mcp".to_string()),
                 bearer_token_env: None,
@@ -2704,6 +3245,7 @@ mod tests {
     async fn custom_gateway_connected_includes_resources_and_prompts() {
         let pool = UpstreamPool::new();
         let upstream = UpstreamConfig {
+            enabled: true,
             name: "partial-upstream".to_string(),
             url: Some("http://127.0.0.1:9001/mcp".to_string()),
             bearer_token_env: None,

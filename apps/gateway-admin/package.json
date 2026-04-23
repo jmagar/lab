@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "python3 -m http.server 3000 -d out",
     "preview": "python3 -m http.server 3000 -d out",
@@ -13,6 +13,19 @@
     "test:browser": "node --test --experimental-strip-types lib/browser/**/*.test.ts"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "0.19.1",
+    "@codemirror/autocomplete": "^6.20.0",
+    "@codemirror/commands": "^6.9.1",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.3.4",
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@codemirror/language": "^6.11.3",
+    "@codemirror/legacy-modes": "^6.5.2",
+    "@codemirror/lint": "^6.9.2",
+    "@codemirror/search": "^6.5.11",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.6",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",

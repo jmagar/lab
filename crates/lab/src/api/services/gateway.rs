@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
+use axum::{Extension, Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
+use crate::api::oauth::AuthContext;
 use crate::api::services::helpers::handle_action;
 use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::error::ToolError;
@@ -14,9 +15,11 @@ pub fn routes(_state: AppState) -> Router<AppState> {
 async fn handle(
     State(state): State<AppState>,
     headers: HeaderMap,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    let subject = auth.as_ref().map(|value| value.0.sub.clone());
     let manager = state
         .gateway_manager
         .clone()
@@ -33,12 +36,40 @@ async fn handle(
         crate::dispatch::gateway::ACTIONS,
         move |action, params| {
             let manager = Arc::clone(&manager);
+            let subject = subject.clone();
             async move {
+                let params = inject_gateway_owner(params, subject.as_deref(), request_id);
                 crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params).await
             }
         },
     )
     .await
+}
+
+fn inject_gateway_owner(params: Value, subject: Option<&str>, request_id: Option<&str>) -> Value {
+    let Some(mut object) = params.as_object().cloned() else {
+        return params;
+    };
+    let raw = match (subject, request_id) {
+        (Some(sub), Some(request_id)) => Some(format!("api:{sub}:{request_id}")),
+        (Some(sub), None) => Some(format!("api:{sub}")),
+        (None, Some(request_id)) => Some(format!("api:anonymous:{request_id}")),
+        (None, None) => Some("api:anonymous".to_string()),
+    };
+    object
+        .entry("owner".to_string())
+        .or_insert_with(|| serde_json::json!({
+            "surface": "api",
+            "subject": subject,
+            "request_id": request_id,
+            "raw": raw,
+        }));
+    if let Some(origin) = raw {
+        object
+            .entry("origin".to_string())
+            .or_insert_with(|| Value::String(origin));
+    }
+    Value::Object(object)
 }
 
 #[cfg(test)]

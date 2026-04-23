@@ -39,6 +39,7 @@ import {
   type ToolFilterState,
   type ToolsExposureFilter,
 } from './gateway-list-state'
+import { DisableGatewayDialog } from './disable-gateway-dialog'
 import { EmptyState } from './empty-state'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { GatewayFilters } from './gateway-filters'
@@ -47,6 +48,7 @@ import { GatewayTable } from './gateway-table'
 import { GatewayTableSkeleton } from './table-skeleton'
 import { GatewayToolsTable } from './gateway-tools-table'
 import { TestResultPanel } from './test-result-panel'
+import { CleanupResultPanel } from './cleanup-result-panel'
 import { AURORA_GATEWAY_STAT, gatewayActionTone } from './gateway-theme'
 
 const DEFAULT_GATEWAY_LENS: GatewayPrimaryLens = 'configured'
@@ -108,12 +110,14 @@ export interface GatewayListViewProps {
   onEdit: (gateway: Gateway) => void
   onTest: (gateway: Gateway) => void
   onReload: (gateway: Gateway) => void
+  onCleanup: (gateway: Gateway, aggressive: boolean) => void
+  onToggleEnabled: (gateway: Gateway) => void
   onDelete: (gateway: Gateway) => void
 }
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
-  const { testGateway, reloadGateway, removeGateway, createGateway, updateGateway, disableVirtualServer } =
+  const { testGateway, reloadGateway, cleanupGateway, removeGateway, createGateway, updateGateway, enableGateway, disableGateway } =
     useGatewayMutations()
 
   const [primaryView, setPrimaryView] = useState<GatewayPrimaryLens | 'tools'>(DEFAULT_GATEWAY_LENS)
@@ -127,10 +131,18 @@ export function GatewayListContent() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingGateway, setEditingGateway] = useState<Gateway | null>(null)
   const [deleteGateway, setDeleteGateway] = useState<Gateway | null>(null)
+  const [disableGatewayTarget, setDisableGatewayTarget] = useState<Gateway | null>(null)
   const [testResult, setTestResult] = useState<{
     gateway: Gateway
     result: Awaited<ReturnType<typeof testGateway>>
   } | null>(null)
+  const [cleanupResult, setCleanupResult] = useState<{
+    gateway: Gateway
+    result: Awaited<ReturnType<typeof cleanupGateway>>
+  } | null>(null)
+  const [cleanupSummaryByGatewayId, setCleanupSummaryByGatewayId] = useState<
+    Record<string, string>
+  >({})
 
   const items = gateways ?? []
 
@@ -299,16 +311,59 @@ export function GatewayListContent() {
     if (!deleteGateway) return
 
     try {
-      if (deleteGateway.source === 'in_process') {
-        await disableVirtualServer(deleteGateway.id)
-        toast.success('Lab gateway disabled successfully')
-      } else {
-        await removeGateway(deleteGateway.id)
-        toast.success('Gateway removed successfully')
-      }
+      await removeGateway(deleteGateway.id)
+      toast.success('Gateway removed successfully')
       setDeleteGateway(null)
     } catch (requestError) {
       toast.error(getErrorMessage(requestError, 'Failed to remove gateway'))
+    }
+  }
+
+  const handleCleanup = async (gateway: Gateway, aggressive: boolean) => {
+    try {
+      const result = await cleanupGateway(gateway.id, aggressive)
+      setCleanupResult({ gateway, result })
+      const totalKilled =
+        result.gateway_killed + result.local_killed + result.aggressive_killed
+      setCleanupSummaryByGatewayId((current) => ({
+        ...current,
+        [gateway.id]: aggressive
+          ? `last cleanup: ${totalKilled} killed (aggressive)`
+          : `last cleanup: ${totalKilled} killed`,
+      }))
+      toast.success(
+        aggressive
+          ? `Aggressive cleanup completed. ${totalKilled} processes terminated.`
+          : `Runtime cleanup completed. ${totalKilled} processes terminated.`,
+      )
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to cleanup gateway runtime'))
+    }
+  }
+
+  const handleToggleEnabled = async (gateway: Gateway) => {
+    if (gateway.enabled ?? true) {
+      setDisableGatewayTarget(gateway)
+      return
+    }
+
+    try {
+      await enableGateway(gateway.id)
+      toast.success('Gateway enabled. Catalog change sent to clients.')
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to update gateway state'))
+    }
+  }
+
+  const handleDisableConfirm = async () => {
+    if (!disableGatewayTarget) return
+
+    try {
+      await disableGateway(disableGatewayTarget.id)
+      toast.success('Gateway disabled. Catalog change sent and runtime cleanup requested.')
+      setDisableGatewayTarget(null)
+    } catch (requestError) {
+      toast.error(getErrorMessage(requestError, 'Failed to update gateway state'))
     }
   }
 
@@ -351,6 +406,7 @@ export function GatewayListContent() {
         itemsCount={items.length}
         filteredGateways={filteredGateways}
         filteredToolRows={filteredToolRows}
+        cleanupSummaryByGatewayId={cleanupSummaryByGatewayId}
         onPrimaryLensChange={handlePrimaryLens}
         onBackToGateways={handleBackToGateways}
         onMobileSheetOpenChange={setMobileSheetOpen}
@@ -364,6 +420,8 @@ export function GatewayListContent() {
         onEdit={handleEdit}
         onTest={handleTest}
         onReload={handleReload}
+        onCleanup={handleCleanup}
+        onToggleEnabled={handleToggleEnabled}
         onDelete={setDeleteGateway}
       />
 
@@ -380,7 +438,14 @@ export function GatewayListContent() {
         onConfirm={handleDelete}
       />
 
+      <DisableGatewayDialog
+        gateway={disableGatewayTarget}
+        onOpenChange={(open: boolean) => !open && setDisableGatewayTarget(null)}
+        onConfirm={handleDisableConfirm}
+      />
+
       <TestResultPanel result={testResult} onClose={() => setTestResult(null)} />
+      <CleanupResultPanel result={cleanupResult} onClose={() => setCleanupResult(null)} />
     </>
   )
 }
@@ -412,6 +477,8 @@ export function GatewayListView({
   onEdit,
   onTest,
   onReload,
+  onCleanup,
+  onToggleEnabled,
   onDelete,
 }: GatewayListViewProps) {
   return (
@@ -601,6 +668,8 @@ export function GatewayListView({
                   onEdit={onEdit}
                   onTest={onTest}
                   onReload={onReload}
+                  onCleanup={onCleanup}
+                  onToggleEnabled={onToggleEnabled}
                   onDelete={onDelete}
                 />
               )}

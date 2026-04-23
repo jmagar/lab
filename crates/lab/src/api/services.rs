@@ -10,6 +10,7 @@
 /// Shared dispatch wrapper: confirmation gate, timing, logging.
 pub mod helpers;
 
+pub mod acp;
 pub mod extract;
 pub mod gateway;
 pub mod logs;

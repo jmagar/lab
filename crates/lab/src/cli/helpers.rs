@@ -186,7 +186,11 @@ mod tests {
                 "unifi",
                 "sites.list".to_string(),
                 json!({}),
-                OutputFormat::Json,
+                OutputFormat::from_json_flag(
+                    true,
+                    crate::output::ColorPolicy::Auto,
+                    crate::output::RenderEnv::stdout(),
+                ),
                 |_action, _params| async { Ok(json!({"ok": true})) },
             )
             .await
@@ -228,7 +232,11 @@ mod tests {
                 "bytestash",
                 "snippets.get".to_string(),
                 json!({}),
-                OutputFormat::Json,
+                OutputFormat::from_json_flag(
+                    true,
+                    crate::output::ColorPolicy::Auto,
+                    crate::output::RenderEnv::stdout(),
+                ),
                 |_action, _params| async {
                     Err(ToolError::MissingParam {
                         message: "missing required parameter `id`".into(),

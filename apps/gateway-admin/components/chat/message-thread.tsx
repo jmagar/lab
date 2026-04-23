@@ -27,25 +27,17 @@ function EmptyState() {
 
 export function MessageThread({ run, messages }: MessageThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null)
-  const prevRunIdRef = React.useRef<string | null>(run?.id ?? null)
-  const prevLengthRef = React.useRef(0)
 
   React.useEffect(() => {
-    const runChanged = prevRunIdRef.current !== (run?.id ?? null)
-    const lengthChanged = messages.length !== prevLengthRef.current
-    if (runChanged || lengthChanged) {
-      bottomRef.current?.scrollIntoView({ behavior: runChanged ? 'auto' : 'smooth' })
-      prevRunIdRef.current = run?.id ?? null
-      prevLengthRef.current = messages.length
-    }
-  }, [messages, run?.id])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   if (!run) {
     return <EmptyState />
   }
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="min-h-0 flex-1 overflow-hidden">
       <div className="mx-auto flex max-w-[820px] flex-col gap-5 px-6 py-6">
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />

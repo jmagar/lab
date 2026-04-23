@@ -51,6 +51,7 @@ test('gateway table uses aurora lifted surfaces and muted operational pills', ()
       onEdit: () => {},
       onTest: () => {},
       onReload: () => {},
+      onToggleEnabled: () => {},
       onDelete: () => {},
     }),
   )

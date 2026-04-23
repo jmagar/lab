@@ -1,13 +1,23 @@
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use lab_apis::marketplace::{Artifact, ArtifactLang, Marketplace, Plugin, PluginSource};
+use serde::Serialize;
 use serde_json::{Map, Value};
+use tempfile::NamedTempFile;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{action_schema, help_payload, optional_str, require_str, to_json};
+use crate::dispatch::helpers::{
+    action_schema, env_non_empty, help_payload, optional_str, require_str, to_json,
+};
 use crate::dispatch::marketplace::catalog::ACTIONS;
 use crate::dispatch::marketplace::params::parse_plugin_id;
+
+#[cfg(test)]
+static TEST_PLUGINS_ROOT_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+#[cfg(test)]
+static TEST_PLUGINS_ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     let start = std::time::Instant::now();
@@ -59,6 +69,24 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
             let id = require_str(&params, "id")?.to_string();
             plugin_artifacts(&id).await
         }
+        "plugin.workspace" => {
+            let id = require_str(&params, "id")?.to_string();
+            plugin_workspace(&id).await
+        }
+        "plugin.save" => {
+            let id = require_str(&params, "id")?.to_string();
+            let path = require_str(&params, "path")?.to_string();
+            let content = require_str(&params, "content")?.to_string();
+            plugin_save(&id, &path, &content).await
+        }
+        "plugin.deploy" => {
+            let id = require_str(&params, "id")?.to_string();
+            plugin_deploy(&id).await
+        }
+        "plugin.deploy.preview" => {
+            let id = require_str(&params, "id")?.to_string();
+            plugin_deploy_preview(&id).await
+        }
         "plugin.install" => {
             let id = require_str(&params, "id")?.to_string();
             plugin_shell("install", &id).await
@@ -78,7 +106,12 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
 // ---------- paths ----------
 
 fn plugins_root() -> Result<PathBuf, ToolError> {
-    let home = std::env::var_os("HOME").ok_or_else(|| ToolError::Sdk {
+    #[cfg(test)]
+    if let Some(path) = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap().clone() {
+        return Ok(path);
+    }
+
+    let home = env_non_empty("HOME").ok_or_else(|| ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: "HOME env var not set".into(),
     })?;
@@ -242,6 +275,54 @@ struct InstalledRecord {
     last_updated: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct PluginWorkspace {
+    #[serde(rename = "pluginId")]
+    plugin_id: String,
+    files: Vec<Artifact>,
+    #[serde(rename = "hasDirtyFiles")]
+    has_dirty_files: bool,
+    #[serde(rename = "deployTarget", skip_serializing_if = "Option::is_none")]
+    deploy_target: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SaveResult {
+    #[serde(rename = "savedAt")]
+    saved_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DeployResult {
+    ok: bool,
+    changed: Vec<String>,
+    skipped: Vec<String>,
+    removed: Vec<String>,
+    failed: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DeployPreviewResult {
+    changed: Vec<String>,
+    skipped: Vec<String>,
+    removed: Vec<String>,
+    entries: Vec<DeployPreviewEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DeployPreviewEntry {
+    path: String,
+    status: &'static str,
+    #[serde(rename = "beforeContent", skip_serializing_if = "Option::is_none")]
+    before_content: Option<String>,
+    #[serde(rename = "afterContent", skip_serializing_if = "Option::is_none")]
+    after_content: Option<String>,
+}
+
 fn load_installed() -> Result<HashMap<String, InstalledRecord>, ToolError> {
     let path = plugins_root()?.join("installed_plugins.json");
     if !path.exists() {
@@ -401,18 +482,116 @@ async fn plugin_artifacts(id: &str) -> Result<Value, ToolError> {
     parse_plugin_id(id)?;
     let id_owned = id.to_string();
     let artifacts = tokio::task::spawn_blocking(move || -> Result<Vec<Artifact>, ToolError> {
-        let installed = load_installed()?;
-        let Some(rec) = installed.get(&id_owned) else {
-            return Err(ToolError::Sdk {
-                sdk_kind: "not_found".into(),
-                message: format!("plugin `{id_owned}` is not installed"),
-            });
-        };
-        walk_artifacts(&rec.install_path, &rec.install_path)
+        let source = source_path_for_plugin(&id_owned)?;
+        walk_artifacts(&source, &source)
     })
     .await
     .map_err(join_err)??;
     to_json(artifacts)
+}
+
+async fn plugin_workspace(id: &str) -> Result<Value, ToolError> {
+    parse_plugin_id(id)?;
+    let id_owned = id.to_string();
+    let workspace = tokio::task::spawn_blocking(move || -> Result<PluginWorkspace, ToolError> {
+        let dir = ensure_workspace_for_plugin(&id_owned)?;
+        let target = installed_target_for_plugin(&id_owned)?
+            .map(|path| path.to_string_lossy().into_owned());
+        let files = walk_artifacts(&dir, &dir)?;
+        Ok(PluginWorkspace {
+            plugin_id: id_owned,
+            files,
+            has_dirty_files: false,
+            deploy_target: target,
+        })
+    })
+    .await
+    .map_err(join_err)??;
+    to_json(workspace)
+}
+
+async fn plugin_save(id: &str, rel_path: &str, content: &str) -> Result<Value, ToolError> {
+    parse_plugin_id(id)?;
+    let id_owned = id.to_string();
+    let rel_owned = rel_path.to_string();
+    let content_owned = content.to_string();
+    let result = tokio::task::spawn_blocking(move || -> Result<SaveResult, ToolError> {
+        let workspace = ensure_workspace_for_plugin(&id_owned)?;
+        let target = resolve_relative_path(&workspace, &rel_owned)?;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(io_internal)?;
+        }
+        let temp_dir = target.parent().unwrap_or(&workspace);
+        let mut temp = NamedTempFile::new_in(temp_dir).map_err(io_internal)?;
+        temp.write_all(content_owned.as_bytes()).map_err(io_internal)?;
+        temp.flush().map_err(io_internal)?;
+        temp.persist(&target).map_err(|err| io_internal(err.error))?;
+        Ok(SaveResult {
+            saved_at: jiff::Timestamp::now().to_string(),
+        })
+    })
+    .await
+    .map_err(join_err)??;
+    to_json(result)
+}
+
+async fn plugin_deploy(id: &str) -> Result<Value, ToolError> {
+    parse_plugin_id(id)?;
+    let id_owned = id.to_string();
+    let result = tokio::task::spawn_blocking(move || -> Result<DeployResult, ToolError> {
+        let workspace = ensure_workspace_for_plugin(&id_owned)?;
+        let target = installed_target_for_plugin(&id_owned)?.ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("plugin `{id_owned}` must be installed before it can be deployed"),
+        })?;
+        let mut changed = Vec::new();
+        let mut skipped = Vec::new();
+        let mut removed = Vec::new();
+        let mut failed = Vec::new();
+        sync_workspace_to_target(
+            &workspace,
+            &target,
+            &workspace,
+            &mut changed,
+            &mut skipped,
+            &mut removed,
+            &mut failed,
+        )?;
+        Ok(DeployResult {
+            ok: failed.is_empty(),
+            changed,
+            skipped,
+            removed,
+            failed,
+            target: Some(target.to_string_lossy().into_owned()),
+        })
+    })
+    .await
+    .map_err(join_err)??;
+    to_json(result)
+}
+
+async fn plugin_deploy_preview(id: &str) -> Result<Value, ToolError> {
+    parse_plugin_id(id)?;
+    let id_owned = id.to_string();
+    let result = tokio::task::spawn_blocking(move || -> Result<DeployPreviewResult, ToolError> {
+        let workspace = ensure_workspace_for_plugin(&id_owned)?;
+        let target = installed_target_for_plugin(&id_owned)?.ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("plugin `{id_owned}` must be installed before deployment can be previewed"),
+        })?;
+        let preview = preview_workspace_sync(&workspace, &target, &workspace)?;
+        Ok(DeployPreviewResult {
+            changed: preview.changed,
+            skipped: preview.skipped,
+            removed: preview.removed,
+            entries: preview.entries,
+            target: Some(target.to_string_lossy().into_owned()),
+        })
+    })
+    .await
+    .map_err(join_err)??;
+    to_json(result)
 }
 
 fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
@@ -425,7 +604,7 @@ fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
         let p = entry.path();
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with('.') || name == "node_modules" || name == "target" {
+        if name == ".git" || name == "node_modules" || name == "target" {
             continue;
         }
         if p.is_dir() {
@@ -455,6 +634,267 @@ fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
         });
     }
     Ok(out)
+}
+
+fn workspace_root() -> Result<PathBuf, ToolError> {
+    Ok(plugins_root()?.join("workspaces"))
+}
+
+fn workspace_dir_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
+    Ok(workspace_root()?.join(sanitize_plugin_id(id)))
+}
+
+fn sanitize_plugin_id(id: &str) -> String {
+    id.chars()
+        .map(|ch| match ch {
+            '/' | '\\' | ':' => '_',
+            other => other,
+        })
+        .collect()
+}
+
+fn source_path_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
+    let (name, marketplace) = parse_plugin_id(id)?;
+    let candidate = plugins_root()?.join("marketplaces").join(marketplace).join(name);
+    if candidate.exists() {
+        return Ok(candidate);
+    }
+    let installed = load_installed()?;
+    if let Some(record) = installed.get(id) {
+        return Ok(record.install_path.clone());
+    }
+    Err(ToolError::Sdk {
+        sdk_kind: "not_found".into(),
+        message: format!("no local plugin source found for `{id}`"),
+    })
+}
+
+fn ensure_workspace_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
+    let workspace = workspace_dir_for_plugin(id)?;
+    if workspace.exists() {
+        return Ok(workspace);
+    }
+    let source = source_path_for_plugin(id)?;
+    std::fs::create_dir_all(&workspace).map_err(io_internal)?;
+    copy_tree(&source, &workspace)?;
+    Ok(workspace)
+}
+
+fn installed_target_for_plugin(id: &str) -> Result<Option<PathBuf>, ToolError> {
+    Ok(load_installed()?.get(id).map(|record| record.install_path.clone()))
+}
+
+fn copy_tree(source: &Path, dest: &Path) -> Result<(), ToolError> {
+    let rd = std::fs::read_dir(source).map_err(io_internal)?;
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == ".git" || name == "node_modules" || name == "target" {
+            continue;
+        }
+        let target = dest.join(entry.file_name());
+        if path.is_dir() {
+            std::fs::create_dir_all(&target).map_err(io_internal)?;
+            copy_tree(&path, &target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(io_internal)?;
+            }
+            std::fs::copy(&path, &target).map_err(io_internal)?;
+        }
+    }
+    Ok(())
+}
+
+fn resolve_relative_path(root: &Path, rel_path: &str) -> Result<PathBuf, ToolError> {
+    let candidate = Path::new(rel_path);
+    if candidate.is_absolute() {
+        return Err(ToolError::InvalidParam {
+            message: "path must be relative".into(),
+            param: "path".into(),
+        });
+    }
+    for component in candidate.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err(ToolError::InvalidParam {
+                message: "path must not contain parent-directory traversal".into(),
+                param: "path".into(),
+            });
+        }
+    }
+    Ok(root.join(candidate))
+}
+
+fn sync_workspace_to_target(
+    workspace: &Path,
+    target: &Path,
+    current: &Path,
+    changed: &mut Vec<String>,
+    skipped: &mut Vec<String>,
+    removed: &mut Vec<String>,
+    failed: &mut Vec<String>,
+) -> Result<(), ToolError> {
+    let current_rel = current.strip_prefix(workspace).unwrap_or(current);
+    let current_target = if current_rel.as_os_str().is_empty() {
+        target.to_path_buf()
+    } else {
+        target.join(current_rel)
+    };
+
+    std::fs::create_dir_all(&current_target).map_err(io_internal)?;
+    let rd = std::fs::read_dir(current).map_err(io_internal)?;
+    let mut seen_names = std::collections::HashSet::new();
+    for entry in rd.flatten() {
+        let source = entry.path();
+        let file_name = entry.file_name();
+        seen_names.insert(file_name.clone());
+        let rel = source
+            .strip_prefix(workspace)
+            .unwrap_or(&source)
+            .to_string_lossy()
+            .into_owned();
+        let dest = current_target.join(&file_name);
+        if source.is_dir() {
+            std::fs::create_dir_all(&dest).map_err(io_internal)?;
+            sync_workspace_to_target(workspace, target, &source, changed, skipped, removed, failed)?;
+            continue;
+        }
+        let source_bytes = std::fs::read(&source).map_err(io_internal)?;
+        match std::fs::read(&dest) {
+            Ok(existing) if existing == source_bytes => {
+                skipped.push(rel);
+            }
+            Ok(_) | Err(_) => {
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent).map_err(io_internal)?;
+                }
+                match std::fs::write(&dest, &source_bytes) {
+                    Ok(_) => changed.push(rel),
+                    Err(_) => failed.push(rel),
+                }
+            }
+        }
+    }
+
+    let target_rd = std::fs::read_dir(&current_target).map_err(io_internal)?;
+    for entry in target_rd.flatten() {
+        let file_name = entry.file_name();
+        if seen_names.contains(&file_name) {
+            continue;
+        }
+        let stale_path = entry.path();
+        let stale_rel = stale_path
+            .strip_prefix(target)
+            .unwrap_or(&stale_path)
+            .to_string_lossy()
+            .into_owned();
+        let removal = if stale_path.is_dir() {
+            std::fs::remove_dir_all(&stale_path)
+        } else {
+            std::fs::remove_file(&stale_path)
+        };
+        match removal {
+            Ok(()) => removed.push(stale_rel),
+            Err(_) => failed.push(stale_rel),
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+struct SyncPreview {
+    changed: Vec<String>,
+    skipped: Vec<String>,
+    removed: Vec<String>,
+    entries: Vec<DeployPreviewEntry>,
+}
+
+fn preview_workspace_sync(
+    workspace: &Path,
+    target: &Path,
+    current: &Path,
+) -> Result<SyncPreview, ToolError> {
+    let current_rel = current.strip_prefix(workspace).unwrap_or(current);
+    let current_target = if current_rel.as_os_str().is_empty() {
+        target.to_path_buf()
+    } else {
+        target.join(current_rel)
+    };
+
+    let mut preview = SyncPreview::default();
+    let rd = std::fs::read_dir(current).map_err(io_internal)?;
+    let mut seen_names = std::collections::HashSet::new();
+    for entry in rd.flatten() {
+        let source = entry.path();
+        let file_name = entry.file_name();
+        seen_names.insert(file_name.clone());
+        let rel = source
+            .strip_prefix(workspace)
+            .unwrap_or(&source)
+            .to_string_lossy()
+            .into_owned();
+        let dest = current_target.join(&file_name);
+        if source.is_dir() {
+            let nested = preview_workspace_sync(workspace, target, &source)?;
+            preview.changed.extend(nested.changed);
+            preview.skipped.extend(nested.skipped);
+            preview.removed.extend(nested.removed);
+            preview.entries.extend(nested.entries);
+            continue;
+        }
+        let source_bytes = std::fs::read(&source).map_err(io_internal)?;
+        match std::fs::read(&dest) {
+            Ok(existing) if existing == source_bytes => preview.skipped.push(rel),
+            Ok(_) | Err(_) => {
+                let before_content = std::fs::read_to_string(&dest).ok();
+                let after_content = std::fs::read_to_string(&source).ok();
+                preview.changed.push(rel.clone());
+                preview.entries.push(DeployPreviewEntry {
+                    path: rel,
+                    status: "changed",
+                    before_content,
+                    after_content,
+                });
+            }
+        }
+    }
+
+    if let Ok(target_rd) = std::fs::read_dir(&current_target) {
+        for entry in target_rd.flatten() {
+            let file_name = entry.file_name();
+            if seen_names.contains(&file_name) {
+                continue;
+            }
+            let stale_path = entry.path();
+            let stale_rel = stale_path
+                .strip_prefix(target)
+                .unwrap_or(&stale_path)
+                .to_string_lossy()
+                .into_owned();
+            preview.removed.push(stale_rel);
+            preview.entries.push(DeployPreviewEntry {
+                path: stale_path
+                    .strip_prefix(target)
+                    .unwrap_or(&stale_path)
+                    .to_string_lossy()
+                    .into_owned(),
+                status: "removed",
+                before_content: std::fs::read_to_string(&stale_path).ok(),
+                after_content: None,
+            });
+        }
+    }
+
+    Ok(preview)
+}
+
+fn io_internal(error: impl std::fmt::Display) -> ToolError {
+    ToolError::Sdk {
+        sdk_kind: "internal_error".into(),
+        message: error.to_string(),
+    }
 }
 
 fn detect_lang(p: &Path) -> ArtifactLang {
@@ -539,5 +979,187 @@ fn join_err(e: tokio::task::JoinError) -> ToolError {
     ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: format!("spawn_blocking join error: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tempfile::tempdir;
+    use tokio::runtime::Builder;
+
+    fn with_home<T>(home: &Path, run: impl FnOnce() -> T) -> T {
+        let _guard = TEST_PLUGINS_ROOT_LOCK.lock().unwrap();
+        let plugins_root = home.join(".claude").join("plugins");
+        let previous = {
+            let mut slot = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap();
+            std::mem::replace(&mut *slot, Some(plugins_root))
+        };
+        let result = run();
+        let mut slot = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap();
+        *slot = previous;
+        result
+    }
+
+    fn dispatch_with_home(home: &Path, action: &str, params: Value) -> Result<Value, ToolError> {
+        with_home(home, || {
+            Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async { dispatch(action, params).await })
+        })
+    }
+
+    fn seed_marketplace(home: &Path) {
+        let plugins = home.join(".claude").join("plugins");
+        std::fs::create_dir_all(plugins.join("marketplaces").join("demo-market").join("demo-plugin")).unwrap();
+        std::fs::write(
+            plugins.join("known_marketplaces.json"),
+            json!({
+                "demo-market": {
+                    "source": { "source": "github", "repo": "demo/demo-market" },
+                    "autoUpdate": false,
+                    "lastUpdated": "2026-04-22T00:00:00Z",
+                    "installLocation": plugins.join("marketplaces").join("demo-market")
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            plugins.join("marketplaces").join("demo-market").join("marketplace.json"),
+            json!({
+                "name": "Demo Market",
+                "plugins": [{ "name": "demo-plugin", "version": "1.0.0", "description": "Demo" }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            plugins.join("marketplaces").join("demo-market").join("demo-plugin").join("plugin.json"),
+            r#"{"name":"demo-plugin"}"#,
+        )
+        .unwrap();
+    }
+
+    fn seed_installed(home: &Path) -> PathBuf {
+        let plugins = home.join(".claude").join("plugins");
+        let install_path = plugins.join("installed").join("demo-plugin");
+        std::fs::create_dir_all(&install_path).unwrap();
+        std::fs::write(install_path.join("plugin.json"), r#"{"name":"demo-plugin","version":"0.9.0"}"#).unwrap();
+        std::fs::write(
+            plugins.join("installed_plugins.json"),
+            json!({
+                "plugins": {
+                    "demo-plugin@demo-market": [{
+                        "installPath": install_path,
+                        "installedAt": "2026-04-22T00:00:00Z",
+                        "lastUpdated": "2026-04-22T00:00:00Z"
+                    }]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        install_path
+    }
+
+    #[test]
+    fn workspace_action_creates_workspace_and_preserves_dotfiles() {
+        let dir = tempdir().unwrap();
+        with_home(dir.path(), || {
+            seed_marketplace(dir.path());
+            let source = dir.path().join(".claude").join("plugins").join("marketplaces").join("demo-market").join("demo-plugin");
+            std::fs::create_dir_all(source.join(".claude-plugin")).unwrap();
+            std::fs::write(source.join(".claude-plugin").join("plugin.json"), r#"{"name":"demo"}"#).unwrap();
+        });
+
+        let response =
+            dispatch_with_home(dir.path(), "plugin.workspace", json!({ "id": "demo-plugin@demo-market" })).unwrap();
+
+        let files = response.get("files").and_then(Value::as_array).unwrap();
+        assert!(files.iter().any(|file| file.get("path").and_then(Value::as_str) == Some(".claude-plugin/plugin.json")));
+    }
+
+    #[test]
+    fn save_action_writes_workspace_file() {
+        let dir = tempdir().unwrap();
+        with_home(dir.path(), || {
+            seed_marketplace(dir.path());
+        });
+
+        dispatch_with_home(
+            dir.path(),
+            "plugin.save",
+            json!({ "id": "demo-plugin@demo-market", "path": "plugin.json", "content": "{\"name\":\"edited\"}" }),
+        )
+        .unwrap();
+
+        let saved = dir
+            .path()
+            .join(".claude")
+            .join("plugins")
+            .join("workspaces")
+            .join("demo-plugin@demo-market")
+            .join("plugin.json");
+        assert_eq!(std::fs::read_to_string(saved).unwrap(), "{\"name\":\"edited\"}");
+    }
+
+    #[test]
+    fn deploy_action_syncs_workspace_to_installed_target() {
+        let dir = tempdir().unwrap();
+        let install_path = with_home(dir.path(), || {
+            seed_marketplace(dir.path());
+            seed_installed(dir.path())
+        });
+
+        dispatch_with_home(
+            dir.path(),
+            "plugin.save",
+            json!({ "id": "demo-plugin@demo-market", "path": "plugin.json", "content": "{\"name\":\"deployed\"}" }),
+        )
+        .unwrap();
+
+        let deployed =
+            dispatch_with_home(dir.path(), "plugin.deploy", json!({ "id": "demo-plugin@demo-market" })).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(install_path.join("plugin.json")).unwrap(),
+            "{\"name\":\"deployed\"}"
+        );
+        assert!(deployed.get("changed").and_then(Value::as_array).unwrap().iter().any(|item| item == "plugin.json"));
+    }
+
+    #[test]
+    fn deploy_preview_reports_changed_and_removed_files() {
+        let dir = tempdir().unwrap();
+        with_home(dir.path(), || {
+            seed_marketplace(dir.path());
+            let install_path = seed_installed(dir.path());
+            std::fs::write(install_path.join("stale.txt"), "obsolete").unwrap();
+        });
+
+        dispatch_with_home(
+            dir.path(),
+            "plugin.save",
+            json!({ "id": "demo-plugin@demo-market", "path": "plugin.json", "content": "{\"name\":\"previewed\"}" }),
+        )
+        .unwrap();
+
+        let preview = dispatch_with_home(
+            dir.path(),
+            "plugin.deploy.preview",
+            json!({ "id": "demo-plugin@demo-market" }),
+        )
+        .unwrap();
+
+        assert!(preview.get("changed").and_then(Value::as_array).unwrap().iter().any(|item| item == "plugin.json"));
+        assert!(preview.get("removed").and_then(Value::as_array).unwrap().iter().any(|item| item == "stale.txt"));
+        assert!(preview.get("entries").and_then(Value::as_array).unwrap().iter().any(|entry| {
+            entry.get("path").and_then(Value::as_str) == Some("plugin.json")
+                && entry.get("afterContent").and_then(Value::as_str) == Some("{\"name\":\"previewed\"}")
+        }));
     }
 }

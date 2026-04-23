@@ -7,6 +7,7 @@
 #![allow(clippy::multiple_crate_versions)]
 #![allow(unreachable_pub)] // binary crate — `pub` items are crate-internal by design
 
+mod acp;
 mod api;
 mod audit;
 mod catalog;
@@ -24,7 +25,6 @@ mod test_support;
 mod log_fmt;
 mod tui;
 
-use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -38,6 +38,7 @@ use tracing_subscriber::{
 use crate::cli::Cli;
 use crate::dispatch::logs::ingest::LogIngestLayer;
 use crate::log_fmt::formatter::PremiumEventFormatter;
+use crate::output::{ColorPolicy, RenderEnv, human_output_styling_enabled};
 
 fn human_console_target_enabled(target: &str) -> bool {
     target == "lab"
@@ -52,7 +53,7 @@ fn human_console_target_enabled(target: &str) -> bool {
 ///
 /// Accepts config.toml log preferences; env vars `LAB_LOG` / `LAB_LOG_FORMAT`
 /// override them when set.
-fn init_tracing(log: &config::LogPreferences) {
+fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy) {
     // Env var wins → config.toml → default.
     let filter = EnvFilter::try_from_env("LAB_LOG").unwrap_or_else(|_| {
         let directive = log
@@ -78,7 +79,7 @@ fn init_tracing(log: &config::LogPreferences) {
             .init();
     } else {
         let fmt_layer = fmt::layer()
-            .with_ansi(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
+            .with_ansi(human_output_styling_enabled(color_policy, RenderEnv::stderr()))
             .with_target(false)
             .event_format(PremiumEventFormatter)
             .with_writer(std::io::stderr)
@@ -93,6 +94,8 @@ fn init_tracing(log: &config::LogPreferences) {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    let cli = Cli::parse();
+
     // 1. Load config.toml first (lightweight, no tracing needed).
     //    eprintln is intentional — tracing isn't initialized yet.
     let config = match config::load_toml(&config::toml_candidates()) {
@@ -107,15 +110,13 @@ async fn main() -> ExitCode {
     };
 
     // 2. Init tracing using config.toml [log] preferences (env vars override).
-    init_tracing(&config.log);
+    init_tracing(&config.log, cli.color);
 
     // 3. Load .env files (secrets + URL env vars).
     if let Err(err) = config::load_dotenv() {
         tracing::error!("dotenv load error: {err:#}");
         return ExitCode::from(2);
     }
-
-    let cli = Cli::parse();
 
     match cli::dispatch(cli, config).await {
         Ok(code) => code,

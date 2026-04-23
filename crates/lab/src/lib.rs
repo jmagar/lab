@@ -1,5 +1,6 @@
 #![allow(clippy::multiple_crate_versions)]
 
+pub mod acp;
 #[allow(unreachable_pub)]
 pub mod api;
 #[allow(unreachable_pub)]

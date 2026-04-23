@@ -4,23 +4,21 @@ import * as React from 'react'
 import { ChevronDown, ChevronRight, Terminal, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import type { ACPToolUsePart, ACPToolResultPart } from './types'
+import type { TranscriptToolCall } from './types'
 
 interface ToolCallDisplayProps {
-  toolUse: ACPToolUsePart
-  toolResult?: ACPToolResultPart
-  isPending?: boolean
+  toolCall: TranscriptToolCall
 }
 
-export function ToolCallDisplay({ toolUse, toolResult, isPending = false }: ToolCallDisplayProps) {
+export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
   const [open, setOpen] = React.useState(false)
 
-  const statusIcon = isPending ? (
-    <Loader2 className="size-3.5 animate-spin text-aurora-accent-primary" />
-  ) : toolResult?.is_error ? (
+  const statusIcon = toolCall.status === 'failed' ? (
     <XCircle className="size-3.5 text-aurora-error" />
-  ) : (
+  ) : toolCall.status === 'completed' ? (
     <CheckCircle2 className="size-3.5 text-aurora-success" />
+  ) : (
+    <Loader2 className="size-3.5 animate-spin text-aurora-accent-primary" />
   )
 
   return (
@@ -35,7 +33,7 @@ export function ToolCallDisplay({ toolUse, toolResult, isPending = false }: Tool
         >
           <Terminal className="size-3.5 shrink-0 text-aurora-accent-primary/70" />
           <span className="flex-1 text-[12px] font-medium text-aurora-text-primary">
-            {toolUse.name}
+            {toolCall.title}
           </span>
           {statusIcon}
           {open ? (
@@ -48,38 +46,25 @@ export function ToolCallDisplay({ toolUse, toolResult, isPending = false }: Tool
 
       <CollapsibleContent>
         <div className="mt-1 overflow-hidden rounded-b-aurora-1 rounded-t-sm border border-t-0 border-aurora-border-default bg-aurora-page-bg">
-          {/* Input */}
           <div className="border-b border-aurora-border-default/60 px-3 py-2">
             <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-aurora-text-muted/60">
               Input
             </p>
             <pre className="overflow-x-auto font-mono text-[11px] leading-[1.5] text-aurora-text-primary">
-              {JSON.stringify(toolUse.input, null, 2)}
+              {JSON.stringify(toolCall.input ?? {}, null, 2)}
             </pre>
           </div>
 
-          {/* Output */}
-          {toolResult && (
+          {toolCall.output !== undefined && (
             <div className="px-3 py-2">
-              <p className={cn(
-                'mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em]',
-                toolResult.is_error ? 'text-aurora-error/70' : 'text-aurora-success/70',
-              )}>
-                {toolResult.is_error ? 'Error' : 'Output'}
+              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-aurora-success/70">
+                Output
               </p>
-              <pre className={cn(
-                'overflow-x-auto font-mono text-[11px] leading-[1.5] whitespace-pre-wrap',
-                toolResult.is_error ? 'text-aurora-error' : 'text-aurora-text-primary',
-              )}>
-                {toolResult.content}
+              <pre className="overflow-x-auto font-mono text-[11px] leading-[1.5] whitespace-pre-wrap text-aurora-text-primary">
+                {typeof toolCall.output === 'string'
+                  ? toolCall.output
+                  : JSON.stringify(toolCall.output, null, 2)}
               </pre>
-            </div>
-          )}
-
-          {isPending && (
-            <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-aurora-text-muted/60">
-              <Loader2 className="size-3 animate-spin" />
-              Running…
             </div>
           )}
         </div>

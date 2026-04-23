@@ -307,6 +307,116 @@ pub const ACTIONS: &[ActionSpec] = &[
             description: "HTTPS URL of the upstream MCP server to probe for OAuth support",
         }],
     },
+    ActionSpec {
+        name: "gateway.oauth.start",
+        description: "Start the upstream OAuth flow for the shared gateway credential and return the browser authorization URL",
+        destructive: false,
+        returns: "BeginAuthorization",
+        params: &[
+            ParamSpec {
+                name: "upstream",
+                ty: "string",
+                required: true,
+                description: "Configured upstream name",
+            },
+            ParamSpec {
+                name: "subject",
+                ty: "string",
+                required: false,
+                description: "Optional credential owner key. Defaults to the shared gateway subject `gateway`.",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "gateway.oauth.status",
+        description: "Read upstream OAuth status for the shared gateway credential",
+        destructive: false,
+        returns: "UpstreamOauthStatusView",
+        params: &[
+            ParamSpec {
+                name: "upstream",
+                ty: "string",
+                required: true,
+                description: "Configured upstream name",
+            },
+            ParamSpec {
+                name: "subject",
+                ty: "string",
+                required: false,
+                description: "Optional credential owner key. Defaults to the shared gateway subject `gateway`.",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "gateway.oauth.clear",
+        description: "Clear stored upstream OAuth credentials for the shared gateway credential",
+        destructive: true,
+        returns: "ok",
+        params: &[
+            ParamSpec {
+                name: "upstream",
+                ty: "string",
+                required: true,
+                description: "Configured upstream name",
+            },
+            ParamSpec {
+                name: "subject",
+                ty: "string",
+                required: false,
+                description: "Optional credential owner key. Defaults to the shared gateway subject `gateway`.",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "gateway.mcp.enable",
+        description: "Enable an upstream MCP server so new sessions discover and proxy it again",
+        destructive: true,
+        returns: "GatewayView",
+        params: &[NAME_PARAM],
+    },
+    ActionSpec {
+        name: "gateway.mcp.list",
+        description: "List upstream MCP runtime state, discovery counts, and likely stale process counts",
+        destructive: false,
+        returns: "GatewayMcpRuntimeView[]",
+        params: &[],
+    },
+    ActionSpec {
+        name: "gateway.mcp.disable",
+        description: "Disable an upstream MCP server and optionally clean up running processes",
+        destructive: true,
+        returns: "GatewayView + optional cleanup result",
+        params: &[
+            NAME_PARAM,
+            ParamSpec {
+                name: "cleanup",
+                ty: "boolean",
+                required: false,
+                description: "When true, run runtime cleanup after disabling",
+            },
+            ParamSpec {
+                name: "aggressive",
+                ty: "boolean",
+                required: false,
+                description: "When true, use broader host-wide process matching during cleanup",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "gateway.mcp.cleanup",
+        description: "Kill running processes associated with one upstream MCP server",
+        destructive: true,
+        returns: "GatewayCleanupView",
+        params: &[
+            NAME_PARAM,
+            ParamSpec {
+                name: "aggressive",
+                ty: "boolean",
+                required: false,
+                description: "When true, use broader host-wide process matching during cleanup",
+            },
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -339,6 +449,7 @@ mod tests {
             "gateway.discovered_tools",
             "gateway.discovered_resources",
             "gateway.discovered_prompts",
+            "gateway.mcp.list",
         ] {
             let spec = ACTIONS
                 .iter()

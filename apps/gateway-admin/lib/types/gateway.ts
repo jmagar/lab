@@ -30,6 +30,21 @@ export interface GatewayStatus {
   exposed_resource_count: number
   discovered_prompt_count: number
   exposed_prompt_count: number
+  likely_stale_count?: number
+  pid?: number
+  pgid?: number
+  age_seconds?: number
+  origin?: string
+  owner?: {
+    surface: string
+    subject?: string
+    request_id?: string
+    session_id?: string
+    client_name?: string
+    raw?: string
+  }
+  runtime_state_path?: string
+  reconciled_at?: string
 }
 
 export interface SurfaceState {
@@ -124,6 +139,14 @@ export interface ReloadGatewayResult {
   message: string
   previous_tool_count: number
   new_tool_count: number
+}
+
+export interface GatewayCleanupResult {
+  upstream: string
+  aggressive: boolean
+  gateway_killed: number
+  local_killed: number
+  aggressive_killed: number
 }
 
 export interface SupportedServiceField {

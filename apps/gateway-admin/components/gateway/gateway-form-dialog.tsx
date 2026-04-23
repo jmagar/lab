@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { TextSurface } from '@/components/ui/text-surface'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -44,20 +45,6 @@ import {
   SERVICE_SVG_FALLBACKS,
   isServiceKey,
 } from '@/lib/branding/service-brands'
-
-function highlightJson(raw: string): string {
-  const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return esc.replace(
-    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(?=\s*:))|("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],:])/g,
-    (match, key, str, kw, num) => {
-      if (key !== undefined) return `<span style="color:var(--aurora-accent-primary)">${match}</span>`
-      if (str !== undefined) return `<span style="color:var(--aurora-success)">${match}</span>`
-      if (kw !== undefined) return `<span style="color:var(--aurora-warn)">${match}</span>`
-      if (num !== undefined) return `<span style="color:var(--aurora-accent-strong)">${match}</span>`
-      return `<span style="color:var(--aurora-text-muted)">${match}</span>`
-    },
-  )
-}
 
 interface GatewayFormDialogProps {
   open: boolean
@@ -177,7 +164,6 @@ export function GatewayFormDialog({
   const [jsonText, setJsonText] = useState('')
   const [jsonValid, setJsonValid] = useState(false)
   const syncingRef = useRef(false)
-  const jsonPreRef = useRef<HTMLPreElement>(null)
   const [envText, setEnvText] = useState('')
 
   const [selectedService, setSelectedService] = useState('')
@@ -1251,46 +1237,20 @@ export function GatewayFormDialog({
             <p className="text-xs text-aurora-text-muted">
               Live editor — changes here update the form, and form changes update this JSON automatically.
             </p>
-            <div
-              className="relative min-h-[240px] rounded-md border border-aurora-border-strong bg-[var(--aurora-control-surface)] overflow-hidden focus-within:ring-2 focus-within:ring-[var(--aurora-accent-primary)]/34"
-            >
-              {/* Syntax-highlighted backing layer — clipped by parent overflow:hidden */}
-              <pre
-                ref={jsonPreRef}
-                aria-hidden="true"
-                className="absolute top-0 left-0 min-w-full m-0 px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words pointer-events-none select-none text-[var(--aurora-text-primary)]"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: HTML-escaped JSON tokens
-                dangerouslySetInnerHTML={{ __html: jsonText ? highlightJson(jsonText) : '' }}
-              />
-              {/* Transparent textarea on top — text invisible so highlight shows through */}
-              <textarea
-                className="relative w-full min-h-[240px] bg-transparent px-3 py-2 text-xs font-mono resize-none focus:outline-none aurora-scrollbar z-10"
-                style={{
-                  color: jsonText ? 'transparent' : 'var(--aurora-text-primary)',
-                  caretColor: 'var(--aurora-text-primary)',
-                }}
-                wrap="off"
-                placeholder={'{\n  "gateway-name": {\n    "url": "http://localhost:3001/mcp"\n  }\n}'}
+            <div className="min-h-[240px]">
+              <TextSurface
+                path="gateway-config.json"
                 value={jsonText}
-                onChange={(e) => {
-                  setJsonText(e.target.value)
-                  parseJsonToForm(e.target.value)
+                mode="edit"
+                language="json"
+                onChange={(next) => {
+                  setJsonText(next)
+                  parseJsonToForm(next)
                 }}
-                onScroll={(e) => {
-                  if (jsonPreRef.current) {
-                    jsonPreRef.current.style.transform = `translate(-${e.currentTarget.scrollLeft}px, -${e.currentTarget.scrollTop}px)`
-                  }
+                onCopy={() => {
+                  void navigator.clipboard.writeText(jsonText)
                 }}
               />
-              {(() => {
-                if (!jsonText.trim()) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-aurora-text-muted z-20">Waiting</span>
-                }
-                if (jsonValid) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-aurora-success z-20">Valid</span>
-                }
-                return <span className="absolute top-2 right-2 text-[10px] text-destructive z-20">Invalid JSON</span>
-              })()}
             </div>
             {jsonValid && name && (
               <div className="flex flex-wrap gap-1.5">

@@ -30,7 +30,7 @@ use crate::registry::{RegisteredService, ToolRegistry};
 use super::types;
 use super::types::{
     ToolExposurePolicy, UpstreamCapability, UpstreamEntry, UpstreamHealth, UpstreamTool,
-    UpstreamToolExposureRow,
+    UpstreamRuntimeMetadata, UpstreamRuntimeOwner, UpstreamToolExposureRow,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -314,6 +314,10 @@ pub struct UpstreamPool {
     /// Per-upstream OAuth managers, keyed by upstream name.
     /// `None` when the server was started without OAuth support.
     oauth_client_cache: Option<OauthClientCache>,
+    /// Request/session identity stamped onto spawned stdio upstreams.
+    runtime_origin: Option<String>,
+    /// Structured owner metadata stamped onto spawned stdio upstreams.
+    runtime_owner: Option<UpstreamRuntimeOwner>,
 }
 
 /// A live connection to an upstream MCP server.
@@ -324,6 +328,8 @@ struct UpstreamConnection {
     _server_task: Option<tokio::task::JoinHandle<()>>,
     /// The peer handle for making requests.
     peer: rmcp::service::Peer<RoleClient>,
+    /// Runtime metadata for process-backed upstreams.
+    runtime: UpstreamRuntimeMetadata,
 }
 
 impl std::fmt::Debug for UpstreamConnection {
@@ -341,6 +347,8 @@ impl UpstreamPool {
             connections: Arc::new(RwLock::new(HashMap::new())),
             resource_upstreams: Arc::new(RwLock::new(Vec::new())),
             oauth_client_cache: None,
+            runtime_origin: None,
+            runtime_owner: None,
         }
     }
 
@@ -351,6 +359,18 @@ impl UpstreamPool {
     #[must_use]
     pub fn with_oauth_client_cache(mut self, cache: OauthClientCache) -> Self {
         self.oauth_client_cache = Some(cache);
+        self
+    }
+
+    #[must_use]
+    pub fn with_runtime_origin(mut self, origin: Option<String>) -> Self {
+        self.runtime_origin = origin;
+        self
+    }
+
+    #[must_use]
+    pub fn with_runtime_owner(mut self, owner: Option<UpstreamRuntimeOwner>) -> Self {
+        self.runtime_owner = owner;
         self
     }
 
@@ -385,6 +405,7 @@ impl UpstreamPool {
         // Track which upstreams have resource/prompt proxying enabled.
         let resource_names: Vec<String> = configs
             .iter()
+            .filter(|c| c.enabled)
             .filter(|c| c.proxy_resources)
             .map(|c| c.name.clone())
             .collect();
@@ -393,8 +414,13 @@ impl UpstreamPool {
         let mut futures = FuturesUnordered::new();
         let mut processed_names = std::collections::HashSet::new();
         let oauth_client_cache = self.oauth_client_cache.clone();
+        let runtime_origin = self.runtime_origin.clone();
+        let runtime_owner = self.runtime_owner.clone();
 
         for config in configs {
+            if !config.enabled {
+                continue;
+            }
             // Skip duplicates (only process the first occurrence of each name).
             if !processed_names.insert(&config.name) {
                 continue;
@@ -414,11 +440,19 @@ impl UpstreamPool {
 
             let config = config.clone();
             let oauth_client_cache = oauth_client_cache.clone();
+            let runtime_origin = runtime_origin.clone();
+            let runtime_owner = runtime_owner.clone();
             futures.push(async move {
                 let name = config.name.clone();
                 match tokio::time::timeout(
                     DISCOVERY_TIMEOUT,
-                    connect_upstream(&config, None, oauth_client_cache.as_ref()),
+                    connect_upstream(
+                        &config,
+                        None,
+                        oauth_client_cache.as_ref(),
+                        runtime_origin.as_deref(),
+                        runtime_owner.as_ref(),
+                    ),
                 )
                 .await
                 {
@@ -753,9 +787,14 @@ impl UpstreamPool {
             let subject = subject.to_string();
             let oauth_client_cache = oauth_client_cache.clone();
             futures.push(async move {
-                let result =
-                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
-                        .await;
+                let result = connect_upstream(
+                    &config,
+                    Some(subject.as_str()),
+                    oauth_client_cache.as_ref(),
+                    None,
+                    None,
+                )
+                .await;
                 (config.name.clone(), result)
             });
         }
@@ -797,6 +836,8 @@ impl UpstreamPool {
             config,
             Some(subject),
             self.oauth_client_cache.as_ref(),
+            None,
+            None,
         )
         .await
         {
@@ -1015,6 +1056,17 @@ impl UpstreamPool {
             discovered_prompt_count,
             exposed_prompt_count,
         })
+    }
+
+    pub async fn upstream_runtime_metadata(
+        &self,
+        upstream_name: &str,
+    ) -> Option<UpstreamRuntimeMetadata> {
+        self.connections
+            .read()
+            .await
+            .get(upstream_name)
+            .map(|conn| conn.runtime.clone())
     }
 
     /// Return cached resource URIs keyed by upstream name (used in catalog snapshots).
@@ -1369,10 +1421,15 @@ impl UpstreamPool {
             let subject = subject.to_string();
             let oauth_client_cache = oauth_client_cache.clone();
             futures.push(async move {
-                let result =
-                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
-                        .await
-                        .map(|(conn, _)| conn);
+                let result = connect_upstream(
+                    &config,
+                    Some(subject.as_str()),
+                    oauth_client_cache.as_ref(),
+                    None,
+                    None,
+                )
+                .await
+                .map(|(conn, _)| conn);
                 (config.name.clone(), result)
             });
         }
@@ -1550,6 +1607,8 @@ impl UpstreamPool {
             config,
             Some(subject),
             self.oauth_client_cache.as_ref(),
+            None,
+            None,
         )
         .await
         {
@@ -1730,10 +1789,15 @@ impl UpstreamPool {
             let subject = subject.to_string();
             let oauth_client_cache = oauth_client_cache.clone();
             futures.push(async move {
-                let result =
-                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
-                        .await
-                        .map(|(conn, _)| conn);
+                let result = connect_upstream(
+                    &config,
+                    Some(subject.as_str()),
+                    oauth_client_cache.as_ref(),
+                    None,
+                    None,
+                )
+                .await
+                .map(|(conn, _)| conn);
                 (config.name.clone(), result)
             });
         }
@@ -1791,10 +1855,15 @@ impl UpstreamPool {
             let oauth_client_cache = oauth_client_cache.clone();
             let target_prompt = prompt_name.to_string();
             futures.push(async move {
-                let result =
-                    connect_upstream(&config, Some(subject.as_str()), oauth_client_cache.as_ref())
-                        .await
-                        .map(|(conn, _)| conn);
+                let result = connect_upstream(
+                    &config,
+                    Some(subject.as_str()),
+                    oauth_client_cache.as_ref(),
+                    None,
+                    None,
+                )
+                .await
+                .map(|(conn, _)| conn);
                 (config.name.clone(), target_prompt, result)
             });
         }
@@ -1896,6 +1965,8 @@ impl UpstreamPool {
             config,
             Some(subject),
             self.oauth_client_cache.as_ref(),
+            None,
+            None,
         )
         .await
         {
@@ -2019,11 +2090,13 @@ async fn connect_upstream(
     config: &UpstreamConfig,
     subject: Option<&str>,
     oauth_client_cache: Option<&OauthClientCache>,
+    runtime_origin: Option<&str>,
+    runtime_owner: Option<&UpstreamRuntimeOwner>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     if let Some(ref url) = config.url {
         connect_http_upstream(url, config, subject, oauth_client_cache).await
     } else if let Some(ref command) = config.command {
-        connect_stdio_upstream(command, &config.args, config).await
+        connect_stdio_upstream(command, &config.args, config, runtime_origin, runtime_owner).await
     } else {
         anyhow::bail!("upstream {} has neither url nor command", config.name)
     }
@@ -2067,6 +2140,7 @@ async fn connect_http_upstream(
                 _client_service: service,
                 _server_task: None,
                 peer,
+                runtime: UpstreamRuntimeMetadata::default(),
             },
             tools,
         ));
@@ -2111,6 +2185,7 @@ async fn connect_http_upstream(
             _client_service: service,
             _server_task: None,
             peer,
+            runtime: UpstreamRuntimeMetadata::default(),
         },
         tools,
     ))
@@ -2121,6 +2196,8 @@ async fn connect_stdio_upstream(
     command: &str,
     args: &[String],
     config: &UpstreamConfig,
+    runtime_origin: Option<&str>,
+    runtime_owner: Option<&UpstreamRuntimeOwner>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     #[cfg(unix)]
     use process_wrap::tokio::{CommandWrap, ProcessGroup};
@@ -2151,6 +2228,7 @@ async fn connect_stdio_upstream(
         .stderr(Stdio::null())
         .spawn()?;
 
+    let pid = process.id();
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(process).await?;
     let peer = service.peer().clone();
 
@@ -2161,9 +2239,54 @@ async fn connect_stdio_upstream(
         _client_service: service,
         _server_task: None,
         peer,
+        runtime: UpstreamRuntimeMetadata {
+            pid,
+            pgid: pid,
+            started_at: Some(std::time::SystemTime::now()),
+            origin: runtime_origin_label(runtime_origin, runtime_owner),
+            owner: runtime_owner.cloned(),
+        },
     };
 
     Ok((conn, tools))
+}
+
+fn runtime_origin_label(
+    runtime_origin: Option<&str>,
+    runtime_owner: Option<&UpstreamRuntimeOwner>,
+) -> Option<String> {
+    if let Some(raw) = runtime_owner
+        .and_then(|owner| owner.raw.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(raw.to_string());
+    }
+
+    if let Some(origin) = runtime_origin.map(str::trim).filter(|value| !value.is_empty()) {
+        return Some(origin.to_string());
+    }
+
+    for (prefix, session_key) in [
+        ("claude-code", "CLAUDE_SESSION_ID"),
+        ("codex", "CODEX_SESSION_ID"),
+    ] {
+        if let Ok(session) = std::env::var(session_key) {
+            let trimmed = session.trim();
+            if !trimmed.is_empty() {
+                return Some(format!("{prefix}:{trimmed}"));
+            }
+        }
+    }
+
+    if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+        let trimmed = term_program.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    Some("gateway-managed".to_string())
 }
 
 async fn connect_in_process_service_peer(
@@ -2207,6 +2330,7 @@ async fn connect_in_process_service_peer(
             _client_service: client_service,
             _server_task: Some(server_task),
             peer,
+            runtime: UpstreamRuntimeMetadata::default(),
         },
         tools,
     ))
@@ -2310,6 +2434,7 @@ mod tests {
     #[test]
     fn validate_rejects_empty_name() {
         let config = UpstreamConfig {
+            enabled: true,
             name: String::new(),
             url: Some("http://localhost:8080".into()),
             bearer_token_env: None,
@@ -2326,6 +2451,7 @@ mod tests {
     #[test]
     fn validate_rejects_non_http_scheme() {
         let config = UpstreamConfig {
+            enabled: true,
             name: "test".into(),
             url: Some("ftp://example.com".into()),
             bearer_token_env: None,
@@ -2343,6 +2469,7 @@ mod tests {
     fn validate_rejects_bind_all_addresses() {
         for url in &["http://0.0.0.0:8080", "http://[::]/mcp", "http://[::]:8080"] {
             let config = UpstreamConfig {
+                enabled: true,
                 name: "test".into(),
                 url: Some((*url).into()),
                 bearer_token_env: None,
@@ -2363,6 +2490,7 @@ mod tests {
     #[test]
     fn validate_accepts_valid_http_url() {
         let config = UpstreamConfig {
+            enabled: true,
             name: "test".into(),
             url: Some("http://localhost:8080/mcp".into()),
             bearer_token_env: None,
@@ -2379,6 +2507,7 @@ mod tests {
     #[test]
     fn validate_accepts_stdio_command() {
         let config = UpstreamConfig {
+            enabled: true,
             name: "test".into(),
             url: None,
             bearer_token_env: None,
@@ -2395,6 +2524,7 @@ mod tests {
     #[test]
     fn validate_rejects_both_url_and_command() {
         let config = UpstreamConfig {
+            enabled: true,
             name: "test".into(),
             url: Some("http://localhost:8080".into()),
             bearer_token_env: None,
@@ -2411,6 +2541,7 @@ mod tests {
     #[test]
     fn validate_rejects_no_url_or_command() {
         let config = UpstreamConfig {
+            enabled: true,
             name: "test".into(),
             url: None,
             bearer_token_env: None,
@@ -2426,6 +2557,7 @@ mod tests {
 
     fn oauth_http_config() -> UpstreamConfig {
         UpstreamConfig {
+            enabled: true,
             name: "oauth-upstream".into(),
             url: Some("http://127.0.0.1:8080/mcp".into()),
             bearer_token_env: None,

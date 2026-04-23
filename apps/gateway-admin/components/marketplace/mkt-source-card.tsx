@@ -28,7 +28,7 @@ function SourceAvatar({ ghUser, name }: { ghUser: string; name: string }) {
 }
 
 function sourceLabel(m: Marketplace): string {
-  if (m.source === 'github') return m.repo ?? m.ghUser
+  if (m.source === 'github') return m.repo ?? m.repository ?? m.ghUser ?? m.githubOwner ?? 'github'
   if (m.source === 'git') return m.url?.replace('https://github.com/', '').replace('.git', '') ?? m.url ?? ''
   return m.path ?? 'local'
 }
@@ -54,7 +54,7 @@ export function MktSourceCard({ marketplace: m, installedCount, onClick }: MktSo
       )}
     >
       <div className="flex items-center gap-[14px]">
-        <SourceAvatar ghUser={m.ghUser} name={m.name} />
+        <SourceAvatar ghUser={m.ghUser ?? m.githubOwner ?? 'github'} name={m.name} />
         <div className="flex-1 min-w-0">
           <div className="font-display text-[16px] font-extrabold tracking-[-0.02em] text-aurora-text-primary">
             {m.name}

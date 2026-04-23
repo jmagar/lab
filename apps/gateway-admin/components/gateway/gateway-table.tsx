@@ -1,13 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
+  ArrowDown,
+  ArrowUp,
   MoreHorizontal,
   Eye,
   Pencil,
   Play,
+  Power,
   RefreshCw,
+  TriangleAlert,
   Trash2,
   FileText,
   MessageSquare,
@@ -37,6 +41,7 @@ import type { Gateway } from '@/lib/types/gateway'
 import { gatewayDetailHref } from '@/lib/api/gateway-config'
 import { buildGatewayEndpointPreview } from '@/lib/api/gateway-mobile'
 import { SurfaceRatio } from './surface-ratio'
+import type { TransportType } from '@/lib/types/gateway'
 import {
   AURORA_DISPLAY_2,
   AURORA_MUTED_LABEL,
@@ -52,24 +57,35 @@ import {
   gatewayStatusTone,
 } from './gateway-theme'
 
+type SortKey = 'transport' | 'tools' | 'resources' | 'prompts'
+type SortDirection = 'asc' | 'desc'
+
 interface GatewayTableProps {
   gateways: Gateway[]
   density: 'comfortable' | 'condensed'
+  cleanupSummaryByGatewayId?: Record<string, string>
   onEdit: (gateway: Gateway) => void
   onTest: (gateway: Gateway) => void
   onReload: (gateway: Gateway) => void
+  onCleanup: (gateway: Gateway, aggressive: boolean) => void
+  onToggleEnabled: (gateway: Gateway) => void
   onDelete: (gateway: Gateway) => void
 }
 
 export function GatewayTable({
   gateways,
   density,
+  cleanupSummaryByGatewayId = {},
   onEdit,
   onTest,
   onReload,
+  onCleanup,
+  onToggleEnabled,
   onDelete,
 }: GatewayTableProps) {
   const [loadingAction, setLoadingAction] = useState<{ id: string; action: string } | null>(null)
+  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
   const handleAction = async (
     gateway: Gateway,
@@ -86,15 +102,171 @@ export function GatewayTable({
 
   const isLoading = (id: string, action: string) => loadingAction?.id === id && loadingAction?.action === action
 
+  const sortedGateways = useMemo(() => {
+    if (!sortKey) return gateways
+
+    const transportLabel = (transport: TransportType) => {
+      switch (transport) {
+        case 'in_process':
+          return 'lab'
+        case 'stdio':
+          return 'stdio'
+        case 'http':
+          return 'http'
+      }
+    }
+
+    const sorted = [...gateways].sort((left, right) => {
+      let result = 0
+
+      switch (sortKey) {
+        case 'transport':
+          result = transportLabel(left.transport).localeCompare(transportLabel(right.transport))
+          break
+        case 'tools':
+          result = left.status.exposed_tool_count - right.status.exposed_tool_count
+          break
+        case 'resources':
+          result = left.status.exposed_resource_count - right.status.exposed_resource_count
+          break
+        case 'prompts':
+          result = left.status.exposed_prompt_count - right.status.exposed_prompt_count
+          break
+      }
+
+      if (result === 0) {
+        result = left.name.localeCompare(right.name)
+      }
+
+      return sortDirection === 'asc' ? result : -result
+    })
+
+    return sorted
+  }, [gateways, sortDirection, sortKey])
+
+  const handleSort = (nextKey: SortKey) => {
+    if (sortKey === nextKey) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+
+    setSortKey(nextKey)
+    setSortDirection(nextKey === 'transport' ? 'asc' : 'desc')
+  }
+
+  const renderSortIcon = (key: SortKey) => {
+    if (sortKey !== key) return null
+
+    return sortDirection === 'asc'
+      ? <ArrowUp className="size-3.5" />
+      : <ArrowDown className="size-3.5" />
+  }
+
+  const SortHeader = ({ label, sort }: { label: string; sort: SortKey }) => (
+    <button
+      type="button"
+      onClick={() => handleSort(sort)}
+      className="inline-flex items-center gap-1.5 transition-colors hover:text-aurora-text-primary"
+      aria-label={`Sort by ${label.toLowerCase()}`}
+    >
+      <span>{label}</span>
+      {renderSortIcon(sort)}
+    </button>
+  )
+
+  const formatRuntimeAge = (ageSeconds?: number) => {
+    if (!ageSeconds || ageSeconds < 0) return null
+    if (ageSeconds < 60) return `${ageSeconds}s old`
+    if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m old`
+    if (ageSeconds < 86400) return `${Math.floor(ageSeconds / 3600)}h old`
+    return `${Math.floor(ageSeconds / 86400)}d old`
+  }
+
+  const runtimeAgeLabel = (gateway: Gateway) => formatRuntimeAge(gateway.status.age_seconds)
+
+  const runtimeDetailsTitle = (gateway: Gateway) => {
+    const owner = gateway.status.owner
+    const lines = [
+      owner ? `Owner surface: ${owner.surface}` : null,
+      owner?.client_name ? `Owner client: ${owner.client_name}` : null,
+      owner?.subject ? `Owner subject: ${owner.subject}` : null,
+      owner?.request_id ? `Owner request: ${owner.request_id}` : null,
+      owner?.session_id ? `Owner session: ${owner.session_id}` : null,
+      gateway.status.origin ? `Origin: ${gateway.status.origin}` : null,
+      gateway.status.runtime_state_path ? `Runtime snapshot: ${gateway.status.runtime_state_path}` : null,
+      gateway.status.reconciled_at ? `Reconciled: ${gateway.status.reconciled_at}` : null,
+    ].filter(Boolean)
+
+    return lines.length > 0 ? lines.join('\n') : undefined
+  }
+
+  const runtimeBadges = (gateway: Gateway) => {
+    const badges: ReactNode[] = []
+    const detailsTitle = runtimeDetailsTitle(gateway)
+
+    if ((gateway.status.likely_stale_count ?? 0) > 0) {
+      badges.push(
+        <Badge
+          key="stale"
+          title={detailsTitle}
+          className="rounded-full border border-amber-500/30 bg-amber-500/10 text-[10px] uppercase tracking-[0.16em] text-amber-200"
+        >
+          {gateway.status.likely_stale_count} stale
+        </Badge>,
+      )
+    }
+
+    if (gateway.status.pid) {
+      badges.push(
+        <Badge
+          key="pid"
+          title={detailsTitle}
+          className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] font-mono text-[10px] uppercase tracking-[0.12em] text-aurora-text-muted"
+        >
+          pid {gateway.status.pid}
+        </Badge>,
+      )
+    }
+
+    if (gateway.status.pgid && gateway.status.pgid !== gateway.status.pid) {
+      badges.push(
+        <Badge
+          key="pgid"
+          title={detailsTitle}
+          className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] font-mono text-[10px] uppercase tracking-[0.12em] text-aurora-text-muted"
+        >
+          pgid {gateway.status.pgid}
+        </Badge>,
+      )
+    }
+
+    const age = runtimeAgeLabel(gateway)
+    if (age) {
+      badges.push(
+        <Badge
+          key="age"
+          title={detailsTitle}
+          className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] text-[10px] uppercase tracking-[0.12em] text-aurora-text-muted"
+        >
+          {age}
+        </Badge>,
+      )
+    }
+
+    return badges
+  }
+
   return (
     <>
       <div className="space-y-3 p-3 md:hidden">
         {gateways.map((gateway) => {
           const supportsProbeControls = gateway.source !== 'in_process'
-          const isDisabled = gateway.source === 'in_process' && !(gateway.enabled ?? true)
+          const isDisabled = !(gateway.enabled ?? true)
           const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
           const endpointPreview = buildGatewayEndpointPreview(gateway)
           const launcherState = isDisabled ? 'deactivated' : 'active'
+          const runtimeChips = runtimeBadges(gateway)
+          const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
 
           return (
             <article
@@ -129,6 +301,15 @@ export function GatewayTable({
                         ) : null}
                         <TransportBadge transport={gateway.transport} />
                         <WarningsPill warnings={gateway.warnings} />
+                        {runtimeChips}
+                        {cleanupSummary ? (
+                          <Badge
+                            className="rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-[0.16em] text-emerald-200"
+                            title={cleanupSummary}
+                          >
+                            {cleanupSummary}
+                          </Badge>
+                        ) : null}
                         {density === 'condensed' ? (
                           <span className="min-w-0 truncate text-[13px] text-aurora-text-muted">{endpointPreview} • {launcherState}</span>
                         ) : null}
@@ -163,6 +344,19 @@ export function GatewayTable({
                           <Pencil className="size-4 mr-2" />
                           Edit gateway
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onToggleEnabled(gateway)}>
+                          {gateway.enabled ?? true ? (
+                            <>
+                              <Trash2 className="size-4 mr-2" />
+                              Disable gateway
+                            </>
+                          ) : (
+                            <>
+                              <Play className="size-4 mr-2" />
+                              Enable gateway
+                            </>
+                          )}
+                        </DropdownMenuItem>
                         {supportsProbeControls ? (
                           <>
                             <DropdownMenuSeparator />
@@ -174,13 +368,25 @@ export function GatewayTable({
                               <RefreshCw className="size-4 mr-2" />
                               Reload gateway
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onCleanup(gateway, false)}>
+                              <Wrench className="size-4 mr-2" />
+                              Cleanup runtime
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onCleanup(gateway, true)}>
+                              <TriangleAlert className="size-4 mr-2" />
+                              Aggressive cleanup
+                            </DropdownMenuItem>
                           </>
                         ) : null}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-aurora-error focus:text-aurora-error">
-                          <Trash2 className="size-4 mr-2" />
-                          {gateway.source === 'in_process' ? 'Disable gateway' : 'Remove gateway'}
-                        </DropdownMenuItem>
+                        {gateway.source !== 'in_process' ? (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-aurora-error focus:text-aurora-error">
+                              <Trash2 className="size-4 mr-2" />
+                              Remove gateway
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -193,6 +399,15 @@ export function GatewayTable({
 
                   {density === 'comfortable' && supportsProbeControls ? (
                     <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                        onClick={() => onToggleEnabled(gateway)}
+                      >
+                        <Power className="size-3.5 mr-1.5" />
+                        {gateway.enabled ?? true ? 'Disable' : 'Enable'}
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -213,6 +428,15 @@ export function GatewayTable({
                         <RefreshCw className={`size-3.5 mr-1.5 ${isLoading(gateway.id, 'reload') ? 'animate-spin' : ''}`} />
                         Reload
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                        onClick={() => onCleanup(gateway, false)}
+                      >
+                        <Wrench className="size-3.5 mr-1.5" />
+                        Cleanup
+                      </Button>
                     </div>
                   ) : null}
                 </div>
@@ -226,18 +450,31 @@ export function GatewayTable({
         <Table className="table-fixed">
           <TableHeader>
             <TableRow className="border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] hover:bg-[rgba(7,17,26,0.48)]">
-              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[62%] px-6 py-4')}>Gateway</TableHead>
-              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[26%] px-4 py-4')}>Surfaces</TableHead>
-              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[116px] px-6 py-4 text-right')}>Actions</TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[44%] px-6 py-4')}>Gateway</TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[9%] px-2 py-4 text-center')}>
+                <SortHeader label="Transport" sort="transport" />
+              </TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[9%] px-2 py-4 text-center')}>
+                <SortHeader label="Tools" sort="tools" />
+              </TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[9%] px-2 py-4 text-center')}>
+                <SortHeader label="Resources" sort="resources" />
+              </TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[9%] px-2 py-4 text-center')}>
+                <SortHeader label="Prompts" sort="prompts" />
+              </TableHead>
+              <TableHead className={cn(AURORA_MUTED_LABEL, 'w-[20%] px-4 py-4 text-right')}>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {gateways.map((gateway) => {
+            {sortedGateways.map((gateway) => {
               const supportsProbeControls = gateway.source !== 'in_process'
               const endpointPreview = buildGatewayEndpointPreview(gateway)
-              const isDisabled = gateway.source === 'in_process' && !(gateway.enabled ?? true)
+              const isDisabled = !(gateway.enabled ?? true)
               const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
               const launcherState = isDisabled ? 'deactivated' : 'active'
+              const runtimeChips = runtimeBadges(gateway)
+              const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
 
               return (
                 <TableRow key={gateway.id} className={cn('group', isDisabled ? AURORA_GATEWAY_DISABLED_ROW : AURORA_GATEWAY_ROW)}>
@@ -260,8 +497,16 @@ export function GatewayTable({
                             Disabled
                           </Badge>
                         ) : null}
-                        <TransportBadge transport={gateway.transport} />
                         <WarningsPill warnings={gateway.warnings} />
+                        {runtimeChips}
+                        {cleanupSummary ? (
+                          <Badge
+                            className="rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-[0.16em] text-emerald-200"
+                            title={cleanupSummary}
+                          >
+                            {cleanupSummary}
+                          </Badge>
+                        ) : null}
                         {density === 'condensed' ? (
                           <span className="min-w-0 truncate text-[13px] text-aurora-text-muted" title={endpointPreview}>
                             {endpointPreview} • {launcherState}
@@ -278,15 +523,39 @@ export function GatewayTable({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className={cn('px-4 align-top', density === 'condensed' ? 'py-3' : 'py-4')}>
-                    <div className="flex flex-wrap items-center gap-2">
+                  <TableCell className={cn('px-2 align-top', density === 'condensed' ? 'py-3' : 'py-4')}>
+                    <div className="flex items-center justify-center">
+                      <TransportBadge transport={gateway.transport} iconOnly />
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn('px-2 align-top', density === 'condensed' ? 'py-3' : 'py-4')}>
+                    <div className="flex items-center justify-center">
                       <SurfaceRatio icon={Wrench} label="Tools" exposed={gateway.status.exposed_tool_count} total={gateway.status.discovered_tool_count} />
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn('px-2 align-top', density === 'condensed' ? 'py-3' : 'py-4')}>
+                    <div className="flex items-center justify-center">
                       <SurfaceRatio icon={FileText} label="Resources" exposed={gateway.status.exposed_resource_count} total={gateway.status.discovered_resource_count} />
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn('px-2 align-top', density === 'condensed' ? 'py-3' : 'py-4')}>
+                    <div className="flex items-center justify-center">
                       <SurfaceRatio icon={MessageSquare} label="Prompts" exposed={gateway.status.exposed_prompt_count} total={gateway.status.discovered_prompt_count} />
                     </div>
                   </TableCell>
-                  <TableCell className={cn('px-6 text-right', density === 'condensed' ? 'py-3' : 'py-4')}>
+                  <TableCell className={cn('px-4 text-right', density === 'condensed' ? 'py-3' : 'py-4')}>
                     <div className="flex items-center justify-end gap-1">
+                      {density === 'comfortable' ? (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={cn(gatewayActionTone(), 'size-9 opacity-100 transition-opacity hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100')}
+                          onClick={() => onToggleEnabled(gateway)}
+                        >
+                          <Power className="size-4" />
+                          <span className="sr-only">{gateway.enabled ?? true ? 'Disable gateway' : 'Enable gateway'}</span>
+                        </Button>
+                      ) : null}
                       {supportsProbeControls && density === 'comfortable' ? (
                         <Button
                           variant="outline"
@@ -329,6 +598,19 @@ export function GatewayTable({
                             <Pencil className="mr-2 size-4" />
                             Edit gateway
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onToggleEnabled(gateway)}>
+                            {gateway.enabled ?? true ? (
+                              <>
+                                <Trash2 className="mr-2 size-4" />
+                                Disable gateway
+                              </>
+                            ) : (
+                              <>
+                                <Play className="mr-2 size-4" />
+                                Enable gateway
+                              </>
+                            )}
+                          </DropdownMenuItem>
                           {supportsProbeControls ? (
                             <>
                               <DropdownMenuSeparator />
@@ -340,13 +622,25 @@ export function GatewayTable({
                                 <RefreshCw className="mr-2 size-4" />
                                 Reload gateway
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onCleanup(gateway, false)}>
+                                <Wrench className="mr-2 size-4" />
+                                Cleanup runtime
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onCleanup(gateway, true)}>
+                                <TriangleAlert className="mr-2 size-4" />
+                                Aggressive cleanup
+                              </DropdownMenuItem>
                             </>
                           ) : null}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
-                            <Trash2 className="mr-2 size-4" />
-                            {gateway.source === 'in_process' ? 'Disable gateway' : 'Remove gateway'}
-                          </DropdownMenuItem>
+                          {gateway.source !== 'in_process' ? (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
+                                <Trash2 className="mr-2 size-4" />
+                                Remove gateway
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
