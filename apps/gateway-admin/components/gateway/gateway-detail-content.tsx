@@ -141,7 +141,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }
 
   const handleReload = async () => {
-    if (!gateway || gateway.source === 'lab_service') return
+    if (!gateway || gateway.source === 'in_process') return
     setIsReloading(true)
     try {
       const result = await reloadGateway(gateway.id)
@@ -171,7 +171,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const handleDelete = async () => {
     if (!gateway) return
     try {
-      if (gateway.source === 'lab_service') {
+      if (gateway.source === 'in_process') {
         await disableVirtualServer(gateway.id)
         toast.success('Lab gateway disabled successfully')
       } else {
@@ -185,7 +185,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }
 
   const handleEnabledToggle = async (enabled: boolean) => {
-    if (!gateway || gateway.source !== 'lab_service') return
+    if (!gateway || gateway.source !== 'in_process') return
     try {
       if (enabled) {
         await enableVirtualServer(gateway.id)
@@ -200,7 +200,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }
 
   const handleSurfaceToggle = async (surface: 'cli' | 'api' | 'mcp' | 'webui', enabled: boolean) => {
-    if (!gateway || gateway.source !== 'lab_service') return
+    if (!gateway || gateway.source !== 'in_process') return
     try {
       await setVirtualServerSurface(gateway.id, surface, enabled)
       toast.success(`Updated ${surface.toUpperCase()} surface`)
@@ -262,7 +262,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     )
   }
 
-  const isLabGateway = gateway.source === 'lab_service'
+  const isLabGateway = gateway.source === 'in_process'
   const surfaceEntries = gateway.surfaces
     ? ([
         ['cli', gateway.surfaces.cli],

@@ -140,6 +140,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           disabled={disabled}
+          aria-label="Message"
           placeholder="Message the assistant… (Shift+Enter for newline)"
           rows={1}
           className={cn(
@@ -155,7 +156,13 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           <TooltipProvider delayDuration={400}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Attach file"
+                  disabled
+                  className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted"
+                >
                   <Paperclip className="size-3.5" />
                 </Button>
               </TooltipTrigger>
@@ -164,7 +171,13 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Tools"
+                  disabled
+                  className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted"
+                >
                   <Wrench className="size-3.5" />
                 </Button>
               </TooltipTrigger>
@@ -179,6 +192,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
               type="button"
               onClick={() => setAgentPickerOpen((o) => !o)}
               onKeyDown={handleAgentTriggerKeyDown}
+              aria-label={selectedAgent ? `Selected agent: ${selectedAgent.name}` : 'Select agent'}
               aria-haspopup="listbox"
               aria-expanded={agentPickerOpen}
               aria-controls={pickerId}
@@ -236,6 +250,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
             onClick={handleSend}
             disabled={!value.trim() || disabled}
             size="icon"
+            aria-label="Send message"
             className={cn(
               'size-7 rounded-aurora-1 transition-all',
               value.trim() && !disabled

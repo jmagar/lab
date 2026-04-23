@@ -197,7 +197,8 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
               const isHTTP = remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
               const ghAvatar = githubAvatarFromRepoUrl(server.repository?.url)
               const fallbackIcon = icons[0] ?? null
-              const avatarSrc = ghAvatar ?? safeHref(fallbackIcon?.src) ?? null
+              const fallbackIconHref = safeHref(fallbackIcon?.src)
+              const avatarSrc = ghAvatar ?? fallbackIconHref ?? null
               const displayName = server.title ?? server.name
               const { text: descText, truncated } = truncateDescription(server.description)
               const isExpanded = expandedDescriptions.has(server.name)
@@ -230,8 +231,8 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                             referrerPolicy="no-referrer"
                             loading="lazy"
                             onError={(e) => {
-                              if (ghAvatar && fallbackIcon?.src && e.currentTarget.src !== fallbackIcon.src) {
-                                e.currentTarget.src = fallbackIcon.src
+                              if (ghAvatar && fallbackIconHref && e.currentTarget.src !== fallbackIconHref) {
+                                e.currentTarget.src = fallbackIconHref
                                 return
                               }
                               e.currentTarget.style.display = 'none'

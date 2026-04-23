@@ -1,7 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 
 use tokio::sync::RwLock;
 use url::Url;
@@ -13,8 +12,9 @@ use crate::config::{
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::gateway::oauth::UpstreamOauthStatusView;
-use crate::dispatch::upstream::pool::UpstreamCachedSummary;
-use crate::dispatch::upstream::pool::UpstreamPool;
+use crate::dispatch::upstream::pool::{
+    UpstreamCachedSummary, UpstreamPool, in_process_upstream_name,
+};
 use crate::oauth::upstream::cache::OauthClientCache;
 use crate::oauth::upstream::encryption::EncryptionKey;
 use crate::oauth::upstream::manager::UpstreamOauthManager;
@@ -39,12 +39,6 @@ use super::view_models::{
 use super::virtual_servers::{VirtualServerRecord, VirtualServerSource};
 use crate::tui::events::ServiceHealth;
 
-#[derive(Debug, Clone)]
-struct VirtualServiceHealthCache {
-    fetched_at: tokio::time::Instant,
-    values: HashMap<String, ServiceHealth>,
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GatewayCatalogSnapshot {
     pub tools: BTreeSet<String>,
@@ -63,7 +57,7 @@ pub fn diff_catalogs(
     }
 }
 
-static VIRTUAL_SERVER_TOOL_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
+static BUILTIN_SERVICE_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
 
 fn tool_error_from_oauth(error: OauthError) -> ToolError {
     ToolError::Sdk {
@@ -94,7 +88,6 @@ pub struct GatewayManager {
     config: Arc<RwLock<LabConfig>>,
     service_clients: Option<SharedServiceClients>,
     notifier: Option<CatalogChangeNotifier>,
-    virtual_health_cache: Arc<RwLock<Option<VirtualServiceHealthCache>>>,
     oauth_client_cache: Option<OauthClientCache>,
     upstream_oauth_managers: Option<Arc<dashmap::DashMap<String, UpstreamOauthManager>>>,
     /// Resources needed to build transient OAuth managers for probed upstreams.
@@ -111,7 +104,6 @@ impl GatewayManager {
             config: Arc::new(RwLock::new(LabConfig::default())),
             service_clients: None,
             notifier: None,
-            virtual_health_cache: Arc::new(RwLock::new(None)),
             oauth_client_cache: None,
             upstream_oauth_managers: None,
             oauth_sqlite: None,
@@ -751,7 +743,6 @@ impl GatewayManager {
                         ))
                     })?;
             }
-            self.invalidate_virtual_service_health_cache().await;
         }
 
         let values = read_env_values(&env_path)?;
@@ -761,15 +752,22 @@ impl GatewayManager {
     pub async fn list(&self) -> Result<Vec<ServerView>, ToolError> {
         let cfg = self.config.read().await.clone();
         let pool = self.runtime.current_pool().await;
-        let virtual_health = self.virtual_service_health_map().await;
         let mut views = Vec::with_capacity(cfg.upstream.len() + cfg.virtual_servers.len());
         for upstream in &cfg.upstream {
             views.push(server_view_from_upstream(pool.as_deref(), upstream).await);
         }
         for virtual_server in &cfg.virtual_servers {
+            let peer_name = in_process_upstream_name(&virtual_server.service);
+            let summary = upstream_summary(pool.as_deref(), &peer_name).await;
+            let last_error = operator_visible_upstream_error(match pool.as_deref() {
+                Some(pool) => pool.upstream_last_error(&peer_name).await,
+                None => None,
+            });
             views.push(server_view_from_virtual_server(
                 virtual_server,
-                virtual_health.get(&virtual_server.service),
+                summary,
+                last_error,
+                None,
             ));
         }
         Ok(views)
@@ -784,10 +782,17 @@ impl GatewayManager {
         }
 
         let virtual_server = find_virtual_server(&cfg, id)?;
-        let virtual_health = self.virtual_service_health_map().await;
+        let peer_name = in_process_upstream_name(&virtual_server.service);
+        let summary = upstream_summary(pool.as_deref(), &peer_name).await;
+        let last_error = operator_visible_upstream_error(match pool.as_deref() {
+            Some(pool) => pool.upstream_last_error(&peer_name).await,
+            None => None,
+        });
         Ok(server_view_from_virtual_server(
             virtual_server,
-            virtual_health.get(&virtual_server.service),
+            summary,
+            last_error,
+            None,
         ))
     }
 
@@ -930,21 +935,18 @@ impl GatewayManager {
         };
 
         let pool = UpstreamPool::new();
-        pool.discover_all(&[upstream.clone()]).await;
+        pool.discover_all_with_in_process_peers(&[upstream.clone()], builtin_service_registry())
+            .await;
 
         Ok(runtime_view(Some(&pool), &upstream.name, None).await)
     }
 
     pub async fn enable_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
-        let view = self.set_virtual_server_enabled(id, true).await?;
-        self.invalidate_virtual_service_health_cache().await;
-        Ok(view)
+        self.set_virtual_server_enabled(id, true).await
     }
 
     pub async fn disable_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
-        let view = self.set_virtual_server_enabled(id, false).await?;
-        self.invalidate_virtual_service_health_cache().await;
-        Ok(view)
+        self.set_virtual_server_enabled(id, false).await
     }
 
     pub async fn set_virtual_server_surface(
@@ -979,7 +981,7 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
         let virtual_server = find_virtual_server(&cfg, id)?;
-        Ok(server_view_from_virtual_server(virtual_server, None))
+        Ok(server_view_from_virtual_server(virtual_server, UpstreamCachedSummary::default(), None, None))
     }
 
     pub async fn get_virtual_server_mcp_policy(
@@ -1232,14 +1234,13 @@ impl GatewayManager {
             phase = "pool.build.start",
             "gateway reconcile"
         );
-        let fresh_pool = if cfg.upstream.is_empty() {
-            None
-        } else {
+        let fresh_pool = {
             let pool = Arc::new(match &self.oauth_client_cache {
                 Some(cache) => UpstreamPool::new().with_oauth_client_cache(cache.clone()),
                 None => UpstreamPool::new(),
             });
-            pool.discover_all(&cfg.upstream).await;
+            pool.discover_all_with_in_process_peers(&cfg.upstream, builtin_service_registry())
+                .await;
             Some(pool)
         };
         tracing::info!(
@@ -1391,34 +1392,7 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
         let virtual_server = find_virtual_server(&cfg, id)?;
-        Ok(server_view_from_virtual_server(virtual_server, None))
-    }
-
-    async fn virtual_service_health_map(&self) -> HashMap<String, ServiceHealth> {
-        const HEALTH_CACHE_TTL: Duration = Duration::from_secs(30);
-
-        if let Some(cache) = self.virtual_health_cache.read().await.clone()
-            && cache.fetched_at.elapsed() < HEALTH_CACHE_TTL
-        {
-            return cache.values;
-        }
-
-        let values = crate::tui::metadata::check_all_services(&self.env_path())
-            .await
-            .into_iter()
-            .map(|status| (status.service.clone(), status))
-            .collect::<HashMap<_, _>>();
-
-        *self.virtual_health_cache.write().await = Some(VirtualServiceHealthCache {
-            fetched_at: tokio::time::Instant::now(),
-            values: values.clone(),
-        });
-
-        values
-    }
-
-    async fn invalidate_virtual_service_health_cache(&self) {
-        *self.virtual_health_cache.write().await = None;
+        Ok(server_view_from_virtual_server(virtual_server, UpstreamCachedSummary::default(), None, None))
     }
 
     fn env_path(&self) -> PathBuf {
@@ -1751,44 +1725,47 @@ async fn server_view_from_upstream(
 
 fn server_view_from_virtual_server(
     config: &crate::config::VirtualServerConfig,
-    health: Option<&ServiceHealth>,
+    summary: UpstreamCachedSummary,
+    last_error: Option<String>,
+    _health: Option<&ServiceHealth>,
 ) -> ServerView {
     let record = VirtualServerRecord::from(config);
     let service = match &record.source {
         VirtualServerSource::LabService { service } => service.clone(),
     };
-    let connected =
-        record.enabled && health.is_some_and(|status| status.reachable && status.auth_ok);
-    let (discovered_tool_count, exposed_tool_count) =
-        virtual_server_tool_counts(virtual_server_tool_registry(), config, record.enabled);
-    let warnings = health
-        .and_then(|status| {
-            health_warning_message(status).map(|message| {
-                vec![super::view_models::ServerWarningView {
-                    code: if status.reachable {
-                        "health_warning".to_string()
-                    } else {
-                        "connection_error".to_string()
-                    },
-                    message: message.to_string(),
-                }]
-            })
-        })
-        .unwrap_or_default();
+    let peer_connected = last_error.is_none()
+        && (summary.discovered_tool_count > 0
+            || summary.discovered_resource_count > 0
+            || summary.discovered_prompt_count > 0);
+    let connected = record.enabled && peer_connected;
+    let mcp_exposed = record.enabled && record.surfaces.mcp;
+    let discovered_tool_count = summary.discovered_tool_count;
+    let exposed_tool_count = if mcp_exposed { summary.exposed_tool_count } else { 0 };
+    let discovered_resource_count = summary.discovered_resource_count;
+    let exposed_resource_count = if mcp_exposed { summary.exposed_resource_count } else { 0 };
+    let discovered_prompt_count = summary.discovered_prompt_count;
+    let exposed_prompt_count = if mcp_exposed { summary.exposed_prompt_count } else { 0 };
+    let mut warnings = Vec::new();
+    if let Some(message) = last_error {
+        warnings.push(super::view_models::ServerWarningView {
+            code: "connection_error".to_string(),
+            message,
+        });
+    }
 
     ServerView {
         id: record.id.clone(),
         name: service.clone(),
-        source: "lab_service".to_string(),
+        source: "in_process".to_string(),
         configured: true,
         enabled: record.enabled,
         connected,
         discovered_tool_count,
         exposed_tool_count,
-        discovered_resource_count: 0,
-        exposed_resource_count: 0,
-        discovered_prompt_count: 0,
-        exposed_prompt_count: 0,
+        discovered_resource_count,
+        exposed_resource_count,
+        discovered_prompt_count,
+        exposed_prompt_count,
         surfaces: SurfaceStatesView {
             cli: SurfaceStateView {
                 enabled: record.surfaces.cli,
@@ -1809,88 +1786,16 @@ fn server_view_from_virtual_server(
         },
         warnings,
         config_summary: ServerConfigSummaryView {
-            transport: Some("lab_service".to_string()),
+            transport: Some("in_process".to_string()),
             target: Some(service),
         },
     }
 }
 
-fn virtual_server_tool_counts(
-    registry: &ToolRegistry,
-    config: &crate::config::VirtualServerConfig,
-    enabled: bool,
-) -> (usize, usize) {
-    let Some(entry) = registry.service(&config.service) else {
-        return (0, 0);
-    };
-
-    let discovered = entry.actions.len();
-    if !enabled || !config.surfaces.mcp {
-        return (discovered, 0);
-    }
-
-    let exposed = if let Some(policy) = &config.mcp_policy {
-        if policy.allowed_actions.is_empty() {
-            discovered
-        } else {
-            let allowed: std::collections::HashSet<&str> = policy
-                .allowed_actions
-                .iter()
-                .map(String::as_str)
-                .chain(["help", "schema"])
-                .collect();
-            entry
-                .actions
-                .iter()
-                .filter(|action| allowed.contains(action.name))
-                .count()
-        }
-    } else {
-        discovered
-    };
-
-    (discovered, exposed)
+fn builtin_service_registry() -> &'static ToolRegistry {
+    BUILTIN_SERVICE_REGISTRY.get_or_init(crate::registry::build_default_registry)
 }
 
-fn virtual_server_tool_registry() -> &'static ToolRegistry {
-    VIRTUAL_SERVER_TOOL_REGISTRY.get_or_init(crate::registry::build_default_registry)
-}
-
-fn health_warning_message(status: &ServiceHealth) -> Option<&str> {
-    let message = status.message.as_deref()?;
-
-    if !status.reachable || !status.auth_ok {
-        return Some(message);
-    }
-
-    if is_actionable_health_warning(message) {
-        return Some(message);
-    }
-
-    None
-}
-
-fn is_actionable_health_warning(message: &str) -> bool {
-    let normalized = message.trim().to_ascii_lowercase();
-    let warning_markers = [
-        "auth",
-        "denied",
-        "degraded",
-        "error",
-        "failed",
-        "invalid",
-        "offline",
-        "timed out",
-        "timeout",
-        "unavailable",
-        "unreachable",
-        "warning",
-    ];
-
-    warning_markers
-        .iter()
-        .any(|marker| normalized.contains(marker))
-}
 
 fn read_env_values(path: &std::path::Path) -> Result<HashMap<String, String>, ToolError> {
     Ok(dotenvy::from_path_iter(path)
@@ -2223,7 +2128,7 @@ mod tests {
             .expect("plex server");
         assert!(plex.configured);
         assert!(!plex.enabled);
-        assert_eq!(plex.source, "lab_service");
+        assert_eq!(plex.source, "in_process");
     }
 
     #[tokio::test]

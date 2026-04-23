@@ -5,13 +5,14 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU8;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, Prompt,
-    ReadResourceResult, Resource, ResourceContents,
+    CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, LoggingLevel,
+    Prompt, ReadResourceResult, Resource, ResourceContents,
 };
 use rmcp::transport::streamable_http_client::{
     StreamableHttpClientTransportConfig, StreamableHttpClientWorker,
@@ -21,7 +22,10 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 
 use crate::config::UpstreamConfig;
+use crate::mcp::logging::logging_level_rank;
+use crate::mcp::server::LabMcpServer;
 use crate::oauth::upstream::cache::OauthClientCache;
+use crate::registry::{RegisteredService, ToolRegistry};
 
 use super::types;
 use super::types::{
@@ -41,9 +45,17 @@ pub struct UpstreamCachedSummary {
 
 /// Per-upstream timeout for initial discovery (`list_tools`).
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
+/// Per-service timeout for in-process peer registration and capability probing.
+const IN_PROCESS_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Default maximum response size from upstream servers (10 MB).
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
+
+const IN_PROCESS_PEER_BUFFER_BYTES: usize = 256 * 1024;
+
+pub fn in_process_upstream_name(service_name: &str) -> String {
+    format!("__in_process__{service_name}")
+}
 
 /// Read the max response size from env or use the default.
 fn max_response_bytes() -> usize {
@@ -152,14 +164,25 @@ async fn discover_capability_counts(
     UpstreamHealth,
 ) {
     let (resource_count, resource_error, resource_health) = if proxy_resources {
-        match peer.list_resources(None).await {
-            Ok(result) => (result.resources.len(), None, UpstreamHealth::Healthy),
-            Err(ref error) if is_capability_unsupported(error) => {
+        tracing::info!(upstream = %name, capability = "resources", "starting upstream capability discovery");
+        match tokio::time::timeout(DISCOVERY_TIMEOUT, peer.list_resources(None)).await {
+            Ok(Ok(result)) => (result.resources.len(), None, UpstreamHealth::Healthy),
+            Ok(Err(ref error)) if is_capability_unsupported(error) => {
                 (0, None, UpstreamHealth::Healthy)
             }
-            Err(error) => (
+            Ok(Err(error)) => (
                 0,
                 Some(format!("failed to list resources from upstream: {error}")),
+                UpstreamHealth::Unhealthy {
+                    consecutive_failures: 1,
+                },
+            ),
+            Err(_) => (
+                0,
+                Some(format!(
+                    "listing resources from upstream timed out after {}s",
+                    DISCOVERY_TIMEOUT.as_secs()
+                )),
                 UpstreamHealth::Unhealthy {
                     consecutive_failures: 1,
                 },
@@ -170,14 +193,25 @@ async fn discover_capability_counts(
     };
 
     let (prompt_count, prompt_error, prompt_health) = if proxy_prompts {
-        match peer.list_prompts(None).await {
-            Ok(result) => (result.prompts.len(), None, UpstreamHealth::Healthy),
-            Err(ref error) if is_capability_unsupported(error) => {
+        tracing::info!(upstream = %name, capability = "prompts", "starting upstream capability discovery");
+        match tokio::time::timeout(DISCOVERY_TIMEOUT, peer.list_prompts(None)).await {
+            Ok(Ok(result)) => (result.prompts.len(), None, UpstreamHealth::Healthy),
+            Ok(Err(ref error)) if is_capability_unsupported(error) => {
                 (0, None, UpstreamHealth::Healthy)
             }
-            Err(error) => (
+            Ok(Err(error)) => (
                 0,
                 Some(format!("failed to list prompts from upstream: {error}")),
+                UpstreamHealth::Unhealthy {
+                    consecutive_failures: 1,
+                },
+            ),
+            Err(_) => (
+                0,
+                Some(format!(
+                    "listing prompts from upstream timed out after {}s",
+                    DISCOVERY_TIMEOUT.as_secs()
+                )),
                 UpstreamHealth::Unhealthy {
                     consecutive_failures: 1,
                 },
@@ -284,8 +318,10 @@ pub struct UpstreamPool {
 
 /// A live connection to an upstream MCP server.
 struct UpstreamConnection {
-    /// The running service handle — kept alive to maintain the connection.
-    _service: rmcp::service::RunningService<RoleClient, ()>,
+    /// The running client service handle — kept alive to maintain the connection.
+    _client_service: rmcp::service::RunningService<RoleClient, ()>,
+    /// Background task holding an in-process server alive when applicable.
+    _server_task: Option<tokio::task::JoinHandle<()>>,
     /// The peer handle for making requests.
     peer: rmcp::service::Peer<RoleClient>,
 }
@@ -553,6 +589,138 @@ impl UpstreamPool {
                     self.catalog.write().await.insert(name, entry);
                 }
             }
+        }
+    }
+
+    pub async fn discover_all_with_in_process_peers(
+        &self,
+        configs: &[UpstreamConfig],
+        registry: &ToolRegistry,
+    ) {
+        self.discover_all(configs).await;
+        let services: Vec<RegisteredService> = registry
+            .services()
+            .iter()
+            .filter(|service| !service.actions.is_empty())
+            .cloned()
+            .collect();
+        let pool = self.clone();
+        tokio::spawn(async move {
+            pool.register_in_process_service_list(services).await;
+        });
+    }
+
+    pub async fn register_in_process_service_peers(&self, registry: &ToolRegistry) {
+        let services: Vec<RegisteredService> = registry
+            .services()
+            .iter()
+            .filter(|service| !service.actions.is_empty())
+            .cloned()
+            .collect();
+        self.register_in_process_service_list(services).await;
+    }
+
+    async fn register_in_process_service_list(&self, services: Vec<RegisteredService>) {
+        let mut in_process_resource_names = Vec::new();
+
+        for service in services {
+            tracing::info!(
+                upstream = %in_process_upstream_name(service.name),
+                service = service.name,
+                timeout_secs = IN_PROCESS_DISCOVERY_TIMEOUT.as_secs(),
+                "starting in-process peer registration"
+            );
+            let upstream_name = in_process_upstream_name(service.name);
+            let timeout_service = service.clone();
+            match tokio::time::timeout(IN_PROCESS_DISCOVERY_TIMEOUT, async move {
+                let (conn, tools) = connect_in_process_service_peer(&timeout_service).await?;
+                Ok::<_, anyhow::Error>((
+                    conn,
+                    tools,
+                ))
+            })
+            .await
+            {
+                Ok(Ok((conn, tools))) => {
+                    let mut tool_map = HashMap::new();
+                    let tool_count = tools.len();
+                    let upstream_name_arc: Arc<str> = Arc::from(upstream_name.as_str());
+                    for tool in tools {
+                        let schema = if tool.input_schema.is_empty() {
+                            None
+                        } else {
+                            Some(Value::Object((*tool.input_schema).clone()))
+                        };
+                        tool_map.insert(
+                            tool.name.to_string(),
+                            UpstreamTool {
+                                tool,
+                                input_schema: schema,
+                                upstream_name: Arc::clone(&upstream_name_arc),
+                            },
+                        );
+                    }
+
+                    self.catalog.write().await.insert(
+                        upstream_name.clone(),
+                        healthy_in_process_entry(Arc::clone(&upstream_name_arc), tool_map),
+                    );
+                    self.connections.write().await.insert(upstream_name.clone(), conn);
+                    in_process_resource_names.push(upstream_name);
+                    tracing::info!(
+                        upstream = %upstream_name_arc,
+                        service = service.name,
+                        tool_count,
+                        resource_count = 0,
+                        prompt_count = 0,
+                        "in-process peer registration succeeded"
+                    );
+                }
+                Ok(Err(error)) => {
+                    let error_message =
+                        format!("failed to register in-process service peer: {error}");
+                    tracing::warn!(
+                        upstream = %upstream_name,
+                        service = service.name,
+                        error = %error_message,
+                        "in-process peer registration failed"
+                    );
+                    let mut catalog = self.catalog.write().await;
+                    let name: Arc<str> = Arc::from(in_process_upstream_name(service.name));
+                    let entry = catalog
+                        .remove(&upstream_name)
+                        .map(|existing| failed_in_process_entry_from_existing(existing, error_message.clone()))
+                        .unwrap_or_else(|| failed_in_process_entry(name, error_message));
+                    catalog.insert(upstream_name, entry);
+                }
+                Err(_) => {
+                    let error_message = format!(
+                        "in-process peer registration timed out after {}s",
+                        IN_PROCESS_DISCOVERY_TIMEOUT.as_secs()
+                    );
+                    tracing::warn!(
+                        upstream = %upstream_name,
+                        service = service.name,
+                        timeout_secs = IN_PROCESS_DISCOVERY_TIMEOUT.as_secs(),
+                        error = %error_message,
+                        "in-process peer registration timed out"
+                    );
+                    let mut catalog = self.catalog.write().await;
+                    let name: Arc<str> = Arc::from(in_process_upstream_name(service.name));
+                    let entry = catalog
+                        .remove(&upstream_name)
+                        .map(|existing| failed_in_process_entry_from_existing(existing, error_message.clone()))
+                        .unwrap_or_else(|| failed_in_process_entry(name, error_message));
+                    catalog.insert(upstream_name, entry);
+                }
+            }
+        }
+
+        if !in_process_resource_names.is_empty() {
+            let mut resource_upstreams = self.resource_upstreams.write().await;
+            resource_upstreams.extend(in_process_resource_names);
+            resource_upstreams.sort_unstable();
+            resource_upstreams.dedup();
         }
     }
 
@@ -1896,7 +2064,8 @@ async fn connect_http_upstream(
         let tools = peer.list_all_tools().await?;
         return Ok((
             UpstreamConnection {
-                _service: service,
+                _client_service: service,
+                _server_task: None,
                 peer,
             },
             tools,
@@ -1939,7 +2108,8 @@ async fn connect_http_upstream(
 
     Ok((
         UpstreamConnection {
-            _service: service,
+            _client_service: service,
+            _server_task: None,
             peer,
         },
         tools,
@@ -1952,6 +2122,8 @@ async fn connect_stdio_upstream(
     args: &[String],
     config: &UpstreamConfig,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    #[cfg(unix)]
+    use process_wrap::tokio::{CommandWrap, ProcessGroup};
     use rmcp::transport::child_process::TokioChildProcess;
     use std::process::Stdio;
     use tokio::process::Command;
@@ -1966,9 +2138,19 @@ async fn connect_stdio_upstream(
         cmd.env(env_name, &token);
     }
 
+    #[cfg(unix)]
+    let (process, _stderr) = {
+        let mut wrapped = CommandWrap::from(cmd);
+        wrapped.wrap(ProcessGroup::leader());
+        TokioChildProcess::builder(wrapped)
+            .stderr(Stdio::null())
+            .spawn()?
+    };
+    #[cfg(not(unix))]
     let (process, _stderr) = TokioChildProcess::builder(cmd)
         .stderr(Stdio::null())
         .spawn()?;
+
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(process).await?;
     let peer = service.peer().clone();
 
@@ -1976,11 +2158,131 @@ async fn connect_stdio_upstream(
     let tools = peer.list_all_tools().await?;
 
     let conn = UpstreamConnection {
-        _service: service,
+        _client_service: service,
+        _server_task: None,
         peer,
     };
 
     Ok((conn, tools))
+}
+
+async fn connect_in_process_service_peer(
+    service: &RegisteredService,
+) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    tracing::info!(service = service.name, phase = "in_process.connect.start", "connecting in-process peer");
+    let (server_transport, client_transport) = tokio::io::duplex(IN_PROCESS_PEER_BUFFER_BYTES);
+    let mut registry = ToolRegistry::new();
+    registry.register(service.clone());
+    let server = LabMcpServer {
+        registry: Arc::new(registry),
+        gateway_manager: None,
+        device_role: None,
+        peers: Arc::new(RwLock::new(Vec::new())),
+        logging_level: Arc::new(AtomicU8::new(logging_level_rank(LoggingLevel::Emergency))),
+    };
+    let service_name = service.name;
+    let server_task = tokio::spawn(async move {
+        tracing::info!(service = service_name, phase = "in_process.server.spawned", "starting in-process server task");
+        match server.serve(server_transport).await {
+            Ok(running) => {
+                tracing::info!(service = service_name, phase = "in_process.server.ready", "in-process server transport ready");
+                if let Err(error) = running.waiting().await {
+                    tracing::warn!(service = service_name, phase = "in_process.server.waiting.error", error = %error, "in-process server exited with error");
+                }
+            }
+            Err(error) => {
+                tracing::warn!(service = service_name, phase = "in_process.server.serve.error", error = %error, "failed to start in-process server");
+            }
+        }
+    });
+    let client_service: rmcp::service::RunningService<RoleClient, ()> = ().serve(client_transport).await?;
+    tracing::info!(service = service.name, phase = "in_process.client.ready", "in-process client transport ready");
+    let peer = client_service.peer().clone();
+    tracing::info!(service = service.name, phase = "in_process.list_tools.start", "requesting in-process tool list");
+    let tools = peer.list_all_tools().await?;
+    tracing::info!(service = service.name, phase = "in_process.list_tools.finish", tool_count = tools.len(), "in-process tool list received");
+
+    Ok((
+        UpstreamConnection {
+            _client_service: client_service,
+            _server_task: Some(server_task),
+            peer,
+        },
+        tools,
+    ))
+}
+
+fn healthy_in_process_entry(
+    name: Arc<str>,
+    tools: HashMap<String, UpstreamTool>,
+) -> UpstreamEntry {
+    UpstreamEntry {
+        name,
+        tools,
+        exposure_policy: ToolExposurePolicy::All,
+        prompt_count: 0,
+        resource_count: 0,
+        prompt_names: Vec::new(),
+        resource_uris: Vec::new(),
+        tool_health: UpstreamHealth::Healthy,
+        prompt_health: UpstreamHealth::Healthy,
+        resource_health: UpstreamHealth::Healthy,
+        tool_unhealthy_since: None,
+        prompt_unhealthy_since: None,
+        resource_unhealthy_since: None,
+        tool_last_error: None,
+        prompt_last_error: None,
+        resource_last_error: None,
+    }
+}
+
+fn failed_in_process_entry(name: Arc<str>, error_message: String) -> UpstreamEntry {
+    UpstreamEntry {
+        name,
+        tools: HashMap::new(),
+        exposure_policy: ToolExposurePolicy::All,
+        prompt_count: 0,
+        resource_count: 0,
+        prompt_names: Vec::new(),
+        resource_uris: Vec::new(),
+        tool_health: UpstreamHealth::Unhealthy {
+            consecutive_failures: 1,
+        },
+        prompt_health: UpstreamHealth::Unhealthy {
+            consecutive_failures: 1,
+        },
+        resource_health: UpstreamHealth::Unhealthy {
+            consecutive_failures: 1,
+        },
+        tool_unhealthy_since: Some(Instant::now()),
+        prompt_unhealthy_since: Some(Instant::now()),
+        resource_unhealthy_since: Some(Instant::now()),
+        tool_last_error: Some(error_message.clone()),
+        prompt_last_error: Some(error_message.clone()),
+        resource_last_error: Some(error_message),
+    }
+}
+
+fn failed_in_process_entry_from_existing(
+    mut existing: UpstreamEntry,
+    error_message: String,
+) -> UpstreamEntry {
+    existing.tool_health = UpstreamHealth::Unhealthy {
+        consecutive_failures: 1,
+    };
+    existing.prompt_health = UpstreamHealth::Unhealthy {
+        consecutive_failures: 1,
+    };
+    existing.resource_health = UpstreamHealth::Unhealthy {
+        consecutive_failures: 1,
+    };
+    existing.tool_unhealthy_since = Some(Instant::now());
+    existing.prompt_unhealthy_since = Some(Instant::now());
+    existing.resource_unhealthy_since = Some(Instant::now());
+    existing.tool_last_error = Some(error_message.clone());
+    existing.prompt_last_error = Some(error_message.clone());
+    existing.resource_last_error = Some(error_message);
+    existing
 }
 
 fn resolve_exposure_policy(
@@ -2438,6 +2740,82 @@ mod tests {
         assert_eq!(
             pool.upstream_tool_last_error("github").await.as_deref(),
             Some("tool listing returned 500 internal error")
+        );
+    }
+
+    #[test]
+    fn failed_in_process_entry_from_existing_preserves_last_known_good_catalog() {
+        let upstream_name: Arc<str> = Arc::from("lab::github-chat");
+        let schema = Arc::new(serde_json::Map::new());
+        let tool = rmcp::model::Tool::new(
+            "query_repository",
+            "Query a GitHub repository",
+            schema,
+        );
+        let mut tools = HashMap::new();
+        tools.insert(
+            "query_repository".to_string(),
+            UpstreamTool {
+                tool,
+                input_schema: None,
+                upstream_name: Arc::clone(&upstream_name),
+            },
+        );
+
+        let existing = UpstreamEntry {
+            name: Arc::clone(&upstream_name),
+            tools,
+            exposure_policy: ToolExposurePolicy::from_patterns(vec![
+                "query_repository".to_string(),
+            ])
+            .expect("policy"),
+            prompt_count: 2,
+            resource_count: 3,
+            prompt_names: vec!["prompt.one".into(), "prompt.two".into()],
+            resource_uris: vec!["lab://resource/one".into(), "lab://resource/two".into()],
+            tool_health: UpstreamHealth::Healthy,
+            prompt_health: UpstreamHealth::Healthy,
+            resource_health: UpstreamHealth::Healthy,
+            tool_unhealthy_since: None,
+            prompt_unhealthy_since: None,
+            resource_unhealthy_since: None,
+            tool_last_error: None,
+            prompt_last_error: None,
+            resource_last_error: None,
+        };
+
+        let failed = failed_in_process_entry_from_existing(
+            existing,
+            "in-process peer registration timed out after 5s".to_string(),
+        );
+
+        assert_eq!(failed.tools.len(), 1);
+        assert!(failed.tools.contains_key("query_repository"));
+        assert_eq!(failed.prompt_count, 2);
+        assert_eq!(failed.resource_count, 3);
+        assert_eq!(failed.prompt_names.len(), 2);
+        assert_eq!(failed.resource_uris.len(), 2);
+        assert!(matches!(
+            failed.exposure_policy,
+            ToolExposurePolicy::AllowList(_)
+        ));
+        assert!(matches!(
+            failed.tool_health,
+            UpstreamHealth::Unhealthy {
+                consecutive_failures: 1
+            }
+        ));
+        assert_eq!(
+            failed.tool_last_error.as_deref(),
+            Some("in-process peer registration timed out after 5s")
+        );
+        assert_eq!(
+            failed.prompt_last_error.as_deref(),
+            Some("in-process peer registration timed out after 5s")
+        );
+        assert_eq!(
+            failed.resource_last_error.as_deref(),
+            Some("in-process peer registration timed out after 5s")
         );
     }
 

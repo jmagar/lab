@@ -5,7 +5,7 @@ export function buildGatewayEndpointPreview(gateway: Gateway): string {
     return gateway.config.url ?? 'Not configured'
   }
 
-  if (gateway.transport === 'lab_service') {
+  if (gateway.transport === 'in_process') {
     return `lab serve mcp --stdio --services ${gateway.name}`
   }
 

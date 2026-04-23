@@ -232,6 +232,19 @@ pub fn build_default_registry() -> ToolRegistry {
         dispatch: dispatch_fn!(crate::mcp::services::logs::dispatch),
     });
 
+    // marketplace is always-on (synthetic service, no feature flag).
+    {
+        let meta = lab_apis::marketplace::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+            status: "available",
+            actions: crate::mcp::services::marketplace::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::marketplace::dispatch),
+        });
+    }
+
     register_service!(
         reg,
         "radarr",
@@ -534,6 +547,7 @@ mod tests {
             s.insert(lab_apis::extract::META.name); // always-on
             s.insert("gateway");
             s.insert("logs");
+            s.insert(lab_apis::marketplace::META.name); // always-on
             #[cfg(feature = "radarr")]
             s.insert(lab_apis::radarr::META.name);
             #[cfg(feature = "sonarr")]

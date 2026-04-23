@@ -211,7 +211,7 @@ export function ControlsSection() {
             <p className="text-sm text-aurora-text-muted">{saveDemo.message}</p>
             <div className="flex flex-wrap gap-3">
               <Button
-                className="rounded-aurora-1 bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong"
+                className="rounded-aurora-1 border border-aurora-accent-primary/35 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_16%,transparent)] text-aurora-text-primary hover:bg-[color-mix(in_srgb,var(--aurora-accent-primary)_22%,transparent)]"
                 disabled={saveDemo.status === 'loading'}
                 onClick={() => saveDemo.run('success')}
               >

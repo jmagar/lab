@@ -130,13 +130,35 @@ async function fetchSortedServiceActions(
   )
 }
 
+async function fetchVirtualServerAllowedActions(
+  id: string,
+  signal?: AbortSignal,
+): Promise<string[] | undefined> {
+  try {
+    const policy = await gatewayAction<{ allowed_actions: string[] }>(
+      'gateway.virtual_server.get_mcp_policy',
+      { id },
+      signal,
+    )
+    return policy.allowed_actions
+  } catch {
+    return undefined
+  }
+}
+
 async function normalizeListedServerView(
   view: BackendServerView,
   signal?: AbortSignal,
 ): Promise<Gateway> {
-  if (view.source === 'lab_service') {
+  if (view.source === 'in_process') {
+    const [actions, allowedActions] = await Promise.all([
+      fetchSortedServiceActions(view.name, signal),
+      fetchVirtualServerAllowedActions(view.id, signal),
+    ])
+
     return normalizeServerView(view, {
-      tools: await fetchSortedServiceActions(view.name, signal),
+      tools: actions,
+      allowed_actions: allowedActions,
     })
   }
 
@@ -147,16 +169,18 @@ async function normalizeLabServiceServer(
   serverView: BackendServerView,
   signal?: AbortSignal,
 ): Promise<Gateway> {
-  const [serviceConfig, actions] = await Promise.all([
+  const [serviceConfig, actions, allowedActions] = await Promise.all([
     gatewayAction<ServiceConfig>(
       'gateway.service_config.get',
       { service: serverView.name },
       signal,
     ),
     fetchSortedServiceActions(serverView.name, signal),
+    fetchVirtualServerAllowedActions(serverView.id, signal),
   ])
   const serviceView = normalizeServerView(serverView, {
     tools: actions,
+    allowed_actions: allowedActions,
   })
 
   return {
@@ -219,7 +243,7 @@ export const gatewayApi = {
       }
       throw error
     }
-    if (serverView.source === 'lab_service') {
+    if (serverView.source === 'in_process') {
       return normalizeLabServiceServer(serverView, signal)
     }
 
@@ -274,7 +298,7 @@ export const gatewayApi = {
 
   async getExposurePolicy(id: string, signal?: AbortSignal): Promise<ExposurePolicy> {
     const serverView = await findServerView(id, signal)
-    if (serverView.source === 'lab_service') {
+    if (serverView.source === 'in_process') {
       const policy = await gatewayAction<{ allowed_actions: string[] }>(
         'gateway.virtual_server.get_mcp_policy',
         { id },
@@ -282,7 +306,7 @@ export const gatewayApi = {
       )
       const patterns = stripExposeNonePattern(policy.allowed_actions)
       return {
-        mode: policy.allowed_actions.length === 0 ? 'expose_all' : 'allowlist',
+        mode: patterns.length === 0 ? 'expose_all' : 'allowlist',
         patterns,
       }
     }
@@ -293,7 +317,7 @@ export const gatewayApi = {
 
   async setExposurePolicy(id: string, policy: ExposurePolicy, signal?: AbortSignal): Promise<ExposurePolicy> {
     const serverView = await findServerView(id, signal)
-    if (serverView.source === 'lab_service') {
+    if (serverView.source === 'in_process') {
       const allowedActions = policy.mode === 'allowlist'
         ? policy.patterns.length === 0 ? [EXPOSE_NONE_PATTERN] : policy.patterns
         : []
@@ -336,7 +360,7 @@ export const gatewayApi = {
   ): Promise<ExposurePolicyPreview> {
     const serverView = await findServerView(id, signal)
     const tools =
-      serverView.source === 'lab_service'
+      serverView.source === 'in_process'
         ? (await gatewayAction<ServiceAction[]>(
             'gateway.service_actions',
             { service: serverView.name },

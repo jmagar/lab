@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import * as React from 'react'
 import {
   Check,
   CheckCircle2,
@@ -56,6 +57,7 @@ interface ServerDetailPanelProps {
 }
 
 const MAX_SCHEMA_RESPONSE_BYTES = 256 * 1024
+const textEncoder = new TextEncoder()
 
 export function ServerDetailPanel({ server, extensions, onClose }: ServerDetailPanelProps) {
   const open = server !== null
@@ -63,7 +65,7 @@ export function ServerDetailPanel({ server, extensions, onClose }: ServerDetailP
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <DialogContent className="flex max-h-[90vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
-        {server && <PanelBody server={server} extensions={extensions ?? null} />}
+        {server && <PanelBody key={server.name} server={server} extensions={extensions ?? null} />}
       </DialogContent>
     </Dialog>
   )
@@ -96,7 +98,7 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
         throw new Error(`Schema exceeds ${MAX_SCHEMA_RESPONSE_BYTES} bytes`)
       }
       const text = await res.text()
-      if (text.length > MAX_SCHEMA_RESPONSE_BYTES) {
+      if (textEncoder.encode(text).byteLength > MAX_SCHEMA_RESPONSE_BYTES) {
         throw new Error(`Schema exceeds ${MAX_SCHEMA_RESPONSE_BYTES} bytes`)
       }
       try {
@@ -342,14 +344,11 @@ const JSON_TOKEN_CLASS: Record<JsonTokenType, string> = {
   whitespace: '',
 }
 
-const JSON_TOKEN_RE = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|[{}\[\]:,]|\s+|./g
-
 function JsonHighlight({ content }: { content: string }) {
   const parts: React.ReactNode[] = []
-  let match: RegExpExecArray | null
-  JSON_TOKEN_RE.lastIndex = 0
+  const jsonTokenRe = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|[{}\[\]:,]|\s+|./g
 
-  while ((match = JSON_TOKEN_RE.exec(content)) !== null) {
+  for (const match of content.matchAll(jsonTokenRe)) {
     const token = match[0]
     let type: JsonTokenType = 'punctuation'
 
@@ -363,7 +362,7 @@ function JsonHighlight({ content }: { content: string }) {
       type = 'number'
     } else if (token.startsWith('"')) {
       // Key strings are immediately followed by ':' after optional whitespace
-      const rest = content.slice(JSON_TOKEN_RE.lastIndex).trimStart()
+      const rest = content.slice(match.index! + token.length).trimStart()
       type = rest.startsWith(':') ? 'key' : 'string'
     }
 

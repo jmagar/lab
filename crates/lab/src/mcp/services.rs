@@ -9,6 +9,7 @@ pub mod deploy;
 pub mod extract;
 pub mod gateway;
 pub mod logs;
+pub mod marketplace;
 
 #[cfg(feature = "lab-admin")]
 pub mod lab_admin;

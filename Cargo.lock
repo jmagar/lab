@@ -2460,6 +2460,7 @@ dependencies = [
  "lab-auth",
  "oauth2",
  "owo-colors",
+ "process-wrap",
  "r2d2",
  "r2d2_sqlite",
  "ratatui",

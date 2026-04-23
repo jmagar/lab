@@ -81,11 +81,11 @@ pub struct GatewayRemoveArgs {
 
 async fn build_manager(config: &LabConfig) -> Arc<GatewayManager> {
     let runtime = GatewayRuntimeHandle::default();
-    if !config.upstream.is_empty() {
-        let pool = Arc::new(UpstreamPool::new());
-        pool.discover_all(&config.upstream).await;
-        runtime.swap(Some(pool)).await;
-    }
+    let registry = crate::registry::build_default_registry();
+    let pool = Arc::new(UpstreamPool::new());
+    pool.discover_all_with_in_process_peers(&config.upstream, &registry)
+        .await;
+    runtime.swap(Some(pool)).await;
 
     let manager = Arc::new(
         GatewayManager::new(

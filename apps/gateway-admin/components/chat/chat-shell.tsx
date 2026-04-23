@@ -27,11 +27,41 @@ export function ChatShell() {
   const selectedMessages = state.selectedRunId ? (state.messages[state.selectedRunId] ?? []) : []
   const selectedAgent = selectedRun ? state.agents.find((a) => a.id === selectedRun.agentId) ?? null : null
 
+  const stopStreaming = React.useCallback((runId?: string | null) => {
+    if (streamingIntervalRef.current !== null) {
+      window.clearInterval(streamingIntervalRef.current)
+      streamingIntervalRef.current = null
+    }
+
+    if (!runId) return
+
+    setState((s) => {
+      const messages = s.messages[runId] ?? []
+      let changed = false
+      const nextMessages = messages.map((message) => {
+        if (!message.isStreaming) return message
+        changed = true
+        return { ...message, isStreaming: false }
+      })
+
+      if (!changed) return s
+      return {
+        ...s,
+        messages: {
+          ...s.messages,
+          [runId]: nextMessages,
+        },
+      }
+    })
+  }, [])
+
   const handleSelectRun = (runId: string, projectId: string) => {
+    stopStreaming(state.selectedRunId)
     setState((s) => ({ ...s, selectedRunId: runId, selectedProjectId: projectId }))
   }
 
   const handleNewRun = (projectId: string) => {
+    stopStreaming(state.selectedRunId)
     const project = state.projects.find((p) => p.id === projectId)
     if (!project) return
 
@@ -58,10 +88,7 @@ export function ChatShell() {
     const runId = state.selectedRunId
     if (!runId) return
 
-    if (streamingIntervalRef.current !== null) {
-      window.clearInterval(streamingIntervalRef.current)
-      streamingIntervalRef.current = null
-    }
+    stopStreaming(runId)
 
     const userMessage: ACPMessage = {
       id: crypto.randomUUID(),
@@ -134,7 +161,10 @@ export function ChatShell() {
     <div className="flex h-screen flex-col overflow-hidden bg-aurora-page-bg">
       {/* Top bar */}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-aurora-border-default bg-aurora-nav-bg px-3">
-        <SidebarTrigger className="-ml-1 text-aurora-text-muted/60 hover:text-aurora-text-primary" />
+        <SidebarTrigger
+          aria-label="Toggle app sidebar"
+          className="-ml-1 text-aurora-text-muted/60 hover:text-aurora-text-primary"
+        />
         <Separator orientation="vertical" className="h-4 bg-aurora-border-default" />
 
         <TooltipProvider delayDuration={400}>
@@ -143,6 +173,7 @@ export function ChatShell() {
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Toggle sessions"
                 onClick={() => setSessionPanelOpen((o) => !o)}
                 className={cn(
                   'size-7 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
@@ -174,6 +205,7 @@ export function ChatShell() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    aria-label="Start new session"
                     onClick={() => handleNewRun(selectedRun.projectId)}
                     className="size-7 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
                   >
@@ -196,6 +228,7 @@ export function ChatShell() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label={settingsOpen ? 'Close settings' : 'Open settings'}
                   onClick={() => setSettingsOpen((o) => !o)}
                   className={cn(
                     'size-7 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',

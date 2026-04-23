@@ -96,7 +96,7 @@ pub struct PagedServers {
 ///
 /// Cloning the store is cheap — the inner `Pool` is `Arc`-backed.
 ///
-/// Query methods are used by bead lab-h5pm.3+ consumers — `dead_code` is
+/// Query methods are used by versioned REST consumers — `dead_code` is
 /// expected until those consumers are wired in.
 #[allow(dead_code)]
 pub struct RegistryStore {
@@ -129,9 +129,9 @@ impl RegistryStore {
             // connection that the pool hands out.
             let manager =
                 SqliteConnectionManager::file(&path).with_init(|conn| {
+                    conn.pragma_update(None, "journal_mode", "WAL")?;
                     conn.execute_batch(
-                        "PRAGMA journal_mode = WAL;\
-                         PRAGMA busy_timeout = 5000;\
+                        "PRAGMA busy_timeout = 5000;\
                          PRAGMA foreign_keys = ON;\
                          PRAGMA synchronous = NORMAL;",
                     )
@@ -347,7 +347,7 @@ fn list_servers_sync(
     conn: &Connection,
     params: &StoreListParams,
 ) -> Result<PagedServers, RegistryStoreError> {
-    let limit = params.limit.unwrap_or(20).min(100).max(1) as usize;
+    let limit = params.limit.unwrap_or(20).clamp(1, 100) as usize;
 
     let mut sql =
         "SELECT server_name, version, server_json FROM registry_servers WHERE 1=1".to_string();
@@ -411,11 +411,12 @@ fn list_servers_sync(
     }
 
     let next_cursor = if has_more {
-        rows.last().map(|s| {
-            let data = CursorData { s: s.name.clone(), v: s.version.clone() };
-            let json = serde_json::to_vec(&data).unwrap_or_default();
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&json)
-        })
+        let last = rows.last().ok_or_else(|| {
+            RegistryStoreError::InvalidCursor(
+                "cannot build next cursor from an empty result page".to_string(),
+            )
+        })?;
+        Some(encode_cursor(last)?)
     } else {
         None
     };
@@ -593,6 +594,15 @@ fn escape_like(s: &str) -> String {
     s.replace('\\', r"\\")
         .replace('%', r"\%")
         .replace('_', r"\_")
+}
+
+fn encode_cursor(server: &ServerJSON) -> Result<String, RegistryStoreError> {
+    let data = CursorData {
+        s: server.name.clone(),
+        v: server.version.clone(),
+    };
+    let json = serde_json::to_vec(&data)?;
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json))
 }
 
 fn truncate_utf8_bytes(s: String, max_bytes: usize) -> String {

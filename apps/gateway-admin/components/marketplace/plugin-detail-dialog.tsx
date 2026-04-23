@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Download, Trash2, RefreshCw } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { PluginInfoPanel } from './plugin-info-panel'
@@ -8,6 +8,7 @@ import { PluginFilesPanel } from './plugin-files-panel'
 import type { Plugin, Marketplace, Artifact } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 import { getArtifacts } from '@/lib/api/marketplace-client'
+import { isAbortError } from '@/lib/api/service-action-client'
 
 type DialogTab = 'info' | 'files'
 
@@ -21,32 +22,32 @@ interface PluginDetailDialogProps {
 }
 
 function PluginAvatar({ ghUser, name, size = 44 }: { ghUser?: string; name: string; size?: number }) {
+  const [imageFailed, setImageFailed] = useState(false)
   const initials = name.replace(/-/g,' ').split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2)
   const style = { width: size, height: size }
-  if (!ghUser) {
+  const showFallback = !ghUser || imageFailed
+
+  if (showFallback) {
     return (
       <div
-        className="rounded-aurora-1 flex-shrink-0 overflow-hidden flex items-center justify-center font-display font-black text-aurora-text-muted bg-aurora-panel-medium border border-[color-mix(in_srgb,var(--aurora-border-strong)_40%,transparent)]"
+        className="rounded-aurora-1 flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,color-mix(in_srgb,var(--aurora-panel-medium)_88%,transparent),color-mix(in_srgb,var(--aurora-accent-primary)_10%,transparent))] font-display font-black text-aurora-text-muted"
         style={style}
       >
         {initials}
       </div>
     )
   }
+
   return (
     <div
-      className="rounded-aurora-1 flex-shrink-0 overflow-hidden border border-[color-mix(in_srgb,var(--aurora-border-strong)_40%,transparent)]"
+      className="rounded-aurora-1 flex-shrink-0 overflow-hidden border border-[color-mix(in_srgb,var(--aurora-border-strong)_40%,transparent)] bg-aurora-panel-medium"
       style={style}
     >
       <img
         src={`https://github.com/${ghUser}.png?size=96`}
         alt={ghUser}
-        className="w-full h-full object-cover"
-        onError={e => {
-          e.currentTarget.style.display = 'none'
-          const p = e.currentTarget.parentElement
-          if (p) p.textContent = initials
-        }}
+        className="h-full w-full object-cover"
+        onError={() => setImageFailed(true)}
       />
     </div>
   )
@@ -61,11 +62,25 @@ export function PluginDetailDialog({
   onUninstall,
 }: PluginDetailDialogProps) {
   const [tab, setTab] = useState<DialogTab>('info')
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
+
+  useEffect(() => {
+    if (!plugin) return
+    const controller = new AbortController()
+    setArtifacts([])
+    getArtifacts(plugin.id, controller.signal)
+      .then(setArtifacts)
+      .catch(err => {
+        if (isAbortError(err)) return
+        setArtifacts([])
+      })
+    return () => controller.abort()
+  }, [plugin?.id])
 
   if (!plugin) return null
 
-  const artifacts: Artifact[] = getArtifacts(plugin.id)
   const isInstalled = installedIds.has(plugin.id)
+  const marketplaceOwner = marketplace?.githubOwner ?? marketplace?.ghUser
 
   return (
     <Dialog open onOpenChange={v => { if (!v) onClose() }}>
@@ -74,17 +89,17 @@ export function PluginDetailDialog({
 
         {/* Header */}
         <div className="flex items-center gap-4 px-5 py-[14px] border-b border-aurora-border-default bg-aurora-panel-strong flex-shrink-0">
-          <PluginAvatar ghUser={marketplace?.ghUser} name={plugin.name} size={44} />
+          <PluginAvatar ghUser={marketplaceOwner} name={plugin.name} size={44} />
           <div className="flex-1 min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-aurora-text-muted leading-none mb-[5px]">
-              {marketplace?.name ?? plugin.mkt}
+              {marketplace?.name ?? plugin.marketplaceId}
             </div>
             <div className="font-display text-[19px] font-bold tracking-[-0.02em] text-aurora-text-primary leading-[1.12]">
               {plugin.name}
             </div>
             <div className="flex items-center gap-[6px] mt-[6px] flex-wrap">
               <span className="text-[11px] font-semibold bg-aurora-control-surface text-aurora-text-muted border border-aurora-border-default rounded-full px-[10px] py-[3px]">
-                v{plugin.ver}
+                v{plugin.version}
               </span>
               {plugin.tags.slice(0, 3).map(t => (
                 <span key={t} className="text-[10px] font-bold uppercase tracking-[0.14em] px-[9px] py-[3px] rounded-full bg-aurora-control-surface text-aurora-text-muted border border-aurora-border-default">

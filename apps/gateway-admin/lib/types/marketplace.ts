@@ -4,7 +4,15 @@ export interface Marketplace {
   id: string
   name: string
   owner: string
-  ghUser: string
+  description: string
+  autoUpdateEnabled: boolean
+  pluginCount: number
+  lastUpdatedAt: string
+  githubOwner?: string
+  repository?: string
+  remoteUrl?: string
+  localPath?: string
+  ghUser?: string
   repo?: string
   source: MarketplaceSource
   url?: string
@@ -18,6 +26,9 @@ export interface Marketplace {
 export interface Plugin {
   id: string
   name: string
+  marketplaceId: string
+  version: string
+  description: string
   mkt: string
   ver: string
   desc: string

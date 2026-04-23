@@ -20,6 +20,7 @@ lab-apis           = { path = "../lab-apis", default-features = false }
 lab-auth           = { path = "../lab-auth" }
 
 tokio                        = { workspace = true, features = ["process"] }
+process-wrap                 = { version = "9.1.0", default-features = false, features = ["tokio1", "process-group"] }
 futures.workspace            = true
 reqwest.workspace            = true
 url.workspace                = true
@@ -65,7 +66,7 @@ regex                        = { version = "1", optional = true }
 
 rmcp.workspace               = true
 jsonwebtoken.workspace       = true
-rusqlite                     = { workspace = true, optional = true }
+rusqlite.workspace           = true
 r2d2                         = { version = "0.8", optional = true }
 r2d2_sqlite                  = { version = "0.33", optional = true }
 uuid.workspace               = true
@@ -114,7 +115,7 @@ gotify      = ["lab-apis/gotify"]
 apprise     = ["lab-apis/apprise"]
 
 # bootstrap / registry
-mcpregistry = ["lab-apis/mcpregistry", "dep:rusqlite", "dep:r2d2", "dep:r2d2_sqlite"]
+mcpregistry = ["lab-apis/mcpregistry", "dep:r2d2", "dep:r2d2_sqlite"]
 
 # ai / vector / inference
 openai      = ["lab-apis/openai"]

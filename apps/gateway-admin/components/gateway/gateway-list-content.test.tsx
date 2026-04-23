@@ -12,7 +12,7 @@ const gatewayFixtures: Gateway[] = [
     id: 'gw_lab',
     name: 'Lab Core',
     transport: 'stdio',
-    source: 'lab_service',
+    source: 'in_process',
     configured: true,
     enabled: true,
     config: { command: 'lab service mcp --stdio --services chrome-dev-tools' },
@@ -85,7 +85,7 @@ test('gateway list view renders quick-lens cards and primary actions', () => {
           {
             gatewayId: 'gw_lab',
             gatewayName: 'Lab Core',
-            source: 'lab_service',
+            source: 'in_process',
             sourceFacet: 'lab',
             transport: 'stdio',
             toolName: 'click',

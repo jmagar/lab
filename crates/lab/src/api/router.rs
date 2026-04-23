@@ -353,7 +353,8 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
                 "/docs",
                 get(|| async { Html(include_str!("openapi_docs.html")) }),
             )
-            .nest("/extract", services::extract::routes(state.clone()));
+            .nest("/extract", services::extract::routes(state.clone()))
+            .nest("/marketplace", services::marketplace::routes(state.clone()));
 
         if state
             .registry

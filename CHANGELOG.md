@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 | `fca019b` | fix(gateway-admin): brand icon white bg + colored border for contrast |
 
 ### Highlights
+
 - **Marketplace UI** — full Marketplace page: types, mock API client, SWR hooks, card/panel/dialog/modal components, route + sidebar nav entry
 - **Gateway admin REST wiring** — listServers now calls GET /v0.1/servers; gateway/registry/log/chat UI components updated (filters, table, detail panel, session sidebar, log console)
 - **Chat UI improvements** — chat-input, chat-shell, message-bubble, message-thread, settings-panel refined; gateway tools table added
@@ -31,6 +32,7 @@ All notable changes to this project will be documented in this file.
 - **Registry v0.1 API fixes** — axum 0.8 route syntax, owner filter, ToolError normalization, coverage doc added
 
 ### Version bumps
+
 - Rust workspace: `0.7.2 → 0.7.3`
 - gateway-admin: `0.2.2 → 0.2.3`
 
@@ -47,6 +49,7 @@ All notable changes to this project will be documented in this file.
 | `96ddf66` | feat(lab-h5pm.1): create RegistryStore module skeleton in dispatch layer |
 
 ### Highlights
+
 - **RegistryStore (lab-h5pm)** — SQLite-backed MCP server registry with skeleton, query/upsert/full-sync, and dispatch sync action protected by a RAII AtomicBool rate-limit guard
 - **GitHub owner avatar** — registry list rows and detail header now pull `https://github.com/<owner>.png` from `server.repository.url`, falling back to `icons[0]` then a `Package` lucide icon
 - **Aurora token sweep (product code)** — replaced shadcn-generic tokens (`text-muted-foreground`, `bg-card`, `bg-muted`, `bg-background`, `border-border`, `text-foreground`, `rounded-xl`) with Aurora equivalents across 19 files in `components/` and `app/`
@@ -56,6 +59,7 @@ All notable changes to this project will be documented in this file.
 - **Test-compile repairs** — added `proxy_prompts` to `UpstreamConfig` literals across 4 files + `search` to `StoreListParams` literal; all-features tests compile clean
 
 ### Version bumps
+
 - Rust workspace: `0.7.1 → 0.7.2`
 - gateway-admin: `0.2.1 → 0.2.2`
 
@@ -68,6 +72,7 @@ All notable changes to this project will be documented in this file.
 | `52ef7d4` | refactor(ui): complete Aurora token sweep across all shadcn primitives — v0.7.1 |
 
 ### Highlights
+
 - **Aurora token sweep** — complete theming of all `components/ui/` shadcn primitives: toggle, navigation-menu, skeleton, dialog, item, calendar, scroll-area, resizable, badge, checkbox, switch, radio-group, slider, dropdown-menu, select, alert, separator, accordion, progress, tabs, sonner, command, context-menu, menubar
 - **Focus ring normalization** — all Radix primitives now use `aurora-accent-primary` rings instead of shadcn `ring-ring/50` defaults
 - **Hover state normalization** — all `bg-accent`/`focus:bg-accent`/`hover:bg-accent` replaced with `aurora-hover-bg` across all menu and interactive components
@@ -78,6 +83,7 @@ All notable changes to this project will be documented in this file.
 - **JsonHighlight** — syntax-colored JSON renderer in `server-detail-panel.tsx`
 
 ### Version bumps
+
 - Rust workspace: `0.7.0 → 0.7.1`
 - gateway-admin: `0.2.0 → 0.2.1`
 
@@ -95,6 +101,7 @@ All notable changes to this project will be documented in this file.
 | `234f7c4` | fix(security): sanitize log field values + redact upstream credentials |
 
 ### Highlights
+
 - Chat UI (`components/chat/`, `app/(admin)/chat/`) and branding lib added to gateway-admin
 - Registry: server detail panel expansion, filter sidebar, richer list content
 - Log toolbar refactored; `log-filters.tsx` and `log-stream-status.tsx` consolidated
@@ -113,6 +120,7 @@ All notable changes to this project will be documented in this file.
 | `a1058de` | chore: remove stale root plugin files and gh-webhook tool |
 
 ### Highlights
+
 - All CLI service shims now delegate to the shared `dispatch/` layer
 - `--yes` / `--dry-run` flags wired for destructive actions across all services
 - Plugin asset hygiene pass

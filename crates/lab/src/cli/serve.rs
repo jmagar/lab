@@ -166,36 +166,29 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     } else {
         build_upstream_oauth_runtime(config, &auth_config).await?
     };
-    if !config.upstream.is_empty() {
-        tracing::info!(
-            subsystem = "gateway_client",
-            phase = "discovery.start",
-            upstream_count = config.upstream.len(),
-            oauth_upstream_count = config.upstream.iter().filter(|upstream| upstream.oauth.is_some()).count(),
-            "starting upstream gateway discovery"
-        );
-        let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
-        if let Some(rt) = &upstream_oauth_runtime {
-            pool_builder = pool_builder.with_oauth_client_cache(rt.cache.clone());
-        }
-        let pool = Arc::new(pool_builder);
-        pool.discover_all(&config.upstream).await;
-        tracing::info!(
-            subsystem = "gateway_client",
-            phase = "discovery.finish",
-            upstream_count = config.upstream.len(),
-            discovered_upstream_count = pool.upstream_count().await,
-            "upstream gateway discovery complete"
-        );
-        gateway_runtime.swap(Some(pool)).await;
-    } else {
-        tracing::info!(
-            subsystem = "gateway_client",
-            phase = "disabled",
-            upstream_count = 0,
-            "gateway client disabled because no upstreams are configured"
-        );
+    tracing::info!(
+        subsystem = "gateway_client",
+        phase = "discovery.start",
+        upstream_count = config.upstream.len(),
+        oauth_upstream_count = config.upstream.iter().filter(|upstream| upstream.oauth.is_some()).count(),
+        in_process_peer_count = registry.services().iter().filter(|service| !service.actions.is_empty()).count(),
+        "starting upstream gateway discovery"
+    );
+    let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
+    if let Some(rt) = &upstream_oauth_runtime {
+        pool_builder = pool_builder.with_oauth_client_cache(rt.cache.clone());
     }
+    let pool = Arc::new(pool_builder);
+    pool.discover_all_with_in_process_peers(&config.upstream, &registry)
+        .await;
+    tracing::info!(
+        subsystem = "gateway_client",
+        phase = "discovery.finish",
+        upstream_count = config.upstream.len(),
+        discovered_upstream_count = pool.upstream_count().await,
+        "upstream gateway discovery complete"
+    );
+    gateway_runtime.swap(Some(pool)).await;
     let notifier = PeerNotifier::default();
     let (notify_tx, notify_rx) = mpsc::unbounded_channel();
     let _catalog_notifier_task = tokio::spawn(notifier.clone().run(notify_rx));
@@ -293,23 +286,11 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 let store = Arc::new(store);
                 state = state.with_registry_store(Arc::clone(&store));
                 let sync_store = Arc::clone(&store);
-                let sync_client = match crate::dispatch::mcpregistry::client::require_client() {
-                    Ok(c) => Some(c),
-                    Err(e) => {
-                        tracing::warn!(
-                            service = "mcpregistry",
-                            event = "sync.client.unavailable",
-                            error = %e,
-                            "mcpregistry client unavailable; hourly sync disabled"
-                        );
-                        None
-                    }
-                };
-                Some(tokio::spawn(async move {
-                    // Fire immediately at startup — do not wait for the first interval tick.
-                    if let Some(ref client) = sync_client {
+                match crate::dispatch::mcpregistry::client::require_client() {
+                    Ok(sync_client) => Some(tokio::spawn(async move {
+                        // Fire immediately at startup — do not wait for the first interval tick.
                         if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                            &sync_store, client, false,
+                            &sync_store, &sync_client, false,
                         ).await {
                             tracing::warn!(
                                 service = "mcpregistry",
@@ -318,18 +299,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                                 "initial sync failed; will retry next hour"
                             );
                         }
-                    }
-                    let mut interval =
-                        tokio::time::interval(Duration::from_secs(3600));
-                    // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
-                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                    // Consume the immediate tick so the first loop iteration is at T+1h.
-                    interval.tick().await;
-                    loop {
+                        let mut interval =
+                            tokio::time::interval(Duration::from_secs(3600));
+                        // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
+                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        // Consume the immediate tick so the first loop iteration is at T+1h.
                         interval.tick().await;
-                        if let Some(ref client) = sync_client {
+                        loop {
+                            interval.tick().await;
                             if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                                &sync_store, client, false,
+                                &sync_store, &sync_client, false,
                             ).await {
                                 tracing::warn!(
                                     service = "mcpregistry",
@@ -339,8 +318,17 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                                 );
                             }
                         }
+                    })),
+                    Err(e) => {
+                        tracing::warn!(
+                            service = "mcpregistry",
+                            event = "sync.client.unavailable",
+                            error = %e,
+                            "mcpregistry client unavailable; registry background sync disabled"
+                        );
+                        None
                     }
-                }))
+                }
             }
             Err(e) => {
                 tracing::warn!(
@@ -353,9 +341,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             }
         }
     };
-    // _registry_sync_keepalive: Option<JoinHandle> held in scope until server exits.
-    // The leading _ prevents "unused variable" warning but does NOT drop the handle —
-    // only `let _ = ...` (without the name) would drop immediately.
+    // `_registry_sync_keepalive` keeps the background sync task alive for the
+    // duration of `serve`; binding it by name preserves the JoinHandle.
     state = state.with_device_role(device_role);
     if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
         tracing::info!(
@@ -936,19 +923,21 @@ fn reclaim_port_if_lab(port: u16) -> bool {
     let Some(pid) = find_pid_for_port(port) else {
         return false;
     };
-    let comm_path = format!("/proc/{pid}/comm");
-    let comm = match std::fs::read_to_string(&comm_path) {
-        Ok(s) => s,
-        Err(_) => return false,
+    let Some(exe) = lab_executable_path(pid) else {
+        return false;
     };
-    let comm = comm.trim();
-    if !comm.contains("lab") {
+    let process_name = exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("<unknown>");
+    if !is_lab_executable(&exe) {
         tracing::warn!(
             subsystem = "api_server",
             phase = "listener.port_conflict",
             port,
             pid,
-            process = comm,
+            process = process_name,
+            executable = %exe.display(),
             "port in use by non-lab process — not killing"
         );
         return false;
@@ -958,13 +947,27 @@ fn reclaim_port_if_lab(port: u16) -> bool {
         phase = "listener.reclaim",
         port,
         pid,
-        process = comm,
+        process = process_name,
+        executable = %exe.display(),
         "port held by stale lab process — sending SIGTERM"
     );
     let status = std::process::Command::new("kill")
         .args(["-TERM", &pid.to_string()])
         .status();
     matches!(status, Ok(s) if s.success())
+}
+
+#[cfg(target_os = "linux")]
+fn lab_executable_path(pid: u32) -> Option<PathBuf> {
+    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
+}
+
+#[cfg(target_os = "linux")]
+fn is_lab_executable(path: &std::path::Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("lab") | Some("lab (deleted)")
+    )
 }
 
 /// Walk `/proc/net/tcp` (IPv4) to find the inode for a listening port, then

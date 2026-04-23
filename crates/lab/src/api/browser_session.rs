@@ -101,6 +101,22 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
     let start = Instant::now();
     let request_id = request_id(&headers).map(ToOwned::to_owned);
     log_auth_dispatch_start("session.get", request_id.as_deref());
+
+    if state.web_ui_auth_disabled {
+        let response = no_store_json(serde_json::json!({
+            "authenticated": true,
+            "login_available": false,
+            "user": {
+                "sub": "labby-dev",
+                "email": serde_json::Value::Null,
+            },
+            "expires_at": u64::MAX,
+            "csrf_token": "",
+        }));
+        log_auth_dispatch("session.get", request_id.as_deref(), start, None);
+        return response;
+    }
+
     let login_available = state.oauth_state.is_some();
     let Some(auth_state) = oauth_state(&state) else {
         let response = unauthenticated_session_response(false);
