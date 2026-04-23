@@ -1,11 +1,13 @@
 'use client'
 
 import * as React from 'react'
-import { Copy, Check, Brain } from 'lucide-react'
+import { Copy, Check, Brain, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ToolCallDisplay } from './tool-call-display'
 import type { ACPMessage } from './types'
+import { AURORA_MUTED_LABEL } from '@/components/aurora/tokens'
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = React.useState(false)
@@ -33,6 +35,11 @@ function CopyButton({ text }: { text: string }) {
 
 export function MessageBubble({ message }: { message: ACPMessage }) {
   const isUser = message.role === 'user'
+  const [reasoningOpen, setReasoningOpen] = React.useState(Boolean(message.isStreaming))
+
+  React.useEffect(() => {
+    setReasoningOpen(Boolean(message.isStreaming))
+  }, [message.isStreaming])
 
   return (
     <div className={cn('group/bubble flex gap-3', isUser && 'flex-row-reverse')}>
@@ -49,14 +56,56 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
 
       <div className={cn('flex min-w-0 max-w-[80%] flex-col gap-2', isUser && 'items-end')}>
         {!isUser && message.thoughts.length > 0 && (
-          <div className="flex items-center gap-1.5 rounded-full border border-aurora-border-default/60 bg-aurora-control-surface/50 px-2.5 py-1 text-[11px] text-aurora-text-muted/70">
-            <Brain className="size-3 text-aurora-accent-primary/60" />
-            <span>{message.thoughts.length} reasoning update{message.thoughts.length === 1 ? '' : 's'}</span>
-          </div>
+          <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
+            <div className="overflow-hidden rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-aurora-hover-bg/40"
+                >
+                  <Brain className="size-4 shrink-0 text-aurora-accent-primary/75" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold leading-[1.2] text-aurora-text-primary">
+                      {message.isStreaming ? 'Reasoning' : 'Thought'}
+                    </p>
+                    <p className={cn(AURORA_MUTED_LABEL, 'mt-1 text-aurora-text-muted/60')}>
+                      {message.isStreaming
+                        ? 'thinking live'
+                        : `${message.thoughts.length} update${message.thoughts.length === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+                  {reasoningOpen ? (
+                    <ChevronDown className="size-4 shrink-0 text-aurora-text-muted/60" />
+                  ) : (
+                    <ChevronRight className="size-4 shrink-0 text-aurora-text-muted/60" />
+                  )}
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="border-t border-aurora-border-default/70 px-4 py-3">
+                  <div className="space-y-3">
+                    {message.thoughts.map((thought, index) => (
+                      <p
+                        key={`${message.id}-thought-${index}`}
+                        className="whitespace-pre-wrap text-[14px] leading-[1.55] text-aurora-text-primary"
+                      >
+                        {thought}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
         )}
 
         {message.toolCalls.length > 0 && (
-          <div className="w-full space-y-1.5">
+          <div className="w-full rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium px-4 py-3 shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+            <div className="mb-2 flex items-center gap-2">
+              <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/60')}>
+                action flow
+              </span>
+            </div>
             {message.toolCalls.map((toolCall) => (
               <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
             ))}

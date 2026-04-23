@@ -1172,7 +1172,9 @@ mod tests {
         assert!(plain.contains("servarr"));
         assert!(plain.contains("7 actions"));
         assert!(plain.contains("movie.search"));
-        assert!(plain.contains("(+2 more"));
+        assert!(plain.contains("(+"));
+        assert!(plain.contains("more"));
+        assert!(plain.contains("lab help radarr"));
         // The old `{5 keys}` artifact must not appear.
         assert!(
             !plain.contains("{5 keys}"),

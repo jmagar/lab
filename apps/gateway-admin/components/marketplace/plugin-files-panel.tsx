@@ -499,10 +499,10 @@ export function PluginFilesPanel({ pluginId, artifacts }: PluginFilesPanelProps)
 
   return (
     <div className="flex h-full flex-1 overflow-hidden">
-      <div className="w-[260px] flex-shrink-0">
+      <div className="w-[clamp(220px,19vw,280px)] flex-shrink-0">
         <FileTree files={files} activePath={activePath} onSelect={setActivePath} />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3 p-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-4">
         {status ? (
           <div
             className={cn(
