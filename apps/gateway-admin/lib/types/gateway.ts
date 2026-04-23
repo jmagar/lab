@@ -1,6 +1,6 @@
 // Gateway data model types
 
-export type TransportType = 'http' | 'stdio' | 'lab_service'
+export type TransportType = 'http' | 'stdio' | 'in_process'
 
 export interface GatewayConfig {
   url?: string

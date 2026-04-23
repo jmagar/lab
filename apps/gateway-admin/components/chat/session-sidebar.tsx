@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Database, Plus, MoreHorizontal, Search, Spar
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -191,8 +192,12 @@ export function SessionSidebar({
       {/* Search */}
       <div className="shrink-0 px-3 py-3">
         <div className="relative">
+          <Label htmlFor="session-search" className="sr-only">
+            Search sessions
+          </Label>
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-aurora-text-muted/50" />
           <Input
+            id="session-search"
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}

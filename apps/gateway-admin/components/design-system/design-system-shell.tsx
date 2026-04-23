@@ -8,6 +8,7 @@ import {
   AURORA_STRONG_PANEL,
 } from '@/components/aurora/tokens'
 import { ControlsSection } from './controls-section'
+import { CommandPaletteSection } from './command-palette-section'
 import { DataDisplaySection } from './data-display-section'
 import { FeedbackSection } from './feedback-section'
 import { FoundationsSection } from './foundations-section'
@@ -46,6 +47,9 @@ export function DesignSystemShell() {
           </div>
           <div className="xl:col-span-2">
             <NavigationSection />
+          </div>
+          <div className="xl:col-span-2">
+            <CommandPaletteSection />
           </div>
           <div className="xl:col-span-2">
             <DataDisplaySection />

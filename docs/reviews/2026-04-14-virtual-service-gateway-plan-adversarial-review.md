@@ -118,7 +118,7 @@ It is viable, but only if implementation treats these as hard constraints:
 - discovery semantics aligned with surface enablement
 - metadata-driven action-policy editing
 
-Without those constraints, the most likely failure is a UI that appears to manage virtual servers while the actual runtime behavior stays inconsistent, stale, or visually ambiguous.
+Without those constraints, the most likely failure is a UI that appears to manage in-process services while the actual runtime behavior stays inconsistent, stale, or visually ambiguous.
 
 ## Recommendation
 

@@ -21,6 +21,26 @@ const bannedTokenRules = {
       message:
         'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design-system-contract.md.',
     },
+    {
+      selector: `VariableDeclarator[init.type='Literal'][init.value=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design-system-contract.md.',
+    },
+    {
+      selector: `VariableDeclarator[init.type='TemplateLiteral'] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design-system-contract.md.',
+    },
+    {
+      selector: `ArrayExpression > Literal[value=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes inside clsx/cn arrays. See docs/design-system-contract.md.',
+    },
+    {
+      selector: `ArrayExpression TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes inside clsx/cn arrays. See docs/design-system-contract.md.',
+    },
   ],
 }
 

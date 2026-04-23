@@ -54,6 +54,7 @@ export interface BackendServerView {
 export interface BackendVirtualServiceDiscovery {
   tool_names?: string[]
   tools?: ServiceAction[]
+  allowed_actions?: string[]
 }
 
 export interface BackendGatewayConfigView {
@@ -104,7 +105,7 @@ export interface GatewayDiscoverySnapshot {
 
 const NOW = () => new Date().toISOString()
 
-const VALID_TRANSPORTS = ['http', 'stdio', 'lab_service'] as const satisfies readonly TransportType[]
+const VALID_TRANSPORTS = ['http', 'stdio', 'in_process'] as const satisfies readonly TransportType[]
 function isValidTransport(v: unknown): v is TransportType {
   return typeof v === 'string' && (VALID_TRANSPORTS as readonly string[]).includes(v)
 }
@@ -171,6 +172,22 @@ function matchTool(toolName: string, patterns?: string[] | null): string | null 
   }
 
   return null
+}
+
+function matchVirtualServerAction(
+  actionName: string,
+  allowedActions: string[] | undefined,
+  mcpEnabled: boolean,
+): string | null {
+  if (!mcpEnabled) {
+    return null
+  }
+
+  if (!allowedActions || allowedActions.length === 0) {
+    return '*'
+  }
+
+  return allowedActions.includes(actionName) ? actionName : null
 }
 
 function describeTarget(config: BackendGatewayConfigView): string {
@@ -316,7 +333,7 @@ export function normalizeServerView(
     proxy_resources: false,
     proxy_prompts: false,
   }
-  const isLabService = view.source === 'lab_service'
+  const isLabService = view.source === 'in_process'
   const warnings = (view.warnings ?? []).map((warning) => {
     if (isNonEssentialCapabilityError(warning.message)) {
       return null
@@ -340,6 +357,7 @@ export function normalizeServerView(
       description: '',
       destructive: false,
     }))
+  const mcpEnabled = (view.enabled ?? true) && (view.surfaces?.mcp?.enabled ?? false)
 
   return {
     id: view.id,
@@ -384,12 +402,18 @@ export function normalizeServerView(
       exposed_prompt_count: view.exposed_prompt_count ?? 0,
     },
     discovery: {
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description || undefined,
-        exposed: true,
-        matched_by: '*',
-      })),
+      tools: tools.map((tool) => {
+        const matchedBy = view.source === 'in_process'
+          ? matchVirtualServerAction(tool.name, discovery?.allowed_actions, mcpEnabled)
+          : '*'
+
+        return {
+          name: tool.name,
+          description: tool.description || undefined,
+          exposed: matchedBy !== null,
+          matched_by: matchedBy,
+        }
+      }),
       resources: [],
       prompts: [],
     },

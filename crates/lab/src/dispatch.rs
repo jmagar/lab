@@ -17,6 +17,7 @@ pub mod lab_admin;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 pub mod logs;
+pub mod marketplace;
 #[cfg(feature = "mcpregistry")]
 pub mod mcpregistry;
 #[cfg(feature = "memos")]

@@ -465,8 +465,15 @@ Its sections should cover:
 - controls
 - feedback
 - navigation
+- command palette
 - data display
 - application patterns
+
+The command-palette section is the canonical reference for Labby's global `cmd+k` interaction:
+
+- one ranked stack for destinations, actions, and recent context
+- Aurora-aligned focus, density, tags, and preview treatment
+- local fake state only, with no requirement for live backend search or execution
 
 ## Accessibility And Interaction
 

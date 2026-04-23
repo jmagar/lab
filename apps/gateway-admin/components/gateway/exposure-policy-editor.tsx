@@ -39,9 +39,9 @@ interface ExposurePolicyEditorProps {
 
 export function ExposurePolicyEditor({ gateway }: ExposurePolicyEditorProps) {
   const { data: policy, isLoading: policyLoading } = useExposurePolicy(gateway.id)
-  const { data: serviceActions } = useServiceActions(gateway.source === 'lab_service' ? gateway.id : null)
+  const { data: serviceActions } = useServiceActions(gateway.source === 'in_process' ? gateway.id : null)
   const { setExposurePolicy, previewExposurePolicy } = useGatewayMutations()
-  const isLabGateway = gateway.source === 'lab_service'
+  const isLabGateway = gateway.source === 'in_process'
 
   const [mode, setMode] = useState<'expose_all' | 'allowlist'>('expose_all')
   const [patterns, setPatterns] = useState<string[]>([])

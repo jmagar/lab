@@ -10,7 +10,7 @@ export interface GatewayClientConfig {
 }
 
 export function buildGatewayClientConfig(gateway: Gateway): GatewayClientConfig {
-  if (gateway.transport === 'http' || gateway.transport === 'lab_service') {
+  if (gateway.transport === 'http' || gateway.transport === 'in_process') {
     return {
       name: gateway.name,
       type: 'http',

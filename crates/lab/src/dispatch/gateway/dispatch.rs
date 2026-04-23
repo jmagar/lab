@@ -482,7 +482,7 @@ mod tests {
         .expect("enable missing virtual server");
 
         assert_eq!(value["id"], "plex");
-        assert_eq!(value["source"], "lab_service");
+        assert_eq!(value["source"], "in_process");
         assert_eq!(value["enabled"], true);
         assert_eq!(value["surfaces"]["mcp"]["enabled"], true);
     }

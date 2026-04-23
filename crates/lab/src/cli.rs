@@ -15,6 +15,7 @@ pub mod help;
 pub mod helpers;
 pub mod install;
 pub mod logs;
+pub mod marketplace;
 pub mod oauth;
 pub mod params;
 pub mod plugins;
@@ -134,6 +135,8 @@ pub enum Command {
     Oauth(oauth::OauthArgs),
     /// Search fleet logs on the configured master.
     Logs(logs::LogsArgs),
+    /// Claude plugin marketplace manager.
+    Marketplace(marketplace::MarketplaceArgs),
     /// Radarr movie collection manager.
     #[cfg(feature = "radarr")]
     Radarr(radarr::RadarrArgs),
@@ -226,6 +229,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Gateway(args) => gateway::run(args, format, &config).await,
         Command::Oauth(args) => oauth::run(args, &config).await,
         Command::Logs(args) => logs::run(args, format, &config).await,
+        Command::Marketplace(args) => marketplace::run(args, format).await,
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,
         #[cfg(feature = "sonarr")]

@@ -16,7 +16,7 @@ function buildGateway(overrides: Partial<Gateway> = {}): Gateway {
     id: 'gw_default',
     name: 'Gateway Default',
     transport: 'stdio',
-    source: 'lab_service',
+    source: 'in_process',
     configured: true,
     enabled: true,
     config: {
@@ -50,7 +50,7 @@ const configuredHealthyGateway = buildGateway({
   id: 'gw_lab',
   name: 'Lab Gateway',
   transport: 'stdio',
-  source: 'lab_service',
+  source: 'in_process',
   discovery: {
     tools: [
       { name: 'gateway', description: 'Manage gateways', exposed: true, matched_by: null },

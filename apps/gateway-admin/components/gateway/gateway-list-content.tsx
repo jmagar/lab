@@ -299,7 +299,7 @@ export function GatewayListContent() {
     if (!deleteGateway) return
 
     try {
-      if (deleteGateway.source === 'lab_service') {
+      if (deleteGateway.source === 'in_process') {
         await disableVirtualServer(deleteGateway.id)
         toast.success('Lab gateway disabled successfully')
       } else {
@@ -446,36 +446,40 @@ export function GatewayListView({
             >
               <SlidersHorizontal className="size-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onDensityChange('comfortable')}
-              className={cn(
-                gatewayActionTone(),
-                'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
-                density === 'comfortable' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
-              )}
-              aria-label="Comfortable density"
-              aria-pressed={density === 'comfortable'}
-              title="Comfortable density"
-            >
-              <LayoutList className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => onDensityChange('condensed')}
-              className={cn(
-                gatewayActionTone(),
-                'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
-                density === 'condensed' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
-              )}
-              aria-label="Condensed density"
-              aria-pressed={density === 'condensed'}
-              title="Condensed density"
-            >
-              <Rows3 className="size-4" />
-            </Button>
+            {!showToolsView ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onDensityChange('comfortable')}
+                  className={cn(
+                    gatewayActionTone(),
+                    'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                    density === 'comfortable' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
+                  )}
+                  aria-label="Comfortable density"
+                  aria-pressed={density === 'comfortable'}
+                  title="Comfortable density"
+                >
+                  <LayoutList className="size-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onDensityChange('condensed')}
+                  className={cn(
+                    gatewayActionTone(),
+                    'size-10 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                    density === 'condensed' && 'border-aurora-accent-primary/45 text-aurora-accent-strong',
+                  )}
+                  aria-label="Condensed density"
+                  aria-pressed={density === 'condensed'}
+                  title="Condensed density"
+                >
+                  <Rows3 className="size-4" />
+                </Button>
+              </>
+            ) : null}
             <Button
               onClick={onCreate}
               className={cn(
@@ -629,7 +633,9 @@ function SummaryCard({
       onClick={onClick}
       className={cn(
         AURORA_GATEWAY_STAT,
-        'text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        'cursor-pointer text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        !active &&
+          'bg-aurora-panel/72 hover:border-aurora-accent-primary/28 hover:bg-aurora-hover-bg hover:shadow-[0_0_0_1px_rgba(87,190,255,0.08)]',
         active && 'border-aurora-accent-primary/40 bg-aurora-accent-primary/8 shadow-[inset_0_0_0_1px_rgba(87,190,255,0.12)]',
       )}
       aria-pressed={active}

@@ -16,14 +16,14 @@ const MARKETPLACES_KEY = 'marketplace:sources'
 const PLUGINS_KEY = 'marketplace:plugins'
 
 export function useMarketplaces() {
-  return useSWR<Marketplace[]>(MARKETPLACES_KEY, fetchMarketplaces, {
+  return useSWR<Marketplace[]>(MARKETPLACES_KEY, () => fetchMarketplaces(), {
     revalidateOnFocus: false,
     fallbackData: [],
   })
 }
 
 export function usePlugins() {
-  return useSWR<Plugin[]>(PLUGINS_KEY, fetchPlugins, {
+  return useSWR<Plugin[]>(PLUGINS_KEY, () => fetchPlugins(), {
     revalidateOnFocus: false,
     fallbackData: [],
   })
@@ -38,7 +38,7 @@ export function useMarketplaceMutations() {
       await installPlugin(pluginId)
       await mutatePlugins(async (prev = []) =>
         prev.map(p => p.id === pluginId ? { ...p, installed: true, installedAt: new Date().toISOString() } : p)
-      )
+      , { revalidate: false })
       toast.success(`Installed ${pluginName}`)
     } catch {
       toast.error(`Failed to install ${pluginName}`)
@@ -50,7 +50,7 @@ export function useMarketplaceMutations() {
       await uninstallPlugin(pluginId)
       await mutatePlugins(async (prev = []) =>
         prev.map(p => p.id === pluginId ? { ...p, installed: false } : p)
-      )
+      , { revalidate: false })
       toast.success(`Removed ${pluginName}`)
     } catch {
       toast.error(`Failed to remove ${pluginName}`)
@@ -60,7 +60,7 @@ export function useMarketplaceMutations() {
   const addSource = useCallback(async (input: Parameters<typeof addMarketplace>[0]) => {
     try {
       const mkt = await addMarketplace(input)
-      await mutateMarketplaces(async (prev = []) => [...prev, mkt])
+      await mutateMarketplaces(async (prev = []) => [...prev, mkt], { revalidate: false })
       toast.success(`Added ${mkt.name}`)
       return mkt
     } catch {

@@ -17,10 +17,13 @@ pub async fn dispatch_with_client(
         "config" => Ok(serde_json::json!({ "url": client::resolved_url() })),
         "server.list" => {
             let p = params::list_servers_params(&params_value)?;
-            if params_value.get("sort_by").is_some() || params_value.get("order").is_some() {
+            if let Some(param) = ["sort_by", "order"]
+                .into_iter()
+                .find(|param| params_value.get(*param).is_some())
+            {
                 return Err(ToolError::InvalidParam {
                     message: "sort_by/order are not supported on the paginated registry surface".to_string(),
-                    param: "sort_by".to_string(),
+                    param: param.to_string(),
                 });
             }
             to_json(client.list_servers(p).await?)

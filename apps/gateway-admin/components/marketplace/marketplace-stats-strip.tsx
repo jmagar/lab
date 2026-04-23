@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Download, ShoppingBag, RefreshCw } from 'lucide-react'
 import type { Plugin, Marketplace } from '@/lib/types/marketplace'
 
@@ -11,9 +12,9 @@ interface MarketplaceStatsStripProps {
 }
 
 interface ChipProps {
-  value: number | string
+  value: ReactNode
   label: string
-  icon: React.ReactNode
+  icon: ReactNode
   iconBg: string
   iconColor: string
   valueColor?: string
@@ -31,8 +32,9 @@ function StatChip({ value, label, icon, iconBg, iconColor, valueColor }: ChipPro
       <span
         className="font-display text-[14px] font-extrabold tracking-[-0.03em] tabular-nums text-aurora-text-primary leading-none"
         style={valueColor ? { color: valueColor } : undefined}
-        dangerouslySetInnerHTML={{ __html: String(value) }}
-      />
+      >
+        {value}
+      </span>
       <span className="text-[11px] font-medium text-aurora-text-muted leading-none hidden sm:inline">
         {label}
       </span>
@@ -85,7 +87,14 @@ export function MarketplaceStatsStrip({
       ) : (
         <>
           <StatChip
-            value={`${installed.length}<span style="font-size:11px;font-weight:500;color:var(--aurora-text-muted)">/${plugins.length}</span>`}
+            value={(
+              <>
+                {installed.length}
+                <span className="ml-0.5 text-[11px] font-medium text-aurora-text-muted">
+                  /{plugins.length}
+                </span>
+              </>
+            )}
             label="installed"
             icon={<Download />}
             iconBg="color-mix(in srgb, var(--aurora-accent-primary) 15%, transparent)"

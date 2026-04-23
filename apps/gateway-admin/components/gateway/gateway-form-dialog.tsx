@@ -106,7 +106,11 @@ function ServiceIconBox({ serviceKey }: { serviceKey: string }) {
   return (
     <div
       className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
-      style={{ background: '#ffffff', border: `2px solid ${brand}`, boxShadow: `0 0 0 1px ${brand}33` }}
+      style={{
+        background: 'var(--aurora-control-surface)',
+        border: `2px solid ${brand}`,
+        boxShadow: `0 0 0 1px ${brand}33`,
+      }}
     >
       {logo ? (
         <img src={logo} alt="" className="w-5 h-5 object-contain" onError={() => setImgError(true)} />
@@ -146,7 +150,7 @@ export function GatewayFormDialog({
   onSave,
 }: GatewayFormDialogProps) {
   const isEditing = !!gateway
-  const isLabGateway = gateway?.source === 'lab_service'
+  const isLabGateway = gateway?.source === 'in_process'
   const prevOpenRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const probeInfoRef = useRef<{ registration_strategy: string; scopes?: string[] } | null>(null)
@@ -301,13 +305,13 @@ export function GatewayFormDialog({
     setJsonDrawerOpen(false)
 
     if (gateway) {
-      if (gateway.source === 'lab_service') {
+      if (gateway.source === 'in_process') {
         setMode('lab')
         setSelectedService(gateway.id)
         setEnableServer(gateway.enabled ?? true)
       } else {
         setMode('custom')
-        setTransport(gateway.transport === 'lab_service' ? 'http' : gateway.transport)
+        setTransport(gateway.transport === 'in_process' ? 'http' : gateway.transport)
         setName(gateway.name)
         const initialAuthMode = gateway.config.oauth_enabled ? 'oauth'
           : gateway.config.bearer_token_env ? 'bearer'
@@ -475,7 +479,7 @@ export function GatewayFormDialog({
 
   const handleTest = async () => {
     if (isSaving) return
-    if (!gateway || gateway.source === 'lab_service') {
+    if (!gateway || gateway.source === 'in_process') {
       toast.info('Save and enable the gateway first, then test from the detail page.')
       return
     }
@@ -935,7 +939,12 @@ export function GatewayFormDialog({
                         {authMode === 'oauth' && <ShieldCheck className="size-4 text-aurora-text-muted" />}
                         {authMode === 'none' ? 'No auth' : authMode === 'bearer' ? 'Bearer token' : 'OAuth (MCP)'}
                         {authMode === 'oauth' && oauthProbed?.oauth_discovered && (
-                          <Badge variant="secondary" className="ml-1 text-xs">Detected</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="ml-1 border-aurora-border-strong bg-aurora-control-surface text-xs text-aurora-text-primary"
+                          >
+                            Detected
+                          </Badge>
                         )}
                       </span>
                     </SelectValue>
@@ -1189,7 +1198,10 @@ export function GatewayFormDialog({
               return (
                 <div className="flex flex-wrap gap-1.5">
                   {detectedServices.map((s) => (
-                    <span key={s} className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary">
+                    <span
+                      key={s}
+                      className="rounded-full border border-aurora-accent-primary/30 bg-aurora-accent-primary/10 px-2 py-0.5 text-xs text-aurora-accent-primary"
+                    >
                       {s}
                     </span>
                   ))}
@@ -1246,7 +1258,7 @@ export function GatewayFormDialog({
               <pre
                 ref={jsonPreRef}
                 aria-hidden="true"
-                className="absolute top-0 left-0 min-w-full m-0 px-3 py-2 text-xs font-mono whitespace-pre pointer-events-none select-none text-[var(--aurora-text-primary)]"
+                className="absolute top-0 left-0 min-w-full m-0 px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words pointer-events-none select-none text-[var(--aurora-text-primary)]"
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: HTML-escaped JSON tokens
                 dangerouslySetInnerHTML={{ __html: jsonText ? highlightJson(jsonText) : '' }}
               />
@@ -1257,6 +1269,7 @@ export function GatewayFormDialog({
                   color: jsonText ? 'transparent' : 'var(--aurora-text-primary)',
                   caretColor: 'var(--aurora-text-primary)',
                 }}
+                wrap="off"
                 placeholder={'{\n  "gateway-name": {\n    "url": "http://localhost:3001/mcp"\n  }\n}'}
                 value={jsonText}
                 onChange={(e) => {
@@ -1281,7 +1294,7 @@ export function GatewayFormDialog({
             </div>
             {jsonValid && name && (
               <div className="flex flex-wrap gap-1.5">
-                <span className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary">
+                <span className="rounded-full border border-aurora-accent-primary/30 bg-aurora-accent-primary/10 px-2 py-0.5 text-xs text-aurora-accent-primary">
                   {name}
                 </span>
                 <span className="rounded-full bg-aurora-control-surface border border-aurora-border-strong px-2 py-0.5 text-xs text-aurora-text-muted">

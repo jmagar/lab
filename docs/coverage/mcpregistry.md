@@ -101,7 +101,7 @@ The service exposes **two** HTTP surfaces:
 
 1. **`POST /v1/mcpregistry`** — action+params dispatch, mirrors MCP exactly.
    Handler: `crates/lab/src/api/services/mcpregistry.rs`.
-2. **`GET /v0.1/registry/*`** — REST wire-compatible with the upstream
+2. **`GET /v0.1/servers/*`** — REST wire-compatible with the upstream
    MCP Registry v0.1 spec. Handler: `crates/lab/src/api/services/registry_v01.rs`.
 
 The REST surface backs the `lab://mcpregistry/…` UI and any consumer expecting the

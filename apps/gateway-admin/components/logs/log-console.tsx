@@ -69,11 +69,9 @@ function queryPreviewForAfterTs(filters: LogFilterState, afterTs: number | null)
 }
 
 export function LogConsole({ initialText = "" }: { initialText?: string }) {
-  const searchParams = useSearchParams()
-  const requestText = searchParams.get('request') ?? initialText
   const [filters, setFilters] = React.useState<LogFilterState>(() => ({
     ...DEFAULT_FILTERS,
-    text: requestText,
+    text: initialText,
   }))
   const [windowPreset, setWindowPreset] = React.useState('1h')
   const [events, setEvents] = React.useState<LogEvent[]>([])
@@ -114,11 +112,11 @@ export function LogConsole({ initialText = "" }: { initialText?: string }) {
 
   React.useEffect(() => {
     setFilters((current) => (
-      current.text === requestText
+      current.text === initialText
         ? current
-        : { ...current, text: requestText }
+        : { ...current, text: initialText }
     ))
-  }, [requestText])
+  }, [initialText])
 
   React.useEffect(() => {
     if (!copyStatus) {
@@ -375,4 +373,10 @@ export function LogConsole({ initialText = "" }: { initialText?: string }) {
       </div>
     </>
   )
+}
+
+export function LogConsoleRouteAdapter() {
+  const searchParams = useSearchParams()
+
+  return <LogConsole initialText={searchParams.get('request') ?? ''} />
 }

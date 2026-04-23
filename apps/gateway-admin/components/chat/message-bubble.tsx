@@ -26,6 +26,7 @@ function CopyButton({ text }: { text: string }) {
       variant="ghost"
       size="icon"
       onClick={handleCopy}
+      aria-label="Copy message"
       className="size-6 shrink-0 rounded text-aurora-text-muted/40 opacity-0 transition-opacity group-hover/bubble:opacity-100 hover:bg-aurora-hover-bg hover:text-aurora-text-muted"
     >
       {copied ? <Check className="size-3 text-aurora-success" /> : <Copy className="size-3" />}

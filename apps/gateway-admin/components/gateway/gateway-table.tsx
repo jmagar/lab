@@ -90,8 +90,8 @@ export function GatewayTable({
     <>
       <div className="space-y-3 p-3 md:hidden">
         {gateways.map((gateway) => {
-          const supportsProbeControls = gateway.source !== 'lab_service'
-          const isDisabled = gateway.source === 'lab_service' && !(gateway.enabled ?? true)
+          const supportsProbeControls = gateway.source !== 'in_process'
+          const isDisabled = gateway.source === 'in_process' && !(gateway.enabled ?? true)
           const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
           const endpointPreview = buildGatewayEndpointPreview(gateway)
           const launcherState = isDisabled ? 'deactivated' : 'active'
@@ -177,9 +177,9 @@ export function GatewayTable({
                           </>
                         ) : null}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
+                        <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-aurora-error focus:text-aurora-error">
                           <Trash2 className="size-4 mr-2" />
-                          {gateway.source === 'lab_service' ? 'Disable gateway' : 'Remove gateway'}
+                          {gateway.source === 'in_process' ? 'Disable gateway' : 'Remove gateway'}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -233,9 +233,9 @@ export function GatewayTable({
           </TableHeader>
           <TableBody>
             {gateways.map((gateway) => {
-              const supportsProbeControls = gateway.source !== 'lab_service'
+              const supportsProbeControls = gateway.source !== 'in_process'
               const endpointPreview = buildGatewayEndpointPreview(gateway)
-              const isDisabled = gateway.source === 'lab_service' && !(gateway.enabled ?? true)
+              const isDisabled = gateway.source === 'in_process' && !(gateway.enabled ?? true)
               const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
               const launcherState = isDisabled ? 'deactivated' : 'active'
 
@@ -345,7 +345,7 @@ export function GatewayTable({
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
                             <Trash2 className="mr-2 size-4" />
-                            {gateway.source === 'lab_service' ? 'Disable gateway' : 'Remove gateway'}
+                            {gateway.source === 'in_process' ? 'Disable gateway' : 'Remove gateway'}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

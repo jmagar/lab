@@ -17,7 +17,7 @@ use crate::dispatch::mcpregistry::store::RegistryStore;
 /// Guards against concurrent syncs. `true` while a sync is in progress.
 pub static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
-/// Tracks when the last successful sync completed.
+/// Tracks when the last rate-limited sync attempt completed, regardless of success.
 pub static LAST_SYNC_AT: OnceLock<std::sync::Mutex<Option<std::time::Instant>>> = OnceLock::new();
 
 /// RAII guard: resets `SYNC_IN_PROGRESS` on drop, even on panic.
@@ -31,6 +31,10 @@ impl Drop for SyncGuard {
 
 /// Minimum interval between syncs (enforced for on-demand calls only).
 const MIN_SYNC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn last_sync_at() -> &'static std::sync::Mutex<Option<std::time::Instant>> {
+    LAST_SYNC_AT.get_or_init(|| std::sync::Mutex::new(None))
+}
 
 /// Attempt a sync, enforcing the concurrent-sync and rate-limit guards.
 ///
@@ -48,15 +52,14 @@ pub async fn perform_sync(
         .is_err()
     {
         return Err(ToolError::Sdk {
-            sdk_kind: "rate_limited".to_string(),
+            sdk_kind: "sync_in_progress".to_string(),
             message: "sync already in progress".to_string(),
         });
     }
     let _guard = SyncGuard;
 
     if rate_limit {
-        let last = LAST_SYNC_AT.get_or_init(|| std::sync::Mutex::new(None));
-        let guard = last.lock().unwrap();
+        let guard = last_sync_at().lock().unwrap();
         if let Some(t) = *guard {
             if t.elapsed() < MIN_SYNC_INTERVAL {
                 let remaining = MIN_SYNC_INTERVAL.saturating_sub(t.elapsed()).as_secs();
@@ -68,14 +71,13 @@ pub async fn perform_sync(
         }
     }
 
-    let count = store.sync_from_upstream(client).await.map_err(|e| {
+    let sync_result = store.sync_from_upstream(client).await.map_err(|e| {
         ToolError::internal_message(format!("sync failed: {e}"))
-    })?;
+    });
 
-    *LAST_SYNC_AT
-        .get_or_init(|| std::sync::Mutex::new(None))
-        .lock()
-        .unwrap() = Some(std::time::Instant::now());
+    if rate_limit {
+        *last_sync_at().lock().unwrap() = Some(std::time::Instant::now());
+    }
 
-    Ok(count)
+    sync_result
 }

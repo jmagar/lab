@@ -8,6 +8,7 @@ import { MktSourceCard } from './mkt-source-card'
 import { MarketplaceStatsStrip } from './marketplace-stats-strip'
 import { PluginDetailDialog } from './plugin-detail-dialog'
 import { AddMarketplaceModal } from './add-marketplace-modal'
+import { ConfirmDialog, type ConfirmState } from './confirm-dialog'
 import { useMarketplaces, usePlugins, useMarketplaceMutations } from '@/lib/hooks/use-marketplace'
 import type { Plugin } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
@@ -40,8 +41,16 @@ function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: st
 }
 
 export function MarketplaceListContent() {
-  const { data: marketplaces = [] } = useMarketplaces()
-  const { data: plugins = [] } = usePlugins()
+  const {
+    data: marketplaces = [],
+    error: marketplacesError,
+    mutate: refreshMarketplaces,
+  } = useMarketplaces()
+  const {
+    data: plugins = [],
+    error: pluginsError,
+    mutate: refreshPlugins,
+  } = usePlugins()
   const { install, uninstall, addSource } = useMarketplaceMutations()
 
   const [tab, setTab] = useState<Tab>('browse')
@@ -49,23 +58,58 @@ export function MarketplaceListContent() {
   const [sort, setSort] = useState<Sort>('name')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [mktFilter, setMktFilter] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const requestInstall = useCallback((pluginId: string, pluginName: string) => {
+    void install(pluginId, pluginName)
+  }, [install])
+
+  const requestUninstall = useCallback((pluginId: string, pluginName: string) => {
+    setConfirm({
+      title: `Remove ${pluginName}?`,
+      description: 'This runs `claude plugin uninstall` and removes the plugin from your Claude configuration.',
+      confirmLabel: 'Remove',
+      destructive: true,
+      onConfirm: async () => {
+        setConfirm(null)
+        await uninstall(pluginId, pluginName)
+      },
+    })
+  }, [uninstall])
 
   const installedIds = useMemo(() => new Set(plugins.filter(p => p.installed).map(p => p.id)), [plugins])
+  const loadError = pluginsError ?? marketplacesError
+  const loadErrorMessage = loadError instanceof Error
+    ? loadError.message
+    : 'Failed to load marketplace data from the backend.'
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([refreshMarketplaces(), refreshPlugins()])
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [refreshMarketplaces, refreshPlugins])
 
   const filtered = useMemo(() => {
     let list = tab === 'installed' ? plugins.filter(p => installedIds.has(p.id)) : plugins
+    if (mktFilter) list = list.filter(p => p.marketplaceId === mktFilter)
     if (query) {
       const q = query.toLowerCase()
       list = list.filter(p =>
         p.name.toLowerCase().includes(q) ||
-        (p.desc ?? '').toLowerCase().includes(q) ||
-        (p.tags ?? []).some(t => t.includes(q)) ||
-        p.mkt.includes(q)
+        p.id.toLowerCase().includes(q) ||
+        (p.description ?? '').toLowerCase().includes(q) ||
+        (p.tags ?? []).some(t => t.toLowerCase().includes(q)) ||
+        p.marketplaceId.toLowerCase().includes(q)
       )
     }
     return [...list].sort((a, b) => {
       if (sort === 'name')        return a.name.localeCompare(b.name)
-      if (sort === 'marketplace') return a.mkt.localeCompare(b.mkt) || a.name.localeCompare(b.name)
+      if (sort === 'marketplace') return a.marketplaceId.localeCompare(b.marketplaceId) || a.name.localeCompare(b.name)
       if (sort === 'installed') {
         const ai = installedIds.has(a.id), bi = installedIds.has(b.id)
         return (ai === bi) ? a.name.localeCompare(b.name) : ai ? -1 : 1
@@ -76,15 +120,18 @@ export function MarketplaceListContent() {
   }, [plugins, tab, query, sort, installedIds])
 
   const selectedPlugin = plugins.find(p => p.id === selectedId) ?? null
-  const selectedMarketplace = marketplaces.find(m => m.id === selectedPlugin?.mkt)
+  const selectedMarketplace = marketplaces.find(m => m.id === selectedPlugin?.marketplaceId)
 
   const ghUserForPlugin = useCallback((p: Plugin) => {
-    return marketplaces.find(m => m.id === p.mkt)?.ghUser
+    return marketplaces.find(m => m.id === p.marketplaceId)?.githubOwner
   }, [marketplaces])
 
-  const installedCountForMkt = (mktId: string) => plugins.filter(p => p.mkt === mktId && installedIds.has(p.id)).length
+  const installedCountForMkt = (mktId: string) => plugins.filter(p => p.marketplaceId === mktId && installedIds.has(p.id)).length
 
   function renderBrowseGrid() {
+    if (loadError) {
+      return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
+    }
     if (!filtered.length) return <EmptyState icon="🔍" title="No results" sub={`No plugins match "${query}"`} />
     return (
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
@@ -102,9 +149,12 @@ export function MarketplaceListContent() {
   }
 
   function renderInstalledGroups() {
+    if (loadError) {
+      return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
+    }
     if (query) return renderBrowseGrid()
     const groups: Record<string, Plugin[]> = {}
-    filtered.forEach(p => { if (!groups[p.mkt]) groups[p.mkt] = []; groups[p.mkt].push(p) })
+    filtered.forEach(p => { if (!groups[p.marketplaceId]) groups[p.marketplaceId] = []; groups[p.marketplaceId].push(p) })
     if (!Object.keys(groups).length) return <EmptyState icon="📦" title="Nothing installed" sub="Browse plugins above to get started" />
     return (
       <div className="flex flex-col gap-7">
@@ -132,6 +182,9 @@ export function MarketplaceListContent() {
   }
 
   function renderMarketplacesGrid() {
+    if (loadError) {
+      return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
+    }
     return (
       <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
         {marketplaces.map(m => (
@@ -139,7 +192,7 @@ export function MarketplaceListContent() {
             key={m.id}
             marketplace={m}
             installedCount={installedCountForMkt(m.id)}
-            onClick={() => setTab('browse')}
+            onClick={() => { setMktFilter(m.id); setTab('browse') }}
           />
         ))}
       </div>
@@ -164,11 +217,12 @@ export function MarketplaceListContent() {
               Add Marketplace
             </button>
             <button
-              onClick={() => {}}
+              onClick={() => { void handleRefresh() }}
+              disabled={isRefreshing}
               className="inline-flex items-center gap-1.5 px-[14px] py-[6px] rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong transition-all duration-150"
             >
-              <RefreshCw className="w-[14px] h-[14px]" />
-              Refresh
+              <RefreshCw className={cn('w-[14px] h-[14px]', isRefreshing && 'animate-spin')} />
+              {isRefreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           </>
         }
@@ -183,7 +237,7 @@ export function MarketplaceListContent() {
         ]).map(({ id, label, count }) => (
           <button
             key={id}
-            onClick={() => setTab(id)}
+            onClick={() => { setTab(id); setMktFilter(null) }}
             className={cn(
               'flex items-center gap-[7px] px-[18px] py-3 font-sans text-[13px] font-semibold border-b-2 cursor-pointer bg-transparent border-t-0 border-l-0 border-r-0 transition-colors duration-150',
               tab === id
@@ -225,6 +279,20 @@ export function MarketplaceListContent() {
                 <option value="installed">Installed first</option>
                 <option value="updated">Recent</option>
               </select>
+              {mktFilter && (
+                <div className="flex items-center gap-[6px] px-[10px] py-[6px] rounded-aurora-1 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_12%,transparent)] border border-[color-mix(in_srgb,var(--aurora-accent-primary)_30%,transparent)] flex-shrink-0">
+                  <span className="text-[12px] font-semibold text-aurora-accent-strong whitespace-nowrap">
+                    {marketplaces.find(m => m.id === mktFilter)?.name ?? mktFilter}
+                  </span>
+                  <button
+                    onClick={() => setMktFilter(null)}
+                    className="text-aurora-accent-strong hover:text-aurora-text-primary bg-transparent border-none cursor-pointer p-0 leading-none"
+                    aria-label="Clear marketplace filter"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               <MarketplaceStatsStrip
                 plugins={plugins}
                 marketplaces={marketplaces}
@@ -256,8 +324,8 @@ export function MarketplaceListContent() {
           marketplace={selectedMarketplace}
           installedIds={installedIds}
           onClose={() => setSelectedId(null)}
-          onInstall={install}
-          onUninstall={uninstall}
+          onInstall={requestInstall}
+          onUninstall={requestUninstall}
         />
       )}
 
@@ -266,6 +334,8 @@ export function MarketplaceListContent() {
         onClose={() => setAddModalOpen(false)}
         onAdd={addSource}
       />
+
+      <ConfirmDialog state={confirm} onOpenChange={open => { if (!open) setConfirm(null) }} />
     </>
   )
 }
