@@ -171,8 +171,8 @@ impl WsClient {
         let drained = queue.drain_batch(FLUSH_BATCH_SIZE).await?;
         let mut ack_count = 0usize;
         for envelope in drained {
-            let request = queue_envelope_to_request(&envelope, *next_id)?;
             let result: Result<()> = async {
+                let request = queue_envelope_to_request(&envelope, *next_id)?;
                 socket
                     .send(Message::Text(serde_json::to_string(&request)?.into()))
                     .await
