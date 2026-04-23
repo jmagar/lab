@@ -460,6 +460,8 @@ mod tests_transfer_install {
         io.push_run(RunResp::ok(""));
         // mv staged -> remote_path
         io.push_run(RunResp::ok(""));
+        // chmod 755 remote_path
+        io.push_run(RunResp::ok(""));
 
         let outcome = transfer_and_install(
             io.clone(),
@@ -497,6 +499,11 @@ mod tests_transfer_install {
         assert!(
             ops.iter()
                 .any(|o| o == "run:mv,--,/usr/local/bin/lab.new,/usr/local/bin/lab"),
+            "ops: {ops:?}"
+        );
+        assert!(
+            ops.iter()
+                .any(|o| o == "run:chmod,755,--,/usr/local/bin/lab"),
             "ops: {ops:?}"
         );
     }
@@ -542,6 +549,7 @@ mod tests_transfer_install {
         io.push_sha(Some("abc123".into())); // staged sha matches
         io.push_sha(None); // existing binary absent
         io.push_run(RunResp::ok("")); // final swap
+        io.push_run(RunResp::ok("")); // chmod 755
 
         let outcome = transfer_and_install(
             io,

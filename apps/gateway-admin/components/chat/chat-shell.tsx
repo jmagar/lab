@@ -11,7 +11,6 @@ import { SessionSidebar } from './session-sidebar'
 import { MessageThread } from './message-thread'
 import { ChatInput } from './chat-input'
 import { SettingsPanel } from './settings-panel'
-import { ActivityTimeline } from './activity-timeline'
 import { deriveTranscriptAndActivity, toProjects } from '@/lib/chat/session-events'
 import { useSessionEvents } from '@/lib/chat/use-session-events'
 import { normalizeGatewayApiBase } from '@/lib/api/gateway-config'
@@ -61,7 +60,7 @@ export function ChatShell() {
 
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null
   const { events, connectionState } = useSessionEvents(selectedRunId)
-  const { messages, activity } = React.useMemo(() => deriveTranscriptAndActivity(events), [events])
+  const { messages } = React.useMemo(() => deriveTranscriptAndActivity(events), [events])
   const projects = React.useMemo(() => toProjects(runs.map((run) => ({
     id: run.id,
     providerSessionId: run.providerSessionId,
@@ -271,7 +270,6 @@ export function ChatShell() {
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <ActivityTimeline events={activity} connectionState={connectionState} />
           <MessageThread run={selectedRun} messages={messages} />
           <ChatInput
             onSend={handleSend}
