@@ -144,8 +144,14 @@ async function fetchVirtualServerAllowedActions(
       signal,
     )
     return policy.allowed_actions
-  } catch {
-    return undefined
+  } catch (error) {
+    if (signal?.aborted) {
+      throw error
+    }
+    if (error instanceof GatewayApiError && (error.status === 404 || error.code === 'method_not_found')) {
+      return undefined
+    }
+    throw error
   }
 }
 
@@ -352,7 +358,7 @@ export const gatewayApi = {
       )
       const patterns = stripExposeNonePattern(policy.allowed_actions)
       return {
-        mode: patterns.length === 0 ? 'expose_all' : 'allowlist',
+        mode: policy.allowed_actions.length === 0 ? 'expose_all' : 'allowlist',
         patterns,
       }
     }
