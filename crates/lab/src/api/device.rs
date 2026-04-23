@@ -6,6 +6,7 @@ use crate::api::ToolError;
 
 pub mod fleet;
 pub mod hello;
+pub mod enrollments;
 pub mod logs;
 pub mod metadata;
 pub mod oauth;
@@ -29,6 +30,12 @@ pub fn routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/status", post(status::handle))
         .route("/metadata", post(metadata::handle))
+        .route("/enrollments", axum::routing::get(enrollments::list))
+        .route(
+            "/enrollments/{device_id}/approve",
+            post(enrollments::approve),
+        )
+        .route("/enrollments/{device_id}/deny", post(enrollments::deny))
         .route("/devices", axum::routing::get(fleet::list_devices))
         .route(
             "/devices/{device_id}",

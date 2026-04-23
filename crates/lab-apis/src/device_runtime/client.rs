@@ -22,38 +22,6 @@ impl DeviceRuntimeClient {
         Ok(Self { http })
     }
 
-    pub async fn post_hello<T: serde::Serialize + Sync>(
-        &self,
-        payload: &T,
-    ) -> Result<(), ApiError> {
-        self.with_timeout(self.http.post_void("/v1/device/hello", payload))
-            .await
-    }
-
-    pub async fn post_status<T: serde::Serialize + Sync>(
-        &self,
-        payload: &T,
-    ) -> Result<(), ApiError> {
-        self.with_timeout(self.http.post_void("/v1/device/status", payload))
-            .await
-    }
-
-    pub async fn post_metadata<T: serde::Serialize + Sync>(
-        &self,
-        payload: &T,
-    ) -> Result<(), ApiError> {
-        self.with_timeout(self.http.post_void("/v1/device/metadata", payload))
-            .await
-    }
-
-    pub async fn post_syslog_batch<T: serde::Serialize + Sync>(
-        &self,
-        payload: &T,
-    ) -> Result<(), ApiError> {
-        self.with_timeout(self.http.post_void("/v1/device/syslog/batch", payload))
-            .await
-    }
-
     pub async fn fetch_devices(&self) -> Result<serde_json::Value, ApiError> {
         self.with_timeout(self.http.get_json("/v1/device/devices"))
             .await
@@ -65,6 +33,37 @@ impl DeviceRuntimeClient {
             self.http
                 .get_json(&format!("/v1/device/devices/{encoded_id}")),
         )
+        .await
+    }
+
+    pub async fn fetch_enrollments(&self) -> Result<serde_json::Value, ApiError> {
+        self.with_timeout(self.http.get_json("/v1/device/enrollments"))
+            .await
+    }
+
+    pub async fn approve_enrollment(
+        &self,
+        device_id: &str,
+        note: Option<&str>,
+    ) -> Result<serde_json::Value, ApiError> {
+        let encoded_id = utf8_percent_encode(device_id, NON_ALPHANUMERIC).to_string();
+        self.with_timeout(self.http.post_json(
+            &format!("/v1/device/enrollments/{encoded_id}/approve"),
+            &serde_json::json!({ "note": note }),
+        ))
+        .await
+    }
+
+    pub async fn deny_enrollment(
+        &self,
+        device_id: &str,
+        reason: Option<&str>,
+    ) -> Result<serde_json::Value, ApiError> {
+        let encoded_id = utf8_percent_encode(device_id, NON_ALPHANUMERIC).to_string();
+        self.with_timeout(self.http.post_json(
+            &format!("/v1/device/enrollments/{encoded_id}/deny"),
+            &serde_json::json!({ "reason": reason }),
+        ))
         .await
     }
 

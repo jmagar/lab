@@ -30,9 +30,10 @@ use lab::dispatch::deploy::runner::{HostIo, orchestrate_with_io};
 ///   7. sha256sum remote_path       → maybe existing
 ///   8. mv remote → .bak.ts         → exit 0 (only if existing)
 ///   9. mv .new → remote_path       → exit 0
-///   10. systemctl restart unit     → exit 0 (only if unit)
-///   11. systemctl is-active --wait → exit 0 (only if unit)
-///   12. remote_path --version      → exit 0
+///   10. chmod 755 remote_path      → exit 0
+///   11. systemctl restart unit     → exit 0 (only if unit)
+///   12. systemctl is-active --wait → exit 0 (only if unit)
+///   13. remote_path --version      → exit 0
 fn script_happy_path(build_sha: &str, existing: bool) -> RecordingIo {
     let io = RecordingIo::new();
     io.push_run(RunResp::ok("x86_64\n")); // uname
@@ -45,6 +46,7 @@ fn script_happy_path(build_sha: &str, existing: bool) -> RecordingIo {
         io.push_run(RunResp::ok("")); // mv existing -> backup
     }
     io.push_run(RunResp::ok("")); // mv staged -> remote_path
+    io.push_run(RunResp::ok("")); // chmod 755 remote_path
     // restart + is-active + verify added when applicable
     io
 }

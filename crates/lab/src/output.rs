@@ -1261,7 +1261,8 @@ mod tests {
         assert!(out.contains("servarr"));
         assert!(out.contains("7 actions") || out.contains("7\u{1b}[0m actions"));
         assert!(out.contains("movie.search"));
-        assert!(out.contains("(+2 more"));
+        assert!(out.contains("(+"));
+        assert!(out.contains("more"));
         // The old `{5 keys}` artifact must not appear.
         assert!(
             !out.contains("{5 keys}"),

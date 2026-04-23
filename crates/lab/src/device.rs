@@ -1,5 +1,6 @@
 pub mod checkin;
 pub mod config_scan;
+pub mod enrollment;
 pub mod identity;
 pub mod log_collect;
 pub mod log_event;
@@ -8,3 +9,5 @@ pub mod oauth;
 pub mod queue;
 pub mod runtime;
 pub mod store;
+pub mod token;
+pub mod ws_client;

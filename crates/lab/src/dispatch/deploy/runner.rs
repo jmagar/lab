@@ -41,7 +41,7 @@ use super::host_io::SshHostIo;
 // can still import it from this module path.
 pub use super::host_io::HostIo;
 use super::ssh_session::SshHostTarget;
-use super::stages::{phone_home, preflight, restart, transfer_and_install, verify};
+use super::stages::{preflight, restart, transfer_and_install, verify};
 use lab_apis::deploy::{
     DeployError, DeployHostResult, DeployPlan, DeployRequest, DeployRunSummary, DeployStage,
 };
@@ -716,7 +716,7 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
     unit: Option<String>,
     scope: Option<ServiceScope>,
     build: Arc<BuildOutcome>,
-    master_url: Option<String>,
+    _master_url: Option<String>,
 ) -> DeployHostResult {
     use std::time::Instant;
 
@@ -799,19 +799,6 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
         return host_err(&host, DeployStage::Verify, e, timings, skipped_transfer);
     }
     timings.insert("verify".into(), t.elapsed().as_millis());
-
-    // Phone home (best-effort — does not fail the deploy on error)
-    if let Some(url) = master_url {
-        let t = Instant::now();
-        if let Err(e) = phone_home(io, remote_path, url).await {
-            tracing::warn!(
-                host = %host,
-                error = %e.kind(),
-                "deploy.phone_home.failed"
-            );
-        }
-        timings.insert("phone_home".into(), t.elapsed().as_millis());
-    }
 
     DeployHostResult {
         host,

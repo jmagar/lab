@@ -64,6 +64,26 @@ impl DeviceFleetStore {
         snapshot.status = Some(status);
     }
 
+    pub async fn set_connected(&self, device_id: &str, connected: bool) {
+        let mut inner = self.inner.write().await;
+        let snapshot = inner
+            .entry(device_id.to_string())
+            .or_insert_with(|| DeviceSnapshot {
+                device_id: device_id.to_string(),
+                connected,
+                last_seen: SystemTime::now(),
+                role: None,
+                status: None,
+                metadata: None,
+                logs: Vec::new(),
+            });
+        snapshot.connected = connected;
+        snapshot.last_seen = SystemTime::now();
+        if let Some(status) = snapshot.status.as_mut() {
+            status.connected = connected;
+        }
+    }
+
     pub async fn device(&self, device_id: &str) -> Option<DeviceSnapshot> {
         let inner = self.inner.read().await;
         inner.get(device_id).cloned()

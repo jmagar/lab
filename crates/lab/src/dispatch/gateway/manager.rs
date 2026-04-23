@@ -2668,9 +2668,9 @@ mod tests {
                     proxy_resources: false,
                     proxy_prompts: false,
                     expose_tools: None,
-                    oauth: Some(crate::config::UpstreamOauthConfig {
-                        mode: crate::config::UpstreamOauthMode::AuthorizationCodePkce,
-                        registration: crate::config::UpstreamOauthRegistration::Dynamic,
+                    oauth: Some(UpstreamOauthConfig {
+                        mode: UpstreamOauthMode::AuthorizationCodePkce,
+                        registration: UpstreamOauthRegistration::Dynamic,
                         scopes: None,
                     }),
                 }],

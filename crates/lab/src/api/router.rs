@@ -527,6 +527,11 @@ pub fn build_router(
             "/v1/device",
             super::device::public_routes(state.clone()),
         )
+        // GET /v1/fleet/ws authenticates inside websocket initialize, not via HTTP bearer auth.
+        .route(
+            "/v1/fleet/ws",
+            get(crate::api::device::fleet::websocket_upgrade),
+        )
         .merge(v1_protected);
     #[cfg(feature = "mcpregistry")]
     {
@@ -1555,7 +1560,7 @@ mod tests {
                 .await
                 .unwrap();
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-            assert_eq!(json["kind"], "sync_in_progress");
+            assert_eq!(json["kind"], "service_unavailable");
         }
     }
 }

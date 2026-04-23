@@ -1,5 +1,6 @@
 use lab::device::checkin::{DeviceHello, DeviceStatus};
 use lab::device::log_event::DeviceLogEvent;
+use lab::device::queue::DeviceOutboundQueue;
 use lab::device::runtime::DeviceRuntime;
 use lab::device::store::DeviceFleetStore;
 
@@ -35,19 +36,6 @@ async fn device_store_marks_hello_devices_connected_and_tracks_status() {
 }
 
 #[tokio::test]
-async fn non_master_runtime_posts_hello_to_master() {
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/device/hello"))
-        .respond_with(wiremock::ResponseTemplate::new(200))
-        .mount(&server)
-        .await;
-
-    let runtime = DeviceRuntime::non_master_for_test("dookie", server.uri()).unwrap();
-    runtime.send_initial_hello().await.unwrap();
-}
-
-#[tokio::test]
 async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
@@ -56,18 +44,29 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     )
     .unwrap();
 
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/device/metadata"))
-        .and(wiremock::matchers::body_string_contains(".claude.json"))
-        .and(wiremock::matchers::body_string_contains("content_hash"))
-        .respond_with(wiremock::ResponseTemplate::new(200))
-        .mount(&server)
-        .await;
-
-    let runtime =
-        DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path()).unwrap();
+    let runtime = DeviceRuntime::non_master_for_test_with_home(
+        "dookie",
+        "http://master:8765".to_string(),
+        temp.path(),
+    )
+    .unwrap();
     runtime.upload_initial_metadata().await.unwrap();
+
+    let queue = DeviceOutboundQueue::open(temp.path().join(".lab/device-runtime-queue.jsonl"))
+        .await
+        .unwrap();
+    let drained = queue.drain_batch(10).await.unwrap();
+    assert_eq!(drained.len(), 1);
+    assert_eq!(drained[0].kind, "metadata");
+    assert_eq!(drained[0].payload["device_id"], "dookie");
+    assert_eq!(drained[0].payload["discovered_configs"][0]["path"], ".claude.json");
+    assert!(
+        drained[0].payload["discovered_configs"][0]["content_hash"]
+            .as_str()
+            .unwrap()
+            .len()
+            > 0
+    );
 }
 
 #[tokio::test]
@@ -92,25 +91,14 @@ async fn master_store_keeps_uploaded_logs_by_device() {
 }
 
 #[tokio::test]
-async fn flush_queue_acks_successes_before_returning_a_later_delivery_error() {
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/device/syslog/batch"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})),
-        )
-        .up_to_n_times(1)
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/device/syslog/batch"))
-        .respond_with(wiremock::ResponseTemplate::new(500))
-        .mount(&server)
-        .await;
-
+async fn queue_syslog_batch_appends_entries_for_websocket_delivery() {
     let temp = tempfile::tempdir().unwrap();
-    let runtime =
-        DeviceRuntime::non_master_for_test_with_home("dookie", server.uri(), temp.path()).unwrap();
+    let runtime = DeviceRuntime::non_master_for_test_with_home(
+        "dookie",
+        "http://master:8765".to_string(),
+        temp.path(),
+    )
+    .unwrap();
     runtime
         .queue_syslog_batch(vec![DeviceLogEvent {
             device_id: "dookie".into(),
@@ -134,17 +122,13 @@ async fn flush_queue_acks_successes_before_returning_a_later_delivery_error() {
         .await
         .unwrap();
 
-    let error = runtime.flush_queue_once().await.unwrap_err();
-    assert!(!error.to_string().is_empty());
-
-    let queue = lab::device::queue::DeviceOutboundQueue::open(
-        temp.path().join(".lab/device-runtime-queue.jsonl"),
-    )
-    .await
-    .unwrap();
+    let queue = DeviceOutboundQueue::open(temp.path().join(".lab/device-runtime-queue.jsonl"))
+        .await
+        .unwrap();
     let drained = queue.drain_batch(10).await.unwrap();
-    assert_eq!(drained.len(), 1);
-    assert_eq!(drained[0].payload["events"][0]["message"], "second");
+    assert_eq!(drained.len(), 2);
+    assert_eq!(drained[0].payload["events"][0]["message"], "first");
+    assert_eq!(drained[1].payload["events"][0]["message"], "second");
 }
 
 #[tokio::test]
