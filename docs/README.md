@@ -9,9 +9,12 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Read [ARCH.md](./ARCH.md) to understand the crate split, runtime surfaces, and shared contracts.
 - Read [CONVENTIONS.md](./CONVENTIONS.md) before changing implementation patterns or core APIs.
 - Use [SERVICES.md](./SERVICES.md), [CLI.md](./CLI.md), [MCP.md](./MCP.md), and [TUI.md](./TUI.md) for surface-specific behavior.
+- Use [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md) for the human-readable CLI output language and shared color policy.
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
 - Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, lab-issued JWT behavior, and callback-forwarding constraints.
 - Use [GATEWAY.md](./GATEWAY.md) when managing upstream MCP gateways over CLI, MCP, or `/v1/gateway`.
+- Use [acp/README.md](./acp/README.md) for ACP service architecture, the `acp` vs `chat` boundary, and gateway integration direction.
+- Use [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md) for Lab-owned registry metadata layered onto the mirrored MCP Registry surface.
 - Use [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md), [FLEET_LOGS.md](./FLEET_LOGS.md), and [DEPLOY.md](./DEPLOY.md) for the master/non-master fleet runtime, device inventory, and deployment model.
 - Use [LOCAL_LOGS.md](./LOCAL_LOGS.md) for the local-master runtime log store, `/v1/logs`, SSE streaming, and gateway-admin `/logs`.
 - See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP gateway setup, configuration, tool merging, circuit breaker behavior, and resource proxying.
@@ -38,6 +41,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 ### If You Are Working on Product Behavior
 
 1. [CLI.md](./CLI.md) for command behavior
+2. [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md) for human-readable output language
 2. [MCP.md](./MCP.md) for tool and envelope behavior
 3. [TUI.md](./TUI.md) for plugin manager behavior
 4. [CONFIG.md](./CONFIG.md) for config and env implications
@@ -85,6 +89,10 @@ The docs are split by topic so contributors do not have to recover architecture,
   HTTP auth modes: static bearer compatibility, internal Google-backed OAuth, lab-issued JWTs, JWKS, RFC 9728 metadata, and redirect/callback forwarding rules.
 - [GATEWAY.md](./GATEWAY.md)
   Gateway control plane: CRUD, reload/test flows, runtime views, and tool exposure policy.
+- [acp/README.md](./acp/README.md)
+  ACP service entrypoint, first-class service design, and the browser `chat` relationship.
+- [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md)
+  Lab-owned metadata layered onto mirrored MCP Registry entries: contract, validation, audit fields, filters, CLI, and UI behavior.
 - [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
   Master/non-master runtime roles, `/v1/device/*`, AI CLI inventory upload, queueing, and device OAuth relay.
 - [FLEET_LOGS.md](./FLEET_LOGS.md)
@@ -105,6 +113,10 @@ The docs are split by topic so contributors do not have to recover architecture,
   End-to-end checklist for adding a new service, from upstream spec to verification.
 - [CLI.md](./CLI.md)
   Command structure, output rules, confirmation rules, install/uninstall, operator commands, and `lab oauth relay-local`.
+- [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md)
+  Human-readable CLI output language, semantic tokens, status hierarchy, and pipe-safe color policy.
+- [CLI_OUTPUT_THEME_API.md](./CLI_OUTPUT_THEME_API.md)
+  Proposed Rust API for CLI semantic styling, color policy resolution, and renderer integration.
 - [TUI.md](./TUI.md)
   Plugin manager scope, interaction model, `.mcp.json` behavior, and TUI state rules.
 - [CONFIG.md](./CONFIG.md)
@@ -144,10 +156,13 @@ Use the smallest correct doc:
 - implementation rules: [CONVENTIONS.md](./CONVENTIONS.md)
 - service model or inventory: [SERVICES.md](./SERVICES.md)
 - CLI UX or command behavior: [CLI.md](./CLI.md)
+- CLI output language or color policy: [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md)
 - MCP tool, discovery, or envelope behavior: [MCP.md](./MCP.md)
 - RMCP SDK integration, feature posture, and server-shape rules: [RMCP.md](./RMCP.md)
 - HTTP auth modes, JWKS, and JWT validation: [OAUTH.md](./OAUTH.md)
 - gateway control plane and exposure policy: [GATEWAY.md](./GATEWAY.md)
+- ACP service architecture and chat/backend boundary: [acp/README.md](./acp/README.md)
+- mirrored MCP Registry metadata contract: [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md)
 - device runtime roles, fleet ingest, and master gating: [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
 - fleet log ingestion and search: [FLEET_LOGS.md](./FLEET_LOGS.md)
 - local-master runtime log store and SSE console: [LOCAL_LOGS.md](./LOCAL_LOGS.md)

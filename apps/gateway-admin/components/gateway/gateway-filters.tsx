@@ -1,16 +1,10 @@
 'use client'
 
-import { Search, X } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import {
   AURORA_CONTROL_SURFACE,
@@ -85,6 +79,15 @@ function FilterCheckbox({ checked, label, onChange }: FilterCheckboxProps) {
   )
 }
 
+function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2.5">
+      <p className={AURORA_MUTED_LABEL}>{label}</p>
+      <div className="space-y-2">{children}</div>
+    </div>
+  )
+}
+
 export function GatewayFilters({
   mode,
   search,
@@ -99,39 +102,38 @@ export function GatewayFilters({
   onExposureChange,
   onClearFilters,
 }: GatewayFiltersProps) {
-  const hasGatewayFilters =
-    search.length > 0 ||
+  const gatewayHasNonSearchFilters =
     gatewayFilters.status.length > 0 ||
     gatewayFilters.source.length > 0 ||
     gatewayFilters.transport.length > 0
 
-  const hasToolFilters =
-    search.length > 0 ||
+  const toolHasNonSearchFilters =
     toolFilters.gatewayIds.length > 0 ||
     toolFilters.exposure !== 'all' ||
     toolFilters.source.length > 0 ||
     toolFilters.transport.length > 0
 
-  const hasFilters = mode === 'tools' ? hasToolFilters : hasGatewayFilters
+  const hasFilters = mode === 'tools'
+    ? search.length > 0 || toolHasNonSearchFilters
+    : search.length > 0 || gatewayHasNonSearchFilters
+
+  const activeMobilePills = mode === 'tools'
+    ? [
+        ...toolFilters.gatewayIds
+          .map((gatewayId) => gatewayOptions.find((option) => option.value === gatewayId)?.label)
+          .filter(Boolean) as string[],
+        ...(toolFilters.exposure === 'all' ? [] : [EXPOSURE_OPTIONS.find((option) => option.value === toolFilters.exposure)?.label ?? toolFilters.exposure]),
+        ...toolFilters.source.map((value) => SOURCE_OPTIONS.find((option) => option.value === value)?.label ?? value),
+        ...toolFilters.transport.map((value) => TRANSPORT_OPTIONS.find((option) => option.value === value)?.label ?? value),
+      ]
+    : [
+        ...gatewayFilters.status.map((value) => GATEWAY_STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value),
+        ...gatewayFilters.source.map((value) => SOURCE_OPTIONS.find((option) => option.value === value)?.label ?? value),
+        ...gatewayFilters.transport.map((value) => TRANSPORT_OPTIONS.find((option) => option.value === value)?.label ?? value),
+      ]
 
   const filterGroups = (
     <div className="space-y-4">
-      <div className="space-y-1.5">
-        <p className={AURORA_MUTED_LABEL}>Search</p>
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
-          <Input
-            placeholder={mode === 'tools' ? 'Search tools, descriptions, or gateways' : 'Search gateways, commands, or endpoints'}
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className={cn(
-              AURORA_CONTROL_SURFACE,
-              'h-11 border pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted',
-            )}
-          />
-        </div>
-      </div>
-
       {mode === 'gateways' ? (
         <>
           <FilterGroup label="Status">
@@ -227,7 +229,103 @@ export function GatewayFilters({
 
   return (
     <>
+      <div className="space-y-3 lg:hidden">
+        <div data-mobile-search={mode} className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
+          <Input
+            placeholder={mode === 'tools' ? 'Search tools, descriptions, or gateways' : 'Search gateways, commands, or endpoints'}
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className={cn(
+              AURORA_CONTROL_SURFACE,
+              'h-11 border pl-9 pr-[5.25rem] text-aurora-text-primary placeholder:text-aurora-text-muted',
+            )}
+          />
+          <div className="absolute inset-y-0 right-1 flex items-center gap-1">
+            {search ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => onSearchChange('')}
+                className={cn(gatewayActionTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                aria-label="Clear search"
+              >
+                <X className="size-3.5" />
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => onMobileSheetOpenChange(!mobileSheetOpen)}
+              className={cn(gatewayActionTone(), 'relative size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+              aria-label="Open filters"
+            >
+              <SlidersHorizontal className="size-3.5" />
+              {activeMobilePills.length > 0 ? (
+                <span className="absolute -top-1 -right-1 rounded-full border border-aurora-accent-primary/35 bg-aurora-accent-primary/14 px-1.5 text-[10px] font-semibold leading-4 text-aurora-accent-strong">
+                  {activeMobilePills.length}
+                </span>
+              ) : null}
+            </Button>
+          </div>
+        </div>
+
+        {activeMobilePills.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {activeMobilePills.map((label) => (
+              <span
+                key={label}
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]',
+                  pillTone(true),
+                )}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {mobileSheetOpen ? (
+          <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 p-4')}>
+            <div className="flex items-center justify-between gap-3">
+              <p className={AURORA_MUTED_LABEL}>Filters</p>
+              {hasFilters ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onClearFilters}
+                  className={cn(gatewayActionTone(), 'h-8 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg')}
+                >
+                  <X className="mr-1 size-4" />
+                  Clear filters
+                </Button>
+              ) : null}
+            </div>
+            {filterGroups}
+          </div>
+        ) : null}
+      </div>
+
       <div className={cn(AURORA_MEDIUM_PANEL, 'hidden space-y-4 p-4 lg:block')}>
+        <div className="space-y-1.5">
+          <p className={AURORA_MUTED_LABEL}>Search</p>
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
+            <Input
+              placeholder={mode === 'tools' ? 'Search tools, descriptions, or gateways' : 'Search gateways, commands, or endpoints'}
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className={cn(
+                AURORA_CONTROL_SURFACE,
+                'h-11 border pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted',
+              )}
+            />
+          </div>
+        </div>
+
         <div className="flex items-center justify-between gap-3">
           <p className={AURORA_MUTED_LABEL}>Filters</p>
           {hasFilters ? (
@@ -242,48 +340,9 @@ export function GatewayFilters({
             </Button>
           ) : null}
         </div>
+
         {filterGroups}
       </div>
-
-      <Sheet open={mobileSheetOpen} onOpenChange={onMobileSheetOpenChange}>
-        <SheetContent
-          side="bottom"
-          className="max-h-[80vh] overflow-y-auto border-aurora-border-strong bg-aurora-panel-strong text-aurora-text-primary aurora-scrollbar"
-        >
-          <SheetHeader className="px-0 pt-0">
-            <SheetTitle className="font-display text-[19px] leading-[1.12] font-bold tracking-[-0.02em] text-aurora-text-primary">
-              Filters
-            </SheetTitle>
-            <SheetDescription className="text-sm text-aurora-text-muted">
-              {mode === 'tools' ? 'Refine the aggregated tools inventory.' : 'Refine the current gateway lens.'}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-4 px-0 pb-2">
-            {hasFilters ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onClearFilters}
-                className={cn(gatewayActionTone(), 'h-9 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg')}
-              >
-                <X className="mr-1 size-4" />
-                Clear filters
-              </Button>
-            ) : null}
-            {filterGroups}
-          </div>
-        </SheetContent>
-      </Sheet>
     </>
-  )
-}
-
-function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-2.5">
-      <p className={AURORA_MUTED_LABEL}>{label}</p>
-      <div className="space-y-2">{children}</div>
-    </div>
   )
 }

@@ -15,6 +15,7 @@ pub mod help;
 pub mod helpers;
 pub mod install;
 pub mod logs;
+pub mod marketplace;
 pub mod oauth;
 pub mod params;
 pub mod plugins;
@@ -75,7 +76,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::config::LabConfig;
-use crate::output::OutputFormat;
+use crate::output::{ColorPolicy, OutputFormat, RenderEnv};
 
 /// `lab` — pluggable homelab CLI + MCP server SDK.
 #[derive(Debug, Parser)]
@@ -85,6 +86,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
+    /// Control human-readable CLI styling.
+    #[arg(long, global = true, value_enum, default_value_t = ColorPolicy::Auto)]
+    pub color: ColorPolicy,
+
     /// Subcommand to run.
     #[command(subcommand)]
     pub command: Command,
@@ -93,8 +98,8 @@ pub struct Cli {
 impl Cli {
     /// Resolved output format based on the `--json` flag.
     #[must_use]
-    pub const fn format(&self) -> OutputFormat {
-        OutputFormat::from_json_flag(self.json)
+    pub fn format(&self) -> OutputFormat {
+        OutputFormat::from_json_flag(self.json, self.color, RenderEnv::stdout())
     }
 }
 
@@ -134,6 +139,8 @@ pub enum Command {
     Oauth(oauth::OauthArgs),
     /// Search fleet logs on the configured master.
     Logs(logs::LogsArgs),
+    /// Claude plugin marketplace manager.
+    Marketplace(marketplace::MarketplaceArgs),
     /// Radarr movie collection manager.
     #[cfg(feature = "radarr")]
     Radarr(radarr::RadarrArgs),
@@ -209,6 +216,7 @@ pub enum Command {
 /// Dispatch a parsed [`Cli`] to the correct handler.
 pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let format = cli.format();
+    let color = cli.color;
     match cli.command {
         Command::Serve(args) => serve::run(args, &config).await,
         Command::Doctor => doctor::run(format),
@@ -222,10 +230,11 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Help => help::run(format),
         Command::Scaffold(args) => scaffold::run(args, format),
         Command::Completions(args) => completions::run(&args),
-        Command::Extract(cmd) => cmd.run().await.map(|()| ExitCode::SUCCESS),
+        Command::Extract(cmd) => cmd.run(color).await.map(|()| ExitCode::SUCCESS),
         Command::Gateway(args) => gateway::run(args, format, &config).await,
         Command::Oauth(args) => oauth::run(args, &config).await,
         Command::Logs(args) => logs::run(args, format, &config).await,
+        Command::Marketplace(args) => marketplace::run(args, format).await,
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,
         #[cfg(feature = "sonarr")]
@@ -273,6 +282,26 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         #[cfg(feature = "deploy")]
         Command::Deploy(args) => dispatch_deploy(args, format, config.deploy.clone()).await,
         // [lab-scaffold: cli-dispatch]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[test]
+    fn cli_parses_global_color_flag() {
+        let cli = Cli::parse_from(["lab", "--color", "plain", "doctor"]);
+        assert_eq!(cli.color, ColorPolicy::Plain);
+        assert!(matches!(cli.command, Command::Doctor));
+    }
+
+    #[test]
+    fn cli_defaults_color_policy_to_auto() {
+        let cli = Cli::parse_from(["lab", "doctor"]);
+        assert_eq!(cli.color, ColorPolicy::Auto);
     }
 }
 

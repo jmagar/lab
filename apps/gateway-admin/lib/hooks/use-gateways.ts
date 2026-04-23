@@ -23,6 +23,7 @@ import type {
   ExposurePolicy,
   TestGatewayResult,
   ReloadGatewayResult,
+  GatewayCleanupResult,
   ExposurePolicyPreview,
   ServiceConfig,
   ServiceAction,
@@ -498,6 +499,63 @@ export function useGatewayMutations() {
     [],
   )
 
+  const enableGateway = useCallback(async (id: string): Promise<Gateway> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const gateway = mockGateways.find((item) => item.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      const result = { ...gateway, enabled: true }
+      await mutate(gatewayKey(id), result, false)
+      await mutate(GATEWAYS_KEY)
+      return result
+    }
+    const result = await gatewayApi.enableGateway(id)
+    await refreshGatewayCache(id)
+    return result
+  }, [])
+
+  const disableGateway = useCallback(async (id: string): Promise<Gateway> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      const gateway = mockGateways.find((item) => item.id === id)
+      if (!gateway) throw new Error('Gateway not found')
+      const result = { ...gateway, enabled: false }
+      await mutate(gatewayKey(id), result, false)
+      await mutate(GATEWAYS_KEY)
+      return result
+    }
+    const result = await gatewayApi.disableGateway(id)
+    await refreshGatewayCache(id)
+    return result
+  }, [])
+
+  const cleanupGateway = useCallback(async (
+    id: string,
+    aggressive: boolean = false,
+    dryRun: boolean = false,
+  ): Promise<GatewayCleanupResult> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      return {
+        upstream: id,
+        aggressive,
+        dry_run: dryRun,
+        gateway_matched: 0,
+        local_matched: 0,
+        aggressive_matched: 0,
+        gateway_killed: 0,
+        local_killed: 0,
+        aggressive_killed: 0,
+        gateway_matches: [],
+        local_matches: [],
+        aggressive_matches: [],
+      }
+    }
+    const result = await gatewayApi.cleanupGateway(id, aggressive, dryRun)
+    await refreshGatewayCache(id)
+    return result
+  }, [])
+
   return {
     createGateway,
     updateGateway,
@@ -509,6 +567,9 @@ export function useGatewayMutations() {
     saveServiceConfig,
     enableVirtualServer,
     disableVirtualServer,
+    enableGateway,
+    disableGateway,
+    cleanupGateway,
     setVirtualServerSurface,
   }
 }

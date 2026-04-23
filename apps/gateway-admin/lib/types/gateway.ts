@@ -1,6 +1,6 @@
 // Gateway data model types
 
-export type TransportType = 'http' | 'stdio' | 'lab_service'
+export type TransportType = 'http' | 'stdio' | 'in_process'
 
 export interface GatewayConfig {
   url?: string
@@ -30,6 +30,21 @@ export interface GatewayStatus {
   exposed_resource_count: number
   discovered_prompt_count: number
   exposed_prompt_count: number
+  likely_stale_count?: number
+  pid?: number
+  pgid?: number
+  age_seconds?: number
+  origin?: string
+  owner?: {
+    surface: string
+    subject?: string
+    request_id?: string
+    session_id?: string
+    client_name?: string
+    raw?: string
+  }
+  runtime_state_path?: string
+  reconciled_at?: string
 }
 
 export interface SurfaceState {
@@ -124,6 +139,21 @@ export interface ReloadGatewayResult {
   message: string
   previous_tool_count: number
   new_tool_count: number
+}
+
+export interface GatewayCleanupResult {
+  upstream: string
+  aggressive: boolean
+  dry_run?: boolean
+  gateway_matched?: number
+  local_matched?: number
+  aggressive_matched?: number
+  gateway_killed: number
+  local_killed: number
+  aggressive_killed: number
+  gateway_matches?: Array<{ pattern: string; pids: number[] }>
+  local_matches?: Array<{ pattern: string; pids: number[] }>
+  aggressive_matches?: Array<{ pattern: string; pids: number[] }>
 }
 
 export interface SupportedServiceField {

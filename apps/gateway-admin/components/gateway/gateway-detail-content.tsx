@@ -28,8 +28,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { TransportBadge } from './transport-badge'
 import { ToolExposureTable } from './tool-exposure-table'
 import { GatewayFormDialog } from './gateway-form-dialog'
+import { DisableGatewayDialog } from './disable-gateway-dialog'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { TestResultPanel } from './test-result-panel'
+import { CleanupResultPanel } from './cleanup-result-panel'
 import { useGateway, useGatewayMutations } from '@/lib/hooks/use-gateways'
 import { AURORA_DISPLAY_1 } from '@/components/aurora/tokens'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
@@ -56,14 +58,20 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     removeGateway,
     setExposurePolicy,
     disableVirtualServer,
+    disableGateway,
     enableVirtualServer,
+    enableGateway,
+    cleanupGateway,
     setVirtualServerSurface,
   } = useGatewayMutations()
 
   const [isTesting, setIsTesting] = useState(false)
   const [isReloading, setIsReloading] = useState(false)
+  const [isCleaningRuntime, setIsCleaningRuntime] = useState(false)
+  const [isAggressiveCleanup, setIsAggressiveCleanup] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [disableOpen, setDisableOpen] = useState(false)
   const [manageToolsMode, setManageToolsMode] = useState(false)
   const [draftSelectedToolNames, setDraftSelectedToolNames] = useState<string[]>([])
   const [selectedRowToolNames, setSelectedRowToolNames] = useState<string[]>([])
@@ -73,6 +81,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [promptSearch, setPromptSearch] = useState('')
   const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set())
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
+  const [cleanupResult, setCleanupResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof cleanupGateway>> } | null>(null)
   const toolExposureSignature = useMemo(
     () =>
       (gateway?.discovery.tools ?? [])
@@ -93,7 +102,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     setDraftSelectedToolNames(currentExposedToolNames)
     setSelectedRowToolNames([])
     setManageToolsMode(false)
-  }, [currentExposedToolNames, gateway?.id, toolExposureSignature])
+  }, [gateway?.id, toolExposureSignature])
 
   if (!gatewayId) {
     return (
@@ -121,7 +130,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }
 
   const handleTest = async () => {
-    if (!gateway) return
+    if (!gateway || !(gateway.enabled ?? true)) return
     setIsTesting(true)
     try {
       const result = await testGateway(gateway.id)
@@ -141,7 +150,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }
 
   const handleReload = async () => {
-    if (!gateway || gateway.source === 'lab_service') return
+    if (!gateway || gateway.source === 'in_process' || !(gateway.enabled ?? true)) return
     setIsReloading(true)
     try {
       const result = await reloadGateway(gateway.id)
@@ -171,13 +180,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const handleDelete = async () => {
     if (!gateway) return
     try {
-      if (gateway.source === 'lab_service') {
-        await disableVirtualServer(gateway.id)
-        toast.success('Lab gateway disabled successfully')
-      } else {
-        await removeGateway(gateway.id)
-        toast.success('Gateway removed successfully')
-      }
+      await removeGateway(gateway.id)
+      toast.success('Gateway removed successfully')
       router.push('/gateways')
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to remove gateway'))
@@ -185,22 +189,41 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   }
 
   const handleEnabledToggle = async (enabled: boolean) => {
-    if (!gateway || gateway.source !== 'lab_service') return
+    if (!gateway) return
+    if (!enabled) {
+      setDisableOpen(true)
+      return
+    }
+
     try {
-      if (enabled) {
+      if (gateway.source === 'in_process') {
         await enableVirtualServer(gateway.id)
-        toast.success('Lab gateway enabled successfully')
       } else {
-        await disableVirtualServer(gateway.id)
-        toast.success('Lab gateway disabled successfully')
+        await enableGateway(gateway.id)
       }
+      toast.success('Gateway enabled. Catalog change sent to clients.')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to update gateway state'))
+    }
+  }
+
+  const handleDisableConfirm = async () => {
+    if (!gateway) return
+    try {
+      if (gateway.source === 'in_process') {
+        await disableVirtualServer(gateway.id)
+      } else {
+        await disableGateway(gateway.id)
+      }
+      toast.success('Gateway disabled. Catalog change sent and runtime cleanup requested.')
+      setDisableOpen(false)
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to update gateway state'))
     }
   }
 
   const handleSurfaceToggle = async (surface: 'cli' | 'api' | 'mcp' | 'webui', enabled: boolean) => {
-    if (!gateway || gateway.source !== 'lab_service') return
+    if (!gateway || gateway.source !== 'in_process') return
     try {
       await setVirtualServerSurface(gateway.id, surface, enabled)
       toast.success(`Updated ${surface.toUpperCase()} surface`)
@@ -262,7 +285,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     )
   }
 
-  const isLabGateway = gateway.source === 'lab_service'
+  const isLabGateway = gateway.source === 'in_process'
   const surfaceEntries = gateway.surfaces
     ? ([
         ['cli', gateway.surfaces.cli],
@@ -303,6 +326,50 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const gatewayStatusLabel =
     gateway.status.healthy && gateway.status.connected ? 'Connected' : 'Offline'
   const toolsTabLabel = isLabGateway ? 'Actions' : 'Tools'
+  const runtimeAgeLabel = gateway.status.age_seconds
+    ? gateway.status.age_seconds < 60
+      ? `${gateway.status.age_seconds}s old`
+      : gateway.status.age_seconds < 3600
+        ? `${Math.floor(gateway.status.age_seconds / 60)}m old`
+        : gateway.status.age_seconds < 86400
+          ? `${Math.floor(gateway.status.age_seconds / 3600)}h old`
+          : `${Math.floor(gateway.status.age_seconds / 86400)}d old`
+    : null
+
+  const handleCleanupRuntime = async (aggressive: boolean, dryRun: boolean) => {
+    if (!gateway || gateway.source === 'in_process') return
+    const previousAggressive = isAggressiveCleanup
+    setIsCleaningRuntime(true)
+    setIsAggressiveCleanup(aggressive)
+    try {
+      const result = await cleanupGateway(gateway.id, aggressive, dryRun)
+      setCleanupResult({ gateway, result })
+      const totalMatched =
+        (result.gateway_matched ?? result.gateway_killed) +
+        (result.local_matched ?? result.local_killed) +
+        (result.aggressive_matched ?? result.aggressive_killed)
+      const totalKilled =
+        result.gateway_killed + result.local_killed + result.aggressive_killed
+      if (dryRun) {
+        toast.success(
+          aggressive
+            ? `Aggressive runtime cleanup preview completed. ${totalMatched} processes matched.`
+            : `Runtime cleanup preview completed. ${totalMatched} processes matched.`,
+        )
+      } else {
+        toast.success(
+          aggressive
+            ? `Aggressive runtime cleanup completed. ${totalKilled} processes terminated.`
+            : `Runtime cleanup completed. ${totalKilled} processes terminated.`,
+        )
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to clean up runtime'))
+    } finally {
+      setIsCleaningRuntime(false)
+      setIsAggressiveCleanup(previousAggressive)
+    }
+  }
 
   const handleExposeAllChange = (checked: boolean) => {
     if (!manageToolsMode) {
@@ -392,28 +459,45 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const headerActions = (
     <div className="flex items-center gap-2 flex-wrap">
       {!isLabGateway && (
-        <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleTest}
+          disabled={isTesting || !(gateway.enabled ?? true)}
+          aria-label="Test gateway"
+          title="Test gateway"
+        >
           {isTesting ? (
-            <Loader2 className="size-4 mr-2 animate-spin" />
+            <Loader2 className="size-4 animate-spin" />
           ) : (
-            <Play className="size-4 mr-2" />
+            <Play className="size-4" />
           )}
-          Test
         </Button>
       )}
       {!isLabGateway && (
-        <Button variant="outline" size="sm" onClick={handleReload} disabled={isReloading}>
-          <RefreshCw className={`size-4 mr-2 ${isReloading ? 'animate-spin' : ''}`} />
-          Reload
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleReload}
+          disabled={isReloading || !(gateway.enabled ?? true)}
+          aria-label="Reload gateway"
+          title="Reload gateway"
+        >
+          <RefreshCw className={`size-4 ${isReloading ? 'animate-spin' : ''}`} />
         </Button>
       )}
-      <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-        <Pencil className="size-4 mr-2" />
-        Edit
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => setEditOpen(true)}
+        aria-label="Edit gateway"
+        title="Edit gateway"
+      >
+        <Pencil className="size-4" />
       </Button>
       <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)}>
         <Trash2 className="size-4 mr-2" />
-        {isLabGateway ? 'Disable' : 'Remove'}
+        Remove
       </Button>
     </div>
   )
@@ -428,8 +512,12 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         <span className="text-xs font-medium">{gatewayStatusLabel}</span>
       </div>
 
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
-        <span className="text-xs font-medium">Expose resources</span>
+      <div
+        className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1"
+        title="Expose resources"
+        aria-label="Expose resources"
+      >
+        <FileText className="size-3 text-aurora-text-muted" aria-hidden="true" />
         <Switch
           aria-label="Expose resources"
           checked={resourceExposureEnabled}
@@ -438,8 +526,12 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         />
       </div>
 
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
-        <span className="text-xs font-medium">Expose prompts</span>
+      <div
+        className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1"
+        title="Expose prompts"
+        aria-label="Expose prompts"
+      >
+        <MessageSquare className="size-3 text-aurora-text-muted" aria-hidden="true" />
         <Switch
           aria-label="Expose prompts"
           checked={promptExposureEnabled}
@@ -448,17 +540,19 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         />
       </div>
 
-      {isLabGateway && (
-        <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
-          <span className="text-xs font-medium">Enabled</span>
-          <Switch
-            aria-label="Gateway enabled"
-            checked={gateway.enabled ?? false}
-            onCheckedChange={handleEnabledToggle}
-            className="scale-75"
-          />
-        </div>
-      )}
+      <div
+        className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1"
+        title="Gateway enabled"
+        aria-label="Gateway enabled"
+      >
+        <TransportBadge transport={gateway.transport} iconOnly className="border-0 bg-transparent px-0 py-0 shadow-none" />
+        <Switch
+          aria-label="Gateway enabled"
+          checked={gateway.enabled ?? true}
+          onCheckedChange={handleEnabledToggle}
+          className="scale-75"
+        />
+      </div>
 
       {surfaceEntries.map(([surface, state]) => (
         <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
@@ -494,6 +588,17 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       />
 
       <div className="flex-1 p-6 min-w-0 overflow-x-hidden">
+        {!(gateway.enabled ?? true) ? (
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-aurora-warn/30 bg-aurora-warn/10 px-4 py-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-aurora-warn" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-aurora-text-primary">Gateway disabled</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">
+                This gateway is excluded from the active catalog. Clients should no longer see its tools, resources, or prompts until you re-enable it.
+              </p>
+            </div>
+          </div>
+        ) : null}
         <Tabs defaultValue="tools" className="space-y-4">
           {/* Header card with tabs embedded */}
           <div className="rounded-lg border bg-aurora-panel-medium p-5">
@@ -560,10 +665,20 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   {gateway.discovery.prompts.length}
                 </Badge>
               </TabsTrigger>
-              <TabsTrigger value="config">
-                <Settings className="size-3 mr-1.5" />
-                Config
+              <TabsTrigger value="runtime">
+                Runtime
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {gateway.status.likely_stale_count ?? 0}
+                </Badge>
               </TabsTrigger>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <TabsTrigger value="config" aria-label="Configuration">
+                    <Settings className="size-3" />
+                  </TabsTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Configuration</TooltipContent>
+              </Tooltip>
               {gateway.warnings.length > 0 && (
                 <TabsTrigger value="warnings" className="text-aurora-warn">
                   Warnings
@@ -616,7 +731,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       value={resourceSearch}
                       onChange={(event) => setResourceSearch(event.target.value)}
                       placeholder="Search resources..."
-                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-[var(--aurora-accent-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--aurora-accent-primary)]/34"
                     />
                   </div>
                   <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
@@ -676,7 +791,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       value={promptSearch}
                       onChange={(event) => setPromptSearch(event.target.value)}
                       placeholder="Search prompts..."
-                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-[var(--aurora-accent-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--aurora-accent-primary)]/34"
                     />
                   </div>
                   <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
@@ -769,6 +884,177 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
             </div>
           </TabsContent>
 
+          <TabsContent value="runtime">
+            <div className="rounded-lg border bg-aurora-panel-medium p-5 space-y-5">
+              <div>
+                <h2 className="text-lg font-semibold">Runtime details</h2>
+                <p className="text-sm text-aurora-text-muted mt-1">
+                  Live process metadata comes from the active gateway pool. If the gateway restarted, orphaned upstream
+                  processes are reconciled from the persisted runtime snapshot and shown here as stale runtime state.
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted">Connection</p>
+                  <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                    {gateway.status.connected ? 'Connected' : 'Not connected'}
+                  </p>
+                  <p className="mt-1 text-xs text-aurora-text-muted">
+                    {gateway.enabled ?? false ? 'Gateway enabled' : 'Gateway disabled'}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted">Process</p>
+                  <p className="mt-2 text-sm font-semibold text-aurora-text-primary font-mono">
+                    {gateway.status.pid ? `pid ${gateway.status.pid}` : 'No active pid'}
+                  </p>
+                  <p className="mt-1 text-xs text-aurora-text-muted font-mono">
+                    {gateway.status.pgid ? `pgid ${gateway.status.pgid}` : 'No process group recorded'}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted">Process age</p>
+                  <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                    {runtimeAgeLabel ?? 'Unknown'}
+                  </p>
+                  <p className="mt-1 text-xs text-aurora-text-muted">
+                    Derived from upstream process start time when available
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted">Stale processes</p>
+                  <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                    {gateway.status.likely_stale_count ?? 0}
+                  </p>
+                  <p className="mt-1 text-xs text-aurora-text-muted">
+                    Persisted orphaned runtimes that still look alive after reconciliation
+                  </p>
+                </div>
+              </div>
+
+              {!isLabGateway ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupRuntime(false, false)}
+                    disabled={isCleaningRuntime}
+                  >
+                    {isCleaningRuntime && !isAggressiveCleanup ? (
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="size-4 mr-2" />
+                    )}
+                    Cleanup runtime
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupRuntime(false, true)}
+                    disabled={isCleaningRuntime}
+                  >
+                    {isCleaningRuntime && !isAggressiveCleanup ? (
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                    ) : (
+                      <Search className="size-4 mr-2" />
+                    )}
+                    Preview cleanup
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupRuntime(true, false)}
+                    disabled={isCleaningRuntime}
+                  >
+                    {isCleaningRuntime && isAggressiveCleanup ? (
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                    ) : (
+                      <AlertTriangle className="size-4 mr-2" />
+                    )}
+                    Aggressive cleanup
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupRuntime(true, true)}
+                    disabled={isCleaningRuntime}
+                  >
+                    {isCleaningRuntime && isAggressiveCleanup ? (
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                    ) : (
+                      <Search className="size-4 mr-2" />
+                    )}
+                    Preview aggressive cleanup
+                  </Button>
+                </div>
+              ) : null}
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="size-4 text-aurora-text-muted" />
+                    <h3 className="text-sm font-semibold text-aurora-text-primary">Catalog exposure</h3>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-md border bg-aurora-control-surface/10 p-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Tools</p>
+                      <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                        {gateway.status.exposed_tool_count}/{gateway.status.discovered_tool_count}
+                      </p>
+                    </div>
+                    <div className="rounded-md border bg-aurora-control-surface/10 p-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Resources</p>
+                      <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                        {gateway.status.exposed_resource_count}/{gateway.status.discovered_resource_count}
+                      </p>
+                    </div>
+                    <div className="rounded-md border bg-aurora-control-surface/10 p-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Prompts</p>
+                      <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                        {gateway.status.exposed_prompt_count}/{gateway.status.discovered_prompt_count}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <div className="flex items-center gap-2">
+                    <Clock className="size-4 text-aurora-text-muted" />
+                    <h3 className="text-sm font-semibold text-aurora-text-primary">Reconciliation notes</h3>
+                  </div>
+                  <div className="mt-4 space-y-3 text-sm text-aurora-text-muted">
+                    <div className="rounded-md border bg-aurora-control-surface/10 p-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Origin</p>
+                      <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                        {gateway.status.origin ?? 'gateway-managed'}
+                      </p>
+                    </div>
+                    <div className="rounded-md border bg-aurora-control-surface/10 p-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Runtime state file</p>
+                      <p className="mt-2 break-all text-xs font-mono text-aurora-text-primary">
+                        {gateway.status.runtime_state_path ?? 'Unavailable'}
+                      </p>
+                    </div>
+                    <div className="rounded-md border bg-aurora-control-surface/10 p-3">
+                      <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Last reconciled</p>
+                      <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
+                        {gateway.status.reconciled_at
+                          ? new Date(gateway.status.reconciled_at).toLocaleString()
+                          : 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="mt-4 space-y-3 text-sm text-aurora-text-muted">
+                    <li>Active runtime metadata is recorded when the gateway spawns stdio upstreams.</li>
+                    <li>Runtime snapshots are written to disk beside the gateway config and survive gateway restarts.</li>
+                    <li>Dead PIDs are pruned during runtime reconciliation; surviving non-current PIDs count as stale runtime state.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
           {gateway.warnings.length > 0 && (
             <TabsContent value="warnings">
               <div className="rounded-lg border bg-aurora-panel-medium p-6">
@@ -812,9 +1098,19 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         onConfirm={handleDelete}
       />
 
+      <DisableGatewayDialog
+        gateway={disableOpen ? gateway : null}
+        onOpenChange={(open: boolean) => setDisableOpen(open)}
+        onConfirm={handleDisableConfirm}
+      />
+
       <TestResultPanel
         result={testResult}
         onClose={() => setTestResult(null)}
+      />
+      <CleanupResultPanel
+        result={cleanupResult}
+        onClose={() => setCleanupResult(null)}
       />
     </>
   )

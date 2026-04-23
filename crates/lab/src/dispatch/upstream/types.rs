@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use rmcp::model::Tool;
 use serde_json::Value;
@@ -30,6 +31,27 @@ pub struct UpstreamToolExposureRow {
     pub description: Option<String>,
     pub exposed: bool,
     pub matched_by: Option<String>,
+}
+
+/// Runtime metadata for process-backed upstream connections.
+#[derive(Debug, Clone, Default)]
+pub struct UpstreamRuntimeOwner {
+    pub surface: String,
+    pub subject: Option<String>,
+    pub request_id: Option<String>,
+    pub session_id: Option<String>,
+    pub client_name: Option<String>,
+    pub raw: Option<String>,
+}
+
+/// Runtime metadata for process-backed upstream connections.
+#[derive(Debug, Clone, Default)]
+pub struct UpstreamRuntimeMetadata {
+    pub pid: Option<u32>,
+    pub pgid: Option<u32>,
+    pub started_at: Option<SystemTime>,
+    pub origin: Option<String>,
+    pub owner: Option<UpstreamRuntimeOwner>,
 }
 
 /// Runtime exposure policy applied to one upstream's discovered tools.

@@ -17,8 +17,8 @@ export function synthesizeLabGateway(
   return {
     id: service.key,
     name: service.key,
-    transport: 'lab_service',
-    source: 'lab_service',
+    transport: 'in_process',
+    source: 'in_process',
     configured: config?.configured ?? false,
     enabled: false,
     surfaces: {
@@ -53,7 +53,7 @@ export function synthesizeLabGateway(
 }
 
 function gatewaySortWeight(gateway: Gateway): number {
-  if (gateway.source === 'lab_service' && gateway.enabled === false) {
+  if (gateway.source === 'in_process' && gateway.enabled === false) {
     return 2
   }
   return 1

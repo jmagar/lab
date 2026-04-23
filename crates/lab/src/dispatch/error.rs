@@ -360,8 +360,9 @@ impl From<lab_apis::mcpregistry::error::RegistryError> for ToolError {
     }
 }
 
-// RegistryStore errors map to internal_error — they represent persistence
-// failures that callers cannot fix by changing their input.
+// RegistryStore errors mostly represent persistence failures. Invalid cursors
+// remain caller-fixable `invalid_param`, and upstream fetch failures surface as
+// `network_error`.
 #[cfg(feature = "mcpregistry")]
 impl From<crate::dispatch::mcpregistry::store::RegistryStoreError> for ToolError {
     fn from(e: crate::dispatch::mcpregistry::store::RegistryStoreError) -> Self {

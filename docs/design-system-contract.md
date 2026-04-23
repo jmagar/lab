@@ -419,6 +419,18 @@ A route-level `<h1>` without a Display token is a contract violation. A metric n
 
 ## Page-Level Patterns
 
+### Chat And Agent Sessions
+
+The chat surface is a transcript-first product surface.
+
+Rules:
+
+- the primary interaction is a single conversation column, not a split transcript/activity workspace
+- reasoning appears inline as a collapsible assistant-owned block
+- tool and agent actions appear inline as a compact connected flow that reads as part of the assistant turn
+- raw tool-call payloads are secondary detail revealed on expansion, not the primary visual treatment
+- on narrow screens, session lists and other secondary navigation collapse into drawers or sheets rather than permanently consuming horizontal space
+
 ### Logs
 
 The logs page establishes the first Aurora reference implementation for:
@@ -446,7 +458,7 @@ Login, re-auth, and auth-error screens are product surfaces, not a separate mark
 - follow the Typography ramp: Display 1 for the title, Body for intro copy, `AURORA_MUTED_LABEL` for the category eyebrow
 - route the primary action through the `Button` primitive with `size="lg"`
 
-If the auth surface is imported by a non-Vite test runner (`node:test` + `react-dom/server`) that cannot resolve the `@/` alias, duplicate the `Button` primitive's default+lg class string inline rather than inventing styling. The inline copy must be pure Aurora tokens and must be flagged with a one-line comment explaining why it bypasses the primitive.
+If the auth surface lives under a dedicated auth path such as `components/auth/**` or `app/**/auth/**` and is imported by a non-Vite test runner (`node:test` + `react-dom/server`) that cannot resolve the `@/` alias, duplicate the `Button` primitive's default+lg class string inline rather than inventing styling. The inline copy must stay on pure Aurora tokens, must preserve the `AURORA_PAGE_SHELL`, `AURORA_STRONG_PANEL`, and `AURORA_MUTED_LABEL` contract around it, and must be flagged with a one-line comment explaining why it bypasses the primitive.
 
 ### Design System Sandbox
 
@@ -465,8 +477,15 @@ Its sections should cover:
 - controls
 - feedback
 - navigation
+- command palette
 - data display
 - application patterns
+
+The command-palette section is the canonical reference for Labby's global `cmd+k` interaction:
+
+- one ranked stack for destinations, actions, and recent context
+- Aurora-aligned focus, density, tags, and preview treatment
+- local fake state only, with no requirement for live backend search or execution
 
 ## Accessibility And Interaction
 
@@ -514,7 +533,7 @@ When implementing or refactoring UI:
 
   The shadcn tokens exist so the forked primitives stay syncable with upstream; product code must not inherit them. The light-mode remap in `.light` pairs Aurora variables only — shadcn tokens drift in light mode even when they look right in dark.
 
-- **primitive imports must use the `@/` alias.** Relative imports into `components/ui/**` from product code are banned so the import path doesn't encode directory structure. The one exception is auth surfaces imported by `node:test` harnesses — see the Authentication Surfaces section for the escape hatch.
+- **primitive imports must use the `@/` alias.** Relative imports into `components/ui/**` from product code are banned so the import path doesn't encode directory structure. The one exception is auth surfaces under `components/auth/**` or `app/**/auth/**` when imported by `node:test` harnesses; see the Authentication Surfaces section for the exact escape hatch, Aurora-token-only requirement, and required inline comment.
 
 - **no raw hex, rgba, or hsl values in className or inline styles.** All colors come from Aurora tokens. The sole sanctioned exceptions are listed in the Live-Preview Tokens section and the Service Brand Identity section.
 

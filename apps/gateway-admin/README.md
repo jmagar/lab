@@ -20,6 +20,8 @@ pnpm install
 pnpm dev
 ```
 
+The dev server binds on `0.0.0.0` so the UI is reachable from other devices on the local network during development.
+
 The app defaults `NEXT_PUBLIC_API_URL` to `/v1`, which is the expected same-origin path once `lab serve` hosts both API and UI. Override it when pointing the UI at a different backend origin.
 
 ```bash
@@ -33,13 +35,47 @@ In hosted mode, the UI expects Rust-owned browser session auth:
 - `POST /auth/logout` clears the browser session
 - `/v1/*` uses same-origin requests with `credentials: 'include'`
 
-If the backend is protected by a static bearer token, set `NEXT_PUBLIC_API_TOKEN`. Bearer mode activates automatically — no additional flag required. This is suitable for local development, smoke testing, and browser automation against OAuth-protected deployments. The token is embedded into the browser bundle, so it should not be used for production hosted deployments where Rust-owned browser session auth is preferred.
+For local binary-served UI work, keep the same-origin `/v1` path and start `lab serve` with web auth disabled for the browser surface only:
+
+```bash
+LAB_WEB_UI_DISABLE_AUTH=true \
+LAB_MCP_HTTP_TOKEN=your-local-dev-token \
+cargo run --bin lab -- serve --host 0.0.0.0 --port 8765
+```
+
+That mode keeps the MCP/backend token in place while making `/auth/session` and `/v1/*` immediately usable from the exported `/chat` UI on the same origin. Hosted deployments should leave `LAB_WEB_UI_DISABLE_AUTH` unset so browser OAuth remains active.
+
+There is also a repo shortcut for that local ACP UI mode:
+
+```bash
+just chat-local
+```
+
+Browser-facing bearer mode is intentionally disabled in the current UI. The chat and gateway screens always use the Rust-owned browser session flow plus CSRF headers when talking to `/v1/*`. If you need a local-only backend bypass, use `LAB_WEB_UI_DISABLE_AUTH=true` on the Rust side rather than embedding a public browser token.
+
+When the frontend and Rust backend run on different origins during local development, the backend must allow the frontend origin through CORS:
+
+```bash
+LAB_MCP_HTTP_TOKEN=your-local-dev-token \
+LAB_CORS_ORIGINS=http://127.0.0.1:3101 \
+cargo run --bin lab -- serve --host 0.0.0.0 --port 8765
+```
 
 ```bash
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8765/v1 \
 NEXT_PUBLIC_API_TOKEN=your-local-dev-token \
-pnpm dev
+pnpm dev --hostname 127.0.0.1 --port 3101
 ```
+
+## Marketplace Editing Workflow
+
+Marketplace package files are edited through the shared CodeMirror surface in the UI.
+
+- `Save` writes the current file into an app-managed workspace mirror
+- `Deploy` is explicit and syncs the saved workspace into the local Claude Code target
+- save and deploy are intentionally separate so draft iteration does not immediately affect the installed Claude Code files
+- plugin details use the dedicated route `/marketplace/plugin?id=<pluginId>` rather than an in-page modal
+- the plugin `Files` tab supports deploy preview before the explicit deploy step
 
 ## Static Export
 
@@ -61,3 +97,27 @@ pnpm start
 
 - The imported UI code was originally developed as its own repository and is now tracked as normal source under this repo.
 - Nested git metadata was removed on import so `apps/gateway-admin` behaves like a standard in-repo app directory.
+
+## ACP bridge
+
+The chat view can run against a local ACP bridge instead of mock transcript data.
+
+Environment variables:
+- `ACP_CODEX_COMMAND`: optional override for the ACP provider executable.
+- `ACP_CODEX_ARGS`: optional space-delimited args for `ACP_CODEX_COMMAND`.
+- `ACP_SESSION_CWD`: optional default working directory for newly created ACP sessions.
+
+By default, the bridge launches `codex-acp` from the Rust backend via `npx @zed-industries/codex-acp` and exposes:
+- `GET /v1/acp/provider`
+- `GET /v1/acp/sessions`
+- `POST /v1/acp/sessions`
+- `POST /v1/acp/sessions/{sessionId}/prompt`
+- `POST /v1/acp/sessions/{sessionId}/cancel`
+- `GET /v1/acp/sessions/{sessionId}/events`
+
+The static browser app consumes live ACP session updates over SSE from the Rust API and renders them into the transcript lane plus the `Reasoning & Activity` timeline.
+
+ACP event handling details:
+- reconnects resume from the last seen sequence number for the active session
+- the client keeps a bounded in-memory history instead of growing without limit
+- duplicate or out-of-order events are ignored

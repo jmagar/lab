@@ -23,6 +23,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
+  AURORA_ACCENT_CTA,
   AURORA_DISPLAY_2,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
@@ -100,7 +101,7 @@ export function FeedbackSection() {
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <Button className="rounded-aurora-1 bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong">
+                  <Button className={AURORA_ACCENT_CTA}>
                     Add sample data
                   </Button>
                 </EmptyContent>

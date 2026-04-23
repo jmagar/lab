@@ -114,6 +114,7 @@ impl Harness {
 
     fn upstream_cfg(&self, registration: UpstreamOauthRegistration) -> UpstreamConfig {
         UpstreamConfig {
+            enabled: true,
             name: "test".into(),
             url: Some(self.upstream_url()),
             bearer_token_env: None,

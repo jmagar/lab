@@ -129,6 +129,9 @@ pub fn update_upstream(
         }
         cfg.upstream[index].name = new_name;
     }
+    if let Some(enabled) = patch.enabled {
+        cfg.upstream[index].enabled = enabled;
+    }
     if let Some(url) = patch.url {
         cfg.upstream[index].url = url;
     }
@@ -416,6 +419,7 @@ mod tests {
         LabConfig {
             upstream: vec![
                 UpstreamConfig {
+                    enabled: true,
                     name: "a".to_string(),
                     url: Some("http://127.0.0.1:9001".to_string()),
                     bearer_token_env: None,
@@ -427,6 +431,7 @@ mod tests {
                     oauth: None,
                 },
                 UpstreamConfig {
+                    enabled: true,
                     name: "b".to_string(),
                     url: None,
                     bearer_token_env: None,
@@ -474,6 +479,7 @@ args = ["server.js"]
         insert_upstream(
             &mut cfg,
             UpstreamConfig {
+                enabled: true,
                 name: "c".to_string(),
                 url: Some("https://example.com/mcp".to_string()),
                 bearer_token_env: Some("C_TOKEN".to_string()),
@@ -648,6 +654,7 @@ args = ["server.js"]
         let err = insert_upstream(
             &mut cfg,
             UpstreamConfig {
+                enabled: true,
                 name: "a".to_string(),
                 url: Some("https://example.com/mcp".to_string()),
                 bearer_token_env: None,
@@ -670,6 +677,7 @@ args = ["server.js"]
         let path = dir.path().join("config.toml");
         let cfg = LabConfig {
             upstream: vec![UpstreamConfig {
+                enabled: true,
                 name: "bad".to_string(),
                 url: Some("http://127.0.0.1:9001".to_string()),
                 bearer_token_env: None,
@@ -693,6 +701,7 @@ args = ["server.js"]
         let path = dir.path().join("config.toml");
         let cfg = LabConfig {
             upstream: vec![UpstreamConfig {
+                enabled: true,
                 name: "bad".to_string(),
                 url: None,
                 bearer_token_env: None,
@@ -715,6 +724,7 @@ args = ["server.js"]
         let err = insert_upstream(
             &mut LabConfig::default(),
             UpstreamConfig {
+                enabled: true,
                 name: "ftp".to_string(),
                 url: Some("ftp://example.com".to_string()),
                 bearer_token_env: None,
@@ -736,6 +746,7 @@ args = ["server.js"]
         let err = insert_upstream(
             &mut LabConfig::default(),
             UpstreamConfig {
+                enabled: true,
                 name: "bind-all".to_string(),
                 url: Some("http://0.0.0.0:8790".to_string()),
                 bearer_token_env: None,
@@ -757,6 +768,7 @@ args = ["server.js"]
         let err = insert_upstream(
             &mut LabConfig::default(),
             UpstreamConfig {
+                enabled: true,
                 name: "github".to_string(),
                 url: Some("https://api.githubcopilot.com/mcp/".to_string()),
                 bearer_token_env: Some("Bearer ghp_secret".to_string()),

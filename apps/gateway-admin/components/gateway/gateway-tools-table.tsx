@@ -11,10 +11,12 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import {
+  AURORA_GATEWAY_ROW,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
+  AURORA_GATEWAY_SUBTLE_SURFACE,
   AURORA_STRONG_PANEL,
-} from '@/components/aurora/tokens'
+} from '@/components/gateway/gateway-theme'
 import type { ToolInventoryRow } from './gateway-list-state'
 
 export function GatewayToolsTable({ rows }: { rows: ToolInventoryRow[] }) {
@@ -54,7 +56,7 @@ export function GatewayToolsTable({ rows }: { rows: ToolInventoryRow[] }) {
       <div className={cn(AURORA_STRONG_PANEL, 'hidden overflow-hidden md:block')}>
         <Table className="table-fixed">
           <TableHeader>
-            <TableRow className="border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] hover:bg-[rgba(7,17,26,0.48)]">
+            <TableRow className={cn('border-b border-aurora-border-strong hover:bg-inherit', AURORA_GATEWAY_SUBTLE_SURFACE)}>
               <TableHead className={cn(AURORA_MUTED_LABEL, 'px-6 py-4')}>Tool</TableHead>
               <TableHead className={cn(AURORA_MUTED_LABEL, 'px-4 py-4')}>Gateway</TableHead>
               <TableHead className={cn(AURORA_MUTED_LABEL, 'px-4 py-4')}>State</TableHead>
@@ -64,7 +66,7 @@ export function GatewayToolsTable({ rows }: { rows: ToolInventoryRow[] }) {
             {rows.map((row) => (
               <TableRow
                 key={`${row.gatewayId}:${row.toolName}`}
-                className="border-t border-aurora-border-strong/80 bg-[linear-gradient(180deg,rgba(14,31,44,0.72),rgba(10,22,31,0.88))]"
+                className={AURORA_GATEWAY_ROW}
               >
                 <TableCell className="px-6 py-4 align-top">
                   <div className="min-w-0">

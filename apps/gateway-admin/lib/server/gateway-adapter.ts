@@ -54,10 +54,12 @@ export interface BackendServerView {
 export interface BackendVirtualServiceDiscovery {
   tool_names?: string[]
   tools?: ServiceAction[]
+  allowed_actions?: string[]
 }
 
 export interface BackendGatewayConfigView {
   name: string
+  enabled?: boolean
   url?: string | null
   command?: string | null
   args?: string[]
@@ -76,6 +78,35 @@ export interface BackendGatewayRuntimeView {
   exposed_resource_count?: number
   exposed_prompt_count?: number
   last_error?: string | null
+}
+
+export interface BackendGatewayMcpRuntimeView {
+  name: string
+  enabled?: boolean
+  connected?: boolean
+  discovered_tool_count?: number
+  exposed_tool_count?: number
+  discovered_resource_count?: number
+  exposed_resource_count?: number
+  discovered_prompt_count?: number
+  exposed_prompt_count?: number
+  likely_stale_count?: number
+  pid?: number | null
+  pgid?: number | null
+  age_seconds?: number | null
+  origin?: string | null
+  owner?: {
+    surface: string
+    subject?: string | null
+    request_id?: string | null
+    session_id?: string | null
+    client_name?: string | null
+    raw?: string | null
+  } | null
+  transport?: string | null
+  target?: string | null
+  runtime_state_path?: string | null
+  reconciled_at?: string | null
 }
 
 export interface BackendGatewayView {
@@ -104,7 +135,7 @@ export interface GatewayDiscoverySnapshot {
 
 const NOW = () => new Date().toISOString()
 
-const VALID_TRANSPORTS = ['http', 'stdio', 'lab_service'] as const satisfies readonly TransportType[]
+const VALID_TRANSPORTS = ['http', 'stdio', 'in_process'] as const satisfies readonly TransportType[]
 function isValidTransport(v: unknown): v is TransportType {
   return typeof v === 'string' && (VALID_TRANSPORTS as readonly string[]).includes(v)
 }
@@ -171,6 +202,22 @@ function matchTool(toolName: string, patterns?: string[] | null): string | null 
   }
 
   return null
+}
+
+function matchVirtualServerAction(
+  actionName: string,
+  allowedActions: string[] | undefined,
+  mcpEnabled: boolean,
+): string | null {
+  if (!mcpEnabled) {
+    return null
+  }
+
+  if (!allowedActions || allowedActions.length === 0) {
+    return '*'
+  }
+
+  return allowedActions.includes(actionName) ? actionName : null
 }
 
 function describeTarget(config: BackendGatewayConfigView): string {
@@ -305,10 +352,11 @@ function buildWarnings(probe: GatewayProbeStatus): GatewayWarning[] {
 export function normalizeServerView(
   view: BackendServerView,
   discovery?: BackendVirtualServiceDiscovery,
+  runtime?: BackendGatewayMcpRuntimeView,
 ): Gateway {
-  const rawTransport = view.config_summary?.transport
+  const rawTransport = runtime?.transport ?? view.config_summary?.transport
   const transport: TransportType = isValidTransport(rawTransport) ? rawTransport : 'http'
-  const target = view.config_summary?.target ?? undefined
+  const target = runtime?.target ?? view.config_summary?.target ?? undefined
   const config: BackendGatewayConfigView = {
     name: view.name,
     ...(transport === 'http' ? { url: target } : {}),
@@ -316,7 +364,7 @@ export function normalizeServerView(
     proxy_resources: false,
     proxy_prompts: false,
   }
-  const isLabService = view.source === 'lab_service'
+  const isLabService = view.source === 'in_process'
   const warnings = (view.warnings ?? []).map((warning) => {
     if (isNonEssentialCapabilityError(warning.message)) {
       return null
@@ -340,6 +388,7 @@ export function normalizeServerView(
       description: '',
       destructive: false,
     }))
+  const mcpEnabled = (view.enabled ?? true) && (view.surfaces?.mcp?.enabled ?? false)
 
   return {
     id: view.id,
@@ -382,14 +431,37 @@ export function normalizeServerView(
       exposed_resource_count: view.exposed_resource_count ?? 0,
       discovered_prompt_count: view.discovered_prompt_count ?? 0,
       exposed_prompt_count: view.exposed_prompt_count ?? 0,
+      likely_stale_count: runtime?.likely_stale_count,
+      pid: runtime?.pid ?? undefined,
+      pgid: runtime?.pgid ?? undefined,
+      age_seconds: runtime?.age_seconds ?? undefined,
+      origin: runtime?.origin ?? undefined,
+      owner: runtime?.owner
+        ? {
+            surface: runtime.owner.surface,
+            subject: runtime.owner.subject ?? undefined,
+            request_id: runtime.owner.request_id ?? undefined,
+            session_id: runtime.owner.session_id ?? undefined,
+            client_name: runtime.owner.client_name ?? undefined,
+            raw: runtime.owner.raw ?? undefined,
+          }
+        : undefined,
+      runtime_state_path: runtime?.runtime_state_path ?? undefined,
+      reconciled_at: runtime?.reconciled_at ?? undefined,
     },
     discovery: {
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description || undefined,
-        exposed: true,
-        matched_by: '*',
-      })),
+      tools: tools.map((tool) => {
+        const matchedBy = view.source === 'in_process'
+          ? matchVirtualServerAction(tool.name, discovery?.allowed_actions, mcpEnabled)
+          : '*'
+
+        return {
+          name: tool.name,
+          description: tool.description || undefined,
+          exposed: matchedBy !== null,
+          matched_by: matchedBy,
+        }
+      }),
       resources: [],
       prompts: [],
     },
@@ -403,6 +475,7 @@ export function normalizeGateway(
   view: BackendGatewayView,
   probe: GatewayProbeStatus,
   discovery: GatewayDiscoverySnapshot,
+  runtime?: BackendGatewayMcpRuntimeView,
 ): Gateway {
   const config = view.config
   const humanizedError = humanizeProbeError(probe.last_error, config)
@@ -424,11 +497,11 @@ export function normalizeGateway(
     transport: inferTransport(config),
     source: 'custom_gateway',
     configured: true,
-    enabled: true,
+    enabled: config.enabled ?? true,
     surfaces: {
       cli: { enabled: false, connected: false },
       api: { enabled: false, connected: false },
-      mcp: { enabled: true, connected: probe.connected },
+      mcp: { enabled: config.enabled ?? true, connected: (config.enabled ?? true) && probe.connected },
       webui: { enabled: false, connected: false },
     },
     config: {
@@ -441,8 +514,8 @@ export function normalizeGateway(
       expose_tools: exposePatterns ?? undefined,
     },
     status: {
-      healthy: probe.healthy,
-      connected: probe.connected,
+      healthy: (config.enabled ?? true) && probe.healthy,
+      connected: (config.enabled ?? true) && probe.connected,
       ...(humanizedError ? { last_error: humanizedError } : {}),
       discovered_tool_count: view.runtime.tool_count,
       exposed_tool_count: view.runtime.exposed_tool_count ?? tools.filter((tool) => tool.exposed).length,
@@ -450,6 +523,23 @@ export function normalizeGateway(
       exposed_resource_count: view.runtime.exposed_resource_count ?? view.runtime.resource_count,
       discovered_prompt_count: view.runtime.prompt_count,
       exposed_prompt_count: view.runtime.exposed_prompt_count ?? view.runtime.prompt_count,
+      likely_stale_count: runtime?.likely_stale_count,
+      pid: runtime?.pid ?? undefined,
+      pgid: runtime?.pgid ?? undefined,
+      age_seconds: runtime?.age_seconds ?? undefined,
+      origin: runtime?.origin ?? undefined,
+      owner: runtime?.owner
+        ? {
+            surface: runtime.owner.surface,
+            subject: runtime.owner.subject ?? undefined,
+            request_id: runtime.owner.request_id ?? undefined,
+            session_id: runtime.owner.session_id ?? undefined,
+            client_name: runtime.owner.client_name ?? undefined,
+            raw: runtime.owner.raw ?? undefined,
+          }
+        : undefined,
+      runtime_state_path: runtime?.runtime_state_path ?? undefined,
+      reconciled_at: runtime?.reconciled_at ?? undefined,
     },
     discovery: {
       tools,

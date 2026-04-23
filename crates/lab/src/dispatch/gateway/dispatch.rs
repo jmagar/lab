@@ -8,10 +8,11 @@ use super::catalog::ACTIONS;
 use super::client::require_gateway_manager;
 use super::manager::GatewayManager;
 use super::params::{
-    GatewayAddParams, GatewayNameParams, GatewayStatusParams, GatewayTestParams,
-    GatewayUpdateParams, ServiceConfigGetParams, ServiceConfigSetParams,
+    GatewayAddParams, GatewayNameParams, GatewayOauthNameParams, GatewayReloadParams, GatewayStatusParams, GatewayTestParams, GatewayUpdatePatch,
+    GatewayUpdateParams, GatewayMcpCleanupParams, GatewayMcpToggleParams, ServiceConfigGetParams, ServiceConfigSetParams,
     VirtualServerMcpPolicyParams, VirtualServerNameParams, VirtualServerSurfaceParams,
 };
+use super::SHARED_GATEWAY_OAUTH_SUBJECT;
 use super::types::ServiceActionView;
 
 fn parse_params<T: DeserializeOwned>(params_value: Value) -> Result<T, ToolError> {
@@ -119,21 +120,51 @@ pub async fn dispatch_with_manager(
         }
         "gateway.add" => {
             let params: GatewayAddParams = parse_params(params_value)?;
-            to_json(manager.add(params.spec, params.bearer_token_value).await?)
+            to_json(
+                manager
+                    .add(
+                        params.spec,
+                        params.bearer_token_value,
+                        params.origin.as_deref(),
+                        params.owner.map(Into::into),
+                    )
+                    .await?,
+            )
         }
         "gateway.update" => {
             let params: GatewayUpdateParams = parse_params(params_value)?;
             to_json(
                 manager
-                    .update(&params.name, params.patch, params.bearer_token_value)
+                    .update(
+                        &params.name,
+                        params.patch,
+                        params.bearer_token_value,
+                        params.origin.as_deref(),
+                        params.owner.map(Into::into),
+                    )
                     .await?,
             )
         }
         "gateway.remove" => {
             let params: GatewayNameParams = parse_params(params_value)?;
-            to_json(manager.remove(&params.name).await?)
+            to_json(
+                manager
+                    .remove(
+                        &params.name,
+                        params.origin.as_deref(),
+                        params.owner.map(Into::into),
+                    )
+                    .await?,
+            )
         }
-        "gateway.reload" => to_json(manager.reload().await?),
+        "gateway.reload" => {
+            let params: GatewayReloadParams = parse_params(params_value)?;
+            to_json(
+                manager
+                    .reload_with_origin(params.origin.as_deref(), params.owner.map(Into::into))
+                    .await?,
+            )
+        }
         "gateway.status" => {
             let params: GatewayStatusParams = parse_params(params_value)?;
             to_json(manager.status(params.name.as_deref()).await?)
@@ -153,6 +184,92 @@ pub async fn dispatch_with_manager(
         "gateway.oauth.probe" => {
             let url = require_str(&params_value, "url")?;
             to_json(manager.probe_upstream_oauth(url).await?)
+        }
+        "gateway.oauth.start" => {
+            let params: GatewayOauthNameParams = parse_params(params_value)?;
+            let subject = params
+                .subject
+                .as_deref()
+                .unwrap_or(SHARED_GATEWAY_OAUTH_SUBJECT);
+            to_json(
+                crate::dispatch::gateway::oauth::begin_authorization(
+                    manager,
+                    &params.upstream,
+                    subject,
+                )
+                .await?,
+            )
+        }
+        "gateway.oauth.status" => {
+            let params: GatewayOauthNameParams = parse_params(params_value)?;
+            let subject = params
+                .subject
+                .as_deref()
+                .unwrap_or(SHARED_GATEWAY_OAUTH_SUBJECT);
+            to_json(crate::dispatch::gateway::oauth::status(manager, &params.upstream, subject).await?)
+        }
+        "gateway.oauth.clear" => {
+            let params: GatewayOauthNameParams = parse_params(params_value)?;
+            let subject = params
+                .subject
+                .as_deref()
+                .unwrap_or(SHARED_GATEWAY_OAUTH_SUBJECT);
+            crate::dispatch::gateway::oauth::clear(manager, &params.upstream, subject).await?;
+            to_json(serde_json::json!({ "ok": true }))
+        }
+        "gateway.mcp.enable" => {
+            let params: GatewayNameParams = parse_params(params_value)?;
+            to_json(
+                manager
+                    .update(
+                        &params.name,
+                        GatewayUpdatePatch {
+                            enabled: Some(true),
+                            ..GatewayUpdatePatch::default()
+                        },
+                        None,
+                        params.origin.as_deref(),
+                        params.owner.clone().map(Into::into),
+                    )
+                    .await?,
+            )
+        }
+        "gateway.mcp.list" => to_json(manager.mcp_runtime_list().await?),
+        "gateway.mcp.disable" => {
+            let params: GatewayMcpToggleParams = parse_params(params_value)?;
+            let gateway = manager
+                .update(
+                    &params.name,
+                    GatewayUpdatePatch {
+                        enabled: Some(false),
+                        ..GatewayUpdatePatch::default()
+                    },
+                    None,
+                    params.origin.as_deref(),
+                    params.owner.clone().map(Into::into),
+                )
+                .await?;
+            let cleanup = if params.cleanup {
+                Some(
+                    manager
+                        .cleanup_upstream_processes(&params.name, params.aggressive, false)
+                        .await?,
+                )
+            } else {
+                None
+            };
+            to_json(serde_json::json!({
+                "gateway": gateway,
+                "cleanup": cleanup,
+            }))
+        }
+        "gateway.mcp.cleanup" => {
+            let params: GatewayMcpCleanupParams = parse_params(params_value)?;
+            to_json(
+                manager
+                    .cleanup_upstream_processes(&params.name, params.aggressive, params.dry_run)
+                    .await?,
+            )
         }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
@@ -221,12 +338,22 @@ mod tests {
         assert!(names.contains(&"gateway.discovered_resources"));
         assert!(names.contains(&"gateway.discovered_prompts"));
         assert!(names.contains(&"gateway.oauth.probe"));
+        assert!(names.contains(&"gateway.oauth.start"));
+        assert!(names.contains(&"gateway.oauth.status"));
+        assert!(names.contains(&"gateway.oauth.clear"));
+        assert!(names.contains(&"gateway.mcp.enable"));
+        assert!(names.contains(&"gateway.mcp.disable"));
+        assert!(names.contains(&"gateway.mcp.cleanup"));
 
         for name in [
             "gateway.add",
             "gateway.update",
             "gateway.remove",
             "gateway.reload",
+            "gateway.oauth.clear",
+            "gateway.mcp.enable",
+            "gateway.mcp.disable",
+            "gateway.mcp.cleanup",
         ] {
             let spec = ACTIONS
                 .iter()
@@ -247,6 +374,7 @@ mod tests {
         let manager = test_manager();
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
                 name: "fixture-http".to_string(),
                 url: Some("http://127.0.0.1:9001".to_string()),
                 bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -279,6 +407,7 @@ mod tests {
         let manager = test_manager();
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
                 name: "fixture-http".to_string(),
                 url: Some("http://127.0.0.1:9001".to_string()),
                 bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -309,6 +438,7 @@ mod tests {
 
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
                 name: "noxa".to_string(),
                 url: None,
                 bearer_token_env: None,
@@ -482,7 +612,7 @@ mod tests {
         .expect("enable missing virtual server");
 
         assert_eq!(value["id"], "plex");
-        assert_eq!(value["source"], "lab_service");
+        assert_eq!(value["source"], "in_process");
         assert_eq!(value["enabled"], true);
         assert_eq!(value["surfaces"]["mcp"]["enabled"], true);
     }
@@ -721,6 +851,7 @@ mod tests {
         let manager = test_manager();
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
                 name: "fixture-http".to_string(),
                 url: Some("http://127.0.0.1:9001".to_string()),
                 bearer_token_env: None,
@@ -825,6 +956,7 @@ mod tests {
         let manager = test_manager();
         manager
             .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
                 name: "fixture-http".to_string(),
                 url: Some("http://127.0.0.1:9001".to_string()),
                 bearer_token_env: Some("FIXTURE_HTTP_TOKEN".to_string()),
@@ -850,5 +982,132 @@ mod tests {
             help.to_string().contains("gateway.reload"),
             "reload should remain the explicit env-refresh action"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn gateway_mcp_cleanup_dispatch_returns_cleanup_payload() {
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+
+        let manager = test_manager();
+        let upstream_name = "github-chat-cleanup-dispatch";
+        let runtime_arg = "github-chat-cleanup-dispatch-mcp";
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
+                name: upstream_name.to_string(),
+                url: None,
+                bearer_token_env: None,
+                command: Some("uvx".to_string()),
+                args: vec![runtime_arg.to_string()],
+                proxy_resources: false,
+                proxy_prompts: false,
+                expose_tools: None,
+                oauth: None,
+            }])
+            .await;
+
+        let mut child = Command::new("python3")
+            .args(["-c", "import time; time.sleep(60)", runtime_arg])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn github chat stand-in");
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.mcp.cleanup",
+            json!({
+                "name": upstream_name,
+                "aggressive": false,
+                "dry_run": false
+            }),
+        )
+        .await
+        .expect("cleanup dispatch");
+
+        assert_eq!(value["upstream"], upstream_name);
+        assert_eq!(value["aggressive"], false);
+        assert!(
+            value["gateway_killed"]
+                .as_u64()
+                .expect("gateway_killed as u64")
+                >= 1
+        );
+
+        for _ in 0..20 {
+            if child.try_wait().expect("try_wait").is_some() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        drop(child.kill());
+        panic!("github-chat stand-in process was not terminated by dispatch cleanup");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn gateway_mcp_disable_with_cleanup_returns_gateway_and_cleanup_payload() {
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+
+        let manager = test_manager();
+        let upstream_name = "github-chat-disable-dispatch";
+        let runtime_arg = "github-chat-disable-dispatch-mcp";
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
+                name: upstream_name.to_string(),
+                url: None,
+                bearer_token_env: None,
+                command: Some("uvx".to_string()),
+                args: vec![runtime_arg.to_string()],
+                proxy_resources: false,
+                proxy_prompts: false,
+                expose_tools: None,
+                oauth: None,
+            }])
+            .await;
+
+        let mut child = Command::new("python3")
+            .args(["-c", "import time; time.sleep(60)", runtime_arg])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn github chat stand-in");
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.mcp.disable",
+            json!({
+                "name": upstream_name,
+                "cleanup": true,
+                "aggressive": false
+            }),
+        )
+        .await
+        .expect("disable dispatch");
+
+        assert_eq!(value["gateway"]["config"]["name"], upstream_name);
+        assert_eq!(value["gateway"]["config"]["enabled"], false);
+        assert_eq!(value["cleanup"]["upstream"], upstream_name);
+
+        for _ in 0..20 {
+            if child.try_wait().expect("try_wait").is_some() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        drop(child.kill());
+        panic!("github-chat stand-in process was not terminated by disable cleanup");
     }
 }

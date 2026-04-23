@@ -9,6 +9,8 @@ mod dispatch;
 mod params;
 pub mod store;
 
+pub const LAB_REGISTRY_META_NAMESPACE: &str = "tv.tootie.lab/registry";
+
 pub use catalog::ACTIONS;
 pub use client::client_from_env;
 pub use dispatch::{dispatch, dispatch_with_client};
@@ -24,6 +26,9 @@ mod tests {
         assert!(names.contains(&"server.list"));
         assert!(names.contains(&"server.get"));
         assert!(names.contains(&"server.versions"));
+        assert!(names.contains(&"server.meta.get"));
+        assert!(names.contains(&"server.meta.set"));
+        assert!(names.contains(&"server.meta.delete"));
         assert!(names.contains(&"help"));
         assert!(names.contains(&"schema"));
     }
@@ -46,7 +51,13 @@ mod tests {
 
     #[test]
     fn read_actions_are_not_destructive() {
-        let read_actions = ["server.list", "server.get", "server.versions", "server.validate"];
+        let read_actions = [
+            "server.list",
+            "server.get",
+            "server.versions",
+            "server.meta.get",
+            "server.validate",
+        ];
         for action_name in read_actions {
             let spec = ACTIONS
                 .iter()

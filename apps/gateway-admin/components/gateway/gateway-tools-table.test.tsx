@@ -12,9 +12,9 @@ test('gateway tools table renders dense operational rows and exposure state', ()
         {
           gatewayId: 'gw_1',
           gatewayName: 'Lab Core',
-          source: 'lab_service',
+          source: 'in_process',
           sourceFacet: 'lab',
-          transport: 'stdio',
+          transport: 'in_process',
           toolName: 'unifi',
           description: 'UniFi Network Application local API',
           exposed: true,
@@ -25,5 +25,6 @@ test('gateway tools table renders dense operational rows and exposure state', ()
 
   assert.match(markup, /UniFi Network Application local API/)
   assert.match(markup, /Exposed/)
-  assert.match(markup, /bg-aurora-panel-strong/)
+  assert.match(markup, /Lab Core/)
+  assert.match(markup, /unifi/)
 })

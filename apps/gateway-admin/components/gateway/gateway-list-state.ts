@@ -34,7 +34,7 @@ export interface ToolInventoryRow {
 }
 
 export function gatewaySourceFacet(gateway: Pick<Gateway, 'source'>): GatewaySourceFacet {
-  return gateway.source === 'lab_service' ? 'lab' : 'custom'
+  return gateway.source === 'in_process' ? 'lab' : 'custom'
 }
 
 export function matchesOrFacet<T extends string>(selected: T[], actual: T): boolean {
@@ -129,5 +129,6 @@ export function sortToolRows(rows: ToolInventoryRow[]): ToolInventoryRow[] {
 }
 
 export function gatewayMatchesToolSearch(gateway: Gateway, search: string): boolean {
+  if (!search.trim()) return true
   return gateway.discovery.tools.some((tool) => toolMatchesSearch(tool, gateway, search))
 }

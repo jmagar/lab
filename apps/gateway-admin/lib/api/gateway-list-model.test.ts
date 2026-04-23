@@ -42,8 +42,8 @@ test('mergeGatewayListWithSupportedServices appends missing lab services as deac
     makeGateway({
       id: 'plex',
       name: 'plex',
-      transport: 'lab_service',
-      source: 'lab_service',
+      transport: 'in_process',
+      source: 'in_process',
       enabled: true,
       status: {
         healthy: true,
@@ -87,7 +87,7 @@ test('mergeGatewayListWithSupportedServices appends missing lab services as deac
   const merged = mergeGatewayListWithSupportedServices(existing, supported, serviceConfigs, serviceActions)
 
   assert.deepEqual(merged.map((gateway) => gateway.id), ['custom-1', 'plex', 'radarr'])
-  assert.equal(merged[2]?.source, 'lab_service')
+  assert.equal(merged[2]?.source, 'in_process')
   assert.equal(merged[2]?.enabled, false)
   assert.equal(merged[2]?.configured, false)
   assert.equal(merged[2]?.status.connected, false)
@@ -101,8 +101,8 @@ test('mergeGatewayListWithSupportedServices preserves existing disabled lab rows
     makeGateway({
       id: 'radarr',
       name: 'radarr',
-      transport: 'lab_service',
-      source: 'lab_service',
+      transport: 'in_process',
+      source: 'in_process',
       enabled: false,
       configured: true,
       status: {

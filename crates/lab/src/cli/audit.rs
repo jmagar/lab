@@ -42,9 +42,10 @@ pub fn run(args: AuditArgs, format: OutputFormat) -> Result<ExitCode> {
                 })?
                 .to_path_buf();
             let report = audit_services(&args.services, &repo_root);
-            match format {
-                OutputFormat::Json => print(&report, format)?,
-                OutputFormat::Human => println!("{}", render_audit_report(&report)),
+            if format.is_json() {
+                print(&report, format)?;
+            } else {
+                println!("{}", render_audit_report(&report));
             }
             Ok(exit_code(&report))
         }

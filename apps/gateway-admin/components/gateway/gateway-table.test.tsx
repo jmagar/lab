@@ -51,15 +51,18 @@ test('gateway table uses aurora lifted surfaces and muted operational pills', ()
       onEdit: () => {},
       onTest: () => {},
       onReload: () => {},
+      onToggleEnabled: () => {},
       onDelete: () => {},
     }),
   )
 
   assert.match(markup, /bg-aurora-panel-strong/)
-  assert.match(markup, /bg-aurora-control-surface/)
   assert.match(markup, /text-aurora-text-primary/)
-  assert.match(markup, /text-aurora-warn/)
-  assert.match(markup, />14\/18</)
+  assert.match(markup, /data-mobile-metric="tools"/)
+  assert.match(markup, /data-mobile-metric="resources"/)
+  assert.match(markup, /data-mobile-metric="prompts"/)
+  assert.match(markup, /data-mobile-metric="runtime"/)
+  assert.match(markup, />14</)
+  assert.match(markup, /prompts/)
   assert.doesNotMatch(markup, /Reload required to apply policy changes/)
-  assert.doesNotMatch(markup, /TOOLS|RESOURCES|PROMPTS/)
 })

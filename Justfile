@@ -36,6 +36,15 @@ build-release:
 run *ARGS:
     cargo run --all-features -- {{ARGS}}
 
+# Run the binary-served static chat UI in local ACP mode
+chat-local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export LAB_WEB_UI_DISABLE_AUTH=true
+    export LAB_MCP_HTTP_TOKEN="${LAB_MCP_HTTP_TOKEN:-dev-token}"
+    export LAB_CORS_ORIGINS="${LAB_CORS_ORIGINS:-http://dookie:3000,http://127.0.0.1:3000,http://localhost:3000}"
+    cargo run --all-features --bin lab -- serve --host 0.0.0.0 --port 8765
+
 # Format all code
 fmt:
     cargo fmt --all

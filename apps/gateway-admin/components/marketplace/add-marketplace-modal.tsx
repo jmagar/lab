@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ShoppingBag } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
@@ -13,14 +13,21 @@ interface AddMarketplaceModalProps {
 }
 
 export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModalProps) {
+  const repoInputId = 'marketplace-repo'
+  const urlInputId = 'marketplace-url'
+  const nameInputId = 'marketplace-name'
+  const autoUpdateInputId = 'marketplace-auto-update'
   const [repo, setRepo] = useState('')
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
   const [autoUpdate, setAutoUpdate] = useState(true)
   const [loading, setLoading] = useState(false)
+  const isSubmittingRef = useRef(false)
 
   async function handleSubmit() {
+    if (isSubmittingRef.current || loading) return
     if (!repo.trim() && !url.trim()) return
+    isSubmittingRef.current = true
     setLoading(true)
     try {
       const result = await onAdd({
@@ -34,6 +41,7 @@ export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModa
         onClose()
       }
     } finally {
+      isSubmittingRef.current = false
       setLoading(false)
     }
   }
@@ -57,10 +65,11 @@ export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModa
 
         <div className="px-7 py-6 flex flex-col gap-[18px]">
           <div className="flex flex-col gap-[7px]">
-            <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
+            <label htmlFor={repoInputId} className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
               GitHub Repository
             </label>
             <input
+              id={repoInputId}
               className="bg-aurora-control-surface border border-aurora-border-strong rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/55 px-[14px] py-[10px] text-[13px] outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-inset)]"
               value={repo}
               onChange={e => setRepo(e.target.value)}
@@ -70,10 +79,11 @@ export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModa
           </div>
 
           <div className="flex flex-col gap-[7px]">
-            <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
+            <label htmlFor={urlInputId} className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
               Or Git URL
             </label>
             <input
+              id={urlInputId}
               className="bg-aurora-control-surface border border-aurora-border-strong rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/55 px-[14px] py-[10px] text-[13px] outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-inset)]"
               value={url}
               onChange={e => setUrl(e.target.value)}
@@ -82,11 +92,12 @@ export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModa
           </div>
 
           <div className="flex flex-col gap-[7px]">
-            <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
+            <label htmlFor={nameInputId} className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
               Marketplace Name{' '}
               <span className="text-[10px] font-normal normal-case tracking-normal opacity-60">(optional)</span>
             </label>
             <input
+              id={nameInputId}
               className="bg-aurora-control-surface border border-aurora-border-strong rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/55 px-[14px] py-[10px] text-[13px] outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-inset)]"
               value={name}
               onChange={e => setName(e.target.value)}
@@ -99,8 +110,9 @@ export function AddMarketplaceModal({ open, onClose, onAdd }: AddMarketplaceModa
               <span className="text-[13px] font-medium text-aurora-text-primary">Auto-update</span>
               <span className="text-[11px] text-aurora-text-muted">Sync new plugins automatically</span>
             </div>
-            <label className="relative w-9 h-5 flex-shrink-0 cursor-pointer">
+            <label htmlFor={autoUpdateInputId} className="relative w-9 h-5 flex-shrink-0 cursor-pointer">
               <input
+                id={autoUpdateInputId}
                 type="checkbox"
                 className="sr-only peer"
                 checked={autoUpdate}

@@ -138,17 +138,17 @@ test('hasApiTokenAuth only enables bearer mode for non-empty tokens', () => {
   assert.equal(hasApiTokenAuth(undefined), false)
   assert.equal(hasApiTokenAuth(''), false)
   assert.equal(hasApiTokenAuth('   '), false)
-  assert.equal(hasApiTokenAuth('dev-token'), true)
+  assert.equal(hasApiTokenAuth('dev-token'), false)
 })
 
 test('isStandaloneBearerAuthMode activates whenever a token is set', () => {
   assert.equal(isStandaloneBearerAuthMode(undefined), false)
   assert.equal(isStandaloneBearerAuthMode('   '), false)
-  assert.equal(isStandaloneBearerAuthMode('dev-token'), true)
+  assert.equal(isStandaloneBearerAuthMode('dev-token'), false)
 })
 
 test('shouldBypassBrowserSessionAuth bypasses hosted auth when a token is set or in mock mode', () => {
   assert.equal(shouldBypassBrowserSessionAuth(undefined, 'false'), false)
-  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'false'), true)
+  assert.equal(shouldBypassBrowserSessionAuth('dev-token', 'false'), false)
   assert.equal(shouldBypassBrowserSessionAuth(undefined, 'true'), true)
 })

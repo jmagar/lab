@@ -2,11 +2,11 @@
 
 `lab` is a Rust workspace for running a homelab control plane from one codebase: a reusable SDK in `lab-apis`, plus a `lab` binary that exposes the same services through a CLI, an MCP server, an HTTP API, and a TUI plugin manager.
 
-One binary. **22 services** (21 feature-gated + always-on `extract`). Three runtime surfaces (CLI, MCP, HTTP API) that all dispatch through the same shared action catalog. **571 callable actions** across all services. One MCP tool per service, not hundreds.
+One binary. **23 services** (21 feature-gated + always-on `extract` and `marketplace`). Three runtime surfaces (CLI, MCP, HTTP API) that all dispatch through the same shared action catalog. **580 callable actions** across all services. One MCP tool per service, not hundreds.
 
 ## Current state
 
-In the current `--all-features` build, the catalog registers **22 services** across 10 categories with **571 total callable actions**:
+In the current `--all-features` build, the catalog registers **23 services** across 10 categories with **580 total callable actions**:
 
 | Category | Services |
 | --- | --- |
@@ -19,9 +19,9 @@ In the current `--all-features` build, the catalog registers **22 services** acr
 | Network / Infrastructure | Tailscale, UniFi, Unraid, Arcane |
 | Notifications | Gotify, Apprise |
 | AI / Inference | OpenAI, Qdrant, TEI |
-| Bootstrap | Extract (always-on) |
+| Bootstrap | Extract, Marketplace (always-on) |
 
-**Total callable actions: 571**
+**Total callable actions: 580**
 
 ## Workspace layout
 
@@ -303,6 +303,7 @@ When all features are enabled, the MCP server registers these tools:
 | Tool | Description | Actions |
 | --- | --- | ---: |
 | `extract` | Scan appdata paths for service credentials | 5 |
+| `marketplace` | Claude Code plugin marketplace manager | 9 |
 | `radarr` | Radarr movie collection manager | 53 |
 | `sonarr` | Sonarr TV series manager | 34 |
 | `prowlarr` | Prowlarr indexer manager | 25 |
@@ -324,7 +325,7 @@ When all features are enabled, the MCP server registers these tools:
 | `qdrant` | Qdrant vector database | 15 |
 | `tei` | HF Text Embeddings Inference | 10 |
 | `apprise` | Apprise notification dispatcher | 10 |
-| | **Total** | **571** |
+| | **Total** | **580** |
 
 Additionally, `lab_admin` (onboarding audit, 3 actions) is available as a runtime opt-in tool when `LAB_ADMIN_ENABLED=1`.
 
@@ -416,6 +417,7 @@ Every compiled service gets a route group under `/v1/<service>`:
 | Service | Route | Feature flag |
 | --- | --- | --- |
 | extract | `/v1/extract` | always-on |
+| marketplace | `/v1/marketplace` | always-on |
 | radarr | `/v1/radarr` | `radarr` |
 | sonarr | `/v1/sonarr` | `sonarr` |
 | prowlarr | `/v1/prowlarr` | `prowlarr` |
@@ -517,6 +519,22 @@ Bootstrap utility — scans appdata paths and discovers service credentials.
 | `scan` | Scan an appdata path and return discovered credentials | |
 | `apply` | Scan and write credentials into `~/.lab/.env` | **yes** |
 | `diff` | Show what `apply` would change (no writes) | |
+
+### Marketplace (always-on)
+
+Claude Code plugin marketplace manager. Reads `~/.claude/plugins/` and wraps the destructive `claude plugin …` commands. See `docs/MARKETPLACE.md` for details.
+
+| Action | Description | Destructive |
+| --- | --- | --- |
+| `help` | Show action catalog | |
+| `schema` | Return parameter schema for an action | |
+| `sources.list` | List configured marketplaces | |
+| `sources.add` | Register a new marketplace via `claude plugin marketplace add` | **yes** |
+| `plugins.list` | List all plugins across marketplaces with installed state | |
+| `plugin.get` | Get a single plugin by `name@marketplace` id | |
+| `plugin.artifacts` | List artifact files shipped with an installed plugin | |
+| `plugin.install` | Install a plugin via `claude plugin install` | **yes** |
+| `plugin.uninstall` | Uninstall a plugin via `claude plugin uninstall` | **yes** |
 
 ### Radarr (Servarr — Movie collection manager)
 
@@ -1410,6 +1428,7 @@ Start with `docs/README.md`. The most useful topic docs:
 - `docs/ARCH.md` — crate split, runtime surfaces, shared contracts
 - `docs/SERVICES.md` — service inventory and feature model
 - `docs/CLI.md` — CLI behavior and operator commands
+- `docs/MARKETPLACE.md` — Claude Code plugin marketplace service
 - `docs/MCP.md` — one-tool-per-service MCP design and envelopes
 - `docs/CONFIG.md` — env/TOML ownership and multi-instance naming
 - `docs/DISPATCH.md` — shared dispatch ownership and adapter direction

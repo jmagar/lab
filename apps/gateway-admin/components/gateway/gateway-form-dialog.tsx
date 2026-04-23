@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { TextSurface } from '@/components/ui/text-surface'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -44,20 +45,6 @@ import {
   SERVICE_SVG_FALLBACKS,
   isServiceKey,
 } from '@/lib/branding/service-brands'
-
-function highlightJson(raw: string): string {
-  const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  return esc.replace(
-    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(?=\s*:))|("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],:])/g,
-    (match, key, str, kw, num) => {
-      if (key !== undefined) return `<span style="color:var(--aurora-accent-primary)">${match}</span>`
-      if (str !== undefined) return `<span style="color:var(--aurora-success)">${match}</span>`
-      if (kw !== undefined) return `<span style="color:var(--aurora-warn)">${match}</span>`
-      if (num !== undefined) return `<span style="color:var(--aurora-accent-strong)">${match}</span>`
-      return `<span style="color:var(--aurora-text-muted)">${match}</span>`
-    },
-  )
-}
 
 interface GatewayFormDialogProps {
   open: boolean
@@ -106,7 +93,11 @@ function ServiceIconBox({ serviceKey }: { serviceKey: string }) {
   return (
     <div
       className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0"
-      style={{ background: '#ffffff', border: `2px solid ${brand}`, boxShadow: `0 0 0 1px ${brand}33` }}
+      style={{
+        background: 'var(--aurora-control-surface)',
+        border: `2px solid ${brand}`,
+        boxShadow: `0 0 0 1px ${brand}33`,
+      }}
     >
       {logo ? (
         <img src={logo} alt="" className="w-5 h-5 object-contain" onError={() => setImgError(true)} />
@@ -146,7 +137,7 @@ export function GatewayFormDialog({
   onSave,
 }: GatewayFormDialogProps) {
   const isEditing = !!gateway
-  const isLabGateway = gateway?.source === 'lab_service'
+  const isLabGateway = gateway?.source === 'in_process'
   const prevOpenRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const probeInfoRef = useRef<{ registration_strategy: string; scopes?: string[] } | null>(null)
@@ -173,7 +164,6 @@ export function GatewayFormDialog({
   const [jsonText, setJsonText] = useState('')
   const [jsonValid, setJsonValid] = useState(false)
   const syncingRef = useRef(false)
-  const jsonPreRef = useRef<HTMLPreElement>(null)
   const [envText, setEnvText] = useState('')
 
   const [selectedService, setSelectedService] = useState('')
@@ -301,13 +291,13 @@ export function GatewayFormDialog({
     setJsonDrawerOpen(false)
 
     if (gateway) {
-      if (gateway.source === 'lab_service') {
+      if (gateway.source === 'in_process') {
         setMode('lab')
         setSelectedService(gateway.id)
         setEnableServer(gateway.enabled ?? true)
       } else {
         setMode('custom')
-        setTransport(gateway.transport === 'lab_service' ? 'http' : gateway.transport)
+        setTransport(gateway.transport === 'in_process' ? 'http' : gateway.transport)
         setName(gateway.name)
         const initialAuthMode = gateway.config.oauth_enabled ? 'oauth'
           : gateway.config.bearer_token_env ? 'bearer'
@@ -475,7 +465,7 @@ export function GatewayFormDialog({
 
   const handleTest = async () => {
     if (isSaving) return
-    if (!gateway || gateway.source === 'lab_service') {
+    if (!gateway || gateway.source === 'in_process') {
       toast.info('Save and enable the gateway first, then test from the detail page.')
       return
     }
@@ -679,8 +669,8 @@ export function GatewayFormDialog({
           )}
         >
         <DialogHeader className="shrink-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-1">
               <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
               <DialogDescription>
                 {isEditing
@@ -691,33 +681,39 @@ export function GatewayFormDialog({
               </DialogDescription>
             </div>
             <div
-              className="flex gap-1.5 shrink-0 mr-8"
-              style={{ visibility: mode === 'custom' ? 'visible' : 'hidden' }}
+              className={cn(
+                'flex shrink-0 items-center gap-1.5 sm:mr-8',
+                mode === 'custom' ? 'visible' : 'invisible pointer-events-none',
+              )}
             >
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={toggleEnvDrawer}
                 className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  'h-8 rounded-full px-3 text-xs font-medium',
                   envDrawerOpen
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-primary hover:bg-accent',
+                    ? 'border-aurora-accent-primary/36 bg-aurora-accent-primary/12 text-aurora-text-primary'
+                    : 'border-aurora-border-strong bg-aurora-control-surface text-aurora-text-primary hover:bg-aurora-hover-bg',
                 )}
               >
                 ENV
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={toggleJsonDrawer}
                 className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  'h-8 rounded-full px-3 text-xs font-medium',
                   jsonDrawerOpen
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-primary hover:bg-accent',
+                    ? 'border-aurora-accent-primary/36 bg-aurora-accent-primary/12 text-aurora-text-primary'
+                    : 'border-aurora-border-strong bg-aurora-control-surface text-aurora-text-primary hover:bg-aurora-hover-bg',
                 )}
               >
                 JSON
-              </button>
+              </Button>
             </div>
           </div>
         </DialogHeader>
@@ -935,7 +931,12 @@ export function GatewayFormDialog({
                         {authMode === 'oauth' && <ShieldCheck className="size-4 text-aurora-text-muted" />}
                         {authMode === 'none' ? 'No auth' : authMode === 'bearer' ? 'Bearer token' : 'OAuth (MCP)'}
                         {authMode === 'oauth' && oauthProbed?.oauth_discovered && (
-                          <Badge variant="secondary" className="ml-1 text-xs">Detected</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="ml-1 border-aurora-border-strong bg-aurora-control-surface text-xs text-aurora-text-primary"
+                          >
+                            Detected
+                          </Badge>
                         )}
                       </span>
                     </SelectValue>
@@ -1148,13 +1149,12 @@ export function GatewayFormDialog({
         {/* ENV drawer */}
         <div
           className={cn(
-            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col sm:left-full',
             'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
             envDrawerOpen
               ? 'w-[300px] max-[600px]:w-full max-[600px]:h-full'
               : 'w-0',
           )}
-          style={{ left: '100%' }}
           aria-hidden={!envDrawerOpen}
         >
           <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">
@@ -1189,7 +1189,10 @@ export function GatewayFormDialog({
               return (
                 <div className="flex flex-wrap gap-1.5">
                   {detectedServices.map((s) => (
-                    <span key={s} className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary">
+                    <span
+                      key={s}
+                      className="rounded-full border border-aurora-accent-primary/30 bg-aurora-accent-primary/10 px-2 py-0.5 text-xs text-aurora-accent-primary"
+                    >
                       {s}
                     </span>
                   ))}
@@ -1226,62 +1229,36 @@ export function GatewayFormDialog({
         {/* JSON drawer */}
         <div
           className={cn(
-            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col',
+            'absolute top-0 bottom-0 bg-aurora-page-bg border-l border-aurora-border-strong rounded-r-lg overflow-hidden transition-[width] duration-[250ms] ease-[cubic-bezier(.4,0,.2,1)] flex flex-col sm:left-full',
             'max-[600px]:fixed max-[600px]:inset-0 max-[600px]:rounded-none max-[600px]:border-l-0 max-[600px]:z-50',
             jsonDrawerOpen
               ? 'w-[380px] max-[600px]:w-full max-[600px]:h-full'
               : 'w-0',
           )}
-          style={{ left: '100%' }}
           aria-hidden={!jsonDrawerOpen}
         >
           <div className="flex flex-col gap-3 p-4 flex-1 overflow-y-auto aurora-scrollbar">
             <p className="text-xs text-aurora-text-muted">
               Live editor — changes here update the form, and form changes update this JSON automatically.
             </p>
-            <div
-              className="relative min-h-[240px] rounded-md border border-aurora-border-strong bg-[var(--aurora-control-surface)] overflow-hidden focus-within:ring-2 focus-within:ring-[var(--aurora-accent-primary)]/34"
-            >
-              {/* Syntax-highlighted backing layer — clipped by parent overflow:hidden */}
-              <pre
-                ref={jsonPreRef}
-                aria-hidden="true"
-                className="absolute top-0 left-0 min-w-full m-0 px-3 py-2 text-xs font-mono whitespace-pre pointer-events-none select-none text-[var(--aurora-text-primary)]"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: HTML-escaped JSON tokens
-                dangerouslySetInnerHTML={{ __html: jsonText ? highlightJson(jsonText) : '' }}
-              />
-              {/* Transparent textarea on top — text invisible so highlight shows through */}
-              <textarea
-                className="relative w-full min-h-[240px] bg-transparent px-3 py-2 text-xs font-mono resize-none focus:outline-none aurora-scrollbar z-10"
-                style={{
-                  color: jsonText ? 'transparent' : 'var(--aurora-text-primary)',
-                  caretColor: 'var(--aurora-text-primary)',
-                }}
-                placeholder={'{\n  "gateway-name": {\n    "url": "http://localhost:3001/mcp"\n  }\n}'}
+            <div className="min-h-[240px]">
+              <TextSurface
+                path="gateway-config.json"
                 value={jsonText}
-                onChange={(e) => {
-                  setJsonText(e.target.value)
-                  parseJsonToForm(e.target.value)
+                mode="edit"
+                language="json"
+                onChange={(next) => {
+                  setJsonText(next)
+                  parseJsonToForm(next)
                 }}
-                onScroll={(e) => {
-                  if (jsonPreRef.current) {
-                    jsonPreRef.current.style.transform = `translate(-${e.currentTarget.scrollLeft}px, -${e.currentTarget.scrollTop}px)`
-                  }
+                onCopy={() => {
+                  void navigator.clipboard.writeText(jsonText)
                 }}
               />
-              {(() => {
-                if (!jsonText.trim()) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-aurora-text-muted z-20">Waiting</span>
-                }
-                if (jsonValid) {
-                  return <span className="absolute top-2 right-2 text-[10px] text-aurora-success z-20">Valid</span>
-                }
-                return <span className="absolute top-2 right-2 text-[10px] text-destructive z-20">Invalid JSON</span>
-              })()}
             </div>
             {jsonValid && name && (
               <div className="flex flex-wrap gap-1.5">
-                <span className="rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-xs text-primary">
+                <span className="rounded-full border border-aurora-accent-primary/30 bg-aurora-accent-primary/10 px-2 py-0.5 text-xs text-aurora-accent-primary">
                   {name}
                 </span>
                 <span className="rounded-full bg-aurora-control-surface border border-aurora-border-strong px-2 py-0.5 text-xs text-aurora-text-muted">

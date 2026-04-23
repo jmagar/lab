@@ -384,3 +384,72 @@ test('gatewayApi destructive mutations send confirm=true', async () => {
     assert.equal(action.params.confirm, true)
   }
 })
+
+test('gatewayApi.get applies virtual-server MCP policy to in-process tool exposure', async () => {
+  await withGatewayFetch(
+    {
+      'gateway.server.get': () => ({
+        id: 'github-chat',
+        name: 'github-chat',
+        source: 'in_process',
+        configured: true,
+        enabled: true,
+        connected: true,
+        discovered_tool_count: 2,
+        exposed_tool_count: 1,
+        discovered_resource_count: 0,
+        exposed_resource_count: 0,
+        discovered_prompt_count: 0,
+        exposed_prompt_count: 0,
+        surfaces: {
+          cli: { enabled: false, connected: false },
+          api: { enabled: false, connected: false },
+          mcp: { enabled: true, connected: true },
+          webui: { enabled: false, connected: false },
+        },
+        warnings: [],
+        config_summary: {
+          transport: 'in_process',
+          target: 'github-chat',
+        },
+      }),
+      'gateway.service_config.get': () => ({
+        service: 'github-chat',
+        configured: true,
+        fields: [],
+      }),
+      'gateway.service_actions': () => ([
+        { name: 'index_repository', description: 'Index a GitHub repository', destructive: false },
+        { name: 'query_repository', description: 'Query a GitHub repository', destructive: false },
+      ]),
+      'gateway.virtual_server.get_mcp_policy': () => ({
+        allowed_actions: ['query_repository'],
+      }),
+    },
+    async (requests) => {
+      const gateway = await gatewayApi.get('github-chat')
+
+      assert.deepEqual(
+        gateway.discovery.tools.map((tool) => ({
+          name: tool.name,
+          exposed: tool.exposed,
+          matched_by: tool.matched_by,
+        })),
+        [
+          { name: 'index_repository', exposed: false, matched_by: null },
+          { name: 'query_repository', exposed: true, matched_by: 'query_repository' },
+        ],
+      )
+
+      assert.deepEqual(
+        requests.map((request) => request.action),
+        [
+          'gateway.server.get',
+          'gateway.service_config.get',
+          'gateway.service_actions',
+          'gateway.virtual_server.get_mcp_policy',
+        ],
+      )
+    },
+  )
+})

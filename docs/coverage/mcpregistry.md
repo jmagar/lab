@@ -70,9 +70,10 @@ identical filtering semantics.
 
 ### `server.list` — `/v1` upstream vs `/v0.1/servers` store
 
-`server.list` calls the upstream registry directly (the `/v1` surface). Sort
-operates within the current page only. For full-dataset sort and offline
-availability, use the `GET /v0.1/servers` store endpoint described below.
+`server.list` via the local `/v1/mcpregistry` action calls the upstream
+registry `/v0.1/servers` endpoint directly. Sort operates within the current
+page only. For full-dataset sort and offline availability, use the local
+`GET /v0.1/servers` store endpoint described below.
 
 ## Surface Coverage
 
@@ -101,7 +102,7 @@ The service exposes **two** HTTP surfaces:
 
 1. **`POST /v1/mcpregistry`** — action+params dispatch, mirrors MCP exactly.
    Handler: `crates/lab/src/api/services/mcpregistry.rs`.
-2. **`GET /v0.1/registry/*`** — REST wire-compatible with the upstream
+2. **`GET /v0.1/servers/*`** — REST wire-compatible with the upstream
    MCP Registry v0.1 spec. Handler: `crates/lab/src/api/services/registry_v01.rs`.
 
 The REST surface backs the `lab://mcpregistry/…` UI and any consumer expecting the
@@ -142,8 +143,9 @@ registry-specific and documented in `docs/ERRORS.md`:
 
 Both use `ToolError::Sdk { sdk_kind, message }`; HTTP 422.
 
-Additionally, the REST surface returns `sync_in_progress` (HTTP 503) when the
-store is still initializing.
+Additionally, the REST surface returns `service_unavailable` (HTTP 503) when the
+store is still initializing. `sync_in_progress` remains reserved for an active
+registry sync that callers should retry later.
 
 ## SSRF Protection
 
@@ -151,7 +153,8 @@ Any URL flowing from the registry into the gateway upstream layer is validated b
 `crate::dispatch::mcpregistry::validate_registry_url` before use. It rejects:
 
 - non-HTTPS schemes (including `http`, `file`, `data`, `ftp`)
-- hosts resolving to RFC1918, loopback, link-local, or ULA addresses
+- hosts resolving to RFC1918, loopback, link-local, ULA, or Tailscale/CGNAT
+  (`100.64.0.0/10`) addresses
 - hosts with raw IP literals that bypass DNS
 
 `server.install` always runs validation before adding a remote as a gateway upstream.

@@ -31,6 +31,8 @@ use crate::dispatch::logs::client::{
 };
 use crate::mcp::peers::PeerNotifier;
 use crate::mcp::server::LabMcpServer;
+#[cfg(target_os = "linux")]
+use crate::process::unix::{exe_path, terminate_sigterm};
 use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Transport choices for `lab serve`.
@@ -172,36 +174,29 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     } else {
         build_upstream_oauth_runtime(config, &auth_config).await?
     };
-    if !config.upstream.is_empty() {
-        tracing::info!(
-            subsystem = "gateway_client",
-            phase = "discovery.start",
-            upstream_count = config.upstream.len(),
-            oauth_upstream_count = config.upstream.iter().filter(|upstream| upstream.oauth.is_some()).count(),
-            "starting upstream gateway discovery"
-        );
-        let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
-        if let Some(rt) = &upstream_oauth_runtime {
-            pool_builder = pool_builder.with_oauth_client_cache(rt.cache.clone());
-        }
-        let pool = Arc::new(pool_builder);
-        pool.discover_all(&config.upstream).await;
-        tracing::info!(
-            subsystem = "gateway_client",
-            phase = "discovery.finish",
-            upstream_count = config.upstream.len(),
-            discovered_upstream_count = pool.upstream_count().await,
-            "upstream gateway discovery complete"
-        );
-        gateway_runtime.swap(Some(pool)).await;
-    } else {
-        tracing::info!(
-            subsystem = "gateway_client",
-            phase = "disabled",
-            upstream_count = 0,
-            "gateway client disabled because no upstreams are configured"
-        );
+    tracing::info!(
+        subsystem = "gateway_client",
+        phase = "discovery.start",
+        upstream_count = config.upstream.len(),
+        oauth_upstream_count = config.upstream.iter().filter(|upstream| upstream.oauth.is_some()).count(),
+        in_process_peer_count = registry.services().iter().filter(|service| !service.actions.is_empty()).count(),
+        "starting upstream gateway discovery"
+    );
+    let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
+    if let Some(rt) = &upstream_oauth_runtime {
+        pool_builder = pool_builder.with_oauth_client_cache(rt.cache.clone());
     }
+    let pool = Arc::new(pool_builder);
+    pool.discover_all_with_in_process_peers(&config.upstream, &registry)
+        .await;
+    tracing::info!(
+        subsystem = "gateway_client",
+        phase = "discovery.finish",
+        upstream_count = config.upstream.len(),
+        discovered_upstream_count = pool.upstream_count().await,
+        "upstream gateway discovery complete"
+    );
+    gateway_runtime.swap(Some(pool)).await;
     let notifier = PeerNotifier::default();
     let (notify_tx, notify_rx) = mpsc::unbounded_channel();
     let _catalog_notifier_task = tokio::spawn(notifier.clone().run(notify_rx));
@@ -284,10 +279,15 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         None
     };
 
+    let web_assets_dir = resolve_web_assets_dir(&config.web);
+
+    let oauth_enabled = matches!(auth_config.mode, AuthMode::OAuth);
+
     let mut state = AppState::from_registry(registry);
     state = state.with_gateway_manager(Arc::clone(&gateway_manager));
     state = state.with_auth_config(auth_config);
-    let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
+    let web_ui_auth_disabled =
+        resolve_web_ui_auth_disabled(&config.web, web_assets_dir.is_some(), oauth_enabled)?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
     state = state.with_device_store(Arc::clone(&device_store));
     state = state.with_enrollment_store(Arc::clone(&enrollment_store));
@@ -300,23 +300,11 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                 let store = Arc::new(store);
                 state = state.with_registry_store(Arc::clone(&store));
                 let sync_store = Arc::clone(&store);
-                let sync_client = match crate::dispatch::mcpregistry::client::require_client() {
-                    Ok(c) => Some(c),
-                    Err(e) => {
-                        tracing::warn!(
-                            service = "mcpregistry",
-                            event = "sync.client.unavailable",
-                            error = %e,
-                            "mcpregistry client unavailable; hourly sync disabled"
-                        );
-                        None
-                    }
-                };
-                Some(tokio::spawn(async move {
-                    // Fire immediately at startup — do not wait for the first interval tick.
-                    if let Some(ref client) = sync_client {
+                match crate::dispatch::mcpregistry::client::require_client() {
+                    Ok(sync_client) => Some(tokio::spawn(async move {
+                        // Fire immediately at startup — do not wait for the first interval tick.
                         if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                            &sync_store, client, false,
+                            &sync_store, &sync_client, false, "startup",
                         ).await {
                             tracing::warn!(
                                 service = "mcpregistry",
@@ -325,18 +313,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                                 "initial sync failed; will retry next hour"
                             );
                         }
-                    }
-                    let mut interval =
-                        tokio::time::interval(Duration::from_secs(3600));
-                    // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
-                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                    // Consume the immediate tick so the first loop iteration is at T+1h.
-                    interval.tick().await;
-                    loop {
+                        let mut interval =
+                            tokio::time::interval(Duration::from_secs(3600));
+                        // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
+                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        // Consume the immediate tick so the first loop iteration is at T+1h.
                         interval.tick().await;
-                        if let Some(ref client) = sync_client {
+                        loop {
+                            interval.tick().await;
                             if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                                &sync_store, client, false,
+                                &sync_store, &sync_client, false, "hourly",
                             ).await {
                                 tracing::warn!(
                                     service = "mcpregistry",
@@ -346,8 +332,17 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                                 );
                             }
                         }
+                    })),
+                    Err(e) => {
+                        tracing::warn!(
+                            service = "mcpregistry",
+                            event = "sync.client.unavailable",
+                            error = %e,
+                            "mcpregistry client unavailable; registry background sync disabled"
+                        );
+                        None
                     }
-                }))
+                }
             }
             Err(e) => {
                 tracing::warn!(
@@ -360,11 +355,10 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             }
         }
     };
-    // _registry_sync_keepalive: Option<JoinHandle> held in scope until server exits.
-    // The leading _ prevents "unused variable" warning but does NOT drop the handle —
-    // only `let _ = ...` (without the name) would drop immediately.
+    // `_registry_sync_keepalive` keeps the background sync task alive for the
+    // duration of `serve`; binding it by name preserves the JoinHandle.
     state = state.with_device_role(device_role);
-    if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
+    if let Some(web_assets_dir) = web_assets_dir {
         tracing::info!(
             subsystem = "web_server",
             phase = "assets.enabled",
@@ -517,14 +511,22 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .find(|path| path.join("index.html").is_file())
 }
 
-fn resolve_web_ui_auth_disabled(web: &crate::config::WebPreferences) -> Result<bool> {
+fn resolve_web_ui_auth_disabled(
+    web: &crate::config::WebPreferences,
+    web_assets_enabled: bool,
+    oauth_enabled: bool,
+) -> Result<bool> {
     if let Ok(value) = std::env::var("LAB_WEB_UI_DISABLE_AUTH") {
         return value
             .parse::<bool>()
             .with_context(|| format!("invalid LAB_WEB_UI_DISABLE_AUTH value `{value}`"));
     }
 
-    Ok(web.disable_auth.unwrap_or(false))
+    if let Some(disabled) = web.disable_auth {
+        return Ok(disabled);
+    }
+
+    Ok(web_assets_enabled && !oauth_enabled)
 }
 
 fn should_run_stdio(transport: Transport, command: Option<&ServeCommand>) -> bool {
@@ -907,7 +909,7 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             #[cfg(target_os = "linux")]
             {
-                if reclaim_port_if_lab(port) {
+                if reclaim_port_if_lab(addr, port) {
                     for attempt in 1u8..=5 {
                         tokio::time::sleep(Duration::from_millis(100)).await;
                         match tokio::net::TcpListener::bind(addr).await {
@@ -939,23 +941,34 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
 /// On Linux, find the PID holding `port`, confirm it's a `lab` process, and
 /// send SIGTERM. Returns `true` if a signal was sent.
 #[cfg(target_os = "linux")]
-fn reclaim_port_if_lab(port: u16) -> bool {
+fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
+    if addr.contains(':') || !matches!(addr, "127.0.0.1" | "localhost") {
+        tracing::debug!(
+            subsystem = "api_server",
+            phase = "listener.reclaim.lookup",
+            addr,
+            port,
+            "port reclaim is scanning both IPv4 and IPv6 listener tables"
+        );
+    }
     let Some(pid) = find_pid_for_port(port) else {
         return false;
     };
-    let comm_path = format!("/proc/{pid}/comm");
-    let comm = match std::fs::read_to_string(&comm_path) {
-        Ok(s) => s,
-        Err(_) => return false,
+    let Some(exe) = lab_executable_path(pid) else {
+        return false;
     };
-    let comm = comm.trim();
-    if !comm.contains("lab") {
+    let process_name = exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("<unknown>");
+    if !is_lab_executable(&exe) {
         tracing::warn!(
             subsystem = "api_server",
             phase = "listener.port_conflict",
             port,
             pid,
-            process = comm,
+            process = process_name,
+            executable = %exe.display(),
             "port in use by non-lab process — not killing"
         );
         return false;
@@ -965,32 +978,34 @@ fn reclaim_port_if_lab(port: u16) -> bool {
         phase = "listener.reclaim",
         port,
         pid,
-        process = comm,
+        process = process_name,
+        executable = %exe.display(),
         "port held by stale lab process — sending SIGTERM"
     );
-    let status = std::process::Command::new("kill")
-        .args(["-TERM", &pid.to_string()])
-        .status();
-    matches!(status, Ok(s) if s.success())
+    terminate_sigterm(pid).is_ok()
 }
 
-/// Walk `/proc/net/tcp` (IPv4) to find the inode for a listening port, then
-/// resolve it to a PID by scanning `/proc/*/fd/`.
+#[cfg(target_os = "linux")]
+fn lab_executable_path(pid: u32) -> Option<PathBuf> {
+    exe_path(pid)
+}
+
+#[cfg(target_os = "linux")]
+fn is_lab_executable(path: &std::path::Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("lab") | Some("lab (deleted)")
+    )
+}
+
+/// Walk `/proc/net/tcp` and `/proc/net/tcp6` to find the inode for a listening
+/// port, then resolve it to a PID by scanning `/proc/*/fd/`.
 #[cfg(target_os = "linux")]
 fn find_pid_for_port(port: u16) -> Option<u32> {
     let hex_port = format!("{port:04X}");
-    let tcp = std::fs::read_to_string("/proc/net/tcp").ok()?;
-    let inode = tcp.lines().skip(1).find_map(|line| {
-        let cols: Vec<&str> = line.split_whitespace().collect();
-        let local = cols.get(1)?;
-        let inode_col = cols.get(9)?;
-        let port_part = local.split(':').nth(1)?;
-        if port_part.eq_ignore_ascii_case(&hex_port) {
-            inode_col.parse::<u64>().ok()
-        } else {
-            None
-        }
-    })?;
+    let inode = ["/proc/net/tcp", "/proc/net/tcp6"]
+        .into_iter()
+        .find_map(|path| find_listening_inode(path, &hex_port))?;
 
     let target = format!("socket:[{inode}]");
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
@@ -1007,6 +1022,23 @@ fn find_pid_for_port(port: u16) -> Option<u32> {
         }
     }
     None
+}
+
+#[cfg(target_os = "linux")]
+fn find_listening_inode(path: &str, hex_port: &str) -> Option<u64> {
+    let table = std::fs::read_to_string(path).ok()?;
+    table.lines().skip(1).find_map(|line| {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        let local = cols.get(1)?;
+        let state = cols.get(3)?;
+        let inode_col = cols.get(9)?;
+        let port_part = local.split(':').nth(1)?;
+        if state.eq_ignore_ascii_case("0A") && port_part.eq_ignore_ascii_case(hex_port) {
+            inode_col.parse::<u64>().ok()
+        } else {
+            None
+        }
+    })
 }
 
 #[cfg(test)]
@@ -1096,10 +1128,12 @@ mod tests {
             resolve_web_ui_auth_disabled(&WebPreferences {
                 assets_dir: None,
                 disable_auth: Some(true),
-            })
+            }, false, false)
             .unwrap()
         );
-        assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default()).unwrap());
+        assert!(resolve_web_ui_auth_disabled(&WebPreferences::default(), true, false).unwrap());
+        assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default(), true, true).unwrap());
+        assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default(), false, false).unwrap());
     }
 
     #[test]

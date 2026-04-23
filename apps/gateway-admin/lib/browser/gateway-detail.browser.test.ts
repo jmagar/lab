@@ -2,16 +2,18 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import http from 'node:http'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 
 import { chromium } from 'playwright'
 
 const PORT = 3101
 const BASE_URL = `http://127.0.0.1:${PORT}`
 const APP_DIR = new URL('../../', import.meta.url)
+let previewServer: ChildProcess | null = null
+let previewServerReady: Promise<void> | null = null
 
 async function waitForServer(url: string) {
-  const deadline = Date.now() + 20_000
+  const deadline = Date.now() + 60_000
 
   while (Date.now() < deadline) {
     try {
@@ -36,10 +38,15 @@ async function waitForServer(url: string) {
   throw new Error(`Timed out waiting for preview server at ${url}`)
 }
 
-async function startPreviewServer(t: test.TestContext) {
-  const server = spawn(
+async function startPreviewServer() {
+  if (previewServerReady) {
+    await previewServerReady
+    return
+  }
+
+  previewServer = spawn(
     '/usr/bin/zsh',
-    ['-lc', `LAB_ALLOWED_DEV_ORIGINS=127.0.0.1 NEXT_PUBLIC_MOCK_DATA=true NEXT_PUBLIC_API_TOKEN=dev-token pnpm dev --hostname 127.0.0.1 --port ${PORT}`],
+    ['-lc', `LAB_ALLOWED_DEV_ORIGINS=127.0.0.1 NEXT_PUBLIC_MOCK_DATA=true NEXT_PUBLIC_API_TOKEN=dev-token pnpm exec next build && python3 -m http.server ${PORT} --directory out --bind 127.0.0.1`],
     {
       cwd: APP_DIR,
       stdio: 'ignore',
@@ -47,16 +54,29 @@ async function startPreviewServer(t: test.TestContext) {
     },
   )
 
-  t.after(async () => {
-    server.kill('SIGTERM')
-    await once(server, 'exit').catch(() => undefined)
-  })
-
-  await waitForServer(`${BASE_URL}/gateway/?id=gw-2`)
+  previewServerReady = waitForServer(`${BASE_URL}/gateway/?id=gw-2`)
+  await previewServerReady
 }
 
+test.after(async () => {
+  if (!previewServer) {
+    return
+  }
+
+  previewServer.kill('SIGTERM')
+  await Promise.race([
+    once(previewServer, 'exit').catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ])
+
+  if (previewServer.exitCode === null && !previewServer.killed) {
+    previewServer.kill('SIGKILL')
+    await once(previewServer, 'exit').catch(() => undefined)
+  }
+})
+
 test('gateway manage tools flow persists after a full reload in mock preview', { concurrency: false }, async (t) => {
-  await startPreviewServer(t)
+  await startPreviewServer()
 
   const browser = await chromium.launch({ headless: true })
   t.after(async () => {
@@ -71,7 +91,7 @@ test('gateway manage tools flow persists after a full reload in mock preview', {
   await page.reload({ waitUntil: 'networkidle' })
 
   await page.getByRole('button', { name: 'Manage Tools' }).click()
-  await page.getByRole('checkbox', { name: 'Select all visible' }).click()
+  await page.locator('#select-all-visible').click()
   await page.getByRole('button', { name: 'Disable selected' }).click()
   await page.getByRole('button', { name: 'Save changes' }).click()
 
@@ -89,8 +109,8 @@ test('gateway manage tools flow persists after a full reload in mock preview', {
   await assert.doesNotReject(() => page.getByText('12 hidden').waitFor())
 })
 
-test('gateway detail uses a compact summary and client config block in mock preview', { concurrency: false }, async (t) => {
-  await startPreviewServer(t)
+test('gateway detail uses a compact summary and endpoint block in mock preview', { concurrency: false }, async (t) => {
+  await startPreviewServer()
 
   const browser = await chromium.launch({ headless: true })
   t.after(async () => {
@@ -105,12 +125,10 @@ test('gateway detail uses a compact summary and client config block in mock prev
   await page.reload({ waitUntil: 'networkidle' })
 
   await assert.doesNotReject(() => page.getByText('12/12').first().waitFor())
-  await assert.doesNotReject(() => page.getByText('3/3').first().waitFor())
-  await assert.doesNotReject(() => page.getByText('2/2').first().waitFor())
-  await assert.doesNotReject(() => page.getByText('Expose resources').first().waitFor())
-  await assert.doesNotReject(() => page.getByText('"name": "github-server"').waitFor())
-  await assert.doesNotReject(() => page.getByText('"type": "http"').waitFor())
-  await assert.doesNotReject(() => page.getByText('"url": "http://localhost:3001/mcp"').waitFor())
+  await assert.doesNotReject(() => page.getByText('Resources').first().waitFor())
+  await assert.doesNotReject(() => page.getByText('Prompts').first().waitFor())
+  await assert.doesNotReject(() => page.getByText('http://localhost:3001/mcp').waitFor())
+  await assert.doesNotReject(() => page.getByRole('button', { name: 'Manage Tools' }).waitFor())
 
   assert.equal(await page.getByText('TOOL SURFACE').count(), 0)
   assert.equal(await page.getByText('BEARER ENV').count(), 0)
@@ -125,7 +143,7 @@ test('gateway detail uses a compact summary and client config block in mock prev
 })
 
 test('gateway list stays compact without horizontal overflow in mock preview', { concurrency: false }, async (t) => {
-  await startPreviewServer(t)
+  await startPreviewServer()
 
   const browser = await chromium.launch({ headless: true })
   t.after(async () => {
@@ -139,12 +157,11 @@ test('gateway list stays compact without horizontal overflow in mock preview', {
   })
   await page.reload({ waitUntil: 'networkidle' })
 
-  await assert.doesNotReject(() => page.getByText('576').first().waitFor())
-  await assert.doesNotReject(() => page.getByText('29/29').first().waitFor())
-
-  assert.equal(await page.getByText('Status').count(), 0)
-  assert.equal(await page.getByText('TOOLS').count(), 0)
-  assert.equal(await page.getByText('EXPOSED').count(), 0)
+  await assert.doesNotReject(() => page.getByText('CONFIGURED').first().waitFor())
+  await assert.doesNotReject(() => page.getByText('5').first().waitFor())
+  await assert.doesNotReject(() => page.getByText('DISCOVERED TOOLS').first().waitFor())
+  await assert.doesNotReject(() => page.getByText('39').first().waitFor())
+  assert.match(await page.locator('body').innerText(), /github-server[\s\S]*12\/12/)
 
   const hasHorizontalOverflow = await page.evaluate(() => {
     const root = document.documentElement
@@ -152,4 +169,87 @@ test('gateway list stays compact without horizontal overflow in mock preview', {
   })
 
   assert.equal(hasHorizontalOverflow, false)
+})
+
+test('gateway detail disable flow shows confirmation, persists disabled state, and can be re-enabled', { concurrency: false }, async (t) => {
+  await startPreviewServer()
+
+  const browser = await chromium.launch({ headless: true })
+  t.after(async () => {
+    await browser.close()
+  })
+
+  const page = await browser.newPage({ viewport: { width: 1360, height: 960 } })
+  await page.goto(`${BASE_URL}/gateway/?id=gw-2`, { waitUntil: 'networkidle' })
+  await page.evaluate(() => {
+    window.localStorage.clear()
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+
+  const enabledSwitch = page.getByRole('switch', { name: 'Gateway enabled' })
+  await assert.doesNotReject(() => enabledSwitch.waitFor())
+  assert.equal(await enabledSwitch.getAttribute('aria-checked'), 'true')
+
+  await enabledSwitch.focus()
+  await page.keyboard.press('Space')
+  await assert.doesNotReject(() => page.getByText('Disable gateway?').waitFor())
+  await assert.doesNotReject(() =>
+    page.getByText('Connected clients should no longer have access').waitFor(),
+  )
+
+  await page.getByRole('button', { name: 'Disable gateway' }).click()
+  await assert.doesNotReject(() =>
+    page.getByText('Gateway disabled. Catalog change sent and runtime cleanup requested.').waitFor(),
+  )
+  await assert.doesNotReject(() =>
+    page
+      .getByText('This gateway is excluded from the active catalog. Clients should no longer see its tools, resources, or prompts until you re-enable it.')
+      .waitFor(),
+  )
+  assert.equal(await enabledSwitch.getAttribute('aria-checked'), 'false')
+  assert.equal(await page.getByRole('button', { name: 'Test gateway' }).isDisabled(), true)
+  assert.equal(await page.getByRole('button', { name: 'Reload gateway' }).isDisabled(), true)
+
+  await enabledSwitch.focus()
+  await page.keyboard.press('Space')
+  await assert.doesNotReject(() =>
+    page.getByText('Gateway enabled. Catalog change sent to clients.').waitFor(),
+  )
+  assert.equal(await enabledSwitch.getAttribute('aria-checked'), 'true')
+  assert.equal(
+    await page
+      .getByText('This gateway is excluded from the active catalog. Clients should no longer see its tools, resources, or prompts until you re-enable it.')
+      .count(),
+    0,
+  )
+  assert.equal(await page.getByRole('button', { name: 'Test gateway' }).isDisabled(), false)
+  assert.equal(await page.getByRole('button', { name: 'Reload gateway' }).isDisabled(), false)
+})
+
+test('gateway list row action disable flow opens and completes successfully', { concurrency: false }, async (t) => {
+  await startPreviewServer()
+
+  const browser = await chromium.launch({ headless: true })
+  t.after(async () => {
+    await browser.close()
+  })
+
+  const page = await browser.newPage({ viewport: { width: 1360, height: 960 } })
+  await page.goto(`${BASE_URL}/gateways/`, { waitUntil: 'networkidle' })
+  await page.evaluate(() => {
+    window.localStorage.clear()
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+
+  const githubRow = page.locator('tr').filter({ has: page.getByText('github-server') }).first()
+  const disableButton = githubRow.getByRole('button', { name: 'Disable gateway' })
+  await assert.doesNotReject(() => disableButton.waitFor())
+
+  await disableButton.click()
+  await assert.doesNotReject(() => page.getByText('Disable gateway?').waitFor())
+  await page.getByRole('button', { name: 'Disable gateway' }).click()
+
+  await assert.doesNotReject(() =>
+    page.getByText('Gateway disabled. Catalog change sent and runtime cleanup requested.').waitFor(),
+  )
 })

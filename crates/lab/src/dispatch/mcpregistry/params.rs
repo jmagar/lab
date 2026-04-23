@@ -1,10 +1,12 @@
 use std::net::IpAddr;
 
-use lab_apis::mcpregistry::types::ListServersParams;
+use lab_apis::mcpregistry::types::{
+    LabRegistryMetadata, LabRegistrySetupDifficulty, LabRegistryTransportScore, ListServersParams,
+};
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use super::store::StoreListParams;
+use crate::dispatch::mcpregistry::store::StoreListParams;
 
 /// Runtime hints the registry is allowed to produce and we are willing to execute.
 const ALLOWED_RUNTIME_HINTS: &[&str] = &[
@@ -127,8 +129,22 @@ pub fn resolve_search_for_rest(
     Ok(Some(format!("io.github.{}/", owner.to_ascii_lowercase())))
 }
 
+fn optional_string_param<'a>(params: &'a Value, key: &str) -> Result<Option<&'a str>, ToolError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.as_str())),
+        Some(_) => Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("`{key}` must be a string"),
+        }),
+    }
+}
+
 fn resolve_search(params: &Value) -> Result<Option<String>, ToolError> {
-    resolve_search_for_rest(params["search"].as_str(), params["owner"].as_str())
+    resolve_search_for_rest(
+        optional_string_param(params, "search")?,
+        optional_string_param(params, "owner")?,
+    )
 }
 
 /// Extract `server.list` params from the dispatch params object.
@@ -139,6 +155,11 @@ pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolErro
         cursor: params["cursor"].as_str().map(str::to_string),
         version: params["version"].as_str().map(str::to_string),
         updated_since: params["updated_since"].as_str().map(str::to_string),
+        featured: optional_bool_param(params, "featured")?,
+        reviewed: optional_bool_param(params, "reviewed")?,
+        recommended: optional_bool_param(params, "recommended")?,
+        hidden: optional_bool_param(params, "hidden")?,
+        tag: optional_string_param(params, "tag")?.map(str::to_string),
     })
 }
 
@@ -155,7 +176,121 @@ pub fn store_params_from_dispatch(params: &Value) -> Result<StoreListParams, Too
         cursor: params["cursor"].as_str().map(str::to_string),
         limit: params["limit"].as_u64().map(|v| v.min(100) as u32),
         include_deleted: params["include_deleted"].as_bool().unwrap_or(false),
+        featured: optional_bool_param(params, "featured")?,
+        reviewed: optional_bool_param(params, "reviewed")?,
+        recommended: optional_bool_param(params, "recommended")?,
+        hidden: optional_bool_param(params, "hidden")?,
+        tag: optional_string_param(params, "tag")?.map(str::to_string),
     })
+}
+
+fn optional_bool_param(params: &Value, key: &str) -> Result<Option<bool>, ToolError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("`{key}` must be a boolean"),
+        }),
+    }
+}
+
+pub fn parse_lab_metadata(value: &Value) -> Result<LabRegistryMetadata, ToolError> {
+    let metadata: LabRegistryMetadata = serde_json::from_value(value.clone()).map_err(|e| {
+        ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("invalid Lab metadata: {e}"),
+        }
+    })?;
+    validate_lab_metadata(&metadata)?;
+    Ok(normalize_lab_metadata(metadata))
+}
+
+fn validate_lab_metadata(metadata: &LabRegistryMetadata) -> Result<(), ToolError> {
+    if metadata.audit.is_some() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: "`audit` is managed by Lab and cannot be set manually".to_string(),
+        });
+    }
+
+    if let Some(curation) = &metadata.curation {
+        for tag in &curation.tags {
+            if tag.trim().is_empty() {
+                return Err(invalid_metadata("curation.tags must not contain empty values"));
+            }
+        }
+    }
+    if let Some(trust) = &metadata.trust {
+        validate_timestamp(trust.reviewed_at.as_deref(), "trust.reviewed_at")?;
+    }
+    if let Some(quality) = &metadata.quality {
+        validate_timestamp(
+            quality.last_install_tested_at.as_deref(),
+            "quality.last_install_tested_at",
+        )?;
+        match quality.transport_score {
+            Some(LabRegistryTransportScore::Good | LabRegistryTransportScore::Mixed | LabRegistryTransportScore::Poor) | None => {}
+        }
+    }
+    if let Some(ux) = &metadata.ux {
+        match ux.setup_difficulty {
+            Some(LabRegistrySetupDifficulty::Easy | LabRegistrySetupDifficulty::Medium | LabRegistrySetupDifficulty::Hard) | None => {}
+        }
+    }
+    Ok(())
+}
+
+fn normalize_lab_metadata(mut metadata: LabRegistryMetadata) -> LabRegistryMetadata {
+    if let Some(curation) = metadata.curation.as_mut() {
+        curation.tags = curation
+            .tags
+            .iter()
+            .map(|tag| tag.trim())
+            .filter(|tag| !tag.is_empty())
+            .map(str::to_string)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        curation.notes = curation
+            .notes
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+    }
+    if let Some(trust) = metadata.trust.as_mut() {
+        trust.reviewed_at = normalize_optional_string(trust.reviewed_at.take());
+    }
+    if let Some(quality) = metadata.quality.as_mut() {
+        quality.last_install_tested_at = normalize_optional_string(quality.last_install_tested_at.take());
+    }
+    metadata
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn validate_timestamp(value: Option<&str>, field: &str) -> Result<(), ToolError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    value.parse::<jiff::Timestamp>().map_err(|_| invalid_metadata(&format!(
+        "`{field}` must be an RFC3339 timestamp"
+    )))?;
+    Ok(())
+}
+
+fn invalid_metadata(message: &str) -> ToolError {
+    ToolError::Sdk {
+        sdk_kind: "invalid_param".to_string(),
+        message: message.to_string(),
+    }
 }
 
 /// Validate that a URL from the registry is safe to use as a gateway upstream.
@@ -427,5 +562,19 @@ mod tests {
     fn resolve_search_returns_none_when_neither_set() {
         let p = serde_json::json!({});
         assert!(resolve_search(&p).unwrap().is_none());
+    }
+
+    #[test]
+    fn resolve_search_rejects_non_string_search() {
+        let p = serde_json::json!({ "search": 123 });
+        let err = resolve_search(&p).unwrap_err();
+        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
+    }
+
+    #[test]
+    fn resolve_search_rejects_non_string_owner() {
+        let p = serde_json::json!({ "owner": 123 });
+        let err = resolve_search(&p).unwrap_err();
+        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
     }
 }

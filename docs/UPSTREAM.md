@@ -128,8 +128,8 @@ Changing a bearer-token env var does not hot-apply by itself. Use `gateway.reloa
 
 ## Upstream OAuth (authorization_code + PKCE)
 
-OAuth-protected upstream MCP servers are authenticated per `lab` user rather
-than by a shared bearer token. Configuration shape and examples live in
+OAuth-protected upstream MCP servers are authenticated for a shared gateway
+credential rather than by a static bearer token. Configuration shape and examples live in
 [CONFIG.md — Upstream OAuth](./CONFIG.md#upstream-oauth-authorization_code--pkce).
 Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
 
@@ -138,9 +138,9 @@ Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
 - HTTP upstream transport only. Stdio upstreams cannot use OAuth in this phase
   because stdio sessions do not carry a stable authenticated subject.
 - OAuth-tagged upstreams are attempted during startup discovery but fail unhealthy
-  because discovery requires an authenticated subject that is not available at
+  because discovery requires an authenticated credential that is not available at
   startup. They are **not** included in the merged tool list until an operator
-  completes the OAuth flow for their session. The authorization initiation flow
+  completes the OAuth flow for the shared gateway credential. The authorization initiation flow
   (`POST /v1/gateway/oauth/start`) requires an HTTP session.
 - `/mcp` over HTTP and the hosted web UI are the supported call surfaces.
 
@@ -154,9 +154,19 @@ Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
 4. `lab` validates the authenticated session, atomically takes the pending
    state row (`DELETE ... RETURNING`), exchanges the code for tokens, encrypts
    the token response with chacha20poly1305, and persists it keyed by
-   `(upstream_name, subject)`.
+   `(upstream_name, "gateway")`.
 5. Subsequent `/mcp` and UI requests find the persisted credential and proxy
-   through a per-`(upstream, subject)` `AuthClient` cached in the gateway.
+   through a per-`(upstream, subject)` `AuthClient` cached in the gateway. The
+   default shared subject is `gateway`.
+
+CLI examples:
+
+```bash
+lab gateway mcp auth start chrome-devtools
+lab gateway mcp auth open chrome-devtools --wait
+lab gateway mcp auth status chrome-devtools
+lab gateway mcp auth clear chrome-devtools
+```
 
 ### Spec-Aligned Invariants
 
@@ -194,6 +204,9 @@ built atomically per key. Two subjects calling the same OAuth upstream get
 two isolated `AuthClient` instances; one subject's tokens are never visible
 to another.
 
+Current operator surfaces default to the shared subject `gateway`, so the
+common path is one cached `AuthClient` per upstream for the whole gateway.
+
 The cache stores the `client_id` each entry was built with. A `gateway.reload`
 that changes an upstream's `client_id` evicts cached entries with a stale
 `client_id`; subsequent calls rebuild them. This closes a silent re-bind gap
@@ -204,9 +217,9 @@ OAuth-tagged upstreams are attempted during startup discovery (`discover_all`)
 but fail unhealthy because discovery requires an authenticated subject that is
 not available at startup. They appear as unhealthy in the startup catalog and
 are not included in the merged tool list until an operator completes the OAuth
-flow. The circuit breaker and catalog merging infrastructure applies to
-static-bearer upstreams; OAuth upstreams are connected per-request, not
-pooled.
+  flow. The circuit breaker and catalog merging infrastructure applies to
+  static-bearer upstreams; OAuth upstreams are connected per-request, not
+  pooled.
 
 ### Refresh Semantics
 
@@ -254,9 +267,9 @@ for rotation.
 
 ### Prior Art
 
-The per-`(upstream, subject)` cache shape mirrors widely-deployed multi-tenant
-OAuth proxies: Composio's `entity_id:app_slug`, Cloudflare's
-`workers-oauth-provider`, and Pipedream Connect's per-user upstream grants.
+The cache implementation still supports per-`(upstream, subject)` isolation
+internally, but the current operator-facing flow defaults to the shared subject
+`gateway` for all three surfaces.
 
 ## Discovery
 

@@ -15,7 +15,7 @@ use clap::Args;
 use owo_colors::{OwoColorize, XtermColors};
 
 use crate::config::{backup_env, env_is_up_to_date, write_env};
-use crate::output::{OutputFormat, print};
+use crate::output::{ColorPolicy, OutputFormat, RenderEnv, print};
 use lab_apis::extract::{ExtractClient, ExtractReport, ScanTarget, Uri};
 
 /// `lab extract [uri] [--apply | --diff] [-y] [--json]`
@@ -60,7 +60,7 @@ impl ExtractCmd {
     /// # Errors
     /// Propagates any error from `ExtractClient::scan`, the confirmation
     /// prompt, or the `.env` writer.
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, color_policy: ColorPolicy) -> Result<()> {
         let client = ExtractClient::new();
         let report = client
             .scan(self.scan_target()?)
@@ -68,17 +68,17 @@ impl ExtractCmd {
             .with_context(|| "scan failed")?;
 
         if self.apply {
-            self.apply_report(&report)?;
+            self.apply_report(&report, color_policy)?;
         } else if self.diff {
             self.diff_report(&report)?;
         } else {
-            self.print_report(&report)?;
+            self.print_report(&report, color_policy)?;
         }
 
         Ok(())
     }
 
-    fn apply_report(&self, report: &ExtractReport) -> Result<()> {
+    fn apply_report(&self, report: &ExtractReport, color_policy: ColorPolicy) -> Result<()> {
         let target = self.resolve_env_path()?;
 
         // Rule 8: idempotence check — skip backup and write if nothing would change.
@@ -87,7 +87,7 @@ impl ExtractCmd {
             return Ok(());
         }
 
-        self.print_report(report)?;
+        self.print_report(report, color_policy)?;
         eprintln!(
             "\n{} {} {} fields to {}",
             "→".color(XtermColors::LightAzureRadiance),
@@ -167,8 +167,8 @@ impl ExtractCmd {
         Ok(())
     }
 
-    fn print_report(&self, report: &ExtractReport) -> Result<()> {
-        let format = OutputFormat::from_json_flag(self.json);
+    fn print_report(&self, report: &ExtractReport, color_policy: ColorPolicy) -> Result<()> {
+        let format = OutputFormat::from_json_flag(self.json, color_policy, RenderEnv::stdout());
         print(report, format)
     }
 

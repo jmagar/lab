@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ToolCallDisplay } from './tool-call-display'
-import type { ACPMessage, ACPToolResultPart, ACPToolUsePart } from './types'
+import type { ACPMessage } from './types'
+import { AURORA_MUTED_LABEL } from '@/components/aurora/tokens'
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = React.useState(false)
@@ -15,9 +16,9 @@ function CopyButton({ text }: { text: string }) {
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (error) {
-      console.error('Failed to copy message text', error)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
     }
   }
 
@@ -26,6 +27,7 @@ function CopyButton({ text }: { text: string }) {
       variant="ghost"
       size="icon"
       onClick={handleCopy}
+      aria-label="Copy message"
       className="size-6 shrink-0 rounded text-aurora-text-muted/40 opacity-0 transition-opacity group-hover/bubble:opacity-100 hover:bg-aurora-hover-bg hover:text-aurora-text-muted"
     >
       {copied ? <Check className="size-3 text-aurora-success" /> : <Copy className="size-3" />}
@@ -33,150 +35,112 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-function ThinkingBlock({ thinking }: { thinking: string }) {
-  const [open, setOpen] = React.useState(false)
-
+function StreamingCursor() {
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-full border border-aurora-border-default/60 bg-aurora-control-surface/50 px-2.5 py-1 text-[11px] text-aurora-text-muted/70 transition-colors hover:border-aurora-border-strong hover:text-aurora-text-muted"
-        >
-          <Brain className="size-3 text-aurora-accent-primary/60" />
-          <span>Thinking</span>
-          {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2 rounded-aurora-1 border border-aurora-border-default/40 bg-aurora-control-surface/30 px-3 py-2.5">
-          <p className="font-mono text-[11px] leading-[1.6] text-aurora-text-muted/70 whitespace-pre-wrap">
-            {thinking}
-          </p>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
-function TextContent({ text }: { text: string }) {
-  const paragraphs = text.split('\n\n').filter(Boolean)
-  const renderInline = (value: string) =>
-    value.split(/(\*\*[^*]+\*\*)/).map((chunk, j) => {
-      if (chunk.startsWith('**') && chunk.endsWith('**')) {
-        return <strong key={j} className="font-semibold text-aurora-text-primary">{chunk.slice(2, -2)}</strong>
-      }
-
-      return chunk.split(/(`[^`]+`)/).map((c, k) => {
-        if (c.startsWith('`') && c.endsWith('`')) {
-          return <code key={k} className="rounded px-1 py-0.5 font-mono text-[11px] bg-aurora-control-surface text-aurora-accent-strong">{c.slice(1, -1)}</code>
-        }
-        return c
-      })
-    })
-
-  return (
-    <div className="space-y-2">
-      {paragraphs.map((para, i) => {
-        if (para.startsWith('# ')) {
-          return <h3 key={i} className="font-display text-[17px] font-bold tracking-[-0.01em] text-aurora-text-primary">{renderInline(para.slice(2))}</h3>
-        }
-        if (para.startsWith('## ')) {
-          return <h4 key={i} className="font-display text-[15px] font-bold tracking-[-0.01em] text-aurora-text-primary">{renderInline(para.slice(3))}</h4>
-        }
-        const rendered = renderInline(para)
-
-        const lines = para.split('\n')
-        const nonEmptyLines = lines.filter(Boolean)
-        if (nonEmptyLines.length > 0 && nonEmptyLines.every((line) => line.startsWith('- '))) {
-          return (
-            <ul key={i} className="space-y-0.5 pl-4">
-              {nonEmptyLines.map((line, j) => (
-                <li key={j} className="list-disc text-[13px] leading-[1.55] text-aurora-text-primary">
-                  {renderInline(line.replace(/^- /, ''))}
-                </li>
-              ))}
-            </ul>
-          )
-        }
-
-        return (
-          <p key={i} className="text-[13px] leading-[1.55] text-aurora-text-primary whitespace-pre-wrap">
-            {rendered}
-          </p>
-        )
-      })}
-    </div>
+    <span
+      aria-hidden="true"
+      className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse rounded-sm bg-aurora-accent-primary align-middle"
+    />
   )
 }
 
 export function MessageBubble({ message }: { message: ACPMessage }) {
   const isUser = message.role === 'user'
-  const textContent = message.parts.filter((p) => p.type === 'text').map((p) => (p as { type: 'text'; text: string }).text).join('\n\n')
+  const [reasoningOpen, setReasoningOpen] = React.useState(Boolean(message.isStreaming))
 
-  // Pair tool_use parts with their results
-  const toolPairs = React.useMemo(() => {
-    const uses = message.parts.filter((p): p is ACPToolUsePart => p.type === 'tool_use')
-    const results = message.parts.filter((p): p is ACPToolResultPart => p.type === 'tool_result')
-    return uses.map((use) => ({
-      use,
-      result: results.find((r) => r.tool_use_id === use.id),
-    }))
-  }, [message.parts])
-
-  const thinkingParts = message.parts.filter((p) => p.type === 'thinking')
+  React.useEffect(() => {
+    setReasoningOpen(Boolean(message.isStreaming))
+  }, [message.isStreaming])
 
   return (
     <div className={cn('group/bubble flex gap-3', isUser && 'flex-row-reverse')}>
-      {/* Avatar dot */}
-      <div className={cn(
-        'mt-1 size-6 shrink-0 rounded-full border flex items-center justify-center text-[10px] font-bold',
-        isUser
-          ? 'border-aurora-border-strong bg-aurora-panel-strong text-aurora-text-muted'
-          : 'border-aurora-accent-primary/30 bg-aurora-accent-deep/20 text-aurora-accent-primary',
-      )}>
+      <div
+        className={cn(
+          'mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold',
+          isUser
+            ? 'border-aurora-border-strong bg-aurora-panel-strong text-aurora-text-muted'
+            : 'border-aurora-accent-primary/30 bg-aurora-accent-deep/20 text-aurora-accent-primary',
+        )}
+      >
         {isUser ? 'U' : 'A'}
       </div>
 
-      {/* Content */}
-      <div className={cn('flex min-w-0 max-w-[80%] flex-col gap-2', isUser && 'items-end')}>
-        {/* Thinking block (agent only) */}
-        {!isUser && thinkingParts.map((p, i) => (
-          <ThinkingBlock key={i} thinking={(p as { type: 'thinking'; thinking: string }).thinking} />
-        ))}
+      <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
+        {!isUser && message.thoughts.length > 0 && (
+          <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
+            <div className="overflow-hidden rounded-aurora-2 border border-aurora-border-default/80 bg-[linear-gradient(180deg,rgba(16,23,31,0.98),rgba(11,18,25,0.98))] shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-aurora-hover-bg/25"
+                >
+                  <Brain className="size-4 shrink-0 text-aurora-text-muted/80" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold leading-[1.2] text-aurora-text-primary">
+                      {message.isStreaming
+                        ? `Thought for ${Math.max(1, message.thoughts.length)} second${message.thoughts.length === 1 ? '' : 's'}`
+                        : 'Reasoning'}
+                    </p>
+                    <p className={cn(AURORA_MUTED_LABEL, 'mt-1 text-aurora-text-muted/55')}>
+                      {message.isStreaming
+                        ? 'live'
+                        : `${message.thoughts.length} step${message.thoughts.length === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+                  {reasoningOpen ? (
+                    <ChevronDown className="size-4 shrink-0 text-aurora-text-muted/60" />
+                  ) : (
+                    <ChevronRight className="size-4 shrink-0 text-aurora-text-muted/60" />
+                  )}
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="border-t border-aurora-border-default/60 px-4 py-3">
+                  <div className="space-y-4">
+                    {message.thoughts.map((thought, index) => (
+                      <p
+                        key={`${message.id}-thought-${index}`}
+                        className="whitespace-pre-wrap text-[14px] leading-[1.7] text-aurora-text-primary"
+                      >
+                        {thought}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        )}
 
-        {/* Tool calls (agent only) */}
-        {!isUser && toolPairs.length > 0 && (
-          <div className="w-full space-y-1.5">
-            {toolPairs.map(({ use, result }) => (
-              <ToolCallDisplay key={use.id} toolUse={use} toolResult={result} isPending={message.isStreaming && !result} />
+        {message.toolCalls.length > 0 && (
+          <div className="w-full border-l border-aurora-border-default/70 pl-3">
+            <div className="mb-2 flex items-center gap-2">
+              <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/60')}>
+                agent actions
+              </span>
+            </div>
+            {message.toolCalls.map((toolCall) => (
+              <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
             ))}
           </div>
         )}
 
-        {/* Text content */}
-        {textContent && (
-          <div className={cn(
-            'relative rounded-aurora-2 px-4 py-3',
-            isUser
-              ? 'bg-aurora-panel-strong border border-aurora-border-strong shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]'
-              : 'bg-aurora-panel-medium border border-aurora-border-default shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
-          )}>
-            {isUser ? (
-              <p className="text-[13px] leading-[1.55] text-aurora-text-primary whitespace-pre-wrap">{textContent}</p>
-            ) : (
-              <TextContent text={textContent} />
+        {message.text && (
+          <div
+            className={cn(
+              'relative rounded-aurora-2 px-4 py-3',
+              isUser
+                ? 'border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]'
+                : 'border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
             )}
-
-            {/* Copy button */}
+          >
+            <p className="whitespace-pre-wrap text-[13px] leading-[1.55] text-aurora-text-primary">
+              {message.text}
+              {message.isStreaming ? <StreamingCursor /> : null}
+            </p>
             <div className="absolute right-2 top-2">
-              <CopyButton text={textContent} />
+              <CopyButton text={message.text} />
             </div>
-
-            {/* Streaming cursor */}
-            {message.isStreaming && (
-              <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse rounded-sm bg-aurora-accent-primary align-middle" />
-            )}
           </div>
         )}
       </div>

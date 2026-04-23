@@ -8,6 +8,8 @@ import tseslint from 'typescript-eslint'
 const BANNED_TOKENS_PATTERN =
   String.raw`\b(text-muted-foreground|text-foreground|bg-card|bg-background|bg-muted|border-border)\b`
 
+// This intentionally catches direct string/template usage only; identifier
+// indirection like `const FOO = 'bg-card' as const` still needs code review.
 const bannedTokenRules = {
   'no-restricted-syntax': [
     'error',
@@ -20,6 +22,26 @@ const bannedTokenRules = {
       selector: `JSXAttribute[name.name='className'] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
       message:
         'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design-system-contract.md.',
+    },
+    {
+      selector: `VariableDeclarator[init.type='Literal'][init.value=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design-system-contract.md.',
+    },
+    {
+      selector: `VariableDeclarator[init.type='TemplateLiteral'] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design-system-contract.md.',
+    },
+    {
+      selector: `CallExpression[callee.name=/^(cn|clsx|cva|tw)$/] Literal[value=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes inside cn/clsx/cva calls. See docs/design-system-contract.md.',
+    },
+    {
+      selector: `CallExpression[callee.name=/^(cn|clsx|cva|tw)$/] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes inside cn/clsx/cva calls. See docs/design-system-contract.md.',
     },
   ],
 }

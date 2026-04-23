@@ -1,20 +1,15 @@
 import { getSessionCsrfToken } from '../auth/session.ts'
-import { isStandaloneBearerAuthMode } from '../auth/auth-mode.ts'
 
 export function gatewayHeaders(
-  token = process.env.NEXT_PUBLIC_API_TOKEN,
-  standaloneBearerAuth = isStandaloneBearerAuthMode(token),
+  _token?: string,
+  _standaloneBearerAuth = false,
 ): HeadersInit {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   }
-  if (standaloneBearerAuth && token) {
-    headers.Authorization = `Bearer ${token}`
-  } else {
-    const csrfToken = getSessionCsrfToken()
-    if (csrfToken) {
-      headers['x-csrf-token'] = csrfToken
-    }
+  const csrfToken = getSessionCsrfToken()
+  if (csrfToken) {
+    headers['x-csrf-token'] = csrfToken
   }
   return headers
 }
@@ -29,18 +24,16 @@ export function confirmGatewayParams<T extends object>(params: T): T & { confirm
 export function gatewayRequestInit(
   action: string,
   params: object,
-  token = process.env.NEXT_PUBLIC_API_TOKEN,
+  _token?: string,
   signal?: AbortSignal,
-  standaloneBearerAuth = isStandaloneBearerAuthMode(token),
+  _standaloneBearerAuth = false,
 ): RequestInit {
-  const credentials: RequestCredentials = standaloneBearerAuth ? 'omit' : 'include'
-
   return {
     method: 'POST',
-    headers: gatewayHeaders(token, standaloneBearerAuth),
+    headers: gatewayHeaders(),
     body: JSON.stringify({ action, params }),
     cache: 'no-store',
-    credentials,
+    credentials: 'include',
     signal,
   }
 }

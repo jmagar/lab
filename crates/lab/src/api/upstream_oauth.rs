@@ -10,6 +10,7 @@ use tracing::{info, warn};
 
 use crate::api::state::AppState;
 use crate::dispatch::error::ToolError;
+use crate::dispatch::gateway::SHARED_GATEWAY_OAUTH_SUBJECT;
 
 pub fn gateway_routes(_state: AppState) -> Router<AppState> {
     Router::new()
@@ -269,24 +270,30 @@ async fn start(
         ));
     }
     let begin =
-        crate::dispatch::gateway::oauth::begin_authorization(&manager, &body.upstream, &auth.sub)
-            .await
-            .inspect_err(|error| {
-                warn!(
-                    surface = "api",
-                    service = "upstream_oauth",
-                    action = "start",
-                    subject = %auth.sub,
-                    elapsed_ms = started.elapsed().as_millis(),
-                    kind = error.kind(),
-                    "upstream oauth start failed"
-                );
-            })?;
+        crate::dispatch::gateway::oauth::begin_authorization(
+            &manager,
+            &body.upstream,
+            SHARED_GATEWAY_OAUTH_SUBJECT,
+        )
+        .await
+        .inspect_err(|error| {
+            warn!(
+                surface = "api",
+                service = "upstream_oauth",
+                action = "start",
+                subject = %auth.sub,
+                oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
+                elapsed_ms = started.elapsed().as_millis(),
+                kind = error.kind(),
+                "upstream oauth start failed"
+            );
+        })?;
     info!(
         surface = "api",
         service = "upstream_oauth",
         action = "start",
         subject = %auth.sub,
+        oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
         elapsed_ms = started.elapsed().as_millis(),
         upstream = %body.upstream,
         "upstream oauth authorization started"
@@ -307,24 +314,30 @@ async fn status(
         .gateway_manager
         .clone()
         .ok_or_else(|| ToolError::internal_message("gateway manager not wired"))?;
-    let status = crate::dispatch::gateway::oauth::status(&manager, &query.upstream, &auth.sub)
-        .await
-        .inspect_err(|error| {
-            warn!(
-                surface = "api",
-                service = "upstream_oauth",
-                action = "status",
-                subject = %auth.sub,
-                elapsed_ms = started.elapsed().as_millis(),
-                kind = error.kind(),
-                "upstream oauth status failed"
-            );
-        })?;
+    let status = crate::dispatch::gateway::oauth::status(
+        &manager,
+        &query.upstream,
+        SHARED_GATEWAY_OAUTH_SUBJECT,
+    )
+    .await
+    .inspect_err(|error| {
+        warn!(
+            surface = "api",
+            service = "upstream_oauth",
+            action = "status",
+            subject = %auth.sub,
+            oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
+            elapsed_ms = started.elapsed().as_millis(),
+            kind = error.kind(),
+            "upstream oauth status failed"
+        );
+    })?;
     info!(
         surface = "api",
         service = "upstream_oauth",
         action = "status",
         subject = %auth.sub,
+        oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
         elapsed_ms = started.elapsed().as_millis(),
         upstream = %query.upstream,
         "upstream oauth status retrieved"
@@ -352,14 +365,19 @@ async fn clear(
         Some(manager) => manager,
         None => return ToolError::internal_message("gateway manager not wired").into_response(),
     };
-    if let Err(error) =
-        crate::dispatch::gateway::oauth::clear(&manager, &query.upstream, &auth.sub).await
+    if let Err(error) = crate::dispatch::gateway::oauth::clear(
+        &manager,
+        &query.upstream,
+        SHARED_GATEWAY_OAUTH_SUBJECT,
+    )
+    .await
     {
         warn!(
             surface = "api",
             service = "upstream_oauth",
             action = "clear",
             subject = %auth.sub,
+            oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
             elapsed_ms = started.elapsed().as_millis(),
             kind = error.kind(),
             "upstream oauth clear failed"
@@ -371,6 +389,7 @@ async fn clear(
         service = "upstream_oauth",
         action = "clear",
         subject = %auth.sub,
+        oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
         elapsed_ms = started.elapsed().as_millis(),
         upstream = %query.upstream,
         "upstream oauth credentials cleared"
@@ -412,7 +431,7 @@ async fn callback(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    let (upstream, subject) = match sqlite
+    let (upstream, state_subject) = match sqlite
         .find_upstream_oauth_state_owner(&query.state, now)
         .await
     {
@@ -438,12 +457,14 @@ async fn callback(
 
     // If a browser session is present, verify it matches the subject from state.
     if let Ok(session_subject) = callback_subject(&state, auth.map(|e| e.0), &headers).await {
-        if session_subject != subject {
+        if session_subject != SHARED_GATEWAY_OAUTH_SUBJECT {
             warn!(
                 surface = "api",
                 service = "upstream_oauth",
                 action = "callback",
                 upstream = %upstream,
+                oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
+                state_subject = %state_subject,
                 "upstream oauth callback: session subject mismatch"
             );
         }
@@ -452,7 +473,7 @@ async fn callback(
     let result = crate::dispatch::gateway::oauth::complete_authorization_callback(
         &manager,
         &upstream,
-        &subject,
+        SHARED_GATEWAY_OAUTH_SUBJECT,
         &query.code,
         &query.state,
     )
@@ -478,7 +499,8 @@ async fn callback(
             surface = "api",
             service = "upstream_oauth",
             action = "callback",
-            subject = %subject,
+            subject = %SHARED_GATEWAY_OAUTH_SUBJECT,
+            state_subject = %state_subject,
             elapsed_ms = started.elapsed().as_millis(),
             upstream = %upstream,
             kind = error.kind(),
@@ -490,7 +512,8 @@ async fn callback(
             surface = "api",
             service = "upstream_oauth",
             action = "callback",
-            subject = %subject,
+            subject = %SHARED_GATEWAY_OAUTH_SUBJECT,
+            state_subject = %state_subject,
             elapsed_ms = started.elapsed().as_millis(),
             upstream = %upstream,
             "upstream oauth callback completed"
