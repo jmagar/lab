@@ -470,12 +470,14 @@ async fn load_claude_plugins() -> Vec<(MarketplacePlugin, bool)> {
             .and_then(|metadata| metadata.description)
             .unwrap_or_default();
         let fallback_name = manifest.name.unwrap_or_else(|| marketplace_id.clone());
+        let mut emitted_plugin = false;
 
         for plugin in manifest.plugins {
             let Some(name) = plugin.name else {
                 continue;
             };
             let id = PluginId::new(&format!("{name}@{marketplace_id}")).to_string();
+            emitted_plugin = true;
             plugins.push((
                 MarketplacePlugin {
                     id,
@@ -493,7 +495,7 @@ async fn load_claude_plugins() -> Vec<(MarketplacePlugin, bool)> {
             ));
         }
 
-        if plugins.is_empty() {
+        if !emitted_plugin {
             let id = PluginId::new(&format!("{fallback_name}@{marketplace_id}")).to_string();
             plugins.push((
                 MarketplacePlugin {

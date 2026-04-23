@@ -126,8 +126,22 @@ pub fn resolve_search_for_rest(
     Ok(Some(format!("io.github.{}/", owner.to_ascii_lowercase())))
 }
 
+fn optional_string_param<'a>(params: &'a Value, key: &str) -> Result<Option<&'a str>, ToolError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.as_str())),
+        Some(_) => Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("`{key}` must be a string"),
+        }),
+    }
+}
+
 fn resolve_search(params: &Value) -> Result<Option<String>, ToolError> {
-    resolve_search_for_rest(params["search"].as_str(), params["owner"].as_str())
+    resolve_search_for_rest(
+        optional_string_param(params, "search")?,
+        optional_string_param(params, "owner")?,
+    )
 }
 
 /// Extract `server.list` params from the dispatch params object.
@@ -410,5 +424,19 @@ mod tests {
     fn resolve_search_returns_none_when_neither_set() {
         let p = serde_json::json!({});
         assert!(resolve_search(&p).unwrap().is_none());
+    }
+
+    #[test]
+    fn resolve_search_rejects_non_string_search() {
+        let p = serde_json::json!({ "search": 123 });
+        let err = resolve_search(&p).unwrap_err();
+        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
+    }
+
+    #[test]
+    fn resolve_search_rejects_non_string_owner() {
+        let p = serde_json::json!({ "owner": 123 });
+        let err = resolve_search(&p).unwrap_err();
+        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
     }
 }
