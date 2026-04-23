@@ -20,6 +20,7 @@ function upsertToolCall(toolCalls: TranscriptToolCall[], event: BridgeEvent): Tr
     kind: event.toolKind ?? previous?.kind ?? null,
     input: event.rawInput ?? previous?.input,
     output: event.rawOutput ?? previous?.output,
+    content: (event.toolContent as unknown[]) ?? previous?.content ?? null,
     locations: event.locations ?? previous?.locations ?? [],
   }
 
@@ -30,6 +31,34 @@ function upsertToolCall(toolCalls: TranscriptToolCall[], event: BridgeEvent): Tr
   }
 
   return next
+}
+
+function ensureAssistantMessage(
+  sessionId: string,
+  createdAt: string,
+  messages: Map<string, ACPMessage>,
+  orderedMessageIds: string[],
+  preferredId: string | null,
+) {
+  const key = preferredId ?? `assistant-${sessionId}-${orderedMessageIds.length + 1}`
+  let message = messages.get(key)
+
+  if (!message) {
+    message = {
+      id: key,
+      runId: sessionId,
+      role: 'assistant',
+      text: '',
+      createdAt: toDate(createdAt),
+      isStreaming: true,
+      thoughts: [],
+      toolCalls: [],
+    }
+    messages.set(key, message)
+    orderedMessageIds.push(key)
+  }
+
+  return { key, message }
 }
 
 export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
@@ -47,13 +76,19 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
     if (event.kind === 'message.chunk') {
       if (event.role === 'thinking') {
         activity.push(event)
-        if (lastAssistantMessageId) {
-          const message = messages.get(lastAssistantMessageId)
-          if (message && event.text) {
-            message.thoughts.push(event.text)
-            message.createdAt = toDate(event.createdAt)
-          }
+        const { key, message } = ensureAssistantMessage(
+          event.sessionId,
+          event.createdAt,
+          messages,
+          orderedMessageIds,
+          activeAssistantMessageId ?? lastAssistantMessageId,
+        )
+        if (event.text) {
+          message.thoughts.push(event.text)
+          message.createdAt = toDate(event.createdAt)
         }
+        activeAssistantMessageId = key
+        lastAssistantMessageId = key
         continue
       }
 
@@ -97,11 +132,18 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
 
     if (event.kind === 'tool.call' || event.kind === 'tool.update') {
       activity.push(event)
-      if (lastAssistantMessageId) {
-        const message = messages.get(lastAssistantMessageId)
-        if (message) {
-          message.toolCalls = upsertToolCall(message.toolCalls, event)
-        }
+      const { key, message } = ensureAssistantMessage(
+        event.sessionId,
+        event.createdAt,
+        messages,
+        orderedMessageIds,
+        activeAssistantMessageId ?? lastAssistantMessageId,
+      )
+      message.toolCalls = upsertToolCall(message.toolCalls, event)
+      activeAssistantMessageId = key
+      lastAssistantMessageId = key
+      if (event.status === 'completed' || event.status === 'failed' || event.status === 'cancelled') {
+        message.isStreaming = false
       }
       continue
     }

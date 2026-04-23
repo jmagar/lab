@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use lab_apis::mcpregistry::McpRegistryClient;
-use lab_apis::mcpregistry::types::{ListServersParams, ServerJSON, ServerResponse};
+use lab_apis::mcpregistry::types::{ListServersParams, ResponseMeta, ServerJSON, ServerResponse};
 
 /// Errors produced by [`RegistryStore`] and its helpers.
 #[derive(Debug, Error)]
@@ -88,7 +88,7 @@ impl StoreListParams {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PagedServers {
-    pub servers: Vec<ServerJSON>,
+    pub servers: Vec<ServerResponse>,
     /// Opaque cursor for the next page; `None` when this is the last page.
     pub next_cursor: Option<String>,
 }
@@ -193,7 +193,7 @@ impl RegistryStore {
         &self,
         name: &str,
         version: &str,
-    ) -> Result<Option<ServerJSON>, RegistryStoreError> {
+    ) -> Result<Option<ServerResponse>, RegistryStoreError> {
         let pool = self.pool.clone();
         let name = name.to_string();
         let version = version.to_string();
@@ -213,12 +213,59 @@ impl RegistryStore {
     pub async fn list_versions(
         &self,
         name: &str,
-    ) -> Result<Vec<ServerJSON>, RegistryStoreError> {
+    ) -> Result<Vec<ServerResponse>, RegistryStoreError> {
         let pool = self.pool.clone();
         let name = name.to_string();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
             list_versions_sync(&conn, &name)
+        })
+        .await?
+    }
+
+    pub async fn get_local_metadata(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<Option<serde_json::Value>, RegistryStoreError> {
+        let pool = self.pool.clone();
+        let name = name.to_string();
+        let version = version.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = pool.get()?;
+            get_local_metadata_sync(&conn, &name, &version)
+        })
+        .await?
+    }
+
+    pub async fn set_local_metadata(
+        &self,
+        name: &str,
+        version: &str,
+        metadata: &serde_json::Value,
+    ) -> Result<(), RegistryStoreError> {
+        let pool = self.pool.clone();
+        let name = name.to_string();
+        let version = version.to_string();
+        let metadata = metadata.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            set_local_metadata_sync(&mut conn, &name, &version, &metadata)
+        })
+        .await?
+    }
+
+    pub async fn delete_local_metadata(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<bool, RegistryStoreError> {
+        let pool = self.pool.clone();
+        let name = name.to_string();
+        let version = version.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get()?;
+            delete_local_metadata_sync(&mut conn, &name, &version)
         })
         .await?
     }
@@ -361,19 +408,27 @@ fn list_servers_sync(
 ) -> Result<PagedServers, RegistryStoreError> {
     let limit = params.limit.unwrap_or(20).clamp(1, 100) as usize;
 
-    let mut sql =
-        "SELECT server_name, version, server_json FROM registry_servers WHERE 1=1".to_string();
+    let mut sql = format!(
+        "SELECT s.server_name, s.version, s.server_json, s.response_meta_json, lm.meta_json \
+         FROM registry_servers s \
+         LEFT JOIN registry_server_meta lm \
+           ON lm.server_name = s.server_name \
+          AND lm.version = s.version \
+          AND lm.namespace = '{}' \
+         WHERE 1=1",
+        crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+    );
     let mut args: Vec<rusqlite::types::Value> = Vec::new();
 
     // Status filter.
     if !params.include_deleted {
-        sql.push_str(" AND status != 'deleted'");
+        sql.push_str(" AND s.status != 'deleted'");
     }
 
     // LIKE search on server_name.
     if let Some(search) = &params.search {
         let escaped = escape_like(search);
-        sql.push_str(" AND server_name LIKE '%' || ?  || '%' ESCAPE '\\'");
+        sql.push_str(" AND s.server_name LIKE '%' || ?  || '%' ESCAPE '\\'");
         args.push(escaped.into());
     }
 
@@ -386,34 +441,41 @@ fn list_servers_sync(
             .map_err(|e| RegistryStoreError::InvalidCursor(format!("json decode: {e}")))?;
         // Compound tiebreaker: OR is load-bearing to handle equal server_name with different version.
         sql.push_str(
-            " AND (server_name > ? OR (server_name = ? AND version > ?))",
+            " AND (s.server_name > ? OR (s.server_name = ? AND s.version > ?))",
         );
         args.push(cursor_data.s.clone().into());
         args.push(cursor_data.s.into());
         args.push(cursor_data.v.into());
     }
 
-    sql.push_str(" ORDER BY server_name ASC, version ASC");
+    sql.push_str(" ORDER BY s.server_name ASC, s.version ASC");
 
     // Fetch limit+1 to detect whether a next page exists, then truncate.
     sql.push_str(&format!(" LIMIT {}", limit + 1));
 
     let mut stmt = conn.prepare(&sql)?;
     use rusqlite::params_from_iter;
-    let mut rows: Vec<ServerJSON> = stmt
+    let mut rows: Vec<ServerResponse> = stmt
         .query_map(params_from_iter(args.iter()), |row| {
-            let json_str: String = row.get(2)?;
-            Ok(json_str)
+            Ok((
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
         })?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .map(|s| serde_json::from_str::<ServerJSON>(&s).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                2,
-                rusqlite::types::Type::Text,
-                Box::new(e),
+        .map(|(server_json, response_meta_json, local_meta_json)| {
+            decode_server_response(server_json, response_meta_json, local_meta_json).map_err(
+                |e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        2,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                },
             )
-        }))
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     // Determine next cursor before truncating.
@@ -428,7 +490,7 @@ fn list_servers_sync(
                 "cannot build next cursor from an empty result page".to_string(),
             )
         })?;
-        Some(encode_cursor(last)?)
+        Some(encode_cursor(&last.server)?)
     } else {
         None
     };
@@ -441,27 +503,58 @@ fn get_server_sync(
     conn: &Connection,
     name: &str,
     version: &str,
-) -> Result<Option<ServerJSON>, RegistryStoreError> {
+) -> Result<Option<ServerResponse>, RegistryStoreError> {
     let result = if version == "latest" {
         conn.query_row(
-            "SELECT server_json FROM registry_servers \
-             WHERE server_name = ?1 AND is_latest = 1 LIMIT 1",
+            &format!(
+                "SELECT s.server_json, s.response_meta_json, lm.meta_json \
+                 FROM registry_servers s \
+                 LEFT JOIN registry_server_meta lm \
+                   ON lm.server_name = s.server_name \
+                  AND lm.version = s.version \
+                  AND lm.namespace = '{}' \
+                 WHERE s.server_name = ?1 AND s.is_latest = 1 LIMIT 1",
+                crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+            ),
             rusqlite::params![name],
-            |row| row.get::<_, String>(0),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
         )
     } else {
         conn.query_row(
-            "SELECT server_json FROM registry_servers \
-             WHERE server_name = ?1 AND version = ?2 LIMIT 1",
+            &format!(
+                "SELECT s.server_json, s.response_meta_json, lm.meta_json \
+                 FROM registry_servers s \
+                 LEFT JOIN registry_server_meta lm \
+                   ON lm.server_name = s.server_name \
+                  AND lm.version = s.version \
+                  AND lm.namespace = '{}' \
+                 WHERE s.server_name = ?1 AND s.version = ?2 LIMIT 1",
+                crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+            ),
             rusqlite::params![name, version],
-            |row| row.get::<_, String>(0),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
         )
     };
 
     match result {
-        Ok(json_str) => {
-            let server: ServerJSON = serde_json::from_str(&json_str)?;
-            Ok(Some(server))
+        Ok((server_json, response_meta_json, local_meta_json)) => {
+            Ok(Some(decode_server_response(
+                server_json,
+                response_meta_json,
+                local_meta_json,
+            )?))
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(RegistryStoreError::Db(e)),
@@ -472,23 +565,39 @@ fn get_server_sync(
 fn list_versions_sync(
     conn: &Connection,
     name: &str,
-) -> Result<Vec<ServerJSON>, RegistryStoreError> {
-    let mut stmt = conn.prepare(
-        "SELECT server_json FROM registry_servers \
-         WHERE server_name = ?1 ORDER BY version ASC",
-    )?;
+) -> Result<Vec<ServerResponse>, RegistryStoreError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT s.server_json, s.response_meta_json, lm.meta_json \
+         FROM registry_servers s \
+         LEFT JOIN registry_server_meta lm \
+           ON lm.server_name = s.server_name \
+          AND lm.version = s.version \
+          AND lm.namespace = '{}' \
+         WHERE s.server_name = ?1 ORDER BY s.version ASC",
+        crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+    ))?;
 
     let rows = stmt
-        .query_map(rusqlite::params![name], |row| row.get::<_, String>(0))?
+        .query_map(rusqlite::params![name], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .map(|s| serde_json::from_str::<ServerJSON>(&s).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                0,
-                rusqlite::types::Type::Text,
-                Box::new(e),
+        .map(|(server_json, response_meta_json, local_meta_json)| {
+            decode_server_response(server_json, response_meta_json, local_meta_json).map_err(
+                |e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    )
+                },
             )
-        }))
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(rows)
@@ -506,6 +615,12 @@ fn upsert_page_sync(
 
     for resp in servers {
         let server_json = serde_json::to_string(&resp.server)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let response_meta_json = resp
+            .meta
+            .as_ref()
+            .map(|meta| serde_json::to_string(meta))
+            .transpose()
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
         let is_latest = resp
@@ -533,12 +648,13 @@ fn upsert_page_sync(
 
         tx.execute(
             "INSERT INTO registry_servers
-             (server_name, version, is_latest, status, server_json, upstream_updated_at, synced_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             (server_name, version, is_latest, status, server_json, response_meta_json, upstream_updated_at, synced_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(server_name, version) DO UPDATE SET
                is_latest            = excluded.is_latest,
                status               = excluded.status,
                server_json          = excluded.server_json,
+               response_meta_json   = excluded.response_meta_json,
                upstream_updated_at  = excluded.upstream_updated_at,
                synced_at            = excluded.synced_at",
             rusqlite::params![
@@ -547,6 +663,7 @@ fn upsert_page_sync(
                 is_latest,
                 status,
                 server_json,
+                response_meta_json,
                 updated_at,
                 synced_at,
             ],
@@ -570,29 +687,60 @@ fn upsert_page_sync(
 fn update_is_latest_sync(conn: &mut Connection) -> Result<(), RegistryStoreError> {
     let tx = conn.transaction()?;
 
-    tx.execute_batch(
-        "WITH latest_rows AS (
-             SELECT r.ROWID
-             FROM registry_servers r
-             WHERE r.is_latest = 1
-               AND r.status != 'deleted'
-               AND r.version = (
-                   SELECT MAX(r2.version)
-                   FROM registry_servers r2
-                   WHERE r2.server_name = r.server_name
-                     AND r2.is_latest = 1
-                     AND r2.status != 'deleted'
-               )
-         )
-         UPDATE registry_servers
-         SET is_latest = CASE
-             WHEN ROWID IN (SELECT ROWID FROM latest_rows) THEN 1
-             ELSE 0
-         END;",
+    let mut stmt = tx.prepare(
+        "SELECT server_name, version
+         FROM registry_servers
+         WHERE is_latest = 1
+           AND status != 'deleted'
+         ORDER BY server_name ASC, version ASC",
     )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let mut latest_by_server = std::collections::BTreeMap::<String, String>::new();
+    for (server_name, version) in rows {
+        latest_by_server
+            .entry(server_name)
+            .and_modify(|current| {
+                if compare_versions(&version, current).is_gt() {
+                    *current = version.clone();
+                }
+            })
+            .or_insert(version);
+    }
+
+    tx.execute("UPDATE registry_servers SET is_latest = 0", [])?;
+
+    for (server_name, version) in latest_by_server {
+        tx.execute(
+            "UPDATE registry_servers
+             SET is_latest = 1
+             WHERE server_name = ?1
+               AND version = ?2
+               AND status != 'deleted'",
+            rusqlite::params![server_name, version],
+        )?;
+    }
 
     tx.commit()?;
     Ok(())
+}
+
+fn compare_versions(left: &str, right: &str) -> std::cmp::Ordering {
+    let parse = |value: &str| {
+        value
+            .split('.')
+            .map(|segment| segment.parse::<u64>())
+            .collect::<Result<Vec<_>, _>>()
+    };
+    match (parse(left), parse(right)) {
+        (Ok(left_parts), Ok(right_parts)) => left_parts.cmp(&right_parts),
+        _ => left.cmp(right),
+    }
 }
 
 // ── LIKE escaping ─────────────────────────────────────────────────────────────
@@ -615,6 +763,90 @@ fn encode_cursor(server: &ServerJSON) -> Result<String, RegistryStoreError> {
     };
     let json = serde_json::to_vec(&data)?;
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json))
+}
+
+fn decode_server_response(
+    server_json: String,
+    response_meta_json: Option<String>,
+    local_meta_json: Option<String>,
+) -> Result<ServerResponse, RegistryStoreError> {
+    let server: ServerJSON = serde_json::from_str(&server_json)?;
+    let mut meta = match response_meta_json {
+        Some(raw) => serde_json::from_str::<ResponseMeta>(&raw)?,
+        None => ResponseMeta::default(),
+    };
+    if let Some(raw) = local_meta_json {
+        meta.insert_extension(
+            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE,
+            serde_json::from_str::<serde_json::Value>(&raw)?,
+        );
+    }
+    let meta = if meta.is_empty() { None } else { Some(meta) };
+    Ok(ServerResponse { server, meta })
+}
+
+fn get_local_metadata_sync(
+    conn: &Connection,
+    name: &str,
+    version: &str,
+) -> Result<Option<serde_json::Value>, RegistryStoreError> {
+    let result = conn.query_row(
+        "SELECT meta_json FROM registry_server_meta WHERE server_name = ?1 AND version = ?2 AND namespace = ?3",
+        rusqlite::params![
+            name,
+            version,
+            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+        ],
+        |row| row.get::<_, String>(0),
+    );
+    match result {
+        Ok(raw) => Ok(Some(serde_json::from_str(&raw)?)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(RegistryStoreError::Db(e)),
+    }
+}
+
+fn set_local_metadata_sync(
+    conn: &mut Connection,
+    name: &str,
+    version: &str,
+    metadata: &serde_json::Value,
+) -> Result<(), RegistryStoreError> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO registry_server_meta (server_name, version, namespace, meta_json, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(server_name, version, namespace) DO UPDATE SET
+           meta_json = excluded.meta_json,
+           updated_at = excluded.updated_at",
+        rusqlite::params![
+            name,
+            version,
+            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE,
+            serde_json::to_string(metadata)?,
+            jiff::Timestamp::now().to_string(),
+        ],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn delete_local_metadata_sync(
+    conn: &mut Connection,
+    name: &str,
+    version: &str,
+) -> Result<bool, RegistryStoreError> {
+    let tx = conn.transaction()?;
+    let deleted = tx.execute(
+        "DELETE FROM registry_server_meta WHERE server_name = ?1 AND version = ?2 AND namespace = ?3",
+        rusqlite::params![
+            name,
+            version,
+            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE,
+        ],
+    )?;
+    tx.commit()?;
+    Ok(deleted > 0)
 }
 
 fn truncate_utf8_bytes(s: String, max_bytes: usize) -> String {
@@ -647,13 +879,24 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     if version < 1 {
         conn.execute_batch(include_str!("store_schema.sql"))?;
-        conn.pragma_update(None, "user_version", 1)?;
+        conn.pragma_update(None, "user_version", 2)?;
     }
-    // Future migrations:
-    // if version < 2 {
-    //     conn.execute_batch("ALTER TABLE registry_servers ADD COLUMN new_col TEXT;")?;
-    //     conn.pragma_update(None, "user_version", 2)?;
-    // }
+    if version == 1 {
+        conn.execute_batch(
+            "ALTER TABLE registry_servers ADD COLUMN response_meta_json TEXT;
+             CREATE TABLE IF NOT EXISTS registry_server_meta (
+                 server_name TEXT NOT NULL,
+                 version     TEXT NOT NULL,
+                 namespace   TEXT NOT NULL,
+                 meta_json   TEXT NOT NULL,
+                 updated_at  TEXT NOT NULL,
+                 PRIMARY KEY (server_name, version, namespace)
+             );
+             CREATE INDEX IF NOT EXISTS idx_registry_server_meta_lookup
+                 ON registry_server_meta(server_name, version, namespace);",
+        )?;
+        conn.pragma_update(None, "user_version", 2)?;
+    }
     conn.execute_batch("COMMIT;")?;
     Ok(())
 }
@@ -700,7 +943,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 1, "schema version must be 1 after migration");
+        assert_eq!(version, 2, "schema version must be 2 after migration");
     }
 
     #[tokio::test]
@@ -719,7 +962,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[cfg(unix)]
@@ -763,6 +1006,7 @@ mod tests {
                     status_message: None,
                     updated_at: Some("2025-01-01T00:00:00Z".to_string()),
                 }),
+                extensions: Default::default(),
             }),
         }
     }
@@ -780,7 +1024,7 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().version, "1.0.0");
+        assert_eq!(result.unwrap().server.version, "1.0.0");
     }
 
     #[tokio::test]
@@ -867,6 +1111,7 @@ mod tests {
                 status_message: None,
                 updated_at: None,
             }),
+            extensions: Default::default(),
         });
 
         store.upsert_page(&[active, deleted]).await.unwrap();
@@ -875,7 +1120,7 @@ mod tests {
         let page = store.list_servers(params).await.unwrap();
         // Only the active server should appear.
         assert_eq!(page.servers.len(), 1);
-        assert_eq!(page.servers[0].name, "io.github.user/active");
+        assert_eq!(page.servers[0].server.name, "io.github.user/active");
     }
 
     #[tokio::test]
@@ -893,6 +1138,24 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_some());
+    }
+
+    #[tokio::test]
+    async fn update_is_latest_prefers_semver_order_over_lexicographic_order() {
+        let store = temp_store().await;
+
+        let older = make_server_response("io.github.user/weather", "0.9.9", true);
+        let newer = make_server_response("io.github.user/weather", "0.9.10", true);
+        store.upsert_page(&[older, newer]).await.unwrap();
+
+        store.update_is_latest().await.unwrap();
+
+        let latest = store
+            .get_server("io.github.user/weather", "latest")
+            .await
+            .unwrap()
+            .expect("latest server");
+        assert_eq!(latest.version, "0.9.10");
     }
 
     #[tokio::test]

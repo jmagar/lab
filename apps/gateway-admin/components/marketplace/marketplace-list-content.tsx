@@ -7,7 +7,6 @@ import { MarketplaceCard } from './marketplace-card'
 import { MktSourceCard } from './mkt-source-card'
 import { MarketplaceStatsStrip } from './marketplace-stats-strip'
 import { AddMarketplaceModal } from './add-marketplace-modal'
-import { ConfirmDialog, type ConfirmState } from './confirm-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMarketplaces, usePlugins, useMarketplaceMutations } from '@/lib/hooks/use-marketplace'
 import type { Plugin as MarketplacePlugin } from '@/lib/types/marketplace'
@@ -58,7 +57,6 @@ export function MarketplaceListContent() {
   const [sort, setSort] = useState<Sort>('name')
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [mktFilter, setMktFilter] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const installedIds = useMemo(() => new Set(plugins.filter(p => p.installed).map(p => p.id)), [plugins])
@@ -308,8 +306,6 @@ export function MarketplaceListContent() {
         onClose={() => setAddModalOpen(false)}
         onAdd={addSource}
       />
-
-      <ConfirmDialog state={confirm} onOpenChange={open => { if (!open) setConfirm(null) }} />
     </>
   )
 }

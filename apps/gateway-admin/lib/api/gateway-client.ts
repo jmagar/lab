@@ -477,11 +477,12 @@ export const gatewayApi = {
   async cleanupGateway(
     id: string,
     aggressive: boolean = false,
+    dryRun: boolean = false,
     signal?: AbortSignal,
   ): Promise<GatewayCleanupResult> {
     return await gatewayAction<GatewayCleanupResult>(
       'gateway.mcp.cleanup',
-      confirmGatewayParams({ name: id, aggressive }),
+      confirmGatewayParams({ name: id, aggressive, dry_run: dryRun }),
       signal,
     )
   },

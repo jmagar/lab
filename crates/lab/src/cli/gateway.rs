@@ -140,6 +140,8 @@ pub struct GatewayMcpCleanupArgs {
     pub name: String,
     #[arg(long, default_value_t = false)]
     pub aggressive: bool,
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -286,6 +288,7 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
                     json!({
                         "name": args.name,
                         "aggressive": args.aggressive,
+                        "dry_run": args.dry_run,
                     }),
                     format,
                     |action, params| async move {

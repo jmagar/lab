@@ -96,6 +96,72 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
+        name: "server.meta.get",
+        description: "Get Lab-owned local metadata for a stored registry server version from the local registry mirror.",
+        destructive: false,
+        returns: "RegistryLocalMeta",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Version string to read; defaults to `latest` in the local mirror",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "server.meta.set",
+        description: "Set Lab-owned local metadata for a stored registry server version under `_meta[\"tv.tootie.lab/registry\"]`.",
+        destructive: false,
+        returns: "RegistryLocalMeta",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Version string to update; defaults to `latest` in the local mirror",
+            },
+            ParamSpec {
+                name: "metadata",
+                ty: "object",
+                required: true,
+                description: "Lab-owned metadata object stored under `_meta[\"tv.tootie.lab/registry\"]`",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "server.meta.delete",
+        description: "Delete Lab-owned local metadata for a stored registry server version under `_meta[\"tv.tootie.lab/registry\"]`.",
+        destructive: false,
+        returns: "RegistryLocalMetaDeleteResult",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Version string to delete; defaults to `latest` in the local mirror",
+            },
+        ],
+    },
+    ActionSpec {
         name: "server.install",
         description: "Install an MCP server from the registry as a gateway upstream. HTTP servers are added as remote upstreams; stdio servers (npx/uvx/docker/dnx/pipx/node/python/python3/deno) are added as command upstreams and their required env vars are written to ~/.lab/.env",
         destructive: true,

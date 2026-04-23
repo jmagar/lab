@@ -11,6 +11,7 @@ import {
   Play,
   Power,
   RefreshCw,
+  Search,
   TriangleAlert,
   Trash2,
   FileText,
@@ -63,11 +64,15 @@ type SortDirection = 'asc' | 'desc'
 interface GatewayTableProps {
   gateways: Gateway[]
   density: 'comfortable' | 'condensed'
-  cleanupSummaryByGatewayId?: Record<string, string>
+  cleanupSummaryByGatewayId?: Record<
+    string,
+    { preview?: { label: string; occurredAt: string }; cleanup?: { label: string; occurredAt: string } }
+  >
   onEdit: (gateway: Gateway) => void
   onTest: (gateway: Gateway) => void
   onReload: (gateway: Gateway) => void
-  onCleanup: (gateway: Gateway, aggressive: boolean) => void
+  onCleanup: (gateway: Gateway, aggressive: boolean, dryRun: boolean) => void
+  onClearCleanupHistory: (gateway: Gateway) => void
   onToggleEnabled: (gateway: Gateway) => void
   onDelete: (gateway: Gateway) => void
 }
@@ -80,6 +85,7 @@ export function GatewayTable({
   onTest,
   onReload,
   onCleanup,
+  onClearCleanupHistory,
   onToggleEnabled,
   onDelete,
 }: GatewayTableProps) {
@@ -184,6 +190,21 @@ export function GatewayTable({
 
   const runtimeAgeLabel = (gateway: Gateway) => formatRuntimeAge(gateway.status.age_seconds)
 
+  const formatHistoryTime = (occurredAt: string) => {
+    const date = new Date(occurredAt)
+    if (Number.isNaN(date.getTime())) return null
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  }
+
+  const cleanupBadgeLabel = (
+    entry: { label: string; occurredAt: string } | undefined,
+    prefix: string,
+  ) => {
+    if (!entry) return null
+    const time = formatHistoryTime(entry.occurredAt)
+    return time ? `${prefix} ${time}` : prefix
+  }
+
   const runtimeDetailsTitle = (gateway: Gateway) => {
     const owner = gateway.status.owner
     const lines = [
@@ -267,6 +288,8 @@ export function GatewayTable({
           const launcherState = isDisabled ? 'deactivated' : 'active'
           const runtimeChips = runtimeBadges(gateway)
           const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
+          const cleanupBadge = cleanupBadgeLabel(cleanupSummary?.cleanup, 'cleanup')
+          const previewBadge = cleanupBadgeLabel(cleanupSummary?.preview, 'preview')
 
           return (
             <article
@@ -368,14 +391,31 @@ export function GatewayTable({
                               <RefreshCw className="size-4 mr-2" />
                               Reload gateway
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onCleanup(gateway, false)}>
+                            <DropdownMenuItem onClick={() => onCleanup(gateway, false, true)}>
+                              <Search className="size-4 mr-2" />
+                              Preview cleanup
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onCleanup(gateway, false, false)}>
                               <Wrench className="size-4 mr-2" />
                               Cleanup runtime
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onCleanup(gateway, true)}>
+                            <DropdownMenuItem onClick={() => onCleanup(gateway, true, true)}>
+                              <Search className="size-4 mr-2" />
+                              Preview aggressive cleanup
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onCleanup(gateway, true, false)}>
                               <TriangleAlert className="size-4 mr-2" />
                               Aggressive cleanup
                             </DropdownMenuItem>
+                            {cleanupSummary ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => onClearCleanupHistory(gateway)}>
+                                  <Trash2 className="size-4 mr-2" />
+                                  Clear cleanup history
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
                           </>
                         ) : null}
                         {gateway.source !== 'in_process' ? (
@@ -432,7 +472,7 @@ export function GatewayTable({
                         variant="outline"
                         size="sm"
                         className={cn(gatewayActionTone(), 'h-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                        onClick={() => onCleanup(gateway, false)}
+                        onClick={() => onCleanup(gateway, false, false)}
                       >
                         <Wrench className="size-3.5 mr-1.5" />
                         Cleanup
@@ -499,12 +539,20 @@ export function GatewayTable({
                         ) : null}
                         <WarningsPill warnings={gateway.warnings} />
                         {runtimeChips}
-                        {cleanupSummary ? (
+                        {cleanupSummary?.cleanup && cleanupBadge ? (
                           <Badge
                             className="rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-[0.16em] text-emerald-200"
-                            title={cleanupSummary}
+                            title={`${cleanupSummary.cleanup.label}\n${cleanupSummary.cleanup.occurredAt}`}
                           >
-                            {cleanupSummary}
+                            {cleanupBadge}
+                          </Badge>
+                        ) : null}
+                        {cleanupSummary?.preview && previewBadge ? (
+                          <Badge
+                            className="rounded-full border border-sky-500/30 bg-sky-500/10 text-[10px] uppercase tracking-[0.16em] text-sky-200"
+                            title={`${cleanupSummary.preview.label}\n${cleanupSummary.preview.occurredAt}`}
+                          >
+                            {previewBadge}
                           </Badge>
                         ) : null}
                         {density === 'condensed' ? (
@@ -622,14 +670,31 @@ export function GatewayTable({
                                 <RefreshCw className="mr-2 size-4" />
                                 Reload gateway
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => onCleanup(gateway, false)}>
+                              <DropdownMenuItem onClick={() => onCleanup(gateway, false, true)}>
+                                <Search className="mr-2 size-4" />
+                                Preview cleanup
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onCleanup(gateway, false, false)}>
                                 <Wrench className="mr-2 size-4" />
                                 Cleanup runtime
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => onCleanup(gateway, true)}>
+                              <DropdownMenuItem onClick={() => onCleanup(gateway, true, true)}>
+                                <Search className="mr-2 size-4" />
+                                Preview aggressive cleanup
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onCleanup(gateway, true, false)}>
                                 <TriangleAlert className="mr-2 size-4" />
                                 Aggressive cleanup
                               </DropdownMenuItem>
+                              {cleanupSummary ? (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => onClearCleanupHistory(gateway)}>
+                                    <Trash2 className="mr-2 size-4" />
+                                    Clear cleanup history
+                                  </DropdownMenuItem>
+                                </>
+                              ) : null}
                             </>
                           ) : null}
                           {gateway.source !== 'in_process' ? (

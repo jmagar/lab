@@ -19,6 +19,8 @@ pub mod mcp;
 pub mod oauth;
 pub mod output;
 #[allow(unreachable_pub)]
+pub mod process;
+#[allow(unreachable_pub)]
 pub mod registry;
 #[allow(unreachable_pub)]
 pub mod scaffold;

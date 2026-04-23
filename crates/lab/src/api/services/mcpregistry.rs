@@ -30,6 +30,9 @@ async fn handle(
         req,
         ACTIONS,
         move |action, params| async move {
+            if matches!(action.as_str(), "config" | "server.meta.get" | "server.meta.set" | "server.meta.delete") {
+                return crate::dispatch::mcpregistry::dispatch(&action, params).await;
+            }
             let Some(client) = client.as_ref() else {
                 return Err(crate::dispatch::mcpregistry::client::not_configured_error());
             };

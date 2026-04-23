@@ -37,6 +37,7 @@ export interface TranscriptToolCall {
   kind?: string | null
   input?: unknown
   output?: unknown
+  content?: unknown[] | null
   locations: string[]
 }
 

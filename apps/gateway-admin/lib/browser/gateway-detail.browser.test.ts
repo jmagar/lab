@@ -46,7 +46,7 @@ async function startPreviewServer() {
 
   previewServer = spawn(
     '/usr/bin/zsh',
-    ['-lc', `LAB_ALLOWED_DEV_ORIGINS=127.0.0.1 NEXT_PUBLIC_API_TOKEN=dev-token pnpm exec next build && python3 -m http.server ${PORT} --directory out --bind 127.0.0.1`],
+    ['-lc', `LAB_ALLOWED_DEV_ORIGINS=127.0.0.1 NEXT_PUBLIC_MOCK_DATA=true NEXT_PUBLIC_API_TOKEN=dev-token pnpm exec next build && python3 -m http.server ${PORT} --directory out --bind 127.0.0.1`],
     {
       cwd: APP_DIR,
       stdio: 'ignore',
@@ -224,4 +224,32 @@ test('gateway detail disable flow shows confirmation, persists disabled state, a
   )
   assert.equal(await page.getByRole('button', { name: 'Test gateway' }).isDisabled(), false)
   assert.equal(await page.getByRole('button', { name: 'Reload gateway' }).isDisabled(), false)
+})
+
+test('gateway list row action disable flow opens and completes successfully', { concurrency: false }, async (t) => {
+  await startPreviewServer()
+
+  const browser = await chromium.launch({ headless: true })
+  t.after(async () => {
+    await browser.close()
+  })
+
+  const page = await browser.newPage({ viewport: { width: 1360, height: 960 } })
+  await page.goto(`${BASE_URL}/gateways/`, { waitUntil: 'networkidle' })
+  await page.evaluate(() => {
+    window.localStorage.clear()
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+
+  const githubRow = page.locator('tr').filter({ has: page.getByText('github-server') }).first()
+  const disableButton = githubRow.getByRole('button', { name: 'Disable gateway' })
+  await assert.doesNotReject(() => disableButton.waitFor())
+
+  await disableButton.click()
+  await assert.doesNotReject(() => page.getByText('Disable gateway?').waitFor())
+  await page.getByRole('button', { name: 'Disable gateway' }).click()
+
+  await assert.doesNotReject(() =>
+    page.getByText('Gateway disabled. Catalog change sent and runtime cleanup requested.').waitFor(),
+  )
 })

@@ -144,9 +144,16 @@ export interface ReloadGatewayResult {
 export interface GatewayCleanupResult {
   upstream: string
   aggressive: boolean
+  dry_run?: boolean
+  gateway_matched?: number
+  local_matched?: number
+  aggressive_matched?: number
   gateway_killed: number
   local_killed: number
   aggressive_killed: number
+  gateway_matches?: Array<{ pattern: string; pids: number[] }>
+  local_matches?: Array<{ pattern: string; pids: number[] }>
+  aggressive_matches?: Array<{ pattern: string; pids: number[] }>
 }
 
 export interface SupportedServiceField {

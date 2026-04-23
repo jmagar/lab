@@ -76,6 +76,11 @@ function toggleArrayValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
 }
 
+type CleanupHistoryEntry = {
+  label: string
+  occurredAt: string
+}
+
 interface GatewaySummary {
   configured: number
   healthy: number
@@ -110,7 +115,7 @@ export interface GatewayListViewProps {
   onEdit: (gateway: Gateway) => void
   onTest: (gateway: Gateway) => void
   onReload: (gateway: Gateway) => void
-  onCleanup: (gateway: Gateway, aggressive: boolean) => void
+  onCleanup: (gateway: Gateway, aggressive: boolean, dryRun: boolean) => void
   onToggleEnabled: (gateway: Gateway) => void
   onDelete: (gateway: Gateway) => void
 }
@@ -141,7 +146,7 @@ export function GatewayListContent() {
     result: Awaited<ReturnType<typeof cleanupGateway>>
   } | null>(null)
   const [cleanupSummaryByGatewayId, setCleanupSummaryByGatewayId] = useState<
-    Record<string, string>
+    Record<string, { preview?: CleanupHistoryEntry; cleanup?: CleanupHistoryEntry }>
   >({})
 
   const items = gateways ?? []
@@ -319,26 +324,65 @@ export function GatewayListContent() {
     }
   }
 
-  const handleCleanup = async (gateway: Gateway, aggressive: boolean) => {
+  const handleCleanup = async (gateway: Gateway, aggressive: boolean, dryRun: boolean) => {
     try {
-      const result = await cleanupGateway(gateway.id, aggressive)
+      const result = await cleanupGateway(gateway.id, aggressive, dryRun)
       setCleanupResult({ gateway, result })
+      const occurredAt = new Date().toISOString()
+      const totalMatched =
+        (result.gateway_matched ?? result.gateway_killed) +
+        (result.local_matched ?? result.local_killed) +
+        (result.aggressive_matched ?? result.aggressive_killed)
       const totalKilled =
         result.gateway_killed + result.local_killed + result.aggressive_killed
       setCleanupSummaryByGatewayId((current) => ({
         ...current,
-        [gateway.id]: aggressive
-          ? `last cleanup: ${totalKilled} killed (aggressive)`
-          : `last cleanup: ${totalKilled} killed`,
+        [gateway.id]: {
+          ...current[gateway.id],
+          ...(dryRun
+            ? {
+                preview: {
+                  label: aggressive
+                    ? `last preview: ${totalMatched} matched (aggressive)`
+                    : `last preview: ${totalMatched} matched`,
+                  occurredAt,
+                },
+              }
+            : {
+                cleanup: {
+                  label: aggressive
+                    ? `last cleanup: ${totalKilled} killed (aggressive)`
+                    : `last cleanup: ${totalKilled} killed`,
+                  occurredAt,
+                },
+              }),
+        },
       }))
-      toast.success(
-        aggressive
-          ? `Aggressive cleanup completed. ${totalKilled} processes terminated.`
-          : `Runtime cleanup completed. ${totalKilled} processes terminated.`,
-      )
+      if (dryRun) {
+        toast.success(
+          aggressive
+            ? `Aggressive cleanup preview completed. ${totalMatched} processes matched.`
+            : `Runtime cleanup preview completed. ${totalMatched} processes matched.`,
+        )
+      } else {
+        toast.success(
+          aggressive
+            ? `Aggressive cleanup completed. ${totalKilled} processes terminated.`
+            : `Runtime cleanup completed. ${totalKilled} processes terminated.`,
+        )
+      }
     } catch (requestError) {
       toast.error(getErrorMessage(requestError, 'Failed to cleanup gateway runtime'))
     }
+  }
+
+  const handleClearCleanupHistory = (gateway: Gateway) => {
+    setCleanupSummaryByGatewayId((current) => {
+      const next = { ...current }
+      delete next[gateway.id]
+      return next
+    })
+    toast.success('Cleared row cleanup history')
   }
 
   const handleToggleEnabled = async (gateway: Gateway) => {
@@ -421,6 +465,7 @@ export function GatewayListContent() {
         onTest={handleTest}
         onReload={handleReload}
         onCleanup={handleCleanup}
+        onClearCleanupHistory={handleClearCleanupHistory}
         onToggleEnabled={handleToggleEnabled}
         onDelete={setDeleteGateway}
       />

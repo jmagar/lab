@@ -65,7 +65,7 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
         {isUser ? 'U' : 'A'}
       </div>
 
-      <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2 sm:max-w-[80%]', isUser && 'items-end')}>
+      <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
         {!isUser && message.thoughts.length > 0 && (
           <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
             <div className="overflow-hidden rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
@@ -77,12 +77,12 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
                   <Brain className="size-4 shrink-0 text-aurora-accent-primary/75" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-semibold leading-[1.2] text-aurora-text-primary">
-                      {message.isStreaming ? 'Reasoning' : 'Thought'}
+                      {message.isStreaming ? 'Reasoning in progress' : 'Reasoning'}
                     </p>
                     <p className={cn(AURORA_MUTED_LABEL, 'mt-1 text-aurora-text-muted/60')}>
                       {message.isStreaming
-                        ? 'thinking live'
-                        : `${message.thoughts.length} update${message.thoughts.length === 1 ? '' : 's'}`}
+                        ? 'live'
+                        : `${message.thoughts.length} step${message.thoughts.length === 1 ? '' : 's'}`}
                     </p>
                   </div>
                   {reasoningOpen ? (
@@ -111,10 +111,10 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
         )}
 
         {message.toolCalls.length > 0 && (
-          <div className="w-full rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium px-4 py-3 shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+          <div className="w-full border-l border-aurora-border-default/70 pl-3">
             <div className="mb-2 flex items-center gap-2">
               <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/60')}>
-                action flow
+                agent actions
               </span>
             </div>
             {message.toolCalls.map((toolCall) => (

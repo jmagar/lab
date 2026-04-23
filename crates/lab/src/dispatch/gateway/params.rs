@@ -173,6 +173,8 @@ pub struct GatewayMcpCleanupParams {
     pub name: String,
     #[serde(default)]
     pub aggressive: bool,
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

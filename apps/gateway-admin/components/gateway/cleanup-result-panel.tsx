@@ -20,8 +20,44 @@ export function CleanupResultPanel({ result, onClose }: CleanupResultPanelProps)
   if (!result) return null
 
   const { gateway, result: cleanup } = result
+  const isPreview = cleanup.dry_run === true
+  const totalMatched =
+    (cleanup.gateway_matched ?? cleanup.gateway_killed) +
+    (cleanup.local_matched ?? cleanup.local_killed) +
+    (cleanup.aggressive_matched ?? cleanup.aggressive_killed)
   const totalKilled =
     cleanup.gateway_killed + cleanup.local_killed + cleanup.aggressive_killed
+  const totalPrimary = isPreview ? totalMatched : totalKilled
+  const laneLabel = isPreview ? 'matches' : 'terminated'
+  const laneVerb = isPreview ? 'matched' : 'terminated'
+  const renderMatches = (
+    title: string,
+    matches: GatewayCleanupResult['gateway_matches'] | undefined,
+  ) => {
+    if (!matches || matches.length === 0) return null
+    return (
+      <div className="space-y-2">
+        <h5 className="text-xs font-medium uppercase tracking-wide text-aurora-text-muted">
+          {title}
+        </h5>
+        <div className="space-y-2">
+          {matches.map((match) => (
+            <div key={match.pattern} className="rounded-lg border px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <code className="text-xs">{match.pattern}</code>
+                <span className="text-xs font-medium tabular-nums">
+                  {match.pids.length} pid{match.pids.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-aurora-text-muted break-all">
+                {match.pids.join(', ')}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Sheet open={!!result} onOpenChange={(open) => !open && onClose()}>
@@ -52,10 +88,16 @@ export function CleanupResultPanel({ result, onClose }: CleanupResultPanelProps)
                   cleanup.aggressive ? 'text-aurora-warn' : 'text-aurora-success'
                 }`}
               >
-                {cleanup.aggressive ? 'Aggressive cleanup completed' : 'Runtime cleanup completed'}
+                {isPreview
+                  ? cleanup.aggressive
+                    ? 'Aggressive cleanup preview'
+                    : 'Runtime cleanup preview'
+                  : cleanup.aggressive
+                    ? 'Aggressive cleanup completed'
+                    : 'Runtime cleanup completed'}
               </p>
               <p className="text-sm text-aurora-text-muted mt-0.5">
-                {totalKilled} process{totalKilled === 1 ? '' : 'es'} matched and terminated.
+                {totalPrimary} process{totalPrimary === 1 ? '' : 'es'} {laneVerb}.
               </p>
               <p className="mt-2 text-xs text-aurora-text-muted">
                 Gateway-side tracked matches, local leaked session workers, and the aggressive fallback lane are reported separately below.
@@ -67,20 +109,34 @@ export function CleanupResultPanel({ result, onClose }: CleanupResultPanelProps)
             <h4 className="text-sm font-medium text-aurora-text-muted">Cleanup breakdown</h4>
             <div className="grid gap-3">
               <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                <span className="text-sm">Gateway runtime matches</span>
-                <span className="text-sm font-medium tabular-nums">{cleanup.gateway_killed}</span>
+                <span className="text-sm">Gateway runtime {laneLabel}</span>
+                <span className="text-sm font-medium tabular-nums">
+                  {isPreview ? (cleanup.gateway_matched ?? cleanup.gateway_killed) : cleanup.gateway_killed}
+                </span>
               </div>
               <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                <span className="text-sm">Local client/session matches</span>
-                <span className="text-sm font-medium tabular-nums">{cleanup.local_killed}</span>
+                <span className="text-sm">Local client/session {laneLabel}</span>
+                <span className="text-sm font-medium tabular-nums">
+                  {isPreview ? (cleanup.local_matched ?? cleanup.local_killed) : cleanup.local_killed}
+                </span>
               </div>
               {cleanup.aggressive && (
                 <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-                  <span className="text-sm">Aggressive fallback matches</span>
-                  <span className="text-sm font-medium tabular-nums">{cleanup.aggressive_killed}</span>
+                  <span className="text-sm">Aggressive fallback {laneLabel}</span>
+                  <span className="text-sm font-medium tabular-nums">
+                    {isPreview
+                      ? (cleanup.aggressive_matched ?? cleanup.aggressive_killed)
+                      : cleanup.aggressive_killed}
+                  </span>
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="space-y-4">
+            {renderMatches('Gateway runtime patterns', cleanup.gateway_matches)}
+            {renderMatches('Local client/session patterns', cleanup.local_matches)}
+            {cleanup.aggressive && renderMatches('Aggressive fallback patterns', cleanup.aggressive_matches)}
           </div>
         </div>
 
