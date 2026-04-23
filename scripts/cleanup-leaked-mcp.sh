@@ -19,7 +19,6 @@ patterns=(
   '/github-chat-mcp'
   'npm exec chrome-devtools-mcp@latest'
   'chrome-devtools-mcp/build/src/telemetry/watchdog/main.js'
-  'chrome-devtools-mcp'
 )
 
 printf 'mode: %s\n' "$([[ $do_kill -eq 1 ]] && printf kill || printf dry-run)"
@@ -34,7 +33,11 @@ for pattern in "${patterns[@]}"; do
 
   printf '%s\n' "$matches"
   if [[ $do_kill -eq 1 ]]; then
-    pgrep -f "$pattern" | xargs -r kill -9
+    pkill -TERM -f "$pattern" || true
+    sleep 1
+    if pgrep -f "$pattern" >/dev/null 2>&1; then
+      pkill -KILL -f "$pattern" || true
+    fi
   fi
 done
 

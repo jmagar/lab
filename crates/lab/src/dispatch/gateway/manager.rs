@@ -235,6 +235,7 @@ impl GatewayManager {
     ) -> Result<crate::dispatch::gateway::oauth::ProbeResult, ToolError> {
         use rmcp::transport::AuthorizationManager;
         let started = std::time::Instant::now();
+        let redacted_url = redact_gateway_url(url);
 
         // SSRF validation (synchronous DNS) — must run in spawn_blocking.
         // Also enforces https-only and rejects RFC 1918, loopback, and link-local.
@@ -248,7 +249,7 @@ impl GatewayManager {
             tracing::warn!(
                 service = "upstream_oauth",
                 action = "probe",
-                url,
+                url = %redacted_url,
                 kind = "ssrf_blocked",
                 "upstream oauth probe: SSRF validation task error"
             );
@@ -267,7 +268,7 @@ impl GatewayManager {
             service = "upstream_oauth",
             action = "probe",
             upstream = %name,
-            url,
+            url = %redacted_url,
             "upstream oauth probe: connecting"
         );
 
@@ -276,7 +277,7 @@ impl GatewayManager {
                 service = "upstream_oauth",
                 action = "probe",
                 upstream = %name,
-                url,
+                url = %redacted_url,
                 kind = "network_error",
                 error = %e,
                 elapsed_ms = started.elapsed().as_millis(),
@@ -294,7 +295,7 @@ impl GatewayManager {
                     service = "upstream_oauth",
                     action = "probe",
                     upstream = %name,
-                    url,
+                    url = %redacted_url,
                     issuer = m.issuer.as_deref().unwrap_or("<none>"),
                     supports_dynamic_registration = m.registration_endpoint.is_some(),
                     scopes = ?m.scopes_supported,
@@ -308,7 +309,7 @@ impl GatewayManager {
                     service = "upstream_oauth",
                     action = "probe",
                     upstream = %name,
-                    url,
+                    url = %redacted_url,
                     reason = %e,
                     elapsed_ms = started.elapsed().as_millis(),
                     "upstream oauth probe: no OAuth metadata found"
@@ -2208,7 +2209,7 @@ fn server_view_from_virtual_server(
     config: &crate::config::VirtualServerConfig,
     summary: UpstreamCachedSummary,
     last_error: Option<String>,
-    _health: Option<&ServiceHealth>,
+    health: Option<&ServiceHealth>,
 ) -> ServerView {
     let record = VirtualServerRecord::from(config);
     let service = match &record.source {
@@ -2218,10 +2219,22 @@ fn server_view_from_virtual_server(
         && (summary.discovered_tool_count > 0
             || summary.discovered_resource_count > 0
             || summary.discovered_prompt_count > 0);
-    let connected = record.enabled && peer_connected;
+    let health_connected = health
+        .map(|health| health.reachable && health.auth_ok)
+        .unwrap_or(false);
+    let connected = record.enabled && (peer_connected || health_connected);
     let mcp_exposed = record.enabled && record.surfaces.mcp;
     let discovered_tool_count = summary.discovered_tool_count;
-    let exposed_tool_count = if mcp_exposed { summary.exposed_tool_count } else { 0 };
+    let policy_exposed_tool_count = record.mcp_policy.as_ref().and_then(|policy| {
+        (!policy.allowed_actions.is_empty()).then_some(policy.allowed_actions.len() + 2)
+    });
+    let exposed_tool_count = if mcp_exposed {
+        policy_exposed_tool_count
+            .map(|count| summary.exposed_tool_count.min(count))
+            .unwrap_or(summary.exposed_tool_count)
+    } else {
+        0
+    };
     let discovered_resource_count = summary.discovered_resource_count;
     let exposed_resource_count = if mcp_exposed { summary.exposed_resource_count } else { 0 };
     let discovered_prompt_count = summary.discovered_prompt_count;
