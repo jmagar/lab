@@ -19,9 +19,9 @@ This keeps fleet log ingestion independent from the raw source format.
 
 1. a non-master device collects bootstrap log events
 2. it appends a `syslog_batch` envelope to `~/.lab/device-runtime-queue.jsonl`
-3. it posts the batch to `POST /v1/device/syslog/batch`
+3. it sends the envelope over the live websocket session as `fleet/log.event`
 4. the master stores the normalized events in the in-memory fleet store
-5. the local queue entry is acknowledged only after a successful master response
+5. the local queue entry is acknowledged only after a successful websocket response
 
 The queue exists to make early-runtime log upload resilient to temporary master outages.
 
@@ -62,5 +62,6 @@ Those responses include per-device log counts so operators can quickly see wheth
 ## Current Limits
 
 - fleet state is in-process only; restarting the master clears the inventory and ingested logs
+- enrollment state is durable, but accepted metadata/status/log snapshots are still in-memory
 - log search currently matches `message` only
 - the bootstrap collector is intentionally conservative and may return no events on hosts without supported sources

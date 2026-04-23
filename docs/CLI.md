@@ -155,7 +155,7 @@ Rules:
 - local hostname plus `[device].master` decide whether the process is `master` or non-master
 - the `master` exposes the Web UI, MCP, `/v1/{service}`, `/v1/gateway`, and `/v1/device/*`
 - a non-master device exposes only `/health`, `/ready`, and `/v1/device/*`
-- non-master startup attempts an initial hello, metadata upload, and bootstrap log flush to the master
+- non-master startup queues metadata and bootstrap logs, then opens a long-lived fleet websocket session to the master
 
 ## `lab device`
 
@@ -165,6 +165,9 @@ Commands:
 
 - `lab device list`
 - `lab device get <device_id>`
+- `lab device enrollments list`
+- `lab device enrollments approve <device_id> [--note <text>]`
+- `lab device enrollments deny <device_id> [--reason <text>]`
 
 ## `lab logs`
 
