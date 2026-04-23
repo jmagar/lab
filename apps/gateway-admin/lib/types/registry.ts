@@ -5,6 +5,7 @@ export const REGISTRY_META_KEY = 'io.modelcontextprotocol.registry/official'
 
 export interface ListServersParams {
   search?: string
+  owner?: string
   limit?: number
   cursor?: string | null
   version?: string

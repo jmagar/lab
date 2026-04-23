@@ -363,7 +363,7 @@ export function GatewayListContent() {
       toast.success('Gateway disabled. Catalog change sent and runtime cleanup requested.')
       setDisableGatewayTarget(null)
     } catch (requestError) {
-      toast.error(getErrorMessage(requestError, 'Failed to update gateway state'))
+      toast.error(getErrorMessage(requestError, 'Failed to disable gateway'))
     }
   }
 

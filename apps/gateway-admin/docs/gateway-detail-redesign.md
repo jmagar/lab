@@ -157,13 +157,13 @@ Each row appends the full upstream prefix again, making URIs exponentially longe
 
 ---
 
-### 10. Detail View — Tools vs. Actions Distinction for Lab Virtual Servers
+### 10. Detail View — Tools vs. Actions Distinction for In-Process Services
 
 **Current state:** For a lab in-process service (e.g. `plex`), the "Tools" count shows 29 because the in-process service exposes 29 actions mapped as MCP tools (one per service action). The custom gateway (plex as STDIO upstream running `lab serve mcp --stdio --services plex`) shows 1 tool (the `plex` MCP tool that dispatches via `action` parameter).
 
 **User concern:** These are architecturally different:
 - **Custom STDIO gateway**: 1 MCP tool (`plex`) with N sub-actions dispatched via `action` parameter — tool count = 1, action count = N
-- **Virtual server**: N tools, each mapping directly to a service action — tool count = N
+- **In-process service**: N tools, each mapping directly to a service action — tool count = N
 
 **Display change:**
 - For `source === 'in_process'` gateways, rename the "Tools" tab label to "Actions" and show the action count.

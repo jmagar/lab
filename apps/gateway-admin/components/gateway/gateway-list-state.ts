@@ -127,5 +127,6 @@ export function sortToolRows(rows: ToolInventoryRow[]): ToolInventoryRow[] {
 }
 
 export function gatewayMatchesToolSearch(gateway: Gateway, search: string): boolean {
+  if (!search.trim()) return true
   return gateway.discovery.tools.some((tool) => toolMatchesSearch(tool, gateway, search))
 }
