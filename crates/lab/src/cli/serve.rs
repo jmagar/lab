@@ -30,6 +30,8 @@ use crate::dispatch::logs::client::{
 };
 use crate::mcp::peers::PeerNotifier;
 use crate::mcp::server::LabMcpServer;
+#[cfg(target_os = "linux")]
+use crate::process::unix::{exe_path, terminate_sigterm};
 use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Transport choices for `lab serve`.
@@ -271,10 +273,15 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         None
     };
 
+    let web_assets_dir = resolve_web_assets_dir(&config.web);
+
+    let oauth_enabled = matches!(auth_config.mode, AuthMode::OAuth);
+
     let mut state = AppState::from_registry(registry);
     state = state.with_gateway_manager(Arc::clone(&gateway_manager));
     state = state.with_auth_config(auth_config);
-    let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
+    let web_ui_auth_disabled =
+        resolve_web_ui_auth_disabled(&config.web, web_assets_dir.is_some(), oauth_enabled)?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
     state = state.with_device_store(Arc::clone(&device_store));
     state = state.with_log_system(logs_system);
@@ -344,7 +351,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     // `_registry_sync_keepalive` keeps the background sync task alive for the
     // duration of `serve`; binding it by name preserves the JoinHandle.
     state = state.with_device_role(device_role);
-    if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
+    if let Some(web_assets_dir) = web_assets_dir {
         tracing::info!(
             subsystem = "web_server",
             phase = "assets.enabled",
@@ -497,14 +504,22 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .find(|path| path.join("index.html").is_file())
 }
 
-fn resolve_web_ui_auth_disabled(web: &crate::config::WebPreferences) -> Result<bool> {
+fn resolve_web_ui_auth_disabled(
+    web: &crate::config::WebPreferences,
+    web_assets_enabled: bool,
+    oauth_enabled: bool,
+) -> Result<bool> {
     if let Ok(value) = std::env::var("LAB_WEB_UI_DISABLE_AUTH") {
         return value
             .parse::<bool>()
             .with_context(|| format!("invalid LAB_WEB_UI_DISABLE_AUTH value `{value}`"));
     }
 
-    Ok(web.disable_auth.unwrap_or(false))
+    if let Some(disabled) = web.disable_auth {
+        return Ok(disabled);
+    }
+
+    Ok(web_assets_enabled && !oauth_enabled)
 }
 
 fn should_run_stdio(transport: Transport, command: Option<&ServeCommand>) -> bool {
@@ -960,15 +975,12 @@ fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
         executable = %exe.display(),
         "port held by stale lab process — sending SIGTERM"
     );
-    let status = std::process::Command::new("kill")
-        .args(["-TERM", &pid.to_string()])
-        .status();
-    matches!(status, Ok(s) if s.success())
+    terminate_sigterm(pid).is_ok()
 }
 
 #[cfg(target_os = "linux")]
 fn lab_executable_path(pid: u32) -> Option<PathBuf> {
-    std::fs::read_link(format!("/proc/{pid}/exe")).ok()
+    exe_path(pid)
 }
 
 #[cfg(target_os = "linux")]
@@ -1109,10 +1121,12 @@ mod tests {
             resolve_web_ui_auth_disabled(&WebPreferences {
                 assets_dir: None,
                 disable_auth: Some(true),
-            })
+            }, false, false)
             .unwrap()
         );
-        assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default()).unwrap());
+        assert!(resolve_web_ui_auth_disabled(&WebPreferences::default(), true, false).unwrap());
+        assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default(), true, true).unwrap());
+        assert!(!resolve_web_ui_auth_disabled(&WebPreferences::default(), false, false).unwrap());
     }
 
     #[test]

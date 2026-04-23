@@ -18,6 +18,7 @@ mod dispatch;
 mod mcp;
 mod oauth;
 mod output;
+mod process;
 mod registry;
 mod scaffold;
 #[cfg(test)]

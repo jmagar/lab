@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import * as React from 'react'
 import {
@@ -38,10 +38,13 @@ import { cn } from '@/lib/utils'
 import { AURORA_MEDIUM_PANEL, AURORA_MUTED_LABEL } from '@/components/gateway/gateway-theme'
 import { InstallDialog } from './install-dialog'
 import { RegistryStatusBadge } from './registry-status-badge'
+import { deleteServerLocalMetadata, setServerLocalMetadata } from '@/lib/api/mcpregistry-client'
+import { TextSurface } from '@/components/ui/text-surface'
 import type {
   EnvironmentVariable,
   Header,
   Icon as RegistryIcon,
+  LabRegistryMetadata,
   NormalizedServerJSON,
   Package as RegistryPackage,
   PackageArgument,
@@ -53,25 +56,45 @@ import type {
 interface ServerDetailPanelProps {
   server: NormalizedServerJSON | null
   extensions?: RegistryExtensions | null
+  labMetadata?: LabRegistryMetadata | null
+  onLabMetadataChange?: (metadata: LabRegistryMetadata | null) => void
   onClose: () => void
 }
 
 const MAX_SCHEMA_RESPONSE_BYTES = 256 * 1024
 const textEncoder = new TextEncoder()
 
-export function ServerDetailPanel({ server, extensions, onClose }: ServerDetailPanelProps) {
+export function ServerDetailPanel({ server, extensions, labMetadata, onLabMetadataChange, onClose }: ServerDetailPanelProps) {
   const open = server !== null
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <DialogContent className="flex max-h-[90vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
-        {server && <PanelBody key={server.name} server={server} extensions={extensions ?? null} />}
+        {server && (
+          <PanelBody
+            key={server.name}
+            server={server}
+            extensions={extensions ?? null}
+            labMetadata={labMetadata ?? null}
+            onLabMetadataChange={onLabMetadataChange}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )
 }
 
-function PanelBody({ server, extensions }: { server: NormalizedServerJSON; extensions: RegistryExtensions | null }) {
+function PanelBody({
+  server,
+  extensions,
+  labMetadata,
+  onLabMetadataChange,
+}: {
+  server: NormalizedServerJSON
+  extensions: RegistryExtensions | null
+  labMetadata: LabRegistryMetadata | null
+  onLabMetadataChange?: (metadata: LabRegistryMetadata | null) => void
+}) {
   const displayName = server.title ?? server.name
   const { remotes, icons, packages } = server
   const isHTTP = remotes.some((r) => r.type === 'streamable-http' || r.type === 'sse')
@@ -80,6 +103,20 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   const [schemaContent, setSchemaContent] = useState<string | null>(null)
   const [schemaLoading, setSchemaLoading] = useState(false)
   const [schemaError, setSchemaError] = useState<string | null>(null)
+  const [editableLabMetadata, setEditableLabMetadata] = useState<LabRegistryMetadata | null>(labMetadata)
+  const [labMetadataDraft, setLabMetadataDraft] = useState(
+    labMetadata ? JSON.stringify(labMetadata, null, 2) : '{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}',
+  )
+  const [labMetadataSaving, setLabMetadataSaving] = useState(false)
+  const [labMetadataError, setLabMetadataError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setEditableLabMetadata(labMetadata)
+    setLabMetadataDraft(
+      labMetadata ? JSON.stringify(labMetadata, null, 2) : '{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}',
+    )
+    setLabMetadataError(null)
+  }, [labMetadata, server.name])
 
   async function toggleSchema() {
     if (!schemaHref) return
@@ -123,6 +160,45 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   const schemaPanelId = `schema-viewer-${server.name.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const status = extensions?.status ?? null
   const statusMessage = extensions?.statusMessage ?? null
+  const displayedLabMetadata = editableLabMetadata
+  const canonicalLabMetadataDraft = displayedLabMetadata
+    ? JSON.stringify(displayedLabMetadata, null, 2)
+    : '{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}'
+  const labMetadataDirty = labMetadataDraft !== canonicalLabMetadataDraft
+
+  async function saveLabMetadata() {
+    setLabMetadataSaving(true)
+    setLabMetadataError(null)
+    try {
+      const parsed = JSON.parse(labMetadataDraft) as LabRegistryMetadata
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+        throw new Error('Metadata must be a JSON object')
+      }
+      const result = await setServerLocalMetadata(server.name, parsed, server.version)
+      setEditableLabMetadata(result.metadata)
+      setLabMetadataDraft(JSON.stringify(result.metadata, null, 2))
+      onLabMetadataChange?.(result.metadata)
+    } catch (error) {
+      setLabMetadataError(error instanceof Error ? error.message : 'Failed to save metadata')
+    } finally {
+      setLabMetadataSaving(false)
+    }
+  }
+
+  async function clearLabMetadata() {
+    setLabMetadataSaving(true)
+    setLabMetadataError(null)
+    try {
+      await deleteServerLocalMetadata(server.name, server.version)
+      setEditableLabMetadata(null)
+      setLabMetadataDraft('{\n  "curation": {\n    "featured": false,\n    "tags": []\n  }\n}')
+      onLabMetadataChange?.(null)
+    } catch (error) {
+      setLabMetadataError(error instanceof Error ? error.message : 'Failed to delete metadata')
+    } finally {
+      setLabMetadataSaving(false)
+    }
+  }
 
   return (
     <>
@@ -306,6 +382,88 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
             </dl>
           </Section>
         )}
+
+        {displayedLabMetadata && (
+          <Section label="Lab metadata">
+            <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-4 text-xs')}>
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                <BooleanRow label="Featured" value={displayedLabMetadata.curation?.featured} />
+                <BooleanRow label="Hidden" value={displayedLabMetadata.curation?.hidden} />
+                <BooleanRow label="Reviewed" value={displayedLabMetadata.trust?.reviewed} />
+                <BooleanRow label="Source verified" value={displayedLabMetadata.trust?.source_verified} />
+                <BooleanRow label="Maintainer known" value={displayedLabMetadata.trust?.maintainer_known} />
+                <BooleanRow label="Install tested" value={displayedLabMetadata.quality?.install_tested} />
+                <BooleanRow label="SSRF reviewed" value={displayedLabMetadata.security?.ssrf_reviewed} />
+                <BooleanRow label="Permissions reviewed" value={displayedLabMetadata.security?.permissions_reviewed} />
+                <BooleanRow label="Secrets reviewed" value={displayedLabMetadata.security?.secrets_reviewed} />
+                <BooleanRow label="Works in Lab" value={displayedLabMetadata.ux?.works_in_lab} />
+                <BooleanRow label="Recommended" value={displayedLabMetadata.ux?.recommended_for_homelab} />
+                <MetaRow label="Transport score" value={displayedLabMetadata.quality?.transport_score ?? null} />
+                <MetaRow label="Setup difficulty" value={displayedLabMetadata.ux?.setup_difficulty ?? null} />
+                <TimeRow label="Reviewed at" iso={displayedLabMetadata.trust?.reviewed_at ?? null} />
+                <TimeRow label="Install tested at" iso={displayedLabMetadata.quality?.last_install_tested_at ?? null} />
+              </dl>
+              {displayedLabMetadata.curation?.tags && displayedLabMetadata.curation.tags.length > 0 && (
+                <div className="space-y-1">
+                  <p className={AURORA_MUTED_LABEL}>Tags</p>
+                  <div className="flex flex-wrap gap-2">
+                    {displayedLabMetadata.curation.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full border border-aurora-border-strong/60 px-2 py-0.5 text-[11px] text-aurora-text-muted"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {displayedLabMetadata.curation?.notes && (
+                <div className="space-y-1">
+                  <p className={AURORA_MUTED_LABEL}>Notes</p>
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-aurora-text-muted">
+                    {displayedLabMetadata.curation.notes}
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1">
+                <p className={AURORA_MUTED_LABEL}>Raw metadata</p>
+                <div className="aurora-scrollbar max-h-64 overflow-auto rounded border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.6)]">
+                  <pre className="w-max min-w-full p-3 font-mono text-xs leading-relaxed text-aurora-text-muted">
+                    <JsonHighlight content={JSON.stringify(displayedLabMetadata, null, 2)} />
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </Section>
+        )}
+
+        <Section label="Edit Lab metadata">
+          <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-4')}>
+            <div className="h-72">
+              <TextSurface
+                path={`registry/${server.name.replaceAll('/', '__')}.lab-meta.json`}
+                value={labMetadataDraft}
+                mode="edit"
+                language="json"
+                dirty={labMetadataDirty}
+                onChange={setLabMetadataDraft}
+                onSave={() => void saveLabMetadata()}
+              />
+            </div>
+            {labMetadataError && (
+              <p className="text-xs text-aurora-error">{labMetadataError}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={() => void saveLabMetadata()} disabled={labMetadataSaving}>
+                {labMetadataSaving ? 'Saving…' : 'Save metadata'}
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => void clearLabMetadata()} disabled={labMetadataSaving}>
+                Delete metadata
+              </Button>
+            </div>
+          </div>
+        </Section>
       </div>
 
       <div className="shrink-0 border-t border-aurora-border-strong/60 px-6 py-4">
@@ -337,6 +495,11 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
       />
     </>
   )
+}
+
+function BooleanRow({ label, value }: { label: string; value?: boolean | null }) {
+  if (value == null) return null
+  return <MetaRow label={label} value={value ? 'yes' : 'no'} />
 }
 
 type JsonTokenType = 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation' | 'whitespace'

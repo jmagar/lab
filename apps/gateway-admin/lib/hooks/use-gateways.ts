@@ -529,18 +529,29 @@ export function useGatewayMutations() {
     return result
   }, [])
 
-  const cleanupGateway = useCallback(async (id: string, aggressive: boolean = false): Promise<GatewayCleanupResult> => {
+  const cleanupGateway = useCallback(async (
+    id: string,
+    aggressive: boolean = false,
+    dryRun: boolean = false,
+  ): Promise<GatewayCleanupResult> => {
     if (USE_MOCK_DATA) {
       await mockDelay()
       return {
         upstream: id,
         aggressive,
+        dry_run: dryRun,
+        gateway_matched: 0,
+        local_matched: 0,
+        aggressive_matched: 0,
         gateway_killed: 0,
         local_killed: 0,
         aggressive_killed: 0,
+        gateway_matches: [],
+        local_matches: [],
+        aggressive_matches: [],
       }
     }
-    const result = await gatewayApi.cleanupGateway(id, aggressive)
+    const result = await gatewayApi.cleanupGateway(id, aggressive, dryRun)
     await refreshGatewayCache(id)
     return result
   }, [])

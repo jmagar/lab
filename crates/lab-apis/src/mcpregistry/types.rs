@@ -6,6 +6,8 @@
 //! - Reserved-word fields use descriptive Rust names with `#[serde(rename = "type")]`.
 //! - Dotted/slashed JSON keys use `#[serde(rename = "...")]` directly.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -85,11 +87,30 @@ pub struct ServerResponse {
 }
 
 /// Registry-managed per-response metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResponseMeta {
     /// Official registry extensions.
-    #[serde(rename = "io.modelcontextprotocol.registry/official")]
+    #[serde(rename = "io.modelcontextprotocol.registry/official", skip_serializing_if = "Option::is_none")]
     pub official: Option<RegistryExtensions>,
+    /// Aggregator/subregistry-specific metadata, keyed by namespaced `_meta` entry.
+    #[serde(flatten, default)]
+    pub extensions: BTreeMap<String, serde_json::Value>,
+}
+
+impl ResponseMeta {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.official.is_none() && self.extensions.is_empty()
+    }
+
+    pub fn insert_extension(&mut self, namespace: impl Into<String>, value: serde_json::Value) {
+        self.extensions.insert(namespace.into(), value);
+    }
+
+    #[must_use]
+    pub fn extension(&self, namespace: &str) -> Option<&serde_json::Value> {
+        self.extensions.get(namespace)
+    }
 }
 
 /// Registry lifecycle extensions attached to a server version.

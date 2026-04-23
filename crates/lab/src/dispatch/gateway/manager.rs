@@ -1,13 +1,9 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 #[cfg(unix)]
 use nix::errno::Errno;
-#[cfg(unix)]
-use nix::sys::signal::{Signal, kill as unix_kill};
-#[cfg(unix)]
-use nix::unistd::Pid;
 use tokio::sync::RwLock;
 use url::Url;
 
@@ -26,6 +22,10 @@ use crate::oauth::upstream::cache::OauthClientCache;
 use crate::oauth::upstream::encryption::EncryptionKey;
 use crate::oauth::upstream::manager::UpstreamOauthManager;
 use crate::oauth::upstream::types::{BeginAuthorization, OauthError};
+#[cfg(target_os = "linux")]
+use crate::process::unix::read_cmdline;
+#[cfg(unix)]
+use crate::process::unix::{pid_is_alive, terminate_sigkill};
 use crate::registry::ToolRegistry;
 use lab_apis::extract::types::ServiceCreds;
 
@@ -740,7 +740,7 @@ impl GatewayManager {
     pub async fn set_service_config(
         &self,
         service: &str,
-        values: &std::collections::BTreeMap<String, String>,
+        values: &BTreeMap<String, String>,
     ) -> Result<ServiceConfigView, ToolError> {
         let meta = service_meta(service).ok_or_else(|| ToolError::InvalidParam {
             message: format!("unknown service `{service}`"),
@@ -1970,6 +1970,7 @@ impl GatewayManager {
         &self,
         name: &str,
         aggressive: bool,
+        dry_run: bool,
     ) -> Result<super::types::GatewayCleanupView, ToolError> {
         let upstream = self
             .config
@@ -1992,16 +1993,56 @@ impl GatewayManager {
             Vec::new()
         };
 
+        let gateway_matches = matching_processes(&gateway_patterns);
+        let local_matches = matching_processes(&local_patterns);
+        let aggressive_matches = if aggressive {
+            matching_processes(&aggressive_patterns)
+        } else {
+            Vec::new()
+        };
+
         let view = super::types::GatewayCleanupView {
             upstream: upstream.name,
             aggressive,
-            gateway_killed: kill_matching_processes(&gateway_patterns),
-            local_killed: kill_matching_processes(&local_patterns),
-            aggressive_killed: if aggressive {
-                kill_matching_processes(&aggressive_patterns)
+            dry_run,
+            gateway_matched: count_matched_processes(&gateway_matches),
+            local_matched: count_matched_processes(&local_matches),
+            aggressive_matched: if aggressive {
+                count_matched_processes(&aggressive_matches)
             } else {
                 0
             },
+            gateway_killed: if dry_run {
+                count_matched_processes(&gateway_matches)
+            } else {
+                kill_matched_processes(&gateway_matches)
+            },
+            local_killed: if dry_run {
+                count_matched_processes(&local_matches)
+            } else {
+                kill_matched_processes(&local_matches)
+            },
+            aggressive_killed: if aggressive {
+                if dry_run {
+                    count_matched_processes(&aggressive_matches)
+                } else {
+                    kill_matched_processes(&aggressive_matches)
+                }
+            } else {
+                0
+            },
+            gateway_matches: gateway_matches
+                .iter()
+                .map(cleanup_match_view)
+                .collect(),
+            local_matches: local_matches
+                .iter()
+                .map(cleanup_match_view)
+                .collect(),
+            aggressive_matches: aggressive_matches
+                .iter()
+                .map(cleanup_match_view)
+                .collect(),
         };
 
         let cfg = self.config.read().await.clone();
@@ -2116,7 +2157,7 @@ fn runtime_owner_view(
 
 #[cfg(unix)]
 fn process_is_alive(pid: u32) -> bool {
-    matches!(send_unix_signal(pid, None), Ok(()) | Err(Errno::EPERM))
+    pid_is_alive(pid)
 }
 
 #[cfg(not(unix))]
@@ -2124,80 +2165,99 @@ fn process_is_alive(_pid: u32) -> bool {
     false
 }
 
-fn kill_matching_processes(patterns: &[String]) -> usize {
-    count_or_kill_matching_processes(patterns, true)
+#[derive(Debug, Clone, Default)]
+struct GatewayCleanupMatch {
+    pattern: String,
+    pids: Vec<u32>,
 }
 
-fn count_or_kill_matching_processes(patterns: &[String], kill: bool) -> usize {
-    let excluded_pids = current_and_parent_pids();
-    let mut matched = std::collections::HashSet::new();
-    for pattern in patterns {
-        if pattern.trim().is_empty() {
-            continue;
-        }
-        let output = match std::process::Command::new("pgrep")
-            .args(["-af", pattern])
-            .output()
-        {
-            Ok(output) => output,
-            Err(_) => continue,
-        };
-        if !output.status.success() && output.stdout.is_empty() {
-            continue;
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            let mut parts = line.splitn(2, ' ');
-            let Some(pid) = parts.next() else {
-                continue;
-            };
-            if excluded_pids.contains(pid) {
-                continue;
-            }
-            if matched.insert(pid.to_string()) && kill {
-                let _ = terminate_process(pid.parse::<u32>().unwrap_or_default());
-            }
-        }
+fn cleanup_match_view(matched: &GatewayCleanupMatch) -> super::types::GatewayCleanupMatchView {
+    super::types::GatewayCleanupMatchView {
+        pattern: matched.pattern.clone(),
+        pids: matched.pids.clone(),
     }
-    matched.len()
 }
 
 #[cfg(unix)]
-fn current_and_parent_pids() -> std::collections::HashSet<String> {
-    let mut pids = std::collections::HashSet::from([std::process::id().to_string()]);
+fn current_and_parent_pids() -> std::collections::HashSet<u32> {
+    let mut pids = std::collections::HashSet::from([std::process::id()]);
     let parent = nix::unistd::getppid();
     if parent.as_raw() > 0 {
-        pids.insert(parent.as_raw().to_string());
+        pids.insert(parent.as_raw() as u32);
     }
     pids
 }
 
 #[cfg(not(unix))]
-fn current_and_parent_pids() -> std::collections::HashSet<String> {
-    std::collections::HashSet::from([std::process::id().to_string()])
+fn current_and_parent_pids() -> std::collections::HashSet<u32> {
+    std::collections::HashSet::from([std::process::id()])
 }
 
-#[cfg(unix)]
-fn send_unix_signal(pid: u32, signal: Option<Signal>) -> Result<(), Errno> {
-    if pid == 0 {
-        return Err(Errno::EINVAL);
+#[cfg(target_os = "linux")]
+fn matching_processes(patterns: &[String]) -> Vec<GatewayCleanupMatch> {
+    let excluded_pids = current_and_parent_pids();
+    let mut matched: BTreeMap<String, BTreeSet<u32>> = BTreeMap::new();
+    for entry in std::fs::read_dir("/proc").ok().into_iter().flatten().flatten() {
+        let pid_str = entry.file_name();
+        let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else {
+            continue;
+        };
+        if excluded_pids.contains(&pid) {
+            continue;
+        }
+        let Some(cmdline) = read_cmdline(pid) else {
+            continue;
+        };
+        for pattern in patterns.iter().filter(|pattern| !pattern.trim().is_empty()) {
+            if cmdline.contains(pattern) {
+                matched.entry(pattern.clone()).or_default().insert(pid);
+            }
+        }
     }
-
-    let Ok(raw_pid) = i32::try_from(pid) else {
-        return Err(Errno::EINVAL);
-    };
-
-    unix_kill(Pid::from_raw(raw_pid), signal)
+    matched
+        .into_iter()
+        .map(|(pattern, pids)| GatewayCleanupMatch {
+            pattern,
+            pids: pids.into_iter().collect(),
+        })
+        .collect()
 }
 
-#[cfg(not(unix))]
-fn send_unix_signal(_pid: u32, _signal: Option<()>) -> Result<(), ()> {
-    Err(())
+#[cfg(not(target_os = "linux"))]
+fn matching_processes(_patterns: &[String]) -> Vec<GatewayCleanupMatch> {
+    Vec::new()
+}
+
+#[cfg(all(test, target_os = "linux"))]
+fn process_matches_patterns(cmdline: &str, patterns: &[String]) -> bool {
+    patterns
+        .iter()
+        .filter(|pattern| !pattern.trim().is_empty())
+        .any(|pattern| cmdline.contains(pattern))
+}
+
+fn count_matched_processes(matches: &[GatewayCleanupMatch]) -> usize {
+    let mut unique = BTreeSet::new();
+    for matched in matches {
+        unique.extend(matched.pids.iter().copied());
+    }
+    unique.len()
+}
+
+fn kill_matched_processes(matches: &[GatewayCleanupMatch]) -> usize {
+    let mut unique = BTreeSet::new();
+    for matched in matches {
+        unique.extend(matched.pids.iter().copied());
+    }
+    for pid in &unique {
+        let _ = terminate_process(*pid);
+    }
+    unique.len()
 }
 
 #[cfg(unix)]
 fn terminate_process(pid: u32) -> Result<(), Errno> {
-    send_unix_signal(pid, Some(Signal::SIGKILL))
+    terminate_sigkill(pid)
 }
 
 #[cfg(not(unix))]
@@ -2300,7 +2360,7 @@ fn read_env_values(path: &std::path::Path) -> Result<HashMap<String, String>, To
 
 fn values_to_service_creds(
     service: &str,
-    values: &std::collections::BTreeMap<String, String>,
+    values: &BTreeMap<String, String>,
 ) -> Vec<ServiceCreds> {
     values
         .iter()
@@ -2349,7 +2409,13 @@ fn service_config_view(
     ServiceConfigView {
         service: meta.name.to_string(),
         // A service with no env vars needs no configuration and is always ready.
-        configured: fields.is_empty() || fields.iter().any(|field| field.present),
+        configured: if fields.is_empty() {
+            true
+        } else {
+            meta.required_env
+                .iter()
+                .all(|env| fields.iter().any(|field| field.name == env.name && field.present))
+        },
         fields,
     }
 }
@@ -2468,6 +2534,76 @@ mod tests {
         assert!(patterns.contains(&"uv tool uvx github-chat-mcp".to_string()));
         assert!(patterns.contains(&"uv run github-chat-mcp".to_string()));
         assert!(patterns.contains(&"github-chat".to_string()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn process_matcher_uses_joined_cmdline_text() {
+        let patterns = vec![
+            "uvx github-chat-mcp".to_string(),
+            "github-chat".to_string(),
+        ];
+        assert!(process_matches_patterns(
+            "uvx github-chat-mcp --transport stdio",
+            &patterns,
+        ));
+        assert!(!process_matches_patterns(
+            "python -m unrelated-service",
+            &patterns,
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn cleanup_upstream_processes_kills_matching_github_chat_runtime() {
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
+                name: "github-chat".to_string(),
+                url: None,
+                bearer_token_env: None,
+                command: Some("uvx".to_string()),
+                args: vec!["github-chat-mcp".to_string()],
+                proxy_resources: false,
+                proxy_prompts: false,
+                expose_tools: None,
+                oauth: None,
+            }])
+            .await;
+
+        let mut child = Command::new("python3")
+            .args(["-c", "import time; time.sleep(60)", "github-chat-mcp"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn github chat stand-in");
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let cleanup = manager
+            .cleanup_upstream_processes("github-chat", false, false)
+            .await
+            .expect("cleanup");
+
+        assert!(cleanup.gateway_killed >= 1);
+
+        for _ in 0..20 {
+            if child.try_wait().expect("try_wait").is_some() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        drop(child.kill());
+        panic!("github-chat stand-in process was not terminated by cleanup");
     }
 
     #[tokio::test]
@@ -2659,7 +2795,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
 
-        let mut values = std::collections::BTreeMap::new();
+        let mut values = BTreeMap::new();
         values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
         values.insert("PLEX_TOKEN".to_string(), "super-secret".to_string());
 
@@ -2684,7 +2820,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
 
-        let mut values = std::collections::BTreeMap::new();
+        let mut values = BTreeMap::new();
         values.insert("OPENAI_API_KEY".to_string(), "token".to_string());
         values.insert("OPENAI_URL".to_string(), String::new());
 
@@ -2700,6 +2836,44 @@ mod tests {
             .expect("url field");
         assert!(!url.present);
         assert_eq!(url.value_preview, None);
+    }
+
+    #[tokio::test]
+    async fn service_config_get_requires_all_required_fields_for_configured_state() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = BTreeMap::new();
+        values.insert("OPENAI_API_KEY".to_string(), "token".to_string());
+
+        let config = manager
+            .set_service_config("openai", &values)
+            .await
+            .expect("set service config");
+
+        assert!(
+            !config.configured,
+            "openai should remain unconfigured until all required fields are present"
+        );
+    }
+
+    #[tokio::test]
+    async fn service_config_get_marks_service_configured_when_required_fields_are_present() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        let mut values = BTreeMap::new();
+        values.insert("OPENAI_API_KEY".to_string(), "token".to_string());
+        values.insert("OPENAI_URL".to_string(), "https://api.openai.com/v1".to_string());
+
+        let config = manager
+            .set_service_config("openai", &values)
+            .await
+            .expect("set service config");
+
+        assert!(config.configured);
     }
 
     #[tokio::test]
@@ -2830,7 +3004,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
 
-        let mut values = std::collections::BTreeMap::new();
+        let mut values = BTreeMap::new();
         values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
         values.insert("PLEX_TOKEN".to_string(), "token".to_string());
 
@@ -2999,7 +3173,7 @@ mod tests {
         let manager = GatewayManager::new(path, GatewayRuntimeHandle::default())
             .with_service_clients(shared_clients.clone());
 
-        let mut values = std::collections::BTreeMap::new();
+        let mut values = BTreeMap::new();
         values.insert("PLEX_URL".to_string(), "http://127.0.0.1:32400".to_string());
         values.insert("PLEX_TOKEN".to_string(), "token".to_string());
 

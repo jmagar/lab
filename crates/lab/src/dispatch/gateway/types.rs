@@ -123,16 +123,37 @@ pub struct GatewayToolExposureRowView {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GatewayCleanupMatchView {
+    pub pattern: String,
+    #[serde(default)]
+    pub pids: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayCleanupView {
     pub upstream: String,
     #[serde(default)]
     pub aggressive: bool,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub gateway_matched: usize,
+    #[serde(default)]
+    pub local_matched: usize,
+    #[serde(default)]
+    pub aggressive_matched: usize,
     #[serde(default)]
     pub gateway_killed: usize,
     #[serde(default)]
     pub local_killed: usize,
     #[serde(default)]
     pub aggressive_killed: usize,
+    #[serde(default)]
+    pub gateway_matches: Vec<GatewayCleanupMatchView>,
+    #[serde(default)]
+    pub local_matches: Vec<GatewayCleanupMatchView>,
+    #[serde(default)]
+    pub aggressive_matches: Vec<GatewayCleanupMatchView>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

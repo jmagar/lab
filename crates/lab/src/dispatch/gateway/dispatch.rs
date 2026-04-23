@@ -252,7 +252,7 @@ pub async fn dispatch_with_manager(
             let cleanup = if params.cleanup {
                 Some(
                     manager
-                        .cleanup_upstream_processes(&params.name, params.aggressive)
+                        .cleanup_upstream_processes(&params.name, params.aggressive, false)
                         .await?,
                 )
             } else {
@@ -267,7 +267,7 @@ pub async fn dispatch_with_manager(
             let params: GatewayMcpCleanupParams = parse_params(params_value)?;
             to_json(
                 manager
-                    .cleanup_upstream_processes(&params.name, params.aggressive)
+                    .cleanup_upstream_processes(&params.name, params.aggressive, params.dry_run)
                     .await?,
             )
         }
@@ -982,5 +982,133 @@ mod tests {
             help.to_string().contains("gateway.reload"),
             "reload should remain the explicit env-refresh action"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn gateway_mcp_cleanup_dispatch_returns_cleanup_payload() {
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+
+        let manager = test_manager();
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
+                name: "github-chat".to_string(),
+                url: None,
+                bearer_token_env: None,
+                command: Some("uvx".to_string()),
+                args: vec!["github-chat-mcp".to_string()],
+                proxy_resources: false,
+                proxy_prompts: false,
+                expose_tools: None,
+                oauth: None,
+            }])
+            .await;
+
+        let mut child = Command::new("python3")
+            .args(["-c", "import time; time.sleep(60)", "github-chat-mcp"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn github chat stand-in");
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.mcp.cleanup",
+            json!({
+                "name": "github-chat",
+                "aggressive": false,
+                "dry_run": false
+            }),
+        )
+        .await
+        .expect("cleanup dispatch");
+
+        assert_eq!(value["upstream"], "github-chat");
+        assert_eq!(value["aggressive"], false);
+        assert!(
+            value["gateway_killed"]
+                .as_u64()
+                .expect("gateway_killed as u64")
+                >= 1
+        );
+
+        for _ in 0..20 {
+            if child.try_wait().expect("try_wait").is_some() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        drop(child.kill());
+        panic!("github-chat stand-in process was not terminated by dispatch cleanup");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn gateway_mcp_disable_with_cleanup_returns_gateway_and_cleanup_payload() {
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+
+        let manager = test_manager();
+        manager
+            .replace_config_for_tests(vec![UpstreamConfig {
+                enabled: true,
+                name: "github-chat".to_string(),
+                url: None,
+                bearer_token_env: None,
+                command: Some("uvx".to_string()),
+                args: vec!["github-chat-mcp".to_string()],
+                proxy_resources: false,
+                proxy_prompts: false,
+                expose_tools: None,
+                oauth: None,
+            }])
+            .await;
+
+        let mut child = Command::new("python3")
+            .args(["-c", "import time; time.sleep(60)", "github-chat-mcp"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn github chat stand-in");
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let value = dispatch_with_manager(
+            &manager,
+            "gateway.mcp.disable",
+            json!({
+                "name": "github-chat",
+                "cleanup": true,
+                "aggressive": false
+            }),
+        )
+        .await
+        .expect("disable dispatch");
+
+        assert_eq!(value["gateway"]["config"]["name"], "github-chat");
+        assert_eq!(value["gateway"]["config"]["enabled"], false);
+        assert_eq!(value["cleanup"]["upstream"], "github-chat");
+        let total_killed =
+            value["cleanup"]["gateway_killed"].as_u64().unwrap_or_default()
+                + value["cleanup"]["local_killed"].as_u64().unwrap_or_default()
+                + value["cleanup"]["aggressive_killed"].as_u64().unwrap_or_default();
+        assert!(total_killed >= 1);
+
+        for _ in 0..20 {
+            if child.try_wait().expect("try_wait").is_some() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        drop(child.kill());
+        panic!("github-chat stand-in process was not terminated by disable cleanup");
     }
 }

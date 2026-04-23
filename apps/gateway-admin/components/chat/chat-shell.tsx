@@ -53,6 +53,7 @@ export function ChatShell() {
   const [selectedRunId, setSelectedRunId] = React.useState<string | null>(null)
   const [sessionPanelOpen, setSessionPanelOpen] = React.useState(true)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [isMobileViewport, setIsMobileViewport] = React.useState(false)
   const [systemPrompt, setSystemPrompt] = React.useState('')
   const [temperature, setTemperature] = React.useState(0.7)
   const [maxTokens, setMaxTokens] = React.useState(8192)
@@ -91,6 +92,11 @@ export function ChatShell() {
 
   const refreshSessions = React.useCallback(async () => {
     const response = await fetchAcp('/sessions')
+    if (!response.ok) {
+      setRuns([])
+      setSelectedRunId(null)
+      return
+    }
     const payload = (await response.json()) as { sessions: BridgeSessionSummary[] }
     const nextRuns = payload.sessions.map(toRun)
     setRuns(nextRuns)
@@ -99,6 +105,16 @@ export function ChatShell() {
 
   const refreshProvider = React.useCallback(async () => {
     const response = await fetchAcp('/provider')
+    if (!response.ok) {
+      setProviderHealth({
+        provider: 'codex',
+        ready: false,
+        command: '',
+        args: [],
+        message: 'ACP provider unavailable.',
+      })
+      return
+    }
     const payload = (await response.json()) as { provider: ProviderHealth }
     setProviderHealth(payload.provider)
   }, [fetchAcp])
@@ -107,6 +123,17 @@ export function ChatShell() {
     void refreshProvider()
     void refreshSessions()
   }, [refreshProvider, refreshSessions])
+
+  React.useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)')
+    const sync = () => {
+      setIsMobileViewport(media.matches)
+      setSessionPanelOpen((open) => (media.matches ? false : open))
+    }
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [])
 
   React.useEffect(() => {
     if (!providerHealth?.ready) {
@@ -129,6 +156,9 @@ export function ChatShell() {
 
   const handleSelectRun = (runId: string) => {
     setSelectedRunId(runId)
+    if (isMobileViewport) {
+      setSessionPanelOpen(false)
+    }
   }
 
   const handleNewRun = async () => {
@@ -140,6 +170,9 @@ export function ChatShell() {
     const run = toRun(payload.session)
     setRuns((current) => [run, ...current])
     setSelectedRunId(run.id)
+    if (isMobileViewport) {
+      setSessionPanelOpen(false)
+    }
   }
 
   const handleSend = async (text: string) => {
@@ -176,7 +209,7 @@ export function ChatShell() {
       }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-aurora-page-bg">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-aurora-page-bg">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-aurora-border-default bg-aurora-nav-bg px-3">
         <SidebarTrigger
           aria-label="Toggle app sidebar"
@@ -206,9 +239,9 @@ export function ChatShell() {
 
         {selectedRun && (
           <div className="ml-1 flex items-center gap-1.5 text-[12px] text-aurora-text-muted">
-            <span className="text-aurora-text-muted/50">{projects[0]?.name}</span>
-            <span className="text-aurora-text-muted/30">/</span>
-            <span className="max-w-[300px] truncate text-aurora-text-primary">{selectedRun.title}</span>
+            <span className="hidden text-aurora-text-muted/50 sm:block">{projects[0]?.name}</span>
+            <span className="hidden text-aurora-text-muted/30 sm:block">/</span>
+            <span className="max-w-[180px] truncate text-aurora-text-primary sm:max-w-[300px]">{selectedRun.title}</span>
           </div>
         )}
 
@@ -259,14 +292,34 @@ export function ChatShell() {
 
       <div className="flex min-h-0 flex-1">
         {sessionPanelOpen && (
-          <SessionSidebar
-            projects={projects}
-            runs={runs}
-            selectedRunId={selectedRunId}
-            selectedProjectId="workspace"
-            onSelectRun={(runId) => handleSelectRun(runId)}
-            onNewRun={() => void handleNewRun()}
-          />
+          <>
+            {isMobileViewport && (
+              <button
+                type="button"
+                aria-label="Close session drawer"
+                className="fixed inset-0 z-30 bg-aurora-page-bg/70 backdrop-blur-[2px] md:hidden"
+                onClick={() => setSessionPanelOpen(false)}
+              />
+            )}
+            <div
+              className={cn(
+                'min-h-0 shrink-0',
+                isMobileViewport
+                  ? 'absolute inset-y-0 left-0 z-40 w-[min(88vw,320px)] md:hidden'
+                  : 'relative z-0 hidden md:block',
+              )}
+            >
+              <SessionSidebar
+                className="shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)] md:shadow-none"
+                projects={projects}
+                runs={runs}
+                selectedRunId={selectedRunId}
+                selectedProjectId="workspace"
+                onSelectRun={(runId) => handleSelectRun(runId)}
+                onNewRun={() => void handleNewRun()}
+              />
+            </div>
+          </>
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">

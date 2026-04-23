@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { MarketplacePluginPageContent } from './page.tsx'
+import { PluginDetailContent } from '@/components/marketplace/plugin-detail-content'
 
-test('MarketplacePluginPageContent renders the plugin detail surface for the requested plugin id', () => {
+test('plugin detail surface renders an empty state for a requested plugin id without loaded data', () => {
   const markup = renderToStaticMarkup(
-    React.createElement(MarketplacePluginPageContent, {
+    React.createElement(PluginDetailContent, {
       pluginId: 'plugin-lab@claude-homelab',
     }),
   )

@@ -20,7 +20,7 @@ import {
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
 } from '@/components/gateway/gateway-theme'
-import { REGISTRY_META_KEY } from '@/lib/types/registry'
+import { LAB_REGISTRY_META_KEY, REGISTRY_META_KEY } from '@/lib/types/registry'
 import { RegistryStatusBadge } from './registry-status-badge'
 import type { ServerResponse, ServerListResponse } from '@/lib/types/registry'
 
@@ -42,6 +42,9 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   const [debouncedVersion, setDebouncedVersion] = useState('')
   const [updatedSince, setUpdatedSince] = useState('')
   const [debouncedUpdatedSince, setDebouncedUpdatedSince] = useState('')
+  const [featuredOnly, setFeaturedOnly] = useState(false)
+  const [reviewedOnly, setReviewedOnly] = useState(false)
+  const [recommendedOnly, setRecommendedOnly] = useState(false)
   const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set())
   const sentinelRef = useRef<HTMLDivElement>(null)
   const pagingRef = useRef(false)
@@ -72,10 +75,17 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
   )
 
   const allServers = pages?.flatMap((page) => page.servers) ?? []
+  const visibleServers = allServers.filter((response) => {
+    const labMeta = response._meta?.[LAB_REGISTRY_META_KEY]
+    if (featuredOnly && !labMeta?.curation?.featured) return false
+    if (reviewedOnly && !labMeta?.trust?.reviewed) return false
+    if (recommendedOnly && !labMeta?.ux?.recommended_for_homelab) return false
+    return true
+  })
 
   const lastPage = pages?.[pages.length - 1]
   const hasMore = Boolean(lastPage?.metadata.nextCursor)
-  const totalLoaded = allServers.length
+  const totalLoaded = visibleServers.length
 
   // Sentinel observer — loads next page when the bottom of the list scrolls into view
   useEffect(() => {
@@ -156,6 +166,18 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
           isLoading={isLoading}
         />
 
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant={featuredOnly ? 'default' : 'outline'} size="sm" onClick={() => setFeaturedOnly((v) => !v)}>
+            Featured
+          </Button>
+          <Button type="button" variant={reviewedOnly ? 'default' : 'outline'} size="sm" onClick={() => setReviewedOnly((v) => !v)}>
+            Reviewed
+          </Button>
+          <Button type="button" variant={recommendedOnly ? 'default' : 'outline'} size="sm" onClick={() => setRecommendedOnly((v) => !v)}>
+            Recommended
+          </Button>
+        </div>
+
         {/* Error state */}
         {!isLoading && error && (
           <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-3 p-6 text-center')}>
@@ -190,16 +212,16 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
         )}
 
         {/* Empty state */}
-        {!isLoading && !error && allServers.length === 0 && pages && (
+        {!isLoading && !error && visibleServers.length === 0 && pages && (
           <div className={cn(AURORA_MEDIUM_PANEL, 'p-10 text-center text-sm text-aurora-text-muted')}>
             No servers found{debouncedSearch ? ` for "${debouncedSearch}"` : ''}.
           </div>
         )}
 
         {/* Server list */}
-        {allServers.length > 0 && (
+        {visibleServers.length > 0 && (
           <div className="overflow-hidden rounded-lg border border-aurora-border-strong">
-            {allServers.map((response) => {
+            {visibleServers.map((response) => {
               const server = response.server
               const { remotes, icons } = server
               const isHTTP = remotes.some(r => r.type === 'streamable-http' || r.type === 'sse')
@@ -212,6 +234,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
               const isExpanded = expandedDescriptions.has(server.name)
               const repoHref = safeHref(server.repository?.url)
               const status = response._meta?.[REGISTRY_META_KEY]?.status ?? 'active'
+              const labMeta = response._meta?.[LAB_REGISTRY_META_KEY]
               const isDeleted = status === 'deleted'
 
               return (
@@ -276,6 +299,21 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                           {isHTTP ? 'HTTP' : 'stdio only'}
                         </span>
                         <RegistryStatusBadge status={status} />
+                        {labMeta?.curation?.featured && (
+                          <span className="rounded-full border border-aurora-accent-primary/30 bg-aurora-accent-primary/10 px-2 py-0.5 text-xs font-medium text-aurora-accent-primary">
+                            Featured
+                          </span>
+                        )}
+                        {labMeta?.trust?.reviewed && (
+                          <span className="rounded-full border border-aurora-success/30 bg-aurora-success/10 px-2 py-0.5 text-xs font-medium text-aurora-success">
+                            Reviewed
+                          </span>
+                        )}
+                        {labMeta?.ux?.recommended_for_homelab && (
+                          <span className="rounded-full border border-aurora-warn/30 bg-aurora-warn/10 px-2 py-0.5 text-xs font-medium text-aurora-warn">
+                            Recommended
+                          </span>
+                        )}
                       </div>
 
                       <p className="mt-1 text-sm text-aurora-text-muted">
@@ -317,10 +355,10 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
 
         {/* Sentinel + inline loading indicator */}
         <div ref={sentinelRef} className="flex h-8 items-center justify-center">
-          {isValidating && allServers.length > 0 && (
+          {isValidating && visibleServers.length > 0 && (
             <p className="text-xs text-aurora-text-muted">Loading more…</p>
           )}
-          {!hasMore && allServers.length > 0 && !isValidating && (
+          {!hasMore && visibleServers.length > 0 && !isValidating && (
             <p className="text-xs text-aurora-text-muted">
               {totalLoaded} server{totalLoaded === 1 ? '' : 's'} loaded
             </p>

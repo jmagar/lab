@@ -336,21 +336,33 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           : `${Math.floor(gateway.status.age_seconds / 86400)}d old`
     : null
 
-  const handleCleanupRuntime = async (aggressive: boolean) => {
+  const handleCleanupRuntime = async (aggressive: boolean, dryRun: boolean) => {
     if (!gateway || gateway.source === 'in_process') return
     const previousAggressive = isAggressiveCleanup
     setIsCleaningRuntime(true)
     setIsAggressiveCleanup(aggressive)
     try {
-      const result = await cleanupGateway(gateway.id, aggressive)
+      const result = await cleanupGateway(gateway.id, aggressive, dryRun)
       setCleanupResult({ gateway, result })
+      const totalMatched =
+        (result.gateway_matched ?? result.gateway_killed) +
+        (result.local_matched ?? result.local_killed) +
+        (result.aggressive_matched ?? result.aggressive_killed)
       const totalKilled =
         result.gateway_killed + result.local_killed + result.aggressive_killed
-      toast.success(
-        aggressive
-          ? `Aggressive runtime cleanup completed. ${totalKilled} processes terminated.`
-          : `Runtime cleanup completed. ${totalKilled} processes terminated.`,
-      )
+      if (dryRun) {
+        toast.success(
+          aggressive
+            ? `Aggressive runtime cleanup preview completed. ${totalMatched} processes matched.`
+            : `Runtime cleanup preview completed. ${totalMatched} processes matched.`,
+        )
+      } else {
+        toast.success(
+          aggressive
+            ? `Aggressive runtime cleanup completed. ${totalKilled} processes terminated.`
+            : `Runtime cleanup completed. ${totalKilled} processes terminated.`,
+        )
+      }
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to clean up runtime'))
     } finally {
@@ -926,7 +938,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleCleanupRuntime(false)}
+                    onClick={() => handleCleanupRuntime(false, false)}
                     disabled={isCleaningRuntime}
                   >
                     {isCleaningRuntime && !isAggressiveCleanup ? (
@@ -939,7 +951,20 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleCleanupRuntime(true)}
+                    onClick={() => handleCleanupRuntime(false, true)}
+                    disabled={isCleaningRuntime}
+                  >
+                    {isCleaningRuntime && !isAggressiveCleanup ? (
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                    ) : (
+                      <Search className="size-4 mr-2" />
+                    )}
+                    Preview cleanup
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupRuntime(true, false)}
                     disabled={isCleaningRuntime}
                   >
                     {isCleaningRuntime && isAggressiveCleanup ? (
@@ -948,6 +973,19 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       <AlertTriangle className="size-4 mr-2" />
                     )}
                     Aggressive cleanup
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupRuntime(true, true)}
+                    disabled={isCleaningRuntime}
+                  >
+                    {isCleaningRuntime && isAggressiveCleanup ? (
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                    ) : (
+                      <Search className="size-4 mr-2" />
+                    )}
+                    Preview aggressive cleanup
                   </Button>
                 </div>
               ) : null}

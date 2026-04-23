@@ -63,6 +63,10 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 | `plugins.list` | List all plugins across marketplaces with installed state | |
 | `plugin.get` | Return a single plugin by `name@marketplace` id | |
 | `plugin.artifacts` | List artifact files shipped with an installed plugin | |
+| `plugin.workspace` | Load or create an app-managed editable workspace mirror for a plugin | |
+| `plugin.save` | Save a file into the plugin workspace mirror | |
+| `plugin.deploy.preview` | Preview changed, skipped, removed, and failed files before deploy | |
+| `plugin.deploy` | Deploy the saved workspace to the local Claude Code target | **yes** |
 | `plugin.install` | Install a plugin via `claude plugin install` | **yes** |
 | `plugin.uninstall` | Uninstall a plugin via `claude plugin uninstall` | **yes** |
 
@@ -70,7 +74,8 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 
 - `sources.add` — pass exactly one of `repo` (`owner/repo` slug) or `url` (git URL). Passing both returns `invalid_param`; passing neither returns `missing_param`.
 - `plugins.list` — optional `marketplace` filter (by id) to scope results.
-- `plugin.get`, `plugin.artifacts`, `plugin.install`, `plugin.uninstall` — require `id` in `name@marketplace` form. Malformed ids return `invalid_param`.
+- `plugin.get`, `plugin.artifacts`, `plugin.workspace`, `plugin.deploy.preview`, `plugin.deploy`, `plugin.install`, `plugin.uninstall` — require `id` in `name@marketplace` form. Malformed ids return `invalid_param`.
+- `plugin.save` — requires `id`, `path`, and `content`. `path` is always relative to the plugin workspace mirror.
 
 ## Return Shapes
 
@@ -128,6 +133,62 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 - skips files larger than 256 KiB
 - caps output at 200 files per plugin
 - returns paths relative to the plugin's install path
+
+### `PluginWorkspace` (from `plugin.workspace`)
+
+```json
+{
+  "pluginId": "aurora-design@jmagar-lab",
+  "workspaceRoot": "/Users/jmagar/.claude/plugins/workspaces/aurora-design-jmagar-lab",
+  "deployTarget": "/Users/jmagar/.claude/skills/aurora-design",
+  "hasDirtyFiles": false,
+  "files": [
+    {
+      "path": "SKILL.md",
+      "lang": "markdown",
+      "content": "---\nname: aurora-design\n..."
+    }
+  ]
+}
+```
+
+The workspace mirror is created on first load from the marketplace source tree and preserved separately from the installed Claude Code target.
+
+### `SaveResult` (from `plugin.save`)
+
+```json
+{
+  "pluginId": "aurora-design@jmagar-lab",
+  "path": "SKILL.md",
+  "savedAt": "2026-04-23T03:11:29.000Z"
+}
+```
+
+### `DeployPreviewResult` (from `plugin.deploy.preview`)
+
+```json
+{
+  "pluginId": "aurora-design@jmagar-lab",
+  "targetPath": "/Users/jmagar/.claude/skills/aurora-design",
+  "changed": ["SKILL.md"],
+  "skipped": [],
+  "removed": ["old.txt"],
+  "failed": []
+}
+```
+
+### `DeployResult` (from `plugin.deploy`)
+
+```json
+{
+  "pluginId": "aurora-design@jmagar-lab",
+  "targetPath": "/Users/jmagar/.claude/skills/aurora-design",
+  "changed": ["SKILL.md"],
+  "skipped": [],
+  "removed": ["old.txt"],
+  "failed": []
+}
+```
 
 ### Shell wrappers (`sources.add`, `plugin.install`, `plugin.uninstall`)
 
@@ -215,7 +276,9 @@ The gateway admin UI at `/marketplace` consumes the HTTP API and presents:
 - the nine (or however many are configured) marketplaces as cards with owner, plugin count, and description
 - every plugin across every marketplace with installed badges
 - an "Add marketplace" flow that calls `sources.add`
-- install / uninstall buttons gated behind a shared `ConfirmDialog` (Radix `AlertDialog`) that renders destructive styling for uninstall
+- a dedicated plugin detail route at `/marketplace/plugin?id=<pluginId>`
+- an editable `Files` tab backed by a workspace mirror, explicit `Save`, deploy preview, and explicit `Deploy`
+- install / uninstall buttons gated behind the shared destructive confirmation flow
 
 The frontend never talks to `~/.claude/` directly — every read and write goes through `/v1/marketplace`.
 

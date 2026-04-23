@@ -3,7 +3,10 @@ import { confirmGatewayParams } from './gateway-request'
 import { isStandaloneBearerAuthMode } from '../auth/auth-mode.ts'
 import { RegistryApiError, normalizeServerJSON } from '@/lib/types/registry'
 import type {
+  LabRegistryMetadata,
   ListServersParams,
+  RegistryLocalMetaDeleteResponse,
+  RegistryLocalMetaResponse,
   ServerListResponse,
   ServerResponse,
   ValidationResult,
@@ -13,7 +16,7 @@ import type { Gateway } from '@/lib/types/gateway'
 
 type RawServerResponse = Omit<ServerResponse, 'server'> & { server: ServerJSON }
 type RawServerListResponse = Omit<ServerListResponse, 'servers'> & { servers: RawServerResponse[] }
-type RestServerListRaw = { servers: ServerJSON[]; next_cursor: string | null }
+type RestServerListRaw = { servers: RawServerResponse[]; next_cursor: string | null }
 
 function normalizeResponse(raw: RawServerResponse): ServerResponse {
   return { ...raw, server: normalizeServerJSON(raw.server) }
@@ -88,7 +91,7 @@ export async function listServers(
   }
 
   const raw = await (response.json() as Promise<RestServerListRaw>)
-  const servers: ServerResponse[] = raw.servers.map((s) => ({ server: normalizeServerJSON(s), _meta: null }))
+  const servers: ServerResponse[] = raw.servers.map(normalizeResponse)
   return { servers, metadata: { count: servers.length, nextCursor: raw.next_cursor } }
 }
 
@@ -113,6 +116,43 @@ export async function validateServer(
   signal?: AbortSignal,
 ): Promise<ValidationResult> {
   return registryAction<ValidationResult>('server.validate', { server_json: serverJson }, signal)
+}
+
+export async function getServerLocalMetadata(
+  name: string,
+  version?: string,
+  signal?: AbortSignal,
+): Promise<RegistryLocalMetaResponse> {
+  return registryAction<RegistryLocalMetaResponse>(
+    'server.meta.get',
+    { name, version },
+    signal,
+  )
+}
+
+export async function setServerLocalMetadata(
+  name: string,
+  metadata: LabRegistryMetadata,
+  version?: string,
+  signal?: AbortSignal,
+): Promise<RegistryLocalMetaResponse> {
+  return registryAction<RegistryLocalMetaResponse>(
+    'server.meta.set',
+    { name, version, metadata },
+    signal,
+  )
+}
+
+export async function deleteServerLocalMetadata(
+  name: string,
+  version?: string,
+  signal?: AbortSignal,
+): Promise<RegistryLocalMetaDeleteResponse> {
+  return registryAction<RegistryLocalMetaDeleteResponse>(
+    'server.meta.delete',
+    { name, version },
+    signal,
+  )
 }
 
 export interface InstallServerParams {

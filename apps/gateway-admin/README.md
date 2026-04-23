@@ -43,6 +43,20 @@ NEXT_PUBLIC_API_TOKEN=your-local-dev-token \
 pnpm dev
 ```
 
+When the frontend and Rust backend run on different origins during local development, the backend must allow the frontend origin through CORS:
+
+```bash
+LAB_MCP_HTTP_TOKEN=your-local-dev-token \
+LAB_CORS_ORIGINS=http://127.0.0.1:3101 \
+cargo run --bin lab -- serve --host 0.0.0.0 --port 8765
+```
+
+```bash
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8765/v1 \
+NEXT_PUBLIC_API_TOKEN=your-local-dev-token \
+pnpm dev --hostname 127.0.0.1 --port 3101
+```
+
 ## Marketplace Editing Workflow
 
 Marketplace package files are edited through the shared CodeMirror surface in the UI.
@@ -50,6 +64,8 @@ Marketplace package files are edited through the shared CodeMirror surface in th
 - `Save` writes the current file into an app-managed workspace mirror
 - `Deploy` is explicit and syncs the saved workspace into the local Claude Code target
 - save and deploy are intentionally separate so draft iteration does not immediately affect the installed Claude Code files
+- plugin details use the dedicated route `/marketplace/plugin?id=<pluginId>` rather than an in-page modal
+- the plugin `Files` tab supports deploy preview before the explicit deploy step
 
 ## Static Export
 

@@ -21,19 +21,13 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     let elapsed_ms = start.elapsed().as_millis();
 
     match &result {
-        Ok(_) => tracing::info!(
-            surface = "mcp",
-            service = "marketplace",
-            action,
-            elapsed_ms,
-            "dispatch ok"
-        ),
+        Ok(_) => tracing::info!(service = "marketplace", action, elapsed_ms, "dispatch ok"),
         Err(err) => {
             let k = err.kind();
             if err.is_internal() {
-                tracing::error!(surface = "mcp", service = "marketplace", action, elapsed_ms, kind = k, "dispatch error");
+                tracing::error!(service = "marketplace", action, elapsed_ms, kind = k, "dispatch error");
             } else {
-                tracing::warn!(surface = "mcp", service = "marketplace", action, elapsed_ms, kind = k, "dispatch error");
+                tracing::warn!(service = "marketplace", action, elapsed_ms, kind = k, "dispatch error");
             }
         }
     }

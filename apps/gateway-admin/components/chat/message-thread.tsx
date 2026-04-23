@@ -38,7 +38,7 @@ export function MessageThread({ run, messages }: MessageThreadProps) {
 
   return (
     <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-      <div className="mx-auto flex max-w-[820px] flex-col gap-5 px-6 py-6">
+      <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}

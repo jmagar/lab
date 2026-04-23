@@ -404,7 +404,7 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "gateway.mcp.cleanup",
-        description: "Kill running processes associated with one upstream MCP server",
+        description: "Kill or preview running processes associated with one upstream MCP server",
         destructive: true,
         returns: "GatewayCleanupView",
         params: &[
@@ -414,6 +414,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "boolean",
                 required: false,
                 description: "When true, use broader host-wide process matching during cleanup",
+            },
+            ParamSpec {
+                name: "dry_run",
+                ty: "boolean",
+                required: false,
+                description: "When true, preview cleanup matches without killing anything",
             },
         ],
     },
