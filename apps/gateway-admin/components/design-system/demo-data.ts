@@ -23,25 +23,25 @@ export const auroraColorTokens = [
     label: 'Aurora accent',
     value: '#29b6f6',
     className: 'bg-aurora-accent-primary',
-    textClassName: 'text-[#06253a]',
+    textClassName: 'text-aurora-page-bg',
   },
   {
     label: 'Aurora warn',
     value: '#c6a36b',
     className: 'bg-aurora-warn',
-    textClassName: 'text-[#2f2110]',
+    textClassName: 'text-aurora-page-bg',
   },
   {
     label: 'Aurora error',
     value: '#c78490',
     className: 'bg-aurora-error',
-    textClassName: 'text-[#311319]',
+    textClassName: 'text-aurora-page-bg',
   },
   {
     label: 'Aurora success',
     value: '#7dd3c7',
     className: 'bg-aurora-success',
-    textClassName: 'text-[#08242d]',
+    textClassName: 'text-aurora-page-bg',
   },
 ] as const
 
@@ -91,9 +91,9 @@ export const spacingScale = [
 ] as const
 
 export const radiusScale = [
-  { label: 'Radius 1', className: 'rounded-md', value: '0.625rem' },
-  { label: 'Radius 2', className: 'rounded-xl', value: '0.875rem' },
-  { label: 'Radius 3', className: 'rounded-[1.4rem]', value: '1.4rem' },
+  { label: 'Radius 1', className: 'rounded-aurora-1', value: '14px' },
+  { label: 'Radius 2', className: 'rounded-aurora-2', value: '18px' },
+  { label: 'Radius 3', className: 'rounded-aurora-3', value: '22px' },
 ] as const
 
 export const elevationTiers = [

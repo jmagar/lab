@@ -77,7 +77,7 @@ export function DataDisplaySection() {
             {metricCards.map((card) => (
               <article key={card.label} className={cn(AURORA_MEDIUM_PANEL, 'px-4 py-4')}>
                 <p className={AURORA_MUTED_LABEL}>{card.label}</p>
-                <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-3 text-3xl font-semibold text-aurora-text-primary')}>
+                <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-3 text-aurora-text-primary')}>
                   {card.value}
                 </p>
                 <p className="mt-2 text-sm text-aurora-text-muted">{card.detail}</p>
@@ -132,7 +132,7 @@ export function DataDisplaySection() {
               {keyValueBlocks.map((item) => (
                 <div
                   key={item.label}
-                  className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-[0.95rem] border border-aurora-border-strong bg-aurora-control-surface px-3 py-3"
+                  className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-3 py-3"
                 >
                   <span className="text-sm text-aurora-text-muted">{item.label}</span>
                   <span className="min-w-0 break-words text-sm font-medium text-aurora-text-primary">

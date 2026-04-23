@@ -121,7 +121,7 @@ Rules:
 
 - when omitted, the local machine resolves itself as `master`
 - non-master devices use this hostname plus `mcp.port` to reach `http://<master>:<port>`
-- the device runtime uses this for fleet hello, metadata upload, log upload, and master-routed CLI commands such as `lab device list`
+- the device runtime uses this for websocket fleet sessions, metadata/status/log delivery, and master-routed CLI commands such as `lab device list`
 
 ### `[web]`
 
@@ -298,7 +298,9 @@ Environment variables override `[auth]` values field-by-field.
 
 ## Device Runtime Auth
 
-If the master protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, non-master device runtime traffic and master-routed `lab device` / `lab logs` commands reuse that bearer token automatically.
+If the master protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, master-routed `lab device` / `lab logs` commands reuse that bearer token automatically.
+
+Fleet websocket sessions are separate from that bearer auth path. Device-to-master delivery is admitted through the enrollment store using the device token presented during websocket `initialize`.
 
 There is not a separate `[device]` auth block in this implementation.
 

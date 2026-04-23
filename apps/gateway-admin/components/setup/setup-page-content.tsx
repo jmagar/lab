@@ -44,10 +44,10 @@ export function SetupPageContent() {
                 </Button>
               </div>
 
-              <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+              <div className="space-y-3 rounded-lg border bg-aurora-control-surface/20 p-4">
                 <div>
                   <p className="text-sm font-medium">Targeted scan</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-aurora-text-muted">
                     Use a local path or SSH target like <code>squirts:/mnt/appdata</code>.
                   </p>
                 </div>

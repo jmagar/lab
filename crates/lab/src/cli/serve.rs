@@ -18,6 +18,7 @@ use tokio::sync::mpsc;
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
 use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::device::enrollment::store::EnrollmentStore;
 use crate::device::runtime::DeviceRuntime;
 use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::SharedServiceClients;
@@ -137,8 +138,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         master_host = %resolved_runtime.master_host,
         "device runtime resolved"
     );
-    let device_store = Arc::new(DeviceFleetStore::default());
     let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
+    let device_store = Arc::new(DeviceFleetStore::default());
+    let enrollment_store = Arc::new(
+        EnrollmentStore::open(device_runtime.home_dir().join(".lab/device-enrollments.json"))
+            .await
+            .context("open device enrollment store")?,
+    );
     let device_role = device_runtime.role();
 
     let stdio_mode = should_run_stdio(transport, args.command.as_ref());
@@ -146,6 +152,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let bearer_token = http_token();
     let auth_config =
         resolve_auth(config.auth.as_ref()).context("invalid HTTP auth configuration")?;
+    // SECURITY: Only log metadata — never resolved secret values.
+    // Safe fields: enum names, booleans, counts. Forbidden: URL strings, token values, key material.
     tracing::info!(
         subsystem = "api_server",
         phase = "auth.config",
@@ -282,7 +290,79 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let web_ui_auth_disabled = resolve_web_ui_auth_disabled(&config.web)?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
     state = state.with_device_store(Arc::clone(&device_store));
+    state = state.with_enrollment_store(Arc::clone(&enrollment_store));
     state = state.with_log_system(logs_system);
+    #[cfg(feature = "mcpregistry")]
+    let _registry_sync_keepalive = {
+        let db_path = crate::config::registry_db_path();
+        match crate::dispatch::mcpregistry::store::RegistryStore::open(&db_path).await {
+            Ok(store) => {
+                let store = Arc::new(store);
+                state = state.with_registry_store(Arc::clone(&store));
+                let sync_store = Arc::clone(&store);
+                let sync_client = match crate::dispatch::mcpregistry::client::require_client() {
+                    Ok(c) => Some(c),
+                    Err(e) => {
+                        tracing::warn!(
+                            service = "mcpregistry",
+                            event = "sync.client.unavailable",
+                            error = %e,
+                            "mcpregistry client unavailable; hourly sync disabled"
+                        );
+                        None
+                    }
+                };
+                Some(tokio::spawn(async move {
+                    // Fire immediately at startup — do not wait for the first interval tick.
+                    if let Some(ref client) = sync_client {
+                        if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
+                            &sync_store, client, false,
+                        ).await {
+                            tracing::warn!(
+                                service = "mcpregistry",
+                                event = "sync.failed",
+                                error = %e,
+                                "initial sync failed; will retry next hour"
+                            );
+                        }
+                    }
+                    let mut interval =
+                        tokio::time::interval(Duration::from_secs(3600));
+                    // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                    // Consume the immediate tick so the first loop iteration is at T+1h.
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        if let Some(ref client) = sync_client {
+                            if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
+                                &sync_store, client, false,
+                            ).await {
+                                tracing::warn!(
+                                    service = "mcpregistry",
+                                    event = "sync.failed",
+                                    error = %e,
+                                    "hourly sync failed; will retry next hour"
+                                );
+                            }
+                        }
+                    }
+                }))
+            }
+            Err(e) => {
+                tracing::warn!(
+                    service = "mcpregistry",
+                    event = "store.open.failed",
+                    error = %e,
+                    "registry store unavailable; /v0.1 will return 503"
+                );
+                None
+            }
+        }
+    };
+    // _registry_sync_keepalive: Option<JoinHandle> held in scope until server exits.
+    // The leading _ prevents "unused variable" warning but does NOT drop the handle —
+    // only `let _ = ...` (without the name) would drop immediately.
     state = state.with_device_role(device_role);
     if let Some(web_assets_dir) = resolve_web_assets_dir(&config.web) {
         tracing::info!(
@@ -313,14 +393,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
 
     let startup_runtime = device_runtime.clone();
     tokio::spawn(async move {
-        if let Err(error) = startup_runtime.send_initial_hello().await {
-            tracing::warn!(error = %error, "initial device hello failed");
-        }
         if let Err(error) = startup_runtime.upload_initial_metadata().await {
             tracing::warn!(error = %error, "initial device metadata upload failed");
         }
-        if let Err(error) = startup_runtime.collect_and_flush_bootstrap_logs().await {
-            tracing::warn!(error = %error, "initial device log flush failed");
+        if let Err(error) = startup_runtime.collect_and_queue_bootstrap_logs().await {
+            tracing::warn!(error = %error, "initial device bootstrap log queueing failed");
+        }
+        if let Err(error) = startup_runtime.spawn_ws_flush_loop().await {
+            tracing::warn!(error = %error, "device ws flush loop failed to start");
         }
     });
 
@@ -553,20 +633,6 @@ async fn run_http(
     let web_assets_enabled = state.web_assets_dir.is_some();
     let bearer_token_configured = bearer_token.is_some();
     tracing::info!(
-        subsystem = "web_server",
-        phase = if web_assets_enabled { "mount.start" } else { "disabled" },
-        bind_host = %host,
-        bind_port = port,
-        "web server startup state resolved"
-    );
-    tracing::info!(
-        subsystem = "mcp_server",
-        phase = if mount_http_mcp { "mount.start" } else { "disabled" },
-        bind_host = %host,
-        bind_port = port,
-        "http mcp server startup state resolved"
-    );
-    tracing::info!(
         subsystem = "api_server",
         phase = "router.build.start",
         bind_host = %host,
@@ -600,9 +666,7 @@ async fn run_http(
         addr,
         "binding http listener"
     );
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("failed to bind HTTP listener on `{addr}`"))?;
+    let listener = bind_or_reclaim(&addr, port).await?;
     tracing::info!(
         subsystem = "api_server",
         phase = "ready",
@@ -616,7 +680,6 @@ async fn run_http(
         phase = if web_assets_enabled { "ready" } else { "disabled" },
         addr,
         route = "/",
-        "web server ready state resolved"
     );
     tracing::info!(
         subsystem = "mcp_server",
@@ -624,7 +687,6 @@ async fn run_http(
         addr,
         route = "/mcp",
         transport = "http",
-        "http mcp server ready state resolved"
     );
     tracing::info!(
         subsystem = "startup",
@@ -632,8 +694,7 @@ async fn run_http(
         addr,
         web_server_enabled = web_assets_enabled,
         mcp_server_enabled = mount_http_mcp,
-        http_mcp_enabled = mount_http_mcp,
-        "http, web, and mcp services ready"
+        "lab serve ready"
     );
     axum::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)
@@ -674,24 +735,18 @@ async fn run_stdio(
 ) -> Result<ExitCode> {
     tracing::info!(
         subsystem = "mcp_server",
-        phase = "startup.start",
+        phase = "start",
         transport = "stdio",
         services = registry.services().len(),
         device_role = ?device_role,
         "starting stdio mcp server"
     );
     tracing::info!(
-        subsystem = "mcp_server",
+        subsystem = "startup",
         phase = "ready",
         transport = "stdio",
         services = registry.services().len(),
-        "stdio mcp server ready"
-    );
-    tracing::info!(
-        subsystem = "startup",
-        phase = "ready",
-        services = registry.services().len(),
-        "stdio mcp server ready"
+        "lab serve ready"
     );
     let server = LabMcpServer {
         registry,
@@ -841,6 +896,117 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
         }
     }
     hosts
+}
+
+/// Bind a TCP listener on `addr`. If the port is already in use and the
+/// holding process is `lab` (Linux only), send SIGTERM and retry.
+async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListener> {
+    use std::io::ErrorKind;
+    match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => Ok(l),
+        Err(e) if e.kind() == ErrorKind::AddrInUse => {
+            #[cfg(target_os = "linux")]
+            {
+                if reclaim_port_if_lab(port) {
+                    for attempt in 1u8..=5 {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        match tokio::net::TcpListener::bind(addr).await {
+                            Ok(l) => {
+                                tracing::info!(
+                                    subsystem = "api_server",
+                                    phase = "listener.reclaimed",
+                                    addr,
+                                    attempt,
+                                    "port reclaimed after killing stale lab process"
+                                );
+                                return Ok(l);
+                            }
+                            Err(e2) if e2.kind() == ErrorKind::AddrInUse => continue,
+                            Err(e2) => return Err(anyhow::Error::from(e2)
+                                .context(format!("failed to bind HTTP listener on `{addr}`"))),
+                        }
+                    }
+                }
+            }
+            Err(anyhow::Error::from(e)
+                .context(format!("failed to bind HTTP listener on `{addr}`")))
+        }
+        Err(e) => Err(anyhow::Error::from(e)
+            .context(format!("failed to bind HTTP listener on `{addr}`"))),
+    }
+}
+
+/// On Linux, find the PID holding `port`, confirm it's a `lab` process, and
+/// send SIGTERM. Returns `true` if a signal was sent.
+#[cfg(target_os = "linux")]
+fn reclaim_port_if_lab(port: u16) -> bool {
+    let Some(pid) = find_pid_for_port(port) else {
+        return false;
+    };
+    let comm_path = format!("/proc/{pid}/comm");
+    let comm = match std::fs::read_to_string(&comm_path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let comm = comm.trim();
+    if !comm.contains("lab") {
+        tracing::warn!(
+            subsystem = "api_server",
+            phase = "listener.port_conflict",
+            port,
+            pid,
+            process = comm,
+            "port in use by non-lab process — not killing"
+        );
+        return false;
+    }
+    tracing::warn!(
+        subsystem = "api_server",
+        phase = "listener.reclaim",
+        port,
+        pid,
+        process = comm,
+        "port held by stale lab process — sending SIGTERM"
+    );
+    let status = std::process::Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status();
+    matches!(status, Ok(s) if s.success())
+}
+
+/// Walk `/proc/net/tcp` (IPv4) to find the inode for a listening port, then
+/// resolve it to a PID by scanning `/proc/*/fd/`.
+#[cfg(target_os = "linux")]
+fn find_pid_for_port(port: u16) -> Option<u32> {
+    let hex_port = format!("{port:04X}");
+    let tcp = std::fs::read_to_string("/proc/net/tcp").ok()?;
+    let inode = tcp.lines().skip(1).find_map(|line| {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        let local = cols.get(1)?;
+        let inode_col = cols.get(9)?;
+        let port_part = local.split(':').nth(1)?;
+        if port_part.eq_ignore_ascii_case(&hex_port) {
+            inode_col.parse::<u64>().ok()
+        } else {
+            None
+        }
+    })?;
+
+    let target = format!("socket:[{inode}]");
+    for entry in std::fs::read_dir("/proc").ok()?.flatten() {
+        let pid_str = entry.file_name();
+        let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else { continue };
+        let fd_dir = format!("/proc/{pid}/fd");
+        let Ok(fds) = std::fs::read_dir(&fd_dir) else { continue };
+        for fd in fds.flatten() {
+            if let Ok(link) = std::fs::read_link(fd.path()) {
+                if link.to_string_lossy() == target {
+                    return Some(pid);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

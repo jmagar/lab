@@ -1,3 +1,10 @@
+import {
+  AURORA_DISPLAY_NUMBER,
+  AURORA_MEDIUM_PANEL,
+  AURORA_MUTED_LABEL,
+} from '@/components/aurora/tokens'
+import { cn } from '@/lib/utils'
+
 function StatCard({
   label,
   value,
@@ -8,10 +15,10 @@ function StatCard({
   description: string
 }) {
   return (
-    <div className="rounded-xl border bg-card/80 p-4 shadow-sm shadow-black/5">
-      <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-3xl font-semibold">{value}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
+      <p className={AURORA_MUTED_LABEL}>{label}</p>
+      <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{value}</p>
+      <p className="mt-1 text-sm text-aurora-text-muted">{description}</p>
     </div>
   )
 }

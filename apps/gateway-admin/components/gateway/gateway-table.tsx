@@ -54,25 +54,27 @@ import {
 
 interface GatewayTableProps {
   gateways: Gateway[]
+  density: 'comfortable' | 'condensed'
   onEdit: (gateway: Gateway) => void
   onTest: (gateway: Gateway) => void
   onReload: (gateway: Gateway) => void
   onDelete: (gateway: Gateway) => void
 }
 
-export function GatewayTable({ 
-  gateways, 
-  onEdit, 
-  onTest, 
-  onReload, 
-  onDelete 
+export function GatewayTable({
+  gateways,
+  density,
+  onEdit,
+  onTest,
+  onReload,
+  onDelete,
 }: GatewayTableProps) {
   const [loadingAction, setLoadingAction] = useState<{ id: string; action: string } | null>(null)
 
   const handleAction = async (
-    gateway: Gateway, 
+    gateway: Gateway,
     action: 'test' | 'reload',
-    handler: (gateway: Gateway) => void | Promise<void>
+    handler: (gateway: Gateway) => void | Promise<void>,
   ) => {
     setLoadingAction({ id: gateway.id, action })
     try {
@@ -82,8 +84,7 @@ export function GatewayTable({
     }
   }
 
-  const isLoading = (id: string, action: string) => 
-    loadingAction?.id === id && loadingAction?.action === action
+  const isLoading = (id: string, action: string) => loadingAction?.id === id && loadingAction?.action === action
 
   return (
     <>
@@ -92,13 +93,16 @@ export function GatewayTable({
           const supportsProbeControls = gateway.source !== 'lab_service'
           const isDisabled = gateway.source === 'lab_service' && !(gateway.enabled ?? true)
           const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
+          const endpointPreview = buildGatewayEndpointPreview(gateway)
+          const launcherState = isDisabled ? 'deactivated' : 'active'
 
           return (
             <article
               key={gateway.id}
               className={cn(
                 isDisabled ? AURORA_GATEWAY_MUTED_CARD : AURORA_GATEWAY_CARD,
-                'p-4 text-aurora-text-primary',
+                density === 'condensed' ? 'p-3' : 'p-4',
+                'text-aurora-text-primary',
                 isDisabled && 'text-aurora-text-muted',
               )}
             >
@@ -107,30 +111,34 @@ export function GatewayTable({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className={cn('size-2 rounded-full', statusTone.dot)} aria-label={statusTone.label} title={statusTone.label} />
                         <Link
                           href={gatewayDetailHref(gateway.id)}
                           className={cn(
                             AURORA_DISPLAY_2,
-                            'min-w-0 max-w-full break-words text-base font-semibold text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
+                            density === 'condensed' ? 'text-[15px]' : 'text-base',
+                            'min-w-0 max-w-full break-words font-semibold text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
                           )}
                         >
                           {gateway.name}
                         </Link>
-                        {isDisabled && (
+                        {isDisabled ? (
                           <Badge className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] text-[10px] uppercase tracking-[0.16em] text-aurora-text-muted">
                             Disabled
                           </Badge>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={cn('size-2 rounded-full', statusTone.dot)}
-                          aria-label={statusTone.label}
-                          title={statusTone.label}
-                        />
+                        ) : null}
                         <TransportBadge transport={gateway.transport} />
                         <WarningsPill warnings={gateway.warnings} />
+                        {density === 'condensed' ? (
+                          <span className="min-w-0 truncate text-[13px] text-aurora-text-muted">{endpointPreview} • {launcherState}</span>
+                        ) : null}
                       </div>
+                      {density === 'comfortable' ? (
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-aurora-text-muted">
+                          <span className="truncate" title={endpointPreview}>{endpointPreview}</span>
+                          <span>{launcherState}</span>
+                        </div>
+                      ) : null}
                     </div>
 
                     <DropdownMenu>
@@ -155,7 +163,7 @@ export function GatewayTable({
                           <Pencil className="size-4 mr-2" />
                           Edit gateway
                         </DropdownMenuItem>
-                        {supportsProbeControls && (
+                        {supportsProbeControls ? (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => onTest(gateway)}>
@@ -167,12 +175,9 @@ export function GatewayTable({
                               Reload gateway
                             </DropdownMenuItem>
                           </>
-                        )}
+                        ) : null}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => onDelete(gateway)}
-                          className="text-destructive focus:text-destructive"
-                        >
+                        <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
                           <Trash2 className="size-4 mr-2" />
                           {gateway.source === 'lab_service' ? 'Disable gateway' : 'Remove gateway'}
                         </DropdownMenuItem>
@@ -181,32 +186,13 @@ export function GatewayTable({
                   </div>
 
                   <div className={cn(AURORA_GATEWAY_SUBTLE_SURFACE, 'flex flex-wrap items-center gap-2 p-3')}>
-                    <SurfaceRatio
-                      icon={Wrench}
-                      label="Tools"
-                      exposed={gateway.status.exposed_tool_count}
-                      total={gateway.status.discovered_tool_count}
-                    />
-                    <SurfaceRatio
-                      icon={FileText}
-                      label="Resources"
-                      exposed={gateway.status.exposed_resource_count}
-                      total={gateway.status.discovered_resource_count}
-                    />
-                    <SurfaceRatio
-                      icon={MessageSquare}
-                      label="Prompts"
-                      exposed={gateway.status.exposed_prompt_count}
-                      total={gateway.status.discovered_prompt_count}
-                    />
+                    <SurfaceRatio icon={Wrench} label="Tools" exposed={gateway.status.exposed_tool_count} total={gateway.status.discovered_tool_count} />
+                    <SurfaceRatio icon={FileText} label="Resources" exposed={gateway.status.exposed_resource_count} total={gateway.status.discovered_resource_count} />
+                    <SurfaceRatio icon={MessageSquare} label="Prompts" exposed={gateway.status.exposed_prompt_count} total={gateway.status.discovered_prompt_count} />
                   </div>
 
-                  {gateway.status.last_error && (
-                    <p className="line-clamp-2 break-words text-xs text-aurora-warn">{gateway.status.last_error}</p>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {supportsProbeControls && (
+                  {density === 'comfortable' && supportsProbeControls ? (
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -217,8 +203,6 @@ export function GatewayTable({
                         <Play className={`size-3.5 mr-1.5 ${isLoading(gateway.id, 'test') ? 'animate-pulse' : ''}`} />
                         Test
                       </Button>
-                    )}
-                    {supportsProbeControls && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -229,18 +213,8 @@ export function GatewayTable({
                         <RefreshCw className={`size-3.5 mr-1.5 ${isLoading(gateway.id, 'reload') ? 'animate-spin' : ''}`} />
                         Reload
                       </Button>
-                    )}
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className={cn(gatewayActionTone('accent'), 'h-9 px-3 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                    >
-                      <Link href={gatewayDetailHref(gateway.id)}>
-                        View
-                      </Link>
-                    </Button>
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </article>
@@ -263,111 +237,83 @@ export function GatewayTable({
               const endpointPreview = buildGatewayEndpointPreview(gateway)
               const isDisabled = gateway.source === 'lab_service' && !(gateway.enabled ?? true)
               const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
+              const launcherState = isDisabled ? 'deactivated' : 'active'
 
               return (
-                <TableRow
-                  key={gateway.id}
-                  className={cn('group', isDisabled ? AURORA_GATEWAY_DISABLED_ROW : AURORA_GATEWAY_ROW)}
-                >
-                  <TableCell className="w-[62%] px-6 py-4 align-top whitespace-normal">
+                <TableRow key={gateway.id} className={cn('group', isDisabled ? AURORA_GATEWAY_DISABLED_ROW : AURORA_GATEWAY_ROW)}>
+                  <TableCell className={cn('w-[62%] px-6 align-top whitespace-normal', density === 'condensed' ? 'py-3' : 'py-4')}>
                     <div className="min-w-0 space-y-1">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span
-                          className={cn('size-2 rounded-full', statusTone.dot)}
-                          aria-label={statusTone.label}
-                          title={statusTone.label}
-                        />
+                        <span className={cn('size-2 rounded-full', statusTone.dot)} aria-label={statusTone.label} title={statusTone.label} />
                         <Link
                           href={gatewayDetailHref(gateway.id)}
                           className={cn(
                             AURORA_DISPLAY_2,
-                            'min-w-0 max-w-full break-words font-medium text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
+                            density === 'condensed' ? 'text-[15px]' : 'font-medium',
+                            'min-w-0 max-w-full break-words text-aurora-text-primary hover:text-aurora-accent-strong hover:underline underline-offset-4',
                           )}
                         >
                           {gateway.name}
                         </Link>
-                        {isDisabled && (
+                        {isDisabled ? (
                           <Badge className="rounded-full border border-aurora-border-strong bg-[rgba(7,17,26,0.48)] text-[10px] uppercase tracking-[0.16em] text-aurora-text-muted">
                             Disabled
                           </Badge>
-                        )}
+                        ) : null}
                         <TransportBadge transport={gateway.transport} />
                         <WarningsPill warnings={gateway.warnings} />
+                        {density === 'condensed' ? (
+                          <span className="min-w-0 truncate text-[13px] text-aurora-text-muted" title={endpointPreview}>
+                            {endpointPreview} • {launcherState}
+                          </span>
+                        ) : null}
                       </div>
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-aurora-text-muted">
-                        <span className="truncate text-aurora-text-muted" title={endpointPreview}>
-                          {endpointPreview}
-                        </span>
-                        <span className="tabular-nums">
-                          {isDisabled ? 'deactivated' : 'active'}
-                        </span>
-                      </div>
-                      {gateway.status.last_error && (
-                        <p className="line-clamp-2 break-words text-xs text-aurora-warn">{gateway.status.last_error}</p>
-                      )}
+                      {density === 'comfortable' ? (
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-aurora-text-muted">
+                          <span className="truncate text-aurora-text-muted" title={endpointPreview}>
+                            {endpointPreview}
+                          </span>
+                          <span className="tabular-nums">{launcherState}</span>
+                        </div>
+                      ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="px-4 py-4 align-top">
+                  <TableCell className={cn('px-4 align-top', density === 'condensed' ? 'py-3' : 'py-4')}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <SurfaceRatio
-                        icon={Wrench}
-                        label="Tools"
-                        exposed={gateway.status.exposed_tool_count}
-                        total={gateway.status.discovered_tool_count}
-                      />
-                      <SurfaceRatio
-                        icon={FileText}
-                        label="Resources"
-                        exposed={gateway.status.exposed_resource_count}
-                        total={gateway.status.discovered_resource_count}
-                      />
-                      <SurfaceRatio
-                        icon={MessageSquare}
-                        label="Prompts"
-                        exposed={gateway.status.exposed_prompt_count}
-                        total={gateway.status.discovered_prompt_count}
-                      />
+                      <SurfaceRatio icon={Wrench} label="Tools" exposed={gateway.status.exposed_tool_count} total={gateway.status.discovered_tool_count} />
+                      <SurfaceRatio icon={FileText} label="Resources" exposed={gateway.status.exposed_resource_count} total={gateway.status.discovered_resource_count} />
+                      <SurfaceRatio icon={MessageSquare} label="Prompts" exposed={gateway.status.exposed_prompt_count} total={gateway.status.discovered_prompt_count} />
                     </div>
                   </TableCell>
-                  <TableCell className="px-6 py-4 text-right">
+                  <TableCell className={cn('px-6 text-right', density === 'condensed' ? 'py-3' : 'py-4')}>
                     <div className="flex items-center justify-end gap-1">
-                      {supportsProbeControls && (
+                      {supportsProbeControls && density === 'comfortable' ? (
                         <Button
                           variant="outline"
                           size="icon"
-                          className={cn(
-                            gatewayActionTone(),
-                            'size-9 opacity-100 transition-opacity hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
-                          )}
+                          className={cn(gatewayActionTone(), 'size-9 opacity-100 transition-opacity hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100')}
                           onClick={() => handleAction(gateway, 'test', onTest)}
                           disabled={isLoading(gateway.id, 'test')}
                         >
                           <Play className={`size-4 ${isLoading(gateway.id, 'test') ? 'animate-pulse' : ''}`} />
                           <span className="sr-only">Test connection</span>
                         </Button>
-                      )}
-                      {supportsProbeControls && (
+                      ) : null}
+                      {supportsProbeControls && density === 'comfortable' ? (
                         <Button
                           variant="outline"
                           size="icon"
-                          className={cn(
-                            gatewayActionTone(),
-                            'size-9 opacity-100 transition-opacity hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100',
-                          )}
+                          className={cn(gatewayActionTone(), 'size-9 opacity-100 transition-opacity hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100')}
                           onClick={() => handleAction(gateway, 'reload', onReload)}
                           disabled={isLoading(gateway.id, 'reload')}
                         >
                           <RefreshCw className={`size-4 ${isLoading(gateway.id, 'reload') ? 'animate-spin' : ''}`} />
                           <span className="sr-only">Reload gateway</span>
                         </Button>
-                      )}
+                      ) : null}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className={cn(gatewayActionTone(), 'size-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-                          >
+                          <Button variant="outline" size="icon" className={cn(gatewayActionTone(), 'size-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
                             <MoreHorizontal className="size-4" />
                             <span className="sr-only">More actions</span>
                           </Button>
@@ -383,7 +329,7 @@ export function GatewayTable({
                             <Pencil className="mr-2 size-4" />
                             Edit gateway
                           </DropdownMenuItem>
-                          {supportsProbeControls && (
+                          {supportsProbeControls ? (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => onTest(gateway)}>
@@ -395,12 +341,9 @@ export function GatewayTable({
                                 Reload gateway
                               </DropdownMenuItem>
                             </>
-                          )}
+                          ) : null}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => onDelete(gateway)}
-                            className="text-destructive focus:text-destructive"
-                          >
+                          <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
                             <Trash2 className="mr-2 size-4" />
                             {gateway.source === 'lab_service' ? 'Disable gateway' : 'Remove gateway'}
                           </DropdownMenuItem>

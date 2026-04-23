@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
  * - `default`: neutral card surface, primary text
  * - `warn`: amber/gold tonal (operational caution)
  * - `error`: muted red tonal (state failure, not action)
+ * - `success`: muted teal tonal (operational success)
  *
  * NOTE: `error` replaces `destructive` for status-display alerts.
  * `destructive` is reserved for action-consequence semantics on Button only.
@@ -21,6 +22,7 @@ const alertVariants = cva(
         default: 'bg-card text-card-foreground border-aurora-border-default',
         warn: 'bg-aurora-warn/10 text-aurora-warn border-aurora-warn/30 *:data-[slot=alert-description]:text-aurora-warn/85',
         error: 'bg-aurora-error/10 text-aurora-error border-aurora-error/30 *:data-[slot=alert-description]:text-aurora-error/85',
+        success: 'bg-aurora-success/10 text-aurora-success border-aurora-success/30 *:data-[slot=alert-description]:text-aurora-success/85',
       },
     },
     defaultVariants: {

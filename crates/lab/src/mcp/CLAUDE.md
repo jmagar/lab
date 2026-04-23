@@ -4,11 +4,11 @@ This directory is the translation layer between `lab-apis` (pure SDK) and the MC
 
 ## One tool per service
 
-Each enabled service registers exactly one MCP tool in `registry.rs`. The tool name matches the service name (`radarr`, `sonarr`, `extract`, ...). Registration is feature-gated:
+Each enabled service registers exactly one MCP tool in `crates/lab/src/registry.rs` (not `mcp/registry.rs`, which is a thin re-export). The tool name matches the service name (`radarr`, `sonarr`, `extract`, ...). Registration uses the `register_service!` macro and is feature-gated:
 
 ```rust
 #[cfg(feature = "radarr")]
-registry.register("radarr", services::radarr::dispatch);
+register_service!(reg, "radarr", radarr);
 ```
 
 ## Dispatch pattern
@@ -69,7 +69,7 @@ Every tool automatically supports `help` and `schema` without the service declar
 
 ## Shared catalog — one builder, three surfaces
 
-`build_catalog()` (in `lab/src/catalog.rs` or similar) is the **single source** feeding:
+`build_catalog()` (in `crates/lab/src/catalog.rs`) is the **single source** feeding:
 
 1. The `lab.help` global MCP tool.
 2. The `lab://catalog` MCP resource.

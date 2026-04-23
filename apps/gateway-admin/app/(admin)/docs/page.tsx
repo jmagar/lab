@@ -223,7 +223,7 @@ export default function DocsPage() {
               {quickStartSteps.map((step, index) => (
                 <li
                   key={step.title}
-                  className="flex gap-3 rounded-[0.95rem] border border-aurora-border-default bg-aurora-control-surface p-4"
+                  className="flex gap-3 rounded-aurora-1 border border-aurora-border-default bg-aurora-control-surface p-4"
                 >
                   <div className="flex size-7 shrink-0 items-center justify-center rounded-full border border-aurora-accent-primary/28 bg-aurora-panel-medium text-[13px] font-semibold text-aurora-accent-primary tabular-nums">
                     {index + 1}
@@ -262,7 +262,7 @@ export default function DocsPage() {
                 return (
                   <div
                     key={card.title}
-                    className="rounded-[0.95rem] border border-aurora-border-default bg-aurora-control-surface p-4"
+                    className="rounded-aurora-1 border border-aurora-border-default bg-aurora-control-surface p-4"
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex size-8 items-center justify-center rounded-lg border border-aurora-border-default bg-aurora-panel-medium text-aurora-accent-primary">
@@ -306,7 +306,7 @@ export default function DocsPage() {
             </Alert>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-[0.95rem] border border-aurora-border-default bg-aurora-control-surface p-4">
+              <div className="rounded-aurora-1 border border-aurora-border-default bg-aurora-control-surface p-4">
                 <p className="text-[14px] font-medium text-aurora-text-primary">
                   Gateway posture
                 </p>
@@ -316,7 +316,7 @@ export default function DocsPage() {
                   {snapshot.warningCount === 1 ? '' : 's'} still visible in the fleet.
                 </p>
               </div>
-              <div className="rounded-[0.95rem] border border-aurora-border-default bg-aurora-control-surface p-4">
+              <div className="rounded-aurora-1 border border-aurora-border-default bg-aurora-control-surface p-4">
                 <p className="text-[14px] font-medium text-aurora-text-primary">
                   Lab-backed onboarding
                 </p>

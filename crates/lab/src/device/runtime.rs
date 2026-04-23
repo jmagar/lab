@@ -1,23 +1,25 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
 use tokio::sync::OnceCell;
 
 use crate::config::{DeviceRole, LabConfig, ResolvedDeviceRuntime};
-use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
+use crate::device::checkin::DeviceMetadataUpload;
 use crate::device::config_scan::discover_ai_cli_configs;
 use crate::device::identity::resolve_runtime_role;
 use crate::device::log_collect::collect_bootstrap_logs;
 use crate::device::log_event::DeviceLogEvent;
 use crate::device::master_client::MasterClient;
 use crate::device::queue::{DeviceOutboundQueue, QueuedEnvelope};
+use crate::device::ws_client::WsClient;
 
 #[derive(Debug, Clone)]
 pub struct DeviceRuntime {
     resolved: ResolvedDeviceRuntime,
     master_client: Option<MasterClient>,
     home_dir: PathBuf,
-    outbound_queue: std::sync::Arc<OnceCell<DeviceOutboundQueue>>,
+    outbound_queue: Arc<OnceCell<DeviceOutboundQueue>>,
 }
 
 impl DeviceRuntime {
@@ -27,7 +29,7 @@ impl DeviceRuntime {
             resolved,
             master_client,
             home_dir: current_home_dir(),
-            outbound_queue: std::sync::Arc::new(OnceCell::new()),
+            outbound_queue: Arc::new(OnceCell::new()),
         }
     }
 
@@ -62,38 +64,19 @@ impl DeviceRuntime {
         Ok(runtime)
     }
 
-    pub async fn send_initial_hello(&self) -> Result<()> {
-        if matches!(self.resolved.role, DeviceRole::Master) {
-            return Ok(());
-        }
-
-        let client = self
-            .master_client
-            .as_ref()
-            .ok_or_else(|| anyhow!("master client is not configured"))?;
-        client
-            .post_hello(&DeviceHello {
-                device_id: self.resolved.local_host.clone(),
-                role: "non-master".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-            })
-            .await
-    }
-
     pub async fn upload_initial_metadata(&self) -> Result<()> {
         if matches!(self.resolved.role, DeviceRole::Master) {
             return Ok(());
         }
 
-        let client = self
-            .master_client
-            .as_ref()
-            .ok_or_else(|| anyhow!("master client is not configured"))?;
         let payload = DeviceMetadataUpload {
             device_id: self.resolved.local_host.clone(),
             discovered_configs: discover_ai_cli_configs(&self.home_dir)?,
         };
-        client.post_metadata(&payload).await
+        let queue = self.outbound_queue().await?;
+        queue
+            .push(QueuedEnvelope::metadata(serde_json::to_value(payload)?))
+            .await
     }
 
     pub async fn queue_syslog_batch(&self, events: Vec<DeviceLogEvent>) -> Result<()> {
@@ -109,7 +92,16 @@ impl DeviceRuntime {
         queue.push(QueuedEnvelope::syslog_batch(payload)).await
     }
 
-    pub async fn flush_queue_once(&self) -> Result<()> {
+    pub async fn collect_and_queue_bootstrap_logs(&self) -> Result<()> {
+        if matches!(self.resolved.role, DeviceRole::Master) {
+            return Ok(());
+        }
+
+        let events = collect_bootstrap_logs(&self.resolved.local_host)?;
+        self.queue_syslog_batch(events).await
+    }
+
+    pub async fn spawn_ws_flush_loop(&self) -> Result<()> {
         if matches!(self.resolved.role, DeviceRole::Master) {
             return Ok(());
         }
@@ -118,50 +110,26 @@ impl DeviceRuntime {
             .master_client
             .as_ref()
             .ok_or_else(|| anyhow!("master client is not configured"))?;
-        let queue = self.outbound_queue().await?;
-        let drained = queue.drain_batch(100).await?;
-        let mut ack_count = 0usize;
-
-        for envelope in drained {
-            let delivery = match envelope.kind.as_str() {
-                "syslog_batch" => client.post_syslog_batch(&envelope.payload).await,
-                "status" => match serde_json::from_value::<DeviceStatus>(envelope.payload)
-                    .context("decode queued status envelope")
-                {
-                    Ok(status) => client.post_status(&status).await,
-                    Err(error) => Err(error),
-                },
-                other => Err(anyhow!("unsupported queued envelope kind `{other}`")),
-            };
-
-            match delivery {
-                Ok(()) => {
-                    ack_count += 1;
-                }
-                Err(error) => {
-                    ack_processed_prefix(&queue, ack_count).await?;
-                    return Err(error);
-                }
-            }
-        }
-
-        ack_processed_prefix(&queue, ack_count).await?;
+        let ws_client = WsClient::new(
+            client.base_url(),
+            self.resolved.local_host.clone(),
+            self.device_token_path(),
+        )?;
+        let queue = Arc::new(self.outbound_queue().await?.clone());
+        tokio::spawn(async move {
+            ws_client.run(queue).await;
+        });
         Ok(())
-    }
-
-    pub async fn collect_and_flush_bootstrap_logs(&self) -> Result<()> {
-        if matches!(self.resolved.role, DeviceRole::Master) {
-            return Ok(());
-        }
-
-        let events = collect_bootstrap_logs(&self.resolved.local_host)?;
-        self.queue_syslog_batch(events).await?;
-        self.flush_queue_once().await
     }
 
     #[must_use]
     pub const fn role(&self) -> DeviceRole {
         self.resolved.role
+    }
+
+    #[must_use]
+    pub fn home_dir(&self) -> &Path {
+        &self.home_dir
     }
 }
 
@@ -185,6 +153,10 @@ impl DeviceRuntime {
         self.home_dir.join(".lab/device-runtime-queue.jsonl")
     }
 
+    fn device_token_path(&self) -> PathBuf {
+        self.home_dir.join(".lab/device-token")
+    }
+
     async fn outbound_queue(&self) -> Result<&DeviceOutboundQueue> {
         self.outbound_queue
             .get_or_try_init(|| async {
@@ -194,15 +166,4 @@ impl DeviceRuntime {
             })
             .await
     }
-}
-
-async fn ack_processed_prefix(queue: &DeviceOutboundQueue, ack_count: usize) -> Result<()> {
-    if ack_count == 0 {
-        return Ok(());
-    }
-
-    queue
-        .ack_drained(ack_count)
-        .await
-        .context("ack delivered device outbound queue entries")
 }

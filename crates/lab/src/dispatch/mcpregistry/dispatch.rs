@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::config;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
-use crate::dispatch::mcpregistry::{catalog::ACTIONS, client, params};
+use crate::dispatch::mcpregistry::{catalog::ACTIONS, client, params, sync};
 
 /// Dispatch using a pre-built client (avoids per-request env reads and client construction).
 pub async fn dispatch_with_client(
@@ -17,6 +17,15 @@ pub async fn dispatch_with_client(
         "config" => Ok(serde_json::json!({ "url": client::resolved_url() })),
         "server.list" => {
             let p = params::list_servers_params(&params_value)?;
+            if let Some(param) = ["sort_by", "order"]
+                .into_iter()
+                .find(|name| params_value.get(*name).is_some())
+            {
+                return Err(ToolError::InvalidParam {
+                    message: "sort_by/order are not supported on the paginated registry surface".to_string(),
+                    param: param.to_string(),
+                });
+            }
             to_json(client.list_servers(p).await?)
         }
         "server.get" => {
@@ -31,7 +40,7 @@ pub async fn dispatch_with_client(
             let server_json: ServerJSON =
                 serde_json::from_value(params_value["server_json"].clone()).map_err(|e| {
                     ToolError::Sdk {
-                        sdk_kind: "invalid_params".to_string(),
+                        sdk_kind: "invalid_param".to_string(),
                         message: format!("invalid server_json: {e}"),
                     }
                 })?;
@@ -58,7 +67,7 @@ pub async fn dispatch_with_client(
                 install_stdio(pkg, &gateway_name, &params_value, &name)?
             } else {
                 return Err(ToolError::Sdk {
-                    sdk_kind: "no_transport".to_string(),
+                    sdk_kind: "invalid_param".to_string(),
                     message: format!(
                         "server '{name}' has no remotes and no packages — cannot install"
                     ),
@@ -90,6 +99,19 @@ pub async fn dispatch_with_client(
                 serde_json::json!({ "name": gateway_name, "confirm": true }),
             )
             .await
+        }
+        "sync" => {
+            // Open the registry store from config path (no AppState available in MCP/CLI path).
+            let db_path = config::registry_db_path();
+            let store =
+                crate::dispatch::mcpregistry::store::RegistryStore::open(&db_path)
+                    .await
+                    .map_err(|e| {
+                        ToolError::internal_message(format!("registry store open: {e}"))
+                    })?;
+
+            let count = sync::perform_sync(&store, client, true).await?;
+            Ok(serde_json::json!({ "synced": count }))
         }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action '{unknown}'"),
@@ -158,7 +180,7 @@ fn install_stdio(
 ) -> Result<Value, ToolError> {
     // runtimeHint is required for stdio packages.
     let hint = pkg.runtime_hint.as_deref().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "no_runtime_hint".to_string(),
+        sdk_kind: "invalid_param".to_string(),
         message: format!(
             "server '{server_name}' package has no runtimeHint — cannot build stdio command"
         ),

@@ -31,6 +31,7 @@ import { GatewayFormDialog } from './gateway-form-dialog'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
 import { TestResultPanel } from './test-result-panel'
 import { useGateway, useGatewayMutations } from '@/lib/hooks/use-gateways'
+import { AURORA_DISPLAY_1 } from '@/components/aurora/tokens'
 import type { Gateway, CreateGatewayInput, UpdateGatewayInput } from '@/lib/types/gateway'
 import {
   applyBulkExposureToDraft,
@@ -38,7 +39,7 @@ import {
   createExposureDraftFromTools,
   getDraftExposureSummary,
 } from '@/lib/api/tool-exposure-draft'
-import { getErrorMessage } from '@/lib/utils'
+import { cn, getErrorMessage } from '@/lib/utils'
 import { buildGatewayClientConfig } from '@/lib/api/gateway-client-config'
 
 interface GatewayDetailContentProps {
@@ -104,10 +105,10 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           ]}
         />
         <div className="flex-1 p-6">
-          <div className="rounded-lg border bg-card p-8 text-center">
+          <div className="rounded-lg border bg-aurora-panel-medium p-8 text-center">
             <AlertTriangle className="size-8 mx-auto text-destructive mb-3" />
             <p className="font-medium">No gateway selected</p>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-aurora-text-muted mt-1">
               Open this page from the gateway list or provide a gateway id in the URL query string.
             </p>
             <Button variant="outline" className="mt-4" onClick={() => router.push('/gateways')}>
@@ -246,10 +247,10 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           ]}
         />
         <div className="flex-1 p-6">
-          <div className="rounded-lg border bg-card p-8 text-center">
+          <div className="rounded-lg border bg-aurora-panel-medium p-8 text-center">
             <AlertTriangle className="size-8 mx-auto text-destructive mb-3" />
             <p className="font-medium">Failed to load gateway</p>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-aurora-text-muted mt-1">
               {error?.message || 'Gateway not found'}
             </p>
             <Button variant="outline" className="mt-4" onClick={() => router.push('/gateways')}>
@@ -419,7 +420,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
 
   const headerStatusPills = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
         <span
           className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
           aria-label={gatewayStatusLabel}
@@ -427,7 +428,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         <span className="text-xs font-medium">{gatewayStatusLabel}</span>
       </div>
 
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
         <span className="text-xs font-medium">Expose resources</span>
         <Switch
           aria-label="Expose resources"
@@ -437,7 +438,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         />
       </div>
 
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
         <span className="text-xs font-medium">Expose prompts</span>
         <Switch
           aria-label="Expose prompts"
@@ -448,7 +449,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       </div>
 
       {isLabGateway && (
-        <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
           <span className="text-xs font-medium">Enabled</span>
           <Switch
             aria-label="Gateway enabled"
@@ -460,7 +461,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       )}
 
       {surfaceEntries.map(([surface, state]) => (
-        <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1">
+        <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
           <span
             className={`size-2 rounded-full ${state.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
             aria-hidden="true"
@@ -475,7 +476,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
         </div>
       ))}
 
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1 text-xs text-aurora-text-muted">
         <Clock className="size-3" />
         <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
       </div>
@@ -495,11 +496,11 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       <div className="flex-1 p-6 min-w-0 overflow-x-hidden">
         <Tabs defaultValue="tools" className="space-y-4">
           {/* Header card with tabs embedded */}
-          <div className="rounded-lg border bg-card p-5">
+          <div className="rounded-lg border bg-aurora-panel-medium p-5">
             {/* Badge row */}
             <div className="flex flex-wrap items-center gap-2">
               <TransportBadge transport={gateway.transport} />
-              <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+              <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-aurora-text-muted">
                 {isLabGateway ? 'Lab gateway' : 'Custom gateway'}
               </Badge>
               {gateway.warnings.length > 0 && (
@@ -528,9 +529,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
                   aria-hidden="true"
                 />
-                <h1 className="text-3xl font-semibold tracking-tight break-words">{gateway.name}</h1>
+                <h1 className={cn(AURORA_DISPLAY_1, 'break-words text-aurora-text-primary')}>{gateway.name}</h1>
               </div>
-              <p className="max-w-3xl text-sm text-muted-foreground break-all">
+              <p className="max-w-3xl break-all text-sm text-aurora-text-muted">
                 {gateway.transport === 'http'
                   ? gateway.config.url
                   : isLabGateway
@@ -576,7 +577,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
 
           {/* Tab content */}
           <TabsContent value="tools">
-            <div className="rounded-lg border bg-card p-4">
+            <div className="rounded-lg border bg-aurora-panel-medium p-4">
               <ToolExposureTable
                 tools={displayedTools}
                 exposureLabel={exposureSummary.label}
@@ -600,35 +601,35 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </TabsContent>
 
           <TabsContent value="resources">
-            <div className="rounded-lg border bg-card p-5">
+            <div className="rounded-lg border bg-aurora-panel-medium p-5">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">Discovered MCP Resources</h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-aurora-text-muted">
                     Resource exposure is managed as a surface-level setting for this gateway.
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                   <div className="relative w-full min-w-[240px] lg:w-[280px]">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-aurora-text-muted" />
                     <input
                       value={resourceSearch}
                       onChange={(event) => setResourceSearch(event.target.value)}
                       placeholder="Search resources..."
-                      className="flex h-9 w-full rounded-md border bg-background px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     />
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
                     <span>{filteredResources.length}/{gateway.discovery.resources.length}</span>
                     <span>visible</span>
                   </div>
-                  <Badge variant="outline" className="rounded-full px-3 py-1 text-muted-foreground">
+                  <Badge variant="outline" className="rounded-full px-3 py-1 text-aurora-text-muted">
                     {resourceExposureEnabled ? 'Resources exposed' : 'Resources hidden'}
                   </Badge>
                 </div>
               </div>
               {gateway.discovery.resources.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
+                <div className="text-center py-8 text-aurora-text-muted">
                   <FileText className="size-8 mx-auto mb-3 opacity-50" />
                   <p>No resources discovered</p>
                 </div>
@@ -639,12 +640,12 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       <div className="min-w-0">
                         <code className="text-sm font-mono font-medium">{resource.name}</code>
                         {resource.description && (
-                          <p className="text-sm text-muted-foreground mt-1">{resource.description}</p>
+                          <p className="text-sm text-aurora-text-muted mt-1">{resource.description}</p>
                         )}
                       </div>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <code className="shrink-0 max-w-[18rem] truncate text-xs text-muted-foreground bg-muted px-2 py-1 rounded cursor-default">
+                          <code className="shrink-0 max-w-[18rem] truncate text-xs text-aurora-text-muted bg-aurora-control-surface px-2 py-1 rounded cursor-default">
                             {resource.uri}
                           </code>
                         </TooltipTrigger>
@@ -660,32 +661,32 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </TabsContent>
 
           <TabsContent value="prompts">
-            <div className="rounded-lg border bg-card p-5">
+            <div className="rounded-lg border bg-aurora-panel-medium p-5">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold">Discovered MCP Prompts</h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-aurora-text-muted">
                     Prompts are upstream-derived. Click a prompt to expand arguments and details.
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                   <div className="relative w-full min-w-[240px] lg:w-[280px]">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-aurora-text-muted" />
                     <input
                       value={promptSearch}
                       onChange={(event) => setPromptSearch(event.target.value)}
                       placeholder="Search prompts..."
-                      className="flex h-9 w-full rounded-md border bg-background px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     />
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
                     <span>{filteredPrompts.length}/{gateway.discovery.prompts.length}</span>
                     <span>visible</span>
                   </div>
                 </div>
               </div>
               {gateway.discovery.prompts.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
+                <div className="text-center py-8 text-aurora-text-muted">
                   <MessageSquare className="size-8 mx-auto mb-3 opacity-50" />
                   <p>No prompts discovered</p>
                 </div>
@@ -699,7 +700,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                         <button
                           type="button"
                           onClick={() => togglePrompt(prompt.name)}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-aurora-control-surface/30 transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <code className="break-all text-sm font-mono font-medium">{prompt.name}</code>
@@ -710,26 +711,26 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                             )}
                           </div>
                           <ChevronDown
-                            className={`size-4 text-muted-foreground shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                            className={`size-4 text-aurora-text-muted shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                           />
                         </button>
                         {isExpanded && (
-                          <div className="px-4 pb-4 border-t bg-muted/10 space-y-3">
+                          <div className="px-4 pb-4 border-t bg-aurora-control-surface/10 space-y-3">
                             {prompt.description && (
-                              <p className="text-sm text-muted-foreground pt-3">{prompt.description}</p>
+                              <p className="text-sm text-aurora-text-muted pt-3">{prompt.description}</p>
                             )}
                             {hasArgs && (
                               <div className="space-y-2">
-                                <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Arguments</p>
+                                <p className="text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted">Arguments</p>
                                 <div className="space-y-1">
                                   {prompt.arguments!.map((arg) => (
-                                    <div key={arg.name} className="flex items-start gap-3 rounded-md border bg-background px-3 py-2">
+                                    <div key={arg.name} className="flex items-start gap-3 rounded-md border bg-aurora-page-bg px-3 py-2">
                                       <code className="text-xs font-mono font-medium shrink-0">
                                         {arg.name}
                                         {arg.required && <span className="text-destructive ml-0.5">*</span>}
                                       </code>
                                       {arg.description && (
-                                        <p className="text-xs text-muted-foreground">{arg.description}</p>
+                                        <p className="text-xs text-aurora-text-muted">{arg.description}</p>
                                       )}
                                     </div>
                                   ))}
@@ -737,7 +738,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                               </div>
                             )}
                             {!prompt.description && !hasArgs && (
-                              <p className="text-sm text-muted-foreground pt-3">No additional details available.</p>
+                              <p className="text-sm text-aurora-text-muted pt-3">No additional details available.</p>
                             )}
                           </div>
                         )}
@@ -750,18 +751,18 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </TabsContent>
 
           <TabsContent value="config">
-            <div className="rounded-lg border bg-card p-5">
+            <div className="rounded-lg border bg-aurora-panel-medium p-5">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">Client Configuration</h2>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-sm text-aurora-text-muted mt-1">
                   Add this JSON block to your MCP client configuration to connect to this gateway.
                 </p>
               </div>
-              <div className="overflow-hidden rounded-xl border bg-background">
+              <div className="overflow-hidden rounded-aurora-2 border bg-aurora-page-bg">
                 <div className="border-b px-4 py-3">
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Client JSON</p>
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-aurora-text-muted">Client JSON</p>
                 </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-foreground">
+                <pre className="overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-aurora-text-primary">
                   <code>{clientConfigJson}</code>
                 </pre>
               </div>
@@ -770,7 +771,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
 
           {gateway.warnings.length > 0 && (
             <TabsContent value="warnings">
-              <div className="rounded-lg border bg-card p-6">
+              <div className="rounded-lg border bg-aurora-panel-medium p-6">
                 <h2 className="text-lg font-semibold mb-4">Gateway Warnings</h2>
                 <div className="space-y-2">
                   {gateway.warnings.map((warning, index) => (
@@ -783,8 +784,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                         <p className="text-sm font-medium text-aurora-warn">
                           {warning.code}
                         </p>
-                        <p className="text-sm text-muted-foreground mt-0.5">{warning.message}</p>
-                        <p className="text-xs text-muted-foreground mt-2">
+                        <p className="text-sm text-aurora-text-muted mt-0.5">{warning.message}</p>
+                        <p className="text-xs text-aurora-text-muted mt-2">
                           {new Date(warning.timestamp).toLocaleString()}
                         </p>
                       </div>

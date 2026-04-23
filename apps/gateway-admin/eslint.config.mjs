@@ -2,6 +2,28 @@ import js from '@eslint/js'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+// Banned shadcn-generic tokens in product code. Aurora tokens are the source of
+// truth — see docs/design-system-contract.md. Primitives in components/ui/**
+// are the sanctioned escape hatch and are exempted below.
+const BANNED_TOKENS_PATTERN =
+  String.raw`\b(text-muted-foreground|text-foreground|bg-card|bg-background|bg-muted|border-border)\b`
+
+const bannedTokenRules = {
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: `JSXAttribute[name.name='className'] Literal[value=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design-system-contract.md.',
+    },
+    {
+      selector: `JSXAttribute[name.name='className'] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
+      message:
+        'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design-system-contract.md.',
+    },
+  ],
+}
+
 export default tseslint.config(
   {
     ignores: [
@@ -39,6 +61,16 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
+    files: ['app/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}'],
+    rules: bannedTokenRules,
+  },
+  {
+    files: ['components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': 'off',
     },
   },
 )

@@ -4,3 +4,12 @@ pre-commit:
       run: cargo fmt --all --check
     clippy:
       run: cargo clippy --workspace --all-features -- -D warnings
+    aurora-radius:
+      glob: "{apps/gateway-admin/*.{ts,tsx,css},apps/gateway-admin/**/*.{ts,tsx,css}}"
+      run: |
+        added=$(git diff --cached --diff-filter=AM -U0 -- {staged_files} | grep -E '^\+[^+].*rounded-\[[^]]+\]' || true)
+        if [ -n "$added" ]; then
+          echo "Disallowed: new arbitrary rounded-[…rem] values. Use rounded-aurora-1/2/3 (tokens in app/globals.css)."
+          echo "$added"
+          exit 1
+        fi

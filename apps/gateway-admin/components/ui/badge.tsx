@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils'
  *   <Badge variant="pill" status="success" />    — pill-shaped success badge
  */
 const badgeVariants = cva(
-  'inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] transition-[color,box-shadow] overflow-hidden',
+  'inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-aurora-accent-primary focus-visible:ring-aurora-accent-primary/34 focus-visible:ring-[3px] transition-[color,box-shadow] overflow-hidden',
   {
     variants: {
       /**
@@ -62,7 +62,7 @@ const badgeVariants = cva(
       { variant: 'default', status: 'error', class: 'bg-aurora-error/12 border-aurora-error/30 text-aurora-error' },
       { variant: 'default', status: 'success', class: 'bg-aurora-success/12 border-aurora-success/30 text-aurora-success' },
       // outline variant × status — border + text color only
-      { variant: 'outline', status: 'default', class: 'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground' },
+      { variant: 'outline', status: 'default', class: 'border-border text-foreground [a&]:hover:bg-aurora-hover-bg [a&]:hover:text-aurora-text-primary' },
       { variant: 'outline', status: 'warn', class: 'border-aurora-warn/40 text-aurora-warn' },
       { variant: 'outline', status: 'error', class: 'border-aurora-error/40 text-aurora-error' },
       { variant: 'outline', status: 'success', class: 'border-aurora-success/40 text-aurora-success' },

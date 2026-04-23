@@ -88,7 +88,7 @@ export function LogTimeline({
                 key={event.event_id}
                 className={cn(
                   'border-t border-aurora-border-strong/70 first:border-t-0',
-                  selected && 'bg-[rgba(41,182,246,0.12)] shadow-[inset_2px_0_0_#29b6f6]',
+                  selected && 'bg-aurora-accent-primary/12 shadow-[inset_2px_0_0_var(--aurora-accent-primary)]',
                 )}
               >
                 <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-stretch gap-2 px-5 py-3 transition-colors hover:bg-[rgba(7,17,26,0.52)]">

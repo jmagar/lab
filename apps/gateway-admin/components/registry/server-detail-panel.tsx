@@ -5,6 +5,8 @@ import { formatDistanceToNow } from 'date-fns'
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
   ExternalLink,
   FileCode,
@@ -12,6 +14,7 @@ import {
   Package,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +28,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { safeHref } from '@/lib/utils/safe-href'
+import { githubAvatarFromRepoUrl } from '@/lib/github-avatar'
 import {
   formatLocalDateTimePrecise,
   formatUtcTooltip,
@@ -51,6 +55,8 @@ interface ServerDetailPanelProps {
   onClose: () => void
 }
 
+const MAX_SCHEMA_RESPONSE_BYTES = 256 * 1024
+
 export function ServerDetailPanel({ server, extensions, onClose }: ServerDetailPanelProps) {
   const open = server !== null
 
@@ -68,11 +74,50 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   const { remotes, icons, packages } = server
   const isHTTP = remotes.some((r) => r.type === 'streamable-http' || r.type === 'sse')
   const [installOpen, setInstallOpen] = useState(false)
+  const [schemaOpen, setSchemaOpen] = useState(false)
+  const [schemaContent, setSchemaContent] = useState<string | null>(null)
+  const [schemaLoading, setSchemaLoading] = useState(false)
+  const [schemaError, setSchemaError] = useState<string | null>(null)
+
+  async function toggleSchema() {
+    if (!schemaHref) return
+    if (schemaContent !== null || schemaError !== null) {
+      setSchemaOpen((v) => !v)
+      return
+    }
+    setSchemaOpen(true)
+    setSchemaLoading(true)
+    setSchemaError(null)
+    try {
+      const res = await fetch(schemaHref)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const contentLength = Number(res.headers.get('content-length') ?? '0')
+      if (contentLength > MAX_SCHEMA_RESPONSE_BYTES) {
+        throw new Error(`Schema exceeds ${MAX_SCHEMA_RESPONSE_BYTES} bytes`)
+      }
+      const text = await res.text()
+      if (text.length > MAX_SCHEMA_RESPONSE_BYTES) {
+        throw new Error(`Schema exceeds ${MAX_SCHEMA_RESPONSE_BYTES} bytes`)
+      }
+      try {
+        setSchemaContent(JSON.stringify(JSON.parse(text), null, 2))
+      } catch {
+        setSchemaContent(text)
+      }
+    } catch (err) {
+      setSchemaError(err instanceof Error ? err.message : 'Failed to load schema')
+    } finally {
+      setSchemaLoading(false)
+    }
+  }
   const primaryIcon = icons[0] ?? null
   const extraIcons = icons.slice(1)
   const repoHref = safeHref(server.repository?.url)
+  const ghAvatar = githubAvatarFromRepoUrl(server.repository?.url)
+  const headerAvatarSrc = ghAvatar ?? safeHref(primaryIcon?.src) ?? null
   const websiteHref = safeHref(server.websiteUrl)
   const schemaHref = safeHref(server.$schema)
+  const schemaPanelId = `schema-viewer-${server.name.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const status = extensions?.status ?? null
   const statusMessage = extensions?.statusMessage ?? null
 
@@ -80,16 +125,22 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
     <>
       <DialogHeader className="shrink-0 space-y-0 border-b border-aurora-border-strong/60 px-6 py-5">
         <div className="flex items-start gap-4">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
-            {primaryIcon ? (
-              <img
-                src={safeHref(primaryIcon.src) ?? undefined}
-                alt=""
-                className="size-8 rounded object-contain"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-                onError={(e) => { e.currentTarget.style.display = 'none' }}
-              />
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-aurora-2 border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
+            {headerAvatarSrc ? (
+              <>
+                <img
+                  src={headerAvatarSrc}
+                  alt=""
+                  className="size-full object-cover"
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                    ;(e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
+                  }}
+                />
+                <Package className="size-6 text-aurora-text-muted" style={{ display: 'none' }} />
+              </>
             ) : (
               <Package className="size-6 text-aurora-text-muted" />
             )}
@@ -125,7 +176,7 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
               <RegistryStatusBadge status={status} />
             </div>
             {statusMessage && (
-              <p className="mt-2 text-xs leading-relaxed text-aurora-text-secondary">
+              <p className="mt-2 text-xs leading-relaxed text-aurora-text-muted">
                 {statusMessage}
               </p>
             )}
@@ -136,7 +187,7 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
       <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
         {/* Description — untrusted registry data, do not use dangerouslySetInnerHTML */}
         <Section label="Description">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-aurora-text-secondary">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-aurora-text-muted">
             {server.description}
           </p>
         </Section>
@@ -170,16 +221,20 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
                 </a>
               )}
               {schemaHref && (
-                <a
-                  href={schemaHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={toggleSchema}
+                  aria-expanded={schemaOpen}
+                  aria-controls={schemaPanelId}
                   className="inline-flex items-center gap-1.5 text-sm text-aurora-accent-strong hover:underline"
                   title={server.$schema ?? undefined}
                 >
                   <FileCode className="size-3.5" />
                   Schema
-                </a>
+                  {schemaOpen
+                    ? <ChevronDown className="size-3" />
+                    : <ChevronRight className="size-3" />}
+                </button>
               )}
             </div>
             {(server.repository?.id || server.repository?.subfolder) && (
@@ -189,6 +244,16 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
               </dl>
             )}
           </Section>
+        )}
+
+        {schemaOpen && schemaHref && (
+          <SchemaViewer
+            id={schemaPanelId}
+            url={schemaHref}
+            content={schemaContent}
+            loading={schemaLoading}
+            error={schemaError}
+          />
         )}
 
         {extraIcons.length > 0 && (
@@ -265,6 +330,89 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   )
 }
 
+type JsonTokenType = 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation' | 'whitespace'
+
+const JSON_TOKEN_CLASS: Record<JsonTokenType, string> = {
+  key: 'text-aurora-accent-strong',
+  string: 'text-aurora-success',
+  number: 'text-aurora-warn',
+  boolean: 'text-aurora-accent-primary',
+  null: 'text-aurora-text-muted',
+  punctuation: 'text-aurora-text-muted',
+  whitespace: '',
+}
+
+const JSON_TOKEN_RE = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|[{}\[\]:,]|\s+|./g
+
+function JsonHighlight({ content }: { content: string }) {
+  const parts: React.ReactNode[] = []
+  let match: RegExpExecArray | null
+  JSON_TOKEN_RE.lastIndex = 0
+
+  while ((match = JSON_TOKEN_RE.exec(content)) !== null) {
+    const token = match[0]
+    let type: JsonTokenType = 'punctuation'
+
+    if (/^\s+$/.test(token)) {
+      type = 'whitespace'
+    } else if (token === 'true' || token === 'false') {
+      type = 'boolean'
+    } else if (token === 'null') {
+      type = 'null'
+    } else if (/^-?\d/.test(token)) {
+      type = 'number'
+    } else if (token.startsWith('"')) {
+      // Key strings are immediately followed by ':' after optional whitespace
+      const rest = content.slice(JSON_TOKEN_RE.lastIndex).trimStart()
+      type = rest.startsWith(':') ? 'key' : 'string'
+    }
+
+    const cls = JSON_TOKEN_CLASS[type]
+    parts.push(cls ? <span key={match.index} className={cls}>{token}</span> : token)
+  }
+
+  return <>{parts}</>
+}
+
+function SchemaViewer({
+  id,
+  url,
+  content,
+  loading,
+  error,
+}: {
+  id?: string
+  url: string
+  content: string | null
+  loading: boolean
+  error: string | null
+}) {
+  return (
+    <div id={id} className={cn(AURORA_MEDIUM_PANEL, 'space-y-2 p-3')}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="break-all font-mono text-[11px] text-aurora-text-muted">{url}</p>
+        {content && <CopyButton value={content} label="Copy schema" />}
+      </div>
+      {loading && (
+        <div className="flex items-center gap-2 py-4 text-xs text-aurora-text-muted">
+          <Spinner className="size-3.5" />
+          Loading schema…
+        </div>
+      )}
+      {error && (
+        <p className="py-2 text-xs text-aurora-error">{error}</p>
+      )}
+      {content && (
+        <div className="aurora-scrollbar max-h-80 overflow-auto rounded border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.6)]">
+          <pre className="w-max min-w-full p-3 font-mono text-xs leading-relaxed text-aurora-text-muted">
+            <JsonHighlight content={content} />
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
@@ -289,7 +437,7 @@ function MetaRow({
   return (
     <div className="flex flex-col gap-0.5">
       <dt className={AURORA_MUTED_LABEL}>{label}</dt>
-      <dd className={cn('flex items-center gap-1.5 text-xs text-aurora-text-secondary', mono && 'font-mono')}>
+      <dd className={cn('flex items-center gap-1.5 text-xs text-aurora-text-muted', mono && 'font-mono')}>
         <span className="break-all">{value}</span>
         {copy && <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />}
       </dd>
@@ -304,7 +452,7 @@ function TimeRow({ label, iso }: { label: string; iso?: string | null }) {
   return (
     <div className="flex flex-col gap-0.5">
       <dt className={AURORA_MUTED_LABEL}>{label}</dt>
-      <dd className="font-mono text-xs text-aurora-text-secondary" title={utc ?? undefined}>
+      <dd className="font-mono text-xs text-aurora-text-muted" title={utc ?? undefined}>
         {local}
       </dd>
     </div>
@@ -373,7 +521,7 @@ function IconChip({ icon }: { icon: RegistryIcon }) {
       ) : (
         <Package className="size-4 text-aurora-text-muted" />
       )}
-      <span className="font-mono text-[11px] text-aurora-text-secondary">
+      <span className="font-mono text-[11px] text-aurora-text-muted">
         {label || 'icon'}
       </span>
     </div>
@@ -403,7 +551,7 @@ function RemoteRow({ transport }: { transport: Transport }) {
           <p className={AURORA_MUTED_LABEL}>Headers ({headers.length})</p>
           <ul className="space-y-0.5">
             {headers.map((h, i) => (
-              <li key={i} className="font-mono text-xs text-aurora-text-secondary">
+              <li key={i} className="font-mono text-xs text-aurora-text-muted">
                 <span className="text-aurora-text-primary">{h.name}:</span> {h.value}
               </li>
             ))}
@@ -413,7 +561,7 @@ function RemoteRow({ transport }: { transport: Transport }) {
       {hasVariables && (
         <div className="space-y-1">
           <p className={AURORA_MUTED_LABEL}>Variables</p>
-          <pre className="overflow-x-auto rounded border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.6)] p-2 font-mono text-xs text-aurora-text-secondary">
+          <pre className="overflow-x-auto rounded border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.6)] p-2 font-mono text-xs text-aurora-text-muted">
             {JSON.stringify(variables, null, 2)}
           </pre>
         </div>
@@ -465,7 +613,7 @@ function PackageCard({ pkg }: { pkg: RegistryPackage }) {
 
       <div className="space-y-1">
         <p className={AURORA_MUTED_LABEL}>Transport</p>
-        <div className="flex items-center gap-1.5 font-mono text-xs text-aurora-text-secondary">
+        <div className="flex items-center gap-1.5 font-mono text-xs text-aurora-text-muted">
           <span className="text-aurora-text-primary">{pkg.transport.type}</span>
           {pkg.transport.url && (
             <>
@@ -503,7 +651,7 @@ function ArgsList<T>({
 
 function renderRuntimeArg(arg: RuntimeArgument, i: number) {
   return (
-    <li key={i} className="font-mono text-xs text-aurora-text-secondary">
+    <li key={i} className="font-mono text-xs text-aurora-text-muted">
       <span className="text-aurora-text-primary">{arg.name}</span>
       {arg.value && <> = {arg.value}</>}
     </li>
@@ -545,4 +693,3 @@ function renderEnvVar(env: EnvironmentVariable, i: number) {
     </li>
   )
 }
-

@@ -36,7 +36,6 @@ pub struct UnraidArgs {
 ///
 /// # Errors
 /// Returns an error if dispatch fails.
-#[allow(clippy::print_stdout)]
 pub async fn run(args: UnraidArgs, format: OutputFormat) -> Result<ExitCode> {
     let mut params = args
         .params

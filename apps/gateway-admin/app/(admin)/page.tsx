@@ -160,7 +160,7 @@ export default function OverviewPage() {
 
         {/* Warnings Banner */}
         {!isLoading && stats.totalWarnings > 0 && (
-          <div className="flex items-center gap-3 rounded-[1.1rem] border border-aurora-warn/30 bg-aurora-warn/8 p-4">
+          <div className="flex items-center gap-3 rounded-aurora-2 border border-aurora-warn/30 bg-aurora-warn/8 p-4">
             <div className="rounded-full border border-aurora-warn/30 bg-aurora-warn/12 p-2">
               <AlertTriangle className="size-5 text-aurora-warn" />
             </div>
@@ -193,7 +193,7 @@ export default function OverviewPage() {
           {isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 rounded-[1.1rem] border border-aurora-border-strong bg-aurora-panel-medium p-4">
+                <div key={i} className="flex items-center gap-4 rounded-aurora-2 border border-aurora-border-strong bg-aurora-panel-medium p-4">
                   <Skeleton className="size-10 rounded-lg" />
                   <div className="flex-1">
                     <Skeleton className="mb-1 h-5 w-32" />
@@ -223,7 +223,7 @@ export default function OverviewPage() {
                   key={gateway.id}
                   href={gatewayDetailHref(gateway.id)}
                   className={cn(
-                    'group flex flex-col gap-4 rounded-[1.1rem] border border-aurora-border-strong bg-aurora-panel-medium p-4 transition-colors',
+                    'group flex flex-col gap-4 rounded-aurora-2 border border-aurora-border-strong bg-aurora-panel-medium p-4 transition-colors',
                     'hover:border-aurora-accent-primary/30 hover:bg-aurora-panel-strong',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34 focus-visible:ring-offset-2 focus-visible:ring-offset-aurora-page-bg',
                     'sm:flex-row sm:items-start',

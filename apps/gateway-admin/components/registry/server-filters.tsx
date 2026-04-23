@@ -11,7 +11,6 @@ import {
   AURORA_MUTED_LABEL,
   gatewayActionTone,
 } from '@/components/gateway/gateway-theme'
-
 interface ServerFiltersProps {
   search: string
   onSearchChange: (value: string) => void
@@ -19,7 +18,8 @@ interface ServerFiltersProps {
   onVersionChange: (value: string) => void
   updatedSince: string
   onUpdatedSinceChange: (value: string) => void
-  totalCount?: number
+  totalLoaded?: number
+  hasMore?: boolean
   isLoading?: boolean
 }
 
@@ -30,7 +30,8 @@ export function ServerFilters({
   onVersionChange,
   updatedSince,
   onUpdatedSinceChange,
-  totalCount,
+  totalLoaded,
+  hasMore,
   isLoading,
 }: ServerFiltersProps) {
   const activeExtraCount = (version ? 1 : 0) + (updatedSince ? 1 : 0)
@@ -68,7 +69,7 @@ export function ServerFilters({
           aria-controls="registry-extra-filters"
           className={cn(
             gatewayActionTone(activeExtraCount > 0 ? 'accent' : 'default'),
-            'h-11 shrink-0 gap-2 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
+            'h-11 shrink-0 gap-2 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
           )}
         >
           <SlidersHorizontal className="size-4" />
@@ -90,7 +91,7 @@ export function ServerFilters({
             onClick={handleClearAll}
             className={cn(
               gatewayActionTone(),
-              'h-11 shrink-0 gap-1 px-3 text-aurora-text-primary hover:bg-[#17364b] hover:text-aurora-text-primary',
+              'h-11 shrink-0 gap-1 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
             )}
           >
             <X className="size-4" />
@@ -134,9 +135,9 @@ export function ServerFilters({
         </div>
       )}
 
-      {!isLoading && totalCount !== undefined && (
+      {!isLoading && totalLoaded !== undefined && totalLoaded > 0 && (
         <p className="text-xs text-aurora-text-muted">
-          {totalCount === 0 ? 'No servers found' : `${totalCount} server${totalCount === 1 ? '' : 's'} on this page`}
+          {totalLoaded} server{totalLoaded === 1 ? '' : 's'} loaded{hasMore ? ' — scroll for more' : ''}
         </p>
       )}
     </div>

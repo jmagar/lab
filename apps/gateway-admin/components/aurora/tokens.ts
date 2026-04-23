@@ -60,15 +60,15 @@ export const AURORA_PAGE_SHELL =
 
 /** Tier 2 (Medium) panel — standard content surfaces. */
 export const AURORA_MEDIUM_PANEL =
-  'rounded-[1.35rem] border border-aurora-border-strong bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]'
+  'rounded-aurora-3 border border-aurora-border-strong bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]'
 
 /** Tier 3 (Strong) panel — elevated/featured content surfaces. */
 export const AURORA_STRONG_PANEL =
-  'rounded-[1.4rem] border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]'
+  'rounded-aurora-3 border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]'
 
 /** Control surface — input/select backgrounds (Tier 1). */
 export const AURORA_CONTROL_SURFACE =
-  'rounded-[0.95rem] border-aurora-border-strong bg-aurora-control-surface shadow-[0_8px_16px_rgba(0,0,0,0.16),var(--aurora-highlight-medium)]'
+  'rounded-aurora-1 border-aurora-border-strong bg-aurora-control-surface shadow-[0_8px_16px_rgba(0,0,0,0.16),var(--aurora-highlight-medium)]'
 
 /** Inline message/code surface — floating content within panels. */
 export const AURORA_MESSAGE_SURFACE =

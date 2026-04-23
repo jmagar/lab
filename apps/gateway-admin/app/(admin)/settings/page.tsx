@@ -43,7 +43,7 @@ export default function SettingsPage() {
         {isLoading ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="h-28 animate-pulse rounded-[1.35rem] border border-aurora-border-strong bg-aurora-panel-medium" />
+              <div key={index} className="h-28 animate-pulse rounded-aurora-3 border border-aurora-border-strong bg-aurora-panel-medium" />
             ))}
           </div>
         ) : error || !snapshot ? (
@@ -161,23 +161,23 @@ export default function SettingsPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-2 text-sm text-aurora-text-muted">
-                <div className="flex items-center justify-between rounded-[0.85rem] border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
+                <div className="flex items-center justify-between rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
                   <span>Proxy resources enabled</span>
                   <Badge variant="secondary">{snapshot.proxyResourceGateways} gateways</Badge>
                 </div>
-                <div className="flex items-center justify-between rounded-[0.85rem] border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
+                <div className="flex items-center justify-between rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
                   <span>Disconnected gateways</span>
                   <Badge variant="secondary" status={snapshot.disconnectedGateways === 0 ? 'default' : 'error'}>
                     {snapshot.disconnectedGateways}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between rounded-[0.85rem] border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
+                <div className="flex items-center justify-between rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-4 py-3">
                   <span>Warning backlog</span>
                   <Badge variant={snapshot.warningCount === 0 ? 'secondary' : 'outline'} status={snapshot.warningCount > 0 ? 'warn' : 'default'}>
                     {snapshot.warningCount}
                   </Badge>
                 </div>
-                <div className="rounded-[0.85rem] border border-aurora-border-strong border-dashed p-4 text-aurora-text-muted">
+                <div className="rounded-aurora-1 border border-aurora-border-strong border-dashed p-4 text-aurora-text-muted">
                   This page is intentionally read-only for now. Global configuration is still managed through environment and backend config, but the UI now exposes the active posture instead of a dead placeholder.
                 </div>
               </div>
