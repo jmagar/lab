@@ -77,6 +77,7 @@ Supported output modes are:
 - JSON
 
 The canonical serialization and output-boundary contract lives in [SERIALIZATION.md](./SERIALIZATION.md).
+The canonical human-readable output language and color policy live in [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md).
 
 Rules:
 
@@ -90,6 +91,33 @@ Rules:
 - use `owo-colors`
 - disable color automatically when stdout is not a TTY
 - honor `NO_COLOR`
+- expose a shared `--color=auto|plain|color` policy rather than per-command color toggles
+
+Examples:
+
+```bash
+# default interactive behavior
+lab doctor
+
+# force plain text even on a TTY
+lab doctor --color=plain
+
+# force styling for pagers like less -R
+lab doctor --color=color | less -R
+
+# pipes stay plain by default in auto mode
+lab doctor | jq
+
+# NO_COLOR still disables styling unless the user explicitly forces color
+NO_COLOR=1 lab doctor
+```
+
+Rules:
+
+- `--json` remains unstyled machine output
+- `--color=auto` is the default and must remain pipe-safe
+- `--color=plain` is the deterministic script and CI escape hatch
+- `--color=color` is the explicit operator override
 
 ## Destructive Operations
 

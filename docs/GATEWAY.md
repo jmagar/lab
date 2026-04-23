@@ -142,10 +142,33 @@ session and the master-only middleware; non-master sessions get `403`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/v1/gateway/oauth/start` | Begin authorization for the caller's subject. Body `{ "upstream": "<name>" }`. Returns `{ "authorization_url": "..." }` (JSON only — no browser-redirect mode). |
+| `POST` | `/v1/gateway/oauth/start` | Begin authorization for the shared gateway subject `gateway`. Body `{ "upstream": "<name>" }`. Returns `{ "authorization_url": "..." }` (JSON only — no browser-redirect mode). |
 | `GET` | `/auth/upstream/callback` | Authorization-code callback. Validates the authenticated session, atomically takes the pending state row (bound to `(upstream, subject)`), exchanges the code, persists encrypted credentials, redirects to `/gateway/oauth/result?upstream=<name>&status=<ok\|fail>`. |
 | `GET` | `/v1/gateway/oauth/status?upstream=<name>` | Returns `{ "authenticated": bool, "upstream": "<name>", "expires_within_5m": bool }`. Deliberately omits subject and raw expiry timestamp to avoid enumeration and fingerprinting. |
 | `POST` | `/v1/gateway/oauth/clear?upstream=<name>&confirm=true` | Destructive. Requires both `upstream` (the upstream name) and `confirm=true` as query parameters. Without `confirm=true`, returns `422` with JSON `{ "kind": "confirmation_required", ... }`. With confirm, deletes persisted credentials and evicts the cached `AuthClient`. In-flight requests complete naturally under the old credential (graceful drain by Rust ownership — not a designed protocol). |
+
+### OAuth Operator Examples
+
+CLI:
+
+```bash
+lab gateway mcp auth start chrome-devtools
+lab gateway mcp auth open chrome-devtools --wait
+lab gateway mcp auth status chrome-devtools
+lab gateway mcp auth clear chrome-devtools
+```
+
+MCP tool calls:
+
+```json
+{ "tool": "gateway", "input": { "action": "gateway.oauth.start", "params": { "upstream": "chrome-devtools" } } }
+{ "tool": "gateway", "input": { "action": "gateway.oauth.status", "params": { "upstream": "chrome-devtools" } } }
+{ "tool": "gateway", "input": { "action": "gateway.oauth.clear", "params": { "confirm": true, "upstream": "chrome-devtools" } } }
+```
+
+These actions now operate on the shared gateway OAuth subject `gateway`, so the
+web UI, CLI, and MCP tool surface all refer to the same stored upstream
+credential row.
 
 Callback security invariants (enforced in code, spec-required):
 

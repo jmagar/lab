@@ -74,11 +74,10 @@ fn run_service(args: ServiceArgs, format: OutputFormat) -> Result<ExitCode> {
     };
     let result = crate::scaffold::scaffold_service(&config, args.dry_run)?;
 
-    match format {
-        OutputFormat::Json => print(&result, format)?,
-        OutputFormat::Human => {
-            println!("{}", render_scaffold_result(&result));
-        }
+    if format.is_json() {
+        print(&result, format)?;
+    } else {
+        println!("{}", render_scaffold_result(&result));
     }
 
     Ok(ExitCode::SUCCESS)

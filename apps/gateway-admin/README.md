@@ -20,6 +20,8 @@ pnpm install
 pnpm dev
 ```
 
+The dev server binds on `0.0.0.0` so the UI is reachable from other devices on the local network during development.
+
 The app defaults `NEXT_PUBLIC_API_URL` to `/v1`, which is the expected same-origin path once `lab serve` hosts both API and UI. Override it when pointing the UI at a different backend origin.
 
 ```bash
@@ -41,6 +43,14 @@ NEXT_PUBLIC_API_TOKEN=your-local-dev-token \
 pnpm dev
 ```
 
+## Marketplace Editing Workflow
+
+Marketplace package files are edited through the shared CodeMirror surface in the UI.
+
+- `Save` writes the current file into an app-managed workspace mirror
+- `Deploy` is explicit and syncs the saved workspace into the local Claude Code target
+- save and deploy are intentionally separate so draft iteration does not immediately affect the installed Claude Code files
+
 ## Static Export
 
 Build the export artifact:
@@ -61,3 +71,22 @@ pnpm start
 
 - The imported UI code was originally developed as its own repository and is now tracked as normal source under this repo.
 - Nested git metadata was removed on import so `apps/gateway-admin` behaves like a standard in-repo app directory.
+
+## ACP bridge
+
+The chat view can run against a local ACP bridge instead of mock transcript data.
+
+Environment variables:
+- `ACP_CODEX_COMMAND`: optional override for the ACP provider executable.
+- `ACP_CODEX_ARGS`: optional space-delimited args for `ACP_CODEX_COMMAND`.
+- `ACP_SESSION_CWD`: optional default working directory for newly created ACP sessions.
+
+By default, the bridge launches `codex-acp` from the Rust backend via `npx @zed-industries/codex-acp` and exposes:
+- `GET /v1/acp/provider`
+- `GET /v1/acp/sessions`
+- `POST /v1/acp/sessions`
+- `POST /v1/acp/sessions/{sessionId}/prompt`
+- `POST /v1/acp/sessions/{sessionId}/cancel`
+- `GET /v1/acp/sessions/{sessionId}/events`
+
+The static browser app consumes live ACP session updates over SSE from the Rust API and renders them into the transcript lane plus the `Reasoning & Activity` timeline.

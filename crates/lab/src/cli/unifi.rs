@@ -54,31 +54,20 @@ pub async fn run(args: UnifiArgs, format: OutputFormat) -> Result<ExitCode> {
         }
     }
     if args.dry_run {
-        match format {
-            OutputFormat::Json => {
-                let obj = serde_json::json!({
-                    "dry_run": true,
-                    "action": args.action,
-                    "params": params,
-                });
-                println!("{}", serde_json::to_string_pretty(&obj).unwrap_or_default());
-            }
-            OutputFormat::Human => {
-                println!(
-                    "[dry-run] would dispatch unifi action `{}` with params: {}",
-                    args.action,
-                    serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
-                );
-            }
+        if format.is_json() {
+            let obj = serde_json::json!({
+                "dry_run": true,
+                "action": args.action,
+                "params": params,
+            });
+            println!("{}", serde_json::to_string_pretty(&obj).unwrap_or_default());
+        } else {
+            println!(
+                "[dry-run] would dispatch unifi action `{}` with params: {}",
+                args.action,
+                serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
+            );
         }
-        return Ok(ExitCode::SUCCESS);
-    }
-    if args.dry_run {
-        println!(
-            "[dry-run] would dispatch unifi action `{}` with params: {}",
-            args.action,
-            serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string())
-        );
         return Ok(ExitCode::SUCCESS);
     }
     run_confirmable_action_command(

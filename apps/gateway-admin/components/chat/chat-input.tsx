@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { ACPAgent } from './types'
 
 interface ChatInputProps {
-  onSend: (text: string) => void
+  onSend: (text: string) => void | Promise<void>
   disabled?: boolean
   selectedAgent: ACPAgent | null
   agents: ACPAgent[]
@@ -17,6 +17,7 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onSelectAgent }: ChatInputProps) {
   const [value, setValue] = React.useState('')
+  const [sending, setSending] = React.useState(false)
   const [agentPickerOpen, setAgentPickerOpen] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const pickerRef = React.useRef<HTMLDivElement>(null)
@@ -25,13 +26,18 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   const [activeAgentIndex, setActiveAgentIndex] = React.useState(0)
   const pickerId = React.useId()
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = value.trim()
-    if (!trimmed || disabled) return
-    onSend(trimmed)
-    setValue('')
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
+    if (!trimmed || disabled || sending) return
+    setSending(true)
+    try {
+      await onSend(trimmed)
+      setValue('')
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto'
+      }
+    } finally {
+      setSending(false)
     }
   }
 
@@ -39,13 +45,12 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
     if (e.nativeEvent.isComposing) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(e.target.value)
-    // Auto-resize
     const el = e.target
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
@@ -127,21 +132,22 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
 
   return (
     <div className="shrink-0 border-t border-aurora-border-default bg-aurora-nav-bg px-4 py-3">
-      <div className={cn(
-        'relative flex flex-col gap-0 rounded-aurora-2 border border-aurora-border-strong',
-        'bg-aurora-control-surface shadow-[0_8px_24px_rgba(0,0,0,0.24),var(--aurora-highlight-medium)]',
-        'transition-shadow focus-within:shadow-[0_8px_24px_rgba(0,0,0,0.24),var(--aurora-active-glow)]',
-        'focus-within:border-aurora-accent-primary/40',
-      )}>
-        {/* Textarea */}
+      <div
+        className={cn(
+          'relative flex flex-col gap-0 rounded-aurora-2 border border-aurora-border-strong',
+          'bg-aurora-control-surface shadow-[0_8px_24px_rgba(0,0,0,0.24),var(--aurora-highlight-medium)]',
+          'transition-shadow focus-within:shadow-[0_8px_24px_rgba(0,0,0,0.24),var(--aurora-active-glow)]',
+          'focus-within:border-aurora-accent-primary/40',
+        )}
+      >
         <textarea
           ref={textareaRef}
           value={value}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          disabled={disabled}
+          disabled={disabled || sending}
           aria-label="Message"
-          placeholder="Message the assistant… (Shift+Enter for newline)"
+          placeholder={disabled ? 'ACP provider unavailable…' : 'Message the assistant… (Shift+Enter for newline)'}
           rows={1}
           className={cn(
             'w-full resize-none bg-transparent px-4 pt-3 pb-2 text-[13px] leading-[1.55]',
@@ -151,18 +157,11 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           style={{ minHeight: '44px', maxHeight: '200px' }}
         />
 
-        {/* Bottom toolbar */}
         <div className="flex items-center gap-2 px-3 pb-2">
           <TooltipProvider delayDuration={400}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Attach file"
-                  disabled
-                  className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted"
-                >
+                <Button variant="ghost" size="icon" aria-label="Attach file" disabled className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
                   <Paperclip className="size-3.5" />
                 </Button>
               </TooltipTrigger>
@@ -171,13 +170,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Tools"
-                  disabled
-                  className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted"
-                >
+                <Button variant="ghost" size="icon" aria-label="Tools" disabled className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
                   <Wrench className="size-3.5" />
                 </Button>
               </TooltipTrigger>
@@ -185,12 +178,11 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
             </Tooltip>
           </TooltipProvider>
 
-          {/* Agent picker */}
           <div ref={pickerRef} className="relative ml-auto">
             <button
               ref={triggerRef}
               type="button"
-              onClick={() => setAgentPickerOpen((o) => !o)}
+              onClick={() => setAgentPickerOpen((open) => !open)}
               onKeyDown={handleAgentTriggerKeyDown}
               aria-label={selectedAgent ? `Selected agent: ${selectedAgent.name}` : 'Select agent'}
               aria-haspopup="listbox"
@@ -214,11 +206,11 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
                 aria-activedescendant={agents[activeAgentIndex] ? `${pickerId}-${agents[activeAgentIndex].id}` : undefined}
                 onKeyDown={handleAgentListKeyDown}
                 className={cn(
-                'absolute bottom-full right-0 mb-1.5 min-w-[200px] overflow-hidden',
-                'rounded-aurora-2 border border-aurora-border-strong bg-aurora-panel-strong',
-                'shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]',
-                'z-50',
-              )}>
+                  'absolute bottom-full right-0 z-50 mb-1.5 min-w-[200px] overflow-hidden',
+                  'rounded-aurora-2 border border-aurora-border-strong bg-aurora-panel-strong',
+                  'shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]',
+                )}
+              >
                 {agents.map((agent, index) => (
                   <button
                     key={agent.id}
@@ -245,15 +237,14 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
             )}
           </div>
 
-          {/* Send */}
           <Button
-            onClick={handleSend}
-            disabled={!value.trim() || disabled}
+            onClick={() => void handleSend()}
+            disabled={!value.trim() || disabled || sending}
             size="icon"
             aria-label="Send message"
             className={cn(
               'size-7 rounded-aurora-1 transition-all',
-              value.trim() && !disabled
+              value.trim() && !disabled && !sending
                 ? 'bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong'
                 : 'bg-aurora-border-default text-aurora-text-muted/40',
             )}

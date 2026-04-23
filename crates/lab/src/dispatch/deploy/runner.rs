@@ -630,7 +630,7 @@ impl DefaultRunner {
 ///
 /// Gated to test and `test-utils` builds only — not part of the public
 /// production API.
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "test-utils", feature = "deploy"))]
 #[allow(dead_code)]
 pub async fn orchestrate_with_io<I, F>(
     hosts: Vec<(String, Option<String>, Option<ServiceScope>, String)>,
@@ -1062,7 +1062,7 @@ impl DeployRunner for NoopRunner {
 
 // ── test_support ─────────────────────────────────────────────────────────────
 
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "test-utils", feature = "deploy"))]
 #[doc(hidden)]
 #[allow(dead_code)]
 pub mod test_support {

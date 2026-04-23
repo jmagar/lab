@@ -4,9 +4,9 @@ function normalizeGithubRepoUrl(repoUrl: string): string | null {
   const trimmed = repoUrl.trim()
   if (!trimmed) return null
 
-  const sshMatch = /^git@github\.com:(?<owner>[^/\s]+)\/(?<repo>[^/\s]+?)(?:\.git)?$/i.exec(trimmed)
-  if (sshMatch?.groups?.owner && sshMatch.groups.repo) {
-    return `https://github.com/${sshMatch.groups.owner}/${sshMatch.groups.repo}`
+  const sshMatch = /^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/i.exec(trimmed)
+  if (sshMatch?.[1] && sshMatch[2]) {
+    return `https://github.com/${sshMatch[1]}/${sshMatch[2]}`
   }
 
   return trimmed

@@ -6,11 +6,11 @@ import { AppHeader } from '@/components/app-header'
 import { MarketplaceCard } from './marketplace-card'
 import { MktSourceCard } from './mkt-source-card'
 import { MarketplaceStatsStrip } from './marketplace-stats-strip'
-import { PluginDetailDialog } from './plugin-detail-dialog'
 import { AddMarketplaceModal } from './add-marketplace-modal'
 import { ConfirmDialog, type ConfirmState } from './confirm-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMarketplaces, usePlugins, useMarketplaceMutations } from '@/lib/hooks/use-marketplace'
-import type { Plugin } from '@/lib/types/marketplace'
+import type { Plugin as MarketplacePlugin } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
 type Tab = 'browse' | 'installed' | 'marketplaces'
@@ -51,33 +51,15 @@ export function MarketplaceListContent() {
     error: pluginsError,
     mutate: refreshPlugins,
   } = usePlugins()
-  const { install, uninstall, addSource } = useMarketplaceMutations()
+  const { addSource } = useMarketplaceMutations()
 
   const [tab, setTab] = useState<Tab>('browse')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>('name')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [mktFilter, setMktFilter] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
-
-  const requestInstall = useCallback((pluginId: string, pluginName: string) => {
-    void install(pluginId, pluginName)
-  }, [install])
-
-  const requestUninstall = useCallback((pluginId: string, pluginName: string) => {
-    setConfirm({
-      title: `Remove ${pluginName}?`,
-      description: 'This runs `claude plugin uninstall` and removes the plugin from your Claude configuration.',
-      confirmLabel: 'Remove',
-      destructive: true,
-      onConfirm: async () => {
-        setConfirm(null)
-        await uninstall(pluginId, pluginName)
-      },
-    })
-  }, [uninstall])
 
   const installedIds = useMemo(() => new Set(plugins.filter(p => p.installed).map(p => p.id)), [plugins])
   const loadError = pluginsError ?? marketplacesError
@@ -119,10 +101,7 @@ export function MarketplaceListContent() {
     })
   }, [plugins, tab, query, sort, installedIds])
 
-  const selectedPlugin = plugins.find(p => p.id === selectedId) ?? null
-  const selectedMarketplace = marketplaces.find(m => m.id === selectedPlugin?.marketplaceId)
-
-  const ghUserForPlugin = useCallback((p: Plugin) => {
+  const ghUserForPlugin = useCallback((p: MarketplacePlugin) => {
     return marketplaces.find(m => m.id === p.marketplaceId)?.githubOwner
   }, [marketplaces])
 
@@ -140,8 +119,6 @@ export function MarketplaceListContent() {
             key={p.id}
             plugin={p}
             ghUser={ghUserForPlugin(p)}
-            selected={selectedId === p.id}
-            onClick={() => setSelectedId(p.id)}
           />
         ))}
       </div>
@@ -153,7 +130,7 @@ export function MarketplaceListContent() {
       return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
     }
     if (query) return renderBrowseGrid()
-    const groups: Record<string, Plugin[]> = {}
+    const groups: Record<string, MarketplacePlugin[]> = {}
     filtered.forEach(p => { if (!groups[p.marketplaceId]) groups[p.marketplaceId] = []; groups[p.marketplaceId].push(p) })
     if (!Object.keys(groups).length) return <EmptyState icon="📦" title="Nothing installed" sub="Browse plugins above to get started" />
     return (
@@ -169,8 +146,6 @@ export function MarketplaceListContent() {
                     key={p.id}
                     plugin={p}
                     ghUser={ghUserForPlugin(p)}
-                    selected={selectedId === p.id}
-                    onClick={() => setSelectedId(p.id)}
                   />
                 ))}
               </div>
@@ -209,21 +184,31 @@ export function MarketplaceListContent() {
         breadcrumbs={[{ label: 'Labby', href: '/' }, { label: 'Marketplace' }]}
         actions={
           <>
-            <button
-              onClick={() => setAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-[14px] py-[6px] rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-transparent text-aurora-text-muted border border-aurora-border-strong hover:bg-aurora-hover-bg hover:text-aurora-text-primary transition-all duration-150"
-            >
-              <Plus className="w-[14px] h-[14px]" />
-              Add Marketplace
-            </button>
-            <button
-              onClick={() => { void handleRefresh() }}
-              disabled={isRefreshing}
-              className="inline-flex items-center gap-1.5 px-[14px] py-[6px] rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong transition-all duration-150"
-            >
-              <RefreshCw className={cn('w-[14px] h-[14px]', isRefreshing && 'animate-spin')} />
-              {isRefreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setAddModalOpen(true)}
+                  className="inline-flex size-9 items-center justify-center rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-transparent text-aurora-text-muted border border-aurora-border-strong hover:bg-aurora-hover-bg hover:text-aurora-text-primary transition-all duration-150"
+                  aria-label="Add marketplace"
+                >
+                  <Plus className="w-[14px] h-[14px]" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Add marketplace</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { void handleRefresh() }}
+                  disabled={isRefreshing}
+                  className="inline-flex size-9 items-center justify-center rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong transition-all duration-150"
+                  aria-label={isRefreshing ? 'Refreshing marketplaces' : 'Refresh marketplace'}
+                >
+                  <RefreshCw className={cn('w-[14px] h-[14px]', isRefreshing && 'animate-spin')} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{isRefreshing ? 'Refreshing marketplaces' : 'Refresh marketplace'}</TooltipContent>
+            </Tooltip>
           </>
         }
       />
@@ -317,17 +302,6 @@ export function MarketplaceListContent() {
           {tab === 'marketplaces' && renderMarketplacesGrid()}
         </div>
       </div>
-
-      {selectedPlugin && (
-        <PluginDetailDialog
-          plugin={selectedPlugin}
-          marketplace={selectedMarketplace}
-          installedIds={installedIds}
-          onClose={() => setSelectedId(null)}
-          onInstall={requestInstall}
-          onUninstall={requestUninstall}
-        />
-      )}
 
       <AddMarketplaceModal
         open={addModalOpen}

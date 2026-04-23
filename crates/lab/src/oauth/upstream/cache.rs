@@ -225,6 +225,7 @@ mod tests {
 
     fn cfg(name: &str, client_id: &str) -> UpstreamConfig {
         UpstreamConfig {
+            enabled: true,
             name: name.to_string(),
             url: Some(format!("https://{name}.example/mcp")),
             command: None,

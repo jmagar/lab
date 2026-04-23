@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { X, Download, Trash2, RefreshCw } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PluginInfoPanel } from './plugin-info-panel'
 import { PluginFilesPanel } from './plugin-files-panel'
 import type { Plugin, Marketplace, Artifact } from '@/lib/types/marketplace'
@@ -112,13 +113,18 @@ export function PluginDetailDialog({
             {isInstalled ? (
               <>
                 {plugin.hasUpdate && (
-                  <button
-                    onClick={() => onInstall(plugin.id, plugin.name)}
-                    className="inline-flex items-center gap-1.5 px-[14px] py-1.5 rounded-lg font-sans text-[13px] font-semibold cursor-pointer text-aurora-warn bg-[color-mix(in_srgb,var(--aurora-warn)_7%,transparent)] border border-[color-mix(in_srgb,var(--aurora-warn)_25%,transparent)] hover:bg-[color-mix(in_srgb,var(--aurora-warn)_14%,transparent)] transition-all duration-150"
-                  >
-                    <RefreshCw className="w-[14px] h-[14px]" />
-                    Update
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => onInstall(plugin.id, plugin.name)}
+                        className="inline-flex size-9 items-center justify-center rounded-lg font-sans text-[13px] font-semibold cursor-pointer text-aurora-warn bg-[color-mix(in_srgb,var(--aurora-warn)_7%,transparent)] border border-[color-mix(in_srgb,var(--aurora-warn)_25%,transparent)] hover:bg-[color-mix(in_srgb,var(--aurora-warn)_14%,transparent)] transition-all duration-150"
+                        aria-label={`Update ${plugin.name}`}
+                      >
+                        <RefreshCw className="w-[14px] h-[14px]" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{`Update ${plugin.name}`}</TooltipContent>
+                  </Tooltip>
                 )}
                 <button
                   onClick={() => onUninstall(plugin.id, plugin.name)}
@@ -129,13 +135,18 @@ export function PluginDetailDialog({
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => onInstall(plugin.id, plugin.name)}
-                className="inline-flex items-center gap-1.5 px-[14px] py-1.5 rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong transition-all duration-150"
-              >
-                <Download className="w-[14px] h-[14px]" />
-                Install
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => onInstall(plugin.id, plugin.name)}
+                    className="inline-flex size-9 items-center justify-center rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong transition-all duration-150"
+                    aria-label={`Install ${plugin.name}`}
+                  >
+                    <Download className="w-[14px] h-[14px]" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{`Install ${plugin.name}`}</TooltipContent>
+              </Tooltip>
             )}
             <button
               onClick={onClose}
@@ -168,7 +179,7 @@ export function PluginDetailDialog({
         {tab === 'info' ? (
           <PluginInfoPanel plugin={plugin} artifacts={artifacts} />
         ) : (
-          <PluginFilesPanel artifacts={artifacts} />
+          <PluginFilesPanel pluginId={plugin.id} artifacts={artifacts} />
         )}
       </DialogContent>
     </Dialog>

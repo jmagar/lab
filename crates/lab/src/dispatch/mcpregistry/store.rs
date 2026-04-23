@@ -701,7 +701,7 @@ mod tests {
         let path = std::env::temp_dir()
             .join(format!("lab-registry-idem-{}-{unique}.db", std::process::id()));
         // Open twice — second open re-runs migrate() which must be a no-op.
-        let _ = RegistryStore::open(&path).await.unwrap();
+        drop(RegistryStore::open(&path).await.unwrap());
         let store2 = RegistryStore::open(&path).await.unwrap();
         let conn = store2.pool().get().unwrap();
         let version: i32 = conn
@@ -721,7 +721,7 @@ mod tests {
             .unwrap_or(0);
         let path = std::env::temp_dir()
             .join(format!("lab-registry-perm-{}-{unique}.db", std::process::id()));
-        let _ = RegistryStore::open(&path).await.unwrap();
+        drop(RegistryStore::open(&path).await.unwrap());
         let meta = std::fs::metadata(&path).unwrap();
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "DB file must be 0o600");

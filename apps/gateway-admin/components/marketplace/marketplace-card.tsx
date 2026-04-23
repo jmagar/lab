@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { Plugin } from '@/lib/types/marketplace'
@@ -7,8 +8,6 @@ import type { Plugin } from '@/lib/types/marketplace'
 interface MarketplaceCardProps {
   plugin: Plugin
   ghUser?: string
-  selected?: boolean
-  onClick: () => void
 }
 
 function PluginAvatar({ ghUser, name }: { ghUser?: string; name: string }) {
@@ -60,17 +59,10 @@ function StatusBadge({ plugin }: { plugin: Plugin }) {
   )
 }
 
-export function MarketplaceCard({ plugin, ghUser, selected, onClick }: MarketplaceCardProps) {
+export function MarketplaceCard({ plugin, ghUser }: MarketplaceCardProps) {
   return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onKeyDown={(event) => {
-        if (event.key === ' ') {
-          event.preventDefault()
-        }
-      }}
-      onClick={onClick}
+    <Link
+      href={`/marketplace/plugin?id=${encodeURIComponent(plugin.id)}`}
       className={cn(
         'relative overflow-hidden rounded-aurora-3 border p-[18px] cursor-pointer',
         'flex flex-col gap-3',
@@ -81,7 +73,6 @@ export function MarketplaceCard({ plugin, ghUser, selected, onClick }: Marketpla
         'before:absolute before:inset-0 before:rounded-aurora-3 before:pointer-events-none',
         'before:bg-[linear-gradient(135deg,color-mix(in_srgb,var(--aurora-text-primary)_1.5%,transparent)_0%,transparent_60%)]',
         'hover:-translate-y-px hover:bg-aurora-panel-strong hover:border-aurora-accent-deep hover:shadow-aurora-strong',
-        selected && 'border-aurora-accent-primary bg-aurora-panel-strong shadow-aurora-strong',
       )}
     >
       <div className="flex items-center gap-3">
@@ -117,6 +108,6 @@ export function MarketplaceCard({ plugin, ghUser, selected, onClick }: Marketpla
         </span>
         <StatusBadge plugin={plugin} />
       </div>
-    </button>
+    </Link>
   )
 }

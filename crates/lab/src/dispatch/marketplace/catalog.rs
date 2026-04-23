@@ -64,6 +64,68 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "Artifact[]",
     },
     ActionSpec {
+        name: "plugin.workspace",
+        description: "Load or create an app-managed editable workspace mirror for a plugin",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Plugin id in `name@marketplace` form",
+        }],
+        returns: "PluginWorkspace",
+    },
+    ActionSpec {
+        name: "plugin.save",
+        description: "Save a file into the plugin workspace mirror",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "path",
+                ty: "string",
+                required: true,
+                description: "Relative file path inside the plugin workspace",
+            },
+            ParamSpec {
+                name: "content",
+                ty: "string",
+                required: true,
+                description: "Updated file contents",
+            },
+        ],
+        returns: "SaveResult",
+    },
+    ActionSpec {
+        name: "plugin.deploy",
+        description: "Deploy the saved plugin workspace to the local Claude Code install target",
+        destructive: true,
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Plugin id in `name@marketplace` form",
+        }],
+        returns: "DeployResult",
+    },
+    ActionSpec {
+        name: "plugin.deploy.preview",
+        description: "Preview changed, skipped, and removed files before deploying the workspace",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Plugin id in `name@marketplace` form",
+        }],
+        returns: "DeployPreviewResult",
+    },
+    ActionSpec {
         name: "sources.add",
         description: "Register a new marketplace via `claude plugin marketplace add`",
         destructive: true,

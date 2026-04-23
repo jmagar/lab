@@ -333,6 +333,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         }
 
         v1 = v1
+            .nest("/acp", services::acp::routes(state.clone()))
             .nest("/gateway", services::gateway::routes(state.clone()))
             .route(
                 "/openapi.json",

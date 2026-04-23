@@ -4,6 +4,7 @@ import type {
   UpdateGatewayInput,
   TestGatewayResult,
   ReloadGatewayResult,
+  GatewayCleanupResult,
   ExposurePolicy,
   ExposurePolicyPreview,
   ServiceConfig,
@@ -11,6 +12,7 @@ import type {
   SupportedService,
 } from '../types/gateway.ts'
 import {
+  type BackendGatewayMcpRuntimeView,
   type BackendGatewayRuntimeView,
   type BackendGatewayToolRow,
   type BackendServerView,
@@ -93,6 +95,7 @@ async function probeGateway(name: string, signal?: AbortSignal) {
 async function normalizeGatewayView(
   view: BackendGatewayView,
   includeDiscovery: boolean,
+  runtime: BackendGatewayMcpRuntimeView | undefined,
   signal?: AbortSignal,
 ): Promise<Gateway> {
   const [probe, discovery] = await Promise.all([
@@ -106,7 +109,7 @@ async function normalizeGatewayView(
         }),
   ])
 
-  return normalizeGateway(view, probe, discovery)
+  return normalizeGateway(view, probe, discovery, runtime)
 }
 
 async function findServerView(id: string, signal?: AbortSignal): Promise<BackendServerView> {
@@ -148,6 +151,7 @@ async function fetchVirtualServerAllowedActions(
 
 async function normalizeListedServerView(
   view: BackendServerView,
+  runtime: BackendGatewayMcpRuntimeView | undefined,
   signal?: AbortSignal,
 ): Promise<Gateway> {
   if (view.source === 'in_process') {
@@ -159,10 +163,10 @@ async function normalizeListedServerView(
     return normalizeServerView(view, {
       tools: actions,
       allowed_actions: allowedActions,
-    })
+    }, runtime)
   }
 
-  return normalizeServerView(view)
+  return normalizeServerView(view, undefined, runtime)
 }
 
 async function normalizeLabServiceServer(
@@ -220,14 +224,38 @@ async function mutateVirtualServer(
   return normalizeLabServiceServer(view, signal)
 }
 
+async function mutateGatewayEnabled(
+  action: 'gateway.mcp.enable' | 'gateway.mcp.disable',
+  id: string,
+  signal?: AbortSignal,
+): Promise<Gateway> {
+  if (action === 'gateway.mcp.enable') {
+    const view = await gatewayAction<BackendGatewayView>(action, confirmGatewayParams({ name: id }), signal)
+    return normalizeGatewayView(view, true, undefined, signal)
+  }
+
+  const result = await gatewayAction<{ gateway: BackendGatewayView }>(
+    action,
+    confirmGatewayParams({ name: id, cleanup: true, aggressive: false }),
+    signal,
+  )
+  return normalizeGatewayView(result.gateway, true, undefined, signal)
+}
+
 function fieldPreview(config: ServiceConfig, suffix: string): string | undefined {
   return config.fields.find((field) => field.name.endsWith(suffix))?.value_preview ?? undefined
 }
 
 export const gatewayApi = {
   async list(signal?: AbortSignal): Promise<Gateway[]> {
-    const views = await gatewayAction<BackendServerView[]>('gateway.list', {}, signal)
-    return Promise.all(views.map((view) => normalizeListedServerView(view, signal)))
+    const [views, runtimeRows] = await Promise.all([
+      gatewayAction<BackendServerView[]>('gateway.list', {}, signal),
+      gatewayAction<BackendGatewayMcpRuntimeView[]>('gateway.mcp.list', {}, signal),
+    ])
+    const runtimeByName = new Map(runtimeRows.map((row) => [row.name, row]))
+    return Promise.all(
+      views.map((view) => normalizeListedServerView(view, runtimeByName.get(view.name), signal)),
+    )
   },
 
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
@@ -248,7 +276,13 @@ export const gatewayApi = {
     }
 
     const view = await gatewayAction<BackendGatewayView>('gateway.get', { name: id }, signal)
-    return normalizeGatewayView(view, true, signal)
+    const runtimeRows = await gatewayAction<BackendGatewayMcpRuntimeView[]>('gateway.mcp.list', {}, signal)
+    return normalizeGatewayView(
+      view,
+      true,
+      runtimeRows.find((row) => row.name === view.config.name),
+      signal,
+    )
   },
 
   async create(input: CreateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
@@ -257,7 +291,13 @@ export const gatewayApi = {
       confirmGatewayParams(buildGatewayCreatePayload(input)),
       signal,
     )
-    return normalizeGatewayView(view, true, signal)
+    const runtimeRows = await gatewayAction<BackendGatewayMcpRuntimeView[]>('gateway.mcp.list', {}, signal)
+    return normalizeGatewayView(
+      view,
+      true,
+      runtimeRows.find((row) => row.name === view.config.name),
+      signal,
+    )
   },
 
   async update(id: string, input: UpdateGatewayInput, signal?: AbortSignal): Promise<Gateway> {
@@ -266,7 +306,13 @@ export const gatewayApi = {
       confirmGatewayParams(buildGatewayUpdatePayload(id, input)),
       signal,
     )
-    return normalizeGatewayView(view, true, signal)
+    const runtimeRows = await gatewayAction<BackendGatewayMcpRuntimeView[]>('gateway.mcp.list', {}, signal)
+    return normalizeGatewayView(
+      view,
+      true,
+      runtimeRows.find((row) => row.name === view.config.name),
+      signal,
+    )
   },
 
   async remove(id: string, signal?: AbortSignal): Promise<void> {
@@ -404,6 +450,34 @@ export const gatewayApi = {
 
   async disableVirtualServer(id: string, signal?: AbortSignal): Promise<Gateway> {
     return mutateVirtualServer('gateway.virtual_server.disable', id, signal)
+  },
+
+  async enableGateway(id: string, signal?: AbortSignal): Promise<Gateway> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'in_process') {
+      return mutateVirtualServer('gateway.virtual_server.enable', id, signal)
+    }
+    return mutateGatewayEnabled('gateway.mcp.enable', id, signal)
+  },
+
+  async disableGateway(id: string, signal?: AbortSignal): Promise<Gateway> {
+    const serverView = await findServerView(id, signal)
+    if (serverView.source === 'in_process') {
+      return mutateVirtualServer('gateway.virtual_server.disable', id, signal)
+    }
+    return mutateGatewayEnabled('gateway.mcp.disable', id, signal)
+  },
+
+  async cleanupGateway(
+    id: string,
+    aggressive: boolean = false,
+    signal?: AbortSignal,
+  ): Promise<GatewayCleanupResult> {
+    return await gatewayAction<GatewayCleanupResult>(
+      'gateway.mcp.cleanup',
+      confirmGatewayParams({ name: id, aggressive }),
+      signal,
+    )
   },
 
   async setVirtualServerSurface(

@@ -106,6 +106,7 @@ test('gateway list view renders quick-lens cards and primary actions', () => {
         onEdit={() => {}}
         onTest={() => {}}
         onReload={() => {}}
+        onToggleEnabled={() => {}}
         onDelete={() => {}}
       />
     </SidebarProvider>,

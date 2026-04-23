@@ -1,6 +1,13 @@
 import type { Marketplace, Plugin, Artifact, ArtifactLang, MarketplaceSource } from '../types/marketplace.js'
 import { marketplaceActionUrl } from './gateway-config.ts'
 import { performServiceAction, type ServiceActionError } from './service-action-client.ts'
+import type {
+  DeployPluginWorkspacePreviewResult,
+  DeployPluginWorkspaceResult,
+  PluginWorkspace,
+  SavePluginWorkspaceFileInput,
+  SavePluginWorkspaceFileResult,
+} from '../editor/types.js'
 
 export class MarketplaceApiError extends Error implements ServiceActionError {
   status: number
@@ -107,10 +114,7 @@ export async function getInstalledPluginIds(signal?: AbortSignal): Promise<Set<s
 
 export async function getArtifacts(pluginId: string, signal?: AbortSignal): Promise<Artifact[]> {
   const artifacts = await marketplaceAction<Artifact[]>('plugin.artifacts', { id: pluginId }, signal)
-  return artifacts.map((artifact) => ({
-    ...artifact,
-    files: artifact.files.map((file) => ({ ...file })),
-  }))
+  return artifacts.map((artifact) => ({ ...artifact }))
 }
 
 export async function installPlugin(pluginId: string, signal?: AbortSignal): Promise<void> {
@@ -119,6 +123,43 @@ export async function installPlugin(pluginId: string, signal?: AbortSignal): Pro
 
 export async function uninstallPlugin(pluginId: string, signal?: AbortSignal): Promise<void> {
   await marketplaceAction<unknown>('plugin.uninstall', { id: pluginId, confirm: true }, signal)
+}
+
+export async function getPluginWorkspace(pluginId: string, signal?: AbortSignal): Promise<PluginWorkspace> {
+  return marketplaceAction<PluginWorkspace>('plugin.workspace', { id: pluginId }, signal)
+}
+
+export async function savePluginWorkspaceFile(
+  input: SavePluginWorkspaceFileInput,
+  signal?: AbortSignal,
+): Promise<SavePluginWorkspaceFileResult> {
+  return marketplaceAction<SavePluginWorkspaceFileResult>(
+    'plugin.save',
+    { id: input.pluginId, path: input.path, content: input.content },
+    signal,
+  )
+}
+
+export async function deployPluginWorkspace(
+  pluginId: string,
+  signal?: AbortSignal,
+): Promise<DeployPluginWorkspaceResult> {
+  return marketplaceAction<DeployPluginWorkspaceResult>(
+    'plugin.deploy',
+    { id: pluginId, confirm: true },
+    signal,
+  )
+}
+
+export async function previewPluginWorkspaceDeploy(
+  pluginId: string,
+  signal?: AbortSignal,
+): Promise<DeployPluginWorkspacePreviewResult> {
+  return marketplaceAction<DeployPluginWorkspacePreviewResult>(
+    'plugin.deploy.preview',
+    { id: pluginId },
+    signal,
+  )
 }
 
 export async function addMarketplace(

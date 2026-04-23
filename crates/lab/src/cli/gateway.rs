@@ -1,14 +1,18 @@
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use serde::Deserialize;
 use serde_json::json;
+use tokio::time::sleep;
 
 use crate::cli::helpers::run_action_command;
 use crate::config::{LabConfig, config_toml_path};
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
+use crate::dispatch::gateway::SHARED_GATEWAY_OAUTH_SUBJECT;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::dispatch::upstream::pool::UpstreamPool;
 use crate::output::OutputFormat;
@@ -28,6 +32,7 @@ pub enum GatewayCommand {
     Update(GatewayUpdateArgs),
     Remove(GatewayRemoveArgs),
     Reload,
+    Mcp(GatewayMcpArgs),
 }
 
 #[derive(Debug, Args)]
@@ -79,13 +84,83 @@ pub struct GatewayRemoveArgs {
     pub name: String,
 }
 
-async fn build_manager(config: &LabConfig) -> Arc<GatewayManager> {
+#[derive(Debug, Args)]
+pub struct GatewayMcpArgs {
+    #[command(subcommand)]
+    pub command: GatewayMcpCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GatewayMcpCommand {
+    Auth(GatewayMcpAuthArgs),
+    List,
+    Enable(GatewayMcpLifecycleArgs),
+    Disable(GatewayMcpLifecycleArgs),
+    Cleanup(GatewayMcpCleanupArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayMcpAuthArgs {
+    #[command(subcommand)]
+    pub command: GatewayMcpAuthCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GatewayMcpAuthCommand {
+    Start(GatewayOauthUpstreamArgs),
+    Open(GatewayOauthUpstreamArgs),
+    Status(GatewayOauthUpstreamArgs),
+    Clear(GatewayOauthUpstreamArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayOauthUpstreamArgs {
+    pub name: String,
+    #[arg(long)]
+    pub subject: Option<String>,
+    #[arg(long, default_value_t = false)]
+    pub open: bool,
+    #[arg(long, default_value_t = false)]
+    pub wait: bool,
+    #[arg(long, default_value_t = 120)]
+    pub wait_timeout_secs: u64,
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayMcpLifecycleArgs {
+    pub name: String,
+    #[arg(long, default_value_t = false)]
+    pub cleanup: bool,
+    #[arg(long, default_value_t = false)]
+    pub aggressive: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayMcpCleanupArgs {
+    pub name: String,
+    #[arg(long, default_value_t = false)]
+    pub aggressive: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayOauthStartView {
+    authorization_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayOauthStatusView {
+    authenticated: bool,
+}
+
+async fn build_manager(config: &LabConfig, discover_upstreams: bool) -> Arc<GatewayManager> {
     let runtime = GatewayRuntimeHandle::default();
-    let registry = crate::registry::build_default_registry();
-    let pool = Arc::new(UpstreamPool::new());
-    pool.discover_all_with_in_process_peers(&config.upstream, &registry)
-        .await;
-    runtime.swap(Some(pool)).await;
+    if discover_upstreams {
+        let registry = crate::registry::build_default_registry();
+        let pool = Arc::new(UpstreamPool::new());
+        pool.discover_all_with_in_process_peers(&config.upstream, &registry)
+            .await;
+        runtime.swap(Some(pool)).await;
+    }
 
     let manager = Arc::new(
         GatewayManager::new(
@@ -100,54 +175,295 @@ async fn build_manager(config: &LabConfig) -> Arc<GatewayManager> {
 }
 
 pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) -> Result<ExitCode> {
-    let manager = build_manager(config).await;
-    let (action, params) = match args.command {
-        GatewayCommand::List => ("gateway.list".to_string(), json!({})),
-        GatewayCommand::Get(args) => ("gateway.get".to_string(), json!({ "name": args.name })),
-        GatewayCommand::Test(args) => ("gateway.test".to_string(), json!({ "name": args.name })),
-        GatewayCommand::Add(args) => (
-            "gateway.add".to_string(),
-            json!({
-                "spec": {
-                    "name": args.name,
-                    "url": args.url,
-                    "command": args.command,
-                    "args": args.args,
-                    "bearer_token_env": args.bearer_token_env,
-                    "proxy_resources": args.proxy_resources,
+    let discover_upstreams = !matches!(
+        &args.command,
+        GatewayCommand::Mcp(GatewayMcpArgs {
+            command:
+                GatewayMcpCommand::List
+                | GatewayMcpCommand::Enable(_)
+                | GatewayMcpCommand::Disable(_)
+                | GatewayMcpCommand::Cleanup(_)
+                | GatewayMcpCommand::Auth(GatewayMcpAuthArgs {
+                    command:
+                        GatewayMcpAuthCommand::Status(_)
+                        | GatewayMcpAuthCommand::Clear(_),
+                }),
+        })
+    );
+    let manager = build_manager(config, discover_upstreams).await;
+    let cli_origin = format!("cli:{}", std::process::id());
+    let cli_owner = json!({
+        "surface": "cli",
+        "client_name": "lab-cli",
+        "raw": cli_origin,
+    });
+    match args.command {
+        GatewayCommand::Mcp(args) => match args.command {
+            GatewayMcpCommand::Auth(args) => match args.command {
+                GatewayMcpAuthCommand::Start(args) => {
+                    return run_gateway_oauth_start(manager, args, format).await;
                 }
-            }),
-        ),
-        GatewayCommand::Update(args) => (
-            "gateway.update".to_string(),
-            json!({
-                "name": args.name,
-                "patch": {
-                    "name": args.new_name,
-                    "url": args.url.map(Some),
-                    "command": args.command.map(Some),
-                    "args": if args.args.is_empty() { None::<Vec<String>> } else { Some(args.args) },
-                    "bearer_token_env": args.bearer_token_env.map(Some),
-                    "proxy_resources": args.proxy_resources,
+                GatewayMcpAuthCommand::Open(mut args) => {
+                    args.open = true;
+                    return run_gateway_oauth_start(manager, args, format).await;
                 }
-            }),
-        ),
-        GatewayCommand::Remove(args) => {
-            ("gateway.remove".to_string(), json!({ "name": args.name }))
-        }
-        GatewayCommand::Reload => ("gateway.reload".to_string(), json!({})),
-    };
-
-    run_action_command(
-        "gateway",
-        action,
-        params,
-        format,
-        |action, params| async move {
-            crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params).await
+                GatewayMcpAuthCommand::Status(args) => {
+                    return run_action_command(
+                        "gateway",
+                        "gateway.oauth.status".to_string(),
+                        json!({ "upstream": args.name, "subject": args.subject }),
+                        format,
+                        |action, params| async move {
+                            crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
+                                .await
+                        },
+                    )
+                    .await;
+                }
+                GatewayMcpAuthCommand::Clear(args) => {
+                    return run_action_command(
+                        "gateway",
+                        "gateway.oauth.clear".to_string(),
+                        json!({ "upstream": args.name, "subject": args.subject }),
+                        format,
+                        |action, params| async move {
+                            crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
+                                .await
+                        },
+                    )
+                    .await;
+                }
+            },
+            GatewayMcpCommand::List => {
+                return run_action_command(
+                    "gateway",
+                    "gateway.mcp.list".to_string(),
+                    json!({}),
+                    format,
+                    |action, params| async move {
+                        crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
+                            .await
+                    },
+                )
+                .await;
+            }
+            GatewayMcpCommand::Enable(args) => {
+                return run_action_command(
+                    "gateway",
+                    "gateway.mcp.enable".to_string(),
+                    json!({ "name": args.name, "origin": cli_origin, "owner": cli_owner }),
+                    format,
+                    |action, params| async move {
+                        crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
+                            .await
+                    },
+                )
+                .await;
+            }
+            GatewayMcpCommand::Disable(args) => {
+                return run_action_command(
+                    "gateway",
+                    "gateway.mcp.disable".to_string(),
+                    json!({
+                        "name": args.name,
+                        "cleanup": args.cleanup,
+                        "aggressive": args.aggressive,
+                        "origin": cli_origin,
+                        "owner": cli_owner,
+                    }),
+                    format,
+                    |action, params| async move {
+                        crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
+                            .await
+                    },
+                )
+                .await;
+            }
+            GatewayMcpCommand::Cleanup(args) => {
+                return run_action_command(
+                    "gateway",
+                    "gateway.mcp.cleanup".to_string(),
+                    json!({
+                        "name": args.name,
+                        "aggressive": args.aggressive,
+                    }),
+                    format,
+                    |action, params| async move {
+                        crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
+                            .await
+                    },
+                )
+                .await;
+            }
         },
+        command => {
+            let (action, params) = match command {
+                GatewayCommand::List => ("gateway.list".to_string(), json!({})),
+                GatewayCommand::Get(args) => ("gateway.get".to_string(), json!({ "name": args.name })),
+                GatewayCommand::Test(args) => ("gateway.test".to_string(), json!({ "name": args.name })),
+                GatewayCommand::Add(args) => (
+                    "gateway.add".to_string(),
+                    json!({
+                        "origin": cli_origin,
+                        "owner": cli_owner,
+                        "spec": {
+                            "name": args.name,
+                            "url": args.url,
+                            "command": args.command,
+                            "args": args.args,
+                            "bearer_token_env": args.bearer_token_env,
+                            "proxy_resources": args.proxy_resources,
+                        }
+                    }),
+                ),
+                GatewayCommand::Update(args) => (
+                    "gateway.update".to_string(),
+                    json!({
+                        "name": args.name,
+                        "origin": cli_origin,
+                        "owner": cli_owner,
+                        "patch": {
+                            "name": args.new_name,
+                            "url": args.url.map(Some),
+                            "command": args.command.map(Some),
+                            "args": if args.args.is_empty() { None::<Vec<String>> } else { Some(args.args) },
+                            "bearer_token_env": args.bearer_token_env.map(Some),
+                            "proxy_resources": args.proxy_resources,
+                        }
+                    }),
+                ),
+                GatewayCommand::Remove(args) => {
+                    ("gateway.remove".to_string(), json!({ "name": args.name, "origin": cli_origin, "owner": cli_owner }))
+                }
+                GatewayCommand::Reload => ("gateway.reload".to_string(), json!({ "origin": cli_origin, "owner": cli_owner })),
+                GatewayCommand::Mcp(_) => unreachable!("handled above"),
+            };
+
+            return run_action_command(
+                "gateway",
+                action,
+                params,
+                format,
+                |action, params| async move {
+                    crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params).await
+                },
+            )
+            .await;
+        }
+    }
+}
+
+async fn run_gateway_oauth_start(
+    manager: Arc<GatewayManager>,
+    args: GatewayOauthUpstreamArgs,
+    format: OutputFormat,
+) -> Result<ExitCode> {
+    let params = json!({ "upstream": args.name, "subject": args.subject });
+    let start = std::time::Instant::now();
+    let value = crate::dispatch::gateway::dispatch_with_manager(
+        &manager,
+        "gateway.oauth.start",
+        params,
     )
     .await
+    .map_err(|error| {
+        anyhow::anyhow!(
+            "{}",
+            serde_json::to_string(&error).unwrap_or_else(|_| error.to_string())
+        )
+    })?;
+    tracing::info!(
+        surface = "cli",
+        service = "gateway",
+        action = "gateway.oauth.start",
+        elapsed_ms = start.elapsed().as_millis(),
+        "dispatch ok"
+    );
+
+    crate::output::print(&value, format)?;
+
+    let start_view: GatewayOauthStartView = serde_json::from_value(value.clone())
+        .map_err(|error| anyhow::anyhow!("failed to decode gateway oauth start response: {error}"))?;
+
+    if args.open {
+        open_in_browser(&start_view.authorization_url)?;
+        eprintln!("Opened authorization URL in your browser.");
+    } else {
+        eprintln!("Open this URL to authorize:\n{}", start_view.authorization_url);
+    }
+
+    if args.wait {
+        let subject = args
+            .subject
+            .as_deref()
+            .unwrap_or(SHARED_GATEWAY_OAUTH_SUBJECT);
+        eprintln!(
+            "Waiting for OAuth completion for `{}` using shared subject `{}`...",
+            args.name, subject
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(args.wait_timeout_secs);
+        loop {
+            let status_value = crate::dispatch::gateway::dispatch_with_manager(
+                &manager,
+                "gateway.oauth.status",
+                json!({ "upstream": args.name, "subject": subject }),
+            )
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "{}",
+                    serde_json::to_string(&error).unwrap_or_else(|_| error.to_string())
+                )
+            })?;
+            let status: GatewayOauthStatusView = serde_json::from_value(status_value).map_err(
+                |error| anyhow::anyhow!("failed to decode gateway oauth status response: {error}"),
+            )?;
+            if status.authenticated {
+                eprintln!(
+                    "OAuth completed for `{}`. The existing callback route stored credentials for shared subject `{}`.",
+                    args.name, subject
+                );
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                eprintln!(
+                    "Timed out waiting for OAuth completion for `{}` after {}s. The browser callback may still succeed later; re-run `lab gateway mcp auth status {}` to check.",
+                    args.name, args.wait_timeout_secs, args.name
+                );
+                break;
+            }
+            sleep(Duration::from_secs(1)).await;
+        }
+    }
+
+    Ok(ExitCode::SUCCESS)
+}
+
+fn open_in_browser(url: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).status()?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(url).status()?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .status()?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err(anyhow::anyhow!(
+        "opening a browser is not supported on this platform"
+    ))
 }
 
 #[cfg(test)]
@@ -189,5 +505,94 @@ mod tests {
         );
         assert!(Cli::try_parse_from(["lab", "gateway", "remove", "fixture-http"]).is_ok());
         assert!(Cli::try_parse_from(["lab", "gateway", "reload"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "auth",
+                "start",
+                "fixture-http",
+                "--open",
+                "--wait",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "auth",
+                "open",
+                "fixture-http",
+                "--wait",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "auth",
+                "status",
+                "fixture-http",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "auth",
+                "clear",
+                "fixture-http",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "list",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "enable",
+                "fixture-http",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "disable",
+                "fixture-http",
+                "--cleanup",
+                "--aggressive",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lab",
+                "gateway",
+                "mcp",
+                "cleanup",
+                "fixture-http",
+                "--aggressive",
+            ])
+            .is_ok()
+        );
     }
 }
