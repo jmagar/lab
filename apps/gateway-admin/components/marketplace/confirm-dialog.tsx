@@ -1,5 +1,6 @@
 'use client'
 
+import { buttonVariants } from '@/components/ui/button'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,9 +37,12 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            className={state?.destructive ? 'bg-red-600 text-white hover:bg-red-700' : undefined}
-            onClick={() => {
-              void state?.onConfirm()
+            className={state?.destructive ? buttonVariants({ variant: 'destructive' }) : undefined}
+            onClick={async (event) => {
+              if (!state) return
+              event.preventDefault()
+              await state.onConfirm()
+              onOpenChange(false)
             }}
           >
             {state?.confirmLabel ?? 'Confirm'}

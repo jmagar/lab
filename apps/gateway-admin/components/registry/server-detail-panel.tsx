@@ -116,7 +116,8 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
   const extraIcons = icons.slice(1)
   const repoHref = safeHref(server.repository?.url)
   const ghAvatar = githubAvatarFromRepoUrl(server.repository?.url)
-  const headerAvatarSrc = ghAvatar ?? safeHref(primaryIcon?.src) ?? null
+  const primaryIconHref = safeHref(primaryIcon?.src)
+  const headerAvatarSrc = ghAvatar ?? primaryIconHref ?? null
   const websiteHref = safeHref(server.websiteUrl)
   const schemaHref = safeHref(server.$schema)
   const schemaPanelId = `schema-viewer-${server.name.replace(/[^a-zA-Z0-9_-]/g, '-')}`
@@ -137,8 +138,14 @@ function PanelBody({ server, extensions }: { server: NormalizedServerJSON; exten
                   referrerPolicy="no-referrer"
                   loading="lazy"
                   onError={(e) => {
-                    e.currentTarget.style.display = 'none'
-                    ;(e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
+                    const img = e.currentTarget
+                    if (ghAvatar && primaryIconHref && img.dataset.fallbackApplied !== 'true') {
+                      img.dataset.fallbackApplied = 'true'
+                      img.src = primaryIconHref
+                      return
+                    }
+                    img.style.display = 'none'
+                    ;(img.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
                   }}
                 />
                 <Package className="size-6 text-aurora-text-muted" style={{ display: 'none' }} />
@@ -346,7 +353,7 @@ const JSON_TOKEN_CLASS: Record<JsonTokenType, string> = {
 
 function JsonHighlight({ content }: { content: string }) {
   const parts: React.ReactNode[] = []
-  const jsonTokenRe = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|[{}\[\]:,]|\s+|./g
+  const jsonTokenRe = /"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|[{}[\]:,]|\s+|./g
 
   for (const match of content.matchAll(jsonTokenRe)) {
     const token = match[0]

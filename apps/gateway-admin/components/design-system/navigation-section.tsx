@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import {
+  AURORA_ACCENT_CTA,
   AURORA_DISPLAY_2,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
@@ -79,7 +80,7 @@ export function NavigationSection() {
                 <Button variant="outline" className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
                   Filter logs
                 </Button>
-                <Button className="rounded-aurora-1 border border-aurora-accent-primary/35 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_16%,transparent)] text-aurora-text-primary hover:bg-[color-mix(in_srgb,var(--aurora-accent-primary)_22%,transparent)]">
+                <Button className={AURORA_ACCENT_CTA}>
                   Create gateway
                 </Button>
               </div>

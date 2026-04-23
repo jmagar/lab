@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -34,6 +34,7 @@ export function CommandPaletteDemo() {
   const [lastActionLabel, setLastActionLabel] = useState(
     'Waiting for a selection. Use the keyboard or pointer to simulate a command.',
   )
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const state = useMemo(() => buildCommandPaletteState(query), [query])
 
@@ -55,6 +56,16 @@ export function CommandPaletteDemo() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  useEffect(() => {
+    if (!open) return
+
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [open])
 
   const activeItem = findItemById(activeItemId, state.items)
 
@@ -148,6 +159,7 @@ export function CommandPaletteDemo() {
                   </div>
                 </div>
                 <CommandInput
+                  ref={inputRef}
                   value={query}
                   onValueChange={setQuery}
                   placeholder="Search pages, commands, and recent context..."

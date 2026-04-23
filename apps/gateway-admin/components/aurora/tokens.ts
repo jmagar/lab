@@ -74,6 +74,10 @@ export const AURORA_CONTROL_SURFACE =
 export const AURORA_MESSAGE_SURFACE =
   'rounded-[1rem] border border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] shadow-[0_8px_16px_rgba(0,0,0,0.16),var(--aurora-highlight-medium)]'
 
+/** Accent CTA surface for highlighted secondary actions in product/demo panels. */
+export const AURORA_ACCENT_CTA =
+  'rounded-aurora-1 border border-aurora-accent-primary/35 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_16%,transparent)] text-aurora-text-primary hover:bg-[color-mix(in_srgb,var(--aurora-accent-primary)_22%,transparent)]'
+
 // ---------------------------------------------------------------------------
 // Interactive tone helpers
 // ---------------------------------------------------------------------------

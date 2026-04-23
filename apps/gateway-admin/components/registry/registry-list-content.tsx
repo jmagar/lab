@@ -83,7 +83,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     if (!el) return
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && hasMore && !isValidating) {
+        if (entry.isIntersecting && hasMore && !isValidating && !error) {
           if (pagingRef.current) return
           pagingRef.current = true
           setSize(s => s + 1)
@@ -93,13 +93,13 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [hasMore, isValidating, setSize])
+  }, [error, hasMore, isValidating, setSize])
 
   useEffect(() => {
-    if (!isValidating) {
+    if (!isValidating && !error) {
       pagingRef.current = false
     }
-  }, [isValidating])
+  }, [error, isValidating])
 
   const toggleDescription = (name: string) => {
     setExpandedDescriptions((prev) => {
@@ -162,7 +162,15 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
             <p className="text-sm text-aurora-error">
               {error instanceof Error ? error.message : 'Failed to load registry'}
             </p>
-            <Button variant="outline" size="sm" onClick={() => void mutate()} className="gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                pagingRef.current = false
+                void mutate()
+              }}
+              className="gap-1.5"
+            >
               <RotateCcw className="size-4" />
               Retry
             </Button>
@@ -231,12 +239,14 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                             referrerPolicy="no-referrer"
                             loading="lazy"
                             onError={(e) => {
-                              if (ghAvatar && fallbackIconHref && e.currentTarget.src !== fallbackIconHref) {
-                                e.currentTarget.src = fallbackIconHref
+                              const img = e.currentTarget
+                              if (ghAvatar && fallbackIconHref && img.dataset.fallbackApplied !== 'true') {
+                                img.dataset.fallbackApplied = 'true'
+                                img.src = fallbackIconHref
                                 return
                               }
-                              e.currentTarget.style.display = 'none'
-                              ;(e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
+                              img.style.display = 'none'
+                              ;(img.nextElementSibling as HTMLElement | null)?.removeAttribute('style')
                             }}
                           />
                           <Package className="size-5 text-aurora-text-muted" style={{ display: 'none' }} />

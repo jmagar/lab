@@ -27,54 +27,59 @@ function normalize(value: string): string {
   return value.trim().toLowerCase()
 }
 
-function scoreItem(item: CommandPaletteItem, query: string): number {
+function scoreItem(item: CommandPaletteItem, query: string): { baseScore: number; totalScore: number } {
   if (!query) {
-    return item.priority
+    return { baseScore: 0, totalScore: item.priority }
   }
 
   const normalizedTitle = item.title.toLowerCase()
   const normalizedDescription = item.description.toLowerCase()
-  let score = 0
+  let baseScore = 0
   let matched = false
 
+  // Cumulative title scoring is intentional: exact and prefix hits should
+  // outrank plain substring matches, so do not collapse these into `else if`.
   if (normalizedTitle === query) {
-    score += 200
+    baseScore += 200
     matched = true
   }
   if (normalizedTitle.startsWith(query)) {
-    score += 120
+    baseScore += 120
     matched = true
   }
   if (normalizedTitle.includes(query)) {
-    score += 75
+    baseScore += 75
     matched = true
   }
   if (normalizedDescription.includes(query)) {
-    score += 20
+    baseScore += 20
     matched = true
   }
 
+  // Keywords use the same cumulative ranking model as titles on purpose.
   for (const keyword of item.keywords) {
     const normalizedKeyword = keyword.toLowerCase()
     if (normalizedKeyword === query) {
-      score += 95
+      baseScore += 95
       matched = true
     } else if (normalizedKeyword.startsWith(query)) {
-      score += 55
+      baseScore += 55
       matched = true
     } else if (normalizedKeyword.includes(query)) {
-      score += 30
+      baseScore += 30
       matched = true
     }
   }
 
-  if (!matched) return 0
+  if (!matched) {
+    return { baseScore: 0, totalScore: 0 }
+  }
 
-  score += item.priority
-  if (item.type === 'destination') score += 6
-  if (item.type === 'action') score += 3
+  let totalScore = baseScore + item.priority
+  if (item.type === 'destination') totalScore += 6
+  if (item.type === 'action') totalScore += 3
 
-  return score
+  return { baseScore, totalScore }
 }
 
 function filterItems(query: string, items: CommandPaletteItem[]): CommandPaletteItem[] {
@@ -84,9 +89,9 @@ function filterItems(query: string, items: CommandPaletteItem[]): CommandPalette
   }
 
   return [...items]
-    .map((item) => ({ item, score: scoreItem(item, normalizedQuery) }))
-    .filter(({ score }) => score > 40)
-    .sort((a, b) => b.score - a.score)
+    .map((item) => ({ item, ...scoreItem(item, normalizedQuery) }))
+    .filter(({ baseScore }) => baseScore > 40)
+    .sort((a, b) => b.totalScore - a.totalScore)
     .map(({ item }) => item)
 }
 
