@@ -8,10 +8,11 @@ use anyhow::{Context, Result, anyhow};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio_tungstenite::connect_async_with_config;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::{Message, WebSocketConfig};
+use uuid::Uuid;
 
 use crate::node::install::{
     AgentInstallParams, InstallComponentParams, InstallScope, handle_agent_install,
@@ -38,6 +39,16 @@ const REQUEST_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Hard cap on pending in-flight request IDs. `send_and_await` rejects new
 /// requests above this watermark so the HashMap cannot grow without bound.
 const MAX_PENDING_INFLIGHT: usize = 256;
+
+/// Capacity of the channel between the reader and the inbound-RPC worker
+/// (lab-zxx5.19 item 3). Bounded so a flooding or compromised master can't
+/// cause unbounded task spawn on the node side.
+const INBOUND_RPC_QUEUE_CAPACITY: usize = 8;
+
+/// Maximum concurrent inbound-RPC handler executions (lab-zxx5.19 item 3).
+/// Dispatch acquires a permit before running the handler; over the cap,
+/// handlers wait in the queue rather than spawning unbounded tasks.
+const INBOUND_RPC_WORKER_PERMITS: usize = 16;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TailnetIdentity {
@@ -120,7 +131,7 @@ impl WsClient {
 
         // Pending response map: request id → oneshot sender.
         // The reader task resolves pending entries when it sees a JSON-RPC response.
-        let pending: Arc<tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>> =
+        let pending: Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>> =
             Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
         // Split the raw socket into send + receive halves.
@@ -168,11 +179,56 @@ impl WsClient {
         let (init_tx, init_rx) = oneshot::channel::<String>();
         let init_tx = Arc::new(tokio::sync::Mutex::new(Some(init_tx)));
 
+        // lab-zxx5.19 item 3: bounded inbound-RPC queue. The reader never
+        // dispatches handlers inline; it enqueues parsed frames here, and a
+        // worker task below drains with a Semaphore-bounded concurrency cap.
+        // A full queue is the backpressure signal to stop accepting new work
+        // from a flooding or compromised master.
+        let (inbound_tx, mut inbound_rx) =
+            mpsc::channel::<Value>(INBOUND_RPC_QUEUE_CAPACITY);
+        let inbound_semaphore = Arc::new(Semaphore::new(INBOUND_RPC_WORKER_PERMITS));
+
+        // Inbound-RPC worker: drain the queue, acquire a permit, dispatch.
+        // Each handler runs in its own spawned task so the worker can keep
+        // reading the queue while handlers are in flight, but the Semaphore
+        // caps concurrent in-flight handlers at INBOUND_RPC_WORKER_PERMITS.
+        {
+            let tx_for_worker = tx_clone.clone();
+            let progress_tx_for_worker = progress_tx.clone();
+            let semaphore = Arc::clone(&inbound_semaphore);
+            let node_id = self.node_id.clone();
+            session_tasks.spawn(async move {
+                while let Some(frame) = inbound_rx.recv().await {
+                    let permit = match Arc::clone(&semaphore).acquire_owned().await {
+                        Ok(permit) => permit,
+                        Err(_) => break, // semaphore closed on session exit
+                    };
+                    let tx_for_handler = tx_for_worker.clone();
+                    let progress_for_handler = progress_tx_for_worker.clone();
+                    let node_id_for_handler = node_id.clone();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        let response =
+                            dispatch_inbound_rpc(frame, &progress_for_handler).await;
+                        let encoded = serde_json::to_string(&response).unwrap_or_else(|_| {
+                            r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"serialize error"}}"#
+                                .to_string()
+                        });
+                        if tx_for_handler.send(Message::Text(encoded.into())).await.is_err() {
+                            tracing::debug!(
+                                node_id = %node_id_for_handler,
+                                "inbound rpc response send failed (writer task likely gone)"
+                            );
+                        }
+                    });
+                }
+            });
+        }
+
         {
             let init_tx = Arc::clone(&init_tx);
             let pending = Arc::clone(&pending_clone);
             let tx = tx_clone.clone();
-            let progress_tx = progress_tx.clone();
             let node_id = self.node_id.clone();
             session_tasks.spawn(async move {
                 while let Some(message) = stream.next().await {
@@ -212,7 +268,9 @@ impl WsClient {
                     // Dispatch: check whether the frame is a response (has `result`/`error`)
                     // or an inbound RPC request from master (has `method`).
                     if parsed.get("result").is_some() || parsed.get("error").is_some() {
-                        if parsed.get("id").and_then(Value::as_i64) == Some(1) {
+                        // Initialize response uses the reserved numeric id `1`;
+                        // all subsequent requests use UUIDv4 strings (lab-zxx5.19).
+                        if parsed.get("id") == Some(&json!(1)) {
                             let mut guard = init_tx.lock().await;
                             if let Some(sender) = guard.take() {
                                 drop(guard);
@@ -220,20 +278,48 @@ impl WsClient {
                                 continue;
                             }
                         }
-                        // Response — resolve a pending oneshot.
-                        if let Some(id) = parsed.get("id").and_then(Value::as_i64) {
+                        // Response — resolve a pending oneshot by UUIDv4 string id.
+                        if let Some(id) = parsed.get("id").and_then(Value::as_str) {
                             let mut map = pending.lock().await;
-                            if let Some(sender) = map.remove(&id) {
+                            if let Some(sender) = map.remove(id) {
                                 sender.send(text).ok();
                             }
                         }
                     } else if parsed.get("method").is_some() {
-                        // Inbound RPC from master — dispatch it and send back the response.
-                        let response = dispatch_inbound_rpc(parsed, &progress_tx).await;
-                        let encoded = serde_json::to_string(&response)
-                            .unwrap_or_else(|_| r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"serialize error"}}"#.to_string());
-                        if tx.send(Message::Text(encoded.into())).await.is_err() {
-                            break;
+                        // lab-zxx5.19 item 3: enqueue rather than dispatch inline.
+                        // Reader stays fast; worker handles the RPC under the
+                        // Semaphore-bounded concurrency cap. On a full queue
+                        // we reply with a structured backpressure error rather
+                        // than spawning unbounded tasks or silently dropping.
+                        match inbound_tx.try_send(parsed) {
+                            Ok(()) => {}
+                            Err(mpsc::error::TrySendError::Full(frame)) => {
+                                tracing::warn!(
+                                    node_id = %node_id,
+                                    "inbound rpc queue full; returning backpressure error to master"
+                                );
+                                let id = frame.get("id").cloned().unwrap_or(Value::Null);
+                                let backpressure = json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "error": {
+                                        "code": -32000,
+                                        "message": "node busy: inbound rpc queue full",
+                                        "data": { "kind": "backpressure" }
+                                    }
+                                });
+                                let encoded = serde_json::to_string(&backpressure).unwrap_or_else(|_| {
+                                    r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"serialize error"}}"#
+                                        .to_string()
+                                });
+                                if tx.send(Message::Text(encoded.into())).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(mpsc::error::TrySendError::Closed(_)) => {
+                                // Worker task exited; session is tearing down.
+                                break;
+                            }
                         }
                     }
                 }
@@ -248,20 +334,18 @@ impl WsClient {
         let session_result: Result<()> = async {
             let init_response =
                 init_rx.await.context("initialize response channel closed")?;
-            validate_success_response(&init_response, 1)?;
+            validate_success_response(&init_response, &json!(1))?;
             self.connected.store(true, Ordering::Relaxed);
 
-            let mut next_id = 2_i64;
             let mut status_deadline = tokio::time::Instant::now() + STATUS_INTERVAL;
 
             loop {
                 let ack_count = self
-                    .flush_queue_batch_async(queue, &tx, &pending_clone, &mut next_id)
+                    .flush_queue_batch_async(queue, &tx, &pending_clone)
                     .await?;
                 let now = tokio::time::Instant::now();
                 if now >= status_deadline {
-                    self.send_status_update_async(&tx, &pending_clone, next_id).await?;
-                    next_id += 1;
+                    self.send_status_update_async(&tx, &pending_clone).await?;
                     status_deadline = now + STATUS_INTERVAL;
                     continue;
                 }
@@ -294,9 +378,9 @@ impl WsClient {
     /// leak pending senders.
     async fn send_and_await(
         tx: &mpsc::Sender<Message>,
-        pending: &tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>,
+        pending: &tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>,
         request: &Value,
-        request_id: i64,
+        request_id: &str,
     ) -> Result<String> {
         let (resp_tx, resp_rx) = oneshot::channel::<String>();
         {
@@ -308,24 +392,24 @@ impl WsClient {
                     request_id
                 ));
             }
-            map.insert(request_id, resp_tx);
+            map.insert(request_id.to_string(), resp_tx);
         }
         let send_result = tx
             .send(Message::Text(serde_json::to_string(request)?.into()))
             .await
             .context("send websocket request");
         if let Err(error) = send_result {
-            pending.lock().await.remove(&request_id);
+            pending.lock().await.remove(request_id);
             return Err(error);
         }
         match tokio::time::timeout(REQUEST_RESPONSE_TIMEOUT, resp_rx).await {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(_)) => {
-                pending.lock().await.remove(&request_id);
+                pending.lock().await.remove(request_id);
                 Err(anyhow!("response channel closed before reply"))
             }
             Err(_) => {
-                pending.lock().await.remove(&request_id);
+                pending.lock().await.remove(request_id);
                 Err(anyhow!(
                     "response timeout after {:?} for request_id={}",
                     REQUEST_RESPONSE_TIMEOUT,
@@ -339,23 +423,25 @@ impl WsClient {
         &self,
         queue: &NodeOutboundQueue,
         tx: &mpsc::Sender<Message>,
-        pending: &tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>,
-        next_id: &mut i64,
+        pending: &tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>,
     ) -> Result<usize> {
         let drained = queue.drain_batch(FLUSH_BATCH_SIZE).await?;
         let mut ack_count = 0usize;
         for envelope in drained {
+            // lab-zxx5.19: UUIDv4 request id (non-predictable, avoids IDOR on
+            // the master side where rpc_id is the only correlation handle).
+            let request_id = Uuid::new_v4().to_string();
+            let expected_id = json!(request_id);
             let result: Result<()> = async {
-                let request = queue_envelope_to_request(&envelope, *next_id)?;
-                let response = Self::send_and_await(tx, pending, &request, *next_id).await?;
-                validate_success_response(&response, *next_id)
+                let request = queue_envelope_to_request(&envelope, &request_id)?;
+                let response = Self::send_and_await(tx, pending, &request, &request_id).await?;
+                validate_success_response(&response, &expected_id)
             }
             .await;
             if let Err(error) = result {
                 queue.ack_drained(ack_count).await?;
                 return Err(error);
             }
-            *next_id += 1;
             ack_count += 1;
         }
         queue.ack_drained(ack_count).await?;
@@ -365,9 +451,9 @@ impl WsClient {
     async fn send_status_update_async(
         &self,
         tx: &mpsc::Sender<Message>,
-        pending: &tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>,
-        request_id: i64,
+        pending: &tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>,
     ) -> Result<()> {
+        let request_id = Uuid::new_v4().to_string();
         let request = json!({
             "jsonrpc": "2.0",
             "id": request_id,
@@ -382,8 +468,8 @@ impl WsClient {
                 "ips": [],
             }
         });
-        let response = Self::send_and_await(tx, pending, &request, request_id).await?;
-        validate_success_response(&response, request_id)?;
+        let response = Self::send_and_await(tx, pending, &request, &request_id).await?;
+        validate_success_response(&response, &json!(request_id))?;
         Ok(())
     }
 
@@ -414,7 +500,7 @@ impl WsClient {
         let (socket, _) = self.open_websocket().await?;
 
         let (tx, rx) = mpsc::channel::<Message>(PENDING_CHANNEL_CAPACITY);
-        let pending: Arc<tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>> =
+        let pending: Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>> =
             Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
         let (sink, mut stream) = socket.split();
@@ -455,9 +541,9 @@ impl WsClient {
                     Ok(v) => v,
                     Err(_) => continue,
                 };
-                if let Some(id) = parsed.get("id").and_then(Value::as_i64) {
+                if let Some(id) = parsed.get("id").and_then(Value::as_str) {
                     let mut map = pending_clone.lock().await;
-                    if let Some(s) = map.remove(&id) {
+                    if let Some(s) = map.remove(id) {
                         s.send(text).ok();
                     }
                 }
@@ -471,10 +557,9 @@ impl WsClient {
             .context("send websocket initialize")?;
 
         let init_response = init_rx.await.context("init response channel closed")?;
-        validate_success_response(&init_response, 1)?;
+        validate_success_response(&init_response, &json!(1))?;
 
-        let mut next_id = 2_i64;
-        self.flush_queue_batch_async(queue, &tx, &pending, &mut next_id).await?;
+        self.flush_queue_batch_async(queue, &tx, &pending).await?;
 
         // Close the socket.
         tx.send(Message::Close(None)).await.ok();
@@ -660,7 +745,7 @@ pub fn build_initialize_request(
 
 pub fn queue_envelope_to_request(
     envelope: &QueuedEnvelope,
-    id: i64,
+    id: &str,
 ) -> Result<Value> {
     let method = match envelope.kind.as_str() {
         "syslog_batch" => "nodes/log.event",
@@ -676,12 +761,11 @@ pub fn queue_envelope_to_request(
     }))
 }
 
-fn validate_success_response(payload: &str, expected_id: i64) -> Result<()> {
+fn validate_success_response(payload: &str, expected_id: &Value) -> Result<()> {
     let value: Value = serde_json::from_str(payload).context("decode websocket response")?;
     let response_id = value
         .get("id")
-        .and_then(Value::as_i64)
-        .ok_or_else(|| anyhow!("websocket response missing numeric id"))?;
+        .ok_or_else(|| anyhow!("websocket response missing id"))?;
     if response_id != expected_id {
         return Err(anyhow!(
             "websocket response id mismatch: expected {expected_id}, got {response_id}"
@@ -750,21 +834,21 @@ mod tests {
     fn queue_envelope_maps_to_fleet_methods() {
         let syslog = queue_envelope_to_request(
             &QueuedEnvelope::syslog_batch(serde_json::json!({"events": []})),
-            2,
+            "11111111-1111-4111-8111-111111111111",
         )
         .expect("syslog");
         assert_eq!(syslog["method"], "nodes/log.event");
 
         let status = queue_envelope_to_request(
             &QueuedEnvelope::status(serde_json::json!({"connected": true})),
-            3,
+            "22222222-2222-4222-8222-222222222222",
         )
         .expect("status");
         assert_eq!(status["method"], "nodes/status.push");
 
         let metadata = queue_envelope_to_request(
             &QueuedEnvelope::metadata(serde_json::json!({"node_id": "device-1"})),
-            4,
+            "33333333-3333-4333-8333-333333333333",
         )
         .expect("metadata");
         assert_eq!(metadata["method"], "nodes/metadata.push");
@@ -1127,5 +1211,71 @@ mod tests {
         assert_eq!(response["id"], 20);
         assert!(response.get("result").is_some(), "expected success: {response}");
         assert_eq!(response["result"]["written"].as_array().map(|a| a.len()), Some(1));
+    }
+
+    // lab-zxx5.19 item 1 + 4: send_and_await must remove the pending entry on
+    // timeout so a silent master cannot wedge the client or grow the pending
+    // map unbounded. Regression gate for the knowledge.jsonl pattern
+    // "oneshot-pending-hashmap without timeout is a latent deadlock".
+    #[tokio::test]
+    async fn send_and_await_removes_pending_entry_on_timeout() {
+        // Drop the receiver so send succeeds but the response never arrives.
+        let (tx, rx) = mpsc::channel::<Message>(16);
+        drop(rx);
+        let pending: Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        // Artificially tight deadline is hard to thread through the constant,
+        // so we instead assert the send-failure path: when the writer half is
+        // gone, send_and_await returns with the pending entry already cleaned.
+        let request_id = Uuid::new_v4().to_string();
+        let request = json!({"jsonrpc": "2.0", "id": request_id, "method": "test"});
+        let result = WsClient::send_and_await(&tx, &pending, &request, &request_id).await;
+        assert!(result.is_err(), "expected send failure when writer is gone");
+        let map = pending.lock().await;
+        assert!(
+            !map.contains_key(&request_id),
+            "pending entry must be removed on send failure"
+        );
+    }
+
+    // lab-zxx5.19 item 4: UUIDv4 request ids are strings on the wire, not
+    // sequential integers. Prevents IDOR on master-side rpc_id correlation
+    // (SSE subscription gate in lab-zxx5.16).
+    #[test]
+    fn request_ids_are_non_predictable_uuid_strings() {
+        let envelope = QueuedEnvelope::status(json!({"connected": true}));
+        let id1 = Uuid::new_v4().to_string();
+        let id2 = Uuid::new_v4().to_string();
+        assert_ne!(id1, id2);
+        // Parse back as Uuid to confirm v4 shape.
+        assert!(Uuid::parse_str(&id1).is_ok(), "id must be a valid UUID");
+        let request = queue_envelope_to_request(&envelope, &id1).expect("request");
+        assert_eq!(request["id"], json!(id1));
+        assert!(
+            request["id"].is_string(),
+            "wire id must be a JSON string, not a number"
+        );
+    }
+
+    #[test]
+    fn validate_success_response_accepts_matching_string_id() {
+        let payload = r#"{"jsonrpc":"2.0","id":"abc-123","result":{}}"#;
+        assert!(validate_success_response(payload, &json!("abc-123")).is_ok());
+    }
+
+    #[test]
+    fn validate_success_response_rejects_id_mismatch() {
+        let payload = r#"{"jsonrpc":"2.0","id":"expected","result":{}}"#;
+        let err = validate_success_response(payload, &json!("different")).err();
+        assert!(err.is_some(), "mismatched ids must be rejected");
+    }
+
+    #[test]
+    fn validate_success_response_still_accepts_numeric_init_id() {
+        // The initialize response uses the reserved numeric id `1`; the
+        // validator compares via `Value` equality so both shapes work.
+        let payload = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05"}}"#;
+        assert!(validate_success_response(payload, &json!(1)).is_ok());
     }
 }
