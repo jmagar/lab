@@ -379,6 +379,24 @@ impl From<crate::dispatch::mcpregistry::store::RegistryStoreError> for ToolError
     }
 }
 
+// acp_registry has an `Api { status, body }` variant in addition to the
+// standard `Request(ApiError)` wrapper, so it gets a hand-rolled impl
+// rather than going through the macro.
+#[cfg(feature = "acp_registry")]
+impl From<lab_apis::acp_registry::AcpRegistryError> for ToolError {
+    fn from(e: lab_apis::acp_registry::AcpRegistryError) -> Self {
+        use lab_apis::acp_registry::AcpRegistryError;
+        let sdk_kind = match &e {
+            AcpRegistryError::Request(api) => api.kind().to_string(),
+            AcpRegistryError::Api { .. } => "server_error".to_string(),
+        };
+        Self::Sdk {
+            sdk_kind,
+            message: e.to_string(),
+        }
+    }
+}
+
 // Deploy uses a hand-rolled impl instead of the macro so it can call
 // `redacted_message()` rather than `Display` (which includes host/reason detail
 // that must not escape to MCP or HTTP envelopes).

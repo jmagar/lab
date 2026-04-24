@@ -11,6 +11,7 @@ use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{
     action_schema, help_payload, optional_str, require_str, to_json,
 };
+use crate::dispatch::marketplace::acp_dispatch;
 use crate::dispatch::marketplace::catalog::ACTIONS;
 use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::params::parse_plugin_id;
@@ -20,6 +21,9 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
 }
 
 async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError> {
+    if action.starts_with("agent.") {
+        return acp_dispatch::dispatch_acp(action, params).await;
+    }
     match action {
         "help" => Ok(help_payload("marketplace", ACTIONS)),
         "schema" => {
