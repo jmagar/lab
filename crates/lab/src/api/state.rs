@@ -62,7 +62,7 @@ pub struct AppState {
     ///
     /// `None` when the `mcpregistry` feature is disabled or the store failed to open.
     #[cfg(feature = "mcpregistry")]
-    pub registry_store: Option<Arc<crate::dispatch::mcpregistry::store::RegistryStore>>,
+    pub registry_store: Option<Arc<crate::dispatch::marketplace::store::RegistryStore>>,
 }
 
 impl AppState {
@@ -182,7 +182,7 @@ impl AppState {
     #[must_use]
     pub fn with_registry_store(
         mut self,
-        store: Arc<crate::dispatch::mcpregistry::store::RegistryStore>,
+        store: Arc<crate::dispatch::marketplace::store::RegistryStore>,
     ) -> Self {
         self.registry_store = Some(store);
         self

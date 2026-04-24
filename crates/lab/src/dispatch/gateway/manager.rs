@@ -291,7 +291,7 @@ impl GatewayManager {
         // Also enforces https-only and rejects RFC 1918, loopback, and link-local.
         let url_for_check = url.to_string();
         tokio::task::spawn_blocking(move || {
-            crate::dispatch::mcpregistry::validate_registry_url(&url_for_check)
+            crate::dispatch::marketplace::validate_registry_url(&url_for_check)
         })
         .await
         .map_err(|e| ToolError::internal_message(format!("SSRF validation task panicked: {e}")))

@@ -1,34 +1,20 @@
+//! ActionSpec catalog for `mcp.*` actions in the marketplace dispatch.
+//!
+//! These actions were absorbed from `dispatch/mcpregistry/catalog.rs`
+//! as part of lab-zxx5.2, renamed with the `mcp.` prefix.
+
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
-pub const ACTIONS: &[ActionSpec] = &[
+pub const MCP_ACTIONS: &[ActionSpec] = &[
     ActionSpec {
-        name: "help",
-        description: "Show this action catalog",
-        destructive: false,
-        returns: "Catalog",
-        params: &[],
-    },
-    ActionSpec {
-        name: "schema",
-        description: "Return the parameter schema for a named action",
-        destructive: false,
-        returns: "Schema",
-        params: &[ParamSpec {
-            name: "action",
-            ty: "string",
-            required: true,
-            description: "Action name to describe",
-        }],
-    },
-    ActionSpec {
-        name: "config",
-        description: "Return the resolved registry base URL",
+        name: "mcp.config",
+        description: "Return the resolved MCP registry base URL",
         destructive: false,
         returns: "RegistryConfig",
         params: &[],
     },
     ActionSpec {
-        name: "server.list",
+        name: "mcp.list",
         description: "List MCP servers from the registry with optional search, owner filter, and pagination. This action calls the upstream registry directly (/v1 surface).",
         destructive: false,
         returns: "ServerListResponse",
@@ -102,8 +88,8 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "server.get",
-        description: "Get details for a single MCP server by its registry name. Calls the upstream registry directly (/v1 surface). For a store-local lookup, use the /v0.1/servers/:name GET endpoint.",
+        name: "mcp.get",
+        description: "Get details for a single MCP server by its registry name. Calls the upstream registry directly (/v1 surface).",
         destructive: false,
         returns: "ServerResponse",
         params: &[ParamSpec {
@@ -114,8 +100,8 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "server.versions",
-        description: "List available versions for a named MCP server. Calls the upstream registry directly (/v1 surface). For store-local version history, use the /v0.1/servers/:name/versions GET endpoint.",
+        name: "mcp.versions",
+        description: "List available versions for a named MCP server. Calls the upstream registry directly (/v1 surface).",
         destructive: false,
         returns: "ServerListResponse",
         params: &[ParamSpec {
@@ -126,7 +112,83 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
     },
     ActionSpec {
-        name: "server.meta.get",
+        name: "mcp.validate",
+        description: "Validate a ServerJSON document against the registry schema without publishing",
+        destructive: false,
+        returns: "ValidationResult",
+        params: &[ParamSpec {
+            name: "server_json",
+            ty: "object",
+            required: true,
+            description: "ServerJSON document to validate (must include name, description, version)",
+        }],
+    },
+    ActionSpec {
+        name: "mcp.install",
+        description: "Install an MCP server from the registry as a gateway upstream for each provided gateway_id. HTTP servers are added as remote upstreams; stdio servers are added as command upstreams. Required env vars are written to ~/.lab/.env",
+        destructive: true,
+        returns: "InstallResults",
+        params: &[
+            ParamSpec {
+                name: "name",
+                ty: "string",
+                required: true,
+                description: "Registry server name (e.g. `io.github.user/my-mcp`)",
+            },
+            ParamSpec {
+                name: "gateway_ids",
+                ty: "array",
+                required: true,
+                description: "Gateway names to add this server to — one gateway.add call per entry",
+            },
+            ParamSpec {
+                name: "bearer_token_env",
+                ty: "string",
+                required: false,
+                description: "HTTP only: name of the env var holding the bearer token (not the token value)",
+            },
+            ParamSpec {
+                name: "version",
+                ty: "string",
+                required: false,
+                description: "Registry version to fetch; defaults to `latest`",
+            },
+            ParamSpec {
+                name: "env_values",
+                ty: "object",
+                required: false,
+                description: "Stdio only: map of env var name → value for variables declared by the server's packages[0].environmentVariables. Required vars with no default must be supplied here.",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive install operation",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "mcp.uninstall",
+        description: "Remove a previously installed MCP server gateway upstream by gateway name",
+        destructive: true,
+        returns: "GatewayView",
+        params: &[
+            ParamSpec {
+                name: "gateway_name",
+                ty: "string",
+                required: true,
+                description: "Gateway name to remove (as used during install)",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive uninstall operation",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "mcp.meta.get",
         description: "Get Lab-owned local metadata for a stored registry server version from the local registry mirror.",
         destructive: false,
         returns: "RegistryLocalMeta",
@@ -146,7 +208,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "server.meta.set",
+        name: "mcp.meta.set",
         description: "Set Lab-owned local metadata for a stored registry server version under `_meta[\"tv.tootie.lab/registry\"]`.",
         destructive: false,
         returns: "RegistryLocalMeta",
@@ -178,7 +240,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "server.meta.delete",
+        name: "mcp.meta.delete",
         description: "Delete Lab-owned local metadata for a stored registry server version under `_meta[\"tv.tootie.lab/registry\"]`.",
         destructive: false,
         returns: "RegistryLocalMetaDeleteResult",
@@ -198,84 +260,8 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
     ActionSpec {
-        name: "server.install",
-        description: "Install an MCP server from the registry as a gateway upstream. HTTP servers are added as remote upstreams; stdio servers (npx/uvx/docker/dnx/pipx/node/python/python3/deno) are added as command upstreams and their required env vars are written to ~/.lab/.env",
-        destructive: true,
-        returns: "Gateway",
-        params: &[
-            ParamSpec {
-                name: "name",
-                ty: "string",
-                required: true,
-                description: "Registry server name (e.g. `io.github.user/my-mcp`)",
-            },
-            ParamSpec {
-                name: "gateway_name",
-                ty: "string",
-                required: false,
-                description: "Gateway name to use; defaults to the segment after the last `/` in the server name",
-            },
-            ParamSpec {
-                name: "bearer_token_env",
-                ty: "string",
-                required: false,
-                description: "HTTP only: name of the env var holding the bearer token (not the token value)",
-            },
-            ParamSpec {
-                name: "version",
-                ty: "string",
-                required: false,
-                description: "Registry version to fetch; defaults to `latest`",
-            },
-            ParamSpec {
-                name: "env_values",
-                ty: "object",
-                required: false,
-                description: "Stdio only: map of env var name → value for variables declared by the server's packages[0].environmentVariables. Required vars with no default must be supplied here.",
-            },
-            ParamSpec {
-                name: "confirm",
-                ty: "boolean",
-                required: true,
-                description: "Must be true to confirm the destructive install operation",
-            },
-        ],
-    },
-    ActionSpec {
-        name: "server.validate",
-        description: "Validate a ServerJSON document against the registry schema without publishing",
-        destructive: false,
-        returns: "ValidationResult",
-        params: &[ParamSpec {
-            name: "server_json",
-            ty: "object",
-            required: true,
-            description: "ServerJSON document to validate (must include name, description, version)",
-        }],
-    },
-    ActionSpec {
-        name: "server.uninstall",
-        description: "Remove a previously installed MCP server gateway upstream by gateway name",
-        destructive: true,
-        returns: "GatewayView",
-        params: &[
-            ParamSpec {
-                name: "gateway_name",
-                ty: "string",
-                required: true,
-                description: "Gateway name to remove (as used during install)",
-            },
-            ParamSpec {
-                name: "confirm",
-                ty: "boolean",
-                required: true,
-                description: "Must be true to confirm the destructive uninstall operation",
-            },
-        ],
-    },
-    ActionSpec {
-        name: "sync",
-        description: "Trigger an immediate upstream sync of the local registry store. Opens or creates the store on demand, then syncs from upstream. Rate-limited: returns rate_limited if called within 60 seconds of the last sync.",
+        name: "mcp.sync",
+        description: "Trigger an immediate upstream sync of the local registry store. Rate-limited: returns rate_limited if called within 60 seconds of the last sync.",
         destructive: false,
         returns: "SyncResult",
         params: &[],

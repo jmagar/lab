@@ -387,7 +387,6 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
         mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
         mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
-        mount_if_enabled!(v1, state, "mcpregistry", "mcpregistry", mcpregistry);
         mount_if_enabled!(v1, state, "memos", "memos", memos);
         mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
         mount_if_enabled!(v1, state, "paperless", "paperless", paperless);

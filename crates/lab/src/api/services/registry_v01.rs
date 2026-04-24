@@ -15,7 +15,7 @@ use serde_json::json;
 
 use crate::api::state::AppState;
 use crate::dispatch::error::ToolError;
-use crate::dispatch::mcpregistry::store::StoreListParams;
+use crate::dispatch::marketplace::store::StoreListParams;
 
 /// Query params for `GET /v0.1/servers`.
 ///
@@ -75,7 +75,7 @@ async fn list_servers(
         hidden: query.hidden,
         tag: query.tag,
     };
-    let effective_search = crate::dispatch::mcpregistry::resolve_search_for_rest(
+    let effective_search = crate::dispatch::marketplace::resolve_search_for_rest(
         query.search.as_deref(),
         query.owner.as_deref(),
     )?;

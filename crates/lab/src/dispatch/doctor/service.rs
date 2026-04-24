@@ -96,7 +96,6 @@ fn all_service_names() -> Vec<&'static str> {
     #[cfg(feature = "qdrant")]      { names.push("qdrant"); }
     #[cfg(feature = "tei")]         { names.push("tei"); }
     #[cfg(feature = "apprise")]     { names.push("apprise"); }
-    #[cfg(feature = "mcpregistry")] { names.push("mcpregistry"); }
     names
 }
 
@@ -123,7 +122,6 @@ fn configured_service_names(clients: &ServiceClients) -> Vec<String> {
     #[cfg(feature = "qdrant")]      { if clients.qdrant.is_some()      { names.push("qdrant".into()); } }
     #[cfg(feature = "tei")]         { if clients.tei.is_some()         { names.push("tei".into()); } }
     #[cfg(feature = "apprise")]     { if clients.apprise.is_some()     { names.push("apprise".into()); } }
-    #[cfg(feature = "mcpregistry")] { if clients.mcpregistry.is_some() { names.push("mcpregistry".into()); } }
     names
 }
 
@@ -176,8 +174,6 @@ async fn health_by_name_owned(clients: &ServiceClients, service: &str) -> Servic
         "tei" => probe_arc(clients.tei.as_ref()).await,
         #[cfg(feature = "apprise")]
         "apprise" => probe_arc(clients.apprise.as_ref()).await,
-        #[cfg(feature = "mcpregistry")]
-        "mcpregistry" => probe_arc(clients.mcpregistry.as_ref()).await,
         _ => ServiceStatus::unreachable(format!("unknown service `{service}`")),
     }
 }

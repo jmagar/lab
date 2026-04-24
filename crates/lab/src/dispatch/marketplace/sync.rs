@@ -1,10 +1,9 @@
 //! Shared sync-guard state for the mcpregistry background supervisor and MCP dispatch.
 //!
 //! Both the hourly background supervisor (`cli/serve.rs`) and the on-demand MCP
-//! `sync` action (`dispatch/mcpregistry/dispatch.rs`) must go through
+//! `sync` action (`dispatch/marketplace/mcp_dispatch.rs`) must go through
 //! `perform_sync` so that `SYNC_IN_PROGRESS` and `LAST_SYNC_AT` are visible
-//! to both callers. Without this, a background tick and an MCP call can run
-//! concurrently, producing interleaved SQLite write transactions.
+//! to both callers.
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use lab_apis::mcpregistry::McpRegistryClient;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::mcpregistry::store::RegistryStore;
+use crate::dispatch::marketplace::store::RegistryStore;
 
 /// Guards against concurrent syncs. `true` while a sync is in progress.
 pub static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -39,9 +38,7 @@ fn last_sync_at() -> &'static std::sync::Mutex<Option<std::time::Instant>> {
 /// Attempt a sync, enforcing the concurrent-sync and rate-limit guards.
 ///
 /// - `rate_limit`: when `true`, rejects calls within `MIN_SYNC_INTERVAL` of
-///   the last completed rate-limited sync attempt. The background supervisor
-///   passes `false` since its interval is already controlled by the
-///   `tokio::time::interval` timer.
+///   the last completed rate-limited sync attempt.
 /// - Returns the count of rows synced on success.
 pub async fn perform_sync(
     store: &RegistryStore,

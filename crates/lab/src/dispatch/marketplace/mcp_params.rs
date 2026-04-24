@@ -1,12 +1,22 @@
+//! Param coercion and security guards for `mcp.*` actions in the marketplace dispatch.
+//!
+//! Security guards (SSRF, argv allowlist) are copied VERBATIM from
+//! `dispatch/mcpregistry/params.rs` — do NOT weaken them.
+//!
+//! TODO(M1): DNS rebinding gap — SSRF guards check IP at validation time but DNS
+//! resolution happens at connect time. A hostname that resolves to an RFC1918 address
+//! after validation bypasses these guards. Full mitigation requires IP-at-connect-time
+//! validation intercepting at the reqwest layer. Deferred.
+
 use std::net::IpAddr;
 
+#[cfg(feature = "mcpregistry")]
 use lab_apis::mcpregistry::types::{
     LabRegistryMetadata, LabRegistrySetupDifficulty, LabRegistryTransportScore, ListServersParams,
 };
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::mcpregistry::store::StoreListParams;
 
 /// Runtime hints the registry is allowed to produce and we are willing to execute.
 const ALLOWED_RUNTIME_HINTS: &[&str] = &[
@@ -140,14 +150,26 @@ fn optional_string_param<'a>(params: &'a Value, key: &str) -> Result<Option<&'a 
     }
 }
 
-fn resolve_search(params: &Value) -> Result<Option<String>, ToolError> {
+pub fn resolve_search(params: &Value) -> Result<Option<String>, ToolError> {
     resolve_search_for_rest(
         optional_string_param(params, "search")?,
         optional_string_param(params, "owner")?,
     )
 }
 
-/// Extract `server.list` params from the dispatch params object.
+fn optional_bool_param(params: &Value, key: &str) -> Result<Option<bool>, ToolError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("`{key}` must be a boolean"),
+        }),
+    }
+}
+
+/// Extract `mcp.list` params from the dispatch params object.
+#[cfg(feature = "mcpregistry")]
 pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolError> {
     Ok(ListServersParams {
         search: resolve_search(params)?,
@@ -163,38 +185,7 @@ pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolErro
     })
 }
 
-/// Extract store-side list params from the dispatch params object.
-///
-/// Used exclusively by the `/v0.1/servers` GET surface and the `server.list`
-/// store path — never by the `/v1/mcpregistry` upstream-only dispatch.
-#[allow(dead_code)]
-pub fn store_params_from_dispatch(params: &Value) -> Result<StoreListParams, ToolError> {
-    Ok(StoreListParams {
-        search: resolve_search(params)?,
-        version: params["version"].as_str().map(str::to_string),
-        updated_since: params["updated_since"].as_str().map(str::to_string),
-        cursor: params["cursor"].as_str().map(str::to_string),
-        limit: params["limit"].as_u64().map(|v| v.min(100) as u32),
-        include_deleted: params["include_deleted"].as_bool().unwrap_or(false),
-        featured: optional_bool_param(params, "featured")?,
-        reviewed: optional_bool_param(params, "reviewed")?,
-        recommended: optional_bool_param(params, "recommended")?,
-        hidden: optional_bool_param(params, "hidden")?,
-        tag: optional_string_param(params, "tag")?.map(str::to_string),
-    })
-}
-
-fn optional_bool_param(params: &Value, key: &str) -> Result<Option<bool>, ToolError> {
-    match params.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Bool(value)) => Ok(Some(*value)),
-        Some(_) => Err(ToolError::Sdk {
-            sdk_kind: "invalid_param".to_string(),
-            message: format!("`{key}` must be a boolean"),
-        }),
-    }
-}
-
+#[cfg(feature = "mcpregistry")]
 pub fn parse_lab_metadata(value: &Value) -> Result<LabRegistryMetadata, ToolError> {
     let metadata: LabRegistryMetadata = serde_json::from_value(value.clone()).map_err(|e| {
         ToolError::Sdk {
@@ -206,6 +197,7 @@ pub fn parse_lab_metadata(value: &Value) -> Result<LabRegistryMetadata, ToolErro
     Ok(normalize_lab_metadata(metadata))
 }
 
+#[cfg(feature = "mcpregistry")]
 fn validate_lab_metadata(metadata: &LabRegistryMetadata) -> Result<(), ToolError> {
     if metadata.audit.is_some() {
         return Err(ToolError::Sdk {
@@ -241,6 +233,7 @@ fn validate_lab_metadata(metadata: &LabRegistryMetadata) -> Result<(), ToolError
     Ok(())
 }
 
+#[cfg(feature = "mcpregistry")]
 fn normalize_lab_metadata(mut metadata: LabRegistryMetadata) -> LabRegistryMetadata {
     if let Some(curation) = metadata.curation.as_mut() {
         curation.tags = curation
@@ -268,6 +261,7 @@ fn normalize_lab_metadata(mut metadata: LabRegistryMetadata) -> LabRegistryMetad
     metadata
 }
 
+#[cfg(feature = "mcpregistry")]
 fn normalize_optional_string(value: Option<String>) -> Option<String> {
     value
         .as_deref()
@@ -276,6 +270,7 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
         .map(str::to_string)
 }
 
+#[cfg(feature = "mcpregistry")]
 fn validate_timestamp(value: Option<&str>, field: &str) -> Result<(), ToolError> {
     let Some(value) = value else {
         return Ok(());
@@ -286,6 +281,7 @@ fn validate_timestamp(value: Option<&str>, field: &str) -> Result<(), ToolError>
     Ok(())
 }
 
+#[cfg(feature = "mcpregistry")]
 fn invalid_metadata(message: &str) -> ToolError {
     ToolError::Sdk {
         sdk_kind: "invalid_param".to_string(),
@@ -393,188 +389,5 @@ pub fn require_name(params: &Value) -> Result<String, ToolError> {
             message: "missing required parameter `name`".to_string(),
             param: "name".to_string(),
         }),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ── validate_runtime_hint ──────────────────────────────────────────────
-
-    #[test]
-    fn runtime_hint_allows_valid_runtimes() {
-        for hint in ["npx", "uvx", "docker", "dnx", "pipx", "node", "python", "python3", "deno"] {
-            assert!(validate_runtime_hint(hint).is_ok(), "expected '{hint}' to be allowed");
-        }
-    }
-
-    #[test]
-    fn runtime_hint_rejects_arbitrary_commands() {
-        for hint in ["bash", "sh", "curl", "wget", "perl", "ruby", "php"] {
-            assert!(
-                validate_runtime_hint(hint).is_err(),
-                "expected '{hint}' to be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn runtime_hint_rejects_empty() {
-        assert!(validate_runtime_hint("").is_err());
-    }
-
-    // ── validate_stdio_argv ────────────────────────────────────────────────
-
-    #[test]
-    fn argv_allows_normal_flags() {
-        let args = vec!["-y".to_string(), "@scope/pkg@1.0.0".to_string(), "--port".to_string(), "3000".to_string()];
-        assert!(validate_stdio_argv(&args).is_ok());
-    }
-
-    #[test]
-    fn argv_rejects_eval_flag() {
-        let args = vec!["--eval".to_string(), "process.exit(1)".to_string()];
-        assert!(validate_stdio_argv(&args).is_err());
-    }
-
-    #[test]
-    fn argv_rejects_short_eval_flag() {
-        let args = vec!["-e".to_string(), "bad code".to_string()];
-        assert!(validate_stdio_argv(&args).is_err());
-    }
-
-    #[test]
-    fn argv_rejects_python_command_flag() {
-        let args = vec!["-c".to_string(), "import os; os.system('rm -rf /')".to_string()];
-        assert!(validate_stdio_argv(&args).is_err());
-    }
-
-    #[test]
-    fn argv_rejects_require_flag() {
-        let args = vec!["--require".to_string(), "malicious".to_string()];
-        assert!(validate_stdio_argv(&args).is_err());
-    }
-
-    // ── validate_env_var_name ──────────────────────────────────────────────
-
-    #[test]
-    fn env_var_name_accepts_valid() {
-        for name in ["GITHUB_TOKEN", "FOO", "A1", "SOME_LONG_VAR_123"] {
-            assert!(validate_env_var_name(name).is_ok(), "expected '{name}' to be valid");
-        }
-    }
-
-    #[test]
-    fn env_var_name_rejects_lowercase() {
-        assert!(validate_env_var_name("github_token").is_err());
-    }
-
-    #[test]
-    fn env_var_name_rejects_leading_digit() {
-        assert!(validate_env_var_name("1FOO").is_err());
-    }
-
-    #[test]
-    fn env_var_name_rejects_empty() {
-        assert!(validate_env_var_name("").is_err());
-    }
-
-    #[test]
-    fn env_var_name_rejects_special_chars() {
-        for name in ["FOO-BAR", "FOO BAR", "FOO.BAR"] {
-            assert!(validate_env_var_name(name).is_err(), "expected '{name}' to be rejected");
-        }
-    }
-
-    // ── validate_env_value ─────────────────────────────────────────────────
-
-    #[test]
-    fn env_value_accepts_normal_strings() {
-        assert!(validate_env_value("FOO", "ghp_abc123").is_ok());
-        assert!(validate_env_value("FOO", "a value with spaces").is_ok());
-    }
-
-    #[test]
-    fn env_value_rejects_newline() {
-        assert!(validate_env_value("FOO", "line1\nline2").is_err());
-    }
-
-    #[test]
-    fn env_value_rejects_cr() {
-        assert!(validate_env_value("FOO", "line1\rline2").is_err());
-    }
-
-    // ── resolve_search ─────────────────────────────────────────────────────
-
-    #[test]
-    fn resolve_search_passes_explicit_search_through() {
-        let p = serde_json::json!({ "search": "postgres" });
-        assert_eq!(resolve_search(&p).unwrap().as_deref(), Some("postgres"));
-    }
-
-    #[test]
-    fn resolve_search_synthesizes_owner_with_github_prefix() {
-        let p = serde_json::json!({ "owner": "modelcontextprotocol" });
-        assert_eq!(
-            resolve_search(&p).unwrap().as_deref(),
-            Some("io.github.modelcontextprotocol/")
-        );
-    }
-
-    #[test]
-    fn resolve_search_lowercases_and_trims_owner() {
-        let p = serde_json::json!({ "owner": "  MCP-Corp  " });
-        assert_eq!(
-            resolve_search(&p).unwrap().as_deref(),
-            Some("io.github.mcp-corp/")
-        );
-    }
-
-    #[test]
-    fn resolve_search_prefers_explicit_search_over_owner() {
-        let p = serde_json::json!({ "search": "postgres", "owner": "ignored" });
-        assert_eq!(resolve_search(&p).unwrap().as_deref(), Some("postgres"));
-    }
-
-    #[test]
-    fn resolve_search_rejects_empty_owner() {
-        let p = serde_json::json!({ "owner": "   " });
-        let err = resolve_search(&p).unwrap_err();
-        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
-    }
-
-    #[test]
-    fn resolve_search_rejects_owner_with_slash() {
-        let p = serde_json::json!({ "owner": "alice/bot" });
-        let err = resolve_search(&p).unwrap_err();
-        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
-    }
-
-    #[test]
-    fn resolve_search_rejects_owner_with_whitespace() {
-        let p = serde_json::json!({ "owner": "alice bot" });
-        let err = resolve_search(&p).unwrap_err();
-        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
-    }
-
-    #[test]
-    fn resolve_search_returns_none_when_neither_set() {
-        let p = serde_json::json!({});
-        assert!(resolve_search(&p).unwrap().is_none());
-    }
-
-    #[test]
-    fn resolve_search_rejects_non_string_search() {
-        let p = serde_json::json!({ "search": 123 });
-        let err = resolve_search(&p).unwrap_err();
-        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
-    }
-
-    #[test]
-    fn resolve_search_rejects_non_string_owner() {
-        let p = serde_json::json!({ "owner": 123 });
-        let err = resolve_search(&p).unwrap_err();
-        assert!(matches!(err, ToolError::Sdk { ref sdk_kind, .. } if sdk_kind == "invalid_param"));
     }
 }
