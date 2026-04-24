@@ -136,6 +136,12 @@ pub enum DeviceRole {
     NonMaster,
 }
 
+/// Alias for [`DeviceRole`] used after the `device → node` module rename.
+pub type NodeRole = DeviceRole;
+
+/// Alias for [`ResolvedDeviceRuntime`] used after the `device → node` module rename.
+pub type ResolvedNodeRuntime = ResolvedDeviceRuntime;
+
 /// Resolved device runtime configuration after comparing local and master hosts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedDeviceRuntime {

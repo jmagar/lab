@@ -385,7 +385,28 @@ fn read_text_if_present(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
-fn io_internal(error: impl std::fmt::Display) -> ToolError {
+pub(crate) use super::dispatch::walk_artifacts;
+
+/// Cross-platform home directory (checks `HOME` then `USERPROFILE`).
+pub(crate) fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+}
+
+/// Path to the Codex TOML config file (`~/.codex/config.toml`).
+pub(crate) fn codex_config_path() -> Result<std::path::PathBuf, ToolError> {
+    home_dir()
+        .map(|h| h.join(".codex").join("config.toml"))
+        .ok_or_else(|| io_internal("cannot determine home directory"))
+}
+
+/// Root of the Codex cache directory (`~/.codex/cache/`).
+pub(crate) fn codex_cache_root() -> Option<std::path::PathBuf> {
+    home_dir().map(|h| h.join(".codex").join("cache"))
+}
+
+pub(crate) fn io_internal(error: impl std::fmt::Display) -> ToolError {
     ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: error.to_string(),

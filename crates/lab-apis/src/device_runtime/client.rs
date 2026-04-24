@@ -97,3 +97,6 @@ impl DeviceRuntimeClient {
             .map_err(|_| ApiError::Network("request timed out".to_string()))?
     }
 }
+
+/// Alias for [`DeviceRuntimeClient`] used after the `device → node` module rename.
+pub type NodeRuntimeClient = DeviceRuntimeClient;
