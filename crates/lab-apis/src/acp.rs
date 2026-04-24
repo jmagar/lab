@@ -23,3 +23,10 @@ pub mod persistence;
 
 /// `SessionHandle` and related provider types.
 pub mod session;
+
+// Convenience re-exports of the canonical public surface.
+pub use error::{AcpError, PersistenceError};
+pub use types::{
+    AcpContentBlock, AcpEvent, AcpPermissionOption, AcpProviderHealth, AcpSessionState,
+    AcpSessionSummary,
+};
