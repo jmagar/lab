@@ -397,6 +397,12 @@ pub fn build_default_registry() -> ToolRegistry {
     // `LAB_WORKSPACE_ROOT` is unset or invalid. The startup WARN log in
     // `cli::serve` surfaces the misconfiguration once at boot.
     //
+    // SECURITY: unlike `/v1/fs` (which refuses to mount when
+    // `LAB_WEB_UI_AUTH_DISABLED=true`), MCP `fs` registration has no
+    // env-driven refusal. MCP transport auth (`LAB_MCP_HTTP_TOKEN` /
+    // OAuth, or stdio reachability) is the sole gate. See
+    // `crates/lab/src/mcp/CLAUDE.md` § "Transport auth for fs".
+    //
     // NOTE: fs has TWO action surfaces. The canonical slice is
     // `dispatch::fs::catalog::ACTIONS` (includes `fs.preview`); the MCP-filtered
     // slice `mcp::services::fs::ACTIONS` omits `fs.preview` because preview
