@@ -131,7 +131,7 @@ Typical checks include:
 
 ## Device Runtime Operations
 
-In the current Linux `x86_64` v1 target, every supported fleet member runs `lab serve` as a device runtime.
+In the current Linux `x86_64` v1 target, every supported fleet member runs `lab serve` as a node runtime.
 
 Setup order:
 
@@ -140,8 +140,8 @@ Setup order:
 3. On each non-master, set the master machine name in `~/.lab/config.toml`:
 
 ```toml
-[device]
-master = "tootie"
+[node]
+controller = "tootie"
 ```
 
 4. Start each non-master with `lab serve`.
@@ -150,14 +150,14 @@ master = "tootie"
 Operationally:
 
 - one device is the `master`
-- non-master devices report to the master over `/v1/device/*`
-- fleet inventory and fleet logs are queried from the master
+- non-controller nodes report to the master over `/v1/nodes/*`
+- node inventory and node logs are queried from the master
 
 Useful commands:
 
 ```bash
-lab device list
-lab device get dookie
+lab nodes list
+lab nodes get dookie
 lab logs search dookie oauth
 ```
 
@@ -172,7 +172,7 @@ Current operational limits:
 
 - fleet state is in-memory on the master
 - non-master background uploads reuse the shared static bearer token when bearer auth is enabled
-- non-master devices intentionally do not expose Web UI, gateway management, or MCP
+- non-controller nodes intentionally do not expose Web UI, gateway management, or MCP
 - the master should be reachable on its configured HTTP port before non-masters start reporting to it
 
 ## Install and Patch Workflows

@@ -32,7 +32,7 @@ async fn device_store_marks_hello_devices_connected_and_tracks_status() {
 
     let snapshot = store.device("tootie").await.unwrap();
     assert!(snapshot.connected);
-    assert_eq!(snapshot.device_id, "tootie");
+    assert_eq!(snapshot.node_id, "tootie");
 }
 
 #[tokio::test]
@@ -58,7 +58,7 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     let drained = queue.drain_batch(10).await.unwrap();
     assert_eq!(drained.len(), 1);
     assert_eq!(drained[0].kind, "metadata");
-    assert_eq!(drained[0].payload["device_id"], "dookie");
+    assert_eq!(drained[0].payload["node_id"], "dookie");
     assert_eq!(drained[0].payload["discovered_configs"][0]["path"], ".claude.json");
     assert!(
         drained[0].payload["discovered_configs"][0]["content_hash"]

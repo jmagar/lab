@@ -19,6 +19,8 @@ import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
 import type { ACPAgent, ACPRun } from './types'
 import type { BridgeSessionSummary, ProviderHealth } from '@/lib/acp/types'
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
 const ACP_AGENT: ACPAgent = {
   id: 'codex',
   name: 'Codex ACP',
@@ -186,6 +188,19 @@ export function ChatShell() {
   )
 
   React.useEffect(() => {
+    if (USE_MOCK_DATA) {
+      setProviderHealth({
+        provider: 'codex',
+        ready: false,
+        command: '',
+        args: [],
+        message: 'ACP unavailable in mock preview.',
+      })
+      setRuns([])
+      setSelectedRunId(null)
+      return
+    }
+
     void refreshProvider()
     void refreshSessions()
   }, [refreshProvider, refreshSessions])
@@ -245,7 +260,7 @@ export function ChatShell() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-aurora-page-bg">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-aurora-border-default bg-aurora-nav-bg px-3">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-aurora-border-default bg-aurora-nav-bg px-2.5 sm:px-3">
         <SidebarTrigger
           aria-label="Toggle app sidebar"
           className="-ml-1 text-aurora-text-muted/60 hover:text-aurora-text-primary"
@@ -298,9 +313,14 @@ export function ChatShell() {
             </Tooltip>
           </TooltipProvider>
 
-          <div className="flex items-center gap-1 rounded-full border border-aurora-border-default bg-aurora-control-surface px-2 py-0.5">
+          <div
+            className="flex items-center gap-1 rounded-full border border-aurora-border-default bg-aurora-control-surface px-1.5 py-0.5 sm:px-2"
+            title={providerHealth?.ready ? 'ACP live' : 'ACP unavailable'}
+          >
             <Zap className="size-3 text-aurora-accent-primary/70" />
-            <span className="text-[11px] text-aurora-text-muted">{providerHealth?.ready ? 'ACP live' : 'ACP unavailable'}</span>
+            <span className="hidden text-[11px] text-aurora-text-muted sm:inline">
+              {providerHealth?.ready ? 'ACP live' : 'ACP unavailable'}
+            </span>
           </div>
 
           <TooltipProvider delayDuration={400}>

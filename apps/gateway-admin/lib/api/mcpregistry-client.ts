@@ -1,6 +1,7 @@
 import { performServiceAction, isAbortError } from './service-action-client'
 import { confirmGatewayParams, gatewayHeaders } from './gateway-request'
 import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
+import { getMockGatewayFallback } from './mock-fallback'
 import { RegistryApiError, normalizeServerJSON } from '@/lib/types/registry'
 import type {
   LabRegistryMetadata,
@@ -19,12 +20,127 @@ type RawServerResponse = Omit<ServerResponse, 'server'> & { server: ServerJSON }
 type RawServerListResponse = Omit<ServerListResponse, 'servers'> & { servers: RawServerResponse[] }
 type RestServerListRaw = { servers: RawServerResponse[]; next_cursor: string | null }
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
+const MOCK_REGISTRY_CONFIG: RegistryConfig = {
+  url: 'https://registry.modelcontextprotocol.io',
+}
+
+const MOCK_REGISTRY_SERVERS: RawServerResponse[] = [
+  {
+    server: {
+      name: 'io.labby.gateway-audit',
+      title: 'Gateway Audit',
+      description: 'Review gateway exposure, warnings, and operator drift from one MCP package.',
+      version: '1.4.0',
+      repository: { url: 'https://github.com/labby/gateway-audit' },
+      remotes: [{ type: 'streamable-http', url: 'https://example.com/mcp' }],
+      packages: [],
+      icons: [],
+      websiteUrl: 'https://github.com/labby/gateway-audit',
+    },
+    _meta: {
+      'io.modelcontextprotocol.registry/official': {
+        isLatest: true,
+        publishedAt: '2026-04-20T12:00:00Z',
+        status: 'active',
+        statusChangedAt: '2026-04-20T12:00:00Z',
+        updatedAt: '2026-04-21T10:00:00Z',
+      },
+      'tv.tootie.lab/registry': {
+        curation: { featured: true, hidden: false, tags: ['audit', 'gateway'] },
+        trust: { reviewed: true, source_verified: true, maintainer_known: true },
+        ux: { recommended_for_homelab: true, works_in_lab: true, setup_difficulty: 'easy' },
+      },
+    },
+  },
+  {
+    server: {
+      name: 'io.labby.tail-helper',
+      title: 'Tail Helper',
+      description: 'Search presets and compact timeline helpers for log-heavy workflows.',
+      version: '0.9.2',
+      repository: { url: 'https://github.com/labby/tail-helper' },
+      remotes: [{ type: 'stdio' }],
+      packages: [],
+      icons: [],
+      websiteUrl: 'https://github.com/labby/tail-helper',
+    },
+    _meta: {
+      'io.modelcontextprotocol.registry/official': {
+        isLatest: true,
+        publishedAt: '2026-04-18T12:00:00Z',
+        status: 'active',
+        statusChangedAt: '2026-04-18T12:00:00Z',
+        updatedAt: '2026-04-18T12:00:00Z',
+      },
+      'tv.tootie.lab/registry': {
+        curation: { featured: false, hidden: false, tags: ['logs'] },
+        trust: { reviewed: true },
+        ux: { recommended_for_homelab: false, works_in_lab: true, setup_difficulty: 'easy' },
+      },
+    },
+  },
+  {
+    server: {
+      name: 'io.community.registry-curator',
+      title: 'Registry Curator',
+      description: 'Attach local review metadata and curation notes to registry entries.',
+      version: '0.5.0',
+      repository: { url: 'https://github.com/modelcontextprotocol/servers' },
+      remotes: [{ type: 'streamable-http', url: 'https://example.com/registry-curator' }],
+      packages: [],
+      icons: [],
+      websiteUrl: 'https://github.com/modelcontextprotocol/servers',
+    },
+    _meta: {
+      'io.modelcontextprotocol.registry/official': {
+        isLatest: true,
+        publishedAt: '2026-04-16T12:00:00Z',
+        status: 'active',
+        statusChangedAt: '2026-04-16T12:00:00Z',
+        updatedAt: '2026-04-17T09:00:00Z',
+      },
+      'tv.tootie.lab/registry': {
+        curation: { featured: false, hidden: false, tags: ['registry', 'metadata'] },
+        trust: { reviewed: false },
+        ux: { recommended_for_homelab: true, works_in_lab: true, setup_difficulty: 'medium' },
+      },
+    },
+  },
+]
+
+const mockRegistryMetadata = new Map<string, LabRegistryMetadata | null>()
+
+function cloneValue<T>(value: T): T {
+  return structuredClone(value)
+}
+
 function normalizeResponse(raw: RawServerResponse): ServerResponse {
   return { ...raw, server: normalizeServerJSON(raw.server) }
 }
 
 function createRegistryError(message: string, status: number, code?: string): RegistryApiError {
   return new RegistryApiError(message, status, code)
+}
+
+function mergeMockMetadata(server: RawServerResponse): RawServerResponse {
+  const metadata = mockRegistryMetadata.get(server.server.name)
+  if (metadata === undefined) {
+    return cloneValue(server)
+  }
+
+  return {
+    ...cloneValue(server),
+    _meta: {
+      ...(server._meta ?? {}),
+      'tv.tootie.lab/registry': metadata,
+    },
+  }
+}
+
+function listMockServers(): RawServerResponse[] {
+  return MOCK_REGISTRY_SERVERS.map(mergeMockMetadata)
 }
 
 async function registryAction<T>(
@@ -47,6 +163,11 @@ export interface RegistryConfig {
 }
 
 export async function getRegistryConfig(signal?: AbortSignal): Promise<RegistryConfig> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return cloneValue(MOCK_REGISTRY_CONFIG)
+  }
+
   return registryAction<RegistryConfig>('config', {}, signal)
 }
 
@@ -54,6 +175,41 @@ export async function listServers(
   params: ListServersParams,
   signal?: AbortSignal,
 ): Promise<ServerListResponse> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+
+    const filtered = listMockServers()
+      .filter((response) => {
+        if (!params.search) return true
+        const haystack = `${response.server.name} ${response.server.title ?? ''} ${response.server.description}`.toLowerCase()
+        return haystack.includes(params.search.toLowerCase())
+      })
+      .filter((response) => !params.version || response.server.version === params.version)
+      .filter((response) => {
+        if (!params.updated_since) return true
+        const updatedAt = response._meta?.['io.modelcontextprotocol.registry/official']?.updatedAt
+        return updatedAt ? updatedAt >= params.updated_since : true
+      })
+      .filter((response) => params.featured == null || Boolean(response._meta?.['tv.tootie.lab/registry']?.curation?.featured) === params.featured)
+      .filter((response) => params.reviewed == null || Boolean(response._meta?.['tv.tootie.lab/registry']?.trust?.reviewed) === params.reviewed)
+      .filter((response) => params.recommended == null || Boolean(response._meta?.['tv.tootie.lab/registry']?.ux?.recommended_for_homelab) === params.recommended)
+      .filter((response) => params.hidden == null || Boolean(response._meta?.['tv.tootie.lab/registry']?.curation?.hidden) === params.hidden)
+      .filter((response) => !params.tag || (response._meta?.['tv.tootie.lab/registry']?.curation?.tags ?? []).includes(params.tag))
+
+    const limit = params.limit ?? 20
+    const offset = params.cursor ? Number.parseInt(params.cursor, 10) || 0 : 0
+    const page = filtered.slice(offset, offset + limit).map(normalizeResponse)
+    const nextCursor = offset + limit < filtered.length ? String(offset + limit) : null
+
+    return {
+      servers: page,
+      metadata: {
+        count: page.length,
+        nextCursor,
+      },
+    }
+  }
+
   const qs = new URLSearchParams()
   if (params.search) qs.set('search', params.search)
   if (params.owner) qs.set('owner', params.owner)
@@ -100,6 +256,15 @@ export async function getServer(
   name: string,
   signal?: AbortSignal,
 ): Promise<ServerResponse> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const found = listMockServers().find((response) => response.server.name === name)
+    if (!found) {
+      throw createRegistryError('Failed to load server', 404, 'not_found')
+    }
+    return normalizeResponse(found)
+  }
+
   const raw = await registryAction<RawServerResponse>('server.get', { name }, signal)
   return normalizeResponse(raw)
 }
@@ -108,6 +273,18 @@ export async function listVersions(
   name: string,
   signal?: AbortSignal,
 ): Promise<ServerListResponse> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const current = listMockServers().find((response) => response.server.name === name)
+    if (!current) {
+      throw createRegistryError('Failed to list server versions', 404, 'not_found')
+    }
+    return {
+      servers: [normalizeResponse(current)],
+      metadata: { count: 1, nextCursor: null },
+    }
+  }
+
   const raw = await registryAction<RawServerListResponse>('server.versions', { name }, signal)
   return { ...raw, servers: raw.servers.map(normalizeResponse) }
 }
@@ -116,6 +293,11 @@ export async function validateServer(
   serverJson: ServerJSON,
   signal?: AbortSignal,
 ): Promise<ValidationResult> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return { valid: true, issues: [] }
+  }
+
   return registryAction<ValidationResult>('server.validate', { server_json: serverJson }, signal)
 }
 
@@ -124,6 +306,17 @@ export async function getServerLocalMetadata(
   version?: string,
   signal?: AbortSignal,
 ): Promise<RegistryLocalMetaResponse> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const server = listMockServers().find((response) => response.server.name === name)
+    return {
+      name,
+      version: version ?? server?.server.version ?? 'latest',
+      namespace: 'tv.tootie.lab/registry',
+      metadata: server?._meta?.['tv.tootie.lab/registry'] ?? null,
+    }
+  }
+
   return registryAction<RegistryLocalMetaResponse>(
     'server.meta.get',
     { name, version },
@@ -137,6 +330,18 @@ export async function setServerLocalMetadata(
   options?: RegistryMetaSetOptions,
   signal?: AbortSignal,
 ): Promise<RegistryLocalMetaResponse> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const server = listMockServers().find((response) => response.server.name === name)
+    mockRegistryMetadata.set(name, cloneValue(metadata))
+    return {
+      name,
+      version: options?.version ?? server?.server.version ?? 'latest',
+      namespace: 'tv.tootie.lab/registry',
+      metadata: cloneValue(metadata),
+    }
+  }
+
   return registryAction<RegistryLocalMetaResponse>(
     'server.meta.set',
     { name, version: options?.version, updated_by: options?.updated_by, metadata },
@@ -149,6 +354,18 @@ export async function deleteServerLocalMetadata(
   version?: string,
   signal?: AbortSignal,
 ): Promise<RegistryLocalMetaDeleteResponse> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const server = listMockServers().find((response) => response.server.name === name)
+    mockRegistryMetadata.set(name, null)
+    return {
+      name,
+      version: version ?? server?.server.version ?? 'latest',
+      namespace: 'tv.tootie.lab/registry',
+      deleted: true,
+    }
+  }
+
   return registryAction<RegistryLocalMetaDeleteResponse>(
     'server.meta.delete',
     { name, version },
@@ -167,6 +384,15 @@ export async function installServer(
   params: InstallServerParams,
   signal?: AbortSignal,
 ): Promise<Gateway> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const gateway = getMockGatewayFallback('gw-2')
+    if (!gateway) {
+      throw createRegistryError('Failed to install server', 500, 'mock_gateway_missing')
+    }
+    return gateway
+  }
+
   return registryAction<Gateway>(
     'server.install',
     confirmGatewayParams(params),

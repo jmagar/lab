@@ -70,7 +70,7 @@ impl DeviceRuntime {
         }
 
         let payload = DeviceMetadataUpload {
-            device_id: self.resolved.local_host.clone(),
+            node_id: self.resolved.local_host.clone(),
             discovered_configs: discover_ai_cli_configs(&self.home_dir)?,
         };
         let queue = self.outbound_queue().await?;
@@ -86,7 +86,7 @@ impl DeviceRuntime {
 
         let queue = self.outbound_queue().await?;
         let payload = serde_json::json!({
-            "device_id": self.resolved.local_host.clone(),
+            "node_id": self.resolved.local_host.clone(),
             "events": events,
         });
         queue.push(QueuedEnvelope::syslog_batch(payload)).await

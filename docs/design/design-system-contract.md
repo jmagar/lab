@@ -353,6 +353,7 @@ Rules:
 - use Aurora control surfaces
 - keep borders and focus states consistent with the shared token system
 - validation states must layer on top of the control contract rather than replace it with unrelated styling
+- placeholders are supportive copy only; search and filter controls still require a real accessible name via label, `aria-label`, or both, and product forms should provide a stable `name` attribute so browser tooling and audits do not flag them as anonymous
 - on narrow screens, search-driven list pages should prefer a single full-width search field with embedded secondary actions (for example filter or sort access) instead of parallel search/select/stat rows that compress the primary input
 - mobile filter state should collapse into an attached sheet, popover, or inline panel launched from the search field action rather than consuming permanent horizontal space beside the field
 
@@ -405,6 +406,7 @@ Rules:
 - empty states should stay concise and operational
 - loading states should be understated
 - success/warning/error states should communicate clearly without breaking palette discipline
+- backend-unavailable or environment-unavailable states should render as calm Aurora support panels with direct explanatory copy; do not surface raw transport or HTTP error strings as the primary UI copy on product pages
 
 ## Display Slot Assignments
 
@@ -462,6 +464,7 @@ Marketplace-style catalog pages should inherit the gateways interaction model wh
 - prefer dense single-column list or row surfaces over shrinking desktop card grids until they become cramped
 - summary counts should compress into compact chips above the list instead of a long horizontal stats strip
 - sort belongs inside the filter affordance on narrow screens unless it is the primary action of the page
+- when a route uses distinct desktop and mobile control shells, hide the desktop shell on mobile instead of stacking both versions and forcing duplicate navigation or duplicated filter controls
 
 ### Authentication Surfaces
 

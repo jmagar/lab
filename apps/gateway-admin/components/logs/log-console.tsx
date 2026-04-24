@@ -336,10 +336,12 @@ export function LogConsole({ initialText = "" }: { initialText?: string }) {
           { label: 'Logs' },
         ]}
         actions={(
-          <>
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
+              aria-label="Copy logs query"
+              className="gap-2 px-2.5 sm:px-3"
               onClick={() => {
                 const preview = queryPreviewForAfterTs(filters, afterTs)
                 navigator.clipboard
@@ -354,18 +356,22 @@ export function LogConsole({ initialText = "" }: { initialText?: string }) {
               }}
             >
               <Copy className="size-4" />
-              Copy query
+              <span className="hidden sm:inline">Copy query</span>
             </Button>
-            {copyStatus ? <span className="text-xs text-aurora-text-muted">{copyStatus}</span> : null}
             <Button variant="outline" size="sm" asChild>
-              <Link href="/activity">Back to activity</Link>
+              <Link href="/activity">
+                <span className="sm:hidden">Activity</span>
+                <span className="hidden sm:inline">Back to activity</span>
+              </Link>
             </Button>
-          </>
+            {copyStatus ? <span className="hidden text-xs text-aurora-text-muted sm:inline">{copyStatus}</span> : null}
+          </div>
         )}
       />
 
       <div className={`relative min-h-[calc(100vh-3.5rem)] w-full overflow-hidden bg-aurora-page-bg text-aurora-text-primary ${AURORA_PAGE_SHELL}`}>
         <div className={AURORA_PAGE_FRAME}>
+        {copyStatus ? <div className="mb-3 text-xs text-aurora-text-muted sm:hidden">{copyStatus}</div> : null}
         <LogToolbar
           filters={filters}
           windowPreset={windowPreset}

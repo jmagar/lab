@@ -53,6 +53,9 @@ pub struct LabConfig {
     /// Device runtime preferences.
     #[serde(default)]
     pub device: Option<DevicePreferences>,
+    /// Node runtime preferences.
+    #[serde(default)]
+    pub node: Option<NodePreferences>,
     /// Admin tool settings.
     #[serde(default)]
     pub admin: AdminPreferences,
@@ -119,6 +122,13 @@ pub struct DevicePreferences {
     pub master: Option<String>,
 }
 
+/// Node runtime preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NodePreferences {
+    #[serde(default)]
+    pub controller: Option<String>,
+}
+
 /// Runtime role for the current device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceRole {
@@ -134,8 +144,46 @@ pub struct ResolvedDeviceRuntime {
     pub role: DeviceRole,
 }
 
+impl LabConfig {
+    #[must_use]
+    pub fn controller_host(&self) -> Option<&str> {
+        self.node
+            .as_ref()
+            .and_then(|prefs| prefs.controller.as_deref())
+            .or_else(|| self.device.as_ref().and_then(|prefs| prefs.master.as_deref()))
+    }
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_tool_search_top_k() -> usize {
+    10
+}
+
+fn default_tool_search_max_tools() -> usize {
+    5000
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSearchConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_tool_search_top_k")]
+    pub top_k_default: usize,
+    #[serde(default = "default_tool_search_max_tools")]
+    pub max_tools: usize,
+}
+
+impl Default for ToolSearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            top_k_default: default_tool_search_top_k(),
+            max_tools: default_tool_search_max_tools(),
+        }
+    }
 }
 
 /// Configuration for a single upstream MCP server.
@@ -168,16 +216,36 @@ pub struct UpstreamConfig {
     /// Optional allowlist of tool names/patterns to expose from this upstream.
     #[serde(default)]
     pub expose_tools: Option<Vec<String>>,
+    /// Optional allowlist of resource URIs/patterns to expose from this upstream.
+    #[serde(default)]
+    pub expose_resources: Option<Vec<String>>,
+    /// Optional allowlist of prompt names/patterns to expose from this upstream.
+    #[serde(default)]
+    pub expose_prompts: Option<Vec<String>>,
     /// Optional outbound OAuth configuration. Mutually exclusive with
     /// `bearer_token_env` — setting both is a config error.
     #[serde(default)]
     pub oauth: Option<UpstreamOauthConfig>,
+    #[serde(default)]
+    pub tool_search: ToolSearchConfig,
 }
 
 impl UpstreamConfig {
     /// Validate mutually-exclusive auth shapes. `bearer_token_env` and `oauth`
     /// both configured is a config error.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if !(1..=50).contains(&self.tool_search.top_k_default) {
+            return Err(ConfigError::InvalidToolSearchTopKDefault {
+                name: self.name.clone(),
+                value: self.tool_search.top_k_default,
+            });
+        }
+        if !(1..=10_000).contains(&self.tool_search.max_tools) {
+            return Err(ConfigError::InvalidToolSearchMaxTools {
+                name: self.name.clone(),
+                value: self.tool_search.max_tools,
+            });
+        }
         if self.bearer_token_env.is_some() && self.oauth.is_some() {
             return Err(ConfigError::ConflictingAuth {
                 name: self.name.clone(),
@@ -240,6 +308,10 @@ pub enum ConfigError {
     InvalidUrl { name: String, url: String },
     #[error("upstream '{name}' has oauth configured but no url — oauth requires an HTTP url")]
     MissingOauthUrl { name: String },
+    #[error("upstream '{name}' has invalid tool_search.top_k_default={value} — expected 1..=50")]
+    InvalidToolSearchTopKDefault { name: String, value: usize },
+    #[error("upstream '{name}' has invalid tool_search.max_tools={value} — expected 1..=10000")]
+    InvalidToolSearchMaxTools { name: String, value: usize },
 }
 
 /// Outbound OAuth configuration for an upstream MCP server.

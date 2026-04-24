@@ -13,13 +13,20 @@ interface MessageThreadProps {
 
 function EmptyState() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-      <div className="flex size-12 items-center justify-center rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium">
-        <MessageSquare className="size-5 text-aurora-text-muted/50" />
-      </div>
-      <div className="space-y-1">
-        <p className="text-[14px] font-medium text-aurora-text-primary">No session selected</p>
-        <p className="text-[13px] text-aurora-text-muted">Select a session from the sidebar or start a new one</p>
+    <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-10">
+      <div className="w-full max-w-sm rounded-aurora-2 border border-aurora-border-strong bg-aurora-panel-medium p-5 text-center shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-strong">
+          <MessageSquare className="size-5 text-aurora-text-muted/50" />
+        </div>
+        <div className="mt-4 space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-aurora-text-muted">
+            Conversation
+          </p>
+          <p className="text-[15px] font-medium text-aurora-text-primary">No session selected</p>
+          <p className="text-[13px] leading-[1.55] text-aurora-text-muted">
+            Open the sessions drawer or start a new run to begin a chat with the ACP bridge.
+          </p>
+        </div>
       </div>
     </div>
   )

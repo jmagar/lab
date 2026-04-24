@@ -123,11 +123,14 @@ impl Harness {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: Some(UpstreamOauthConfig {
                 mode: UpstreamOauthMode::AuthorizationCodePkce,
                 registration,
                 scopes: Some(vec!["read".into()]),
             }),
+            tool_search: lab::config::ToolSearchConfig::default(),
         }
     }
 

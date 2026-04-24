@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use arc_swap::ArcSwapOption;
 #[cfg(unix)]
 use nix::errno::Errno;
 use tokio::sync::RwLock;
@@ -33,6 +35,7 @@ use super::config::{
     default_gateway_bearer_env_name, insert_upstream, load_gateway_config, remove_upstream,
     update_upstream, validate_bearer_token_env_name, write_gateway_config,
 };
+use super::index::{SearchHit, ToolIndex};
 use super::params::GatewayUpdatePatch;
 use super::service_catalog::service_meta;
 use super::types::{
@@ -65,6 +68,31 @@ pub fn diff_catalogs(
 }
 
 static BUILTIN_SERVICE_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
+
+#[derive(Clone)]
+struct GatewayToolIndexState {
+    index: Arc<ArcSwapOption<ToolIndex>>,
+    warming: Arc<AtomicBool>,
+}
+
+impl Default for GatewayToolIndexState {
+    fn default() -> Self {
+        Self {
+            index: Arc::new(ArcSwapOption::from(None)),
+            warming: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GatewayToolSearchResult {
+    pub name: String,
+    pub description: String,
+    pub upstream: String,
+    pub score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
+}
 
 fn tool_error_from_oauth(error: OauthError) -> ToolError {
     ToolError::Sdk {
@@ -101,6 +129,7 @@ pub struct GatewayManager {
     oauth_sqlite: Option<lab_auth::sqlite::SqliteStore>,
     oauth_key: Option<EncryptionKey>,
     oauth_redirect_uri: Option<Arc<String>>,
+    tool_indexes: Arc<dashmap::DashMap<String, GatewayToolIndexState>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -144,6 +173,7 @@ impl GatewayManager {
             oauth_sqlite: None,
             oauth_key: None,
             oauth_redirect_uri: None,
+            tool_indexes: Arc::new(dashmap::DashMap::new()),
         }
     }
 
@@ -413,11 +443,14 @@ impl GatewayManager {
                         proxy_resources: false,
                         proxy_prompts: false,
                         expose_tools: None,
+                        expose_resources: None,
+                        expose_prompts: None,
                         oauth: Some(UpstreamOauthConfig {
                             mode: UpstreamOauthMode::AuthorizationCodePkce,
                             registration,
                             scopes: metadata.scopes_supported.clone(),
                         }),
+                        tool_search: crate::config::ToolSearchConfig::default(),
                     };
                     let manager = UpstreamOauthManager::new(
                         sqlite.clone(),
@@ -1313,6 +1346,7 @@ impl GatewayManager {
         *self.config.write().await = cfg;
         let current_cfg = self.config.read().await.clone();
         let current_pool = self.runtime.current_pool().await;
+        self.schedule_tool_search_rebuilds(&current_cfg, current_pool.clone());
         self.reconcile_runtime_state(&current_cfg, current_pool.as_deref())
             .await?;
         let diff = diff_catalogs(&before, &after);
@@ -1381,6 +1415,186 @@ impl GatewayManager {
             .collect();
         prompts.sort();
         Ok(prompts)
+    }
+
+    pub async fn tool_search_enabled_gateways(&self) -> Vec<String> {
+        self.config
+            .read()
+            .await
+            .upstream
+            .iter()
+            .filter(|upstream| upstream.tool_search.enabled)
+            .map(|upstream| upstream.name.clone())
+            .collect()
+    }
+
+    pub async fn tool_search_warming(&self) -> bool {
+        self.tool_indexes
+            .iter()
+            .any(|entry| entry.value().warming.load(Ordering::Relaxed))
+    }
+
+    pub async fn search_tools(
+        &self,
+        query: &str,
+        top_k: usize,
+        include_schema: bool,
+    ) -> Result<Vec<GatewayToolSearchResult>, ToolError> {
+        self.refresh_tool_search_indexes_if_stale().await;
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: "query must not be empty".to_string(),
+            });
+        }
+        if trimmed.len() > 500 {
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: "query exceeds max length 500".to_string(),
+            });
+        }
+
+        let requested = top_k.max(1).min(50);
+        let mut hits: Vec<SearchHit> = self
+            .tool_indexes
+            .iter()
+            .filter_map(|entry| entry.value().index.load_full())
+            .flat_map(|index| index.search(trimmed, requested))
+            .collect();
+
+        hits.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.tool.name.cmp(&b.tool.name))
+                .then_with(|| a.tool.upstream_name.cmp(&b.tool.upstream_name))
+        });
+        hits.truncate(requested);
+
+        if hits.is_empty() && self.tool_search_warming().await {
+            return Err(ToolError::Sdk {
+                sdk_kind: "index_warming".to_string(),
+                message: "tool index is being built, retry shortly".to_string(),
+            });
+        }
+
+        Ok(hits
+            .into_iter()
+            .map(|hit| GatewayToolSearchResult {
+                name: sanitize_tool_text(&hit.tool.name, 256),
+                description: sanitize_tool_text(&hit.tool.description, 2048),
+                upstream: hit.tool.upstream_name,
+                score: hit.score,
+                input_schema: if include_schema {
+                    sanitize_schema(hit.tool.input_schema)
+                } else {
+                    None
+                },
+            })
+            .collect())
+    }
+
+    pub async fn resolve_tool_invoke(
+        &self,
+        name: &str,
+    ) -> Result<(String, crate::dispatch::upstream::types::UpstreamTool), ToolError> {
+        let pool = self.current_pool().await.ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "unknown_tool".to_string(),
+            message: format!("tool `{name}` is not available"),
+        })?;
+
+        let matches = pool.find_tool_candidates(name).await;
+        if matches.is_empty() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "unknown_tool".to_string(),
+                message: format!("unknown tool `{name}`"),
+            });
+        }
+        if matches.len() > 1 {
+            return Err(ToolError::Sdk {
+                sdk_kind: "ambiguous_tool".to_string(),
+                message: matches
+                    .iter()
+                    .map(|(upstream, tool)| format!("{upstream}::{}", tool.tool.name))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            });
+        }
+        Ok(matches.into_iter().next().expect("checked len"))
+    }
+
+    fn schedule_tool_search_rebuilds(&self, cfg: &LabConfig, pool: Option<Arc<UpstreamPool>>) {
+        let enabled = cfg
+            .upstream
+            .iter()
+            .filter(|upstream| upstream.tool_search.enabled)
+            .map(|upstream| upstream.name.clone())
+            .collect::<std::collections::HashSet<_>>();
+        self.tool_indexes.retain(|name, _| enabled.contains(name));
+
+        let Some(pool) = pool else {
+            self.tool_indexes.clear();
+            return;
+        };
+
+        for upstream in cfg.upstream.iter().filter(|upstream| upstream.tool_search.enabled) {
+            let state = self
+                .tool_indexes
+                .entry(upstream.name.clone())
+                .or_default()
+                .clone();
+            let upstream = upstream.clone();
+            let pool = pool.clone();
+            state.warming.store(true, Ordering::Relaxed);
+            state.index.store(None);
+            tokio::spawn(async move {
+                let healthy_tools = pool.healthy_tools_for_upstream(&upstream.name).await;
+                let built = tokio::task::spawn_blocking(move || {
+                    ToolIndex::build_from_tools(&upstream, healthy_tools)
+                })
+                .await;
+                if let Ok(index) = built {
+                    state.index.store(Some(Arc::new(index)));
+                }
+                state.warming.store(false, Ordering::Relaxed);
+            });
+        }
+    }
+
+    async fn refresh_tool_search_indexes_if_stale(&self) {
+        let cfg = self.config.read().await.clone();
+        let Some(pool) = self.current_pool().await else {
+            return;
+        };
+
+        for upstream in cfg.upstream.into_iter().filter(|u| u.tool_search.enabled) {
+            let state = self
+                .tool_indexes
+                .entry(upstream.name.clone())
+                .or_default()
+                .clone();
+            let pool = pool.clone();
+            let upstream_clone = upstream.clone();
+            state.warming.store(true, Ordering::Relaxed);
+            let _ = pool.reprobe_tools_for_upstream(&upstream).await;
+            let healthy_tools = pool.healthy_tools_for_upstream(&upstream.name).await;
+            let built = tokio::task::spawn_blocking(move || {
+                ToolIndex::build_from_tools(&upstream_clone, healthy_tools)
+            })
+            .await;
+            if let Ok(index) = built {
+                let should_publish = state
+                    .index
+                    .load_full()
+                    .as_ref()
+                    .is_none_or(|current| current.metadata.catalog_hash != index.metadata.catalog_hash);
+                if should_publish {
+                    state.index.store(Some(Arc::new(index)));
+                }
+            }
+            state.warming.store(false, Ordering::Relaxed);
+        }
     }
 
     #[cfg(test)]
@@ -1687,7 +1901,81 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
         bearer_token_env: upstream.bearer_token_env.clone(),
         oauth_enabled: upstream.oauth.is_some(),
         proxy_resources: upstream.proxy_resources,
+        proxy_prompts: upstream.proxy_prompts,
+        expose_tools: upstream.expose_tools.clone(),
+        expose_resources: upstream.expose_resources.clone(),
+        expose_prompts: upstream.expose_prompts.clone(),
+        tool_search_enabled: upstream.tool_search.enabled,
+        tool_search_top_k_default: upstream.tool_search.top_k_default,
+        tool_search_max_tools: upstream.tool_search.max_tools,
     }
+}
+
+fn sanitize_tool_text(input: &str, max_len: usize) -> String {
+    let mut sanitized = input.to_string();
+    sanitized.retain(|ch| {
+        !matches!(
+            ch,
+            '\u{0000}'..='\u{001F}'
+                | '\u{007F}'..='\u{009F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2066}'..='\u{2069}'
+        )
+    });
+    for marker in ["<system>", "[INST]", "###", "<<"] {
+        sanitized = sanitized.replace(marker, "");
+    }
+    redact_secret_like_segments(&sanitized)
+        .chars()
+        .take(max_len)
+        .collect()
+}
+
+fn redact_secret_like_segments(input: &str) -> String {
+    input
+        .split_whitespace()
+        .map(|segment| {
+            let looks_secret = segment.starts_with("sk-")
+                || segment.starts_with("ghp_")
+                || segment.starts_with("github_pat_")
+                || segment.starts_with("glpat-")
+                || segment.starts_with("xoxb-")
+                || segment.starts_with("xoxp-")
+                || segment.starts_with("eyJ");
+            if looks_secret {
+                "<redacted>".to_string()
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn sanitize_schema(schema: Option<serde_json::Value>) -> Option<serde_json::Value> {
+    fn recurse(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::String(text) => {
+                *text = sanitize_tool_text(text, 2048);
+            }
+            serde_json::Value::Array(values) => {
+                for value in values {
+                    recurse(value);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for value in map.values_mut() {
+                    recurse(value);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    schema.map(|mut value| {
+        recurse(&mut value);
+        value
+    })
 }
 
 fn redacted_gateway_target(upstream: &UpstreamConfig) -> Option<String> {
@@ -2519,7 +2807,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let patterns = upstream_cleanup_patterns(&upstream, false);
@@ -2570,7 +2861,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -2636,7 +2930,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -2669,7 +2966,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -2698,7 +2998,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -2721,7 +3024,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -2748,7 +3054,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -2890,7 +3199,10 @@ mod tests {
                     proxy_resources: false,
                     proxy_prompts: false,
                     expose_tools: None,
+                    expose_resources: None,
+                    expose_prompts: None,
                     oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
                 },
                 Some("ghp_secret".to_string()),
                 None,
@@ -3284,7 +3596,10 @@ mod tests {
                     proxy_resources: false,
                     proxy_prompts: false,
                     expose_tools: None,
+                    expose_resources: None,
+                    expose_prompts: None,
                     oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
                 }],
                 ..LabConfig::default()
             },
@@ -3313,11 +3628,14 @@ mod tests {
                     proxy_resources: false,
                     proxy_prompts: false,
                     expose_tools: None,
+                    expose_resources: None,
+                    expose_prompts: None,
                     oauth: Some(UpstreamOauthConfig {
                         mode: UpstreamOauthMode::AuthorizationCodePkce,
                         registration: UpstreamOauthRegistration::Dynamic,
                         scopes: None,
                     }),
+                    tool_search: crate::config::ToolSearchConfig::default(),
                 }],
                 ..LabConfig::default()
             })
@@ -3378,7 +3696,10 @@ mod tests {
                 proxy_resources: true,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .await;
@@ -3437,7 +3758,10 @@ mod tests {
                 proxy_resources: true,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .await;
@@ -3458,7 +3782,10 @@ mod tests {
             proxy_resources: true,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
         let upstream_name: Arc<str> = Arc::from("partial-upstream");
         let entry = crate::dispatch::upstream::types::UpstreamEntry {

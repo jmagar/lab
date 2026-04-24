@@ -106,7 +106,7 @@ export function CommandPaletteDemo() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-aurora-2 border border-aurora-border-strong bg-aurora-panel-medium px-4 py-4">
           <div>
             <p className={AURORA_MUTED_LABEL}>Interactive prototype</p>
-            <p className="mt-2 max-w-2xl text-sm text-aurora-text-muted">
+            <div className="mt-2 max-w-2xl text-sm text-aurora-text-muted">
               Open by default in the sandbox. Reopen with the button or press
               <span className="mx-1 inline-flex">
                 <KbdGroup>
@@ -119,7 +119,7 @@ export function CommandPaletteDemo() {
                 </KbdGroup>
               </span>
               / `Ctrl+K`.
-            </p>
+            </div>
           </div>
           <Button
             type="button"
@@ -162,6 +162,8 @@ export function CommandPaletteDemo() {
                   ref={inputRef}
                   value={query}
                   onValueChange={setQuery}
+                  aria-label="Search command palette"
+                  name="design-system-command-palette-search"
                   placeholder="Search pages, commands, and recent context..."
                   className="text-aurora-text-primary placeholder:text-aurora-text-muted"
                 />

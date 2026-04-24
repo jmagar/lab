@@ -519,12 +519,16 @@ export function MarketplaceListContent() {
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                   placeholder="Search plugins, MCP servers, agents…"
+                  aria-label="Search marketplace catalog"
+                  name="marketplace-search-desktop"
                   className="w-full bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/80 pl-10 pr-[14px] py-[10px] text-[13px] font-medium outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-small),var(--aurora-highlight-medium)]"
                 />
               </div>
               <select
                 value={sort}
                 onChange={e => setSort(e.target.value as Sort)}
+                aria-label="Sort marketplace catalog"
+                name="marketplace-sort"
                 className="bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 text-aurora-text-muted px-3 py-[9px] text-[13px] font-medium outline-none cursor-pointer flex-shrink-0 focus:border-aurora-accent-primary transition-[border-color] shadow-[var(--aurora-shadow-small),var(--aurora-highlight-medium)]"
               >
                 <option value="name">A–Z</option>

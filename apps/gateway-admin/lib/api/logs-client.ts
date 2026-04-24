@@ -2,6 +2,80 @@ import { normalizeGatewayApiBase } from './gateway-config.ts'
 import { gatewayRequestInit } from './gateway-request.ts'
 import type { LogSearchQuery, LogSearchResult, LogStoreStats } from '../types/logs.ts'
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
+const MOCK_LOG_EVENTS = [
+  {
+    event_id: 'log_1',
+    ts: Date.now() - 1000 * 60 * 18,
+    level: 'info',
+    subsystem: 'gateway',
+    surface: 'web',
+    action: 'gateway.reload',
+    message: 'Gateway catalog refreshed from mock data.',
+    request_id: 'req_mock_01',
+    session_id: null,
+    correlation_id: null,
+    trace_id: null,
+    span_id: null,
+    instance: 'gw-2',
+    auth_flow: null,
+    outcome_kind: 'ok',
+    fields_json: { route: '/gateways' },
+    source_kind: 'mock',
+    source_node_id: null,
+    source_device_id: null,
+    ingest_path: 'mock',
+    upstream_event_id: null,
+  },
+  {
+    event_id: 'log_2',
+    ts: Date.now() - 1000 * 60 * 12,
+    level: 'warn',
+    subsystem: 'api',
+    surface: 'web',
+    action: 'registry.list',
+    message: 'Registry route is using local mock data.',
+    request_id: 'req_mock_02',
+    session_id: null,
+    correlation_id: null,
+    trace_id: null,
+    span_id: null,
+    instance: null,
+    auth_flow: null,
+    outcome_kind: 'mock',
+    fields_json: { route: '/registry' },
+    source_kind: 'mock',
+    source_node_id: null,
+    source_device_id: null,
+    ingest_path: 'mock',
+    upstream_event_id: null,
+  },
+  {
+    event_id: 'log_3',
+    ts: Date.now() - 1000 * 60 * 5,
+    level: 'error',
+    subsystem: 'auth_webui',
+    surface: 'web',
+    action: 'session.refresh',
+    message: 'Sample auth warning retained in mock timeline.',
+    request_id: 'req_mock_03',
+    session_id: null,
+    correlation_id: null,
+    trace_id: null,
+    span_id: null,
+    instance: null,
+    auth_flow: 'session',
+    outcome_kind: 'expired',
+    fields_json: { route: '/settings' },
+    source_kind: 'mock',
+    source_node_id: null,
+    source_device_id: null,
+    ingest_path: 'mock',
+    upstream_event_id: null,
+  },
+] as const
+
 export type LogsRequestOptions = {
   baseUrl?: string
   token?: string
@@ -65,6 +139,19 @@ export async function fetchLogs(
   query: LogSearchQuery,
   options?: LogsRequestOptions,
 ): Promise<LogSearchResult> {
+  if (USE_MOCK_DATA) {
+    options?.signal?.throwIfAborted?.()
+    const filtered = MOCK_LOG_EVENTS
+      .filter((event) => !query.after_ts || event.ts >= query.after_ts)
+      .filter((event) => !query.before_ts || event.ts <= query.before_ts)
+      .filter((event) => !query.levels?.length || query.levels.includes(event.level))
+      .filter((event) => !query.subsystems?.length || query.subsystems.includes(event.subsystem))
+      .filter((event) => !query.surfaces?.length || query.surfaces.includes(event.surface))
+      .filter((event) => !query.action || event.action === query.action)
+      .filter((event) => !query.text || `${event.message} ${JSON.stringify(event.fields_json)}`.toLowerCase().includes(query.text.toLowerCase()))
+      .slice(0, query.limit ?? 200)
+    return { events: structuredClone(filtered), next_cursor: null }
+  }
   const response = await fetch(
     logsActionUrl(options?.baseUrl),
     logsRequestInit(
@@ -80,6 +167,21 @@ export async function fetchLogs(
 }
 
 export async function fetchLogStats(options?: LogsRequestOptions): Promise<LogStoreStats> {
+  if (USE_MOCK_DATA) {
+    options?.signal?.throwIfAborted?.()
+    const timestamps = MOCK_LOG_EVENTS.map((event) => event.ts)
+    return {
+      on_disk_bytes: 48_320,
+      oldest_retained_ts: Math.min(...timestamps),
+      newest_retained_ts: Math.max(...timestamps),
+      total_event_count: MOCK_LOG_EVENTS.length,
+      dropped_event_count: 0,
+      retention: {
+        max_age_days: 7,
+        max_bytes: 50 * 1024 * 1024,
+      },
+    }
+  }
   const response = await fetch(
     logsActionUrl(options?.baseUrl),
     logsRequestInit(

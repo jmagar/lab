@@ -61,6 +61,7 @@ export function ServerFilters({
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
           <Input
             aria-label="Search MCP servers"
+            name="registry-search"
             placeholder="Search servers by name or description"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -75,6 +76,7 @@ export function ServerFilters({
           variant="outline"
           size="sm"
           onClick={() => setExpanded((v) => !v)}
+          aria-label={expanded ? 'Hide registry filters' : 'Open registry filters'}
           aria-expanded={expanded}
           aria-controls="registry-extra-filters"
           className={cn(
@@ -99,6 +101,7 @@ export function ServerFilters({
             variant="outline"
             size="sm"
             onClick={handleClearAll}
+            aria-label="Clear registry filters"
             className={cn(
               gatewayActionTone(),
               'h-11 shrink-0 gap-1 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
@@ -119,6 +122,7 @@ export function ServerFilters({
             <p className={AURORA_MUTED_LABEL}>Version</p>
             <Input
               aria-label="Filter by version"
+              name="registry-version"
               placeholder="e.g. 1.2.0"
               value={version}
               onChange={(e) => onVersionChange(e.target.value)}
@@ -133,6 +137,7 @@ export function ServerFilters({
             <p className={AURORA_MUTED_LABEL}>Updated since</p>
             <Input
               aria-label="Filter by updated since date"
+              name="registry-updated-since"
               type="date"
               value={updatedSince}
               onChange={(e) => onUpdatedSinceChange(e.target.value)}
@@ -147,6 +152,7 @@ export function ServerFilters({
             <p className={AURORA_MUTED_LABEL}>Tag</p>
             <Input
               aria-label="Filter by tag"
+              name="registry-tag"
               placeholder="e.g. recommended"
               value={tag}
               onChange={(e) => onTagChange(e.target.value)}

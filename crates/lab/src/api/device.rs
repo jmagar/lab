@@ -18,8 +18,8 @@ pub struct DeviceAck {
     pub ok: bool,
 }
 
-/// Unauthenticated device routes — mounted outside the bearer-auth middleware.
-/// `/v1/device/hello` is self-registration and must not require a pre-shared token.
+/// Unauthenticated node routes — mounted outside the bearer-auth middleware.
+/// `/v1/nodes/hello` is self-registration and must not require a pre-shared token.
 pub fn public_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/hello", post(hello::handle))
@@ -32,15 +32,12 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/metadata", post(metadata::handle))
         .route("/enrollments", axum::routing::get(enrollments::list))
         .route(
-            "/enrollments/{device_id}/approve",
+            "/enrollments/{node_id}/approve",
             post(enrollments::approve),
         )
-        .route("/enrollments/{device_id}/deny", post(enrollments::deny))
-        .route("/devices", axum::routing::get(fleet::list_devices))
-        .route(
-            "/devices/{device_id}",
-            axum::routing::get(fleet::get_device),
-        )
+        .route("/enrollments/{node_id}/deny", post(enrollments::deny))
+        .route("", axum::routing::get(fleet::list_devices))
+        .route("/{node_id}", axum::routing::get(fleet::get_device))
         .route("/logs/search", post(logs::search))
         .route("/oauth/relay/start", post(oauth::handle_start))
         .route("/syslog/batch", post(syslog::handle_batch))
@@ -51,14 +48,21 @@ fn ok() -> Json<DeviceAck> {
     Json(DeviceAck { ok: true })
 }
 
-pub(crate) fn normalize_device_id_value(device_id: &str, param: &str) -> Result<String, ToolError> {
-    let trimmed = device_id.trim();
+pub(crate) fn normalize_node_id_value(node_id: &str, param: &str) -> Result<String, ToolError> {
+    let trimmed = node_id.trim();
     if trimmed.is_empty() || trimmed.len() > 256 {
         return Err(ToolError::InvalidParam {
-            message: "device_id must be 1-256 non-whitespace characters".to_string(),
+            message: "node_id must be 1-256 non-whitespace characters".to_string(),
             param: param.to_string(),
         });
     }
 
     Ok(trimmed.to_string())
+}
+
+pub(crate) fn normalize_device_id_value(
+    device_id: &str,
+    param: &str,
+) -> Result<String, ToolError> {
+    normalize_node_id_value(device_id, param)
 }

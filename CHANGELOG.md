@@ -2,10 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.9.0
+## [Unreleased] — 0.10.0
 
 | Commit | Change |
 |--------|--------|
+| `f8de5bde` | feat(lab-jwbg.2): migrate ACP types — Bridge* → Acp* in lab-apis |
+| `bba30eb2` | feat(lab-zxx5.7): unified marketplace type filter + MCP/ACP item cards |
+| `3124a871` | feat(lab-zxx5.5): add fleet WS master→device sender registry |
+| `43ad105b` | fix(pr29): catalog filter chips can return to 'all' view |
+| `b8ad6306` | feat(lab-zxx5.12): add Category::Marketplace, recategorize marketplace + mcpregistry |
+| `35752048` | fix(pr29): address remaining review threads on AI components + docs |
+| `9e0383ba` | fix(marketplace): address PR #29 review threads — installPath validation |
+| `299eb724` | fix(lab-jwbg.9): eliminate try_write().expect() panic in AcpSessionRegistry |
+| `526bf3e1` | feat(lab-jwbg.1): create lab-apis::acp module scaffold |
+| `2013dbdd` | feat: AI component library, ACP docs, gateway/marketplace UI refinements |
 | `7c4fb9f` | fix(lab-kvji.10.1): validate path components in parse_plugin_id |
 | `ca66a3b` | fix(lab-kvji.10.3): validate installPath from installed_plugins.json |
 | `cd8bfa9` | fix(lab-kvji.10.2): add symlink guards to all filesystem walkers |

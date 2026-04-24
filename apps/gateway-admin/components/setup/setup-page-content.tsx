@@ -17,6 +17,15 @@ import { Spinner } from '@/components/ui/spinner'
 import { setupResultDescription, SetupResults } from './setup-results'
 import { SetupStatGrid } from './setup-stat-grid'
 import { useExtractScan } from './use-extract-scan'
+import { cn } from '@/lib/utils'
+import {
+  AURORA_DISPLAY_1,
+  AURORA_MEDIUM_PANEL,
+  AURORA_MUTED_LABEL,
+  AURORA_PAGE_FRAME,
+  AURORA_PAGE_SHELL,
+  AURORA_STRONG_PANEL,
+} from '@/components/aurora/tokens'
 
 export function SetupPageContent() {
   const [targetUri, setTargetUri] = useState('')
@@ -26,9 +35,18 @@ export function SetupPageContent() {
     <>
       <AppHeader breadcrumbs={[{ label: 'Setup' }]} />
 
-      <div className="flex-1 space-y-6 p-6">
+      <div className={cn(AURORA_PAGE_SHELL, 'flex-1')}>
+        <div className={cn(AURORA_PAGE_FRAME, 'space-y-6')}>
+        <section className={cn(AURORA_STRONG_PANEL, 'space-y-3 p-5')}>
+          <p className={AURORA_MUTED_LABEL}>Environment bootstrap</p>
+          <h1 className={cn(AURORA_DISPLAY_1, 'text-aurora-text-primary')}>Service Setup</h1>
+          <p className="max-w-3xl text-sm leading-[1.55] text-aurora-text-muted">
+            Run discovery against the fleet or a single target path without leaving the Aurora admin shell.
+          </p>
+        </section>
+
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <Card className="gap-0">
+          <Card className={cn('gap-0', AURORA_MEDIUM_PANEL)}>
             <CardHeader className="border-b">
               <CardTitle>Environment discovery</CardTitle>
               <CardDescription>
@@ -53,6 +71,8 @@ export function SetupPageContent() {
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Input
+                    aria-label="Scan target path"
+                    name="setup-target-path"
                     placeholder="host:/absolute/path or /local/path"
                     value={targetUri}
                     onChange={(event) => setTargetUri(event.target.value)}
@@ -69,7 +89,7 @@ export function SetupPageContent() {
               </div>
 
               {error ? (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                <div className="rounded-lg border border-aurora-error/30 bg-aurora-error/10 p-4 text-sm text-aurora-error">
                   {error}
                 </div>
               ) : null}
@@ -79,7 +99,7 @@ export function SetupPageContent() {
           <SetupStatGrid summary={summary} />
         </div>
 
-        <Card>
+        <Card className={AURORA_MEDIUM_PANEL}>
           <CardHeader className="border-b">
             <CardTitle>Last scan</CardTitle>
             <CardDescription>{setupResultDescription(report)}</CardDescription>
@@ -88,6 +108,7 @@ export function SetupPageContent() {
             <SetupResults report={report} sortedCreds={sortedCreds} />
           </CardContent>
         </Card>
+        </div>
       </div>
     </>
   )

@@ -318,7 +318,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         });
     let spec_for_route = openapi_spec;
 
-    let mut v1 = Router::new().nest("/device", super::device::routes(state.clone()));
+    let mut v1 = Router::new().nest("/nodes", super::device::routes(state.clone()));
 
     if is_master {
         v1 = v1.route("/{service}/actions", get(service_actions));
@@ -524,14 +524,11 @@ pub fn build_router(
     let mut router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
-        // POST /v1/device/hello is self-registration — exempt from bearer auth.
-        .nest(
-            "/v1/device",
-            super::device::public_routes(state.clone()),
-        )
-        // GET /v1/fleet/ws authenticates inside websocket initialize, not via HTTP bearer auth.
+        // POST /v1/nodes/hello is self-registration — exempt from bearer auth.
+        .nest("/v1/nodes", super::device::public_routes(state.clone()))
+        // GET /v1/nodes/ws authenticates inside websocket initialize, not via HTTP bearer auth.
         .route(
-            "/v1/fleet/ws",
+            "/v1/nodes/ws",
             get(crate::api::device::fleet::websocket_upgrade),
         )
         .merge(v1_protected);

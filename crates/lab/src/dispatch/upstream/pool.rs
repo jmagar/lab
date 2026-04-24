@@ -770,6 +770,13 @@ impl UpstreamPool {
         Ok(true)
     }
 
+    pub async fn reprobe_tools_for_upstream(
+        &self,
+        config: &UpstreamConfig,
+    ) -> anyhow::Result<bool> {
+        self.reprobe_upstream(config).await
+    }
+
     async fn replace_catalog_tools(&self, config: &UpstreamConfig, tools: Vec<rmcp::model::Tool>) {
         let exposure_policy = resolve_exposure_policy(&config.name, config.expose_tools.clone());
         let upstream_name: Arc<str> = Arc::from(config.name.as_str());
@@ -940,6 +947,40 @@ impl UpstreamPool {
                 })
             })
             .collect()
+    }
+
+    pub async fn healthy_tools_for_upstream(&self, upstream: &str) -> Vec<UpstreamTool> {
+        let catalog = self.catalog.read().await;
+        catalog
+            .get(upstream)
+            .into_iter()
+            .filter(|entry| entry.tool_health.is_routable())
+            .flat_map(|entry| {
+                entry.tools.values().filter_map(|tool| {
+                    entry
+                        .exposure_policy
+                        .matches(tool.tool.name.as_ref())
+                        .then(|| tool.clone())
+                })
+            })
+            .collect()
+    }
+
+    pub async fn find_tool_candidates(&self, tool_name: &str) -> Vec<(String, UpstreamTool)> {
+        let catalog = self.catalog.read().await;
+        let mut matches = Vec::new();
+        for (upstream_name, entry) in catalog.iter() {
+            if !entry.tool_health.is_routable() {
+                continue;
+            }
+            if let Some(tool) = entry.tools.get(tool_name)
+                && entry.exposure_policy.matches(tool.tool.name.as_ref())
+            {
+                matches.push((upstream_name.clone(), tool.clone()));
+            }
+        }
+        matches.sort_by(|a, b| a.0.cmp(&b.0));
+        matches
     }
 
     pub async fn subject_scoped_tools(
@@ -2656,7 +2697,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2673,7 +2717,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2691,7 +2738,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             };
             assert!(
                 validate_upstream_config(&config).is_err(),
@@ -2712,7 +2762,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_ok());
     }
@@ -2721,6 +2774,7 @@ mod tests {
     fn validate_accepts_valid_websocket_urls() {
         for url in ["ws://localhost:8080/mcp", "wss://example.com/socket"] {
             let config = UpstreamConfig {
+                enabled: true,
                 name: "test".into(),
                 url: Some(url.into()),
                 bearer_token_env: None,
@@ -2729,7 +2783,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             };
             assert!(validate_upstream_config(&config).is_ok(), "{url} should validate");
         }
@@ -2747,7 +2804,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_ok());
     }
@@ -2764,7 +2824,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2781,7 +2844,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+        tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2797,6 +2863,8 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: Some(UpstreamOauthConfig {
                 mode: UpstreamOauthMode::AuthorizationCodePkce,
                 registration: UpstreamOauthRegistration::Preregistered {
@@ -2805,6 +2873,7 @@ mod tests {
                 },
                 scopes: None,
             }),
+            tool_search: crate::config::ToolSearchConfig::default(),
         }
     }
 

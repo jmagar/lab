@@ -233,6 +233,8 @@ export function GatewayFilters({
         <div data-mobile-search={mode} className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
           <Input
+            aria-label={mode === 'tools' ? 'Search tools' : 'Search gateways'}
+            name={mode === 'tools' ? 'gateway-tools-search-mobile' : 'gateways-search-mobile'}
             placeholder={mode === 'tools' ? 'Search tools' : 'Search gateways'}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -315,6 +317,8 @@ export function GatewayFilters({
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
             <Input
+              aria-label={mode === 'tools' ? 'Search tools' : 'Search gateways'}
+              name={mode === 'tools' ? 'gateway-tools-search' : 'gateways-search'}
               placeholder={mode === 'tools' ? 'Search tools, descriptions, or gateways' : 'Search gateways, commands, or endpoints'}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}

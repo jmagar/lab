@@ -2,6 +2,7 @@ mod catalog;
 mod client;
 mod config;
 mod dispatch;
+mod index;
 pub mod manager;
 pub mod oauth;
 mod params;
