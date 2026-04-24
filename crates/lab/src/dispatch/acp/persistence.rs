@@ -48,7 +48,7 @@ use hmac::{Hmac, Mac};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, OpenFlags, params};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::Sha256;
 use tokio::sync::mpsc;
 
@@ -542,14 +542,20 @@ fn db_load_events(
     };
 
     let mut stmt = conn.prepare(sql)?;
+    let session_id_owned = session_id.to_string();
     let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), |row| {
-        let payload: String = row.get("payload")?;
-        Ok(payload)
+        Ok((
+            row.get::<_, String>("id")?,
+            row.get::<_, i64>("seq")? as u64,
+            row.get::<_, String>("kind")?,
+            row.get::<_, String>("created_at")?,
+            row.get::<_, String>("payload")?,
+        ))
     })?;
 
     let mut events = Vec::new();
     for row in rows {
-        let payload = row?;
+        let (id, seq, kind, created_at, payload) = row?;
         let value: Value = match serde_json::from_str(&payload) {
             Ok(value) => value,
             Err(error) => {
@@ -561,6 +567,16 @@ fn db_load_events(
                     error = %error,
                     "failed to parse persisted acp event payload",
                 );
+                events.push(corrupt_persisted_event(
+                    &id,
+                    &session_id_owned,
+                    seq,
+                    &created_at,
+                    "invalid_json_payload",
+                    &kind,
+                    Value::String(payload),
+                    error.to_string(),
+                ));
                 continue;
             }
         };
@@ -573,9 +589,19 @@ fn db_load_events(
                 error,
                 "persisted permission outcome failed hmac verification",
             );
+            events.push(corrupt_persisted_event(
+                &id,
+                &session_id_owned,
+                seq,
+                &created_at,
+                "permission_outcome_validation_failed",
+                &kind,
+                value,
+                error,
+            ));
             continue;
         }
-        match serde_json::from_value::<AcpEvent>(value) {
+        match serde_json::from_value::<AcpEvent>(value.clone()) {
             Ok(event) => events.push(event),
             Err(error) => {
                 tracing::warn!(
@@ -586,10 +612,46 @@ fn db_load_events(
                     error = %error,
                     "failed to deserialize persisted acp event",
                 );
+                events.push(corrupt_persisted_event(
+                    &id,
+                    &session_id_owned,
+                    seq,
+                    &created_at,
+                    "typed_event_deserialize_failed",
+                    &kind,
+                    value,
+                    error.to_string(),
+                ));
             }
         }
     }
     Ok(events)
+}
+
+fn corrupt_persisted_event(
+    id: &str,
+    session_id: &str,
+    seq: u64,
+    created_at: &str,
+    error_kind: &str,
+    stored_kind: &str,
+    payload: Value,
+    error: String,
+) -> AcpEvent {
+    AcpEvent::ProviderInfo {
+        id: id.to_string(),
+        created_at: created_at.to_string(),
+        session_id: session_id.to_string(),
+        seq,
+        provider: "persistence".to_string(),
+        raw: json!({
+            "type": "persisted_event_error",
+            "error_kind": error_kind,
+            "stored_kind": stored_kind,
+            "error": error,
+            "payload": payload,
+        }),
+    }
 }
 
 fn db_batch_insert_events(

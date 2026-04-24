@@ -12,13 +12,13 @@ use agent_client_protocol::schema::{
 };
 use agent_client_protocol::util::MatchDispatch;
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, on_receive_request};
+use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use super::types::{
-    BridgePermissionOption, PendingBridgeEvent, ProviderHealth, StartSessionInput,
-    StartSessionResult,
+    AcpEvent, AcpPermissionOption, AcpProviderHealth, StartSessionInput, StartSessionResult,
 };
 
 fn acp_internal_error(message: impl Into<String>) -> agent_client_protocol::Error {
@@ -60,7 +60,7 @@ struct RuntimeStarted {
 pub async fn launch_codex_runtime(
     session_id: String,
     input: StartSessionInput,
-    event_tx: mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: mpsc::UnboundedSender<AcpEvent>,
 ) -> Result<(RuntimeHandle, StartSessionResult), String> {
     let (started_tx, started_rx) = oneshot::channel();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
@@ -95,8 +95,8 @@ pub async fn launch_codex_runtime(
     ))
 }
 
-pub fn codex_provider_health() -> ProviderHealth {
-    let (command, args) = resolve_codex_launch();
+pub fn codex_provider_health() -> AcpProviderHealth {
+    let (command, _args) = resolve_codex_launch();
     let ready = if std::env::var("ACP_CODEX_COMMAND")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -110,16 +110,17 @@ pub fn codex_provider_health() -> ProviderHealth {
         probe.is_ok_and(|output| output.status.success())
     };
 
-    ProviderHealth {
+    AcpProviderHealth {
         provider: "codex".to_string(),
-        ready,
-        command,
-        args,
+        available: ready,
+        version: None,
         message: if ready {
-            "ACP Codex provider is available.".to_string()
+            None
         } else {
-            "ACP Codex provider is unavailable. Set ACP_CODEX_COMMAND or ensure npx is on PATH."
-                .to_string()
+            Some(
+                "ACP Codex provider is unavailable. Set ACP_CODEX_COMMAND or ensure npx is on PATH."
+                    .to_string(),
+            )
         },
     }
 }
@@ -145,7 +146,7 @@ fn resolve_codex_launch() -> (String, Vec<String>) {
 async fn run_codex_session(
     session_id: String,
     input: StartSessionInput,
-    event_tx: mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: mpsc::UnboundedSender<AcpEvent>,
     started_tx: oneshot::Sender<Result<RuntimeStarted, String>>,
     mut command_rx: mpsc::UnboundedReceiver<SessionCommand>,
 ) -> Result<(), String> {
@@ -178,11 +179,15 @@ async fn run_codex_session(
     tokio::spawn(async move {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
-            drop(stderr_tx.send(PendingBridgeEvent {
-                title: Some("codex-acp stderr".to_string()),
-                text: Some(line),
-                ..PendingBridgeEvent::new(stderr_session.clone(), "codex", "debug")
-            }));
+            drop(stderr_tx.send(provider_info_event(
+                stderr_session.clone(),
+                "codex",
+                json!({
+                    "type": "stderr",
+                    "title": "codex-acp stderr",
+                    "text": line,
+                }),
+            )));
         }
     });
 
@@ -207,46 +212,45 @@ async fn run_codex_session(
                         })
                         .or_else(|| args.options.first());
 
-                    drop(event_tx.send(PendingBridgeEvent {
-                        title: title.clone(),
-                        tool_call_id: Some(args.tool_call.tool_call_id.to_string()),
-                        permission_options: Some(
-                            args.options
-                                .iter()
-                                .map(|option| BridgePermissionOption {
-                                    option_id: option.option_id.to_string(),
-                                    name: option.name.clone(),
-                                    kind: match option.kind {
-                                        PermissionOptionKind::AllowOnce => "allow_once",
-                                        PermissionOptionKind::AllowAlways => "allow_always",
-                                        PermissionOptionKind::RejectOnce => "reject_once",
-                                        PermissionOptionKind::RejectAlways => "reject_always",
-                                        _ => "unknown",
-                                    }
-                                    .to_string(),
-                                })
-                                .collect(),
-                        ),
-                        status: Some("requested".to_string()),
-                        raw: serde_json::to_value(&args).ok(),
-                        ..PendingBridgeEvent::new(
-                            session_id.clone(),
-                            "codex",
-                            "permission.requested",
-                        )
+                    drop(event_tx.send(AcpEvent::PermissionRequest {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: jiff::Timestamp::now().to_string(),
+                        session_id: session_id.clone(),
+                        seq: 0,
+                        request_id: args.tool_call.tool_call_id.to_string(),
+                        action_summary: title
+                            .clone()
+                            .unwrap_or_else(|| "Permission requested".to_string()),
+                        options: args
+                            .options
+                            .iter()
+                            .map(|option| AcpPermissionOption {
+                                option_id: option.option_id.to_string(),
+                                name: option.name.clone(),
+                                kind: match option.kind {
+                                    PermissionOptionKind::AllowOnce => "allow_once",
+                                    PermissionOptionKind::AllowAlways => "allow_always",
+                                    PermissionOptionKind::RejectOnce => "reject_once",
+                                    PermissionOptionKind::RejectAlways => "reject_always",
+                                    _ => "unknown",
+                                }
+                                .to_string(),
+                            })
+                            .collect(),
                     }));
 
-                    drop(event_tx.send(PendingBridgeEvent {
-                        title,
-                        tool_call_id: Some(args.tool_call.tool_call_id.to_string()),
-                        permission_selection: selected.map(|option| option.option_id.to_string()),
-                        status: Some("resolved".to_string()),
-                        raw: serde_json::to_value(&args).ok(),
-                        ..PendingBridgeEvent::new(
-                            session_id.clone(),
-                            "codex",
-                            "permission.resolved",
-                        )
+                    drop(event_tx.send(AcpEvent::PermissionOutcome {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: jiff::Timestamp::now().to_string(),
+                        session_id: session_id.clone(),
+                        seq: 0,
+                        request_id: args.tool_call.tool_call_id.to_string(),
+                        granted: selected.is_some_and(|option| {
+                            matches!(
+                                option.kind,
+                                PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
+                            )
+                        }),
                     }));
 
                     responder.respond(RequestPermissionResponse::new(match selected {
@@ -388,16 +392,19 @@ async fn run_codex_session(
                     while let Some(command) = command_rx.recv().await {
                         match command {
                             SessionCommand::Prompt(prompt) => {
-                                drop(event_tx.send(PendingBridgeEvent {
-                                    title: Some("Prompt started".to_string()),
-                                    text: Some(prompt.clone()),
-                                    status: Some("running".to_string()),
-                                    ..PendingBridgeEvent::new(
-                                        session_id.clone(),
-                                        "codex",
-                                        "status",
-                                    )
-                                }));
+                                drop(event_tx.send(session_state_event(
+                                    session_id.clone(),
+                                    lab_apis::acp::types::AcpSessionState::Running,
+                                )));
+                                drop(event_tx.send(provider_info_event(
+                                    session_id.clone(),
+                                    "codex",
+                                    json!({
+                                        "type": "prompt_started",
+                                        "title": "Prompt started",
+                                        "text": prompt.clone(),
+                                    }),
+                                )));
 
                                 session
                                     .send_prompt(prompt)
@@ -430,46 +437,54 @@ async fn run_codex_session(
                                         )) => {
                                             let stop_reason =
                                                 map_stop_reason(&stop_reason).to_string();
-                                            drop(event_tx.send(PendingBridgeEvent {
-                                                title: Some("Prompt completed".to_string()),
-                                                status: Some(
-                                                    if stop_reason == "cancelled" {
-                                                        "cancelled".to_string()
-                                                    } else {
-                                                        "completed".to_string()
+                                            let state = if stop_reason == "cancelled" {
+                                                lab_apis::acp::types::AcpSessionState::Cancelled
+                                            } else {
+                                                lab_apis::acp::types::AcpSessionState::Completed
+                                            };
+                                            drop(event_tx.send(session_state_event(
+                                                session_id.clone(),
+                                                state.clone(),
+                                            )));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                "codex",
+                                                json!({
+                                                    "type": "stop_reason",
+                                                    "title": "Prompt completed",
+                                                    "status": match state {
+                                                        lab_apis::acp::types::AcpSessionState::Cancelled => "cancelled",
+                                                        _ => "completed",
                                                     },
-                                                ),
-                                                prompt_stop_reason: Some(stop_reason),
-                                                ..PendingBridgeEvent::new(
-                                                    session_id.clone(),
-                                                    "codex",
-                                                    "status",
-                                                )
-                                            }));
+                                                    "stop_reason": stop_reason,
+                                                }),
+                                            )));
                                             break;
                                         }
                                         Ok(_) => {
-                                            drop(event_tx.send(PendingBridgeEvent {
-                                                title: Some("Unhandled provider update".to_string()),
-                                                status: Some("running".to_string()),
-                                                ..PendingBridgeEvent::new(
-                                                    session_id.clone(),
-                                                    "codex",
-                                                    "status",
-                                                )
-                                            }));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                "codex",
+                                                json!({
+                                                    "type": "unhandled_provider_message",
+                                                    "title": "Unhandled provider update",
+                                                }),
+                                            )));
                                         }
                                         Err(error) => {
-                                            drop(event_tx.send(PendingBridgeEvent {
-                                                title: Some("Provider error".to_string()),
-                                                text: Some(error.to_string()),
-                                                status: Some("failed".to_string()),
-                                                ..PendingBridgeEvent::new(
-                                                    session_id.clone(),
-                                                    "codex",
-                                                    "error",
-                                                )
-                                            }));
+                                            drop(event_tx.send(session_state_event(
+                                                session_id.clone(),
+                                                lab_apis::acp::types::AcpSessionState::Failed,
+                                            )));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                "codex",
+                                                json!({
+                                                    "type": "provider_error",
+                                                    "title": "Provider error",
+                                                    "text": error.to_string(),
+                                                }),
+                                            )));
                                             break;
                                         }
                                     }
@@ -505,102 +520,126 @@ async fn run_codex_session(
 
 fn push_session_update(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: SessionUpdate,
 ) -> Result<(), String> {
     match update {
         SessionUpdate::UserMessageChunk(ContentChunk { content, .. }) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    role: Some("user".to_string()),
-                    text: Some(content_to_text(content)),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "message.chunk")
+                .send(AcpEvent::MessageChunk {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    role: "user".to_string(),
+                    text: content_to_text(content),
+                    message_id: uuid::Uuid::new_v4().to_string(),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::AgentMessageChunk(ContentChunk { content, .. }) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    role: Some("assistant".to_string()),
-                    text: Some(content_to_text(content)),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "message.chunk")
+                .send(AcpEvent::MessageChunk {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    role: "assistant".to_string(),
+                    text: content_to_text(content),
+                    message_id: uuid::Uuid::new_v4().to_string(),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::AgentThoughtChunk(ContentChunk { content, .. }) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    role: Some("thinking".to_string()),
-                    text: Some(content_to_text(content)),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "message.chunk")
+                .send(AcpEvent::ReasoningChunk {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    text: content_to_text(content),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::ToolCall(tool_call) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some(tool_call.title.clone()),
-                    tool_call_id: Some(tool_call.tool_call_id.to_string()),
-                    tool_kind: enum_value(&tool_call.kind),
-                    status: enum_value(&tool_call.status),
-                    raw_input: tool_call.raw_input.clone(),
-                    raw_output: tool_call.raw_output.clone(),
-                    tool_content: serde_json::to_value(&tool_call.content)
-                        .ok()
-                        .and_then(|value| value.as_array().cloned()),
-                    locations: Some(
-                        tool_call
-                            .locations
-                            .iter()
-                            .map(|location| location.path.display().to_string())
-                            .collect(),
-                    ),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "tool.call")
+                .send(AcpEvent::ToolCallStart {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    tool_call_id: tool_call.tool_call_id.to_string(),
+                    name: tool_call.title.clone(),
+                    input: tool_call.raw_input.clone().unwrap_or(Value::Null),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
+            if let Some(status) = enum_value(&tool_call.status) {
+                event_tx
+                    .send(provider_info_event(
+                        session_id.to_string(),
+                        "codex",
+                        json!({
+                            "type": "tool_call_metadata",
+                            "tool_call_id": tool_call.tool_call_id.to_string(),
+                            "title": tool_call.title.clone(),
+                            "tool_kind": enum_value(&tool_call.kind),
+                            "status": status,
+                            "locations": tool_call.locations.iter().map(|location| location.path.display().to_string()).collect::<Vec<_>>(),
+                            "content": tool_call.content.clone(),
+                            "raw_output": tool_call.raw_output.clone(),
+                        }),
+                    ))
+                    .map_err(|_| "ACP event channel closed".to_string())?;
+            }
         }
         SessionUpdate::ToolCallUpdate(update) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: update.fields.title.clone(),
-                    tool_call_id: Some(update.tool_call_id.to_string()),
-                    tool_kind: update.fields.kind.as_ref().and_then(enum_value),
-                    status: update.fields.status.as_ref().and_then(enum_value),
-                    raw_input: update.fields.raw_input.clone(),
-                    raw_output: update.fields.raw_output.clone(),
-                    tool_content: serde_json::to_value(&update.fields.content)
-                        .ok()
-                        .and_then(|value| value.as_array().cloned()),
-                    locations: update.fields.locations.as_ref().map(|locations| {
-                        locations
-                            .iter()
-                            .map(|location| location.path.display().to_string())
-                            .collect()
-                    }),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "tool.update")
+                .send(AcpEvent::ToolCallUpdate {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    tool_call_id: update.tool_call_id.to_string(),
+                    output: tool_call_update_output(&update.fields),
+                    status: update
+                        .fields
+                        .status
+                        .as_ref()
+                        .and_then(enum_value)
+                        .unwrap_or_else(|| "updated".to_string()),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::Plan(plan) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some("Execution plan updated".to_string()),
-                    plan: serde_json::to_value(&plan)
-                        .ok()
-                        .and_then(|value| value.get("entries").and_then(|entries| entries.as_array().cloned())),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "plan")
-                })
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "plan",
+                        "title": "Execution plan updated",
+                        "entries": serde_json::to_value(&plan)
+                            .ok()
+                            .and_then(|value| value.get("entries").cloned())
+                            .unwrap_or(Value::Null),
+                    }),
+                ))
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::AvailableCommandsUpdate(update) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some("Available commands updated".to_string()),
-                    commands: serde_json::to_value(&update)
-                        .ok()
-                        .and_then(|value| value.get("commands").and_then(|commands| commands.as_array().cloned())),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "commands")
-                })
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "commands",
+                        "title": "Available commands updated",
+                        "commands": serde_json::to_value(&update)
+                            .ok()
+                            .and_then(|value| value.get("commands").cloned())
+                            .unwrap_or(Value::Null),
+                    }),
+                ))
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::CurrentModeUpdate(update) => {
@@ -614,11 +653,15 @@ fn push_session_update(
         }
         other => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some("Unhandled session update".to_string()),
-                    raw: serde_json::to_value(&other).ok(),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "debug")
-                })
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "debug",
+                        "title": "Unhandled session update",
+                        "payload": serde_json::to_value(&other).unwrap_or(Value::Null),
+                    }),
+                ))
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
     }
@@ -628,44 +671,100 @@ fn push_session_update(
 
 fn emit_current_mode(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: CurrentModeUpdate,
 ) -> Result<(), String> {
     event_tx
-        .send(PendingBridgeEvent {
-            title: Some("Agent mode updated".to_string()),
-            current_mode: serde_json::to_value(&update).ok(),
-            ..PendingBridgeEvent::new(session_id.to_string(), "codex", "mode")
-        })
+        .send(provider_info_event(
+            session_id.to_string(),
+            "codex",
+            json!({
+                "type": "current_mode",
+                "title": "Agent mode updated",
+                "current_mode": serde_json::to_value(&update).unwrap_or(Value::Null),
+            }),
+        ))
         .map_err(|_| "ACP event channel closed".to_string())
 }
 
 fn emit_config_update(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: ConfigOptionUpdate,
 ) -> Result<(), String> {
     event_tx
-        .send(PendingBridgeEvent {
-            title: Some("Configuration options updated".to_string()),
-            config_update: serde_json::to_value(&update).ok(),
-            ..PendingBridgeEvent::new(session_id.to_string(), "codex", "config")
-        })
+        .send(provider_info_event(
+            session_id.to_string(),
+            "codex",
+            json!({
+                "type": "config_update",
+                "title": "Configuration options updated",
+                "config_update": serde_json::to_value(&update).unwrap_or(Value::Null),
+            }),
+        ))
         .map_err(|_| "ACP event channel closed".to_string())
 }
 
 fn emit_session_info(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: SessionInfoUpdate,
 ) -> Result<(), String> {
     event_tx
-        .send(PendingBridgeEvent {
-            title: Some("Session info updated".to_string()),
-            session_info: serde_json::to_value(&update).ok(),
-            ..PendingBridgeEvent::new(session_id.to_string(), "codex", "session.info")
-        })
+        .send(provider_info_event(
+            session_id.to_string(),
+            "codex",
+            json!({
+                "type": "session_info",
+                "title": "Session info updated",
+                "session_info": serde_json::to_value(&update).unwrap_or(Value::Null),
+            }),
+        ))
         .map_err(|_| "ACP event channel closed".to_string())
+}
+
+fn session_state_event(
+    session_id: String,
+    state: lab_apis::acp::types::AcpSessionState,
+) -> AcpEvent {
+    AcpEvent::SessionUpdate {
+        id: uuid::Uuid::new_v4().to_string(),
+        created_at: jiff::Timestamp::now().to_string(),
+        session_id,
+        seq: 0,
+        state,
+    }
+}
+
+fn provider_info_event(session_id: String, provider: &str, raw: Value) -> AcpEvent {
+    AcpEvent::ProviderInfo {
+        id: uuid::Uuid::new_v4().to_string(),
+        created_at: jiff::Timestamp::now().to_string(),
+        session_id,
+        seq: 0,
+        provider: provider.to_string(),
+        raw,
+    }
+}
+
+fn tool_call_update_output(fields: &agent_client_protocol::schema::ToolCallUpdateFields) -> Value {
+    if let Some(raw_output) = fields.raw_output.clone() {
+        return raw_output;
+    }
+
+    json!({
+        "title": fields.title.clone(),
+        "kind": fields.kind.as_ref().and_then(enum_value),
+        "status": fields.status.as_ref().and_then(enum_value),
+        "content": fields.content.clone(),
+        "locations": fields.locations.as_ref().map(|locations| {
+            locations
+                .iter()
+                .map(|location| location.path.display().to_string())
+                .collect::<Vec<_>>()
+        }),
+        "raw_input": fields.raw_input.clone(),
+    })
 }
 
 fn content_to_text(content: ContentBlock) -> String {
