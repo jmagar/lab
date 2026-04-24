@@ -61,6 +61,14 @@ pub async fn send_to_device(device_id: &str, msg: Message) -> Result<(), FleetDi
     })
 }
 
+/// Convenience wrapper: send a JSON text frame to a connected device.
+///
+/// Callers outside the API layer (e.g. the dispatch layer) use this so they
+/// don't need to import `axum::extract::ws::Message` directly.
+pub async fn send_text_to_device(device_id: &str, text: String) -> Result<(), FleetDispatchError> {
+    send_to_device(device_id, Message::Text(text.into())).await
+}
+
 pub async fn list_devices(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, ToolError> {
