@@ -14,13 +14,17 @@ use crate::dispatch::helpers::{
 use crate::dispatch::marketplace::acp_dispatch;
 use crate::dispatch::marketplace::catalog::ACTIONS;
 use crate::dispatch::marketplace::client;
-use crate::dispatch::marketplace::params::parse_plugin_id;
+use crate::dispatch::marketplace::params::{self, parse_plugin_id};
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    dispatch_inner(action, params).await
+    dispatch_with_port(action, params, &client::NoopDeviceRpcPort).await
 }
 
-async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError> {
+pub(crate) async fn dispatch_with_port(
+    action: &str,
+    params: Value,
+    port: &dyn client::DeviceRpcPort,
+) -> Result<Value, ToolError> {
     if action.starts_with("agent.") {
         return acp_dispatch::dispatch_acp(action, params).await;
     }
@@ -74,6 +78,10 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
         "plugin.uninstall" => {
             let id = require_str(&params, "id")?.to_string();
             plugin_shell("uninstall", &id).await
+        }
+        "plugin.cherry_pick" => {
+            let cp = params::parse_cherry_pick_params(&params)?;
+            plugin_cherry_pick(cp, port).await
         }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `marketplace.{unknown}`"),
@@ -903,6 +911,50 @@ async fn plugin_shell(verb: &'static str, id: &str) -> Result<Value, ToolError> 
         "stdout": stdout,
         "stderr": stderr,
     }))
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CherryPickDeviceResult {
+    device_id: String,
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CherryPickResult {
+    results: Vec<CherryPickDeviceResult>,
+}
+
+async fn plugin_cherry_pick(
+    cp: params::CherryPickParams,
+    port: &dyn client::DeviceRpcPort,
+) -> Result<Value, ToolError> {
+    let rpc_params = serde_json::json!({
+        "plugin_id": cp.plugin_id,
+        "components": cp.components,
+        "scope": cp.scope,
+        "project_path": cp.project_path,
+    });
+
+    let mut results = Vec::with_capacity(cp.device_ids.len());
+    for device_id in &cp.device_ids {
+        let outcome = port
+            .send_rpc(device_id, "marketplace.install_components", rpc_params.clone())
+            .await;
+        results.push(match outcome {
+            Ok(_) => CherryPickDeviceResult { device_id: device_id.clone(), ok: true, message: None },
+            Err(e) => {
+                let msg = match &e {
+                    ToolError::Sdk { message, .. } => message.clone(),
+                    _ => "device RPC failed".into(),
+                };
+                CherryPickDeviceResult { device_id: device_id.clone(), ok: false, message: Some(msg) }
+            }
+        });
+    }
+
+    to_json(CherryPickResult { results })
 }
 
 fn join_err(e: tokio::task::JoinError) -> ToolError {

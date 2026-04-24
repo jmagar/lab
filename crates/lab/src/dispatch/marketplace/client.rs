@@ -6,19 +6,63 @@
 //! `claude plugin install/uninstall`.
 
 use std::collections::HashSet;
+use std::future::Future;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::path::PathBuf;
+use std::pin::Pin;
 
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
+
+/// Abstraction over a WebSocket-backed device RPC channel.
+///
+/// The concrete impl lives in `api/services/marketplace.rs` and is wired via
+/// the fleet sender in `api/state.rs` (lab-zxx5.5). Until that bead lands,
+/// all dispatch paths use `NoopDeviceRpcPort`.
+pub(super) trait DeviceRpcPort: Send + Sync {
+    fn send_rpc(
+        &self,
+        device_id: &str,
+        method: &str,
+        params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + '_>>;
+}
+
+/// Stub used by MCP/CLI dispatch until lab-zxx5.5 wires the fleet WebSocket.
+pub(super) struct NoopDeviceRpcPort;
+
+impl DeviceRpcPort for NoopDeviceRpcPort {
+    fn send_rpc(
+        &self,
+        device_id: &str,
+        _method: &str,
+        _params: Value,
+    ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + '_>> {
+        let device_id = device_id.to_string();
+        Box::pin(async move {
+            Err(ToolError::Sdk {
+                sdk_kind: "not_implemented".into(),
+                message: format!(
+                    "device RPC to `{device_id}` is not yet wired (pending lab-zxx5.5)"
+                ),
+            })
+        })
+    }
+}
 
 #[cfg(test)]
 static TEST_PLUGINS_ROOT_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
 #[cfg(test)]
 static TEST_PLUGINS_ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Alias used by `backends/claude.rs`.
+pub(super) fn claude_plugins_root() -> Result<PathBuf, ToolError> {
+    plugins_root()
+}
 
 pub(super) fn plugins_root() -> Result<PathBuf, ToolError> {
     #[cfg(test)]
