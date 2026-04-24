@@ -20,7 +20,7 @@ pub const META: PluginMeta = PluginMeta {
     name: "marketplace",
     display_name: "Marketplace",
     description: "Browse and install Claude Code plugins from configured marketplaces",
-    category: Category::Bootstrap,
+    category: Category::Marketplace,
     docs_url: "",
     required_env: &[],
     optional_env: &[],

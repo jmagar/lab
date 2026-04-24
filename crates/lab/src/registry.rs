@@ -456,6 +456,7 @@ const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
         Category::Notifications => "notifications",
         Category::Ai => "ai",
         Category::Bootstrap => "bootstrap",
+        Category::Marketplace => "marketplace",
     }
 }
 
