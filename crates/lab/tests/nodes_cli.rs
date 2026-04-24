@@ -130,6 +130,7 @@ fn config_for_master(uri: &str) -> LabConfig {
     let mut config = LabConfig::default();
     config.node = Some(NodePreferences {
         controller: parsed.host_str().map(str::to_string),
+        ..Default::default()
     });
     config.mcp.port = parsed.port();
     config
