@@ -82,11 +82,19 @@ export const CodeBlock = ({
 
   useEffect(() => {
     let active = true
-    highlightCode(code, language, showLineNumbers).then(([light, dark]) => {
-      if (!active) return
-      setHtml(light)
-      setDarkHtml(dark)
-    })
+    highlightCode(code, language, showLineNumbers)
+      .then(([light, dark]) => {
+        if (!active) return
+        setHtml(light)
+        setDarkHtml(dark)
+      })
+      .catch(error => {
+        // Surface highlight failures so consumers don't silently see an
+        // empty render when the highlighter rejects (unknown language,
+        // worker crash, etc.).
+        if (!active) return
+        console.error("CodeBlock: failed to highlight code", error)
+      })
 
     return () => {
       active = false
@@ -157,6 +165,7 @@ export const CodeBlockCopyButton = ({
 
   return (
     <Button
+      aria-label={isCopied ? "Copied" : "Copy code"}
       className={cn("shrink-0", className)}
       onClick={copyToClipboard}
       size="icon"

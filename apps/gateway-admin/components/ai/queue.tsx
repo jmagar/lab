@@ -206,7 +206,7 @@ export const QueueSectionLabel = ({
     <ChevronDownIcon className="group-data-[state=closed]:-rotate-90 size-4 transition-transform" />
     {icon}
     <span>
-      {count} {label}
+      {count !== undefined ? `${count} ` : ""}{label}
     </span>
   </span>
 )

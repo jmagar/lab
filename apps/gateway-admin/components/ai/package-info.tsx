@@ -14,9 +14,15 @@ interface PackageInfoContextType {
   changeType?: ChangeType
 }
 
-const PackageInfoContext = createContext<PackageInfoContextType>({
-  name: "",
-})
+const PackageInfoContext = createContext<PackageInfoContextType | null>(null)
+
+const usePackageInfo = () => {
+  const ctx = useContext(PackageInfoContext)
+  if (!ctx) {
+    throw new Error("PackageInfo components must be used within PackageInfo")
+  }
+  return ctx
+}
 
 export type PackageInfoProps = HTMLAttributes<HTMLDivElement> & {
   name: string
@@ -60,7 +66,7 @@ export const PackageInfoHeader = ({ className, children, ...props }: PackageInfo
 export type PackageInfoNameProps = HTMLAttributes<HTMLDivElement>
 
 export const PackageInfoName = ({ className, children, ...props }: PackageInfoNameProps) => {
-  const { name } = useContext(PackageInfoContext)
+  const { name } = usePackageInfo()
 
   return (
     <div className={cn("flex items-center gap-2", className)} {...props}>
@@ -93,7 +99,7 @@ export const PackageInfoChangeType = ({
   children,
   ...props
 }: PackageInfoChangeTypeProps) => {
-  const { changeType } = useContext(PackageInfoContext)
+  const { changeType } = usePackageInfo()
 
   if (!changeType) {
     return null
@@ -114,7 +120,7 @@ export const PackageInfoChangeType = ({
 export type PackageInfoVersionProps = HTMLAttributes<HTMLDivElement>
 
 export const PackageInfoVersion = ({ className, children, ...props }: PackageInfoVersionProps) => {
-  const { currentVersion, newVersion } = useContext(PackageInfoContext)
+  const { currentVersion, newVersion } = usePackageInfo()
 
   if (!(currentVersion || newVersion)) {
     return null
