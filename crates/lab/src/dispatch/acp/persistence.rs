@@ -2,14 +2,20 @@
 //!
 //! # Architecture
 //!
-//! Three connections are maintained:
-//! - `write_conn` — dedicated write connection for session upserts and state
-//!   updates (via `spawn_blocking`).
-//! - `read_conn` — dedicated read-only connection; WAL mode allows concurrent
-//!   reads without contending on `write_conn`.
-//! - Writer task connection — privately owned by the background writer task
+//! - Single-connection `write_pool` (r2d2, `max_size=1`) — session upserts and
+//!   state updates, serialized through the pool.
+//! - Multi-connection `read_pool` (r2d2, `max_size=4`) — WAL-mode readers
+//!   proceed in parallel; each pooled connection is opened with
+//!   `query_only=true`.
+//! - Dedicated writer-task connection — privately owned by the background task
 //!   that drains the mpsc channel and batches `acp_session_events` INSERTs
-//!   (up to 64 events or 10 ms, whichever comes first).
+//!   (up to 64 events or 10 ms, whichever comes first). Kept separate from the
+//!   write_pool because the batcher is single-owner and a pool would add
+//!   no concurrency there.
+//!
+//! All connection-level pragmas (busy_timeout, WAL, synchronous, mmap_size,
+//! cache_size, wal_autocheckpoint) are applied per-connection via
+//! `SqliteConnectionManager::with_init`, never inside a transaction.
 //!
 //! # Path security
 //!
@@ -39,6 +45,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use hmac::{Hmac, Mac};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::Value;
 use sha2::Sha256;
@@ -65,7 +73,7 @@ enum PersistCmd {
     /// Event with pre-redacted, pre-serialized payload. The typed `AcpEvent`
     /// is kept for envelope-field accessors (id/session_id/seq/kind/created_at);
     /// `payload` is the JSON string written to the DB.
-    AppendEvent(AcpEvent, String),
+    AppendEvent(Box<AcpEvent>, String),
     /// Flush the current batch immediately and notify via the oneshot sender.
     /// Used for testing and graceful shutdown.
     #[allow(dead_code)]
@@ -79,14 +87,29 @@ enum PersistCmd {
 /// Clone is cheap — all state is behind `Arc`.
 #[derive(Clone)]
 pub struct SqliteAcpPersistence {
-    /// Write connection for session upserts and state updates.
-    write_conn: Arc<Mutex<Connection>>,
-    /// Read-only connection; WAL mode allows concurrent reads.
-    read_conn: Arc<Mutex<Connection>>,
+    /// Single-connection write pool for session upserts and state updates.
+    write_pool: Pool<SqliteConnectionManager>,
+    /// Multi-connection read pool; WAL lets pooled readers run in parallel.
+    read_pool: Pool<SqliteConnectionManager>,
     /// Channel to the background writer task (hot path for event appends).
     event_tx: mpsc::Sender<PersistCmd>,
     /// HMAC key for signing permission outcomes.
     hmac_key: Arc<Vec<u8>>,
+}
+
+fn acp_pragma_init(query_only: bool) -> impl Fn(&mut Connection) -> rusqlite::Result<()> + Send + Sync + 'static {
+    move |conn| {
+        conn.busy_timeout(std::time::Duration::from_millis(5_000))?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+        conn.pragma_update(None, "cache_size", -65_536_i64)?;
+        conn.pragma_update(None, "wal_autocheckpoint", 1000_i64)?;
+        if query_only {
+            conn.pragma_update(None, "query_only", "true")?;
+        }
+        Ok(())
+    }
 }
 
 impl SqliteAcpPersistence {
@@ -107,43 +130,54 @@ impl SqliteAcpPersistence {
         let hmac_key = Arc::new(load_or_generate_hmac_key());
         let path = db_path.clone();
 
-        let (write_conn, read_conn, writer_task_conn) =
-            tokio::task::spawn_blocking(move || -> Result<_, rusqlite::Error> {
+        let (write_pool, read_pool, writer_task_conn) =
+            tokio::task::spawn_blocking(move || -> Result<_, String> {
                 if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        rusqlite::Error::InvalidPath(format!("create_dir_all: {e}").into())
-                    })?;
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("create_dir_all: {e}"))?;
                 }
 
                 // Create the file with 0600 perms if it doesn't exist.
                 #[cfg(unix)]
                 create_db_file_0600(&path);
 
+                let write_manager =
+                    SqliteConnectionManager::file(&path).with_init(acp_pragma_init(false));
+                let write_pool = Pool::builder()
+                    .max_size(1)
+                    .connection_timeout(std::time::Duration::from_secs(5))
+                    .build(write_manager)
+                    .map_err(|e| format!("build write pool: {e}"))?;
+
+                // Run migrations on a connection from the write pool.
+                {
+                    let conn = write_pool.get().map_err(|e| format!("get write conn: {e}"))?;
+                    migrate(&conn).map_err(|e| format!("migrate: {e}"))?;
+                }
+
+                let read_manager =
+                    SqliteConnectionManager::file(&path).with_init(acp_pragma_init(true));
+                let read_pool = Pool::builder()
+                    .max_size(4)
+                    .connection_timeout(std::time::Duration::from_secs(5))
+                    .build(read_manager)
+                    .map_err(|e| format!("build read pool: {e}"))?;
+
+                // Writer task connection — dedicated single-owner connection
+                // for the hot-path batch inserts. Not pooled because the
+                // writer task is serial by design.
                 let rw_flags =
                     OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+                let mut tc = Connection::open_with_flags(&path, rw_flags)
+                    .map_err(|e| format!("open writer conn: {e}"))?;
+                acp_pragma_init(false)(&mut tc)
+                    .map_err(|e| format!("writer conn pragmas: {e}"))?;
 
-                // Write connection — applies schema migrations.
-                let wc = Connection::open_with_flags(&path, rw_flags)?;
-                wc.busy_timeout(std::time::Duration::from_millis(5_000))?;
-                apply_wal_pragmas(&wc)?;
-                migrate(&wc)?;
-
-                // Read connection — query_only after schema is ready.
-                let rc = Connection::open_with_flags(&path, rw_flags)?;
-                rc.busy_timeout(std::time::Duration::from_millis(5_000))?;
-                apply_wal_pragmas(&rc)?;
-                rc.pragma_update(None, "query_only", "true")?;
-
-                // Writer task connection — owns the hot-path INSERTs.
-                let tc = Connection::open_with_flags(&path, rw_flags)?;
-                tc.busy_timeout(std::time::Duration::from_millis(5_000))?;
-                apply_wal_pragmas(&tc)?;
-
-                Ok((wc, rc, tc))
+                Ok((write_pool, read_pool, tc))
             })
             .await
             .map_err(|e| AcpError::Internal(format!("db open join: {e}")))?
-            .map_err(|e| AcpError::Persistence(PersistenceError::Sqlite(e.to_string())))?;
+            .map_err(|e| AcpError::Persistence(PersistenceError::Sqlite(e)))?;
 
         // Bounded channel — back-pressure if writer falls behind.
         let (event_tx, event_rx) = mpsc::channel::<PersistCmd>(4096);
@@ -153,8 +187,8 @@ impl SqliteAcpPersistence {
         tokio::spawn(writer_task(writer_conn, event_rx));
 
         Ok(Self {
-            write_conn: Arc::new(Mutex::new(write_conn)),
-            read_conn: Arc::new(Mutex::new(read_conn)),
+            write_pool,
+            read_pool,
             event_tx,
             hmac_key,
         })
@@ -173,12 +207,12 @@ impl SqliteAcpPersistence {
         T: Send + 'static,
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error> + Send + 'static,
     {
-        let conn = Arc::clone(&self.write_conn);
+        let pool = self.write_pool.clone();
         tokio::task::spawn_blocking(move || {
-            let c = conn
-                .lock()
-                .map_err(|_| AcpError::Internal(format!("write mutex poisoned ({label})")))?;
-            f(&c).map_err(|e| {
+            let conn = pool
+                .get()
+                .map_err(|e| AcpError::Internal(format!("{label} pool get: {e}")))?;
+            f(&conn).map_err(|e| {
                 AcpError::Persistence(PersistenceError::Sqlite(format!("{label}: {e}")))
             })
         })
@@ -191,12 +225,12 @@ impl SqliteAcpPersistence {
         T: Send + 'static,
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error> + Send + 'static,
     {
-        let conn = Arc::clone(&self.read_conn);
+        let pool = self.read_pool.clone();
         tokio::task::spawn_blocking(move || {
-            let c = conn
-                .lock()
-                .map_err(|_| AcpError::Internal(format!("read mutex poisoned ({label})")))?;
-            f(&c).map_err(|e| {
+            let conn = pool
+                .get()
+                .map_err(|e| AcpError::Internal(format!("{label} pool get: {e}")))?;
+            f(&conn).map_err(|e| {
                 AcpError::Persistence(PersistenceError::Sqlite(format!("{label}: {e}")))
             })
         })
@@ -215,7 +249,10 @@ impl AcpPersistence for SqliteAcpPersistence {
 
     async fn load_events(&self, session_id: &str) -> Result<Vec<AcpEvent>, AcpError> {
         let sid = session_id.to_owned();
-        self.blocking_read("load_events", move |c| db_load_events(c, &sid, None))
+        let hmac_key = Arc::clone(&self.hmac_key);
+        self.blocking_read("load_events", move |c| {
+            db_load_events(c, &sid, None, hmac_key.as_slice())
+        })
             .await
     }
 
@@ -225,8 +262,9 @@ impl AcpPersistence for SqliteAcpPersistence {
         since_seq: u64,
     ) -> Result<Vec<AcpEvent>, AcpError> {
         let sid = session_id.to_owned();
+        let hmac_key = Arc::clone(&self.hmac_key);
         self.blocking_read("load_events_since", move |c| {
-            db_load_events(c, &sid, Some(since_seq))
+            db_load_events(c, &sid, Some(since_seq), hmac_key.as_slice())
         })
         .await
     }
@@ -238,14 +276,12 @@ impl AcpPersistence for SqliteAcpPersistence {
     }
 
     async fn append_event(&self, event: &AcpEvent) -> Result<(), AcpError> {
-        // Sign PermissionOutcome events before storing.
-        let event = maybe_sign_permission_outcome(event, &self.hmac_key);
         // Serialize once, redact the JSON tree in place; no from_value round-trip.
-        let payload = redact_event_payload(&event)
+        let payload = redact_event_payload(event, &self.hmac_key)
             .map_err(|e| AcpError::Internal(format!("serialize event: {e}")))?;
 
         self.event_tx
-            .send(PersistCmd::AppendEvent(event, payload))
+            .send(PersistCmd::AppendEvent(Box::new(event.clone()), payload))
             .await
             .map_err(|_| AcpError::Internal("event writer task channel closed".to_string()))
     }
@@ -275,20 +311,22 @@ async fn writer_task(conn: Arc<Mutex<Connection>>, mut rx: mpsc::Receiver<Persis
         loop {
             match tokio::time::timeout_at(deadline, rx.recv()).await {
                 Ok(Some(PersistCmd::AppendEvent(ev, payload))) => {
-                    batch.push((ev, payload));
+                    batch.push((*ev, payload));
                     if batch.len() >= BATCH_SIZE {
                         break;
                     }
                 }
                 Ok(Some(PersistCmd::Flush(tx))) => {
                     // Flush whatever we have now, then ack.
-                    flush_batch(&conn, &mut batch).await;
+                    if let Some(retry) = flush_batch(&conn, &mut batch).await {
+                        batch = retry;
+                    }
                     tx.send(Ok(())).ok();
                     break;
                 }
                 Ok(None) => {
                     // Channel closed — flush and exit task.
-                    flush_batch(&conn, &mut batch).await;
+                    let _ = flush_batch(&conn, &mut batch).await;
                     return;
                 }
                 Err(_) => {
@@ -299,17 +337,24 @@ async fn writer_task(conn: Arc<Mutex<Connection>>, mut rx: mpsc::Receiver<Persis
         }
 
         if !batch.is_empty() {
-            flush_batch(&conn, &mut batch).await;
+            if let Some(retry) = flush_batch(&conn, &mut batch).await {
+                batch = retry;
+                tokio::time::sleep(BATCH_TIMEOUT).await;
+            }
         }
     }
 }
 
-async fn flush_batch(conn: &Arc<Mutex<Connection>>, batch: &mut Vec<(AcpEvent, String)>) {
+async fn flush_batch(
+    conn: &Arc<Mutex<Connection>>,
+    batch: &mut Vec<(AcpEvent, String)>,
+) -> Option<Vec<(AcpEvent, String)>> {
     if batch.is_empty() {
-        return;
+        return None;
     }
     let events = std::mem::take(batch);
     let count = events.len();
+    let retry_events = events.clone();
     let conn = Arc::clone(conn);
     let result = tokio::task::spawn_blocking(move || {
         let c = conn.lock().map_err(|_| "writer mutex poisoned".to_string())?;
@@ -318,7 +363,7 @@ async fn flush_batch(conn: &Arc<Mutex<Connection>>, batch: &mut Vec<(AcpEvent, S
     })
     .await;
     match result {
-        Ok(Ok(())) => {}
+        Ok(Ok(())) => return None,
         Ok(Err(error)) => tracing::error!(
             surface = "acp",
             service = "persistence",
@@ -338,21 +383,10 @@ async fn flush_batch(conn: &Arc<Mutex<Connection>>, batch: &mut Vec<(AcpEvent, S
             "acp event flush task panicked",
         ),
     }
+    Some(retry_events)
 }
 
 // ── Database helpers ──────────────────────────────────────────────────────────
-
-fn apply_wal_pragmas(conn: &Connection) -> rusqlite::Result<()> {
-    conn.execute_batch(
-        "
-        PRAGMA journal_mode=WAL;
-        PRAGMA synchronous=NORMAL;
-        PRAGMA mmap_size=134217728;
-        PRAGMA cache_size=-65536;
-        PRAGMA wal_autocheckpoint=1000;
-        ",
-    )
-}
 
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -488,6 +522,7 @@ fn db_load_events(
     conn: &Connection,
     session_id: &str,
     since_seq: Option<u64>,
+    hmac_key: &[u8],
 ) -> rusqlite::Result<Vec<AcpEvent>> {
     let (sql, args): (&str, Vec<rusqlite::types::Value>) = match since_seq {
         None => (
@@ -515,10 +550,44 @@ fn db_load_events(
     let mut events = Vec::new();
     for row in rows {
         let payload = row?;
-        if let Ok(ev) = serde_json::from_str::<AcpEvent>(&payload) {
-            events.push(ev);
+        let value: Value = match serde_json::from_str(&payload) {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "persistence",
+                    action = "load_events",
+                    kind = "decode_error",
+                    error = %error,
+                    "failed to parse persisted acp event payload",
+                );
+                continue;
+            }
+        };
+        if let Err(error) = verify_permission_outcome_payload(&value, hmac_key) {
+            tracing::warn!(
+                surface = "acp",
+                service = "persistence",
+                action = "load_events",
+                kind = "validation_failed",
+                error,
+                "persisted permission outcome failed hmac verification",
+            );
+            continue;
         }
-        // Silently skip rows that fail to deserialise (schema evolution).
+        match serde_json::from_value::<AcpEvent>(value) {
+            Ok(event) => events.push(event),
+            Err(error) => {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "persistence",
+                    action = "load_events",
+                    kind = "decode_error",
+                    error = %error,
+                    "failed to deserialize persisted acp event",
+                );
+            }
+        }
     }
     Ok(events)
 }
@@ -632,31 +701,30 @@ fn parse_session_state(s: &str) -> AcpSessionState {
 
 // ── HMAC permission outcome signing ──────────────────────────────────────────
 
-/// If the event is a `PermissionOutcome`, append an HMAC tag to the `raw`
-/// field (in-memory only — the signed form is what gets persisted).
-fn maybe_sign_permission_outcome(event: &AcpEvent, key: &[u8]) -> AcpEvent {
-    if let AcpEvent::PermissionOutcome {
-        id,
-        created_at,
-        session_id,
-        seq,
-        request_id,
-        granted,
-    } = event
-    {
-        let tag = hmac_tag(key, &format!("{id}:{request_id}:{granted}:{seq}"));
-        // Reconstruct as Unknown so we can carry the HMAC tag without changing
-        // the AcpEvent enum. The tag is embedded in `raw`.
-        AcpEvent::PermissionOutcome {
-            id: id.clone(),
-            created_at: created_at.clone(),
-            session_id: session_id.clone(),
-            seq: *seq,
-            request_id: format!("{request_id};hmac={tag}"),
-            granted: *granted,
-        }
+fn permission_outcome_message(value: &Value) -> Option<String> {
+    let id = value.get("id")?.as_str()?;
+    let request_id = value.get("request_id")?.as_str()?;
+    let granted = value.get("granted")?.as_bool()?;
+    let seq = value.get("seq")?.as_u64()?;
+    Some(format!("{id}:{request_id}:{granted}:{seq}"))
+}
+
+fn verify_permission_outcome_payload(value: &Value, key: &[u8]) -> Result<(), String> {
+    if value.get("kind").and_then(Value::as_str) != Some("permission_outcome") {
+        return Ok(());
+    }
+
+    let expected = value
+        .get("hmac")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "permission outcome payload missing hmac".to_string())?;
+    let message = permission_outcome_message(value)
+        .ok_or_else(|| "permission outcome payload missing required fields".to_string())?;
+    let actual = hmac_tag(key, &message);
+    if actual == expected {
+        Ok(())
     } else {
-        event.clone()
+        Err("permission outcome hmac mismatch".to_string())
     }
 }
 
@@ -698,8 +766,14 @@ fn load_or_generate_hmac_key() -> Vec<u8> {
 /// Serialize an event and redact sensitive fields in the JSON tree.
 /// Returns the final payload string used for the DB `payload` column,
 /// without a `from_value` round-trip back to the typed event.
-fn redact_event_payload(event: &AcpEvent) -> serde_json::Result<String> {
+fn redact_event_payload(event: &AcpEvent, hmac_key: &[u8]) -> serde_json::Result<String> {
     let mut value = serde_json::to_value(event)?;
+    if value.get("kind").and_then(Value::as_str) == Some("permission_outcome")
+        && let Some(message) = permission_outcome_message(&value)
+        && let Value::Object(map) = &mut value
+    {
+        map.insert("hmac".to_string(), Value::String(hmac_tag(hmac_key, &message)));
+    }
     redact_value(&mut value);
     serde_json::to_string(&value)
 }

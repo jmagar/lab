@@ -20,7 +20,7 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
-use crate::config::DeviceRole;
+use crate::config::NodeRole;
 use crate::dispatch::gateway::manager::GatewayManager;
 use crate::mcp::elicitation::{ElicitResult, elicit_confirm};
 use crate::mcp::envelope::{build_error, build_error_extra, build_success};
@@ -60,7 +60,7 @@ pub struct LabMcpServer {
     /// Shared gateway manager used to resolve the current live upstream pool.
     pub gateway_manager: Option<Arc<GatewayManager>>,
     /// Resolved role for the current device.
-    pub device_role: Option<DeviceRole>,
+    pub node_role: Option<NodeRole>,
     /// Connected peers for list-changed notifications.
     pub peers: Arc<RwLock<Vec<Peer<RoleServer>>>>,
     /// Negotiated RMCP logging threshold for this server/session.
@@ -143,7 +143,7 @@ impl ServerHandler for LabMcpServer {
         _request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
@@ -200,7 +200,7 @@ impl ServerHandler for LabMcpServer {
         request: GetPromptRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, ErrorData> {
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
@@ -452,7 +452,7 @@ impl ServerHandler for LabMcpServer {
         _request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
@@ -515,7 +515,7 @@ impl ServerHandler for LabMcpServer {
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let subject = self.request_subject_log_tag(&context);
         let uri = &request.uri;
         tracing::info!(
@@ -772,7 +772,7 @@ impl ServerHandler for LabMcpServer {
         _request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
@@ -991,17 +991,23 @@ impl ServerHandler for LabMcpServer {
             let resolved = manager.resolve_tool_invoke(&tool_name).await;
             let (upstream_name, _) = match resolved {
                 Ok(value) => value,
+                Err(crate::dispatch::error::ToolError::AmbiguousTool { message, valid }) => {
+                    let mut extra = serde_json::Map::new();
+                    extra.insert("valid".to_string(), serde_json::json!(valid));
+                    let env = build_error_extra(
+                        &service,
+                        "call_tool",
+                        "ambiguous_tool",
+                        &message,
+                        &Value::Object(extra),
+                    );
+                    return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
+                }
                 Err(err) => {
                     let kind = err.kind();
                     let mut extra = serde_json::Map::new();
                     if kind == "unknown_tool" {
                         extra.insert("hint".to_string(), serde_json::json!("Call tool_search to discover available tools"));
-                    }
-                    if kind == "ambiguous_tool" {
-                        extra.insert(
-                            "valid".to_string(),
-                            serde_json::json!(err.to_string().split(", ").collect::<Vec<_>>()),
-                        );
                     }
                     let env = build_error_extra(&service, "call_tool", kind, &err.to_string(), &Value::Object(extra));
                     return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
@@ -1164,7 +1170,7 @@ impl ServerHandler for LabMcpServer {
             }
         }
 
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let subject = self.request_subject_log_tag(&context);
         let dispatch_action = if svc.is_some() {
             action.as_str()
@@ -1948,7 +1954,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: None,
-            device_role: None,
+            node_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
             logging_level: std::sync::Arc::new(std::sync::atomic::AtomicU8::new(
                 logging_level_rank(rmcp::model::LoggingLevel::Info),
@@ -1985,7 +1991,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
             gateway_manager: Some(std::sync::Arc::clone(&manager)),
-            device_role: None,
+            node_role: None,
             peers: std::sync::Arc::clone(&notifier.peers),
             logging_level: std::sync::Arc::new(std::sync::atomic::AtomicU8::new(
                 logging_level_rank(rmcp::model::LoggingLevel::Info),
@@ -2029,7 +2035,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::build_default_registry()),
             gateway_manager: Some(manager),
-            device_role: None,
+            node_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
             logging_level: std::sync::Arc::new(std::sync::atomic::AtomicU8::new(
                 logging_level_rank(rmcp::model::LoggingLevel::Info),
@@ -2070,7 +2076,7 @@ mod tests {
         let server = super::LabMcpServer {
             registry: std::sync::Arc::new(crate::registry::build_default_registry()),
             gateway_manager: Some(manager),
-            device_role: None,
+            node_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
             logging_level: std::sync::Arc::new(std::sync::atomic::AtomicU8::new(
                 logging_level_rank(rmcp::model::LoggingLevel::Info),
