@@ -50,10 +50,12 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
     const trimmed = value.trim()
     if (!hasContent || disabled || sendingRef.current) return
     // Acquire the lock synchronously BEFORE any async work so a re-entrant
-    // call within the same tick observes the lock and bails.
+    // call within the same tick observes the lock and bails. The release
+    // path lives inside `finally` so any synchronous throw between this line
+    // and the first await still clears the lock.
     sendingRef.current = true
-    setSending(true)
     try {
+      setSending(true)
       await onSend({ text: trimmed, attachments })
       setValue('')
       setAttachments([])
