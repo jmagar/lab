@@ -6,8 +6,10 @@ use axum::{
 };
 use lab::{
     api::{router::build_router_with_bearer, state::AppState},
-    device::enrollment::store::{EnrollmentAttempt, EnrollmentStore, TailnetIdentity},
-    device::store::DeviceFleetStore,
+    node::checkin::NodeHello,
+    node::enrollment::store::{EnrollmentAttempt, EnrollmentStore, TailnetIdentity},
+    node::log_event::NodeLogEvent,
+    node::store::NodeStore,
 };
 use tower::ServiceExt;
 
@@ -35,7 +37,7 @@ async fn hello_endpoint_normalizes_node_id_before_storage() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(store.device("dookie").await.is_some());
+    assert!(store.node("dookie").await.is_some());
 }
 
 #[tokio::test]
@@ -49,7 +51,7 @@ async fn syslog_batch_endpoint_accepts_normalized_events() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let snapshot = store.device("dookie").await.unwrap();
+    let snapshot = store.node("dookie").await.unwrap();
     assert_eq!(snapshot.logs.len(), 1);
 }
 
@@ -145,8 +147,8 @@ async fn device_oauth_route_rejects_invalid_target_url() {
 async fn existing_fleet_logs_search_still_works() {
     let (app, store, _enrollment_store) = test_device_router();
     store
-        .record_hello(lab::device::checkin::DeviceHello {
-            device_id: "dookie".to_string(),
+        .record_hello(NodeHello {
+            node_id: "dookie".to_string(),
             role: "non-master".to_string(),
             version: "1.0.0".to_string(),
         })
@@ -154,8 +156,8 @@ async fn existing_fleet_logs_search_still_works() {
     store
         .record_logs(
             "dookie",
-            vec![lab::device::log_event::DeviceLogEvent {
-                device_id: "dookie".to_string(),
+            vec![NodeLogEvent {
+                node_id: "dookie".to_string(),
                 timestamp_unix_ms: 1,
                 source: "journald".to_string(),
                 level: Some("info".to_string()),
@@ -187,8 +189,7 @@ async fn existing_fleet_logs_search_still_works() {
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let events: Vec<lab::device::log_event::DeviceLogEvent> =
-        serde_json::from_slice(&body).unwrap();
+    let events: Vec<NodeLogEvent> = serde_json::from_slice(&body).unwrap();
     assert_eq!(events.len(), 1);
     assert!(events[0].message.contains("fleet search"));
 }
@@ -198,7 +199,7 @@ async fn list_enrollments_returns_pending_and_approved_records() {
     let (app, _store, enrollment_store) = test_device_router();
     enrollment_store
         .record_pending(EnrollmentAttempt {
-            device_id: "pending-1".to_string(),
+            node_id: "pending-1".to_string(),
             token: "token-1".to_string(),
             tailnet_identity: TailnetIdentity {
                 node_key: "node".to_string(),
@@ -213,7 +214,7 @@ async fn list_enrollments_returns_pending_and_approved_records() {
     enrollment_store.approve("pending-1", None).await.unwrap();
     enrollment_store
         .record_pending(EnrollmentAttempt {
-            device_id: "pending-2".to_string(),
+            node_id: "pending-2".to_string(),
             token: "token-2".to_string(),
             tailnet_identity: TailnetIdentity {
                 node_key: "node2".to_string(),
@@ -249,7 +250,7 @@ async fn approve_enrollment_promotes_pending_record() {
     let (app, _store, enrollment_store) = test_device_router();
     enrollment_store
         .record_pending(EnrollmentAttempt {
-            device_id: "pending-1".to_string(),
+            node_id: "pending-1".to_string(),
             token: "token-1".to_string(),
             tailnet_identity: TailnetIdentity {
                 node_key: "node".to_string(),
@@ -285,7 +286,7 @@ async fn deny_enrollment_marks_record_denied() {
     let (app, _store, enrollment_store) = test_device_router();
     enrollment_store
         .record_pending(EnrollmentAttempt {
-            device_id: "pending-1".to_string(),
+            node_id: "pending-1".to_string(),
             token: "token-1".to_string(),
             tailnet_identity: TailnetIdentity {
                 node_key: "node".to_string(),
@@ -316,8 +317,8 @@ async fn deny_enrollment_marks_record_denied() {
     assert!(snapshot.denied.contains_key("pending-1"));
 }
 
-fn test_device_router() -> (axum::Router, Arc<DeviceFleetStore>, Arc<EnrollmentStore>) {
-    let store = Arc::new(DeviceFleetStore::default());
+fn test_device_router() -> (axum::Router, Arc<NodeStore>, Arc<EnrollmentStore>) {
+    let store = Arc::new(NodeStore::default());
     let enrollment_store = Arc::new(
         futures::executor::block_on(EnrollmentStore::open(
             std::env::temp_dir().join(format!("lab-device-api-{}.json", uuid::Uuid::new_v4())),
@@ -325,7 +326,7 @@ fn test_device_router() -> (axum::Router, Arc<DeviceFleetStore>, Arc<EnrollmentS
         .unwrap(),
     );
     let state = AppState::new()
-        .with_device_store(Arc::clone(&store))
+        .with_node_store(Arc::clone(&store))
         .with_enrollment_store(Arc::clone(&enrollment_store));
     (build_router_with_bearer(state, None, None), store, enrollment_store)
 }

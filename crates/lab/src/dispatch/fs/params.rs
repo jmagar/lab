@@ -71,14 +71,7 @@ pub fn parse_preview(params: &Value) -> Result<FsPreviewParams, ToolError> {
             param: "path".into(),
         });
     }
-    let rel_str = relative
-        .components()
-        .filter_map(|c| match c {
-            Component::Normal(n) => n.to_str(),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/");
+    let rel_str = components_to_slash_string(&relative);
 
     let max_bytes = match params.get("max_bytes") {
         None | Some(Value::Null) => None,
@@ -112,15 +105,24 @@ pub fn parse_list(params: &Value) -> Result<FsListParams, ToolError> {
         }
     };
     let relative = validate_workspace_rel_path(raw)?;
-    let rel_str = relative
-        .components()
+    let rel_str = components_to_slash_string(&relative);
+    Ok(FsListParams { relative, rel_str })
+}
+
+/// Render a validated workspace-relative `PathBuf` as a forward-slash
+/// string, used both as deny-list match input and audit-log path. Only
+/// `Component::Normal` segments are emitted — `validate_workspace_rel_path`
+/// already strips `CurDir` and rejects everything else, so the join is
+/// platform-independent.
+#[cfg(feature = "fs")]
+fn components_to_slash_string(rel: &std::path::Path) -> String {
+    rel.components()
         .filter_map(|c| match c {
             Component::Normal(n) => n.to_str(),
             _ => None,
         })
         .collect::<Vec<_>>()
-        .join("/");
-    Ok(FsListParams { relative, rel_str })
+        .join("/")
 }
 
 /// Validate and NFKC-normalize a workspace-relative path.

@@ -85,6 +85,12 @@ utoipa-scalar.workspace      = true
 oauth2                       = { version = "5.0", default-features = false }
 tokio-tungstenite            = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 
+# optional — fs feature (workspace filesystem browser)
+walkdir                      = { version = "2", optional = true }
+globset                      = { version = "0.4", optional = true }
+unicode-normalization        = { version = "0.1", optional = true }
+rustix                       = { version = "1", features = ["fs"], optional = true }
+
 [dev-dependencies]
 wiremock.workspace           = true
 
@@ -137,6 +143,9 @@ deploy      = ["lab-apis/deploy", "dep:regex"]
 # filesystem audits only and has no external HTTP service to wrap.
 lab-admin   = []
 
+# workspace filesystem browser (Phase 2 + Phase 3 of lab-f1t2)
+fs          = ["dep:walkdir", "dep:globset", "dep:unicode-normalization", "dep:rustix"]
+
 # Expose test-only helpers (RecordingIo, orchestrate_with_io) to external
 # integration-test crates.  Never enable in production builds.
 test-utils  = []
@@ -165,6 +174,7 @@ all         = [
   "qdrant",
   "tei",
   "lab-admin",
+  "fs",
   "deploy",
   "mcpregistry",
   "acp_registry",

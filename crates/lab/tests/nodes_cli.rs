@@ -1,4 +1,7 @@
+use clap::Parser;
 use lab::config::{LabConfig, NodePreferences};
+use lab::cli::{Cli, Command};
+use lab::cli::nodes::NodesCommand;
 use lab::node::master_client::MasterClient;
 use url::Url;
 
@@ -123,6 +126,37 @@ async fn master_client_applies_bearer_token_to_master_requests() {
         .await
         .unwrap();
     assert!(value.as_array().unwrap().is_empty());
+}
+
+#[test]
+fn nodes_update_parses_all_flag() {
+    let cli = Cli::try_parse_from(["lab", "nodes", "update", "--all"]).expect("parse nodes update");
+    match cli.command {
+        Command::Nodes(args) => match args.command {
+            NodesCommand::Update(update) => {
+                assert!(update.all);
+                assert!(update.targets.is_empty());
+            }
+            other => panic!("unexpected nodes command: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
+}
+
+#[test]
+fn nodes_update_parses_explicit_targets() {
+    let cli =
+        Cli::try_parse_from(["lab", "nodes", "update", "mini1", "mini2"]).expect("parse targets");
+    match cli.command {
+        Command::Nodes(args) => match args.command {
+            NodesCommand::Update(update) => {
+                assert!(!update.all);
+                assert_eq!(update.targets, vec!["mini1", "mini2"]);
+            }
+            other => panic!("unexpected nodes command: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
 }
 
 fn config_for_master(uri: &str) -> LabConfig {

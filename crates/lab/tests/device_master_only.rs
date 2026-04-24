@@ -6,8 +6,8 @@ use axum::{
 };
 use lab::{
     api::{router::build_router_with_bearer, state::AppState},
-    config::DeviceRole,
-    device::store::DeviceFleetStore,
+    config::NodeRole,
+    node::store::NodeStore,
 };
 use lab_auth::config::{AuthConfig, AuthMode, GoogleConfig};
 use tower::ServiceExt;
@@ -42,8 +42,8 @@ async fn non_master_router_does_not_mount_oauth_metadata_surface() {
     .unwrap();
 
     let state = AppState::new()
-        .with_device_store(Arc::new(DeviceFleetStore::default()))
-        .with_device_role(DeviceRole::NonMaster)
+        .with_node_store(Arc::new(NodeStore::default()))
+        .with_node_role(NodeRole::NonMaster)
         .with_web_assets_dir(dir.path().to_path_buf());
     let app = lab::api::router::build_router(state, None, Some(fixture.auth_state), None, &[]);
     let response = app
@@ -77,8 +77,8 @@ fn test_non_master_router() -> NonMasterRouterFixture {
     .unwrap();
 
     let state = AppState::new()
-        .with_device_store(Arc::new(DeviceFleetStore::default()))
-        .with_device_role(DeviceRole::NonMaster)
+        .with_node_store(Arc::new(NodeStore::default()))
+        .with_node_role(NodeRole::NonMaster)
         .with_web_assets_dir(dir.path().to_path_buf());
     NonMasterRouterFixture {
         dir,

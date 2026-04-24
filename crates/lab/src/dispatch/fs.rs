@@ -30,7 +30,8 @@ pub mod params;
 
 #[cfg(feature = "fs")]
 pub use catalog::ACTIONS;
-pub use client::{not_configured_error, resolve_workspace_root_from_env};
+pub(crate) use client::not_configured_error;
+pub use client::resolve_workspace_root_from_env;
 
 #[cfg(feature = "fs")]
 pub use dispatch::{Preview, dispatch, dispatch_with_root, open_for_preview};

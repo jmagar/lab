@@ -21,7 +21,7 @@ use crate::dispatch::helpers::env_non_empty;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
 /// Structured error when `LAB_WORKSPACE_ROOT` is unset or invalid.
-pub fn not_configured_error() -> ToolError {
+pub(crate) fn not_configured_error() -> ToolError {
     ToolError::Sdk {
         sdk_kind: "workspace_not_configured".to_string(),
         message: "LAB_WORKSPACE_ROOT is not set or does not point at an existing directory"

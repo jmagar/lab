@@ -189,7 +189,7 @@ fn resolve_targets(
         }
     }
 
-    if is_local_controller && local_controller.is_none() {
+    if all && is_local_controller && local_controller.is_none() {
         local_controller = Some(LocalTarget {
             identity: controller_host.to_string(),
         });
@@ -258,7 +258,6 @@ async fn run_remote_target<I: HostIo + 'static>(
     controller_client: &MasterClient,
 ) -> UpdateTargetResult {
     let mut stages_ms = BTreeMap::new();
-    let mut skipped_transfer = false;
 
     let resolved_node_id = match resolve_remote_node_id(io.clone()).await {
         Ok(node_id) => node_id,
@@ -298,7 +297,7 @@ async fn run_remote_target<I: HostIo + 'static>(
             );
         }
     };
-    skipped_transfer = preflight_result.skip_transfer;
+    let skipped_transfer = preflight_result.skip_transfer;
 
     if !preflight_result.skip_transfer {
         let transfer_started = Instant::now();
@@ -521,7 +520,8 @@ async fn normalize_remote_runtime<I: HostIo + 'static>(
     let mut config = if current.trim().is_empty() {
         LabConfig::default()
     } else {
-        toml::from_str::<LabConfig>(&current).unwrap_or_default()
+        toml::from_str::<LabConfig>(&current)
+            .with_context(|| format!("parse existing remote config `{config_path}`"))?
     };
     config.device = None;
     config.node = Some(crate::config::NodePreferences {
@@ -554,7 +554,8 @@ async fn normalize_local_runtime(controller_host: &str) -> Result<()> {
     let mut config = if current.trim().is_empty() {
         LabConfig::default()
     } else {
-        toml::from_str::<LabConfig>(&current).unwrap_or_default()
+        toml::from_str::<LabConfig>(&current)
+            .with_context(|| format!("parse existing local config `{}`", config_path.display()))?
     };
     config.device = None;
     config.node = Some(crate::config::NodePreferences {
@@ -655,7 +656,7 @@ async fn restart_local_target(restart_model: Option<&RestartModel>) -> Result<Re
             run_local_command_vec(command).await?;
             RestartSelection::WrapperCommand
         }
-        None => RestartSelection::WrapperCommand,
+        None => bail!("local controller update requires an explicit deploy restart policy"),
     };
     Ok(selection)
 }

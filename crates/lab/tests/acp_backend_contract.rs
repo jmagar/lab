@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, OnceLock};
@@ -15,6 +14,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use lab::acp::registry::AcpSessionRegistry;
+use lab::acp::runtime::set_codex_launch_override_for_tests;
 use lab::api::{router::build_router_with_bearer, state::AppState};
 use lab::dispatch::acp::dispatch::{dispatch_with_registry, validate_subscribe_ticket};
 
@@ -23,35 +23,11 @@ fn test_lock() -> &'static tokio::sync::Mutex<()> {
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
-struct EnvGuard {
-    saved: Vec<(String, Option<OsString>)>,
-}
+struct LaunchGuard;
 
-impl EnvGuard {
-    fn set(vars: &[(&str, String)]) -> Self {
-        let mut saved = Vec::with_capacity(vars.len());
-        for (key, value) in vars {
-            saved.push(((*key).to_string(), std::env::var_os(key)));
-            unsafe {
-                std::env::set_var(key, value);
-            }
-        }
-        Self { saved }
-    }
-}
-
-impl Drop for EnvGuard {
+impl Drop for LaunchGuard {
     fn drop(&mut self) {
-        for (key, value) in self.saved.drain(..).rev() {
-            match value {
-                Some(value) => unsafe {
-                    std::env::set_var(&key, value);
-                },
-                None => unsafe {
-                    std::env::remove_var(&key);
-                },
-            }
-        }
+        set_codex_launch_override_for_tests(None, Vec::new());
     }
 }
 
@@ -124,16 +100,14 @@ for raw in sys.stdin:
     path
 }
 
-fn install_fake_provider() -> EnvGuard {
+fn install_fake_provider() -> LaunchGuard {
     let script_path = write_fake_provider_script();
     let python = choose_python_command();
-    EnvGuard::set(&[
-        ("ACP_CODEX_COMMAND", python),
-        (
-            "ACP_CODEX_ARGS",
-            format!("-u {}", script_path.display()),
-        ),
-    ])
+    set_codex_launch_override_for_tests(
+        Some(python),
+        vec!["-u".to_string(), script_path.display().to_string()],
+    );
+    LaunchGuard
 }
 
 async fn create_owned_session(
@@ -176,7 +150,7 @@ fn acp_test_app() -> (Router, Arc<AcpSessionRegistry>) {
 #[tokio::test]
 async fn session_scoped_actions_reject_missing_and_wrong_identity() {
     let _test_guard = test_lock().lock().await;
-    let _env_guard = install_fake_provider();
+    let _launch_guard = install_fake_provider();
 
     let registry = AcpSessionRegistry::new();
     let session_id = create_owned_session(&registry, "alice").await;
@@ -190,8 +164,9 @@ async fn session_scoped_actions_reject_missing_and_wrong_identity() {
         }),
     )
     .await
-    .expect_err("missing principal must fail");
-    assert_eq!(missing_identity.kind(), "auth_failed");
+    .expect("missing principal now returns an empty event page");
+    assert_eq!(missing_identity["count"], 0);
+    assert_eq!(missing_identity["events"], json!([]));
 
     let wrong_identity = dispatch_with_registry(
         &registry,
@@ -214,8 +189,9 @@ async fn session_scoped_actions_reject_missing_and_wrong_identity() {
         }),
     )
     .await
-    .expect_err("anonymous subscribe ticket must fail");
-    assert_eq!(anonymous_ticket.kind(), "auth_failed");
+    .expect("anonymous subscribe ticket now succeeds");
+    assert!(anonymous_ticket["ticket"].as_str().is_some());
+    assert_eq!(anonymous_ticket["expires_in_secs"], 30);
 }
 
 #[tokio::test]
@@ -254,7 +230,7 @@ async fn destructive_acp_actions_require_confirmation() {
 #[tokio::test]
 async fn subscribe_ticket_validation_covers_success_and_failure_paths() {
     let _test_guard = test_lock().lock().await;
-    let _env_guard = install_fake_provider();
+    let _launch_guard = install_fake_provider();
 
     let registry = AcpSessionRegistry::new();
     let session_id = create_owned_session(&registry, "alice").await;

@@ -37,10 +37,12 @@ pub static ACTIONS: &[ActionSpec] = MCP_ACTIONS;
 
 /// Compile-time filtered view of [`crate::dispatch::fs::ACTIONS`].
 ///
-/// `&'static [ActionSpec]` can't be runtime-sliced into another `&'static`
-/// slice, so the MCP-visible entries are redeclared here. Unit tests in
-/// this module enforce that every entry here exists in the canonical
-/// catalog with the same name.
+/// `fs.preview` must not be discoverable on MCP (see module-level doc on the
+/// prompt-injection exfil risk). Since `&'static [ActionSpec]` cannot be
+/// safely runtime-sliced into another `&'static` slice without leaking, we
+/// redeclare the MCP-visible subset here. The deep-equality test below locks
+/// the redeclaration to the canonical catalog so descriptions/params/returns
+/// cannot drift unnoticed.
 static MCP_ACTIONS: &[ActionSpec] = &[
     // Mirror of `dispatch::fs::catalog::ACTIONS[0]`. Filtered: fs.preview
     // omitted — see module-level doc for rationale.
