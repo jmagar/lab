@@ -383,10 +383,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             );
         }
         None => {
-            tracing::info!(
+            // fs is still registered in the catalog when the feature is enabled,
+            // but every fs.* call will return `workspace_not_configured` until
+            // the operator sets LAB_WORKSPACE_ROOT. Log once at startup so the
+            // misconfiguration is discoverable without per-request noise.
+            tracing::warn!(
                 subsystem = "startup",
                 phase = "fs.workspace_root",
-                "LAB_WORKSPACE_ROOT not set; fs service disabled"
+                "LAB_WORKSPACE_ROOT not set; fs service registered but every fs.* call will return workspace_not_configured until it is configured"
             );
         }
     }
@@ -706,6 +710,7 @@ async fn run_http(
         subsystem = "api_server",
         phase = "ready",
         addr,
+        pid = std::process::id(),
         route = "/v1,/health,/ready",
         bearer_token_configured,
         "api server ready"
@@ -714,12 +719,14 @@ async fn run_http(
         subsystem = "web_server",
         phase = if web_assets_enabled { "ready" } else { "disabled" },
         addr,
+        pid = std::process::id(),
         route = "/",
     );
     tracing::info!(
         subsystem = "mcp_server",
         phase = if mount_http_mcp { "ready" } else { "disabled" },
         addr,
+        pid = std::process::id(),
         route = "/mcp",
         transport = "http",
     );
@@ -727,6 +734,7 @@ async fn run_http(
         subsystem = "startup",
         phase = "ready",
         addr,
+        pid = std::process::id(),
         web_server_enabled = web_assets_enabled,
         mcp_server_enabled = mount_http_mcp,
         "lab serve ready"
@@ -942,7 +950,7 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             #[cfg(target_os = "linux")]
             {
-                if reclaim_port_if_lab(addr, port) {
+                if let Some(reclaimed_pid) = reclaim_port_if_lab(addr, port) {
                     for attempt in 1u8..=5 {
                         tokio::time::sleep(Duration::from_millis(100)).await;
                         match tokio::net::TcpListener::bind(addr).await {
@@ -952,7 +960,9 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
                                     phase = "listener.reclaimed",
                                     addr,
                                     attempt,
-                                    "port reclaimed after killing stale lab process"
+                                    reclaimed_pid,
+                                    current_pid = std::process::id(),
+                                    "port reclaimed after killing stale lab process; current serve process will continue startup"
                                 );
                                 return Ok(l);
                             }
@@ -972,9 +982,9 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
 }
 
 /// On Linux, find the PID holding `port`, confirm it's a `lab` process, and
-/// send SIGTERM. Returns `true` if a signal was sent.
+/// send SIGTERM. Returns the reclaimed PID if a signal was sent.
 #[cfg(target_os = "linux")]
-fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
+fn reclaim_port_if_lab(addr: &str, port: u16) -> Option<u32> {
     if addr.contains(':') || !matches!(addr, "127.0.0.1" | "localhost") {
         tracing::debug!(
             subsystem = "api_server",
@@ -985,10 +995,10 @@ fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
         );
     }
     let Some(pid) = find_pid_for_port(port) else {
-        return false;
+        return None;
     };
     let Some(exe) = lab_executable_path(pid) else {
-        return false;
+        return None;
     };
     let process_name = exe
         .file_name()
@@ -1004,7 +1014,7 @@ fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
             executable = %exe.display(),
             "port in use by non-lab process — not killing"
         );
-        return false;
+        return None;
     }
     tracing::warn!(
         subsystem = "api_server",
@@ -1015,7 +1025,7 @@ fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
         executable = %exe.display(),
         "port held by stale lab process — sending SIGTERM"
     );
-    terminate_sigterm(pid).is_ok()
+    terminate_sigterm(pid).ok().map(|()| pid)
 }
 
 #[cfg(target_os = "linux")]
