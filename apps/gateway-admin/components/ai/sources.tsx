@@ -41,8 +41,17 @@ export const SourcesContent = ({ className, ...props }: SourcesContentProps) => 
 
 export type SourceProps = ComponentProps<"a">
 
-export const Source = ({ href, title, children, ...props }: SourceProps) => (
-  <a className="flex items-center gap-2" href={href} rel="noreferrer" target="_blank" {...props}>
+export const Source = ({ href, title, children, className, ...props }: SourceProps) => (
+  // Spread props first and pin rel/target afterward so callers cannot
+  // override the security attributes (tabnabbing via target=_blank
+  // requires noreferrer). Merge className instead of dropping it.
+  <a
+    {...props}
+    className={cn("flex items-center gap-2", className)}
+    href={href}
+    rel="noreferrer"
+    target="_blank"
+  >
     {children ?? (
       <>
         <BookIcon className="h-4 w-4" />

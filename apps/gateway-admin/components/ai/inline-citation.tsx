@@ -86,7 +86,9 @@ export const InlineCitationCarousel = ({
 
   return (
     <CarouselApiContext.Provider value={api}>
-      <Carousel className={cn("w-full", className)} setApi={setApi} {...props}>
+      {/* Spread props first so a caller's stray setApi can't override the
+          internal one — otherwise the carousel context goes stale. */}
+      <Carousel {...props} className={cn("w-full", className)} setApi={setApi}>
         {children}
       </Carousel>
     </CarouselApiContext.Provider>
