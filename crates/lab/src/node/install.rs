@@ -253,13 +253,41 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
     }
     let mut guard = TmpGuard(Some(tmp.as_path()));
 
-    tokio::fs::write(&tmp, contents)
-        .await
-        .with_context(|| format!("write tmpfile {}", tmp.display()))?;
+    // lab-zxx5.23: create tempfile with restrictive mode. `tokio::fs::write`
+    // creates at 0o666 & !umask (typically 0o644, world-readable). For
+    // contents that may embed credentials (.mcp.json, agent descriptors)
+    // we want 0o600 for the whole lifetime of the tempfile. On unix we
+    // explicitly set the mode via OpenOptionsExt; create_new prevents a
+    // pre-existing attacker-planted file or symlink from being opened.
+    // On non-unix we fall back to the default tokio::fs::write path.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        use tokio::io::AsyncWriteExt;
+        let mut f = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)
+            .await
+            .with_context(|| format!("open tmpfile {}", tmp.display()))?;
+        f.write_all(contents)
+            .await
+            .with_context(|| format!("write tmpfile {}", tmp.display()))?;
+        f.sync_all()
+            .await
+            .with_context(|| format!("fsync tmpfile {}", tmp.display()))?;
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::fs::write(&tmp, contents)
+            .await
+            .with_context(|| format!("write tmpfile {}", tmp.display()))?;
+    }
 
-    // Defense in depth: the tempfile should be a regular file. If somehow it
-    // was a symlink (e.g. pre-existing attacker-planted name collision on a
-    // filesystem without O_EXCL semantics), refuse to rename into target.
+    // Defense in depth: the tempfile should be a regular file. (Under
+    // create_new + O_EXCL, O_NOFOLLOW semantics, the open would have
+    // failed if someone planted a symlink, but verify explicitly.)
     let meta = tokio::fs::symlink_metadata(&tmp)
         .await
         .with_context(|| format!("stat tmpfile {}", tmp.display()))?;
@@ -547,10 +575,13 @@ pub async fn handle_agent_install(
         }
     };
 
-    match tokio::fs::write(&target, &contents).await {
+    // lab-zxx5.22: use write_atomic on agent.install same as install_component.
+    // The prior plain tokio::fs::write + reject_symlink had a TOCTOU window;
+    // sibling-tmp + rename closes it.
+    match write_atomic(&target, &contents).await {
         Ok(()) => {
             tracing::info!(
-                surface = "device",
+                surface = "node",
                 service = "install",
                 action = "agent.write",
                 path = %target.display(),

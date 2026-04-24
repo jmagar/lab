@@ -30,13 +30,11 @@ use crate::node::checkin::{NodeHello, NodeMetadataUpload, NodeStatus};
 use crate::node::log_event::NodeLogEvent;
 
 // --------------------------------------------------------------------------
-// Re-export shared node dispatch helpers for API-layer callers.
+// Node dispatch helpers live in `dispatch/node/send.rs` (lab-zxx5.25 dropped
+// the `pub use` re-export from this file to prevent laundering of a future
+// `dispatch/ → api/` cycle). Callers should import directly from
+// `crate::dispatch::node::send::*`.
 // --------------------------------------------------------------------------
-// NodeDispatchError, send_to_node, and send_text_to_node now live in
-// `dispatch/node/send.rs` so the dispatch layer can use them without
-// crossing the forbidden `dispatch/ → api/` boundary.
-// --------------------------------------------------------------------------
-pub use crate::dispatch::node::send::{NodeDispatchError, send_text_to_node, send_to_node};
 
 // --------------------------------------------------------------------------
 // Session token counter
@@ -331,7 +329,39 @@ async fn handle_websocket(
                         .and_then(serde_json::Value::as_str)
                     {
                         let rpc_id = rpc_id.to_string();
-                        crate::dispatch::node::send::publish_progress(&rpc_id, parsed_value);
+                        // lab-zxx5.20: reject forged progress frames. A
+                        // compromised or curious node can only publish
+                        // progress for rpc_ids the master actually
+                        // dispatched TO IT. Drop with a WARN on mismatch
+                        // rather than terminating — a single malicious
+                        // frame is not session-fatal.
+                        match session_node_id.as_deref() {
+                            Some(sender_id)
+                                if crate::dispatch::node::send::rpc_id_owned_by(
+                                    &rpc_id, sender_id,
+                                ) =>
+                            {
+                                crate::dispatch::node::send::publish_progress(
+                                    &rpc_id,
+                                    parsed_value,
+                                );
+                            }
+                            Some(sender_id) => {
+                                tracing::warn!(
+                                    surface = "api", service = "nodes",
+                                    sender_node_id = %sender_id,
+                                    rpc_id = %rpc_id,
+                                    "forged install/progress dropped (rpc_id not owned by sender)"
+                                );
+                            }
+                            None => {
+                                tracing::warn!(
+                                    surface = "api", service = "nodes",
+                                    rpc_id = %rpc_id,
+                                    "install/progress from uninitialized session dropped"
+                                );
+                            }
+                        }
                     } else {
                         tracing::warn!(
                             surface = "api", service = "nodes",
