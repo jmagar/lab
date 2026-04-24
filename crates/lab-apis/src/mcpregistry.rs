@@ -22,7 +22,7 @@ pub const META: PluginMeta = PluginMeta {
     name: "mcpregistry",
     display_name: "MCP Registry",
     description: "Browse and search the official MCP server registry",
-    category: Category::Bootstrap,
+    category: Category::Marketplace,
     docs_url: "https://registry.modelcontextprotocol.io",
     required_env: &[],
     optional_env: &[EnvVar {
