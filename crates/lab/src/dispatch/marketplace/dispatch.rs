@@ -513,7 +513,7 @@ async fn plugin_deploy_preview(id: &str) -> Result<Value, ToolError> {
 const MAX_ARTIFACTS: usize = 200;
 const MAX_ARTIFACT_BYTES: u64 = 256 * 1024;
 
-fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
+pub(crate) fn walk_artifacts(root: &Path, dir: &Path) -> Result<Vec<Artifact>, ToolError> {
     let mut out = Vec::new();
     walk_artifacts_into(root, dir, &mut out)?;
     Ok(out)

@@ -12,6 +12,8 @@ pub mod config;
 #[allow(unreachable_pub)]
 pub mod device;
 #[allow(unreachable_pub)]
+pub mod node;
+#[allow(unreachable_pub)]
 pub mod dispatch;
 #[allow(unreachable_pub)]
 pub mod mcp;

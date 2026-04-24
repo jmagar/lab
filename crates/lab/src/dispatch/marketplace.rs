@@ -14,7 +14,7 @@ mod catalog;
 mod client;
 mod dispatch;
 mod mcp_catalog;
-mod mcp_client;
+pub(crate) mod mcp_client;
 mod mcp_dispatch;
 mod mcp_params;
 mod package;
