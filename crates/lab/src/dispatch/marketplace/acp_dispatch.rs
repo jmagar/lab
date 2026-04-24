@@ -388,13 +388,14 @@ async fn install_binary(agent_id: &str, asset: &BinaryAsset) -> Result<(PathBuf,
 
     #[cfg(unix)]
     {
+        // lab-zxx5.18: set exact 0o755 (rwxr-xr-x). Do NOT OR with existing
+        // permissions — that would preserve setuid/setgid bits (0o4000 /
+        // 0o2000) if they were set on the source. An attacker-controlled
+        // archive with setuid could silently install a privilege-escalation
+        // binary under ~/.lab/bin/. Explicitly clear.
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&dest)
-            .map_err(|e| ToolError::internal_message(format!("stat {}: {e}", dest.display())))?
-            .permissions();
-        perms.set_mode(perms.mode() | 0o111);
-        std::fs::set_permissions(&dest, perms).map_err(|e| {
-            ToolError::internal_message(format!("chmod +x {}: {e}", dest.display()))
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755)).map_err(|e| {
+            ToolError::internal_message(format!("chmod 0o755 {}: {e}", dest.display()))
         })?;
     }
 
@@ -456,10 +457,21 @@ fn validate_archive_url(url: &str) -> Result<(), ToolError> {
 ///
 /// Streaming implementation: chunks are fed to both the SHA-256 hasher and the
 /// file writer concurrently so no full-archive buffer is needed in RAM.
+///
+/// lab-zxx5.18: download progress watchdog — if no bytes arrive for
+/// `DOWNLOAD_STALL_TIMEOUT` (30s), the in-flight download is aborted,
+/// the partial file is cleaned up, and an `install_timeout` error is
+/// returned. This is separate from the overall reqwest timeout, which
+/// caps the total duration; the watchdog catches a stalled connection
+/// that's neither fast-failing nor completing.
 async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, ToolError> {
     use futures::StreamExt;
     use sha2::{Digest, Sha256};
     use tokio::io::AsyncWriteExt;
+
+    /// Abort the download if no bytes arrive within this window. Distinct
+    /// from the overall `.timeout()` — catches stalled connections.
+    const DOWNLOAD_STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -486,15 +498,35 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
     let mut hasher = Sha256::new();
     let mut stream = resp.bytes_stream();
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| ToolError::Sdk {
-            sdk_kind: "network_error".to_string(),
-            message: format!("read body chunk from {url}: {e}"),
-        })?;
-        hasher.update(&chunk);
-        file.write_all(&chunk).await.map_err(|e| {
-            ToolError::internal_message(format!("write chunk to {}: {e}", dest.display()))
-        })?;
+    loop {
+        // Watchdog: each chunk fetch is wrapped in a stall timeout. A download
+        // that stops producing bytes within the window is treated as a fatal
+        // install_timeout rather than waiting out the full request timeout.
+        match tokio::time::timeout(DOWNLOAD_STALL_TIMEOUT, stream.next()).await {
+            Ok(Some(chunk_result)) => {
+                let chunk = chunk_result.map_err(|e| ToolError::Sdk {
+                    sdk_kind: "network_error".to_string(),
+                    message: format!("read body chunk from {url}: {e}"),
+                })?;
+                hasher.update(&chunk);
+                file.write_all(&chunk).await.map_err(|e| {
+                    ToolError::internal_message(format!("write chunk to {}: {e}", dest.display()))
+                })?;
+            }
+            Ok(None) => break,
+            Err(_) => {
+                // Stall — clean up the partial file and surface install_timeout.
+                drop(file);
+                let _ = tokio::fs::remove_file(dest).await;
+                return Err(ToolError::Sdk {
+                    sdk_kind: "install_timeout".to_string(),
+                    message: format!(
+                        "download of {url} stalled for more than {:?}; aborted",
+                        DOWNLOAD_STALL_TIMEOUT
+                    ),
+                });
+            }
+        }
     }
 
     file.flush().await.map_err(|e| {

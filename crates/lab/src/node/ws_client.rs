@@ -50,6 +50,14 @@ const INBOUND_RPC_QUEUE_CAPACITY: usize = 8;
 /// handlers wait in the queue rather than spawning unbounded tasks.
 const INBOUND_RPC_WORKER_PERMITS: usize = 16;
 
+/// Per-file cap on `marketplace.install_component` components (lab-zxx5.18).
+/// A hostile master that tries to OOM the node via oversized component
+/// payloads is rejected before the handler runs.
+const MAX_COMPONENT_FILE_SIZE: usize = 5 * 1024 * 1024; // 5 MB
+
+/// Aggregate cap across every component in a single install_component RPC.
+const MAX_COMPONENT_AGGREGATE_SIZE: usize = 32 * 1024 * 1024; // 32 MB
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TailnetIdentity {
     pub node_key: String,
@@ -574,6 +582,114 @@ impl WsClient {
 ///
 /// Returns a JSON-RPC 2.0 response value (with `result` or `error`).
 /// Progress notifications are sent via `progress_tx` as JSON-encoded strings.
+// lab-zxx5.18: structured error for pre-handler validation of
+// marketplace.install_component params. `kind` maps to the stable error
+// taxonomy in docs/ERRORS.md.
+#[derive(Debug)]
+struct InstallDecodeError {
+    kind: &'static str,
+    message: String,
+}
+
+/// Decode the `files` array from `marketplace.install_component` params,
+/// enforcing:
+/// - every entry has `path` (string) and `content` (string)
+/// - every entry has an explicit `encoding` field, either `"utf8"` or
+///   `"base64"` — no implicit fallback (prevents base64/utf8 ambiguity)
+/// - per-file decoded size ≤ MAX_COMPONENT_FILE_SIZE
+/// - aggregate decoded size across all files ≤ MAX_COMPONENT_AGGREGATE_SIZE
+///
+/// Enforced BEFORE spawning the handler so an oversized payload can't OOM
+/// the node or lock up a worker permit.
+fn decode_component_files(
+    files: Option<&Vec<Value>>,
+) -> Result<Vec<(String, Vec<u8>)>, InstallDecodeError> {
+    use base64::Engine as _;
+    let Some(files) = files else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(files.len());
+    let mut aggregate = 0usize;
+    for entry in files {
+        let path = entry
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| InstallDecodeError {
+                kind: "invalid_param",
+                message: "component entry missing `path` (string)".to_string(),
+            })?
+            .to_string();
+        let encoding = entry
+            .get("encoding")
+            .and_then(Value::as_str)
+            .ok_or_else(|| InstallDecodeError {
+                kind: "invalid_encoding",
+                message: format!(
+                    "component `{path}` missing required `encoding` field (`utf8` or `base64`)"
+                ),
+            })?;
+        let content_str = entry
+            .get("content")
+            .and_then(Value::as_str)
+            .ok_or_else(|| InstallDecodeError {
+                kind: "invalid_param",
+                message: format!("component `{path}` missing `content` (string)"),
+            })?;
+        let decoded = match encoding {
+            "utf8" => content_str.as_bytes().to_vec(),
+            "base64" => base64::engine::general_purpose::STANDARD
+                .decode(content_str)
+                .map_err(|e| InstallDecodeError {
+                    kind: "invalid_encoding",
+                    message: format!("component `{path}` base64 decode failed: {e}"),
+                })?,
+            other => {
+                return Err(InstallDecodeError {
+                    kind: "invalid_encoding",
+                    message: format!(
+                        "component `{path}` has unsupported encoding `{other}`; expected `utf8` or `base64`"
+                    ),
+                });
+            }
+        };
+        if decoded.len() > MAX_COMPONENT_FILE_SIZE {
+            return Err(InstallDecodeError {
+                kind: "content_too_large",
+                message: format!(
+                    "component `{path}` is {} bytes; per-file limit is {} bytes",
+                    decoded.len(),
+                    MAX_COMPONENT_FILE_SIZE
+                ),
+            });
+        }
+        aggregate = aggregate.saturating_add(decoded.len());
+        if aggregate > MAX_COMPONENT_AGGREGATE_SIZE {
+            return Err(InstallDecodeError {
+                kind: "content_too_large",
+                message: format!(
+                    "aggregate component payload exceeds {} bytes",
+                    MAX_COMPONENT_AGGREGATE_SIZE
+                ),
+            });
+        }
+        out.push((path, decoded));
+    }
+    Ok(out)
+}
+
+/// Classify an install_component handler error for the JSON-RPC error
+/// envelope's `data.kind` field. Strings match docs/ERRORS.md taxonomy.
+fn error_kind(error: &anyhow::Error) -> &'static str {
+    let msg = error.to_string();
+    if msg.contains("symlink") {
+        "symlink_rejected"
+    } else if msg.contains("traversal") || msg.contains("absolute") || msg.contains("outside") {
+        "path_traversal_rejected"
+    } else {
+        "internal_error"
+    }
+}
+
 async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) -> Value {
     let id = frame.get("id").cloned().unwrap_or(Value::Null);
     let method = match frame.get("method").and_then(Value::as_str) {
@@ -605,38 +721,44 @@ async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) 
                     }
                 };
 
-            // `component_files` is expected to be embedded in params as
-            // `{ "files": [{ "path": "...", "content": "<base64 or utf8>" }] }`.
-            // For this initial implementation we accept a `files` array where
-            // each entry has `path` (string) and `content` (string, UTF-8).
-            let raw_files = params
-                .get("files")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let component_files: Vec<(String, Vec<u8>)> = raw_files
-                .into_iter()
-                .filter_map(|entry| {
-                    let path = entry.get("path")?.as_str()?.to_string();
-                    let content = entry.get("content")?.as_str()?.as_bytes().to_vec();
-                    Some((path, content))
-                })
-                .collect();
-
-            match handle_install_component(install_params, component_files, id.clone(), progress_tx)
-                .await
-            {
-                Ok(result) => json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": result,
-                }),
-                Err(error) => json!({
+            // lab-zxx5.18: decode `files` with explicit encoding + enforce
+            // size caps BEFORE spawning the handler. Every entry MUST carry
+            // `encoding: "utf8" | "base64"` — no implicit fallback.
+            match decode_component_files(
+                params.get("files").and_then(Value::as_array),
+            ) {
+                Ok(component_files) => {
+                    match handle_install_component(
+                        install_params,
+                        component_files,
+                        id.clone(),
+                        progress_tx,
+                    )
+                    .await
+                    {
+                        Ok(result) => json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": result,
+                        }),
+                        Err(error) => json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32000,
+                                "data": { "kind": error_kind(&error) },
+                                "message": format!("marketplace.install_component failed: {error}")
+                            }
+                        }),
+                    }
+                }
+                Err(err) => json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "error": {
-                        "code": -32000,
-                        "message": format!("marketplace.install_component failed: {error}")
+                        "code": -32602,
+                        "data": { "kind": err.kind },
+                        "message": err.message,
                     }
                 }),
             }
@@ -1277,5 +1399,81 @@ mod tests {
         // validator compares via `Value` equality so both shapes work.
         let payload = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05"}}"#;
         assert!(validate_success_response(payload, &json!(1)).is_ok());
+    }
+
+    // ------------------------------------------------------------------
+    // lab-zxx5.18: install_component pre-handler validation
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn decode_component_files_rejects_missing_encoding_field() {
+        use base64::Engine as _;
+        let _ = base64::engine::general_purpose::STANDARD.encode(b"x");
+        let files = vec![json!({ "path": "a.md", "content": "hi" })];
+        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        assert_eq!(err.kind, "invalid_encoding");
+    }
+
+    #[test]
+    fn decode_component_files_rejects_unknown_encoding() {
+        let files = vec![json!({ "path": "a.md", "content": "hi", "encoding": "rot13" })];
+        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        assert_eq!(err.kind, "invalid_encoding");
+    }
+
+    #[test]
+    fn decode_component_files_rejects_per_file_oversize() {
+        // 6 MB of 'a' > 5 MB per-file cap.
+        let big = "a".repeat(6 * 1024 * 1024);
+        let files = vec![json!({ "path": "big.bin", "content": big, "encoding": "utf8" })];
+        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        assert_eq!(err.kind, "content_too_large");
+    }
+
+    #[test]
+    fn decode_component_files_rejects_aggregate_oversize() {
+        // 7 × 5 MB = 35 MB > 32 MB aggregate cap. Individual files fit under
+        // the per-file cap so the aggregate check is exercised.
+        let chunk = "a".repeat(5 * 1024 * 1024 - 1024);
+        let files: Vec<Value> = (0..7)
+            .map(|i| json!({ "path": format!("f{i}.bin"), "content": chunk, "encoding": "utf8" }))
+            .collect();
+        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        assert_eq!(err.kind, "content_too_large");
+    }
+
+    #[test]
+    fn decode_component_files_accepts_utf8_and_base64() {
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b"bin\x00data");
+        let files = vec![
+            json!({ "path": "a.md", "content": "hello", "encoding": "utf8" }),
+            json!({ "path": "b.bin", "content": b64, "encoding": "base64" }),
+        ];
+        let decoded = decode_component_files(Some(&files)).expect("must accept");
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].1, b"hello");
+        assert_eq!(decoded[1].1, b"bin\x00data");
+    }
+
+    #[test]
+    fn decode_component_files_rejects_missing_path() {
+        let files = vec![json!({ "content": "hi", "encoding": "utf8" })];
+        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        assert_eq!(err.kind, "invalid_param");
+    }
+
+    #[test]
+    fn decode_component_files_rejects_missing_content() {
+        let files = vec![json!({ "path": "a.md", "encoding": "utf8" })];
+        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        assert_eq!(err.kind, "invalid_param");
+    }
+
+    #[test]
+    fn decode_component_files_rejects_malformed_base64() {
+        let files = vec![json!({ "path": "a.bin", "content": "!!!not-b64!!!", "encoding": "base64" })];
+        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        assert_eq!(err.kind, "invalid_encoding");
     }
 }
