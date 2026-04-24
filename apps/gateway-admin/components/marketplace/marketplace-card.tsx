@@ -64,7 +64,7 @@ export function MarketplaceCard({ plugin, ghUser }: MarketplaceCardProps) {
     <Link
       href={`/marketplace/plugin?id=${encodeURIComponent(plugin.id)}`}
       className={cn(
-        'relative overflow-hidden rounded-aurora-3 border p-[18px] cursor-pointer',
+        'relative overflow-hidden rounded-aurora-3 border p-4 sm:p-[18px] cursor-pointer',
         'flex flex-col gap-3',
         'bg-aurora-panel-medium border-aurora-border-strong',
         'shadow-aurora-medium',
@@ -75,26 +75,30 @@ export function MarketplaceCard({ plugin, ghUser }: MarketplaceCardProps) {
         'hover:-translate-y-px hover:bg-aurora-panel-strong hover:border-aurora-accent-deep hover:shadow-aurora-strong',
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
         <PluginAvatar ghUser={ghUser} name={plugin.name} />
         <div className="flex-1 min-w-0">
-          <div className="font-display text-[14px] font-extrabold tracking-[-0.02em] text-aurora-text-primary truncate">
+          <div className="font-display text-[14px] sm:text-[15px] font-extrabold tracking-[-0.02em] text-aurora-text-primary truncate">
             {plugin.name}
           </div>
           <div className="text-[11px] text-aurora-text-muted mt-0.5 font-medium">{plugin.marketplaceId}</div>
         </div>
+        <StatusBadge plugin={plugin} />
       </div>
 
-      <p className="text-[13px] text-aurora-text-muted leading-[1.55] line-clamp-2">
+      <p className="text-[13px] text-aurora-text-muted leading-[1.55] line-clamp-3">
         {plugin.desc}
       </p>
 
       {plugin.tags.length > 0 && (
         <div className="flex gap-1 flex-wrap">
-          {plugin.tags.slice(0, 3).map(t => (
+          {plugin.tags.slice(0, 3).map((t, index) => (
             <span
               key={t}
-              className="text-[10px] font-bold uppercase tracking-[0.14em] px-[9px] py-[3px] rounded-full bg-aurora-control-surface text-aurora-text-muted border border-aurora-border-default leading-[1.2]"
+              className={cn(
+                'text-[10px] font-bold uppercase tracking-[0.14em] px-[9px] py-[3px] rounded-full bg-aurora-control-surface text-aurora-text-muted border border-aurora-border-default leading-[1.2]',
+                index === 2 && 'hidden sm:inline-flex',
+              )}
             >
               {t}
             </span>
@@ -102,11 +106,11 @@ export function MarketplaceCard({ plugin, ghUser }: MarketplaceCardProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 border-t border-aurora-border-default pt-2">
         <span className="text-[11px] font-semibold bg-aurora-control-surface text-aurora-text-muted border border-aurora-border-default rounded-full px-[10px] py-[3px]">
           v{plugin.version}
         </span>
-        <StatusBadge plugin={plugin} />
+        <span className="text-[11px] text-aurora-text-muted">Open details</span>
       </div>
     </Link>
   )

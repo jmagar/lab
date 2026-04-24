@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Asterisk, Eye, EyeOff, Search, SlidersHorizontal, Wrench, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Asterisk, Eye, EyeOff, Search, SlidersHorizontal, Wrench, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -30,6 +30,12 @@ import {
 } from '@/components/ui/tooltip'
 import type { DiscoveredTool } from '@/lib/types/gateway'
 
+const FILTER_OPTIONS = [
+  ['all', 'All'],
+  ['enabled', 'Enabled'],
+  ['hidden', 'Hidden'],
+] as const
+
 interface ToolExposureTableProps {
   tools: DiscoveredTool[]
   exposureLabel: string
@@ -48,6 +54,10 @@ interface ToolExposureTableProps {
   onBulkDisableSelected: (names: string[]) => void
   onSaveChanges: () => void
   onCancelChanges: () => void
+  searchValue?: string
+  onSearchValueChange?: (value: string) => void
+  hideSearchAndFilterControls?: boolean
+  hideManageModeToggle?: boolean
 }
 
 export function ToolExposureTable({
@@ -68,13 +78,24 @@ export function ToolExposureTable({
   onBulkDisableSelected,
   onSaveChanges,
   onCancelChanges,
+  searchValue,
+  onSearchValueChange,
+  hideSearchAndFilterControls = false,
+  hideManageModeToggle = false,
 }: ToolExposureTableProps) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ExposureViewFilter>('all')
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
+
+  useEffect(() => {
+    setMobileFilterOpen(false)
+  }, [manageMode])
+  const effectiveSearch = searchValue ?? search
+  const setEffectiveSearch = onSearchValueChange ?? setSearch
 
   const filteredTools = useMemo(
-    () => filterToolsForExposureView(tools, filter, search),
-    [filter, search, tools],
+    () => filterToolsForExposureView(tools, filter, effectiveSearch),
+    [effectiveSearch, filter, tools],
   )
 
   const filterCounts = useMemo(() => getExposureFilterCounts(tools), [tools])
@@ -116,16 +137,128 @@ export function ToolExposureTable({
     )
   }
 
+  const unsavedChangesIndicator = hasDraftChanges ? (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex size-8 items-center justify-center rounded-full border border-aurora-warn/30 bg-aurora-warn/10 text-aurora-warn transition-colors hover:bg-aurora-warn/15"
+            aria-label={draftChangeDescription}
+            title={draftChangeDescription}
+          >
+            <AlertTriangle className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{draftChangeDescription}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ) : null
+
   return (
       <div className="space-y-3">
       <div className="flex flex-col gap-3 rounded-aurora-2 border bg-aurora-control-surface/20 p-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        {!hideSearchAndFilterControls ? (
+        <div className="space-y-3 lg:hidden">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-aurora-text-muted" />
+            <Input
+              placeholder="Search tools"
+              value={effectiveSearch}
+              onChange={(event) => setEffectiveSearch(event.target.value)}
+              className="h-10 pl-9 pr-[4.75rem]"
+            />
+            <div className="absolute inset-y-0 right-1 flex items-center gap-1">
+              {effectiveSearch ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setEffectiveSearch('')}
+                  className="size-7 rounded-full"
+                  aria-label="Clear search"
+                >
+                  <X className="size-3.5" />
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setMobileFilterOpen((current) => !current)}
+                className="relative size-7 rounded-full"
+                aria-label="Open filters"
+              >
+                <SlidersHorizontal className="size-3.5" />
+                {filter !== 'all' ? (
+                  <span className="absolute -top-1 -right-1 rounded-full border border-aurora-accent-primary/35 bg-aurora-accent-primary/14 px-1.5 text-[10px] font-semibold leading-4 text-aurora-accent-strong">
+                    1
+                  </span>
+                ) : null}
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full border bg-aurora-page-bg px-3 py-1 text-sm font-medium">
+              <Wrench className="size-4 text-primary" />
+              {exposureLabel}
+            </div>
+            <span className="text-sm text-aurora-text-muted tabular-nums">
+              {hiddenCount} hidden
+            </span>
+            {unsavedChangesIndicator}
+          </div>
+
+          {mobileFilterOpen ? (
+            <div className="space-y-3 rounded-aurora-2 border bg-aurora-page-bg p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {FILTER_OPTIONS.map(([value, label]) => (
+                  <Button
+                    key={value}
+                    variant={filter === value ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setFilter(value)}
+                  >
+                    {label}
+                    <Badge variant={filter === value ? 'secondary' : 'outline'} className="ml-1 rounded-full">
+                      {filterCounts[value]}
+                    </Badge>
+                  </Button>
+                ))}
+              </div>
+
+              {!manageMode ? (
+                <Button variant="outline" size="sm" onClick={() => onManageModeChange(true)}>
+                  <SlidersHorizontal className="mr-2 size-4" />
+                  Manage tools
+                </Button>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1">
+                    <span className="text-sm font-medium">Expose all</span>
+                    <Switch checked={exposeAll} onCheckedChange={onExposeAllChange} />
+                  </div>
+                  <Button variant="outline" size="sm" onClick={onCancelChanges}>
+                    <X className="mr-2 size-4" />
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+        ) : null}
+
+        {!hideSearchAndFilterControls ? (
+        <div className="hidden lg:flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-aurora-text-muted" />
             <Input
               placeholder="Search tools..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              value={effectiveSearch}
+              onChange={(event) => setEffectiveSearch(event.target.value)}
               className="h-9 pl-9"
             />
           </div>
@@ -138,12 +271,8 @@ export function ToolExposureTable({
             <span className="text-sm text-aurora-text-muted tabular-nums">
               {hiddenCount} hidden
             </span>
-            {hasDraftChanges && (
-              <Badge variant="outline" className="rounded-full border-aurora-warn/30 bg-aurora-warn/10 px-2.5 py-1 text-aurora-warn">
-                Unsaved changes
-              </Badge>
-            )}
-            {!manageMode ? (
+            {unsavedChangesIndicator}
+            {!manageMode && !hideManageModeToggle ? (
               <Button variant="outline" size="sm" onClick={() => onManageModeChange(true)}>
                 <SlidersHorizontal className="mr-2 size-4" />
                 Manage Tools
@@ -162,8 +291,38 @@ export function ToolExposureTable({
             )}
           </div>
         </div>
-
+        ) : (
         <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-2 rounded-full border bg-aurora-page-bg px-3 py-1 text-sm font-medium">
+            <Wrench className="size-4 text-primary" />
+            {exposureLabel}
+          </div>
+          <span className="text-sm text-aurora-text-muted tabular-nums">
+            {hiddenCount} hidden
+          </span>
+          {unsavedChangesIndicator}
+          {!manageMode && !hideManageModeToggle ? (
+            <Button variant="outline" size="sm" onClick={() => onManageModeChange(true)}>
+              <SlidersHorizontal className="mr-2 size-4" />
+              Manage Tools
+            </Button>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 rounded-full border bg-aurora-page-bg px-3 py-1">
+                <span className="text-sm font-medium">Expose all</span>
+                <Switch checked={exposeAll} onCheckedChange={onExposeAllChange} />
+              </div>
+              <Button variant="outline" size="sm" onClick={onCancelChanges}>
+                <X className="mr-2 size-4" />
+                Cancel
+              </Button>
+            </>
+          )}
+        </div>
+        )}
+
+        {!hideSearchAndFilterControls ? (
+        <div className="hidden lg:flex flex-wrap items-center gap-2">
           {([
             ['all', 'All'],
             ['enabled', 'Enabled'],
@@ -183,6 +342,7 @@ export function ToolExposureTable({
             </Button>
           ))}
         </div>
+        ) : null}
 
         {manageMode && (
           <div className="sticky top-4 z-20 flex flex-col gap-3 rounded-aurora-2 border bg-aurora-page-bg/95 p-3 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
@@ -197,11 +357,7 @@ export function ToolExposureTable({
                   Select all visible
                 </label>
                 <Badge variant="secondary" className="rounded-full">{selectedRowToolNames.length} selected</Badge>
-                {hasDraftChanges && (
-                  <Badge variant="outline" className="rounded-full border-aurora-warn/30 bg-aurora-warn/10 text-aurora-warn">
-                    Unsaved changes
-                  </Badge>
-                )}
+                {unsavedChangesIndicator}
               </div>
               <p className="text-sm text-aurora-text-muted">{draftChangeDescription}</p>
               {saveErrorMessage && (

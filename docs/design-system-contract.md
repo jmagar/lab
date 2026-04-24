@@ -353,6 +353,8 @@ Rules:
 - use Aurora control surfaces
 - keep borders and focus states consistent with the shared token system
 - validation states must layer on top of the control contract rather than replace it with unrelated styling
+- on narrow screens, search-driven list pages should prefer a single full-width search field with embedded secondary actions (for example filter or sort access) instead of parallel search/select/stat rows that compress the primary input
+- mobile filter state should collapse into an attached sheet, popover, or inline panel launched from the search field action rather than consuming permanent horizontal space beside the field
 
 ### Status Badges
 
@@ -375,6 +377,7 @@ Rules:
 - use truncation by default where scanability matters
 - allow wrapping only when the interaction clearly calls for expansion
 - use mono only where value alignment or log readability benefits from it
+- if alternating row tones are used in dense operational tables, keep them restrained, keep them inside the Aurora blue surface family, and derive them from Aurora tokens only; do not ship hardcoded RGB or hex striping in product code
 
 ### Panels And Inspectors
 
@@ -448,6 +451,17 @@ The Gateways page should align with the same Aurora principles while preserving 
 - Aurora filters and pills
 - Tiered panel hierarchy
 - calmer status accents
+- the mobile `GatewayFilters` search-with-embedded-filter-action pattern is the reference implementation for search-driven operator lists and should be reused by similar catalog pages before introducing new mobile filter shells
+- toggle-heavy mutable controls do not belong in the route header status cluster; they should live in a dedicated settings surface or tab so headers remain status-first
+
+### Marketplace And Catalog Lists
+
+Marketplace-style catalog pages should inherit the gateways interaction model when they face the same density constraints:
+
+- on mobile, use the gateways search field pattern with embedded filter access
+- prefer dense single-column list or row surfaces over shrinking desktop card grids until they become cramped
+- summary counts should compress into compact chips above the list instead of a long horizontal stats strip
+- sort belongs inside the filter affordance on narrow screens unless it is the primary action of the page
 
 ### Authentication Surfaces
 
@@ -508,6 +522,7 @@ Rules:
 - preserve the same system language on mobile rather than inventing alternate styling
 - allow inspectors and secondary panels to collapse into sheets or drawers
 - prioritize operational readability over perfectly preserving desktop density
+- if a desktop toolbar forces horizontal competition on mobile, move secondary controls into a filter/settings surface rather than letting primary inputs or rows get clipped
 
 ## Engineering Rules
 

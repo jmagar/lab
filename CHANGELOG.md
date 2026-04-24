@@ -2,10 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.8.0
+## [Unreleased] — 0.9.0
 
 | Commit | Change |
 |--------|--------|
+| `7c4fb9f` | fix(lab-kvji.10.1): validate path components in parse_plugin_id |
+| `ca66a3b` | fix(lab-kvji.10.3): validate installPath from installed_plugins.json |
+| `cd8bfa9` | fix(lab-kvji.10.2): add symlink guards to all filesystem walkers |
+| `a9dcd54` | Finalize gateway admin, registry, and auth follow-ups |
+| `0a6c846` | feat: add registry metadata curation and admin filters |
+| `479bae4` | fix: address latest PR comment |
+| `5a75aba` | fix: address follow-up PR comments |
+| `227b4ed` | fix: address PR review feedback |
+| `fd8aafc` | docs: update fleet websocket runtime docs |
+| `8ecda7b` | feat: add websocket fleet runtime |
+| `facca22` | docs: add fleet ws runtime design |
 | `0cad306` | Finalize remaining gateway admin and registry work |
 | `47171c0` | fix: address remaining marketplace and upstream review comments |
 | `4392a42` | fix: address gateway plan and docs review comments |
@@ -38,6 +49,9 @@ All notable changes to this project will be documented in this file.
 
 ### Highlights
 
+- **Marketplace security hardening (P1)** — path traversal via plugin ID blocked at parse time; symlink following eliminated from all four filesystem walkers; `installPath` from `installed_plugins.json` validated against `plugins_root` before use
+- **AI component library** — 26 new TSX components under `components/ai/` covering agents, artifacts, attachments, code blocks, reasoning, tool calls, and more
+- **Fleet websocket runtime** — new `feat: add websocket fleet runtime`; ACP provider, session registry, SSE transport, and design docs
 - **Registry metadata curation** — Lab-owned `_meta["tv.tootie.lab/registry"]` contract, validation, audit fields, server-side metadata filters, typed CLI metadata commands, and gateway-admin structured metadata editing
 - **Gateway admin refinements** — registry detail/editor upgrades, gateway filter/table improvements, chat shell and tool-call presentation cleanup, and additional tests across chat and gateway views
 - **Marketplace and upstream hardening** — marketplace client/dispatch cleanup, upstream pool adjustments, browser session auth fixes, and follow-up review-driven repairs
@@ -51,8 +65,8 @@ All notable changes to this project will be documented in this file.
 
 ### Version bumps
 
-- Rust workspace: `0.7.3 → 0.8.0`
-- gateway-admin: `0.2.3 → 0.3.0`
+- Rust workspace: `0.8.0 → 0.9.0`
+- gateway-admin: `0.3.0 → 0.4.0`
 
 ---
 
