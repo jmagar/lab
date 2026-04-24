@@ -375,6 +375,94 @@ impl AcpSessionRegistry {
         Ok(())
     }
 
+    pub async fn close_session(
+        &self,
+        session_id: &str,
+        principal: &str,
+    ) -> Result<(), ToolError> {
+        let session = {
+            let guard = self.sessions.read().await;
+            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
+        };
+
+        Self::check_principal(&session, principal)?;
+
+        {
+            let mut state = session.state.write().await;
+            *state = AcpSessionState::Closed;
+        }
+        {
+            let mut summary = session.summary.write().await;
+            summary.state = AcpSessionState::Closed;
+            summary.updated_at = jiff::Timestamp::now().to_string();
+        }
+
+        // Abort runtime if running.
+        let runtime = {
+            let handle = session.handle.lock().await;
+            handle.clone()
+        };
+        if let Some(rt) = runtime {
+            drop(rt.cancel().await);
+        }
+
+        if let Some(db) = self.persistence().await {
+            drop(db.update_session_state(session_id, AcpSessionState::Closed).await);
+        }
+
+        Ok(())
+    }
+
+    /// Get stored events for a session since a given sequence number.
+    pub async fn get_events_since(
+        &self,
+        session_id: &str,
+        since_seq: u64,
+        principal: &str,
+    ) -> Result<Vec<lab_apis::acp::types::AcpEvent>, ToolError> {
+        let session = {
+            let guard = self.sessions.read().await;
+            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
+        };
+
+        Self::check_principal(&session, principal)?;
+
+        if let Some(db) = self.persistence().await {
+            return db
+                .load_events_since(session_id, since_seq)
+                .await
+                .map_err(|e| ToolError::Sdk {
+                    sdk_kind: "internal_error".to_string(),
+                    message: format!("failed to load events: {e}"),
+                });
+        }
+
+        // No persistence — return in-memory legacy events, converted to AcpEvent::Unknown.
+        let bridge_events = {
+            let events = session.events.read().await;
+            events
+                .iter()
+                .filter(|e| e.seq > since_seq)
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        Ok(bridge_events
+            .into_iter()
+            .map(|e| {
+                let raw = serde_json::to_value(&e).unwrap_or(serde_json::Value::Null);
+                lab_apis::acp::types::AcpEvent::Unknown {
+                    id: e.id,
+                    created_at: e.created_at,
+                    session_id: e.session_id,
+                    seq: e.seq,
+                    event_kind: e.kind,
+                    raw,
+                }
+            })
+            .collect())
+    }
+
     /// Subscribe to a session's event stream.
     ///
     /// Returns a `Stream<Item = Arc<AcpEvent>>` that chains backlog events
