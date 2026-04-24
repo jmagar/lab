@@ -20,7 +20,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     dispatch_with_port(action, params, &client::NoopNodeRpcPort).await
 }
 
-pub async fn dispatch_with_port<P: client::NodeRpcPort + ?Sized>(
+pub async fn dispatch_with_port<P: client::NodeRpcPort>(
     action: &str,
     params: Value,
     port: &P,
@@ -940,7 +940,7 @@ struct CherryPickResult {
     results: Vec<CherryPickNodeResult>,
 }
 
-async fn plugin_cherry_pick<P: client::NodeRpcPort + ?Sized>(
+async fn plugin_cherry_pick<P: client::NodeRpcPort>(
     cp: params::CherryPickParams,
     port: &P,
 ) -> Result<Value, ToolError> {
