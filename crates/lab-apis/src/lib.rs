@@ -32,6 +32,9 @@ pub mod device_runtime;
 /// Agent Client Protocol (ACP) — types, error, persistence trait, and provider types.
 pub mod acp;
 
+/// Doctor — bootstrap health audit: env vars, system probes, service reachability.
+pub mod doctor;
+
 /// Radarr movie management client.
 #[cfg(feature = "radarr")]
 pub mod radarr;

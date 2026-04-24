@@ -223,6 +223,19 @@ pub fn build_default_registry() -> ToolRegistry {
         dispatch: dispatch_fn!(crate::mcp::services::gateway::dispatch),
     });
 
+    // doctor is always-on (bootstrap utility; no feature flag).
+    {
+        let meta = lab_apis::doctor::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+            status: "available",
+            actions: crate::mcp::services::doctor::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::doctor::dispatch),
+        });
+    }
+
     reg.register(RegisteredService {
         name: "logs",
         description: "Search and stream local-master runtime logs",
@@ -573,6 +586,7 @@ mod tests {
             s.insert("gateway");
             s.insert("logs");
             s.insert(lab_apis::marketplace::META.name); // always-on
+            s.insert(lab_apis::doctor::META.name); // always-on
             #[cfg(feature = "radarr")]
             s.insert(lab_apis::radarr::META.name);
             #[cfg(feature = "sonarr")]

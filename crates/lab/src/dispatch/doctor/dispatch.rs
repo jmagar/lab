@@ -1,0 +1,120 @@
+//! Action router for the doctor dispatch service.
+
+use std::sync::Arc;
+
+use serde_json::Value;
+
+use crate::dispatch::clients::ServiceClients;
+use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::{action_schema, help_payload, to_json};
+
+use super::catalog::ACTIONS;
+use super::params::parse_service_probe;
+use super::service;
+use super::system;
+use super::types::Report;
+
+/// Standard MCP-path dispatch: builds `ServiceClients` from env on demand.
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    match action {
+        "help" => return Ok(help_payload("doctor", ACTIONS)),
+        "schema" => {
+            let a = crate::dispatch::helpers::require_str(&params, "action")?;
+            return action_schema(ACTIONS, a);
+        }
+        "system.checks" => {
+            let findings = system::run_system_checks();
+            return to_json(Report { findings });
+        }
+        a if !ACTIONS.iter().any(|s| s.name == a) => {
+            return Err(ToolError::UnknownAction {
+                message: format!("unknown action `{action}` for service `doctor`"),
+                valid: ACTIONS.iter().map(|s| s.name.to_string()).collect(),
+                hint: None,
+            });
+        }
+        _ => {}
+    }
+    // Actions below require ServiceClients — build from env.
+    let clients = Arc::new(ServiceClients::from_env());
+    dispatch_with_clients(&clients, action, params).await
+}
+
+/// API-path dispatch: uses pre-built `ServiceClients` from `AppState`.
+pub async fn dispatch_with_clients(
+    clients: &Arc<ServiceClients>,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
+    let start = std::time::Instant::now();
+    tracing::info!(
+        surface = "dispatch",
+        service = "doctor",
+        action,
+        "dispatch start"
+    );
+
+    let result = match action {
+        "help" => Ok(help_payload("doctor", ACTIONS)),
+        "schema" => {
+            let a = crate::dispatch::helpers::require_str(&params, "action")?;
+            action_schema(ACTIONS, a)
+        }
+        "system.checks" => {
+            let findings = system::run_system_checks();
+            to_json(Report { findings })
+        }
+        "service.probe" => {
+            let p = parse_service_probe(&params)?;
+            let finding = service::probe_service(clients, p.service, p.instance).await?;
+            to_json(finding)
+        }
+        "audit.full" => {
+            // Non-streaming path: collect all findings and return at once.
+            // Streaming is handled by `api/services/doctor.rs` SSE endpoint.
+            let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+            let clients = clients.clone();
+            tokio::spawn(async move {
+                service::stream_audit_full(clients, tx).await;
+            });
+            let mut findings = Vec::new();
+            while let Some(f) = rx.recv().await {
+                findings.push(f);
+            }
+            to_json(Report { findings })
+        }
+        unknown => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{unknown}` for service `doctor`"),
+            valid: ACTIONS.iter().map(|s| s.name.to_string()).collect(),
+            hint: None,
+        }),
+    };
+
+    let elapsed_ms = start.elapsed().as_millis();
+    match &result {
+        Ok(_) => tracing::info!(
+            surface = "dispatch",
+            service = "doctor",
+            action,
+            elapsed_ms,
+            "dispatch ok"
+        ),
+        Err(e) if e.is_internal() => tracing::error!(
+            surface = "dispatch",
+            service = "doctor",
+            action,
+            elapsed_ms,
+            kind = e.kind(),
+            "dispatch error"
+        ),
+        Err(e) => tracing::warn!(
+            surface = "dispatch",
+            service = "doctor",
+            action,
+            elapsed_ms,
+            kind = e.kind(),
+            "dispatch warn"
+        ),
+    }
+    result
+}

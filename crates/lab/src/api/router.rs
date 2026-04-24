@@ -318,7 +318,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         });
     let spec_for_route = openapi_spec;
 
-    let mut v1 = Router::new().nest("/nodes", super::device::routes(state.clone()));
+    let mut v1 = Router::new().nest("/nodes", super::nodes::routes(state.clone()));
 
     if is_master {
         v1 = v1.route("/{service}/actions", get(service_actions));
@@ -355,7 +355,8 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
                 get(|| async { Html(include_str!("openapi_docs.html")) }),
             )
             .nest("/extract", services::extract::routes(state.clone()))
-            .nest("/marketplace", services::marketplace::routes(state.clone()));
+            .nest("/marketplace", services::marketplace::routes(state.clone()))
+            .nest("/doctor", services::doctor::routes(state.clone()));
 
         if state
             .registry
@@ -525,11 +526,18 @@ pub fn build_router(
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
         // POST /v1/nodes/hello is self-registration — exempt from bearer auth.
-        .nest("/v1/nodes", super::device::public_routes(state.clone()))
+        .nest("/v1/nodes", super::nodes::public_routes(state.clone()))
+        // Backward-compat alias for pre-rename self-registration clients.
+        .nest("/v1/fleet", super::nodes::public_routes(state.clone()))
         // GET /v1/nodes/ws authenticates inside websocket initialize, not via HTTP bearer auth.
         .route(
             "/v1/nodes/ws",
-            get(crate::api::device::fleet::websocket_upgrade),
+            get(crate::api::nodes::fleet::websocket_upgrade),
+        )
+        // Backward-compat alias for pre-rename websocket clients.
+        .route(
+            "/v1/fleet/ws",
+            get(crate::api::nodes::fleet::websocket_upgrade),
         )
         .merge(v1_protected);
     #[cfg(feature = "mcpregistry")]
