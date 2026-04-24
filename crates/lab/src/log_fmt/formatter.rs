@@ -3,6 +3,8 @@ use std::fmt as stdfmt;
 
 use console::Style;
 use jiff::Zoned;
+
+use crate::output::theme::aurora;
 use tracing::{
     field::{Field, Visit},
     Event, Subscriber,
@@ -70,8 +72,12 @@ pub(crate) struct PremiumEventFormatter;
 fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> stdfmt::Result {
     if ansi {
         let s = match level {
-            tracing::Level::ERROR => Style::new().red().bold().apply_to("ERROR").to_string(),
-            tracing::Level::WARN => Style::new().yellow().bold().apply_to(" WARN").to_string(),
+            tracing::Level::ERROR => {
+                Style::new().color256(aurora::ERROR).bold().apply_to("ERROR").to_string()
+            }
+            tracing::Level::WARN => {
+                Style::new().color256(aurora::WARN).bold().apply_to(" WARN").to_string()
+            }
             tracing::Level::INFO => Style::new().apply_to(" INFO").to_string(),
             tracing::Level::DEBUG => Style::new().dim().apply_to("DEBUG").to_string(),
             tracing::Level::TRACE => Style::new().dim().apply_to("TRACE").to_string(),
@@ -89,37 +95,37 @@ fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> st
     }
 }
 
-/// Semantic accent for structured field values — mirrors Axon ui.rs palette.
+/// Semantic accent for structured field values — Aurora palette (ANSI 256).
 fn style_value(key: &str, value: &str, level: tracing::Level) -> String {
     match key {
-        // primary pink (color256 211) — service identifiers
-        "service" => Style::new().color256(211).apply_to(value).to_string(),
-        // accent blue (color256 111) — names, addresses, routes
+        // SERVICE_NAME pink — service identifiers
+        "service" => Style::new().color256(aurora::SERVICE_NAME).apply_to(value).to_string(),
+        // ACCENT_PRIMARY blue — names, addresses, routes
         "tool" | "prompt" | "resource_uri" | "upstream" | "route" | "action" | "addr"
         | "instance" | "target" | "capability" => {
-            Style::new().color256(111).apply_to(value).to_string()
+            Style::new().color256(aurora::ACCENT_PRIMARY).apply_to(value).to_string()
         }
-        // subtle blue-green (color256 110) — metadata / phase markers
+        // TEXT_MUTED — metadata / phase markers
         "subsystem" | "phase" | "transport" | "operation" => {
-            Style::new().color256(110).apply_to(value).to_string()
+            Style::new().color256(aurora::TEXT_MUTED).apply_to(value).to_string()
         }
-        // status codes: green 2xx, yellow 3xx/4xx, red 5xx
+        // status codes: SUCCESS 2xx, WARN 3xx/4xx, ERROR 5xx
         "status" => {
             if let Ok(n) = value.parse::<u16>() {
                 if n < 300 {
-                    Style::new().green().apply_to(value).to_string()
+                    Style::new().color256(aurora::SUCCESS).apply_to(value).to_string()
                 } else if n < 500 {
-                    Style::new().yellow().apply_to(value).to_string()
+                    Style::new().color256(aurora::WARN).apply_to(value).to_string()
                 } else {
-                    Style::new().red().apply_to(value).to_string()
+                    Style::new().color256(aurora::ERROR).apply_to(value).to_string()
                 }
             } else {
                 value.to_string()
             }
         }
-        "error" => Style::new().red().apply_to(value).to_string(),
+        "error" => Style::new().color256(aurora::ERROR).apply_to(value).to_string(),
         "kind" if matches!(level, tracing::Level::WARN | tracing::Level::ERROR) => {
-            Style::new().yellow().apply_to(value).to_string()
+            Style::new().color256(aurora::WARN).apply_to(value).to_string()
         }
         _ => value.to_string(),
     }
@@ -197,7 +203,7 @@ where
                     write!(writer, " ")?;
                 }
                 if i == 0 {
-                    write!(writer, "{}", Style::new().color256(211).bold().apply_to(token))?;
+                    write!(writer, "{}", Style::new().color256(aurora::SERVICE_NAME).bold().apply_to(token))?;
                 } else if let Some(eq) = token.find('=') {
                     write!(
                         writer,

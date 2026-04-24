@@ -2,6 +2,21 @@ use std::io::IsTerminal;
 
 use clap::ValueEnum;
 
+// ---------------------------------------------------------------------------
+// Aurora palette — ANSI 256 constants shared by CliTheme and the log formatter.
+// The console crate (used in log_fmt) only supports ANSI 256, not truecolor,
+// so these ANSI 256 values are the single source of truth for both surfaces.
+// ---------------------------------------------------------------------------
+pub mod aurora {
+    pub const SERVICE_NAME: u8 = 211; // pink  (255,175,215)
+    pub const ACCENT_PRIMARY: u8 = 39; // bright blue (41,182,246)
+    pub const ACCENT_STRONG: u8 = 81; // cyan-blue (103,203,250)
+    pub const TEXT_MUTED: u8 = 250; // light grey (167,188,201)
+    pub const SUCCESS: u8 = 115; // teal (125,211,199)
+    pub const WARN: u8 = 180; // amber (198,163,107)
+    pub const ERROR: u8 = 174; // muted red (199,132,144)
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum ColorPolicy {
     #[default]
@@ -178,6 +193,11 @@ impl CliTheme {
     #[must_use]
     pub fn accent(self, text: &str) -> String {
         paint((41, 182, 246), 39, text, self.ctx)
+    }
+
+    #[must_use]
+    pub fn service_name(self, text: &str) -> String {
+        paint((255, 175, 215), 211, text, self.ctx)
     }
 
     #[must_use]

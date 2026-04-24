@@ -971,7 +971,7 @@ fn render_catalog(map: &serde_json::Map<String, Value>, theme: CliTheme) -> Stri
             out,
             "  {} {}  {}  {} {}",
             status_icon,
-            pad_right(&theme.display(name), name_width),
+            pad_right(&theme.bold(theme.service_name(name)), name_width),
             pad_right(&theme.secondary(category), cat_width),
             theme.display(actions.len().to_string().as_str()),
             theme.muted("actions"),
