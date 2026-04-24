@@ -18,36 +18,39 @@ use serde_json::Value;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
-/// Abstraction over a WebSocket-backed device RPC channel.
+/// Abstraction over a WebSocket-backed node RPC channel.
 ///
-/// The concrete impl lives in `api/services/marketplace.rs` and is wired via
-/// the fleet sender in `api/state.rs` (lab-zxx5.5). Until that bead lands,
-/// all dispatch paths use `NoopDeviceRpcPort`.
-pub(super) trait DeviceRpcPort: Send + Sync {
+/// The concrete impl lives in `api/services/marketplace.rs` (a `NodeRpcPort`
+/// that wraps `dispatch::node::send::send_rpc_to_node`). CLI/MCP surfaces
+/// that have no direct WS session use `NoopNodeRpcPort`, which returns a
+/// structured `not_connected` error for any call.
+pub trait NodeRpcPort: Send + Sync {
     fn send_rpc(
         &self,
-        device_id: &str,
+        node_id: &str,
         method: &str,
         params: Value,
     ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + '_>>;
 }
 
-/// Stub used by MCP/CLI dispatch until lab-zxx5.5 wires the fleet WebSocket.
-pub(super) struct NoopDeviceRpcPort;
+/// Fallback port used by surfaces that can't reach the WS sender registry
+/// (CLI over stdio, MCP without a master transport). Every `send_rpc` call
+/// returns `not_connected` so callers get a clear, stable error kind.
+pub(super) struct NoopNodeRpcPort;
 
-impl DeviceRpcPort for NoopDeviceRpcPort {
+impl NodeRpcPort for NoopNodeRpcPort {
     fn send_rpc(
         &self,
-        device_id: &str,
+        node_id: &str,
         _method: &str,
         _params: Value,
     ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + '_>> {
-        let device_id = device_id.to_string();
+        let node_id = node_id.to_string();
         Box::pin(async move {
             Err(ToolError::Sdk {
-                sdk_kind: "not_implemented".into(),
+                sdk_kind: "not_connected".into(),
                 message: format!(
-                    "device RPC to `{device_id}` is not yet wired (pending lab-zxx5.5)"
+                    "node RPC to `{node_id}` is unavailable on this surface (use the HTTP API)"
                 ),
             })
         })

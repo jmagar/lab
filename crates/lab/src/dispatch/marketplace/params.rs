@@ -6,7 +6,7 @@ use crate::dispatch::helpers::require_str;
 pub(super) struct CherryPickParams {
     pub plugin_id: String,
     pub components: Vec<String>,
-    pub device_ids: Vec<String>,
+    pub node_ids: Vec<String>,
     pub scope: String,
     pub project_path: Option<String>,
 }
@@ -26,16 +26,42 @@ pub(super) fn parse_cherry_pick_params(params: &Value) -> Result<CherryPickParam
             message: "`components` must be a non-empty array".into(),
         });
     }
+    // Defense-in-depth: reject path traversal on component paths even though
+    // the device-side handler is expected to validate again. Only `Normal`
+    // path components are accepted — no `..`, no absolute paths, no `.` or
+    // other special components. Prevents a malicious marketplace manifest
+    // or a crafted params payload from inducing an out-of-tree write.
+    for component in &components {
+        let path = std::path::Path::new(component);
+        if path.is_absolute() {
+            return Err(ToolError::InvalidParam {
+                param: "components".into(),
+                message: format!(
+                    "component path `{component}` must be relative to the plugin root"
+                ),
+            });
+        }
+        for part in path.components() {
+            if !matches!(part, std::path::Component::Normal(_)) {
+                return Err(ToolError::InvalidParam {
+                    param: "components".into(),
+                    message: format!(
+                        "component path `{component}` contains traversal or invalid segments"
+                    ),
+                });
+            }
+        }
+    }
 
-    let device_ids: Vec<String> = params
-        .get("device_ids")
+    let node_ids: Vec<String> = params
+        .get("node_ids")
         .and_then(Value::as_array)
         .map(|arr| arr.iter().filter_map(Value::as_str).map(ToString::to_string).collect())
         .unwrap_or_default();
-    if device_ids.is_empty() {
+    if node_ids.is_empty() {
         return Err(ToolError::MissingParam {
-            param: "device_ids".into(),
-            message: "`device_ids` must be a non-empty array".into(),
+            param: "node_ids".into(),
+            message: "`node_ids` must be a non-empty array".into(),
         });
     }
 
@@ -66,7 +92,7 @@ pub(super) fn parse_cherry_pick_params(params: &Value) -> Result<CherryPickParam
         }
     }
 
-    Ok(CherryPickParams { plugin_id, components, device_ids, scope, project_path })
+    Ok(CherryPickParams { plugin_id, components, node_ids, scope, project_path })
 }
 
 /// Parse a plugin id in `name@marketplace` form.
@@ -92,4 +118,66 @@ pub fn parse_plugin_id(id: &str) -> Result<(&str, &str), ToolError> {
         }
     }
     Ok((name, marketplace))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn base_params() -> Value {
+        json!({
+            "plugin_id": "demo-plugin@demo-market",
+            "components": ["agents/my-agent.md"],
+            "node_ids": ["node-1"],
+            "scope": "global",
+        })
+    }
+
+    #[test]
+    fn accepts_relative_normal_component_paths() {
+        let result = parse_cherry_pick_params(&base_params());
+        assert!(result.is_ok(), "valid params must parse: {:?}", result.err());
+    }
+
+    #[test]
+    fn rejects_component_path_with_parent_dir() {
+        let mut params = base_params();
+        params["components"] = json!(["agents/../../etc/passwd"]);
+        let err = parse_cherry_pick_params(&params).err().expect("must reject");
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn rejects_absolute_component_path() {
+        let mut params = base_params();
+        params["components"] = json!(["/etc/passwd"]);
+        let err = parse_cherry_pick_params(&params).err().expect("must reject");
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn rejects_empty_node_ids() {
+        let mut params = base_params();
+        params["node_ids"] = json!([]);
+        let err = parse_cherry_pick_params(&params).err().expect("must reject");
+        assert_eq!(err.kind(), "missing_param");
+    }
+
+    #[test]
+    fn rejects_relative_project_path() {
+        let mut params = base_params();
+        params["scope"] = json!("project");
+        params["project_path"] = json!("relative/path");
+        let err = parse_cherry_pick_params(&params).err().expect("must reject");
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn rejects_project_scope_without_project_path() {
+        let mut params = base_params();
+        params["scope"] = json!("project");
+        let err = parse_cherry_pick_params(&params).err().expect("must reject");
+        assert_eq!(err.kind(), "missing_param");
+    }
 }

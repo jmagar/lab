@@ -281,8 +281,44 @@ async fn handle_websocket(
                     });
                     continue;
                 }
-                let request: RpcRequest =
-                    serde_json::from_str(&text).map_err(|error| anyhow::anyhow!(error))?;
+                // lab-zxx5.6: frames from the node may be either (a) RPC
+                // requests initiated by the node (have `method`) or (b) RPC
+                // responses to master-initiated requests (have `result` or
+                // `error`, no `method`). Try the response path first using
+                // the pending-map resolver; if no pending id matches, fall
+                // through to the request path.
+                let parsed_value: serde_json::Value =
+                    match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(error) => {
+                            return Err(anyhow::anyhow!(error));
+                        }
+                    };
+                let looks_like_response = parsed_value.get("method").is_none()
+                    && (parsed_value.get("result").is_some()
+                        || parsed_value.get("error").is_some());
+                if looks_like_response {
+                    let id = parsed_value
+                        .get("id")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string);
+                    if let Some(id) = id {
+                        if crate::dispatch::node::send::resolve_pending_rpc(&id, parsed_value) {
+                            continue;
+                        }
+                    }
+                    // Response whose id doesn't match any pending entry: drop
+                    // with a warning; don't break the session.
+                    tracing::warn!(
+                        surface = "api", service = "nodes",
+                        "received rpc response with unknown id"
+                    );
+                    continue;
+                }
+                let request: RpcRequest = match serde_json::from_value(parsed_value) {
+                    Ok(r) => r,
+                    Err(error) => return Err(anyhow::anyhow!(error)),
+                };
                 let response = handle_rpc_request(
                     request, &store, &enrollment_store, &registry,
                     &mut session_node_id, session_token, &tx, &mut command_states,
