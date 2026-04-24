@@ -84,8 +84,9 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
         }
         #[cfg(feature = "fs")]
         "fs.preview" => Err(ToolError::Sdk {
-            sdk_kind: "not_found".to_string(),
-            message: "fs.preview is HTTP-only; call GET /v1/fs/preview".to_string(),
+            sdk_kind: "http_only".to_string(),
+            message: "fs.preview is not available on the MCP surface; use GET /v1/fs/preview"
+                .to_string(),
         }),
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `fs.{unknown}`"),
@@ -111,7 +112,7 @@ pub async fn dispatch_with_root(
         }
         "fs.list" => list_action(root, params).await,
         "fs.preview" => Err(ToolError::Sdk {
-            sdk_kind: "not_found".to_string(),
+            sdk_kind: "http_only".to_string(),
             message: "fs.preview streams bytes and cannot be returned through the action-dispatch JSON path; call GET /v1/fs/preview via api::services::fs".to_string(),
         }),
         unknown => Err(ToolError::UnknownAction {
@@ -719,7 +720,7 @@ mod tests {
         let err = dispatch_with_root(&root, "fs.preview", json!({"path": "foo"}))
             .await
             .expect_err("err");
-        assert!(matches!(&err, ToolError::Sdk { sdk_kind, .. } if sdk_kind == "not_found"), "{err:?}");
+        assert!(matches!(&err, ToolError::Sdk { sdk_kind, .. } if sdk_kind == "http_only"), "{err:?}");
     }
 
     #[tokio::test]

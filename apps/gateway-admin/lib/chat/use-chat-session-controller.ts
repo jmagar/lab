@@ -8,6 +8,7 @@ import { toProjects } from './session-events'
 import { useSessionEvents } from './use-session-events'
 import type { ACPAgent, ACPRun } from '@/components/chat/types'
 import type { BridgeSessionSummary, ProviderHealth } from '@/lib/acp/types'
+import type { AttachmentRef } from '@/lib/fs/types'
 
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
 
@@ -32,6 +33,12 @@ type ProviderListPayload = {
 type SessionCreatePayload = {
   session?: BridgeSessionSummary
 } & BridgeSessionSummary
+
+type ErrorPayload = {
+  message?: string
+  error?: string
+  kind?: string
+}
 
 export type SessionCreationIntent = 'bootstrap' | 'manual' | 'send'
 export type CreateSessionOptions = { closeSessionPanel?: boolean }
@@ -115,6 +122,23 @@ function extractCreatedSession(payload: SessionCreatePayload): BridgeSessionSumm
   return payload.session ?? payload
 }
 
+async function readJsonSafe<T>(response: Response): Promise<T | null> {
+  const text = await response.text()
+  if (!text) {
+    return null
+  }
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return null
+  }
+}
+
+function errorMessageFromPayload(payload: ErrorPayload | null, fallback: string) {
+  return payload?.message ?? payload?.error ?? fallback
+}
+
 export function useChatSessionController(options: {
   isMobileViewport: boolean
   onSessionPanelClose?: () => void
@@ -188,7 +212,12 @@ export function useChatSessionController(options: {
       setSelectedRunId(null)
       return
     }
-    const payload = (await response.json()) as { sessions: BridgeSessionSummary[] }
+    const payload = await readJsonSafe<{ sessions: BridgeSessionSummary[] }>(response)
+    if (!payload) {
+      setRuns([])
+      setSelectedRunId(null)
+      return
+    }
     const nextRuns = payload.sessions.map(toRun)
     setRuns(nextRuns)
     setSelectedRunId((current) => current ?? nextRuns[0]?.id ?? null)
@@ -216,7 +245,21 @@ export function useChatSessionController(options: {
         method: 'POST',
         body: JSON.stringify({}),
       })
-      const payload = (await response.json()) as SessionCreatePayload
+      const payload = await readJsonSafe<SessionCreatePayload | ErrorPayload>(response)
+      if (!response.ok || !payload) {
+        const message = errorMessageFromPayload(
+          payload as ErrorPayload | null,
+          'Failed to create ACP session.',
+        )
+        setProviderHealth((current) => ({
+          provider: current?.provider ?? 'codex',
+          ready: false,
+          command: current?.command ?? '',
+          args: current?.args ?? [],
+          message,
+        }))
+        throw new Error(message)
+      }
       const run = toRun(extractCreatedSession(payload))
       setRuns((current) => integrateCreatedRun(current, run))
       setSelectedRunId(run.id)
@@ -267,18 +310,47 @@ export function useChatSessionController(options: {
   )
 
   const createRun = React.useCallback(async () => {
-    await createSessionForIntent(createSession, 'manual', isMobileViewport)
+    try {
+      await createSessionForIntent(createSession, 'manual', isMobileViewport)
+    } catch {
+      // keep the UI responsive; providerHealth.message carries the failure detail
+    }
   }, [createSession, isMobileViewport])
 
   const sendPrompt = React.useCallback(
-    async (text: string) => {
-      const runId = await ensurePromptRunId(selectedRunId, createSession, isMobileViewport)
+    async (payload: { text: string; attachments: AttachmentRef[] }) => {
+      try {
+        const runId = await ensurePromptRunId(selectedRunId, createSession, isMobileViewport)
 
-      await fetchAcp(`/sessions/${runId}/prompt`, {
-        method: 'POST',
-        body: JSON.stringify({ prompt: text }),
-      })
-      await refreshSessions()
+        const body = {
+          prompt: payload.text,
+          ...(payload.attachments.length > 0 && { attachments: payload.attachments }),
+        }
+
+        const response = await fetchAcp(`/sessions/${runId}/prompt`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        })
+        if (!response.ok) {
+          const errorPayload = await readJsonSafe<ErrorPayload>(response)
+          const message = errorMessageFromPayload(
+            errorPayload,
+            'Failed to send prompt to ACP session.',
+          )
+          setProviderHealth((current) => ({
+            provider: current?.provider ?? 'codex',
+            ready: false,
+            command: current?.command ?? '',
+            args: current?.args ?? [],
+            message,
+          }))
+          return
+        }
+
+        await refreshSessions()
+      } catch {
+        // keep the UI responsive; providerHealth.message carries the failure detail
+      }
     },
     [createSession, fetchAcp, isMobileViewport, refreshSessions, selectedRunId],
   )
