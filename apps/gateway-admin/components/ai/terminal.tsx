@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Shimmer } from "@/components/ai/shimmer"
+import { useCopyTimeout } from "@/lib/hooks/use-copy-timeout"
 
 interface TerminalContextType {
   output: string
@@ -132,7 +133,7 @@ export const TerminalCopyButton = ({
   className,
   ...props
 }: TerminalCopyButtonProps) => {
-  const [isCopied, setIsCopied] = useState(false)
+  const [isCopied, markCopied] = useCopyTimeout(timeout)
   const { output } = useContext(TerminalContext)
 
   const copyToClipboard = async () => {
@@ -143,9 +144,8 @@ export const TerminalCopyButton = ({
 
     try {
       await navigator.clipboard.writeText(output)
-      setIsCopied(true)
+      markCopied()
       onCopy?.()
-      setTimeout(() => setIsCopied(false), timeout)
     } catch (error) {
       onError?.(error as Error)
     }

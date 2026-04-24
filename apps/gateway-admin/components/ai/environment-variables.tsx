@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
+import { useCopyTimeout } from "@/lib/hooks/use-copy-timeout"
 
 interface EnvironmentVariablesContextType {
   showValues: boolean
@@ -220,7 +221,7 @@ export const EnvironmentVariableCopyButton = ({
   className,
   ...props
 }: EnvironmentVariableCopyButtonProps) => {
-  const [isCopied, setIsCopied] = useState(false)
+  const [isCopied, markCopied] = useCopyTimeout(timeout)
   const { name, value } = useContext(EnvironmentVariableContext)
 
   const copyToClipboard = async () => {
@@ -242,9 +243,8 @@ export const EnvironmentVariableCopyButton = ({
 
     try {
       await navigator.clipboard.writeText(textToCopy)
-      setIsCopied(true)
+      markCopied()
       onCopy?.()
-      setTimeout(() => setIsCopied(false), timeout)
     } catch (error) {
       onError?.(error as Error)
     }
