@@ -3,7 +3,7 @@
 import { ChevronsUpDownIcon, FileTextIcon } from "lucide-react"
 import type { ComponentProps } from "react"
 import { createContext, useContext } from "react"
-import { Button } from "~/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardAction,
@@ -12,10 +12,10 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "~/components/ui/card"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { cn } from "~/lib/utils"
-import { Shimmer } from "~/packages/ai/shimmer"
+} from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { cn } from "@/lib/utils"
+import { Shimmer } from "@/components/ai/shimmer"
 
 interface PlanContextValue {
   isStreaming: boolean
