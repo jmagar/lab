@@ -354,6 +354,10 @@ function AttachmentChip({
   const [thumbUrl, setThumbUrl] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    // Synchronously reset thumbUrl on every path change (and initial mount).
+    // This ensures path-swap at the same chip index never leaves the previous
+    // (about-to-be-revoked) URL in the DOM while the new fetch is in flight.
+    setThumbUrl(null)
     const controller = new AbortController()
     // Track the created URL in a ref-like closure variable so cleanup can
     // revoke it regardless of which order cleanup and .then resolution happen.
@@ -386,8 +390,9 @@ function AttachmentChip({
         URL.revokeObjectURL(objectUrl)
         objectUrl = null
       }
-      // Clear the image src so React never renders against a revoked URL.
-      setThumbUrl(null)
+      // NOTE: no setThumbUrl(null) here. React 19 drops/warns on state updates
+      // during unmount, and on path-swap re-runs the top-of-effect reset above
+      // handles clearing the stale URL synchronously before the next fetch.
     }
   }, [attachment.path])
 
