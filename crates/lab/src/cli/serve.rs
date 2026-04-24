@@ -17,10 +17,10 @@ use tokio::sync::mpsc;
 
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
-use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
-use crate::device::enrollment::store::EnrollmentStore;
-use crate::device::runtime::DeviceRuntime;
-use crate::device::store::DeviceFleetStore;
+use crate::node::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::node::enrollment::store::EnrollmentStore;
+use crate::node::runtime::NodeRuntime;
+use crate::node::store::NodeStore;
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
@@ -140,8 +140,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         master_host = %resolved_runtime.master_host,
         "device runtime resolved"
     );
-    let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
-    let device_store = Arc::new(DeviceFleetStore::default());
+    let device_runtime = NodeRuntime::from_config(resolved_runtime, config, Some(port))?;
+    let device_store = Arc::new(NodeStore::default());
     let enrollment_store = Arc::new(
         EnrollmentStore::open(device_runtime.home_dir().join(".lab/device-enrollments.json"))
             .await
@@ -284,6 +284,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let oauth_enabled = matches!(auth_config.mode, AuthMode::OAuth);
 
     let mut state = AppState::from_registry(registry);
+    crate::dispatch::acp::install_registry(Arc::clone(&state.acp_registry));
     state = state.with_gateway_manager(Arc::clone(&gateway_manager));
     state = state.with_auth_config(auth_config);
     let web_ui_auth_disabled =
@@ -732,7 +733,7 @@ fn build_http_router(
 async fn run_stdio(
     registry: Arc<ToolRegistry>,
     gateway_manager: Arc<GatewayManager>,
-    device_role: crate::config::DeviceRole,
+    device_role: crate::config::NodeRole,
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     tracing::info!(
