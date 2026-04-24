@@ -33,7 +33,8 @@ async fn provider_health(State(state): State<AppState>) -> Json<serde_json::Valu
 async fn list_sessions(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, ToolError> {
-    let sessions = state.acp_registry.list_sessions().await;
+    // principal = "" until bead 7 wires auth
+    let sessions = state.acp_registry.list_sessions("").await;
     Ok(Json(serde_json::json!({ "sessions": sessions })))
 }
 
@@ -56,11 +57,13 @@ async fn create_session(
             })
         }),
         title: body.title,
+        // principal = None until bead 7 wires auth
+        principal: None,
     };
+    // principal = "" until bead 7 wires auth
     let session = state
         .acp_registry
-        .clone()
-        .create_session(Some(input))
+        .create_session(input, "")
         .await?;
     Ok(Json(serde_json::json!({ "session": session })))
 }
@@ -82,9 +85,10 @@ async fn prompt_session(
             param: "prompt".to_string(),
         });
     }
+    // principal = "" until bead 7 wires auth
     state
         .acp_registry
-        .prompt_session(&session_id, prompt)
+        .prompt_session(&session_id, &prompt, "")
         .await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -93,7 +97,8 @@ async fn cancel_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ToolError> {
-    state.acp_registry.cancel_session(&session_id).await?;
+    // principal = "" until bead 7 wires auth
+    state.acp_registry.cancel_session(&session_id, "").await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -107,9 +112,10 @@ async fn stream_events(
     Path(session_id): Path<String>,
     Query(query): Query<EventQuery>,
 ) -> Result<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>, ToolError> {
+    // Use subscribe_legacy until bead 7 migrates to the new Stream<AcpEvent> shape.
     let (backlog, receiver): (Vec<BridgeEvent>, broadcast::Receiver<BridgeEvent>) = state
         .acp_registry
-        .subscribe(&session_id, query.since.unwrap_or(0))
+        .subscribe_legacy(&session_id, query.since.unwrap_or(0))
         .await?;
     let stream = stream::unfold(
         (
