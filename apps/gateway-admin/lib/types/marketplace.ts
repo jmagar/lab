@@ -37,6 +37,10 @@ export interface Plugin {
   hasUpdate?: boolean
   installedAt?: string
   updatedAt?: string
+  runtime?: MarketplaceRuntime
+  components?: PluginComponent[]
+  installState?: PluginInstallState
+  manifest?: PluginManifestSummary
 }
 
 export type ArtifactLang = 'json' | 'yaml' | 'markdown' | 'bash' | 'toml' | 'text'
@@ -49,4 +53,40 @@ export interface Artifact {
 
 export interface MarketplaceState {
   installed: Set<string>
+}
+
+export type PluginComponentKind =
+  | 'agents'
+  | 'commands'
+  | 'output-styles'
+  | 'skills'
+  | 'hooks'
+  | 'monitors'
+  | 'mcp-config'
+  | 'lsp-config'
+  | 'apps'
+  | 'mcp_servers'
+  | 'assets'
+  | 'files'
+
+export interface PluginComponent {
+  kind: PluginComponentKind
+  path: string
+  name: string
+  metadata?: Record<string, unknown>
+}
+
+export type MarketplaceRuntime = 'claude' | 'codex' | 'gemini'
+
+export interface PluginInstallState {
+  installed: boolean
+  enabled?: boolean
+  installedAt?: string
+  updatedAt?: string
+}
+
+export interface PluginManifestSummary {
+  description?: string
+  version?: string
+  interface?: string
 }
