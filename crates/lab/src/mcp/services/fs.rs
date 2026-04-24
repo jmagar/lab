@@ -14,24 +14,36 @@
 //!
 //! This mirrors the `api/CLAUDE.md` decision to remove the `X-Lab-Confirm`
 //! header confirmation path.
+//!
+//! # Two-layer filter
+//!
+//! 1. **Discovery filter** — `help` and `schema` are intercepted here and
+//!    served from `MCP_ACTIONS` (no `fs.preview`). This ensures a
+//!    prompt-injected agent enumerating tools via `help` never sees the
+//!    preview action at all.
+//! 2. **Execution filter** — `fs.preview` requests are rejected here with
+//!    a stable `http_only` error kind before reaching the shared dispatch
+//!    layer. Defense-in-depth: if a caller somehow guesses the action
+//!    name, the dispatcher refuses.
 
 use lab_apis::core::action::ActionSpec;
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::{action_schema, help_payload, require_str};
 
 /// MCP-exposed slice of the fs action catalog. Filters out `fs.preview`.
 pub static ACTIONS: &[ActionSpec] = MCP_ACTIONS;
 
 /// Compile-time filtered view of [`crate::dispatch::fs::ACTIONS`].
 ///
-/// We cannot slice a `&'static [ActionSpec]` at runtime into another
-/// `&'static` slice, so we redeclare the MCP-visible entries here. Any
-/// change to the canonical catalog must be mirrored — a unit test in this
-/// module enforces the invariant that every entry here exists in
-/// `dispatch::fs::ACTIONS`.
+/// `&'static [ActionSpec]` can't be runtime-sliced into another `&'static`
+/// slice, so the MCP-visible entries are redeclared here. Unit tests in
+/// this module enforce that every entry here exists in the canonical
+/// catalog with the same name.
 static MCP_ACTIONS: &[ActionSpec] = &[
-    // Keep in sync with `dispatch::fs::catalog::ACTIONS[0]`.
+    // Mirror of `dispatch::fs::catalog::ACTIONS[0]`. Filtered: fs.preview
+    // omitted — see module-level doc for rationale.
     ActionSpec {
         name: "fs.list",
         description: "List immediate entries of a directory inside the configured workspace root",
@@ -46,17 +58,31 @@ static MCP_ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-/// MCP dispatch entry point. `fs.preview` is rejected here as an additional
-/// defense on top of the filtered `ACTIONS` slice — if tool-registration
-/// ever accidentally surfaces the action, the dispatcher still refuses.
-pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    if action == "fs.preview" {
-        return Err(ToolError::Sdk {
-            sdk_kind: "not_found".to_string(),
-            message: "fs.preview is HTTP-only; call GET /v1/fs/preview instead".to_string(),
-        });
+/// Build the `http_only` rejection envelope returned when an MCP caller
+/// invokes an action that is only available over the HTTP surface.
+fn http_only_error(action: &str, http_path: &str) -> ToolError {
+    ToolError::Sdk {
+        sdk_kind: "http_only".to_string(),
+        message: format!("{action} is not available on the MCP surface; use GET {http_path}"),
     }
-    crate::dispatch::fs::dispatch(action, params).await
+}
+
+/// MCP dispatch entry point.
+///
+/// `help` and `schema` are intercepted here against `MCP_ACTIONS` so the
+/// filtered catalog is the only thing MCP clients can discover. Every
+/// other action except the explicitly rejected `fs.preview` falls through
+/// to the shared dispatch layer.
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    match action {
+        "help" => Ok(help_payload("fs", MCP_ACTIONS)),
+        "schema" => {
+            let a = require_str(&params, "action")?;
+            action_schema(MCP_ACTIONS, a)
+        }
+        "fs.preview" => Err(http_only_error("fs.preview", "/v1/fs/preview")),
+        other => crate::dispatch::fs::dispatch(other, params).await,
+    }
 }
 
 #[cfg(test)]
@@ -86,13 +112,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_rejects_fs_preview() {
+    async fn dispatch_rejects_fs_preview_with_http_only_kind() {
         let err = dispatch("fs.preview", serde_json::json!({"path": "foo"}))
             .await
             .expect_err("err");
         match err {
-            ToolError::Sdk { sdk_kind, .. } => assert_eq!(sdk_kind, "not_found"),
-            other => panic!("expected Sdk not_found; got {other:?}"),
+            ToolError::Sdk { sdk_kind, .. } => assert_eq!(sdk_kind, "http_only"),
+            other => panic!("expected Sdk http_only; got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn help_does_not_list_fs_preview() {
+        let value = dispatch("help", Value::Null).await.expect("ok");
+        let names: Vec<String> = value["actions"]
+            .as_array()
+            .expect("actions array")
+            .iter()
+            .map(|a| a["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(!names.contains(&"fs.preview".to_string()), "{names:?}");
+        assert!(names.contains(&"fs.list".to_string()));
+    }
+
+    #[tokio::test]
+    async fn schema_refuses_fs_preview() {
+        let err = dispatch("schema", serde_json::json!({"action": "fs.preview"}))
+            .await
+            .expect_err("err");
+        match err {
+            ToolError::UnknownAction { .. } => {}
+            other => panic!("expected UnknownAction; got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn schema_returns_fs_list_schema() {
+        let value = dispatch("schema", serde_json::json!({"action": "fs.list"}))
+            .await
+            .expect("ok");
+        assert_eq!(value["action"].as_str(), Some("fs.list"));
     }
 }

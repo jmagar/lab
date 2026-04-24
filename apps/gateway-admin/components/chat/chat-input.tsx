@@ -1,14 +1,23 @@
 'use client'
 
 import * as React from 'react'
-import { Send, Paperclip, Wrench, ChevronDown } from 'lucide-react'
+import { Send, Paperclip, Wrench, ChevronDown, X, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ACPAgent } from './types'
+import type { AttachmentRef } from '@/lib/fs/types'
+import { isInlineImageMime, previewWorkspaceFile } from '@/lib/fs/client'
+import { WorkspacePicker } from './workspace-picker'
+
+/** Payload emitted by the chat input on submit. */
+export interface ChatInputPayload {
+  text: string
+  attachments: AttachmentRef[]
+}
 
 interface ChatInputProps {
-  onSend: (text: string) => void | Promise<void>
+  onSend: (payload: ChatInputPayload) => void | Promise<void>
   disabled?: boolean
   selectedAgent: ACPAgent | null
   agents: ACPAgent[]
@@ -19,6 +28,8 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   const [value, setValue] = React.useState('')
   const [sending, setSending] = React.useState(false)
   const [agentPickerOpen, setAgentPickerOpen] = React.useState(false)
+  const [attachments, setAttachments] = React.useState<AttachmentRef[]>([])
+  const [workspacePickerOpen, setWorkspacePickerOpen] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const pickerRef = React.useRef<HTMLDivElement>(null)
   const triggerRef = React.useRef<HTMLButtonElement>(null)
@@ -28,19 +39,34 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
 
   optionRefs.current.length = agents.length
 
+  const hasContent = value.trim().length > 0 || attachments.length > 0
+
   const handleSend = async () => {
     const trimmed = value.trim()
-    if (!trimmed || disabled || sending) return
+    if (!hasContent || disabled || sending) return
     setSending(true)
     try {
-      await onSend(trimmed)
+      await onSend({ text: trimmed, attachments })
       setValue('')
+      setAttachments([])
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
       }
     } finally {
       setSending(false)
     }
+  }
+
+  const handleAttach = (attachment: AttachmentRef) => {
+    setAttachments((prev) => {
+      // Dedupe by path so double-adding the same file is a no-op.
+      if (prev.some((a) => a.kind === attachment.kind && a.path === attachment.path)) return prev
+      return [...prev, attachment]
+    })
+  }
+
+  const removeAttachment = (path: string) => {
+    setAttachments((prev) => prev.filter((a) => a.path !== path))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -142,6 +168,22 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           'focus-within:border-aurora-accent-primary/40',
         )}
       >
+        {attachments.length > 0 && (
+          <ul
+            aria-label="Attached workspace files"
+            className="flex flex-wrap gap-1.5 border-b border-aurora-border-default px-3 pt-2 pb-1.5 sm:px-4"
+          >
+            {attachments.map((attachment) => (
+              <li key={attachment.path}>
+                <AttachmentChip
+                  attachment={attachment}
+                  onRemove={() => removeAttachment(attachment.path)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+
         <textarea
           ref={textareaRef}
           name="chat-message"
@@ -165,11 +207,18 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
             <div className="flex items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Attach file" disabled className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Attach workspace file"
+                    onClick={() => setWorkspacePickerOpen(true)}
+                    disabled={disabled || sending}
+                    className="size-7 rounded text-aurora-text-muted hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
+                  >
                     <Paperclip className="size-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">Attach file</TooltipContent>
+                <TooltipContent side="top" className="text-xs">Attach workspace file</TooltipContent>
               </Tooltip>
 
               <Tooltip>
@@ -245,12 +294,12 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
 
             <Button
               onClick={() => void handleSend()}
-              disabled={!value.trim() || disabled || sending}
+              disabled={!hasContent || disabled || sending}
               size="icon"
               aria-label="Send message"
               className={cn(
                 'size-8 shrink-0 rounded-aurora-1 transition-all',
-                value.trim() && !disabled && !sending
+                hasContent && !disabled && !sending
                   ? 'bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong'
                   : 'bg-aurora-border-default text-aurora-text-muted/40',
               )}
@@ -264,6 +313,96 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
       <p className="mt-1.5 px-1 text-center text-[10px] text-aurora-text-muted/40 sm:text-[11px]">
         Assistant may make mistakes. Verify important information.
       </p>
+
+      <WorkspacePicker
+        open={workspacePickerOpen}
+        onOpenChange={setWorkspacePickerOpen}
+        onSelect={handleAttach}
+      />
     </div>
+  )
+}
+
+/**
+ * Single attachment chip. For image attachments, fetches
+ * `/v1/fs/preview` once and renders the returned bytes via
+ * `URL.createObjectURL(blob)` — the blob URL is revoked on unmount. The
+ * bytes are backend-approved (deny-list + 2 MiB cap + MIME whitelist),
+ * which is why blob-URL usage is acceptable here — unlike the banned
+ * pattern of blob URLs over user-supplied `File` objects.
+ */
+function AttachmentChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: AttachmentRef
+  onRemove: () => void
+}) {
+  const [thumbUrl, setThumbUrl] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    const controller = new AbortController()
+    // Track the created URL in a ref-like closure variable so cleanup can
+    // revoke it regardless of which order cleanup and .then resolution happen.
+    let objectUrl: string | null = null
+    let disposed = false
+
+    previewWorkspaceFile(attachment.path, { signal: controller.signal })
+      .then(({ blob, contentType }) => {
+        if (disposed || controller.signal.aborted) return
+        if (!isInlineImageMime(contentType)) return
+        const url = URL.createObjectURL(blob)
+        // Re-check disposal AFTER createObjectURL: unmount could have landed
+        // during the synchronous createObjectURL call; if so, revoke now and
+        // do not commit to state.
+        if (disposed || controller.signal.aborted) {
+          URL.revokeObjectURL(url)
+          return
+        }
+        objectUrl = url
+        setThumbUrl(url)
+      })
+      .catch(() => {
+        // Preview failure is non-fatal — chip falls back to the file icon.
+      })
+
+    return () => {
+      disposed = true
+      controller.abort()
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+        objectUrl = null
+      }
+      // Clear the image src so React never renders against a revoked URL.
+      setThumbUrl(null)
+    }
+  }, [attachment.path])
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border border-aurora-border-default',
+        'bg-aurora-panel-medium px-2 py-0.5 text-[11px] text-aurora-text-primary',
+      )}
+    >
+      {thumbUrl ? (
+        <img
+          src={thumbUrl}
+          alt=""
+          className="size-4 rounded-[2px] object-cover"
+        />
+      ) : (
+        <FileText className="size-3 text-aurora-text-muted" />
+      )}
+      <span className="max-w-[18rem] truncate" title={attachment.path}>{attachment.path}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${attachment.path}`}
+        className="text-aurora-text-muted hover:text-aurora-text-primary"
+      >
+        <X className="size-3" />
+      </button>
+    </span>
   )
 }
