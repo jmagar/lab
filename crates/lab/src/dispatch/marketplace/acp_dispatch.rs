@@ -4,16 +4,13 @@
 //! `lab-apis::acp_registry` SDK and the local provider config at
 //! `~/.lab/acp-providers.json`.
 //!
-//! Scope notes (lab-zxx5.3):
-//! - Only `"local"` device installs are supported in this build. Remote
-//!   device installs return a per-device `not_implemented` error envelope —
-//!   fleet RPC plumbing for `agent.install` lives in a follow-up bead.
-//! - Binary distributions are not yet downloaded/extracted. Only `npx` and
-//!   `uvx` distributions write a usable provider config entry. Binary
-//!   distributions return `not_implemented` per device.
-//! - SHA-256 verification is not performed because `BinaryAsset` in the SDK
-//!   does not expose a `sha256` field. When binary install is implemented in
-//!   a follow-up, `BinaryAsset.extra` (via `Agent.extra`) can supply it.
+//! Distribution support:
+//! - `npx` and `uvx`: write a provider config entry locally; remote via fleet WS.
+//! - `binary`: download archive (HTTPS only, SSRF-guarded), compute SHA-256,
+//!   extract with system tar/unzip, install to `~/.lab/bin/<agent_id>/`.
+//!
+//! Remote install via fleet WS supports `npx` only — the device-side `DistType`
+//! has no `Uvx` or `Binary` variant.
 
 use serde_json::Value;
 
@@ -23,9 +20,15 @@ use crate::dispatch::marketplace::acp_catalog::ACP_ACTIONS;
 use crate::dispatch::marketplace::acp_client;
 
 #[cfg(feature = "acp_registry")]
+use std::path::PathBuf;
+
+#[cfg(feature = "acp_registry")]
+use crate::api::device::fleet::{FleetDispatchError, send_text_to_device};
+
+#[cfg(feature = "acp_registry")]
 use lab_apis::acp_registry::client::AcpRegistryClient;
 #[cfg(feature = "acp_registry")]
-use lab_apis::acp_registry::types::{Agent, Distribution};
+use lab_apis::acp_registry::types::{Agent, BinaryAsset, Distribution};
 
 /// Dispatch an `agent.*` action using a freshly constructed client.
 pub async fn dispatch_acp(action: &str, params: Value) -> Result<Value, ToolError> {
@@ -135,15 +138,9 @@ async fn dispatch_install(
     let mut results = Vec::with_capacity(device_ids.len());
     for device_id in &device_ids {
         let outcome = if is_local_device(device_id) {
-            install_local(&agent, platform_override.as_deref())
+            install_local(&agent, &id, platform_override.as_deref()).await
         } else {
-            // Remote install via fleet RPC is deferred — see module-level note.
-            Err(ToolError::Sdk {
-                sdk_kind: "not_implemented".to_string(),
-                message: format!(
-                    "remote install on device `{device_id}` is not yet wired (deferred to follow-up bead)"
-                ),
-            })
+            install_remote(device_id, &agent, &id).await
         };
         match outcome {
             Ok(value) => results.push(serde_json::json!({
@@ -179,15 +176,17 @@ fn is_local_device(device_id: &str) -> bool {
 }
 
 #[cfg(feature = "acp_registry")]
-fn install_local(agent: &Agent, platform_override: Option<&str>) -> Result<Value, ToolError> {
-    let (distribution_kind, command) = match &agent.distribution {
+async fn install_local(
+    agent: &Agent,
+    agent_id: &str,
+    platform_override: Option<&str>,
+) -> Result<Value, ToolError> {
+    let (distribution_kind, command, sha256) = match &agent.distribution {
         Distribution::Binary(map) => {
             let platform = platform_override
                 .map(str::to_string)
                 .unwrap_or_else(detect_platform);
-            // Look up the asset purely to report a useful error; we don't
-            // download in this bead.
-            let _asset = map.get(&platform).ok_or_else(|| ToolError::Sdk {
+            let asset = map.get(&platform).ok_or_else(|| ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
                 message: format!(
                     "agent `{}` has no binary asset for platform `{}` (available: {})",
@@ -196,32 +195,42 @@ fn install_local(agent: &Agent, platform_override: Option<&str>) -> Result<Value
                     map.keys().cloned().collect::<Vec<_>>().join(", ")
                 ),
             })?;
-            return Err(ToolError::Sdk {
-                sdk_kind: "not_implemented".to_string(),
-                message: format!(
-                    "binary distribution install for `{}` is not yet implemented (deferred to follow-up bead)",
-                    agent.id
-                ),
-            });
+            let (cmd_path, digest) = install_binary(agent_id, asset).await?;
+            return {
+                let entry = ProviderEntry {
+                    id: agent_id.to_string(),
+                    name: agent.name.clone(),
+                    version: agent.version.clone(),
+                    distribution: "binary".to_string(),
+                    command: cmd_path.to_string_lossy().into_owned(),
+                    installed_at: jiff::Timestamp::now().to_string(),
+                    sha256: Some(digest),
+                };
+                upsert_provider(&entry)?;
+                serde_json::to_value(&entry)
+                    .map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")))
+            };
         }
         Distribution::Npx(asset) => (
             "npx",
             format!("npx -y {}@{}", asset.package, asset.version),
+            None,
         ),
         Distribution::Uvx(asset) => (
             "uvx",
             format!("uvx {}=={}", asset.package, asset.version),
+            None,
         ),
     };
 
     let entry = ProviderEntry {
-        id: agent.id.clone(),
+        id: agent_id.to_string(),
         name: agent.name.clone(),
         version: agent.version.clone(),
         distribution: distribution_kind.to_string(),
         command,
         installed_at: jiff::Timestamp::now().to_string(),
-        sha256: None,
+        sha256,
     };
 
     upsert_provider(&entry)?;
@@ -240,6 +249,299 @@ fn detect_platform() -> String {
         other => other,
     };
     format!("{os}-{arch}")
+}
+
+// ---------------------------------------------------------------------------
+// Remote fleet RPC install
+// ---------------------------------------------------------------------------
+
+/// Send an `agent.install` JSON-RPC 2.0 message to a connected remote device.
+///
+/// Only `npx` distribution is supported because the device-side `DistType` only
+/// has an `Npx` variant. `uvx` and `binary` return a structured error.
+#[cfg(feature = "acp_registry")]
+async fn install_remote(
+    device_id: &str,
+    agent: &Agent,
+    agent_id: &str,
+) -> Result<Value, ToolError> {
+    let (package, version) = match &agent.distribution {
+        Distribution::Npx(asset) => (asset.package.clone(), asset.version.clone()),
+        Distribution::Uvx(_) => {
+            return Err(ToolError::Sdk {
+                sdk_kind: "not_implemented".to_string(),
+                message: format!(
+                    "remote install of `{agent_id}` is not supported for uvx distribution \
+                     (device runtime only handles npx)"
+                ),
+            });
+        }
+        Distribution::Binary(_) => {
+            return Err(ToolError::Sdk {
+                sdk_kind: "not_implemented".to_string(),
+                message: format!(
+                    "remote install of `{agent_id}` is not supported for binary distribution \
+                     (device runtime only handles npx)"
+                ),
+            });
+        }
+    };
+
+    // JSON-RPC 2.0 fire-and-forget — device processes async; we don't wait for
+    // a response because `send_to_device` is a one-way channel. ID is 0 since
+    // no response correlation is needed.
+    let msg = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "agent.install",
+        "params": {
+            "agent_id": agent_id,
+            "distribution": {
+                "type": "npx",
+                "package": package,
+                "version": version,
+            }
+        }
+    })
+    .to_string();
+
+    send_text_to_device(device_id, msg)
+        .await
+        .map_err(|e| match e {
+            FleetDispatchError::NotConnected { .. } => ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("device `{device_id}` is not connected"),
+            },
+            FleetDispatchError::ChannelClosed { .. } => ToolError::Sdk {
+                sdk_kind: "network_error".to_string(),
+                message: format!("send channel for device `{device_id}` closed (race with disconnect)"),
+            },
+        })?;
+
+    Ok(serde_json::json!({
+        "device_id": device_id,
+        "agent_id": agent_id,
+        "queued": true,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Binary distribution local install
+// ---------------------------------------------------------------------------
+
+/// Download, extract, and install a binary agent to `~/.lab/bin/<agent_id>/`.
+///
+/// Returns `(installed_path, sha256_hex)`.
+#[cfg(feature = "acp_registry")]
+async fn install_binary(agent_id: &str, asset: &BinaryAsset) -> Result<(PathBuf, String), ToolError> {
+    validate_archive_url(&asset.archive)?;
+
+    let install_dir = agent_bin_dir(agent_id)?;
+    std::fs::create_dir_all(&install_dir).map_err(|e| {
+        ToolError::internal_message(format!("create {}: {e}", install_dir.display()))
+    })?;
+
+    // Download to a temp file next to the install dir so rename is atomic.
+    let tmp_archive = tempfile::NamedTempFile::new_in(&install_dir)
+        .map_err(|e| ToolError::internal_message(format!("temp archive: {e}")))?;
+
+    let sha256 = download_archive(&asset.archive, tmp_archive.path()).await?;
+
+    // Extract to a temp dir in the same parent so we can do an atomic move.
+    let tmp_extract = tempfile::TempDir::new_in(&install_dir)
+        .map_err(|e| ToolError::internal_message(format!("temp extract dir: {e}")))?;
+
+    extract_archive(tmp_archive.path(), tmp_extract.path(), &asset.archive)?;
+
+    // Locate the binary: `cmd` is like `"./my-agent"` or `"my-agent"`.
+    let binary_name = std::path::Path::new(asset.cmd.trim_start_matches("./"))
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(asset.cmd.trim_start_matches("./"));
+
+    let src = find_binary_in_dir(tmp_extract.path(), binary_name).ok_or_else(|| {
+        ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message: format!(
+                "binary `{binary_name}` not found in extracted archive for agent `{agent_id}`"
+            ),
+        }
+    })?;
+
+    let dest = install_dir.join(binary_name);
+
+    // Symlink guard before writing.
+    if let Ok(meta) = std::fs::symlink_metadata(&dest)
+        && meta.file_type().is_symlink()
+    {
+        return Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!(
+                "refusing to overwrite symlink at {} (must be a regular file)",
+                dest.display()
+            ),
+        });
+    }
+
+    std::fs::copy(&src, &dest).map_err(|e| {
+        ToolError::internal_message(format!("copy binary to {}: {e}", dest.display()))
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&dest)
+            .map_err(|e| ToolError::internal_message(format!("stat {}: {e}", dest.display())))?
+            .permissions();
+        perms.set_mode(perms.mode() | 0o111);
+        std::fs::set_permissions(&dest, perms).map_err(|e| {
+            ToolError::internal_message(format!("chmod +x {}: {e}", dest.display()))
+        })?;
+    }
+
+    Ok((dest, sha256))
+}
+
+/// Resolve `~/.lab/bin/<agent_id>/`.
+fn agent_bin_dir(agent_id: &str) -> Result<PathBuf, ToolError> {
+    let env_path = crate::config::dotenv_path().ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: "cannot determine ~/.lab path".to_string(),
+    })?;
+    let lab_dir = env_path
+        .parent()
+        .ok_or_else(|| ToolError::internal_message("dotenv path has no parent"))?;
+    Ok(lab_dir.join("bin").join(agent_id))
+}
+
+/// Validate an archive URL: require HTTPS, reject loopback/private hosts.
+fn validate_archive_url(url: &str) -> Result<(), ToolError> {
+    let parsed = url::Url::parse(url).map_err(|e| ToolError::Sdk {
+        sdk_kind: "invalid_param".to_string(),
+        message: format!("invalid archive URL `{url}`: {e}"),
+    })?;
+    if parsed.scheme() != "https" {
+        return Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("archive URL must use https, got `{}`", parsed.scheme()),
+        });
+    }
+    if let Some(host) = parsed.host_str() {
+        if host == "localhost"
+            || host.starts_with("127.")
+            || host == "::1"
+            || host.ends_with(".local")
+        {
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: format!("archive URL host `{host}` is a local/loopback address"),
+            });
+        }
+        if let Ok(addr) = host.parse::<std::net::IpAddr>() {
+            let is_private = match addr {
+                std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
+                std::net::IpAddr::V6(v6) => v6.is_unique_local() || v6.is_unicast_link_local(),
+            };
+            if is_private || addr.is_loopback() {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "invalid_param".to_string(),
+                    message: format!("archive URL host `{host}` is a private/loopback address"),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Download `url` to `dest`, return the hex SHA-256 of the downloaded bytes.
+async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, ToolError> {
+    use sha2::{Digest, Sha256};
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| ToolError::internal_message(format!("build http client: {e}")))?;
+
+    let resp = client.get(url).send().await.map_err(|e| ToolError::Sdk {
+        sdk_kind: "network_error".to_string(),
+        message: format!("GET {url}: {e}"),
+    })?;
+
+    if !resp.status().is_success() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "network_error".to_string(),
+            message: format!("GET {url}: HTTP {}", resp.status()),
+        });
+    }
+
+    let bytes = resp.bytes().await.map_err(|e| ToolError::Sdk {
+        sdk_kind: "network_error".to_string(),
+        message: format!("read body from {url}: {e}"),
+    })?;
+
+    let sha256 = format!("{:x}", Sha256::digest(&bytes));
+
+    std::fs::write(dest, &bytes).map_err(|e| {
+        ToolError::internal_message(format!("write {}: {e}", dest.display()))
+    })?;
+
+    Ok(sha256)
+}
+
+/// Extract `archive` into `dest_dir` using system `tar` or `unzip`.
+fn extract_archive(
+    archive: &std::path::Path,
+    dest_dir: &std::path::Path,
+    url: &str,
+) -> Result<(), ToolError> {
+    let archive_s = archive.to_string_lossy();
+    let dest_s = dest_dir.to_string_lossy();
+
+    let status = if url.ends_with(".zip") {
+        std::process::Command::new("unzip")
+            .args(["-q", &archive_s, "-d", &dest_s])
+            .status()
+    } else {
+        // .tar.gz / .tgz / .tar.xz / .tar.bz2
+        let flag = if url.ends_with(".tar.xz") || url.ends_with(".txz") {
+            "-xJf"
+        } else {
+            "-xzf"
+        };
+        std::process::Command::new("tar")
+            .args([flag, &archive_s, "-C", &dest_s, "--no-same-owner"])
+            .status()
+    };
+
+    let exit = status.map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("run extraction tool: {e}"),
+    })?;
+
+    if !exit.success() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!("extraction failed (exit {})", exit),
+        });
+    }
+    Ok(())
+}
+
+/// Walk `dir` recursively to find the first file whose name matches `binary_name`.
+fn find_binary_in_dir(dir: &std::path::Path, binary_name: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_binary_in_dir(&path, binary_name) {
+                return Some(found);
+            }
+        } else if path.file_name().and_then(|n| n.to_str()) == Some(binary_name) {
+            return Some(path);
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
