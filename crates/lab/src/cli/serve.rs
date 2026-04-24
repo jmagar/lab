@@ -136,19 +136,19 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     tracing::info!(
         subsystem = "startup",
         phase = "bootstrap.device-runtime",
-        device_role = ?resolved_runtime.role,
+        node_role = ?resolved_runtime.role,
         local_host = %resolved_runtime.local_host,
         master_host = %resolved_runtime.master_host,
-        "device runtime resolved"
+        "node runtime resolved"
     );
-    let device_runtime = NodeRuntime::from_config(resolved_runtime, config, Some(port))?;
-    let device_store = Arc::new(NodeStore::default());
+    let node_runtime = NodeRuntime::from_config(resolved_runtime, config, Some(port))?;
+    let node_store = Arc::new(NodeStore::default());
     let enrollment_store = Arc::new(
-        EnrollmentStore::open(device_runtime.home_dir().join(".lab/device-enrollments.json"))
+        EnrollmentStore::open(node_runtime.home_dir().join(".lab/node-enrollments.json"))
             .await
-            .context("open device enrollment store")?,
+            .context("open node enrollment store")?,
     );
-    let device_role = device_runtime.role();
+    let node_role = node_runtime.role();
 
     let stdio_mode = should_run_stdio(transport, args.command.as_ref());
     let gateway_runtime = GatewayRuntimeHandle::default();
@@ -245,7 +245,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         return run_stdio(
             Arc::new(registry),
             Arc::clone(&gateway_manager),
-            device_role,
+            node_role,
             notifier,
         )
         .await;
@@ -294,7 +294,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let web_ui_auth_disabled =
         resolve_web_ui_auth_disabled(&config.web, web_assets_dir.is_some(), oauth_enabled)?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
-    state = state.with_node_store(Arc::clone(&device_store));
+    state = state.with_node_store(Arc::clone(&node_store));
     state = state.with_enrollment_store(Arc::clone(&enrollment_store));
     state = state.with_log_system(logs_system);
     #[cfg(feature = "mcpregistry")]
@@ -362,7 +362,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     };
     // `_registry_sync_keepalive` keeps the background sync task alive for the
     // duration of `serve`; binding it by name preserves the JoinHandle.
-    state = state.with_node_role(device_role);
+    state = state.with_node_role(node_role);
 
     // Wire the user-configured workspace root into AppState so the fs
     // service serves `fs.list` / `fs.preview` without re-reading the env
@@ -426,10 +426,10 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         "startup plan resolved"
     );
 
-    let startup_runtime = device_runtime.clone();
+    let startup_runtime = node_runtime.clone();
     tokio::spawn(async move {
         if let Err(error) = startup_runtime.upload_initial_metadata().await {
-            tracing::warn!(error = %error, "initial device metadata upload failed");
+            tracing::warn!(error = %error, "initial node metadata upload failed");
         }
         if let Err(error) = startup_runtime.collect_and_queue_bootstrap_logs().await {
             tracing::warn!(error = %error, "initial device bootstrap log queueing failed");
@@ -898,7 +898,7 @@ fn build_http_router(
 async fn run_stdio(
     registry: Arc<ToolRegistry>,
     gateway_manager: Arc<GatewayManager>,
-    device_role: crate::config::NodeRole,
+    node_role: crate::config::NodeRole,
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     tracing::info!(
@@ -906,7 +906,7 @@ async fn run_stdio(
         phase = "start",
         transport = "stdio",
         services = registry.services().len(),
-        device_role = ?device_role,
+        node_role = ?node_role,
         "starting stdio mcp server"
     );
     tracing::info!(
@@ -919,7 +919,7 @@ async fn run_stdio(
     let server = LabMcpServer {
         registry,
         gateway_manager: Some(Arc::clone(&gateway_manager)),
-        node_role: Some(device_role),
+        node_role: Some(node_role),
         peers: Arc::clone(&notifier.peers),
         logging_level: Arc::new(std::sync::atomic::AtomicU8::new(
             crate::mcp::logging::logging_level_rank(rmcp::model::LoggingLevel::Info),
@@ -1159,7 +1159,7 @@ fn lab_executable_path(pid: u32) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-fn is_lab_executable(path: &std::path::Path) -> bool {
+fn is_lab_executable(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
         Some("lab") | Some("lab (deleted)")

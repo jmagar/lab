@@ -83,6 +83,23 @@ const DEFAULT_RPC_TIMEOUT: Duration = Duration::from_secs(30);
 /// unbounded pending-map growth if a sequence of nodes goes silent.
 const MAX_PENDING_RPC: usize = 1024;
 
+/// Per-node cap (lab-zxx5.27). Prevents a single silent / misbehaving node
+/// (or a runaway operator script targeting one node) from filling the
+/// global `MAX_PENDING_RPC` budget and denying service to OTHER nodes.
+const MAX_PENDING_RPC_PER_NODE: usize = 32;
+
+/// Count how many pending RPC entries currently target `node_id`.
+///
+/// Used by `send_rpc_to_node` before reserving a new slot. O(N) across the
+/// owner map, but N is bounded by `MAX_PENDING_RPC` (1024), so the scan is
+/// negligible at the call rate this surface sees.
+fn pending_count_for_node(node_id: &str) -> usize {
+    pending_owners()
+        .iter()
+        .filter(|entry| entry.value() == node_id)
+        .count()
+}
+
 fn pending_map() -> &'static DashMap<String, oneshot::Sender<Value>> {
     static MAP: OnceLock<DashMap<String, oneshot::Sender<Value>>> = OnceLock::new();
     MAP.get_or_init(DashMap::new)
@@ -183,7 +200,7 @@ pub fn resolve_pending_rpc(rpc_id: &str, response: Value) -> bool {
     if let Some((_, sender)) = pending_map().remove(rpc_id) {
         // send() returns Err if the awaiter dropped (timeout branch already
         // ran) — nothing to do in that case.
-        let _ = sender.send(response);
+        drop(sender.send(response));
         true
     } else {
         false
@@ -220,6 +237,17 @@ pub async fn send_rpc_to_node(
             message: format!(
                 "master pending-rpc map full ({} inflight); refusing new request",
                 MAX_PENDING_RPC
+            ),
+        });
+    }
+    // lab-zxx5.27: per-node cap. Prevents a single silent node from
+    // eating the global budget and starving all other nodes.
+    let per_node = pending_count_for_node(node_id);
+    if per_node >= MAX_PENDING_RPC_PER_NODE {
+        return Err(ToolError::Sdk {
+            sdk_kind: "rate_limited".to_string(),
+            message: format!(
+                "node `{node_id}` has {per_node} in-flight requests (cap {MAX_PENDING_RPC_PER_NODE}); refusing new request"
             ),
         });
     }

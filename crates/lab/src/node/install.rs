@@ -247,7 +247,7 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
     impl Drop for TmpGuard<'_> {
         fn drop(&mut self) {
             if let Some(path) = self.0 {
-                let _ = std::fs::remove_file(path);
+                drop(std::fs::remove_file(path));
             }
         }
     }
@@ -262,7 +262,6 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
     // On non-unix we fall back to the default tokio::fs::write path.
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         use tokio::io::AsyncWriteExt;
         let mut f = tokio::fs::OpenOptions::new()
             .write(true)
@@ -446,7 +445,9 @@ pub async fn handle_install_component(
                     surface = "node",
                     service = "install",
                     action = "component.write",
-                    path = %target.display(),
+                    // lab-zxx5.27: redact $HOME to avoid leaking OS username
+                    // in operator logs. Per-runtime subdirs stay visible.
+                    path = %crate::dispatch::helpers::redact_home(&target.to_string_lossy()),
                     "wrote component file"
                 );
                 send_progress(progress_tx, &InstallProgressNotification::file_written(
@@ -584,7 +585,8 @@ pub async fn handle_agent_install(
                 surface = "node",
                 service = "install",
                 action = "agent.write",
-                path = %target.display(),
+                // lab-zxx5.27: redact $HOME (see component.write above).
+                path = %crate::dispatch::helpers::redact_home(&target.to_string_lossy()),
                 agent_id = %params.agent_id,
                 "wrote agent install descriptor"
             );

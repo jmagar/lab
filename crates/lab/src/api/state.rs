@@ -189,10 +189,27 @@ impl AppState {
 
     /// Returns `true` unless the current process is explicitly in `NonMaster` role.
     ///
-    /// **Security note:** this MUST read the same field as
-    /// [`crate::api::nodes::fleet::require_master_store`] (`node_role`). Any
-    /// divergence reintroduces the authorization surface split that was closed
-    /// by the device→node consolidation.
+    /// **Scope of this check vs. `require_master_store`** (lab-zxx5.27):
+    /// Both read `self.node_role` — that's the security invariant. But they
+    /// answer different questions:
+    /// - `is_master()` is used for ROUTE MOUNTING ("should this server expose
+    ///   controller-only routes at all?"). Returns `true` when `node_role` is
+    ///   `None` (unset = legacy default of master) or `Some(Master)`.
+    /// - `require_master_store()` is used PER-REQUEST ("can THIS request
+    ///   access the node store?") and additionally requires the fleet store
+    ///   to be configured. On a master-roled server without a store it
+    ///   fails closed at the handler.
+    ///
+    /// This asymmetry is intentional. Both paths fail closed on NonMaster.
+    /// A master-roled server without a store mounts controller routes (via
+    /// `is_master()`) but each request still fails at `require_master_store`
+    /// with a handler-level error, surfacing the misconfiguration. Do NOT
+    /// add the store check to `is_master()` — router-level gating on
+    /// runtime-state presence is the wrong layer.
+    ///
+    /// **Security note:** any NEW authorization gate in the codebase must
+    /// read `self.node_role` to stay consistent with this pair. Do not add
+    /// an alternate field or a separate role lookup.
     #[must_use]
     pub fn is_master(&self) -> bool {
         !matches!(self.node_role, Some(NodeRole::NonMaster))

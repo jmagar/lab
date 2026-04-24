@@ -677,17 +677,24 @@ fn decode_component_files(
     Ok(out)
 }
 
-/// Classify an install_component handler error for the JSON-RPC error
-/// envelope's `data.kind` field. Strings match docs/ERRORS.md taxonomy.
-fn error_kind(error: &anyhow::Error) -> &'static str {
-    let msg = error.to_string();
-    if msg.contains("symlink") {
-        "symlink_rejected"
-    } else if msg.contains("traversal") || msg.contains("absolute") || msg.contains("outside") {
-        "path_traversal_rejected"
-    } else {
-        "internal_error"
-    }
+/// Classify an `install_component` handler error for the JSON-RPC error
+/// envelope's `data.kind` field.
+///
+/// lab-zxx5.27 cleanup: the prior version string-matched on `error.to_string()`
+/// for `"symlink"` / `"traversal"` / `"absolute"` / `"outside"` to derive a
+/// kind, which is a taxonomy trap — a future `anyhow!("symlink-safe write")`
+/// would misclassify. The reality is that `handle_install_component` never
+/// bubbles per-file security failures through the top-level `Result`: path
+/// traversal / symlink / write errors go into `InstallComponentResult.errors`
+/// as per-file entries. Only truly unrecoverable setup failures (e.g.
+/// `resolve_write_root`, `create_dir_all` on the write root) reach this
+/// classifier, and those are all `internal_error`.
+///
+/// If a future refactor starts returning typed security errors at the
+/// handler boundary, replace this with a typed match.
+#[inline]
+fn error_kind(_error: &anyhow::Error) -> &'static str {
+    "internal_error"
 }
 
 async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) -> Value {

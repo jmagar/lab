@@ -399,7 +399,23 @@ fn agent_bin_dir(agent_id: &str) -> Result<PathBuf, ToolError> {
 }
 
 /// Validate an archive URL: require HTTPS, reject loopback/private hosts.
+///
+/// lab-zxx5.27 hardening:
+/// - reject `0.0.0.0` / `::` via `is_unspecified` (routes to listening
+///   loopback sockets on Linux)
+/// - reject IPv4-mapped IPv6 loopback (`::ffff:127.0.0.1`) via explicit
+///   unwrap of the mapped V4 form (Rust stable IPv6Addr::is_loopback only
+///   covers `::1`)
+/// - reject common homelab private TLDs in addition to `.local`
+///
+/// Known gap (DEFERRED): DNS rebinding is not mitigated here. The mitigation
+/// requires resolving the hostname AT CONNECT TIME and re-checking the
+/// resolved IP against the deny rules, which requires a custom
+/// `reqwest::dns::Resolve` implementation. Tracked as a follow-up.
 fn validate_archive_url(url: &str) -> Result<(), ToolError> {
+    const PRIVATE_SUFFIXES: &[&str] =
+        &[".local", ".internal", ".lan", ".intranet", ".corp", ".home"];
+
     let parsed = url::Url::parse(url).map_err(|e| ToolError::Sdk {
         sdk_kind: "invalid_param".to_string(),
         message: format!("invalid archive URL `{url}`: {e}"),
@@ -411,10 +427,12 @@ fn validate_archive_url(url: &str) -> Result<(), ToolError> {
         });
     }
     if let Some(host) = parsed.host_str() {
-        if host == "localhost"
-            || host.starts_with("127.")
-            || host == "::1"
-            || host.ends_with(".local")
+        let host_lower = host.to_ascii_lowercase();
+        if host_lower == "localhost"
+            || host_lower.starts_with("127.")
+            || host_lower == "::1"
+            || host_lower == "0.0.0.0"
+            || PRIVATE_SUFFIXES.iter().any(|s| host_lower.ends_with(s))
         {
             return Err(ToolError::Sdk {
                 sdk_kind: "invalid_param".to_string(),
@@ -422,14 +440,26 @@ fn validate_archive_url(url: &str) -> Result<(), ToolError> {
             });
         }
         if let Ok(addr) = host.parse::<std::net::IpAddr>() {
+            // Normalize IPv4-mapped IPv6 (::ffff:127.0.0.1) to the underlying
+            // IPv4 so the same rules apply. Rust's stable IPv6Addr::is_loopback
+            // only matches `::1`, missing mapped-v4 loopback otherwise.
+            let addr = match addr {
+                std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+                    Some(v4) => std::net::IpAddr::V4(v4),
+                    None => std::net::IpAddr::V6(v6),
+                },
+                other => other,
+            };
             let is_private = match addr {
                 std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
                 std::net::IpAddr::V6(v6) => v6.is_unique_local() || v6.is_unicast_link_local(),
             };
-            if is_private || addr.is_loopback() {
+            if is_private || addr.is_loopback() || addr.is_unspecified() {
                 return Err(ToolError::Sdk {
                     sdk_kind: "invalid_param".to_string(),
-                    message: format!("archive URL host `{host}` is a private/loopback address"),
+                    message: format!(
+                        "archive URL host `{host}` is a private/loopback/unspecified address"
+                    ),
                 });
             }
         }
@@ -500,8 +530,14 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
             Ok(None) => break,
             Err(_) => {
                 // Stall — clean up the partial file and surface install_timeout.
+                //
+                // Safe to `remove_file(dest)` unconditionally: `dest` is the
+                // path of a `NamedTempFile` created per call in `install_binary`.
+                // A concurrent `install_binary` for the same agent_id allocates
+                // its own tempfile with a distinct random suffix, so there is
+                // no cross-call delete race here.
                 drop(file);
-                let _ = tokio::fs::remove_file(dest).await;
+                drop(tokio::fs::remove_file(dest).await);
                 return Err(ToolError::Sdk {
                     sdk_kind: "install_timeout".to_string(),
                     message: format!(

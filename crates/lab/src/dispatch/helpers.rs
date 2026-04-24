@@ -11,6 +11,37 @@ use serde_json::Value;
 use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
 
+/// Replace the user's home-directory prefix with literal `~` so paths
+/// embedded in log events, response bodies, and error messages don't leak
+/// the OS username.
+///
+/// Preserves per-runtime subdirs (`~/.claude/plugins/` vs `~/.codex/plugins/`
+/// vs `~/.lab/bin/<agent_id>/` remain distinguishable). Safe on any input:
+/// if `HOME` is unset or the path doesn't sit under it, the input is
+/// returned unchanged.
+///
+/// lab-zxx5.27: promoted to shared helpers so `node/` install paths can
+/// call it without reaching into a sibling service's private module.
+#[must_use]
+pub fn redact_home(path: &str) -> String {
+    let Some(home) = std::env::var_os("HOME") else {
+        return path.to_string();
+    };
+    let home = home.to_string_lossy();
+    let home = home.trim_end_matches('/');
+    if home.is_empty() {
+        return path.to_string();
+    }
+    if let Some(rest) = path.strip_prefix(home) {
+        let rest = rest.trim_start_matches('/');
+        if rest.is_empty() {
+            return "~".to_string();
+        }
+        return format!("~/{rest}");
+    }
+    path.to_string()
+}
+
 /// Reject any path input that contains a `Component::ParentDir` (`..`) segment.
 ///
 /// This is a **lexical** check only. Callers that join the input against a
@@ -333,6 +364,7 @@ pub fn instance_env_keys(prefix: &str, label: &str) -> (String, String) {
 /// the creation and permission assignment happen atomically. Subsequent opens
 /// by the pool do not change permissions.
 #[cfg(unix)]
+#[allow(dead_code)]
 pub fn create_db_file_0600(path: &std::path::PathBuf) {
     use std::os::unix::fs::OpenOptionsExt;
     // Only set mode on creation; if the file already exists, leave perms alone.

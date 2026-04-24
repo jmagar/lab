@@ -561,11 +561,11 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{browser_routes, callback_subject, gateway_routes};
-    use crate::{api::oauth::AuthContext, api::state::AppState, config::DeviceRole};
+    use crate::{api::oauth::AuthContext, api::state::AppState, config::NodeRole};
 
     #[tokio::test]
     async fn callback_rejects_non_master_requests() {
-        let state = AppState::new().with_node_role(DeviceRole::NonMaster);
+        let state = AppState::new().with_node_role(NodeRole::NonMaster);
         let app = browser_routes(state.clone()).with_state(state);
 
         let response = app
