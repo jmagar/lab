@@ -56,14 +56,17 @@ subtle                       = "2"
 indexmap                     = { version = "2", features = ["serde"] }
 secrecy                      = "0.8"
 sha2                         = "0.10"
+hmac.workspace               = true
 chacha20poly1305             = "0.10"
 dashmap                      = "6"
+arc-swap                     = "1"
 tokio-util                   = { version = "0.7", features = ["rt", "compat"] }
 strip-ansi-escapes           = "0.2"
 agent-client-protocol        = "0"
 
+hex                          = "0.4"
+
 # optional — deploy feature
-hex                          = { version = "0.4", optional = true }
 regex                        = { version = "1", optional = true }
 
 rmcp.workspace               = true
@@ -126,7 +129,7 @@ qdrant      = ["lab-apis/qdrant"]
 tei         = ["lab-apis/tei"]
 
 # deploy — push the local lab release binary to SSH targets
-deploy      = ["lab-apis/deploy", "dep:hex", "dep:regex"]
+deploy      = ["lab-apis/deploy", "dep:regex"]
 
 # internal admin / onboarding tooling
 # Intentionally local-only — no lab-apis counterpart, lab_admin performs
