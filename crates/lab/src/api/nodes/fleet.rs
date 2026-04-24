@@ -76,6 +76,15 @@ pub async fn send_to_node(node_id: &str, msg: Message) -> Result<(), NodeDispatc
     })
 }
 
+/// Convenience wrapper: send a JSON text frame to a connected node.
+///
+/// Callers outside the API layer (e.g. the dispatch layer) use this so they
+/// don't need to import `axum::extract::ws::Message` directly.
+#[allow(dead_code)]
+pub async fn send_text_to_node(node_id: &str, text: String) -> Result<(), NodeDispatchError> {
+    send_to_node(node_id, Message::Text(text.into())).await
+}
+
 pub async fn list_nodes(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, ToolError> {
@@ -985,5 +994,42 @@ mod tests {
             Message::Text(text) => serde_json::from_str(&text).expect("json"),
             other => panic!("unexpected websocket message: {other:?}"),
         }
+    }
+
+    // Authorization invariant: `require_master_store` must read `node_role`
+    // (consolidated by bead lab-yn60). A NonMaster AppState must be rejected
+    // even if a node_store happens to be attached. Regression test for the
+    // authorization-surface split closed by the device→node consolidation.
+    #[tokio::test]
+    async fn require_master_store_rejects_non_master_app_state() {
+        let store = Arc::new(crate::node::store::NodeStore::default());
+        let state = AppState::new()
+            .with_node_store(store)
+            .with_node_role(NodeRole::NonMaster);
+
+        let result = require_master_store(&state);
+        assert!(result.is_err(), "NonMaster must be rejected");
+        let err = result.err().expect("err");
+        assert_eq!(err.kind(), "not_found", "kind must be not_found, was {}", err.kind());
+        assert!(!state.is_master(), "is_master() must agree with require_master_store()");
+    }
+
+    #[tokio::test]
+    async fn require_master_store_allows_master_with_store() {
+        let store = Arc::new(crate::node::store::NodeStore::default());
+        let state = AppState::new()
+            .with_node_store(Arc::clone(&store))
+            .with_node_role(NodeRole::Master);
+        assert!(state.is_master(), "Master role must be is_master()");
+        assert!(require_master_store(&state).is_ok(), "Master with store must be allowed");
+    }
+
+    #[tokio::test]
+    async fn require_master_store_allows_unset_role_with_store() {
+        // Legacy: callers that don't set a role default to Master (via is_master()).
+        let store = Arc::new(crate::node::store::NodeStore::default());
+        let state = AppState::new().with_node_store(store);
+        assert!(state.is_master(), "unset role defaults to master");
+        assert!(require_master_store(&state).is_ok());
     }
 }

@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
 use super::types::RawLogEvent;
-use crate::device::master_client::MasterClient;
+use crate::node::master_client::MasterClient;
 
 /// Configuration for a syslog forward session.
 ///

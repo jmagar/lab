@@ -2553,7 +2553,7 @@ async fn connect_in_process_service_peer(
     let server = LabMcpServer {
         registry: Arc::new(registry),
         gateway_manager: None,
-        device_role: None,
+        node_role: None,
         peers: Arc::new(RwLock::new(Vec::new())),
         logging_level: Arc::new(AtomicU8::new(logging_level_rank(LoggingLevel::Emergency))),
     };

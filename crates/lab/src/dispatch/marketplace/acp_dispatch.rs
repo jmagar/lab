@@ -22,7 +22,7 @@ use crate::dispatch::marketplace::acp_catalog::ACP_ACTIONS;
 use crate::dispatch::marketplace::acp_client;
 
 #[cfg(feature = "acp_registry")]
-use crate::api::device::fleet::{FleetDispatchError, send_text_to_device};
+use crate::api::nodes::fleet::{NodeDispatchError, send_text_to_node};
 
 #[cfg(feature = "acp_registry")]
 use lab_apis::acp_registry::client::AcpRegistryClient;
@@ -304,16 +304,16 @@ async fn install_remote(
     })
     .to_string();
 
-    send_text_to_device(device_id, msg)
+    send_text_to_node(device_id, msg)
         .await
         .map_err(|e| match e {
-            FleetDispatchError::NotConnected { .. } => ToolError::Sdk {
+            NodeDispatchError::NotConnected { .. } => ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
-                message: format!("device `{device_id}` is not connected"),
+                message: format!("node `{device_id}` is not connected"),
             },
-            FleetDispatchError::ChannelClosed { .. } => ToolError::Sdk {
+            NodeDispatchError::ChannelClosed { .. } => ToolError::Sdk {
                 sdk_kind: "network_error".to_string(),
-                message: format!("send channel for device `{device_id}` closed (race with disconnect)"),
+                message: format!("send channel for node `{device_id}` closed (race with disconnect)"),
             },
         })?;
 

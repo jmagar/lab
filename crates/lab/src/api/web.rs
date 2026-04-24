@@ -8,7 +8,7 @@ use axum::{
 };
 
 use super::state::AppState;
-use crate::config::DeviceRole;
+use crate::config::NodeRole;
 
 fn sanitize_relative_path(path: &str) -> PathBuf {
     let trimmed = path.trim_start_matches('/');
@@ -81,10 +81,10 @@ pub async fn serve_web_request(State(state): State<AppState>, request: Request) 
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    if matches!(state.device_role, Some(DeviceRole::NonMaster)) {
+    if matches!(state.node_role, Some(NodeRole::NonMaster)) {
         tracing::warn!(
             path = %request.uri().path(),
-            "rejected web ui request on non-master device"
+            "rejected web ui request on non-master node"
         );
         return (
             StatusCode::FORBIDDEN,
