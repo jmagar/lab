@@ -58,14 +58,24 @@ export const AgentInstructions = memo(
   ),
 )
 
-export type AgentToolsProps = ComponentProps<typeof Accordion>
+export type AgentToolsProps = Omit<ComponentProps<typeof Accordion>, "type"> & {
+  wrapperClassName?: string
+}
 
-export const AgentTools = memo(({ className, ...props }: AgentToolsProps) => (
-  <div className={cn("space-y-2", className)}>
-    <span className="font-medium text-muted-foreground text-sm">Tools</span>
-    <Accordion className="rounded-md border" type="multiple" {...props} />
-  </div>
-))
+export const AgentTools = memo(
+  ({ className, wrapperClassName, ...props }: AgentToolsProps) => (
+    <div className={cn("space-y-2", wrapperClassName)}>
+      <span className="font-medium text-muted-foreground text-sm">Tools</span>
+      {/* className now lands on the declared target (Accordion), not the
+          outer wrapper. Wrapper styling is opt-in via wrapperClassName. */}
+      <Accordion
+        type="multiple"
+        {...props}
+        className={cn("rounded-md border", className)}
+      />
+    </div>
+  ),
+)
 
 interface ToolSchema {
   description?: string

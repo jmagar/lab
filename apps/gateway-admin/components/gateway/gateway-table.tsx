@@ -327,20 +327,24 @@ export function GatewayTable({
                       {endpointPreview}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[9px] text-aurora-text-muted">
-                      <span data-mobile-metric="tools" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <Wrench className="size-3 text-aurora-text-muted" />
+                      <span data-mobile-metric="tools" className="inline-flex items-center gap-1 whitespace-nowrap" title="Tools">
+                        <Wrench className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Tools:</span>
                         <strong className="text-[10px] font-semibold text-aurora-text-primary">{gateway.status.exposed_tool_count}</strong>
                       </span>
-                      <span data-mobile-metric="resources" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <FileText className="size-3 text-aurora-text-muted" />
+                      <span data-mobile-metric="resources" className="inline-flex items-center gap-1 whitespace-nowrap" title="Resources">
+                        <FileText className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Resources:</span>
                         <strong className="text-[10px] font-semibold text-aurora-text-primary">{gateway.status.exposed_resource_count}</strong>
                       </span>
-                      <span data-mobile-metric="prompts" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <MessageSquare className="size-3 text-aurora-text-muted" />
+                      <span data-mobile-metric="prompts" className="inline-flex items-center gap-1 whitespace-nowrap" title="Prompts">
+                        <MessageSquare className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Prompts:</span>
                         <strong className="text-[10px] font-semibold text-aurora-text-primary">{gateway.status.exposed_prompt_count}</strong>
                       </span>
-                      <span data-mobile-metric="runtime" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <RefreshCw className="size-3 text-aurora-text-muted" />
+                      <span data-mobile-metric="runtime" className="inline-flex items-center gap-1 whitespace-nowrap" title="Runtime age">
+                        <RefreshCw className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Runtime age:</span>
                         <strong className="text-[10px] font-semibold text-aurora-text-primary">{runtimeLabel}</strong>
                       </span>
                     </div>

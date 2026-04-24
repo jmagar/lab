@@ -18,21 +18,6 @@ type ToolUIPartApproval =
       approved: boolean
       reason?: string
     }
-  | {
-      id: string
-      approved: true
-      reason?: string
-    }
-  | {
-      id: string
-      approved: true
-      reason?: string
-    }
-  | {
-      id: string
-      approved: false
-      reason?: string
-    }
   | undefined
 
 interface ConfirmationContextValue {
@@ -58,7 +43,14 @@ export type ConfirmationProps = ComponentProps<typeof Alert> & {
 }
 
 export const Confirmation = ({ className, approval, state, ...props }: ConfirmationProps) => {
-  if (!approval || state === "input-streaming" || state === "input-available") {
+  if (
+    !approval ||
+    state === "input-streaming" ||
+    state === "input-available" ||
+    // No child renders for output-error, so an empty Alert would be shown.
+    // Skip rendering entirely to avoid a blank box.
+    state === "output-error"
+  ) {
     return null
   }
 

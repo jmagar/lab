@@ -2,7 +2,7 @@
 
 import { Brain, ChevronDown, Dot, type LucideIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
-import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
@@ -47,12 +47,15 @@ export const ChainOfThought = memo(function ChainOfThought({
     setInternalOpen(open)
   }, [isControlled, open])
 
-  const setIsOpen = (nextOpen: boolean) => {
-    if (!isControlled) {
-      setInternalOpen(nextOpen)
-    }
-    onOpenChange?.(nextOpen)
-  }
+  const setIsOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (!isControlled) {
+        setInternalOpen(nextOpen)
+      }
+      onOpenChange?.(nextOpen)
+    },
+    [isControlled, onOpenChange],
+  )
 
   const value = useMemo(() => ({ isOpen, setIsOpen }), [isOpen, setIsOpen])
 

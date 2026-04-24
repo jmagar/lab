@@ -147,9 +147,17 @@ export const InlineCitationCarouselIndex = ({
     const onSelect = () => {
       setCurrent(api.selectedScrollSnap() + 1)
     }
+    const onReInit = () => {
+      // Recount snaps when slides are added/removed — otherwise `count`
+      // goes stale if the carousel's contents change after first mount.
+      setCount(api.scrollSnapList().length)
+      setCurrent(api.selectedScrollSnap() + 1)
+    }
     api.on("select", onSelect)
+    api.on("reInit", onReInit)
     return () => {
       api.off("select", onSelect)
+      api.off("reInit", onReInit)
     }
   }, [api])
 
