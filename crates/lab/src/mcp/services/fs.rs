@@ -35,10 +35,13 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str};
 /// MCP-exposed slice of the fs action catalog. Filters out `fs.preview`.
 pub static ACTIONS: &[ActionSpec] = MCP_ACTIONS;
 
-/// Canonical action names that are intentionally filtered out of the MCP
-/// surface (HTTP-only). Shared between the dispatch rejection arm and the
-/// coverage test so adding a new HTTP-only action touches exactly one place.
-const HTTP_ONLY_ACTIONS: &[&str] = &["fs.preview"];
+/// Canonical actions that are intentionally filtered out of the MCP surface
+/// (HTTP-only) along with the HTTP route the rejection envelope should point
+/// callers at. Shared between the dispatch rejection arm and the coverage
+/// test so adding a new HTTP-only action touches exactly one place. Storing
+/// the route explicitly avoids a fragile fs.* → /v1/fs/* string derivation
+/// when a future HTTP-only action does not follow that mapping.
+const HTTP_ONLY_ACTIONS: &[(&str, &str)] = &[("fs.preview", "/v1/fs/preview")];
 
 /// Compile-time filtered view of [`crate::dispatch::fs::catalog::ACTIONS`].
 ///
@@ -87,12 +90,10 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let a = require_str(&params, "action")?;
             action_schema(MCP_ACTIONS, a)
         }
-        other if HTTP_ONLY_ACTIONS.contains(&other) => {
-            // All HTTP-only actions today live under /v1/fs/<tail>.
-            let tail = other.strip_prefix("fs.").unwrap_or(other);
-            Err(http_only_error(other, &format!("/v1/fs/{tail}")))
-        }
-        other => crate::dispatch::fs::dispatch(other, params).await,
+        other => match HTTP_ONLY_ACTIONS.iter().find(|(name, _)| *name == other) {
+            Some((_, http_path)) => Err(http_only_error(other, http_path)),
+            None => crate::dispatch::fs::dispatch(other, params).await,
+        },
     }
 }
 
@@ -111,8 +112,7 @@ mod tests {
     fn mcp_actions_cover_canonical_except_http_only() {
         let mcp_names: Vec<&str> = MCP_ACTIONS.iter().map(|a| a.name).collect();
         for canonical in crate::dispatch::fs::catalog::ACTIONS {
-            if HTTP_ONLY_ACTIONS.contains(&canonical.name) {
-                // Intentionally excluded — assert it's NOT in MCP.
+            if HTTP_ONLY_ACTIONS.iter().any(|(name, _)| *name == canonical.name) {
                 assert!(
                     !mcp_names.contains(&canonical.name),
                     "`{}` is in HTTP_ONLY_ACTIONS but still present in MCP_ACTIONS",

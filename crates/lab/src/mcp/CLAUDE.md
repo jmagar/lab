@@ -94,14 +94,25 @@ equivalent env-driven refusal: `fs` is registered unconditionally in
 `registry.rs` whenever the `fs` feature is compiled in, regardless of
 MCP transport auth posture.
 
-Operators are responsible for ensuring MCP transport auth is active
-before exposing a server that has the `fs` feature enabled:
+Existing hard checks (enforced in code):
+
+- Router: `/v1/fs` refuses to mount when
+  `LAB_WEB_UI_AUTH_DISABLED=true` (`api/router.rs`). This is the only
+  enforcement that fires in the LAB_WEB_UI_AUTH_DISABLED + LAN-bind
+  scenario, because the bind guard below treats a configured bearer
+  token as "auth configured" even though the `/v1` middleware has been
+  bypassed.
+- Bind: `cli/serve.rs` refuses to bind on a non-loopback address when
+  no auth is configured at all (no bearer token, no OAuth). Does NOT
+  fire when `LAB_WEB_UI_AUTH_DISABLED=true` is paired with a token —
+  that case relies on the router-level fs mount refusal above.
+
+Operator-side (not enforced in code) — must be ensured before exposing
+a server that has the `fs` feature enabled:
 
 - `lab serve` (HTTP transport, the default): require
-  `LAB_MCP_HTTP_TOKEN` or `LAB_AUTH_MODE=oauth`. The non-loopback bind
-  guard in `cli/serve.rs` already refuses to bind on a LAN-accessible
-  address with no auth configured; do not relax that check while `fs`
-  is feature-enabled.
+  `LAB_MCP_HTTP_TOKEN` or `LAB_AUTH_MODE=oauth`. Do not relax this
+  while `fs` is feature-enabled.
 - `lab serve mcp --stdio`: stdio has no transport-level auth. Ensure
   the process is not reachable by untrusted callers — do not expose it
   through a network proxy without front-side auth.
