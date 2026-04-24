@@ -111,6 +111,62 @@ mod tests {
         }
     }
 
+    /// Deep field-by-field equality between every MCP_ACTIONS entry and its
+    /// canonical counterpart in `dispatch::fs::ACTIONS`. Locks the invariant
+    /// that the redeclaration here is a pure subset — descriptions, params,
+    /// returns, and destructive metadata must not drift. If this test fails
+    /// after a catalog edit, update MCP_ACTIONS to mirror the canonical entry
+    /// — do NOT weaken this assertion.
+    #[test]
+    fn mcp_actions_deep_match_canonical() {
+        for mcp in MCP_ACTIONS {
+            let canonical = crate::dispatch::fs::ACTIONS
+                .iter()
+                .find(|c| c.name == mcp.name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "MCP action `{}` missing from canonical catalog",
+                        mcp.name
+                    )
+                });
+            assert_eq!(
+                mcp.description, canonical.description,
+                "description drift on `{}`",
+                mcp.name
+            );
+            assert_eq!(
+                mcp.destructive, canonical.destructive,
+                "destructive drift on `{}`",
+                mcp.name
+            );
+            assert_eq!(
+                mcp.returns, canonical.returns,
+                "returns drift on `{}`",
+                mcp.name
+            );
+            assert_eq!(
+                mcp.params.len(),
+                canonical.params.len(),
+                "params length drift on `{}`",
+                mcp.name
+            );
+            for (m, c) in mcp.params.iter().zip(canonical.params.iter()) {
+                assert_eq!(m.name, c.name, "param name drift on `{}`", mcp.name);
+                assert_eq!(m.ty, c.ty, "param ty drift on `{}::{}`", mcp.name, m.name);
+                assert_eq!(
+                    m.required, c.required,
+                    "param required drift on `{}::{}`",
+                    mcp.name, m.name
+                );
+                assert_eq!(
+                    m.description, c.description,
+                    "param description drift on `{}::{}`",
+                    mcp.name, m.name
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn dispatch_rejects_fs_preview_with_http_only_kind() {
         let err = dispatch("fs.preview", serde_json::json!({"path": "foo"}))
