@@ -14,7 +14,7 @@ use axum::{
     body::Body,
     extract::{Query, State},
     http::{HeaderName, HeaderValue, StatusCode, header},
-    response::{IntoResponse, Response},
+    response::Response,
     routing::get,
 };
 use serde::Deserialize;
@@ -192,14 +192,23 @@ fn log_ok(
 }
 
 fn log_err(action: &'static str, elapsed_ms: u128, err: &ToolError, path: Option<&str>) {
+    let kind = err.kind();
+    // Omit `path` for error kinds where it is either an exfiltration oracle
+    // (`not_found` aliases the deny-list — logging the probed path defeats
+    // the ambiguity) or a low-value raw-input dump that may carry an attack
+    // payload (`invalid_param`, `missing_param`).
+    let logged_path = match kind {
+        "not_found" | "invalid_param" | "missing_param" => None,
+        _ => path,
+    };
     if err.is_internal() {
         tracing::error!(
             surface = "api",
             service = "fs",
             action,
             elapsed_ms,
-            kind = err.kind(),
-            path,
+            kind,
+            path = logged_path,
             "dispatch error"
         );
     } else {
@@ -208,8 +217,8 @@ fn log_err(action: &'static str, elapsed_ms: u128, err: &ToolError, path: Option
             service = "fs",
             action,
             elapsed_ms,
-            kind = err.kind(),
-            path,
+            kind,
+            path = logged_path,
             "dispatch error"
         );
     }
