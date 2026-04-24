@@ -55,6 +55,7 @@ Dispatch layers may add the following kinds on top of SDK errors:
 - `invalid_param`
 - `unknown_instance`
 - `conflict` — resource already exists with the given identifier; HTTP 409
+- `ambiguous_tool` — unqualified tool name resolved to multiple upstream gateway candidates; envelope carries `valid: Vec<String>` of fully-qualified `{upstream}::{tool}` names the caller must choose from. HTTP 409.
 
 ### mcpregistry-specific kinds
 
@@ -285,6 +286,8 @@ Default mapping expectations:
 - `invalid_param` -> `422 Unprocessable Entity`
 - `unknown_action` -> `400 Bad Request`
 - `unknown_instance` -> `400 Bad Request`
+- `ambiguous_tool` -> `409 Conflict`
+- `conflict` -> `409 Conflict`
 - `confirmation_required` -> `422 Unprocessable Entity`
 - `sync_in_progress` -> `503 Service Unavailable`
 - `invalid_grant` -> `400 Bad Request`
