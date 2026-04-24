@@ -170,6 +170,16 @@ impl AppState {
         self
     }
 
+    /// Attach the canonical workspace-root path for the filesystem browser
+    /// service. Callers should pass an already-canonicalized, existing
+    /// absolute path — the fs service assumes `starts_with` checks against
+    /// this value are sound.
+    #[must_use]
+    pub fn with_workspace_root(mut self, root: PathBuf) -> Self {
+        self.workspace_root = Some(Arc::new(root));
+        self
+    }
+
     /// Disable auth on `/v1/*` while leaving `/mcp` auth unchanged.
     #[must_use]
     pub fn with_web_ui_auth_disabled(mut self, disabled: bool) -> Self {
