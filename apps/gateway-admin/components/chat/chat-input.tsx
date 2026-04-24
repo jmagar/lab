@@ -74,8 +74,10 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
     })
   }
 
-  const removeAttachment = (path: string) => {
-    setAttachments((prev) => prev.filter((a) => a.path !== path))
+  const removeAttachment = (ref: AttachmentRef) => {
+    // Match on the compound (kind, path) key so a future Drive-kind variant
+    // with the same path as a file attachment is not removed by collision.
+    setAttachments((prev) => prev.filter((a) => a.kind !== ref.kind || a.path !== ref.path))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -186,7 +188,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
               <li key={attachment.path}>
                 <AttachmentChip
                   attachment={attachment}
-                  onRemove={() => removeAttachment(attachment.path)}
+                  onRemove={() => removeAttachment(attachment)}
                 />
               </li>
             ))}
