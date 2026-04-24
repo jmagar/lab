@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TransportBadge } from './transport-badge'
 import { ToolExposureTable } from './tool-exposure-table'
+import { PrimitiveExposureTable } from './primitive-exposure-table'
 import { GatewayFormDialog } from './gateway-form-dialog'
 import { DisableGatewayDialog } from './disable-gateway-dialog'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
@@ -75,6 +76,27 @@ interface GatewayDetailContentProps {
   gatewayId: string | null
 }
 
+function formatGatewayTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return 'Unknown'
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(parsed)
+}
+
 export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const router = useRouter()
   const { data: gateway, isLoading, error } = useGateway(gatewayId)
@@ -110,6 +132,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set())
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
   const [cleanupResult, setCleanupResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof cleanupGateway>> } | null>(null)
+  const [hasMounted, setHasMounted] = useState(false)
   const toolExposureSignature = useMemo(
     () =>
       (gateway?.discovery.tools ?? [])
@@ -172,6 +195,10 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     },
     [gateway?.discovery.prompts, inventorySearch],
   )
+
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
 
   useEffect(() => {
     setDraftSelectedToolNames(currentExposedToolNames)
@@ -307,7 +334,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     }
   }
 
-  if (isLoading) {
+  if (!hasMounted || isLoading) {
     return (
       <>
         <AppHeader
@@ -550,7 +577,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     </div>
   )
 
-  const updatedAtLabel = new Date(gateway.updated_at).toLocaleString()
+  const updatedAtLabel = formatGatewayTimestamp(gateway.updated_at)
   const endpointDisplay =
     gateway.transport === 'http'
       ? gateway.config.url
@@ -684,6 +711,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       value={inventorySearch}
                       onChange={(event) => setInventorySearch(event.target.value)}
                       placeholder="Search tools, resources, and prompts..."
+                      name="catalog-search"
+                      aria-label="Search tools, resources, and prompts"
                       className="flex h-10 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-[var(--aurora-accent-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--aurora-accent-primary)]/34"
                     />
                   </div>
@@ -696,7 +725,8 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       <button
                         key={value}
                         type="button"
-                        onClick={() => setInventoryFilter(value)}
+                        // Toggle: clicking an already-selected chip returns to the 'all' view.
+                        onClick={() => setInventoryFilter(inventoryFilter === value ? 'all' : value)}
                         className={cn(
                           'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[13px] font-medium transition-colors',
                           inventoryFilter === value
@@ -711,23 +741,25 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                         <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px]">{count}</Badge>
                       </button>
                     ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setManageToolsMode((current) => !current)}
-                      className={cn(
-                        'size-8 rounded-full',
-                        manageToolsMode
-                          ? 'border-aurora-accent-primary/28 bg-[linear-gradient(180deg,rgba(16,35,48,0.96),rgba(11,25,35,0.98))] text-aurora-text-primary shadow-[var(--aurora-active-glow)]'
-                          : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-muted',
-                      )}
-                      aria-pressed={manageToolsMode}
-                      aria-label="Manage tools"
-                      title="Manage tools"
-                    >
-                      <SlidersHorizontal className="size-3.5" />
-                    </Button>
+                    {inventoryFilter === 'tools' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setManageToolsMode((current) => !current)}
+                        className={cn(
+                          'size-8 rounded-full',
+                          manageToolsMode
+                            ? 'border-aurora-accent-primary/28 bg-[linear-gradient(180deg,rgba(16,35,48,0.96),rgba(11,25,35,0.98))] text-aurora-text-primary shadow-[var(--aurora-active-glow)]'
+                            : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-muted',
+                        )}
+                        aria-pressed={manageToolsMode}
+                        aria-label="Manage tools"
+                        title="Manage tools"
+                      >
+                        <SlidersHorizontal className="size-3.5" />
+                      </Button>
+                    ) : null}
                     {gateway.warnings.length > 0 ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -788,135 +820,72 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
               ) : null}
 
               {(inventoryFilter === 'all' || inventoryFilter === 'resources') ? (
-                <div className="rounded-lg border bg-aurora-panel-medium p-5">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Discovered MCP Resources</h2>
-                  <p className="text-sm text-aurora-text-muted">
-                    Resource exposure is managed as a surface-level setting for this gateway.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
-                    <span>{filteredResources.length}/{gateway.discovery.resources.length}</span>
-                    <span>visible</span>
-                  </div>
-                  <Badge variant="outline" className="rounded-full px-3 py-1 text-aurora-text-muted">
-                    {resourceExposureEnabled ? 'Resources exposed' : 'Resources hidden'}
-                  </Badge>
-                </div>
-              </div>
-              {gateway.discovery.resources.length === 0 ? (
-                <div className="text-center py-8 text-aurora-text-muted">
-                  <FileText className="size-8 mx-auto mb-3 opacity-50" />
-                  <p>No resources discovered</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredResources.map((resource) => (
-                    <div key={resource.name} className="flex items-start justify-between gap-4 rounded-lg border p-4">
-                      <div className="min-w-0">
-                        <code className="text-sm font-mono font-medium">{resource.name}</code>
-                        {resource.description && (
-                          <p className="text-sm text-aurora-text-muted mt-1">{resource.description}</p>
-                        )}
-                      </div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <code className="shrink-0 max-w-[18rem] truncate text-xs text-aurora-text-muted bg-aurora-control-surface px-2 py-1 rounded cursor-default">
-                            {resource.uri}
-                          </code>
-                        </TooltipTrigger>
-                        <TooltipContent side="left" className="max-w-sm break-all font-mono text-xs">
-                          {resource.uri}
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  ))}
-                </div>
-              )}
-                </div>
+                <PrimitiveExposureTable
+                  title="Discovered MCP Resources"
+                  description="Search and manage which upstream resources are exposed through this gateway."
+                  searchPlaceholder="Search resources"
+                  manageLabel="Manage resources"
+                  emptyLabel="No resources discovered"
+                  exposureEnabled={resourceExposureEnabled}
+                  icon={FileText}
+                  items={gateway.discovery.resources.map((resource) => ({
+                    name: resource.name,
+                    description: resource.description,
+                    secondary: resource.uri,
+                    exposed: resource.exposed,
+                  }))}
+                  searchValue={inventorySearch}
+                  onSearchValueChange={setInventorySearch}
+                  onSaveSelection={async (selectedNames) => {
+                    try {
+                      await updateGateway(gateway.id, {
+                        config: {
+                          expose_resources: selectedNames,
+                        },
+                      })
+                      toast.success('Resource exposure updated.')
+                    } catch (error) {
+                      toast.error(getErrorMessage(error, 'Failed to update resource exposure'))
+                      throw error
+                    }
+                  }}
+                />
               ) : null}
 
               {(inventoryFilter === 'all' || inventoryFilter === 'prompts') ? (
-                <div className="rounded-lg border bg-aurora-panel-medium p-5">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Discovered MCP Prompts</h2>
-                  <p className="text-sm text-aurora-text-muted">
-                    Prompts are upstream-derived. Click a prompt to expand arguments and details.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
-                    <span>{filteredPrompts.length}/{gateway.discovery.prompts.length}</span>
-                    <span>visible</span>
-                  </div>
-                </div>
-              </div>
-              {gateway.discovery.prompts.length === 0 ? (
-                <div className="text-center py-8 text-aurora-text-muted">
-                  <MessageSquare className="size-8 mx-auto mb-3 opacity-50" />
-                  <p>No prompts discovered</p>
-                </div>
-              ) : (
-                <div className="divide-y rounded-lg border">
-                  {filteredPrompts.map((prompt) => {
-                    const isExpanded = expandedPrompts.has(prompt.name)
-                    const hasArgs = prompt.arguments && prompt.arguments.length > 0
-                    return (
-                      <div key={prompt.name} className="overflow-hidden first:rounded-t-lg last:rounded-b-lg">
-                        <button
-                          type="button"
-                          onClick={() => togglePrompt(prompt.name)}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-aurora-control-surface/30 transition-colors"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <code className="break-all text-sm font-mono font-medium">{prompt.name}</code>
-                            {hasArgs && (
-                              <Badge variant="secondary" className="text-xs shrink-0">
-                                {prompt.arguments!.length} arg{prompt.arguments!.length !== 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                          <ChevronDown
-                            className={`size-4 text-aurora-text-muted shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                          />
-                        </button>
-                        {isExpanded && (
-                          <div className="px-4 pb-4 border-t bg-aurora-control-surface/10 space-y-3">
-                            {prompt.description && (
-                              <p className="text-sm text-aurora-text-muted pt-3">{prompt.description}</p>
-                            )}
-                            {hasArgs && (
-                              <div className="space-y-2">
-                                <p className="text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted">Arguments</p>
-                                <div className="space-y-1">
-                                  {prompt.arguments!.map((arg) => (
-                                    <div key={arg.name} className="flex items-start gap-3 rounded-md border bg-aurora-page-bg px-3 py-2">
-                                      <code className="text-xs font-mono font-medium shrink-0">
-                                        {arg.name}
-                                        {arg.required && <span className="text-destructive ml-0.5">*</span>}
-                                      </code>
-                                      {arg.description && (
-                                        <p className="text-xs text-aurora-text-muted">{arg.description}</p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {!prompt.description && !hasArgs && (
-                              <p className="text-sm text-aurora-text-muted pt-3">No additional details available.</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-                </div>
+                <PrimitiveExposureTable
+                  title="Discovered MCP Prompts"
+                  description="Search and manage which upstream prompts are exposed through this gateway."
+                  searchPlaceholder="Search prompts"
+                  manageLabel="Manage prompts"
+                  emptyLabel="No prompts discovered"
+                  exposureEnabled={promptExposureEnabled}
+                  icon={MessageSquare}
+                  items={gateway.discovery.prompts.map((prompt) => ({
+                    name: prompt.name,
+                    description: prompt.description,
+                    secondary:
+                      prompt.arguments && prompt.arguments.length > 0
+                        ? `${prompt.arguments.length} arg${prompt.arguments.length === 1 ? '' : 's'}`
+                        : undefined,
+                    exposed: prompt.exposed,
+                  }))}
+                  searchValue={inventorySearch}
+                  onSearchValueChange={setInventorySearch}
+                  onSaveSelection={async (selectedNames) => {
+                    try {
+                      await updateGateway(gateway.id, {
+                        config: {
+                          expose_prompts: selectedNames,
+                        },
+                      })
+                      toast.success('Prompt exposure updated.')
+                    } catch (error) {
+                      toast.error(getErrorMessage(error, 'Failed to update prompt exposure'))
+                      throw error
+                    }
+                  }}
+                />
               ) : null}
             </div>
           </TabsContent>
@@ -933,7 +902,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 <div className="border-b px-4 py-3">
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-aurora-text-muted">Client JSON</p>
                 </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-aurora-text-primary">
+                <pre className="aurora-scrollbar overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-aurora-text-primary">
                   <code>{clientConfigJson}</code>
                 </pre>
               </div>
@@ -1176,9 +1145,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     <div className="rounded-md border bg-aurora-control-surface/10 p-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Last reconciled</p>
                       <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
-                        {gateway.status.reconciled_at
-                          ? new Date(gateway.status.reconciled_at).toLocaleString()
-                          : 'Unknown'}
+                        {formatGatewayTimestamp(gateway.status.reconciled_at)}
                       </p>
                     </div>
                   </div>
@@ -1209,7 +1176,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                         </p>
                         <p className="text-sm text-aurora-text-muted mt-0.5">{warning.message}</p>
                         <p className="text-xs text-aurora-text-muted mt-2">
-                          {new Date(warning.timestamp).toLocaleString()}
+                          {formatGatewayTimestamp(warning.timestamp)}
                         </p>
                       </div>
                     </div>
