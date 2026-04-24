@@ -70,33 +70,28 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     result
 }
 
-async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError> {
-    // On the MCP/CLI path, fs.preview is not serviceable — the streaming
-    // byte body cannot be returned through a JSON action-dispatch envelope.
-    // Surface the stable `http_only` kind BEFORE resolving the workspace
-    // root so callers get a deterministic error regardless of config state.
-    #[cfg(feature = "fs")]
-    if action == "fs.preview" {
-        return Err(ToolError::Sdk {
+/// Handle catalog-discovery actions and HTTP-only refusals that must fire
+/// regardless of workspace configuration. Returns `Some(_)` when the action
+/// was handled, `None` to delegate to the service-specific path.
+fn handle_builtin(action: &str, params: &Value) -> Option<Result<Value, ToolError>> {
+    match action {
+        "help" => Some(Ok(help_payload("fs", ACTIONS))),
+        "schema" => Some(match require_str(params, "action") {
+            Ok(a) => action_schema(ACTIONS, a),
+            Err(e) => Err(e),
+        }),
+        "fs.preview" => Some(Err(ToolError::Sdk {
             sdk_kind: "http_only".to_string(),
             message: "fs.preview is not available on the MCP surface; use GET /v1/fs/preview"
                 .to_string(),
-        });
+        })),
+        _ => None,
     }
+}
 
-    // help/schema are catalog-discovery actions and MUST stay reachable
-    // regardless of workspace configuration state. Per
-    // `dispatch/CLAUDE.md`, "the catalog and `lab help` stay discoverable
-    // regardless of env state" — so we resolve them BEFORE
-    // `require_workspace_root()` would short-circuit with
-    // `workspace_not_configured`.
-    match action {
-        "help" => return Ok(help_payload("fs", ACTIONS)),
-        "schema" => {
-            let a = require_str(&params, "action")?;
-            return action_schema(ACTIONS, a);
-        }
-        _ => {}
+async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError> {
+    if let Some(result) = handle_builtin(action, &params) {
+        return result;
     }
 
     #[cfg(feature = "fs")]
@@ -107,8 +102,6 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
 
     #[cfg(not(feature = "fs"))]
     {
-        // Without the `fs` feature, only built-ins (handled above) are
-        // exposed; everything else is unknown.
         let _ = params;
         Err(ToolError::UnknownAction {
             message: format!("unknown action `fs.{action}`"),
@@ -127,22 +120,14 @@ pub async fn dispatch_with_root(
     action: &str,
     params: Value,
 ) -> Result<Value, ToolError> {
+    // Defense-in-depth: direct HTTP callers of dispatch_with_root still get
+    // a valid catalog payload / http_only rejection without re-implementing
+    // the built-in logic.
+    if let Some(result) = handle_builtin(action, &params) {
+        return result;
+    }
     match action {
-        // Defense-in-depth: `dispatch_inner` already handles help/schema
-        // before workspace resolution, so the canonical MCP/CLI path never
-        // reaches these arms. They remain here so HTTP callers (or future
-        // direct callers) that invoke `dispatch_with_root` with "help" /
-        // "schema" still get a valid catalog payload.
-        "help" => Ok(help_payload("fs", ACTIONS)),
-        "schema" => {
-            let a = require_str(&params, "action")?;
-            action_schema(ACTIONS, a)
-        }
         "fs.list" => list_action(root, params).await,
-        "fs.preview" => Err(ToolError::Sdk {
-            sdk_kind: "http_only".to_string(),
-            message: "fs.preview streams bytes and cannot be returned through the action-dispatch JSON path; call GET /v1/fs/preview via api::services::fs".to_string(),
-        }),
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `fs.{unknown}`"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
@@ -375,8 +360,6 @@ pub struct Preview {
     /// Basename for `Content-Disposition: attachment; filename="…"`,
     /// stripped of path separators and control characters.
     pub disposition_filename: String,
-    /// Workspace-relative path (forward-slash) for audit logging.
-    pub rel_path: String,
 }
 
 /// Open a workspace file for preview.
@@ -465,7 +448,6 @@ pub async fn open_for_preview(root: &Path, params: Value) -> Result<Preview, Too
         content_type,
         max_bytes: effective_cap,
         disposition_filename,
-        rel_path: rel_str,
     })
 }
 
@@ -528,8 +510,13 @@ fn open_no_follow(root: &Path, rel: &Path) -> Result<std::fs::File, ToolError> {
 }
 
 /// Portable fallback when `openat2` is not available. Not atomic — retains
-/// a TOCTOU window between `canonicalize` and `File::open`, narrowed by
-/// `symlink_metadata` on the canonicalized result.
+/// two TOCTOU windows: (1) between the component walk below and the
+/// `canonicalize` call (an attacker with workspace write access can swap a
+/// regular file for a symlink mid-resolution), and (2) between
+/// `canonicalize` and `File::open`, narrowed by `symlink_metadata` on the
+/// canonical result. The proper fix is per-component `openat`+`O_NOFOLLOW`
+/// matching the kernel-atomic guarantee Linux gets via `openat2`. Tracked
+/// in lab-f1t2.34. Linux 5.6+ takes the openat2 path above and is unaffected.
 #[cfg(feature = "fs")]
 fn open_no_follow_fallback(root: &Path, rel: &Path) -> Result<std::fs::File, ToolError> {
     // Walk each component of the relative path under `root` BEFORE canonicalizing,

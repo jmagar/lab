@@ -351,16 +351,13 @@ function AttachmentChip({
   attachment: AttachmentRef
   onRemove: () => void
 }) {
-  const [thumbUrl, setThumbUrl] = React.useState<string | null>(null)
+  // Bundle the URL with the path it was fetched for. Rendering gates on
+  // forPath === attachment.path, so a revoked-but-not-yet-replaced URL from
+  // a prior path never lands in the DOM during a swap.
+  const [thumb, setThumb] = React.useState<{ url: string; forPath: string } | null>(null)
 
   React.useEffect(() => {
-    // Synchronously reset thumbUrl on every path change (and initial mount).
-    // This ensures path-swap at the same chip index never leaves the previous
-    // (about-to-be-revoked) URL in the DOM while the new fetch is in flight.
-    setThumbUrl(null)
     const controller = new AbortController()
-    // Track the created URL in a ref-like closure variable so cleanup can
-    // revoke it regardless of which order cleanup and .then resolution happen.
     let objectUrl: string | null = null
     let disposed = false
 
@@ -369,30 +366,19 @@ function AttachmentChip({
         if (disposed || controller.signal.aborted) return
         if (!isInlineImageMime(contentType)) return
         const url = URL.createObjectURL(blob)
-        // Re-check disposal AFTER createObjectURL: unmount could have landed
-        // during the synchronous createObjectURL call; if so, revoke now and
-        // do not commit to state.
         if (disposed || controller.signal.aborted) {
           URL.revokeObjectURL(url)
           return
         }
         objectUrl = url
-        setThumbUrl(url)
+        setThumb({ url, forPath: attachment.path })
       })
-      .catch(() => {
-        // Preview failure is non-fatal — chip falls back to the file icon.
-      })
+      .catch(() => {})
 
     return () => {
       disposed = true
       controller.abort()
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl)
-        objectUrl = null
-      }
-      // NOTE: no setThumbUrl(null) here. React 19 drops/warns on state updates
-      // during unmount, and on path-swap re-runs the top-of-effect reset above
-      // handles clearing the stale URL synchronously before the next fetch.
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [attachment.path])
 
@@ -403,9 +389,9 @@ function AttachmentChip({
         'bg-aurora-panel-medium px-2 py-0.5 text-[11px] text-aurora-text-primary',
       )}
     >
-      {thumbUrl ? (
+      {thumb && thumb.forPath === attachment.path ? (
         <img
-          src={thumbUrl}
+          src={thumb.url}
           alt=""
           className="size-4 rounded-[2px] object-cover"
         />

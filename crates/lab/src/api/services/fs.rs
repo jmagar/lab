@@ -86,7 +86,7 @@ async fn handle_list(
     let result = crate::dispatch::fs::dispatch_with_root(root.as_path(), "fs.list", params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &result {
-        Ok(_) => log_ok("fs.list", elapsed_ms, None, None, None, None),
+        Ok(_) => log_ok("fs.list", elapsed_ms, None, None, None),
         Err(err) => log_err("fs.list", elapsed_ms, err, None),
     }
     result.map(Json)
@@ -124,10 +124,12 @@ async fn handle_preview(
     let preview_result = crate::dispatch::fs::open_for_preview(root.as_path(), params).await;
     let elapsed_ms = start.elapsed().as_millis();
     match &preview_result {
+        // Success logs omit `path` to avoid enumerating the workspace
+        // structure via log aggregation (symmetric with the deny-list
+        // redaction in log_err). Callers correlate by request_id.
         Ok(p) => log_ok(
             "fs.preview",
             elapsed_ms,
-            Some(p.rel_path.as_str()),
             Some(p.content_type),
             Some(crate::dispatch::fs::client::is_inline_mime(p.content_type)),
             Some(p.max_bytes),
@@ -173,7 +175,6 @@ async fn handle_preview(
 fn log_ok(
     action: &'static str,
     elapsed_ms: u128,
-    path: Option<&str>,
     mime: Option<&'static str>,
     inline: Option<bool>,
     max_bytes: Option<u64>,
@@ -183,7 +184,6 @@ fn log_ok(
         service = "fs",
         action,
         elapsed_ms,
-        path,
         mime,
         inline,
         max_bytes,
