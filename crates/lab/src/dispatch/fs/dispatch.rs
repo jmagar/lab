@@ -430,7 +430,7 @@ pub async fn open_for_preview(root: &Path, params: Value) -> Result<Preview, Too
     let caller_cap = parsed.max_bytes.unwrap_or(MAX_PREVIEW_BYTES);
     let effective_cap = caller_cap.min(MAX_PREVIEW_BYTES);
 
-    let ext_path = std::path::Path::new(&rel_str);
+    let ext_path = Path::new(&rel_str);
     let content_type = safe_content_type(ext_path);
 
     let disposition_filename = parsed
@@ -512,6 +512,37 @@ fn open_no_follow(root: &Path, rel: &Path) -> Result<std::fs::File, ToolError> {
 /// `symlink_metadata` on the canonicalized result.
 #[cfg(feature = "fs")]
 fn open_no_follow_fallback(root: &Path, rel: &Path) -> Result<std::fs::File, ToolError> {
+    // Walk each component of the relative path under `root` BEFORE canonicalizing,
+    // refusing if any prefix is a symlink. This closes the credential-exfil hole
+    // where a workspace-internal symlink (e.g. `readme.txt -> .env`) would survive
+    // canonicalize+starts_with — the canonicalized target is still inside root, but
+    // the symlink itself bypasses the deny-list check on the original rel string.
+    // Also catches intermediate symlinks (e.g. `subdir -> .ssh` then `subdir/id_rsa`).
+    let mut check = root.to_path_buf();
+    for component in rel.components() {
+        check.push(component);
+        let m = std::fs::symlink_metadata(&check).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ToolError::Sdk {
+                sdk_kind: "not_found".into(),
+                message: format!("path not found: `{}`", rel.display()),
+            },
+            std::io::ErrorKind::PermissionDenied => ToolError::Sdk {
+                sdk_kind: "permission_denied".into(),
+                message: "permission denied".into(),
+            },
+            _ => ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: e.to_string(),
+            },
+        })?;
+        if m.file_type().is_symlink() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "permission_denied".into(),
+                message: "symlinks are not followed for previews".into(),
+            });
+        }
+    }
+
     let joined = root.join(rel);
     let canonical = std::fs::canonicalize(&joined).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => ToolError::Sdk {
@@ -870,5 +901,47 @@ mod tests {
         assert!(!cleaned.contains('/'));
         assert!(!cleaned.contains('\x01'));
         assert!(cleaned.contains("\\\""));
+    }
+
+    /// A workspace-internal symlink whose target is a deny-listed file
+    /// (`readme.txt -> .env`) must be refused. Pre-fix, the fallback would
+    /// canonicalize through the link, find `.env` is still inside root, and
+    /// then `symlink_metadata(canonical=.env)` would report a regular file —
+    /// returning the secret to the caller. Exercising
+    /// `open_no_follow_fallback` directly covers the non-Linux / pre-5.6
+    /// path that doesn't get the kernel-enforced NO_SYMLINKS behavior.
+    #[test]
+    fn preview_fallback_rejects_symlink_to_denied_inside_root() {
+        let tmp = tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        std::fs::write(root.join(".env"), "SECRET=topsecret").unwrap();
+        unix_fs::symlink(root.join(".env"), root.join("readme.txt")).unwrap();
+
+        let err = open_no_follow_fallback(&root, Path::new("readme.txt"))
+            .expect_err("symlink to .env must be refused");
+        match err {
+            ToolError::Sdk { sdk_kind, .. } => assert_eq!(sdk_kind, "permission_denied"),
+            other => panic!("expected Sdk permission_denied; got {other:?}"),
+        }
+    }
+
+    /// An intermediate symlink in the path (`sub -> .ssh`) must also be
+    /// refused, even when the final basename (`id_rsa`) is itself a regular
+    /// file. The component walk catches the symlink at the prefix before
+    /// any canonicalize step has a chance to silently follow it.
+    #[test]
+    fn preview_fallback_rejects_intermediate_symlink() {
+        let tmp = tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        std::fs::create_dir_all(root.join(".ssh")).unwrap();
+        std::fs::write(root.join(".ssh/id_rsa"), "PRIVATE KEY").unwrap();
+        unix_fs::symlink(root.join(".ssh"), root.join("sub")).unwrap();
+
+        let err = open_no_follow_fallback(&root, Path::new("sub/id_rsa"))
+            .expect_err("intermediate symlink must be refused");
+        match err {
+            ToolError::Sdk { sdk_kind, .. } => assert_eq!(sdk_kind, "permission_denied"),
+            other => panic!("expected Sdk permission_denied; got {other:?}"),
+        }
     }
 }
