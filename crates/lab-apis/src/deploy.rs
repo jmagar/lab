@@ -30,6 +30,7 @@ pub const META: PluginMeta = PluginMeta {
     required_env: &[],
     optional_env: &[],
     default_port: None,
+    supports_multi_instance: false,
 };
 
 #[cfg(test)]

@@ -25,6 +25,7 @@ pub use error::TeiError;
 use std::time::{Duration, Instant};
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_OPTIONAL_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the tei module.
@@ -39,14 +40,17 @@ pub const META: PluginMeta = PluginMeta {
         description: "Base URL of the TEI server",
         example: "http://localhost:8080",
         secret: false,
+        ui: Some(&URL_FIELD),
     }],
     optional_env: &[EnvVar {
         name: "TEI_API_KEY",
         description: "Bearer token (only when launched with --api-key)",
         example: "abc123...",
         secret: true,
+        ui: Some(&SECRET_OPTIONAL_FIELD),
     }],
     default_port: Some(80),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for TeiClient {

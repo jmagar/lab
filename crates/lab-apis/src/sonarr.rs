@@ -15,6 +15,7 @@ pub use error::SonarrError;
 use std::time::{Duration, Instant};
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the sonarr module.
@@ -30,16 +31,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL for the Sonarr instance",
             example: "http://sonarr:8989",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "SONARR_API_KEY",
             description: "Sonarr API key (Settings → General → API Key)",
             example: "abc123def456",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(8989),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for SonarrClient {

@@ -19,6 +19,7 @@ pub const META: PluginMeta = PluginMeta {
     required_env: &[],
     optional_env: &[],
     default_port: Some(8765),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for DeviceRuntimeClient {

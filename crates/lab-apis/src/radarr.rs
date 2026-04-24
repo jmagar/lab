@@ -44,6 +44,7 @@ pub use client::RadarrClient;
 pub use error::RadarrError;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 
 /// Compile-time metadata for the radarr module.
 pub const META: PluginMeta = PluginMeta {
@@ -58,16 +59,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Radarr instance",
             example: "http://localhost:7878",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "RADARR_API_KEY",
             description: "API key from Settings → General",
             example: "abc123def456...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(7878),
+    supports_multi_instance: false,
 };
 
 use std::time::Instant;

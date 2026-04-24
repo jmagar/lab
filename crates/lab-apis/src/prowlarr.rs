@@ -15,6 +15,7 @@ pub use error::ProwlarrError;
 use std::time::{Duration, Instant};
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the prowlarr module.
@@ -30,16 +31,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL for the Prowlarr instance",
             example: "http://prowlarr:9696",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "PROWLARR_API_KEY",
             description: "Prowlarr API key (Settings → General → API Key)",
             example: "abc123def456",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(9696),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for ProwlarrClient {

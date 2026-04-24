@@ -18,6 +18,9 @@ pub mod action;
 /// `PluginMeta` — per-service constants for TUI / install / doctor.
 pub mod plugin;
 
+/// `UiSchema` / `FieldKind` / `FieldValidation` / `WizardKind` — Bootstrap wizard + Settings rail.
+pub mod plugin_ui;
+
 /// `ServiceClient` trait — common surface every service implements.
 pub mod traits;
 
@@ -31,5 +34,9 @@ pub use auth::Auth;
 pub use error::ApiError;
 pub use http::HttpClient;
 pub use plugin::{Category, EnvVar, PluginMeta};
+pub use plugin_ui::{
+    FieldKind, FieldValidation, UiSchema, WizardKind, BOOL_FIELD, SECRET_FIELD,
+    SECRET_OPTIONAL_FIELD, TEXT_FIELD, TEXT_OPTIONAL_FIELD, URL_FIELD, URL_OPTIONAL_FIELD,
+};
 pub use status::ServiceStatus;
 pub use traits::ServiceClient;

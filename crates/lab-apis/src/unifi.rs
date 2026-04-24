@@ -22,6 +22,7 @@ use std::time::Instant;
 use crate::core::{
     ApiError, ServiceClient,
     plugin::{Category, EnvVar, PluginMeta},
+    plugin_ui::{BOOL_FIELD, SECRET_FIELD, URL_FIELD},
 };
 
 /// Compile-time metadata for the unifi module.
@@ -37,12 +38,14 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the UniFi controller",
             example: "https://10.1.0.1",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "UNIFI_API_KEY",
             description: "API key from UniFi Integrations",
             example: "abc123def456...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[
@@ -51,15 +54,18 @@ pub const META: PluginMeta = PluginMeta {
             description: "Optional IP override used to resolve the UniFi hostname while preserving TLS hostname validation",
             example: "10.1.0.1",
             secret: false,
+            ui: Some(&BOOL_FIELD),
         },
         EnvVar {
             name: "UNIFI_ALLOW_INSECURE_TLS",
             description: "Allow self-signed or privately-issued TLS certificates for the UniFi controller",
             example: "true",
             secret: false,
+            ui: Some(&BOOL_FIELD),
         },
     ],
     default_port: Some(443),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for UnifiClient {
