@@ -85,7 +85,10 @@ async fn handle_list(
     let start = std::time::Instant::now();
     let result = crate::dispatch::fs::dispatch_with_root(root.as_path(), "fs.list", params).await;
     let elapsed_ms = start.elapsed().as_millis();
-    log_dispatch("fs.list", elapsed_ms, &result);
+    match &result {
+        Ok(_) => log_ok("fs.list", elapsed_ms, None, None, None, None),
+        Err(err) => log_err("fs.list", elapsed_ms, err, None),
+    }
     result.map(Json)
 }
 
@@ -120,7 +123,17 @@ async fn handle_preview(
     let start = std::time::Instant::now();
     let preview_result = crate::dispatch::fs::open_for_preview(root.as_path(), params).await;
     let elapsed_ms = start.elapsed().as_millis();
-    log_dispatch_preview(&query.path, elapsed_ms, &preview_result);
+    match &preview_result {
+        Ok(p) => log_ok(
+            "fs.preview",
+            elapsed_ms,
+            Some(p.rel_path.as_str()),
+            Some(p.content_type),
+            Some(crate::dispatch::fs::client::is_inline_mime(p.content_type)),
+            Some(p.max_bytes),
+        ),
+        Err(err) => log_err("fs.preview", elapsed_ms, err, Some(query.path.as_str())),
+    }
     let preview = preview_result?;
 
     // `take(max_bytes)` applied at the AsyncRead layer so we never buffer
@@ -155,31 +168,6 @@ async fn handle_preview(
     // capped but unknown-length at construction time.
     response.headers_mut().remove(header::CONTENT_LENGTH);
     Ok(response)
-}
-
-fn log_dispatch(action: &'static str, elapsed_ms: u128, result: &Result<Value, ToolError>) {
-    match result {
-        Ok(_) => log_ok(action, elapsed_ms, None, None, None, None),
-        Err(err) => log_err(action, elapsed_ms, err, None),
-    }
-}
-
-fn log_dispatch_preview(
-    path: &str,
-    elapsed_ms: u128,
-    result: &Result<crate::dispatch::fs::Preview, ToolError>,
-) {
-    match result {
-        Ok(p) => log_ok(
-            "fs.preview",
-            elapsed_ms,
-            Some(p.rel_path.as_str()),
-            Some(p.content_type),
-            Some(crate::dispatch::fs::client::is_inline_mime(p.content_type)),
-            Some(p.max_bytes),
-        ),
-        Err(err) => log_err("fs.preview", elapsed_ms, err, Some(path)),
-    }
 }
 
 fn log_ok(
