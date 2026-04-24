@@ -127,6 +127,10 @@ pub struct DevicePreferences {
 pub struct NodePreferences {
     #[serde(default)]
     pub controller: Option<String>,
+    /// How many days of node logs to retain in the SQLite log store.
+    /// Defaults to 30 days when absent.
+    #[serde(default)]
+    pub log_retention_days: Option<u32>,
 }
 
 /// Runtime role for the current device.

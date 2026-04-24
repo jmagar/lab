@@ -152,7 +152,8 @@ async fn node_store_search_logs_applies_offset_limit_and_retention() {
 
     let retained = store.node("dookie").await.unwrap().logs;
     assert_eq!(retained.len(), 10_000);
-    assert_eq!(retained.first().unwrap().message, "hello-100");
+    // VecDeque uses .front() instead of Vec::first()
+    assert_eq!(retained.front().unwrap().message, "hello-100");
 
     let searched = store.search_logs_for_node("dookie", "hello", 5, 3).await;
     assert_eq!(searched.len(), 3);

@@ -5,6 +5,7 @@ pub mod identity;
 pub mod install;
 pub mod log_collect;
 pub mod log_event;
+pub mod log_store;
 pub mod master_client;
 pub mod oauth;
 pub mod queue;
