@@ -56,6 +56,12 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
     const controller = new AbortController()
     setLoading(true)
     setError(null)
+    // Reset truncation flag at fetch start (synchronously, before the
+    // network call). Without this, a previously-truncated directory's
+    // banner sticks when the user navigates into a smaller, non-truncated
+    // directory — the success path only sets the flag from the new
+    // response, never clears stale state.
+    setTruncated(false)
 
     listWorkspace(cwd || undefined, { signal: controller.signal })
       .then((response) => {
@@ -70,7 +76,7 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
       .catch((err: unknown) => {
         if (controller.signal.aborted) return
         if (err instanceof FsClientError) {
-          setError(err.message)
+          setError(errorKindToMessage(err.kind) ?? err.message)
         } else if (err instanceof Error) {
           setError(err.message)
         } else {
@@ -132,7 +138,11 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
           {loading && <Loader2 className="size-3.5 animate-spin text-aurora-text-muted" />}
         </div>
 
-        <div className="min-h-[200px] overflow-y-auto">
+        <div
+          role="region"
+          aria-label="Workspace directory browser"
+          className="min-h-[200px] overflow-y-auto"
+        >
           {error && (
             <div
               role="alert"
@@ -148,7 +158,11 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
             </p>
           )}
           {!error && entries.length > 0 && (
-            <ul className="divide-y divide-aurora-border-default/60">
+            <ul
+              role="list"
+              aria-label="Workspace entries"
+              className="divide-y divide-aurora-border-default/60"
+            >
               {entries.map((entry) => (
                 <li key={entry.path}>
                   <button
@@ -186,6 +200,28 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
       </DialogContent>
     </Dialog>
   )
+}
+
+/**
+ * Map known `FsClientError.kind` discriminants to user-friendly messages.
+ *
+ * Returns `undefined` for unknown kinds so callers can fall back to the
+ * raw `err.message` from the server envelope. Keep this list aligned with
+ * the backend kinds in `crates/lab/src/api/services/fs.rs`.
+ */
+function errorKindToMessage(kind: string | undefined): string | undefined {
+  switch (kind) {
+    case 'workspace_not_configured':
+      return 'Workspace browsing is not configured on the server.'
+    case 'not_found':
+      return 'That directory no longer exists.'
+    case 'forbidden':
+      return 'You do not have permission to view that directory.'
+    case 'http_only':
+      return 'Workspace browsing is unavailable over this connection.'
+    default:
+      return undefined
+  }
 }
 
 function EntryIcon({ kind }: { kind: FsEntry['kind'] }) {
