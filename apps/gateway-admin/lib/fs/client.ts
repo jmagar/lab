@@ -70,12 +70,52 @@ export async function listWorkspace(
 }
 
 /**
- * Stream a capped byte window from a workspace file. Returned as a `Blob`
- * so callers can render it via `URL.createObjectURL(blob)` for thumbnails
- * (revoke on unmount). `max_bytes` is a hint — the server clamps at 2 MiB
- * regardless.
+ * Module-level in-flight cache for `previewWorkspaceFile`. Keyed by
+ * `path|maxBytes` so range/cap variations don't alias. Values are the
+ * underlying fetch promise — once settled, the entry is removed (see
+ * eviction strategy below).
+ *
+ * Why this exists: when a chat input has N image attachments, each
+ * `AttachmentChip` mounts and fires its own `previewWorkspaceFile`
+ * concurrently. Without dedupe that's N parallel streams of up to 2 MiB
+ * each. Re-mount churn (chip removed and re-added for the same path) also
+ * re-fetches. The cache collapses concurrent identical requests into one.
+ *
+ * Eviction strategy: entry is cleared on settle (success OR failure) via
+ * `.finally`. This means a successful fetch is NOT memoized across time —
+ * a later caller after settle will re-fetch. That's intentional: blobs
+ * can be large (≤2 MiB each), and holding them in a module-level Map
+ * would leak memory across navigations. The dedupe goal is "concurrent
+ * fanout", not "long-lived cache". On error this also lets the next
+ * caller retry instead of seeing a stuck rejection.
+ *
+ * Abort semantics trade-off: the shared in-flight fetch IGNORES per-caller
+ * `AbortSignal`. Once two callers share a fetch, one caller's abort cannot
+ * cancel the network operation without harming the other. The simpler
+ * choice (taken here) is to run the shared fetch to completion without a
+ * signal; per-caller cancellation is observed only at the await boundary
+ * (the caller checks its own `signal.aborted` after `await`). The bytes
+ * still arrive in memory, but unmounted callers discard them and the
+ * cache entry is freed on settle. Callers that need hard mid-flight
+ * cancellation must avoid the dedupe path (not currently exposed).
  */
-export async function previewWorkspaceFile(
+const previewInFlight = new Map<string, Promise<{ blob: Blob; contentType: string }>>()
+
+/** Visible for testing — clear cache state between tests. */
+export function __resetPreviewCache(): void {
+  previewInFlight.clear()
+}
+
+function previewCacheKey(path: string, maxBytes: number | undefined): string {
+  return `${path}|${maxBytes ?? ''}`
+}
+
+/**
+ * Internal: perform the actual streaming fetch without dedupe. Honors the
+ * supplied signal mid-stream via the same getReader() loop documented on
+ * the public function.
+ */
+async function fetchPreview(
   path: string,
   options?: { maxBytes?: number; signal?: AbortSignal },
 ): Promise<{ blob: Blob; contentType: string }> {
@@ -124,6 +164,58 @@ export async function previewWorkspaceFile(
   }
   const blob = new Blob(chunks as BlobPart[], { type: contentType })
   return { blob, contentType }
+}
+
+/**
+ * Stream a capped byte window from a workspace file. Returned as a `Blob`
+ * so callers can render it via `URL.createObjectURL(blob)` for thumbnails
+ * (revoke on unmount). `max_bytes` is a hint — the server clamps at 2 MiB
+ * regardless.
+ *
+ * Concurrent identical requests (same path + maxBytes) share a single
+ * in-flight fetch — see `previewInFlight` above for the trade-offs. If
+ * the caller passes a `signal`, abort is observed at the await boundary
+ * via a post-await check; the underlying shared fetch is NOT cancelled
+ * because other subscribers may still need its result.
+ */
+export async function previewWorkspaceFile(
+  path: string,
+  options?: { maxBytes?: number; signal?: AbortSignal },
+): Promise<{ blob: Blob; contentType: string }> {
+  const key = previewCacheKey(path, options?.maxBytes)
+  let pending = previewInFlight.get(key)
+  if (!pending) {
+    // Start the shared fetch WITHOUT the caller's signal — once another
+    // subscriber joins, one caller's abort must not cancel the network
+    // operation for everyone. Subscribers observe their own abort below
+    // by re-checking signal.aborted after the await.
+    pending = fetchPreview(path, { maxBytes: options?.maxBytes })
+    previewInFlight.set(key, pending)
+    // Always remove on settle so failed fetches can be retried and
+    // successful results don't leak in this module-level Map. Use a
+    // separate `.finally` chain so we don't observe rejection here
+    // (subscribers below get the rejection on their own await).
+    pending
+      .finally(() => {
+        // Only clear if still the same entry — defensive in case a future
+        // refactor reseeds the slot.
+        if (previewInFlight.get(key) === pending) {
+          previewInFlight.delete(key)
+        }
+      })
+      // Swallow rejection on this side channel — subscribers below observe
+      // it via their own await. Without this, the .finally chain produces
+      // an unobserved rejected promise and Node fires an unhandled-rejection.
+      .catch(() => {})
+  }
+  // Wait for the shared fetch. If our caller aborted while waiting, throw
+  // an AbortError so downstream `.catch` paths behave the same as the
+  // non-deduped path. The shared fetch keeps running for other subscribers.
+  const result = await pending
+  if (options?.signal?.aborted) {
+    throw new DOMException('preview aborted', 'AbortError')
+  }
+  return result
 }
 
 /** MIME types the picker will render as an inline thumbnail. */
