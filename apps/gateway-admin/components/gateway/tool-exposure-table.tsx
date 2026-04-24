@@ -308,7 +308,7 @@ export function ToolExposureTable({
               Manage Tools
             </Button>
             )
-          ) : hideManageModeToggle ? null : (
+          ) : (
             <>
               <div className="flex items-center gap-2 rounded-full border bg-aurora-page-bg px-3 py-1">
                 <span className="text-sm font-medium">Expose all</span>

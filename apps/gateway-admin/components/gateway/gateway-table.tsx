@@ -298,6 +298,9 @@ export function GatewayTable({
             const endpointPreview = buildGatewayEndpointPreview(gateway)
             const runtimeLabel = runtimeAgeLabel(gateway) ?? 'live'
             const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
+            const cleanupSummaryLabel =
+              cleanupBadgeLabel(cleanupSummary?.cleanup, 'cleaned') ??
+              cleanupBadgeLabel(cleanupSummary?.preview, 'preview')
             const rowTone = index % 2 === 0 ? 'gateway-row-tone-a' : 'gateway-row-tone-b'
 
             return (
@@ -349,7 +352,7 @@ export function GatewayTable({
                       <span>{statusTone.label}</span>
                     </div>
                     <div className="text-[8px] uppercase tracking-[0.12em] text-aurora-text-muted">
-                      {cleanupSummary ?? (isDisabled ? 'disabled' : gateway.warnings.length > 0 ? `${gateway.warnings.length} warn` : 'clean')}
+                      {cleanupSummaryLabel ?? (isDisabled ? 'disabled' : gateway.warnings.length > 0 ? `${gateway.warnings.length} warn` : 'clean')}
                     </div>
                   </div>
 
