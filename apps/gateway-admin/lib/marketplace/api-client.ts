@@ -47,9 +47,13 @@ export async function getMcpServer(name: string, signal?: AbortSignal): Promise<
 }
 
 export interface McpInstallParams {
+  /** MCP server name (matches ServerJSON.name) */
   server_name: string
+  /** Server version */
   version: string
+  /** Gateway IDs/names to install into */
   gateway_ids: string[]
+  /** Env var values to pass (keyed by env var name) */
   env_vars?: Record<string, string>
 }
 
@@ -63,6 +67,12 @@ export interface McpInstallResult {
   results: McpInstallGatewayResult[]
 }
 
+/**
+ * Install an MCP server into one or more gateways.
+ *
+ * Dispatches to the backend marketplace action which handles per-gateway
+ * installation and collects partial success results.
+ */
 export async function installMcpServer(
   params: McpInstallParams,
   signal?: AbortSignal,
