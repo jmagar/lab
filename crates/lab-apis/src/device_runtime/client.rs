@@ -81,7 +81,7 @@ impl DeviceRuntimeClient {
         query: &str,
     ) -> Result<serde_json::Value, ApiError> {
         let request = SearchLogsRequest {
-            device_id: node_id.to_string(),
+            node_id: node_id.to_string(),
             query: query.to_string(),
         };
         self.with_timeout(self.http.post_json("/v1/nodes/logs/search", &request))

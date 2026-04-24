@@ -17,6 +17,7 @@ pub use client::QbittorrentClient;
 pub use error::QbittorrentError;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, SECRET_OPTIONAL_FIELD, TEXT_FIELD, URL_FIELD};
 
 /// Compile-time metadata for the qbittorrent module.
 pub const META: PluginMeta = PluginMeta {
@@ -31,12 +32,14 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the qBittorrent WebUI instance",
             example: "http://localhost:8080",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "QBITTORRENT_PASSWORD",
             description: "WebUI password (username defaults to 'admin')",
             example: "adminadmin",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[
@@ -45,15 +48,18 @@ pub const META: PluginMeta = PluginMeta {
             description: "WebUI username (defaults to 'admin')",
             example: "admin",
             secret: false,
+            ui: Some(&TEXT_FIELD),
         },
         EnvVar {
             name: "QBITTORRENT_SID",
             description: "Pre-obtained session cookie (SID=<value>) — skips login handshake",
             example: "SID=abc123def456",
             secret: true,
+            ui: Some(&SECRET_OPTIONAL_FIELD),
         },
     ],
     default_port: Some(8080),
+    supports_multi_instance: false,
 };
 
 use std::time::Instant;

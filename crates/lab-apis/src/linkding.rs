@@ -18,6 +18,7 @@ pub use error::LinkdingError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the linkding module.
@@ -33,16 +34,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Linkding instance",
             example: "http://localhost:9090",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "LINKDING_TOKEN",
             description: "REST API token from the Linkding Settings page",
             example: "abc123def456...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(9090),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for LinkdingClient {

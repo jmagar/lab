@@ -11,7 +11,10 @@
 
 pub mod types;
 
-pub use types::{Artifact, ArtifactLang, Marketplace, Plugin, PluginSource};
+pub use types::{
+    Artifact, ArtifactLang, Marketplace, MarketplaceRuntime, Plugin, PluginComponent,
+    PluginComponentKind, PluginInstallState, PluginManifestSummary, PluginSource,
+};
 
 use crate::core::plugin::{Category, PluginMeta};
 
@@ -25,4 +28,5 @@ pub const META: PluginMeta = PluginMeta {
     required_env: &[],
     optional_env: &[],
     default_port: None,
+    supports_multi_instance: false,
 };

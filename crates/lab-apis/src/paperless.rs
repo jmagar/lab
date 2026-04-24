@@ -15,6 +15,7 @@ pub use error::PaperlessError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the paperless module.
@@ -30,16 +31,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Paperless-ngx instance",
             example: "http://localhost:8000",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "PAPERLESS_TOKEN",
             description: "API token from Account → API Token",
             example: "abc123def456...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(8000),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for PaperlessClient {

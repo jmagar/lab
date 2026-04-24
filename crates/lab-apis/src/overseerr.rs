@@ -21,6 +21,7 @@ pub use error::OverseerrError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the overseerr module.
@@ -36,16 +37,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Overseerr instance",
             example: "http://localhost:5055",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "OVERSEERR_API_KEY",
             description: "API key from Overseerr Settings → General",
             example: "MTY4NzA...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(5055),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for OverseerrClient {

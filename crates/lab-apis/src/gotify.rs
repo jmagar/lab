@@ -20,6 +20,7 @@ pub use error::GotifyError;
 
 use crate::core::error::ApiError;
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_OPTIONAL_FIELD, URL_FIELD};
 use crate::core::status::ServiceStatus;
 use crate::core::traits::ServiceClient;
 
@@ -35,6 +36,7 @@ pub const META: PluginMeta = PluginMeta {
         description: "Base URL of the Gotify server",
         example: "http://localhost:8080",
         secret: false,
+        ui: Some(&URL_FIELD),
     }],
     optional_env: &[
         EnvVar {
@@ -42,21 +44,25 @@ pub const META: PluginMeta = PluginMeta {
             description: "Token for Gotify API access; used as fallback when scoped tokens are absent",
             example: "A1b2C3d4E5...",
             secret: true,
+            ui: Some(&SECRET_OPTIONAL_FIELD),
         },
         EnvVar {
             name: "GOTIFY_APP_TOKEN",
             description: "App token used by message.send (overrides GOTIFY_TOKEN for sending)",
             example: "A1b2C3d4E5...",
             secret: true,
+            ui: Some(&SECRET_OPTIONAL_FIELD),
         },
         EnvVar {
             name: "GOTIFY_CLIENT_TOKEN",
             description: "Client token used by message/app/client management actions (overrides GOTIFY_TOKEN)",
             example: "A1b2C3d4E5...",
             secret: true,
+            ui: Some(&SECRET_OPTIONAL_FIELD),
         },
     ],
     default_port: Some(80),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for GotifyClient {

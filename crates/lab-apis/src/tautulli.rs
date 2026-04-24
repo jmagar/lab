@@ -20,6 +20,7 @@ pub use error::TautulliError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the tautulli module.
@@ -35,16 +36,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Tautulli instance",
             example: "http://localhost:8181",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "TAUTULLI_API_KEY",
             description: "Tautulli API key (Settings → Web Interface → API Key)",
             example: "abcdef1234567890abcdef1234567890",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(8181),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for TautulliClient {
