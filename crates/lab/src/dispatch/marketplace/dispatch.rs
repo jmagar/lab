@@ -526,7 +526,17 @@ fn walk_artifacts_into(root: &Path, dir: &Path, out: &mut Vec<Artifact>) -> Resu
         if name == ".git" || name == "node_modules" || name == "target" {
             continue;
         }
-        if p.is_dir() {
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            tracing::warn!(
+                service = "marketplace",
+                event = "artifact.read.skipped",
+                path = %p.display(),
+                "skipping symlink"
+            );
+            continue;
+        }
+        if ft.is_dir() {
             walk_artifacts_into(root, &p, out)?;
             continue;
         }
@@ -589,12 +599,19 @@ fn sanitize_plugin_id(id: &str) -> String {
 
 fn source_path_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
     let (name, marketplace) = parse_plugin_id(id)?;
-    let candidate = client::plugins_root()?
-        .join("marketplaces")
-        .join(marketplace)
-        .join(name);
+    let root = client::plugins_root()?;
+    let candidate = root.join("marketplaces").join(marketplace).join(name);
     if candidate.exists() {
-        return Ok(candidate);
+        // Belt-and-suspenders: canonicalize to detect any residual traversal.
+        let canonical = std::fs::canonicalize(&candidate).map_err(io_internal)?;
+        let canonical_root = std::fs::canonicalize(&root).map_err(io_internal)?;
+        if !canonical.starts_with(&canonical_root) {
+            return Err(ToolError::InvalidParam {
+                param: "id".into(),
+                message: format!("plugin id `{id}` resolves outside the plugins directory"),
+            });
+        }
+        return Ok(canonical);
     }
     let installed = load_installed()?;
     if let Some(record) = installed.get(id) {
@@ -618,7 +635,43 @@ fn ensure_workspace_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
 }
 
 fn installed_target_for_plugin(id: &str) -> Result<Option<PathBuf>, ToolError> {
-    Ok(load_installed()?.get(id).map(|record| record.install_path.clone()))
+    let Some(record) = load_installed()?.remove(id) else {
+        return Ok(None);
+    };
+    let path = record.install_path;
+    let root = client::plugins_root()?;
+    // Validate the recorded install path hasn't been tampered to escape plugins_root.
+    if path.exists() {
+        let canonical = std::fs::canonicalize(&path).map_err(io_internal)?;
+        let canonical_root = std::fs::canonicalize(&root).map_err(io_internal)?;
+        if !canonical.starts_with(&canonical_root) {
+            return Err(ToolError::InvalidParam {
+                param: "id".into(),
+                message: format!("install path for `{id}` resolves outside the plugins directory"),
+            });
+        }
+        return Ok(Some(canonical));
+    }
+    // Path doesn't exist yet. For absolute paths, verify it's under plugins_root.
+    // For relative paths, reject any traversal components.
+    if path.is_absolute() {
+        if !path.starts_with(&root) {
+            return Err(ToolError::InvalidParam {
+                param: "id".into(),
+                message: format!("install path for `{id}` resolves outside the plugins directory"),
+            });
+        }
+    } else {
+        for component in path.components() {
+            if !matches!(component, std::path::Component::Normal(_)) {
+                return Err(ToolError::InvalidParam {
+                    param: "id".into(),
+                    message: format!("install path for `{id}` contains invalid path components"),
+                });
+            }
+        }
+    }
+    Ok(Some(path))
 }
 
 fn copy_tree(source: &Path, dest: &Path) -> Result<(), ToolError> {
@@ -630,8 +683,18 @@ fn copy_tree(source: &Path, dest: &Path) -> Result<(), ToolError> {
         if name == ".git" || name == "node_modules" || name == "target" {
             continue;
         }
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            tracing::warn!(
+                service = "marketplace",
+                event = "copy.skipped",
+                path = %path.display(),
+                "skipping symlink during copy"
+            );
+            continue;
+        }
         let target = dest.join(entry.file_name());
-        if path.is_dir() {
+        if ft.is_dir() {
             std::fs::create_dir_all(&target).map_err(io_internal)?;
             copy_tree(&path, &target)?;
         } else {
