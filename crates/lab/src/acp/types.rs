@@ -227,6 +227,9 @@ impl PendingBridgeEvent {
 pub struct StartSessionInput {
     pub cwd: String,
     pub title: Option<String>,
+    /// Principal (user identity) bound at session creation. `None` means anonymous.
+    /// Bead 7 will wire this to the HTTP auth layer.
+    pub principal: Option<String>,
 }
 
 #[derive(Debug, Clone)]
