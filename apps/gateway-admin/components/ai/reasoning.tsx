@@ -2,7 +2,7 @@
 
 import { Brain, ChevronDown } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
-import { createContext, memo, useContext, useEffect, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
@@ -65,18 +65,24 @@ export const Reasoning = memo(function Reasoning({
     }
   }, [durationProp, isDurationControlled])
 
-  const setIsOpen = (nextOpen: boolean) => {
-    if (!isOpenControlled) {
-      setInternalOpen(nextOpen)
-    }
-    onOpenChange?.(nextOpen)
-  }
+  const setIsOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (!isOpenControlled) {
+        setInternalOpen(nextOpen)
+      }
+      onOpenChange?.(nextOpen)
+    },
+    [isOpenControlled, onOpenChange],
+  )
 
-  const setDuration = (nextDuration: number | undefined) => {
-    if (!isDurationControlled) {
-      setInternalDuration(nextDuration)
-    }
-  }
+  const setDuration = useCallback(
+    (nextDuration: number | undefined) => {
+      if (!isDurationControlled) {
+        setInternalDuration(nextDuration)
+      }
+    },
+    [isDurationControlled],
+  )
 
   useEffect(() => {
     if (isStreaming && startTime === null) {
