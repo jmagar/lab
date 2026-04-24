@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -6,11 +7,16 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::connect_async_with_config;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::{Message, WebSocketConfig};
 
+use crate::device::install::{
+    AgentInstallParams, InstallComponentParams, InstallScope, handle_agent_install,
+    handle_install_component,
+};
 use crate::device::queue::{DeviceOutboundQueue, QueuedEnvelope};
 use crate::device::token;
 use crate::dispatch::upstream::transport::websocket::{jitter_delay, reprobe_backoff};
@@ -20,6 +26,9 @@ const IDLE_FLUSH_INTERVAL: Duration = Duration::from_secs(10);
 const STATUS_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
 const MAX_FRAME_SIZE: usize = 128 * 1024;
+
+/// Size of the pending-response map and the progress forwarding channel.
+const PENDING_CHANNEL_CAPACITY: usize = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TailnetIdentity {
@@ -92,25 +101,121 @@ impl WsClient {
     async fn connect_and_run_session(&self, queue: &DeviceOutboundQueue) -> Result<()> {
         let token = token::load_or_create(&self.token_path).await?;
         let tailnet_identity = TailnetIdentity::discover(&self.device_id);
-        let request = self
-            .url
-            .to_string()
-            .into_client_request()
-            .map_err(|error| anyhow!("build websocket request: {error}"))?;
-        let mut websocket_config = WebSocketConfig::default();
-        websocket_config.max_message_size = Some(MAX_MESSAGE_SIZE);
-        websocket_config.max_frame_size = Some(MAX_FRAME_SIZE);
-        websocket_config.accept_unmasked_frames = false;
-        let (mut socket, _) = connect_async_with_config(request, Some(websocket_config), false)
-            .await
-            .map_err(|error| anyhow!("connect websocket: {error}"))?;
+        let (socket, _) = self.open_websocket().await?;
 
         let initialize = build_initialize_request(&self.device_id, &token, &tailnet_identity);
-        socket
-            .send(Message::Text(serde_json::to_string(&initialize)?.into()))
+        let (tx, rx) = mpsc::channel::<Message>(PENDING_CHANNEL_CAPACITY);
+        tx.send(Message::Text(serde_json::to_string(&initialize)?.into()))
             .await
-            .context("send websocket initialize")?;
-        let init_response = next_text_message(&mut socket).await?;
+            .context("queue websocket initialize")?;
+
+        // Pending response map: request id → oneshot sender.
+        // The reader task resolves pending entries when it sees a JSON-RPC response.
+        let pending: Arc<tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        // Split the raw socket into send + receive halves.
+        let (sink, mut stream) = socket.split();
+
+        // Writer task: drains `rx` → `sink`.
+        let _write_task = tokio::spawn(async move {
+            let mut sink = sink;
+            let mut rx: mpsc::Receiver<Message> = rx;
+            while let Some(msg) = rx.recv().await {
+                if let Err(error) = sink.send(msg).await {
+                    tracing::warn!(error = %error, "ws writer error");
+                    break;
+                }
+            }
+        });
+
+        // Channel for progress notifications coming back from install handlers.
+        // These are forwarded to `tx` as raw JSON text frames.
+        let (progress_tx, mut progress_rx) = mpsc::channel::<String>(PENDING_CHANNEL_CAPACITY);
+
+        // Reader + demux loop.
+        let pending_clone = Arc::clone(&pending);
+        let tx_clone = tx.clone();
+
+        // Forward progress notifications to the write channel.
+        let _progress_forward_task = {
+            let tx_for_progress = tx.clone();
+            tokio::spawn(async move {
+                while let Some(notif) = progress_rx.recv().await {
+                    tx_for_progress.send(Message::Text(notif.into())).await.ok();
+                }
+            })
+        };
+
+        // Await the initialize response via the main reader loop.
+        // We use a oneshot to receive the init response while the reader loop is running.
+        let (init_tx, init_rx) = oneshot::channel::<String>();
+        let init_tx = Arc::new(tokio::sync::Mutex::new(Some(init_tx)));
+
+        let _reader_task = {
+            let init_tx = Arc::clone(&init_tx);
+            let pending = Arc::clone(&pending_clone);
+            let tx = tx_clone.clone();
+            let progress_tx = progress_tx.clone();
+            let device_id = self.device_id.clone();
+            tokio::spawn(async move {
+                while let Some(message) = stream.next().await {
+                    let text = match message {
+                        Ok(Message::Text(t)) => t.to_string(),
+                        Ok(Message::Ping(payload)) => {
+                            tx.send(Message::Pong(payload)).await.ok();
+                            continue;
+                        }
+                        Ok(Message::Pong(_) | Message::Frame(_)) => continue,
+                        Ok(Message::Binary(_)) => {
+                            tracing::warn!(device_id = %device_id, "ws binary frame ignored");
+                            continue;
+                        }
+                        Ok(Message::Close(_)) | Err(_) => break,
+                    };
+
+                    // Try to parse as JSON-RPC.
+                    let parsed: Value = match serde_json::from_str(&text) {
+                        Ok(v) => v,
+                        Err(error) => {
+                            tracing::warn!(device_id = %device_id, error = %error, "ws unparse-able frame");
+                            continue;
+                        }
+                    };
+
+                    // If this is the first message, deliver it to the init channel.
+                    {
+                        let mut guard = init_tx.lock().await;
+                        if let Some(sender) = guard.take() {
+                            drop(guard);
+                            sender.send(text).ok();
+                            continue;
+                        }
+                    }
+
+                    // Dispatch: check whether the frame is a response (has `result`/`error`)
+                    // or an inbound RPC request from master (has `method`).
+                    if parsed.get("result").is_some() || parsed.get("error").is_some() {
+                        // Response — resolve a pending oneshot.
+                        if let Some(id) = parsed.get("id").and_then(Value::as_i64) {
+                            let mut map = pending.lock().await;
+                            if let Some(sender) = map.remove(&id) {
+                                sender.send(text).ok();
+                            }
+                        }
+                    } else if parsed.get("method").is_some() {
+                        // Inbound RPC from master — dispatch it and send back the response.
+                        let response = dispatch_inbound_rpc(parsed, &progress_tx).await;
+                        let encoded = serde_json::to_string(&response)
+                            .unwrap_or_else(|_| r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"serialize error"}}"#.to_string());
+                        tx.send(Message::Text(encoded.into())).await.ok();
+                    }
+                }
+            })
+        };
+
+        // Wait for the initialize response.
+        let init_response = init_rx.await.context("initialize response channel closed")?;
         validate_success_response(&init_response, 1)?;
         self.connected.store(true, Ordering::Relaxed);
 
@@ -118,10 +223,11 @@ impl WsClient {
         let mut status_deadline = tokio::time::Instant::now() + STATUS_INTERVAL;
 
         loop {
-            let ack_count = self.flush_queue_batch(&mut socket, queue, &mut next_id).await?;
+            let ack_count =
+                self.flush_queue_batch_async(queue, &tx, &pending_clone, &mut next_id).await?;
             let now = tokio::time::Instant::now();
             if now >= status_deadline {
-                self.send_status_update(&mut socket, next_id).await?;
+                self.send_status_update_async(&tx, &pending_clone, next_id).await?;
                 next_id += 1;
                 status_deadline = now + STATUS_INTERVAL;
                 continue;
@@ -131,41 +237,38 @@ impl WsClient {
             }
             tokio::time::sleep(IDLE_FLUSH_INTERVAL).await;
         }
-    }
 
-    #[cfg(test)]
-    async fn flush_queue_once(&self, queue: &DeviceOutboundQueue) -> Result<()> {
-        let token = token::load_or_create(&self.token_path).await?;
-        let tailnet_identity = TailnetIdentity::discover(&self.device_id);
-        let request = self
-            .url
-            .to_string()
-            .into_client_request()
-            .map_err(|error| anyhow!("build websocket request: {error}"))?;
-        let mut websocket_config = WebSocketConfig::default();
-        websocket_config.max_message_size = Some(MAX_MESSAGE_SIZE);
-        websocket_config.max_frame_size = Some(MAX_FRAME_SIZE);
-        websocket_config.accept_unmasked_frames = false;
-        let (mut socket, _) = connect_async_with_config(request, Some(websocket_config), false)
-            .await
-            .map_err(|error| anyhow!("connect websocket: {error}"))?;
-        let initialize = build_initialize_request(&self.device_id, &token, &tailnet_identity);
-        socket
-            .send(Message::Text(serde_json::to_string(&initialize)?.into()))
-            .await
-            .context("send websocket initialize")?;
-        let init_response = next_text_message(&mut socket).await?;
-        validate_success_response(&init_response, 1)?;
-        let mut next_id = 2_i64;
-        let _ = self.flush_queue_batch(&mut socket, queue, &mut next_id).await?;
-        socket.close(None).await.context("close websocket")?;
+        // The loop above runs forever until an error propagates. On error the
+        // `?` short-circuits and returns. The background tasks (_write_task,
+        // _reader_task, _progress_forward_task) are dropped with the scope.
+        #[allow(unreachable_code)]
         Ok(())
     }
 
-    async fn flush_queue_batch(
+    /// Send a request over the channel and wait for the corresponding response
+    /// via a oneshot in the pending map.
+    async fn send_and_await(
+        tx: &mpsc::Sender<Message>,
+        pending: &tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>,
+        request: &Value,
+        request_id: i64,
+    ) -> Result<String> {
+        let (resp_tx, resp_rx) = oneshot::channel::<String>();
+        {
+            let mut map = pending.lock().await;
+            map.insert(request_id, resp_tx);
+        }
+        tx.send(Message::Text(serde_json::to_string(request)?.into()))
+            .await
+            .context("send websocket request")?;
+        resp_rx.await.context("response channel closed before reply")
+    }
+
+    async fn flush_queue_batch_async(
         &self,
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
         queue: &DeviceOutboundQueue,
+        tx: &mpsc::Sender<Message>,
+        pending: &tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>,
         next_id: &mut i64,
     ) -> Result<usize> {
         let drained = queue.drain_batch(FLUSH_BATCH_SIZE).await?;
@@ -173,11 +276,7 @@ impl WsClient {
         for envelope in drained {
             let result: Result<()> = async {
                 let request = queue_envelope_to_request(&envelope, *next_id)?;
-                socket
-                    .send(Message::Text(serde_json::to_string(&request)?.into()))
-                    .await
-                    .context("send websocket queue request")?;
-                let response = next_text_message(socket).await?;
+                let response = Self::send_and_await(tx, pending, &request, *next_id).await?;
                 validate_success_response(&response, *next_id)
             }
             .await;
@@ -192,9 +291,10 @@ impl WsClient {
         Ok(ack_count)
     }
 
-    async fn send_status_update(
+    async fn send_status_update_async(
         &self,
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        tx: &mpsc::Sender<Message>,
+        pending: &tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>,
         request_id: i64,
     ) -> Result<()> {
         let request = json!({
@@ -204,20 +304,245 @@ impl WsClient {
             "params": {
                 "device_id": self.device_id,
                 "connected": true,
-                "cpu_percent": serde_json::Value::Null,
-                "memory_used_bytes": serde_json::Value::Null,
-                "storage_used_bytes": serde_json::Value::Null,
+                "cpu_percent": Value::Null,
+                "memory_used_bytes": Value::Null,
+                "storage_used_bytes": Value::Null,
                 "os": std::env::consts::OS,
                 "ips": [],
             }
         });
-        socket
-            .send(Message::Text(serde_json::to_string(&request)?.into()))
-            .await
-            .context("send websocket status update")?;
-        let response = next_text_message(socket).await?;
+        let response = Self::send_and_await(tx, pending, &request, request_id).await?;
         validate_success_response(&response, request_id)?;
         Ok(())
+    }
+
+    async fn open_websocket(
+        &self,
+    ) -> Result<(
+        tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        tokio_tungstenite::tungstenite::handshake::client::Response,
+    )> {
+        let request = self
+            .url
+            .to_string()
+            .into_client_request()
+            .map_err(|error| anyhow!("build websocket request: {error}"))?;
+        let mut websocket_config = WebSocketConfig::default();
+        websocket_config.max_message_size = Some(MAX_MESSAGE_SIZE);
+        websocket_config.max_frame_size = Some(MAX_FRAME_SIZE);
+        websocket_config.accept_unmasked_frames = false;
+        connect_async_with_config(request, Some(websocket_config), false)
+            .await
+            .map_err(|error| anyhow!("connect websocket: {error}"))
+    }
+
+    #[cfg(test)]
+    async fn flush_queue_once(&self, queue: &DeviceOutboundQueue) -> Result<()> {
+        let token = token::load_or_create(&self.token_path).await?;
+        let tailnet_identity = TailnetIdentity::discover(&self.device_id);
+        let (socket, _) = self.open_websocket().await?;
+
+        let (tx, rx) = mpsc::channel::<Message>(PENDING_CHANNEL_CAPACITY);
+        let pending: Arc<tokio::sync::Mutex<HashMap<i64, oneshot::Sender<String>>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        let (sink, mut stream) = socket.split();
+
+        let write_task = tokio::spawn(async move {
+            let mut sink = sink;
+            let mut rx: mpsc::Receiver<Message> = rx;
+            while let Some(msg) = rx.recv().await {
+                if sink.send(msg).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Reader task: forward responses to pending map.
+        let (init_tx, init_rx) = oneshot::channel::<String>();
+        let init_tx = Arc::new(tokio::sync::Mutex::new(Some(init_tx)));
+        let pending_clone = Arc::clone(&pending);
+        let reader_task = tokio::spawn(async move {
+            while let Some(message) = stream.next().await {
+                let text = match message {
+                    Ok(Message::Text(t)) => t.to_string(),
+                    Ok(Message::Ping(payload)) => {
+                        // No tx available here; just ignore pings in test helper.
+                        let _ = payload;
+                        continue;
+                    }
+                    Ok(_) | Err(_) => break,
+                };
+                let mut guard = init_tx.lock().await;
+                if let Some(sender) = guard.take() {
+                    drop(guard);
+                    sender.send(text).ok();
+                    continue;
+                }
+                drop(guard);
+                let parsed: Value = match serde_json::from_str(&text) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if let Some(id) = parsed.get("id").and_then(Value::as_i64) {
+                    let mut map = pending_clone.lock().await;
+                    if let Some(s) = map.remove(&id) {
+                        s.send(text).ok();
+                    }
+                }
+            }
+        });
+
+        // Send initialize.
+        let initialize = build_initialize_request(&self.device_id, &token, &tailnet_identity);
+        tx.send(Message::Text(serde_json::to_string(&initialize)?.into()))
+            .await
+            .context("send websocket initialize")?;
+
+        let init_response = init_rx.await.context("init response channel closed")?;
+        validate_success_response(&init_response, 1)?;
+
+        let mut next_id = 2_i64;
+        self.flush_queue_batch_async(queue, &tx, &pending, &mut next_id).await?;
+
+        // Close the socket.
+        tx.send(Message::Close(None)).await.ok();
+        drop(tx);
+        let _ = write_task.await;
+        reader_task.abort();
+        Ok(())
+    }
+}
+
+/// Dispatch an inbound RPC request from master to the appropriate handler.
+///
+/// Returns a JSON-RPC 2.0 response value (with `result` or `error`).
+/// Progress notifications are sent via `progress_tx` as JSON-encoded strings.
+async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) -> Value {
+    let id = frame.get("id").cloned().unwrap_or(Value::Null);
+    let method = match frame.get("method").and_then(Value::as_str) {
+        Some(m) => m.to_string(),
+        None => {
+            return json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": { "code": -32600, "message": "missing `method` field" }
+            });
+        }
+    };
+    let params = frame.get("params").cloned().unwrap_or(Value::Null);
+
+    match method.as_str() {
+        "marketplace.install_component" => {
+            let install_params: InstallComponentParams =
+                match serde_json::from_value(params.clone()) {
+                    Ok(p) => p,
+                    Err(error) => {
+                        return json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32602,
+                                "message": format!("invalid marketplace.install_component params: {error}")
+                            }
+                        });
+                    }
+                };
+
+            // `component_files` is expected to be embedded in params as
+            // `{ "files": [{ "path": "...", "content": "<base64 or utf8>" }] }`.
+            // For this initial implementation we accept a `files` array where
+            // each entry has `path` (string) and `content` (string, UTF-8).
+            let raw_files = params
+                .get("files")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let component_files: Vec<(String, Vec<u8>)> = raw_files
+                .into_iter()
+                .filter_map(|entry| {
+                    let path = entry.get("path")?.as_str()?.to_string();
+                    let content = entry.get("content")?.as_str()?.as_bytes().to_vec();
+                    Some((path, content))
+                })
+                .collect();
+
+            match handle_install_component(install_params, component_files, id.clone(), progress_tx)
+                .await
+            {
+                Ok(result) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": result,
+                }),
+                Err(error) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32000,
+                        "message": format!("marketplace.install_component failed: {error}")
+                    }
+                }),
+            }
+        }
+
+        "agent.install" => {
+            #[derive(serde::Deserialize)]
+            struct AgentInstallEnvelope {
+                #[serde(flatten)]
+                params: AgentInstallParams,
+                #[serde(default)]
+                scope: Option<InstallScope>,
+                project_path: Option<String>,
+            }
+
+            let envelope: AgentInstallEnvelope = match serde_json::from_value(params) {
+                Ok(e) => e,
+                Err(error) => {
+                    return json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": format!("invalid agent.install params: {error}")
+                        }
+                    });
+                }
+            };
+
+            let scope = envelope.scope.unwrap_or(InstallScope::Global);
+            let project_path = envelope.project_path.as_deref();
+
+            match handle_agent_install(envelope.params, scope, project_path, id.clone(), progress_tx)
+                .await
+            {
+                Ok(result) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": result,
+                }),
+                Err(error) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32000,
+                        "message": format!("agent.install failed: {error}")
+                    }
+                }),
+            }
+        }
+
+        other => {
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32601,
+                    "message": format!("unknown RPC method `{other}`"),
+                    "data": { "kind": "unknown_action" }
+                }
+            })
+        }
     }
 }
 
@@ -278,23 +603,6 @@ pub fn queue_envelope_to_request(
         "method": method,
         "params": envelope.payload,
     }))
-}
-
-async fn next_text_message(
-    socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-) -> Result<String> {
-    while let Some(message) = socket.next().await {
-        match message.context("read websocket message")? {
-            Message::Text(text) => return Ok(text.to_string()),
-            Message::Ping(payload) => {
-                socket.send(Message::Pong(payload)).await.context("send websocket pong")?;
-            }
-            Message::Pong(_) | Message::Frame(_) => {}
-            Message::Binary(_) => return Err(anyhow!("binary websocket frames are not supported")),
-            Message::Close(_) => return Err(anyhow!("websocket closed before response")),
-        }
-    }
-    Err(anyhow!("websocket closed before response"))
 }
 
 fn validate_success_response(payload: &str, expected_id: i64) -> Result<()> {
@@ -678,5 +986,75 @@ mod tests {
         );
 
         run.abort();
+    }
+
+    #[tokio::test]
+    async fn dispatch_inbound_rpc_unknown_method_returns_error() {
+        let (progress_tx, _rx) = mpsc::channel(8);
+        let frame = json!({
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "unknown.method",
+            "params": {}
+        });
+        let response = dispatch_inbound_rpc(frame, &progress_tx).await;
+        assert_eq!(response["id"], 42);
+        assert!(response.get("error").is_some());
+        assert_eq!(response["error"]["code"], -32601);
+    }
+
+    #[tokio::test]
+    async fn dispatch_inbound_rpc_marketplace_install_component_path_traversal() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let (progress_tx, _rx) = mpsc::channel(8);
+        let frame = json!({
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "marketplace.install_component",
+            "params": {
+                "plugin_id": "evil@marketplace",
+                "components": ["../etc/passwd"],
+                "scope": "project",
+                "project_path": tempdir.path().to_str().unwrap(),
+                "files": [
+                    { "path": "../etc/passwd", "content": "evil content" }
+                ]
+            }
+        });
+        let response = dispatch_inbound_rpc(frame, &progress_tx).await;
+        // Should succeed at the RPC level but report errors in the result.
+        assert_eq!(response["id"], 10);
+        // Either we get an error at RPC level or the result has errors field.
+        let has_error = response.get("error").is_some()
+            || response["result"]["errors"]
+                .as_array()
+                .map(|e| !e.is_empty())
+                .unwrap_or(false);
+        assert!(has_error, "expected path traversal to be rejected: {response}");
+    }
+
+    #[tokio::test]
+    async fn dispatch_inbound_rpc_agent_install_unknown_method_variation() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let (progress_tx, _rx) = mpsc::channel(8);
+        let frame = json!({
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "agent.install",
+            "params": {
+                "agent_id": "test-agent",
+                "distribution": {
+                    "type": "npx",
+                    "package": "@anthropic/test-agent",
+                    "version": "1.0.0"
+                },
+                "scope": "project",
+                "project_path": tempdir.path().to_str().unwrap()
+            }
+        });
+        let response = dispatch_inbound_rpc(frame, &progress_tx).await;
+        assert_eq!(response["id"], 20);
+        assert!(response.get("result").is_some(), "expected success: {response}");
+        assert_eq!(response["result"]["written"].as_array().map(|a| a.len()), Some(1));
     }
 }

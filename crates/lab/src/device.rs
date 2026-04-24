@@ -2,6 +2,7 @@ pub mod checkin;
 pub mod config_scan;
 pub mod enrollment;
 pub mod identity;
+pub mod install;
 pub mod log_collect;
 pub mod log_event;
 pub mod master_client;
