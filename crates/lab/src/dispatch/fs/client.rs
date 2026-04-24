@@ -1,23 +1,26 @@
 //! Client / configuration for the workspace filesystem browser service.
 //!
-//! # Responsibility (Phase 1 scope — lab-f1t2.1)
+//! Responsibilities:
 //!
-//! - Resolve the user-configured workspace root from `LAB_WORKSPACE_ROOT`.
-//! - Canonicalize it and validate that it exists.
-//! - Surface a structured error when the env var is unset so the caller
-//!   (HTTP / MCP dispatcher) can return a clean `workspace_not_configured`
-//!   envelope rather than a cryptic I/O failure.
-//!
-//! Later phases (2, 3) add the `GlobSet` deny-list builder here and the
-//! thin wrapper that opens files via `openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)`.
+//! - Resolve + canonicalize the user-configured workspace root from
+//!   `LAB_WORKSPACE_ROOT` at startup.
+//! - Cache the canonical root in a process-global `OnceLock` so MCP dispatch
+//!   (which has no `AppState` handle) can reach it without re-canonicalizing
+//!   per-request.
+//! - Build the credential deny-list `GlobSet` once and cache it (Phase 2).
+//! - Host the Phase-3 preview constants: server byte cap, safe-MIME
+//!   whitelist, and inline/attachment classification.
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
-/// Structured error for when the fs service cannot serve a request because
-/// `LAB_WORKSPACE_ROOT` is unset or invalid.
+#[cfg(feature = "fs")]
+use globset::{Glob, GlobSet, GlobSetBuilder};
+
+/// Structured error when `LAB_WORKSPACE_ROOT` is unset or invalid.
 pub fn not_configured_error() -> ToolError {
     ToolError::Sdk {
         sdk_kind: "workspace_not_configured".to_string(),
@@ -27,19 +30,16 @@ pub fn not_configured_error() -> ToolError {
 }
 
 /// Resolve the configured workspace root, canonicalize it, and verify it
-/// exists and is a directory. Returns `None` when the env var is absent or
-/// empty — the caller decides whether that's an error.
+/// exists and is a directory. Returns `None` when the env var is absent.
 ///
-/// Called once at startup (from `AppState::from_env` in a future wire-up);
-/// keep pure — no logging, no side effects.
+/// Called once at startup (from `cli::serve`). Keep pure — no logging, no
+/// side effects. The returned path is what callers feed into
+/// `AppState::with_workspace_root`.
 pub fn resolve_workspace_root_from_env() -> Option<std::io::Result<PathBuf>> {
     let raw = env_non_empty("LAB_WORKSPACE_ROOT")?;
     Some(canonicalize_existing_dir(PathBuf::from(raw)))
 }
 
-/// Canonicalize a path and verify it names an existing directory. Fails
-/// closed — a relative path, a non-existent path, or a path that resolves
-/// to a non-directory all return `Err`.
 fn canonicalize_existing_dir(path: PathBuf) -> std::io::Result<PathBuf> {
     if !path.is_absolute() {
         return Err(std::io::Error::new(
@@ -59,6 +59,100 @@ fn canonicalize_existing_dir(path: PathBuf) -> std::io::Result<PathBuf> {
         ));
     }
     Ok(canonical)
+}
+
+static WORKSPACE_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Return the canonical workspace root, or a structured error if the env
+/// var is unset or invalid. First call canonicalizes; subsequent calls
+/// return the cached value.
+pub fn require_workspace_root() -> Result<&'static PathBuf, ToolError> {
+    let cached = WORKSPACE_ROOT.get_or_init(|| match resolve_workspace_root_from_env() {
+        Some(Ok(p)) => Some(p),
+        _ => None,
+    });
+    cached.as_ref().ok_or_else(not_configured_error)
+}
+
+#[cfg(feature = "fs")]
+const DENY_PATTERNS: &[&str] = &[
+    ".env", "**/.env", ".env.*", "**/.env.*",
+    "*.pem", "**/*.pem", "*.key", "**/*.key",
+    "*.pfx", "**/*.pfx", "*.p12", "**/*.p12",
+    ".git/config", "**/.git/config",
+    ".git/credentials", "**/.git/credentials",
+    ".ssh/**", "**/.ssh/**",
+    "id_rsa*", "**/id_rsa*",
+    "id_ecdsa*", "**/id_ecdsa*",
+    "id_ed25519*", "**/id_ed25519*",
+    "authorized_keys", "**/authorized_keys",
+    "known_hosts", "**/known_hosts",
+    ".aws/credentials", "**/.aws/credentials",
+    ".aws/config", "**/.aws/config",
+    ".gnupg/**", "**/.gnupg/**",
+    ".netrc", "**/.netrc",
+    ".pgpass", "**/.pgpass",
+    ".docker/config.json", "**/.docker/config.json",
+    "credentials", "**/credentials",
+    "credentials.json", "**/credentials.json",
+];
+
+#[cfg(feature = "fs")]
+#[allow(clippy::panic, clippy::expect_used)]
+fn build_deny_globset() -> GlobSet {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in DENY_PATTERNS {
+        builder.add(
+            Glob::new(pattern).unwrap_or_else(|e| panic!("invalid deny-list glob {pattern}: {e}")),
+        );
+    }
+    builder
+        .build()
+        .expect("deny-list globset build should not fail")
+}
+
+#[cfg(feature = "fs")]
+static DENY_GLOBSET: OnceLock<GlobSet> = OnceLock::new();
+
+/// Return the cached credential deny-list `GlobSet`.
+#[cfg(feature = "fs")]
+pub fn deny_globset() -> &'static GlobSet {
+    DENY_GLOBSET.get_or_init(build_deny_globset)
+}
+
+/// Server-enforced hard cap on `fs.preview` response size. Caller-supplied
+/// `max_bytes` is clamped to this value regardless of how large the client
+/// asks for.
+#[cfg(feature = "fs")]
+pub const MAX_PREVIEW_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Classify a preview response's `Content-Type`.
+///
+/// Only a narrow image whitelist gets the matching MIME. Everything else —
+/// including SVG (active XSS vector), HTML, scripts, and unknown types — is
+/// served as `application/octet-stream`.
+#[cfg(feature = "fs")]
+#[must_use]
+pub fn safe_content_type(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Whether [`safe_content_type`] returned a whitelist hit.
+#[cfg(feature = "fs")]
+#[must_use]
+pub fn is_inline_mime(mime: &str) -> bool {
+    matches!(mime, "image/png" | "image/jpeg" | "image/gif" | "image/webp")
 }
 
 #[cfg(test)]
@@ -94,5 +188,51 @@ mod tests {
         std::fs::write(&file, b"hi").expect("write");
         let err = canonicalize_existing_dir(file).expect_err("err");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[cfg(feature = "fs")]
+    #[test]
+    fn deny_globset_suppresses_common_secrets() {
+        let set = deny_globset();
+        assert!(set.is_match(".env"));
+        assert!(set.is_match("secrets/.env"));
+        assert!(set.is_match(".ssh/id_rsa"));
+        assert!(set.is_match("subdir/.aws/credentials"));
+        assert!(set.is_match("server.pem"));
+        assert!(set.is_match("nested/dir/cert.key"));
+        assert!(set.is_match(".git/credentials"));
+        assert!(set.is_match("project/.git/config"));
+        assert!(set.is_match(".docker/config.json"));
+        assert!(set.is_match("home/.netrc"));
+        assert!(!set.is_match("README.md"));
+        assert!(!set.is_match("src/main.rs"));
+        assert!(!set.is_match("envoy.yaml"));
+    }
+
+    #[cfg(feature = "fs")]
+    #[test]
+    fn safe_content_type_whitelists_images_only() {
+        use std::path::Path;
+        assert_eq!(safe_content_type(Path::new("a.png")), "image/png");
+        assert_eq!(safe_content_type(Path::new("b.JPG")), "image/jpeg");
+        assert_eq!(safe_content_type(Path::new("c.jpeg")), "image/jpeg");
+        assert_eq!(safe_content_type(Path::new("d.gif")), "image/gif");
+        assert_eq!(safe_content_type(Path::new("e.webp")), "image/webp");
+        assert_eq!(safe_content_type(Path::new("evil.svg")), "application/octet-stream");
+        assert_eq!(safe_content_type(Path::new("index.html")), "application/octet-stream");
+        assert_eq!(safe_content_type(Path::new("script.js")), "application/octet-stream");
+        assert_eq!(safe_content_type(Path::new("no-ext")), "application/octet-stream");
+    }
+
+    #[cfg(feature = "fs")]
+    #[test]
+    fn is_inline_mime_matches_whitelist() {
+        assert!(is_inline_mime("image/png"));
+        assert!(is_inline_mime("image/jpeg"));
+        assert!(is_inline_mime("image/gif"));
+        assert!(is_inline_mime("image/webp"));
+        assert!(!is_inline_mime("image/svg+xml"));
+        assert!(!is_inline_mime("application/octet-stream"));
+        assert!(!is_inline_mime("text/html"));
     }
 }

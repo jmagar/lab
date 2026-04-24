@@ -3,7 +3,7 @@ use std::sync::{
     Arc, OnceLock,
     atomic::{AtomicU64, Ordering},
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::{
     Json,
@@ -13,13 +13,16 @@ use axum::{
     },
     response::Response,
 };
+use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::mpsc;
+use uuid::Uuid;
 
 use crate::api::{ToolError, state::AppState};
 use crate::config::NodeRole;
+use crate::dispatch::node::send::{SessionToken, sender_registry};
 use crate::node::enrollment::store::{
     EnrollmentAttempt, EnrollmentDecision, EnrollmentStore, TailnetIdentity,
 };
@@ -27,20 +30,17 @@ use crate::node::checkin::{NodeHello, NodeMetadataUpload, NodeStatus};
 use crate::node::log_event::NodeLogEvent;
 
 // --------------------------------------------------------------------------
-// Master → device sender registry
+// Re-export shared node dispatch helpers for API-layer callers.
 // --------------------------------------------------------------------------
-// Keyed by node_id. Populated on WebSocket upgrade (after successful
-// `initialize`), removed on disconnect. `send_to_node` is the public
-// entry-point for dispatching RPC commands to a connected node.
+// NodeDispatchError, send_to_node, and send_text_to_node now live in
+// `dispatch/node/send.rs` so the dispatch layer can use them without
+// crossing the forbidden `dispatch/ → api/` boundary.
 // --------------------------------------------------------------------------
+pub use crate::dispatch::node::send::{NodeDispatchError, send_text_to_node, send_to_node};
 
-type SessionToken = u64;
-type SenderRegistry = Arc<RwLock<HashMap<String, (SessionToken, mpsc::Sender<Message>)>>>;
-
-fn sender_registry() -> &'static SenderRegistry {
-    static REGISTRY: OnceLock<SenderRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
-}
+// --------------------------------------------------------------------------
+// Session token counter
+// --------------------------------------------------------------------------
 
 fn next_session_token() -> SessionToken {
     static NEXT: OnceLock<AtomicU64> = OnceLock::new();
@@ -48,42 +48,39 @@ fn next_session_token() -> SessionToken {
         .fetch_add(1, Ordering::Relaxed)
 }
 
-#[allow(dead_code)]
-#[derive(Debug, thiserror::Error)]
-pub enum NodeDispatchError {
-    #[error("node `{node_id}` is not connected")]
-    NotConnected { node_id: String },
-    #[error("send channel for node `{node_id}` is closed")]
-    ChannelClosed { node_id: String },
+// --------------------------------------------------------------------------
+// Auth model: the WS endpoint at /v1/nodes/ws is intentionally outside
+// bearer-auth middleware. An unauthenticated WS connection can only call
+// `initialize`; all other methods require a live authenticated session.
+// --------------------------------------------------------------------------
+
+const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
+const INITIALIZE_DEBOUNCE: Duration = Duration::from_secs(30);
+
+fn debounce_map() -> &'static DashMap<String, Instant> {
+    static MAP: OnceLock<DashMap<String, Instant>> = OnceLock::new();
+    MAP.get_or_init(DashMap::new)
 }
 
-/// Send a raw WebSocket `Message` to a specific connected node.
-///
-/// Returns `NodeDispatchError::NotConnected` when the node has no active WS
-/// session, and `NodeDispatchError::ChannelClosed` when the send channel was
-/// dropped (race with disconnect).
-#[allow(dead_code)]
-pub async fn send_to_node(node_id: &str, msg: Message) -> Result<(), NodeDispatchError> {
-    let sender = {
-        let registry = sender_registry().read().await;
-        let (_, sender) = registry.get(node_id).ok_or_else(|| NodeDispatchError::NotConnected {
-            node_id: node_id.to_string(),
-        })?;
-        sender.clone()
-    };
-    sender.send(msg).await.map_err(|_| NodeDispatchError::ChannelClosed {
-        node_id: node_id.to_string(),
-    })
+// --------------------------------------------------------------------------
+// Command state (per-session, per-command)
+// --------------------------------------------------------------------------
+
+const COMMAND_CHANNEL_CAPACITY: usize = 512;
+const COMMAND_TTL: Duration = Duration::from_secs(5 * 60);
+const COMMAND_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+
+struct CommandState {
+    output_tx: mpsc::Sender<serde_json::Value>,
+    started_at: Instant,
+    node_id: String,
 }
 
-/// Convenience wrapper: send a JSON text frame to a connected node.
-///
-/// Callers outside the API layer (e.g. the dispatch layer) use this so they
-/// don't need to import `axum::extract::ws::Message` directly.
-#[allow(dead_code)]
-pub async fn send_text_to_node(node_id: &str, text: String) -> Result<(), NodeDispatchError> {
-    send_to_node(node_id, Message::Text(text.into())).await
-}
+// --------------------------------------------------------------------------
+// MCP demux allowlist
+// --------------------------------------------------------------------------
+
+const DEMUX_ALLOWLIST: &[&str] = &["lab.help", "lab.catalog", "lab.status"];
 
 pub async fn list_nodes(
     State(state): State<AppState>,
@@ -163,8 +160,9 @@ pub async fn websocket_upgrade(
 ) -> Result<Response, ToolError> {
     let store = require_master_store(&state)?;
     let enrollment_store = require_enrollment_store(&state)?;
+    let registry = Arc::clone(&state.registry);
     Ok(ws.max_message_size(10 * 1024 * 1024).on_upgrade(move |socket| async move {
-        if let Err(error) = handle_websocket(socket, store, enrollment_store).await {
+        if let Err(error) = handle_websocket(socket, store, enrollment_store, registry).await {
             tracing::warn!(error = %error, "nodes websocket session failed");
         }
     }))
@@ -174,6 +172,7 @@ async fn handle_websocket(
     socket: WebSocket,
     store: Arc<crate::node::store::NodeStore>,
     enrollment_store: Arc<EnrollmentStore>,
+    registry: Arc<crate::registry::ToolRegistry>,
 ) -> Result<(), anyhow::Error> {
     use axum::extract::ws::WebSocket;
     use futures::stream::SplitSink;
@@ -200,16 +199,94 @@ async fn handle_websocket(
 
     let mut session_node_id: Option<String> = None;
     let session_token = next_session_token();
+    let mut command_states: HashMap<Uuid, CommandState> = HashMap::new();
 
+    // Background sweeper: every 60s, sends a sentinel to trigger GC in the main loop.
+    let tx_sweep = tx.clone();
+    let sweep_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(COMMAND_SWEEP_INTERVAL);
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            let sent = tx_sweep
+                .send(Message::Text(json!({"_lab_internal":"sweep_tick"}).to_string().into()))
+                .await;
+            if sent.is_err() || tx_sweep.is_closed() {
+                break;
+            }
+        }
+    });
+
+    // Security gate: require `initialize` within INITIALIZE_TIMEOUT (10s).
+    let first_msg_result = tokio::time::timeout(INITIALIZE_TIMEOUT, stream.next()).await;
+    let first_message = match first_msg_result {
+        Err(_timeout) => {
+            tracing::warn!(
+                surface = "api", service = "nodes", action = "ws.initialize",
+                kind = "timeout", "nodes websocket: initialize timeout — closing connection"
+            );
+            drop(tx);
+            sweep_task.abort();
+            drop(write_task.await);
+            return Ok(());
+        }
+        Ok(None) => {
+            drop(tx);
+            sweep_task.abort();
+            drop(write_task.await);
+            return Ok(());
+        }
+        Ok(Some(msg)) => msg,
+    };
+
+    // Process the first message.
+    match first_message? {
+        Message::Text(text) => {
+            if !text.contains("_lab_internal") {
+                let request: RpcRequest = serde_json::from_str(&text).map_err(|e| anyhow::anyhow!(e))?;
+                let response = handle_rpc_request(
+                    request, &store, &enrollment_store, &registry,
+                    &mut session_node_id, session_token, &tx, &mut command_states,
+                ).await;
+                if tx.send(Message::Text(response.to_string().into())).await.is_err() {
+                    drop(tx);
+                    sweep_task.abort();
+                    drop(write_task.await);
+                    return Ok(());
+                }
+            }
+        }
+        Message::Ping(payload) => { let _pong = tx.send(Message::Pong(payload)).await; }
+        Message::Close(_) | Message::Binary(_) | Message::Pong(_) => {}
+    }
+
+    // Main read loop.
     while let Some(message) = stream.next().await {
         match message? {
             Message::Text(text) => {
+                // Sweep sentinel — GC stale commands.
+                if text.contains("_lab_internal") {
+                    let now = Instant::now();
+                    command_states.retain(|cmd_id, state| {
+                        if now.duration_since(state.started_at) > COMMAND_TTL {
+                            tracing::warn!(
+                                surface = "api", service = "nodes", action = "ws.command.sweep",
+                                command_id = %cmd_id, node_id = %state.node_id,
+                                "sweeper: dropping stale command entry"
+                            );
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                    continue;
+                }
                 let request: RpcRequest =
                     serde_json::from_str(&text).map_err(|error| anyhow::anyhow!(error))?;
-                let response =
-                    handle_rpc_request(request, &store, &enrollment_store, &mut session_node_id, session_token, &tx)
-                        .await;
-                // Ignore send errors — the write task surfaces them on next iteration.
+                let response = handle_rpc_request(
+                    request, &store, &enrollment_store, &registry,
+                    &mut session_node_id, session_token, &tx, &mut command_states,
+                ).await;
                 if tx.send(Message::Text(response.to_string().into())).await.is_err() {
                     break;
                 }
@@ -241,9 +318,9 @@ async fn handle_websocket(
     // drains any pending frames cleanly.
     if let Some(ref node_id) = session_node_id {
         let should_disconnect = {
-            let mut registry = sender_registry().write().await;
-            if registry.get(node_id).map(|(token, _)| *token) == Some(session_token) {
-                registry.remove(node_id);
+            let mut registry_map = sender_registry().write().await;
+            if registry_map.get(node_id).map(|(token, _)| *token) == Some(session_token) {
+                registry_map.remove(node_id);
                 true
             } else {
                 false
@@ -254,20 +331,24 @@ async fn handle_websocket(
         }
     }
 
-    // Signal the write task to exit by dropping `tx`, then await it.
+    drop(command_states);
+    sweep_task.abort();
     drop(tx);
     drop(write_task.await);
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_rpc_request(
     request: RpcRequest,
     store: &crate::node::store::NodeStore,
     enrollment_store: &EnrollmentStore,
+    registry: &crate::registry::ToolRegistry,
     session_node_id: &mut Option<String>,
     session_token: SessionToken,
     tx: &mpsc::Sender<Message>,
+    command_states: &mut HashMap<Uuid, CommandState>,
 ) -> serde_json::Value {
     match request.method.as_str() {
         "initialize" => {
@@ -355,12 +436,159 @@ async fn handle_rpc_request(
                 Err(error) => tool_error_response(request.id, &error),
             }
         }
-        other => error_response(
-            request.id,
-            -32601,
-            format!("unsupported nodes websocket method `{other}`"),
-        ),
+        "nodes/ping" => {
+            if let Err(error) = require_initialized_node_id(session_node_id) {
+                return tool_error_response(request.id, &error);
+            }
+            success_response(request.id, json!({}))
+        }
+        "nodes/device.enroll" => {
+            let node_id_opt = session_node_id.clone();
+            match handle_device_enroll(store, request.params.unwrap_or(serde_json::Value::Null), node_id_opt).await {
+                Ok(enrolled_node_id) => success_response(request.id, json!({"enrolled": true, "node_id": enrolled_node_id})),
+                Err(error) => json!({
+                    "jsonrpc": "2.0", "id": request.id,
+                    "error": {"code": -32602, "message": error.to_string(), "data": {"kind": "enroll_rejected"}}
+                }),
+            }
+        }
+        "nodes/command.invoke" => {
+            let node_id = match require_initialized_node_id(session_node_id) {
+                Ok(id) => id,
+                Err(error) => return tool_error_response(request.id, &error),
+            };
+            let params = request.params.unwrap_or(serde_json::Value::Null);
+            let command_id = Uuid::new_v4();
+            let (output_tx, _output_rx) = mpsc::channel::<serde_json::Value>(COMMAND_CHANNEL_CAPACITY);
+            command_states.insert(command_id, CommandState { output_tx, started_at: Instant::now(), node_id: node_id.clone() });
+            let invoke_msg = json!({
+                "jsonrpc": "2.0", "id": command_id.to_string(), "method": "nodes/command.invoke",
+                "params": {"command_id": command_id.to_string(), "command": params.get("command").cloned().unwrap_or(serde_json::Value::Null)}
+            });
+            drop(tx.send(Message::Text(invoke_msg.to_string().into())).await);
+            tracing::info!(surface = "api", service = "nodes", action = "ws.command.invoke", node_id = %node_id, command_id = %command_id, "nodes websocket command invoked");
+            success_response(request.id, json!({"command_id": command_id.to_string()}))
+        }
+        "nodes/command.output" => {
+            let node_id = match require_initialized_node_id(session_node_id) {
+                Ok(id) => id,
+                Err(error) => return tool_error_response(request.id, &error),
+            };
+            let params = request.params.unwrap_or(serde_json::Value::Null);
+            let command_id_str = match params.get("command_id").and_then(|v| v.as_str()) {
+                Some(s) => s.to_string(),
+                None => return error_response(request.id, -32602, "missing command_id in command.output"),
+            };
+            let command_id = match Uuid::parse_str(&command_id_str) {
+                Ok(id) => id,
+                Err(_) => return error_response(request.id, -32602, "invalid command_id format"),
+            };
+            if let Some(cmd_state) = command_states.get(&command_id) {
+                let chunk = params.get("chunk").cloned().unwrap_or(serde_json::Value::Null);
+                drop(cmd_state.output_tx.try_send(chunk));
+                tracing::debug!(surface = "api", service = "nodes", action = "ws.command.output", node_id = %node_id, command_id = %command_id, "nodes websocket command output chunk");
+            }
+            success_response(request.id, json!({}))
+        }
+        "nodes/command.result" => {
+            let node_id = match require_initialized_node_id(session_node_id) {
+                Ok(id) => id,
+                Err(error) => return tool_error_response(request.id, &error),
+            };
+            let params = request.params.unwrap_or(serde_json::Value::Null);
+            let command_id_str = match params.get("command_id").and_then(|v| v.as_str()) {
+                Some(s) => s.to_string(),
+                None => return error_response(request.id, -32602, "missing command_id in command.result"),
+            };
+            let command_id = match Uuid::parse_str(&command_id_str) {
+                Ok(id) => id,
+                Err(_) => return error_response(request.id, -32602, "invalid command_id format"),
+            };
+            command_states.remove(&command_id);
+            let exit_code = params.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
+            let success_flag = params.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
+            tracing::info!(surface = "api", service = "nodes", action = "ws.command.result", node_id = %node_id, command_id = %command_id, exit_code, success = success_flag, "nodes websocket command completed");
+            success_response(request.id, json!({"command_id": command_id.to_string(), "exit_code": exit_code, "success": success_flag}))
+        }
+        "nodes/peer.invoke" => {
+            tracing::debug!(surface = "api", service = "nodes", action = "ws.peer.invoke", "nodes/peer.invoke is not yet implemented");
+            json!({"jsonrpc": "2.0", "id": request.id, "error": {"code": -32601, "message": "peer.invoke not yet implemented", "data": {"kind": "not_implemented"}}})
+        }
+        other => {
+            let method_clamped = other.chars().take(256).collect::<String>();
+            if other.starts_with("nodes/") {
+                error_response(request.id, -32601, format!("unsupported nodes websocket method `{method_clamped}`"))
+            } else if DEMUX_ALLOWLIST.contains(&other) {
+                let node_id = session_node_id.clone().unwrap_or_else(|| "<unauthenticated>".to_string());
+                handle_demux(request.id, other, request.params, registry, &node_id).await
+            } else {
+                tracing::debug!(surface = "api", service = "nodes", action = "ws.demux.blocked", method = %method_clamped, "demux: method not in allowlist");
+                json!({"jsonrpc": "2.0", "id": request.id, "error": {"code": -32601, "message": "method not permitted over fleet WS", "data": {"kind": "not_permitted"}}})
+            }
+        }
     }
+}
+
+/// Handle MCP demux for allowlisted non-nodes/ methods.
+async fn handle_demux(
+    id: Option<serde_json::Value>,
+    method: &str,
+    params: Option<serde_json::Value>,
+    registry: &crate::registry::ToolRegistry,
+    node_id: &str,
+) -> serde_json::Value {
+    let (service_name, action) = match method.split_once('.') {
+        Some((s, a)) => (s, a),
+        None => return json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"malformed demux method","data":{"kind":"not_permitted"}}}),
+    };
+    let svc = match registry.service(service_name) {
+        Some(s) => s,
+        None => return json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":format!("service `{service_name}` not found"),"data":{"kind":"not_permitted"}}}),
+    };
+    let dispatch_params = params.unwrap_or(serde_json::Value::Null);
+    tracing::info!(surface = "api", service = "nodes", action = "ws.demux.forward", method = %method, node_id = %node_id, "demux: forwarding allowlisted method to registry");
+    let dispatch_fn = svc.dispatch;
+    let result = tokio::time::timeout(Duration::from_secs(30), dispatch_fn(action.to_string(), dispatch_params)).await;
+    match result {
+        Err(_timeout) => {
+            tracing::warn!(surface = "api", service = "nodes", action = "ws.demux.timeout", method = %method, node_id = %node_id, kind = "upstream_timeout", "demux: upstream call timed out");
+            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32001,"message":"upstream timeout","data":{"kind":"upstream_timeout"}}})
+        }
+        Ok(Ok(value)) => success_response(id, value),
+        Ok(Err(error)) => tool_error_response(id, &error),
+    }
+}
+
+/// Handle `nodes/device.enroll` — upsert a node enrollment record.
+async fn handle_device_enroll(
+    store: &crate::node::store::NodeStore,
+    params: serde_json::Value,
+    _session_node_id: Option<String>,
+) -> Result<String, ToolError> {
+    let node_id = params.get("node_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+        .ok_or_else(|| ToolError::InvalidParam { message: "nodes/device.enroll requires non-empty `node_id`".to_string(), param: "node_id".to_string() })?.to_string();
+    let role = params.get("role").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+        .ok_or_else(|| ToolError::InvalidParam { message: "nodes/device.enroll requires non-empty `role`".to_string(), param: "role".to_string() })?.to_string();
+    let version = params.get("version").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+        .ok_or_else(|| ToolError::InvalidParam { message: "nodes/device.enroll requires non-empty `version`".to_string(), param: "version".to_string() })?.to_string();
+
+    const KNOWN_ROLES: &[&str] = &["node", "master"];
+    if !KNOWN_ROLES.contains(&role.as_str()) {
+        return Err(ToolError::InvalidParam {
+            message: format!("unknown role `{role}`; accepted roles: {}", KNOWN_ROLES.join(", ")),
+            param: "role".to_string(),
+        });
+    }
+    if let Some(snapshot) = store.node(&node_id).await {
+        let existing_role = snapshot.role.as_deref().unwrap_or("");
+        if !existing_role.is_empty() && existing_role != role {
+            tracing::warn!(surface = "api", service = "nodes", action = "ws.device.enroll", node_id = %node_id, existing_role = %existing_role, requested_role = %role, "enroll conflict: role mismatch");
+            return Err(ToolError::Sdk { sdk_kind: "enroll_conflict".to_string(), message: "re-enrollment requires explicit force flag".to_string() });
+        }
+    }
+    store.record_hello(NodeHello { node_id: node_id.clone(), role: role.clone(), version: version.clone() }).await;
+    tracing::info!(surface = "api", service = "nodes", action = "ws.device.enroll", node_id = %node_id, role = %role, version = %version, "nodes/device.enroll: node enrolled");
+    Ok(node_id)
 }
 
 async fn handle_initialize(
@@ -394,6 +622,34 @@ async fn handle_initialize(
     {
         EnrollmentDecision::Approved(_) => {}
         EnrollmentDecision::PendingRequired => {
+            // Per-node enrollment debounce: reject if same node_id sent initialize within 30s.
+            {
+                let now = Instant::now();
+                let map = debounce_map();
+                if let Some(last_seen) = map.get(&node_id) {
+                    if now.duration_since(*last_seen) < INITIALIZE_DEBOUNCE {
+                        return Err(ToolError::Sdk {
+                            sdk_kind: "enrollment_required".to_string(),
+                            message: format!("node `{node_id}` sent initialize within debounce window; retry after 30s"),
+                        });
+                    }
+                }
+                map.insert(node_id.clone(), now);
+            }
+
+            // Pending enrollment cap check.
+            const MAX_PENDING_ENROLLMENTS: usize = 1000;
+            let snapshot = enrollment_store
+                .list()
+                .await
+                .map_err(|error| ToolError::internal_message(format!("list enrollments: {error}")))?;
+            if snapshot.pending.len() >= MAX_PENDING_ENROLLMENTS {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "enrollment_cap_exceeded".to_string(),
+                    message: "enrollment queue is full; try again later".to_string(),
+                });
+            }
+
             enrollment_store
                 .record_pending(EnrollmentAttempt {
                     node_id: node_id.clone(),
@@ -608,6 +864,9 @@ mod tests {
 
     #[tokio::test]
     async fn websocket_initialize_metadata_status_and_logs_round_trip_into_store() {
+        // Use a unique node_id to avoid global sender_registry collisions with other
+        // concurrent tests that also use "device-1".
+        let node_id = format!("device-roundtrip-{}", uuid::Uuid::new_v4());
         let store = Arc::new(crate::node::store::NodeStore::default());
         let enrollment_store = Arc::new(
             EnrollmentStore::open(test_enrollment_store_path("fleet-happy"))
@@ -616,12 +875,12 @@ mod tests {
         );
         enrollment_store
             .record_pending(EnrollmentAttempt {
-                node_id: "device-1".to_string(),
+                node_id: node_id.clone(),
                 token: "token-1".to_string(),
                 tailnet_identity: TailnetIdentity {
                     node_key: "node-key".to_string(),
                     login_name: "user@example.com".to_string(),
-                    hostname: "device-1".to_string(),
+                    hostname: node_id.clone(),
                 },
                 client_version: "0.7.3".to_string(),
                 metadata: None,
@@ -629,7 +888,7 @@ mod tests {
             .await
             .expect("record pending");
         enrollment_store
-            .approve("device-1", None)
+            .approve(&node_id, None)
             .await
             .expect("approve");
         let state = AppState::new()
@@ -663,12 +922,12 @@ mod tests {
                             "version": "0.7.3",
                         },
                         "_meta": {
-                            "lab.node_id": "device-1",
+                            "lab.node_id": node_id,
                             "lab.device_token": "token-1",
                             "lab.tailnet_identity": {
                                 "node_key": "node-key",
                                 "login_name": "user@example.com",
-                                "hostname": "device-1",
+                                "hostname": node_id,
                             }
                         }
                     }
@@ -679,7 +938,7 @@ mod tests {
             .await
             .expect("send initialize");
         let init_response = next_text(&mut socket).await;
-        assert_eq!(init_response["result"]["_meta"]["lab.node_id"], "device-1");
+        assert_eq!(init_response["result"]["_meta"]["lab.node_id"], node_id);
 
         socket
             .send(Message::Text(
@@ -688,7 +947,7 @@ mod tests {
                     "id": 2,
                     "method": "nodes/metadata.push",
                     "params": {
-                        "node_id": "device-1",
+                        "node_id": node_id,
                         "discovered_configs": []
                     }
                 })
@@ -707,7 +966,7 @@ mod tests {
                     "id": 3,
                     "method": "nodes/status.push",
                     "params": {
-                        "node_id": "device-1",
+                        "node_id": node_id,
                         "connected": true,
                         "cpu_percent": 12.5,
                         "memory_used_bytes": 1024,
@@ -731,9 +990,9 @@ mod tests {
                     "id": 4,
                     "method": "nodes/log.event",
                     "params": {
-                        "node_id": "device-1",
+                        "node_id": node_id,
                         "events": [{
-                            "node_id": "device-1",
+                            "node_id": node_id,
                             "source": "syslog",
                             "timestamp_unix_ms": 1234,
                             "level": "info",
@@ -751,10 +1010,10 @@ mod tests {
         assert!(log_response.get("error").is_none());
 
         socket.close(None).await.expect("close");
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        let snapshot = store.node("device-1").await.expect("snapshot");
-        assert!(!snapshot.connected);
+        let snapshot = store.node(&node_id).await.expect("snapshot");
+        assert!(!snapshot.connected, "node must be disconnected after close");
         assert_eq!(snapshot.role.as_deref(), Some("node"));
         assert_eq!(
             snapshot
@@ -983,6 +1242,200 @@ mod tests {
             .expect("send initialize");
     }
 
+    #[tokio::test]
+    async fn nodes_ping_returns_empty_result() {
+        let state = approved_ws_state("device-ping", "token-ping").await;
+        let app = Router::new()
+            .route("/v1/nodes/ws", get(websocket_upgrade))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+
+        send_initialize(&mut socket, "device-ping", "token-ping").await;
+        let _init = next_text(&mut socket).await;
+
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 10,
+                    "method": "nodes/ping",
+                    "params": {}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send ping");
+        let ping_response = next_text(&mut socket).await;
+        assert!(ping_response.get("error").is_none(), "ping must not return error: {ping_response}");
+        assert_eq!(ping_response["result"], json!({}), "ping result must be empty object");
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn nodes_ping_before_initialize_returns_auth_failed() {
+        let state = approved_ws_state("device-ping2", "token-ping2").await;
+        let app = Router::new()
+            .route("/v1/nodes/ws", get(websocket_upgrade))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+
+        // Send ping without initializing first.
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 10,
+                    "method": "nodes/ping",
+                    "params": {}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send ping pre-init");
+        let response = next_text(&mut socket).await;
+        assert_eq!(response["error"]["data"]["kind"], "auth_failed", "pre-init ping must return auth_failed: {response}");
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn nodes_command_invoke_and_result_round_trip() {
+        let state = approved_ws_state("device-cmd", "token-cmd").await;
+        let app = Router::new()
+            .route("/v1/nodes/ws", get(websocket_upgrade))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+
+        send_initialize(&mut socket, "device-cmd", "token-cmd").await;
+        let _init = next_text(&mut socket).await;
+
+        // Invoke a command.
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 20,
+                    "method": "nodes/command.invoke",
+                    "params": {"command": "echo hello"}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send command.invoke");
+
+        // Expect the RPC response (has "result" with "command_id").
+        // Skip server-push frames (frames with "method" field) — in the test harness
+        // the server and client share the same WS connection, so the server-push
+        // nodes/command.invoke frame arrives before the RPC response.
+        let invoke_response = next_text_skip_method(&mut socket).await;
+        assert!(invoke_response.get("error").is_none(), "command.invoke must not error: {invoke_response}");
+        let command_id = invoke_response["result"]["command_id"].as_str().expect("command_id string").to_string();
+        assert!(!command_id.is_empty(), "command_id must be non-empty");
+
+        // Send command.result back.
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 21,
+                    "method": "nodes/command.result",
+                    "params": {"command_id": command_id, "exit_code": 0, "success": true}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send command.result");
+        let result_response = next_text(&mut socket).await;
+        assert!(result_response.get("error").is_none(), "command.result must not error: {result_response}");
+        assert_eq!(result_response["result"]["exit_code"], 0, "exit_code must be 0");
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn demux_non_allowlisted_method_returns_not_permitted() {
+        let state = approved_ws_state("device-demux", "token-demux").await;
+        let app = Router::new()
+            .route("/v1/nodes/ws", get(websocket_upgrade))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+
+        send_initialize(&mut socket, "device-demux", "token-demux").await;
+        let _init = next_text(&mut socket).await;
+
+        // Send a non-allowlisted method (not in DEMUX_ALLOWLIST).
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 30,
+                    "method": "radarr.movie.list",
+                    "params": {}
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .expect("send non-allowlisted demux");
+        let response = next_text(&mut socket).await;
+        assert_eq!(
+            response["error"]["data"]["kind"], "not_permitted",
+            "non-allowlisted demux must return not_permitted: {response}"
+        );
+
+        server.abort();
+    }
+
+    /// Like `next_text` but additionally skips frames that have a `"method"` field
+    /// (server-push frames). Use when the server pushes a frame to the node before
+    /// returning the RPC response (e.g. `nodes/command.invoke`).
+    async fn next_text_skip_method(
+        socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    ) -> serde_json::Value {
+        loop {
+            match socket.next().await.expect("message").expect("ok") {
+                Message::Text(text) => {
+                    let v: serde_json::Value = serde_json::from_str(&text).expect("json");
+                    if v.get("_lab_internal").is_some() {
+                        continue;
+                    }
+                    // Skip server-push frames (they carry a "method" key, not "result"/"error").
+                    if v.get("method").is_some() {
+                        continue;
+                    }
+                    return v;
+                }
+                Message::Ping(_) | Message::Pong(_) => continue,
+                other => panic!("unexpected websocket message: {other:?}"),
+            }
+        }
+    }
+
     fn test_enrollment_store_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("lab-{name}-{}.json", uuid::Uuid::new_v4()))
     }
@@ -990,9 +1443,19 @@ mod tests {
     async fn next_text(
         socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
     ) -> serde_json::Value {
-        match socket.next().await.expect("message").expect("ok") {
-            Message::Text(text) => serde_json::from_str(&text).expect("json"),
-            other => panic!("unexpected websocket message: {other:?}"),
+        loop {
+            match socket.next().await.expect("message").expect("ok") {
+                Message::Text(text) => {
+                    let v: serde_json::Value = serde_json::from_str(&text).expect("json");
+                    // Skip internal sweep sentinels — they are not RPC responses.
+                    if v.get("_lab_internal").is_some() {
+                        continue;
+                    }
+                    return v;
+                }
+                Message::Ping(_) | Message::Pong(_) => continue,
+                other => panic!("unexpected websocket message: {other:?}"),
+            }
         }
     }
 

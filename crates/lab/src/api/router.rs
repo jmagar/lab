@@ -366,6 +366,16 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         {
             v1 = v1.nest("/logs", services::logs::routes(state.clone()));
         }
+
+        #[cfg(feature = "fs")]
+        if state
+            .registry
+            .services()
+            .iter()
+            .any(|service| service.name == "fs")
+        {
+            v1 = v1.nest("/fs", services::fs::routes(state.clone()));
+        }
     }
 
     macro_rules! mount_if_enabled {
@@ -528,7 +538,9 @@ pub fn build_router(
         .nest("/v1/nodes", super::nodes::public_routes(state.clone()))
         // Backward-compat alias for pre-rename self-registration clients.
         .nest("/v1/fleet", super::nodes::public_routes(state.clone()))
-        // GET /v1/nodes/ws authenticates inside websocket initialize, not via HTTP bearer auth.
+        // GET /v1/nodes/ws is outside bearer-auth middleware by design.
+        // The `initialize` JSON-RPC method performs enrollment-token validation; all
+        // subsequent node methods require an active session. See docs/FLEET_METHODS.md.
         .route(
             "/v1/nodes/ws",
             get(crate::api::nodes::fleet::websocket_upgrade),

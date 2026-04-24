@@ -43,6 +43,7 @@ export function ChatShell() {
     isMobileViewport,
     onSessionPanelClose: React.useCallback(() => setSessionPanelOpen(false), []),
   })
+  const providerReady = Boolean(providerHealth?.ready)
 
   React.useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)')
@@ -96,15 +97,16 @@ export function ChatShell() {
           <TooltipProvider delayDuration={400}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Start new session"
-                  onClick={() => void createRun()}
-                  className="size-7 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
-                >
-                  <Plus className="size-3.5" />
-                </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Start new session"
+                onClick={() => void createRun()}
+                disabled={!providerReady}
+                className="size-7 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
+              >
+                <Plus className="size-3.5" />
+              </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-xs">New session</TooltipContent>
             </Tooltip>
@@ -112,11 +114,11 @@ export function ChatShell() {
 
           <div
             className="flex items-center gap-1 rounded-full border border-aurora-border-default bg-aurora-control-surface px-1.5 py-0.5 sm:px-2"
-            title={providerHealth?.ready ? 'ACP live' : 'ACP unavailable'}
+            title={providerReady ? 'ACP live' : 'ACP unavailable'}
           >
             <Zap className="size-3 text-aurora-accent-primary/70" />
             <span className="hidden text-[11px] text-aurora-text-muted sm:inline">
-              {providerHealth?.ready ? 'ACP live' : 'ACP unavailable'}
+              {providerReady ? 'ACP live' : 'ACP unavailable'}
             </span>
           </div>
 
@@ -178,7 +180,7 @@ export function ChatShell() {
           <MessageThread run={selectedRun} messages={messages} />
           <ChatInput
             onSend={sendPrompt}
-            disabled={!providerHealth?.ready}
+            disabled={!providerReady}
             selectedAgent={selectedAgent}
             agents={[selectedAgent]}
             onSelectAgent={() => {}}

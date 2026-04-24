@@ -320,6 +320,30 @@ pub fn instance_env_keys(prefix: &str, label: &str) -> (String, String) {
     }
 }
 
+/// Create a database file with Unix 0600 permissions if it does not already exist.
+///
+/// This is a no-op when the file already exists (uses `create_new`, so an
+/// `AlreadyExists` error is silently swallowed). On platforms that do not
+/// support `OpenOptionsExt`, this function is not compiled and callers must
+/// ensure appropriate permissions by other means.
+///
+/// # Security
+///
+/// Must be called **before** opening the file via the connection pool so that
+/// the creation and permission assignment happen atomically. Subsequent opens
+/// by the pool do not change permissions.
+#[cfg(unix)]
+pub fn create_db_file_0600(path: &std::path::PathBuf) {
+    use std::os::unix::fs::OpenOptionsExt;
+    // Only set mode on creation; if the file already exists, leave perms alone.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true) // fails silently if file exists — that's fine
+        .mode(0o600)
+        .open(path)
+        .ok();
+}
+
 /// Build a request body from params.
 ///
 /// If `params` contains a `payload` or `body` key, that value is used as the

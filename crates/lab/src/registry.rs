@@ -391,6 +391,21 @@ pub fn build_default_registry() -> ToolRegistry {
         });
     }
 
+    // fs — workspace filesystem browser. Only registered when
+    // LAB_WORKSPACE_ROOT resolves cleanly, so the catalog never advertises
+    // a service whose every call would return `workspace_not_configured`.
+    #[cfg(feature = "fs")]
+    if crate::dispatch::fs::client::require_workspace_root().is_ok() {
+        reg.register(RegisteredService {
+            name: "fs",
+            description: "Workspace filesystem browser (read-only, deny-listed)",
+            category: "bootstrap",
+            status: "available",
+            actions: crate::mcp::services::fs::ACTIONS,
+            dispatch: dispatch_fn!(crate::mcp::services::fs::dispatch),
+        });
+    }
+
     reg
 }
 
