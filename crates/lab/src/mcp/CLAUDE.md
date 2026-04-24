@@ -83,3 +83,32 @@ Never duplicate catalog logic. If you need richer data, extend the builder.
 - `lab://catalog` — the full cross-service catalog.
 
 Resources are read-only. Do not use them for mutations.
+
+## Transport auth for fs
+
+The `fs` service exposes workspace filesystem contents (`fs.list`,
+`fs.preview`). The HTTP surface refuses to mount `/v1/fs` when
+`LAB_WEB_UI_AUTH_DISABLED=true` — see `api/router.rs` and the
+corresponding gate in `cli/serve.rs`. The MCP surface has **no**
+equivalent env-driven refusal: `fs` is registered unconditionally in
+`registry.rs` whenever the `fs` feature is compiled in, regardless of
+MCP transport auth posture.
+
+Operators are responsible for ensuring MCP transport auth is active
+before exposing a server that has the `fs` feature enabled:
+
+- `lab serve` (HTTP transport, the default): require
+  `LAB_MCP_HTTP_TOKEN` or `LAB_AUTH_MODE=oauth`. The non-loopback bind
+  guard in `cli/serve.rs` already refuses to bind on a LAN-accessible
+  address with no auth configured; do not relax that check while `fs`
+  is feature-enabled.
+- `lab serve mcp --stdio`: stdio has no transport-level auth. Ensure
+  the process is not reachable by untrusted callers — do not expose it
+  through a network proxy without front-side auth.
+
+The asymmetry with `/v1/fs` is intentional: MCP registration is not
+structured to fail or skip a single service at runtime, and stdio has
+no single env var equivalent to `LAB_WEB_UI_AUTH_DISABLED`. Promoting
+this to a runtime invariant (e.g. a startup check that refuses to
+register `fs` when MCP auth posture is not verified) is tracked as
+follow-up work.
