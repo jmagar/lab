@@ -16,6 +16,7 @@ pub struct TailnetIdentity {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PendingEnrollment {
+    #[serde(rename = "node_id", alias = "device_id")]
     pub device_id: String,
     pub token: String,
     pub token_fingerprint: String,
@@ -29,6 +30,7 @@ pub struct PendingEnrollment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ApprovedEnrollment {
+    #[serde(rename = "node_id", alias = "device_id")]
     pub device_id: String,
     pub token: String,
     pub token_fingerprint: String,
@@ -38,6 +40,7 @@ pub struct ApprovedEnrollment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeniedEnrollment {
+    #[serde(rename = "node_id", alias = "device_id")]
     pub device_id: String,
     pub token: String,
     pub token_fingerprint: String,

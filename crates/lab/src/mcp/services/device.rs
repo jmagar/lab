@@ -204,11 +204,11 @@ mod tests {
         let approved = dispatch("enrollments.approve", json!({"device_id": "device-1"}))
             .await
             .expect("approve");
-        assert_eq!(approved["device_id"], "device-1");
+        assert_eq!(approved["node_id"], "device-1");
 
         let denied = dispatch("enrollments.deny", json!({"device_id": "device-1"}))
             .await
             .expect("deny");
-        assert_eq!(denied["device_id"], "device-1");
+        assert_eq!(denied["node_id"], "device-1");
     }
 }
