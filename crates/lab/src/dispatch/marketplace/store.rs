@@ -475,7 +475,7 @@ fn list_servers_sync(
           AND lm.version = s.version \
           AND lm.namespace = '{}' \
          WHERE 1=1",
-        crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+        super::LAB_REGISTRY_META_NAMESPACE
     );
     let mut args: Vec<rusqlite::types::Value> = Vec::new();
 
@@ -623,7 +623,7 @@ fn get_server_sync(
                   AND lm.version = s.version \
                   AND lm.namespace = '{}' \
                  WHERE s.server_name = ?1 AND s.is_latest = 1 LIMIT 1",
-                crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+                super::LAB_REGISTRY_META_NAMESPACE
             ),
             rusqlite::params![name],
             |row| {
@@ -646,7 +646,7 @@ fn get_server_sync(
                   AND lm.version = s.version \
                   AND lm.namespace = '{}' \
                  WHERE s.server_name = ?1 AND s.version = ?2 LIMIT 1",
-                crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+                super::LAB_REGISTRY_META_NAMESPACE
             ),
             rusqlite::params![name, version],
             |row| {
@@ -691,7 +691,7 @@ fn list_versions_sync(
           AND lm.version = s.version \
           AND lm.namespace = '{}' \
          WHERE s.server_name = ?1 ORDER BY s.version ASC",
-        crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+        super::LAB_REGISTRY_META_NAMESPACE
     ))?;
 
     let rows = stmt
@@ -950,7 +950,7 @@ fn decode_server_response(
     };
     if let Some(local) = local_meta {
         meta.insert_extension(
-            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE,
+            super::LAB_REGISTRY_META_NAMESPACE,
             audited_metadata_value(local.metadata, &local.updated_at, local.updated_by.as_deref())?,
         );
     }
@@ -968,7 +968,7 @@ fn get_local_metadata_sync(
         rusqlite::params![
             name,
             version,
-            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE
+            super::LAB_REGISTRY_META_NAMESPACE
         ],
         |row| {
             Ok((
@@ -1007,7 +1007,7 @@ fn set_local_metadata_sync(
         rusqlite::params![
             name,
             version,
-            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE,
+            super::LAB_REGISTRY_META_NAMESPACE,
             serde_json::to_string(metadata)?,
             jiff::Timestamp::now().to_string(),
             updated_by,
@@ -1028,7 +1028,7 @@ fn delete_local_metadata_sync(
         rusqlite::params![
             name,
             version,
-            crate::dispatch::mcpregistry::LAB_REGISTRY_META_NAMESPACE,
+            super::LAB_REGISTRY_META_NAMESPACE,
         ],
     )?;
     tx.commit()?;

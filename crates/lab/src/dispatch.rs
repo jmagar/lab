@@ -20,8 +20,6 @@ pub mod lab_admin;
 pub mod linkding;
 pub mod logs;
 pub mod marketplace;
-#[cfg(feature = "mcpregistry")]
-pub mod mcpregistry;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "openai")]

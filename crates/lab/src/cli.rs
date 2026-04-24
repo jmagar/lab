@@ -34,8 +34,6 @@ pub mod deploy;
 pub mod gotify;
 #[cfg(feature = "linkding")]
 pub mod linkding;
-#[cfg(feature = "mcpregistry")]
-pub mod mcpregistry;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "openai")]
@@ -168,9 +166,6 @@ pub enum Command {
     /// Linkding bookmark manager.
     #[cfg(feature = "linkding")]
     Linkding(linkding::LinkdingArgs),
-    /// MCP Registry — browse and search MCP servers.
-    #[cfg(feature = "mcpregistry")]
-    Mcpregistry(mcpregistry::McpregistryArgs),
     /// Memos note-taking service.
     #[cfg(feature = "memos")]
     Memos(memos::MemosArgs),
@@ -253,8 +248,6 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Tailscale(args) => tailscale::run(args, format).await,
         #[cfg(feature = "linkding")]
         Command::Linkding(args) => linkding::run(args, format).await,
-        #[cfg(feature = "mcpregistry")]
-        Command::Mcpregistry(args) => mcpregistry::run(args, format).await,
         #[cfg(feature = "memos")]
         Command::Memos(args) => memos::run(args, format).await,
         #[cfg(feature = "bytestash")]

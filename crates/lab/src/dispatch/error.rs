@@ -364,9 +364,9 @@ impl From<lab_apis::mcpregistry::error::RegistryError> for ToolError {
 // remain caller-fixable `invalid_param`, and upstream fetch failures surface as
 // `network_error`.
 #[cfg(feature = "mcpregistry")]
-impl From<crate::dispatch::mcpregistry::store::RegistryStoreError> for ToolError {
-    fn from(e: crate::dispatch::mcpregistry::store::RegistryStoreError) -> Self {
-        use crate::dispatch::mcpregistry::store::RegistryStoreError;
+impl From<crate::dispatch::marketplace::store::RegistryStoreError> for ToolError {
+    fn from(e: crate::dispatch::marketplace::store::RegistryStoreError) -> Self {
+        use crate::dispatch::marketplace::store::RegistryStoreError;
         let sdk_kind = match &e {
             RegistryStoreError::Upstream(_) => "network_error",
             RegistryStoreError::InvalidCursor(_) => "invalid_param",

@@ -296,15 +296,15 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     #[cfg(feature = "mcpregistry")]
     let _registry_sync_keepalive = {
         let db_path = crate::config::registry_db_path();
-        match crate::dispatch::mcpregistry::store::RegistryStore::open(&db_path).await {
+        match crate::dispatch::marketplace::store::RegistryStore::open(&db_path).await {
             Ok(store) => {
                 let store = Arc::new(store);
                 state = state.with_registry_store(Arc::clone(&store));
                 let sync_store = Arc::clone(&store);
-                match crate::dispatch::mcpregistry::client::require_client() {
+                match crate::dispatch::marketplace::mcp_client::require_mcp_client() {
                     Ok(sync_client) => Some(tokio::spawn(async move {
                         // Fire immediately at startup — do not wait for the first interval tick.
-                        if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
+                        if let Err(e) = crate::dispatch::marketplace::sync::perform_sync(
                             &sync_store, &sync_client, false, "startup",
                         ).await {
                             tracing::warn!(
@@ -322,7 +322,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                         interval.tick().await;
                         loop {
                             interval.tick().await;
-                            if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
+                            if let Err(e) = crate::dispatch::marketplace::sync::perform_sync(
                                 &sync_store, &sync_client, false, "hourly",
                             ).await {
                                 tracing::warn!(
