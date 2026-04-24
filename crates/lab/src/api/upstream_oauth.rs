@@ -565,7 +565,7 @@ mod tests {
 
     #[tokio::test]
     async fn callback_rejects_non_master_requests() {
-        let state = AppState::new().with_device_role(DeviceRole::NonMaster);
+        let state = AppState::new().with_node_role(DeviceRole::NonMaster);
         let app = browser_routes(state.clone()).with_state(state);
 
         let response = app

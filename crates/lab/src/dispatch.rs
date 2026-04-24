@@ -21,6 +21,7 @@ pub mod lab_admin;
 pub mod linkding;
 pub mod logs;
 pub mod marketplace;
+pub mod node;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "openai")]

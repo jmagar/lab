@@ -81,3 +81,6 @@ pub mod tei;
 
 #[cfg(feature = "apprise")]
 pub mod apprise;
+
+#[cfg(feature = "fs")]
+pub mod fs;

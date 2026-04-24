@@ -22,7 +22,7 @@ use crate::dispatch::marketplace::acp_catalog::ACP_ACTIONS;
 use crate::dispatch::marketplace::acp_client;
 
 #[cfg(feature = "acp_registry")]
-use crate::api::nodes::fleet::{NodeDispatchError, send_text_to_node};
+use crate::dispatch::node::{NodeDispatchError, send_text_to_node};
 
 #[cfg(feature = "acp_registry")]
 use lab_apis::acp_registry::client::AcpRegistryClient;

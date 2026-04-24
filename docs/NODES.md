@@ -32,12 +32,20 @@ Canonical HTTP routes:
 - `POST /v1/nodes/syslog/batch`
 - `GET /v1/nodes/ws`
 
-Canonical websocket contract:
+Canonical websocket contract (see `docs/FLEET_METHODS.md` for full spec):
 
-- initialize metadata key: `lab.node_id`
-- method: `nodes/status.push`
-- method: `nodes/metadata.push`
-- method: `nodes/log.event`
+- Auth model: the WS endpoint is outside bearer-auth middleware; `initialize` establishes the session
+- `initialize` — enrollment validation; 10-second deadline from first connection
+- `nodes/ping` — liveness check
+- `nodes/status.push` — telemetry push
+- `nodes/metadata.push` — discovered config push
+- `nodes/log.event` — structured log batch push
+- `nodes/device.enroll` — node identity upsert (idempotent, role-checked)
+- `nodes/command.invoke` — initiate remote command execution
+- `nodes/command.output` — stream command output chunks
+- `nodes/command.result` — report final exit status
+- `nodes/peer.invoke` — peer RPC (not yet implemented)
+- MCP demux allowlist: `lab.help`, `lab.catalog`, `lab.status`
 
 Canonical config:
 

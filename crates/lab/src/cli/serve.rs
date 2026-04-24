@@ -359,6 +359,38 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     // `_registry_sync_keepalive` keeps the background sync task alive for the
     // duration of `serve`; binding it by name preserves the JoinHandle.
     state = state.with_node_role(device_role);
+
+    // Wire the user-configured workspace root into AppState so the fs
+    // service serves `fs.list` / `fs.preview` without re-reading the env
+    // var per request. Failure is non-fatal: absent / invalid root means
+    // the fs service is simply omitted from the catalog.
+    match crate::dispatch::fs::resolve_workspace_root_from_env() {
+        Some(Ok(root)) => {
+            tracing::info!(
+                subsystem = "startup",
+                phase = "fs.workspace_root",
+                path = %root.display(),
+                "workspace filesystem browser enabled"
+            );
+            state = state.with_workspace_root(root);
+        }
+        Some(Err(e)) => {
+            tracing::warn!(
+                subsystem = "startup",
+                phase = "fs.workspace_root",
+                error = %e,
+                "LAB_WORKSPACE_ROOT set but invalid; fs service disabled"
+            );
+        }
+        None => {
+            tracing::info!(
+                subsystem = "startup",
+                phase = "fs.workspace_root",
+                "LAB_WORKSPACE_ROOT not set; fs service disabled"
+            );
+        }
+    }
+
     if let Some(web_assets_dir) = web_assets_dir {
         tracing::info!(
             subsystem = "web_server",

@@ -19,6 +19,20 @@ export const ACP_AGENT: ACPAgent = {
   capabilities: ['tool_use', 'streaming', 'permissions', 'plans'],
 }
 
+type ProviderListPayload = {
+  providers?: Array<{
+    name?: string
+    available?: boolean
+    version?: string | null
+    error?: string | null
+  }>
+  provider?: ProviderHealth
+}
+
+type SessionCreatePayload = {
+  session?: BridgeSessionSummary
+} & BridgeSessionSummary
+
 export type SessionCreationIntent = 'bootstrap' | 'manual' | 'send'
 export type CreateSessionOptions = { closeSessionPanel?: boolean }
 export type CreateSessionFn = (options?: CreateSessionOptions) => Promise<ACPRun>
@@ -80,6 +94,25 @@ function toRun(session: BridgeSessionSummary): ACPRun {
     providerSessionId: session.providerSessionId,
     cwd: session.cwd,
   }
+}
+
+function normalizeProviderHealth(payload: ProviderListPayload): ProviderHealth {
+  if (payload.provider) {
+    return payload.provider
+  }
+
+  const provider = payload.providers?.[0]
+  return {
+    provider: provider?.name ?? 'codex',
+    ready: Boolean(provider?.available),
+    command: '',
+    args: [],
+    message: provider?.error ?? '',
+  }
+}
+
+function extractCreatedSession(payload: SessionCreatePayload): BridgeSessionSummary {
+  return payload.session ?? payload
 }
 
 export function useChatSessionController(options: {
@@ -173,8 +206,8 @@ export function useChatSessionController(options: {
       })
       return
     }
-    const payload = (await response.json()) as { provider: ProviderHealth }
-    setProviderHealth(payload.provider)
+    const payload = (await response.json()) as ProviderListPayload
+    setProviderHealth(normalizeProviderHealth(payload))
   }, [fetchAcp])
 
   const createSession = React.useCallback<CreateSessionFn>(
@@ -183,8 +216,8 @@ export function useChatSessionController(options: {
         method: 'POST',
         body: JSON.stringify({}),
       })
-      const payload = (await response.json()) as { session: BridgeSessionSummary }
-      const run = toRun(payload.session)
+      const payload = (await response.json()) as SessionCreatePayload
+      const run = toRun(extractCreatedSession(payload))
       setRuns((current) => integrateCreatedRun(current, run))
       setSelectedRunId(run.id)
       if (createOptions?.closeSessionPanel) {

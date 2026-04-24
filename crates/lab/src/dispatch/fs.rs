@@ -20,6 +20,17 @@
 //! matching the `lab_admin` precedent. See `crates/lab/Cargo.toml` for the
 //! feature flag.
 
+pub mod catalog;
 pub mod client;
 
+#[cfg(feature = "fs")]
+pub mod dispatch;
+#[cfg(feature = "fs")]
+pub mod params;
+
+#[cfg(feature = "fs")]
+pub use catalog::ACTIONS;
 pub use client::{not_configured_error, resolve_workspace_root_from_env};
+
+#[cfg(feature = "fs")]
+pub use dispatch::{Preview, dispatch, dispatch_with_root, open_for_preview};

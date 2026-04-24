@@ -16,6 +16,9 @@ pub mod marketplace;
 #[cfg(feature = "lab-admin")]
 pub mod lab_admin;
 
+#[cfg(feature = "fs")]
+pub mod fs;
+
 #[cfg(feature = "radarr")]
 pub mod radarr;
 
