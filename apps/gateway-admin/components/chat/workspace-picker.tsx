@@ -50,6 +50,8 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
       setCwd('')
       setEntries([])
       setError(null)
+      setLoading(false)
+      setTruncated(false)
       return
     }
 
