@@ -210,10 +210,10 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Agent id from the registry",
             },
             ParamSpec {
-                name: "device_ids",
+                name: "node_ids",
                 ty: "array",
                 required: true,
-                description: "Device ids to install on (`\"local\"` for the controller host)",
+                description: "Node ids to install on (`\"local\"` for the controller host)",
             },
             ParamSpec {
                 name: "platform",
@@ -248,10 +248,10 @@ pub const ACTIONS: &[ActionSpec] = &[
                 description: "Component paths to install (e.g. `agents/my-agent.md`)",
             },
             ParamSpec {
-                name: "device_ids",
+                name: "node_ids",
                 ty: "array",
                 required: true,
-                description: "Target device ids (`\"local\"` for the controller host)",
+                description: "Target node ids (`\"local\"` for the controller host)",
             },
             ParamSpec {
                 name: "scope",

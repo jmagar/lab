@@ -38,10 +38,10 @@ pub const ACP_ACTIONS: &[ActionSpec] = &[
                 description: "Agent id from the registry",
             },
             ParamSpec {
-                name: "device_ids",
+                name: "node_ids",
                 ty: "array",
                 required: true,
-                description: "Device ids to install on. Use `\"local\"` for the controller host. Remote installs are not yet implemented and return per-device errors.",
+                description: "Node ids to install on. Use `\"local\"` for the controller host. Remote installs are not yet implemented and return per-node errors.",
             },
             ParamSpec {
                 name: "platform",

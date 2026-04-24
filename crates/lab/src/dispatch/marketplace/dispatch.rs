@@ -17,13 +17,13 @@ use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::params::{self, parse_plugin_id};
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
-    dispatch_with_port(action, params, &client::NoopDeviceRpcPort).await
+    dispatch_with_port(action, params, &client::NoopNodeRpcPort).await
 }
 
-pub(crate) async fn dispatch_with_port(
+pub async fn dispatch_with_port(
     action: &str,
     params: Value,
-    port: &dyn client::DeviceRpcPort,
+    port: &dyn client::NodeRpcPort,
 ) -> Result<Value, ToolError> {
     if action.starts_with("agent.") {
         return acp_dispatch::dispatch_acp(action, params).await;
@@ -925,8 +925,8 @@ async fn plugin_shell(verb: &'static str, id: &str) -> Result<Value, ToolError> 
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct CherryPickDeviceResult {
-    device_id: String,
+struct CherryPickNodeResult {
+    node_id: String,
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
@@ -934,12 +934,12 @@ struct CherryPickDeviceResult {
 
 #[derive(Debug, Clone, Serialize)]
 struct CherryPickResult {
-    results: Vec<CherryPickDeviceResult>,
+    results: Vec<CherryPickNodeResult>,
 }
 
 async fn plugin_cherry_pick(
     cp: params::CherryPickParams,
-    port: &dyn client::DeviceRpcPort,
+    port: &dyn client::NodeRpcPort,
 ) -> Result<Value, ToolError> {
     let rpc_params = serde_json::json!({
         "plugin_id": cp.plugin_id,
@@ -948,19 +948,19 @@ async fn plugin_cherry_pick(
         "project_path": cp.project_path,
     });
 
-    let mut results = Vec::with_capacity(cp.device_ids.len());
-    for device_id in &cp.device_ids {
+    let mut results = Vec::with_capacity(cp.node_ids.len());
+    for node_id in &cp.node_ids {
         let outcome = port
-            .send_rpc(device_id, "marketplace.install_components", rpc_params.clone())
+            .send_rpc(node_id, "marketplace.install_component", rpc_params.clone())
             .await;
         results.push(match outcome {
-            Ok(_) => CherryPickDeviceResult { device_id: device_id.clone(), ok: true, message: None },
+            Ok(_) => CherryPickNodeResult { node_id: node_id.clone(), ok: true, message: None },
             Err(e) => {
                 let msg = match &e {
                     ToolError::Sdk { message, .. } => message.clone(),
-                    _ => "device RPC failed".into(),
+                    _ => "node RPC failed".into(),
                 };
-                CherryPickDeviceResult { device_id: device_id.clone(), ok: false, message: Some(msg) }
+                CherryPickNodeResult { node_id: node_id.clone(), ok: false, message: Some(msg) }
             }
         });
     }

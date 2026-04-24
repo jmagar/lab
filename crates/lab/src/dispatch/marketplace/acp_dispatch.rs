@@ -97,7 +97,7 @@ async fn dispatch_install(
 ) -> Result<Value, ToolError> {
     let id = require_str(params, "id")?.to_string();
 
-    let device_ids: Vec<String> = match params.get("device_ids") {
+    let node_ids: Vec<String> = match params.get("node_ids") {
         Some(Value::Array(arr)) => arr
             .iter()
             .filter_map(Value::as_str)
@@ -105,22 +105,22 @@ async fn dispatch_install(
             .collect(),
         Some(_) => {
             return Err(ToolError::InvalidParam {
-                message: "`device_ids` must be an array of strings".to_string(),
-                param: "device_ids".to_string(),
+                message: "`node_ids` must be an array of strings".to_string(),
+                param: "node_ids".to_string(),
             });
         }
         None => {
             return Err(ToolError::MissingParam {
-                message: "missing required parameter `device_ids`".to_string(),
-                param: "device_ids".to_string(),
+                message: "missing required parameter `node_ids`".to_string(),
+                param: "node_ids".to_string(),
             });
         }
     };
 
-    if device_ids.is_empty() {
+    if node_ids.is_empty() {
         return Err(ToolError::InvalidParam {
-            message: "`device_ids` must not be empty".to_string(),
-            param: "device_ids".to_string(),
+            message: "`node_ids` must not be empty".to_string(),
+            param: "node_ids".to_string(),
         });
     }
 
@@ -134,21 +134,21 @@ async fn dispatch_install(
         message: format!("agent `{id}` not found in registry"),
     })?;
 
-    let mut results = Vec::with_capacity(device_ids.len());
-    for device_id in &device_ids {
-        let outcome = if is_local_device(device_id) {
+    let mut results = Vec::with_capacity(node_ids.len());
+    for node_id in &node_ids {
+        let outcome = if is_local_node(node_id) {
             install_local(&agent, &id, platform_override.as_deref()).await
         } else {
-            install_remote(device_id, &agent, &id).await
+            install_remote(node_id, &agent, &id).await
         };
         match outcome {
             Ok(value) => results.push(serde_json::json!({
-                "device_id": device_id,
+                "node_id": node_id,
                 "ok": true,
                 "result": value,
             })),
             Err(e) => results.push(serde_json::json!({
-                "device_id": device_id,
+                "node_id": node_id,
                 "ok": false,
                 "error": serde_json::to_value(&e).unwrap_or(Value::Null),
             })),
@@ -161,13 +161,13 @@ async fn dispatch_install(
     }))
 }
 
-fn is_local_device(device_id: &str) -> bool {
-    if device_id.eq_ignore_ascii_case("local") {
+fn is_local_node(node_id: &str) -> bool {
+    if node_id.eq_ignore_ascii_case("local") {
         return true;
     }
     if let Ok(host) = std::env::var("HOSTNAME")
         && !host.is_empty()
-        && device_id.eq_ignore_ascii_case(&host)
+        && node_id.eq_ignore_ascii_case(&host)
     {
         return true;
     }
@@ -260,7 +260,7 @@ fn detect_platform() -> String {
 /// has an `Npx` variant. `uvx` and `binary` return a structured error.
 #[cfg(feature = "acp_registry")]
 async fn install_remote(
-    device_id: &str,
+    node_id: &str,
     agent: &Agent,
     agent_id: &str,
 ) -> Result<Value, ToolError> {
@@ -271,7 +271,7 @@ async fn install_remote(
                 sdk_kind: "not_implemented".to_string(),
                 message: format!(
                     "remote install of `{agent_id}` is not supported for uvx distribution \
-                     (device runtime only handles npx)"
+                     (node runtime only handles npx)"
                 ),
             });
         }
@@ -280,15 +280,15 @@ async fn install_remote(
                 sdk_kind: "not_implemented".to_string(),
                 message: format!(
                     "remote install of `{agent_id}` is not supported for binary distribution \
-                     (device runtime only handles npx)"
+                     (node runtime only handles npx)"
                 ),
             });
         }
     };
 
-    // JSON-RPC 2.0 fire-and-forget — device processes async; we don't wait for
-    // a response because `send_to_device` is a one-way channel. ID is 0 since
-    // no response correlation is needed.
+    // JSON-RPC 2.0 fire-and-forget — node processes async; we don't wait for
+    // a response because `send_text_to_node` is a one-way channel. ID is 0
+    // since no response correlation is needed here.
     let msg = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 0,
@@ -304,21 +304,21 @@ async fn install_remote(
     })
     .to_string();
 
-    send_text_to_node(device_id, msg)
+    send_text_to_node(node_id, msg)
         .await
         .map_err(|e| match e {
             NodeDispatchError::NotConnected { .. } => ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
-                message: format!("node `{device_id}` is not connected"),
+                message: format!("node `{node_id}` is not connected"),
             },
             NodeDispatchError::ChannelClosed { .. } => ToolError::Sdk {
                 sdk_kind: "network_error".to_string(),
-                message: format!("send channel for node `{device_id}` closed (race with disconnect)"),
+                message: format!("send channel for node `{node_id}` closed (race with disconnect)"),
             },
         })?;
 
     Ok(serde_json::json!({
-        "device_id": device_id,
+        "node_id": node_id,
         "agent_id": agent_id,
         "queued": true,
     }))
