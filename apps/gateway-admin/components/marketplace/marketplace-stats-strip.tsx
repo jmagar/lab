@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Download, ShoppingBag, RefreshCw } from 'lucide-react'
+import { Download, ShoppingBag, RefreshCw, Server, Bot } from 'lucide-react'
 import type { Plugin, Marketplace } from '@/lib/types/marketplace'
 
 interface MarketplaceStatsStripProps {
@@ -9,6 +9,8 @@ interface MarketplaceStatsStripProps {
   marketplaces: Marketplace[]
   installedIds: Set<string>
   variant: 'browse' | 'marketplaces'
+  mcpCount?: number
+  acpCount?: number
 }
 
 interface ChipProps {
@@ -51,6 +53,8 @@ export function MarketplaceStatsStrip({
   marketplaces,
   installedIds,
   variant,
+  mcpCount,
+  acpCount,
 }: MarketplaceStatsStripProps) {
   const installed = plugins.filter(p => installedIds.has(p.id))
   const updates = installed.filter(p => p.hasUpdate)
@@ -119,6 +123,30 @@ export function MarketplaceStatsStrip({
             iconColor={updates.length ? 'var(--aurora-warn)' : 'var(--aurora-text-muted)'}
             valueColor={updates.length ? 'var(--aurora-warn)' : undefined}
           />
+          {mcpCount !== undefined && (
+            <>
+              <Divider />
+              <StatChip
+                value={mcpCount}
+                label="MCP servers"
+                icon={<Server />}
+                iconBg="color-mix(in srgb, var(--aurora-accent-primary) 10%, transparent)"
+                iconColor="var(--aurora-accent-primary)"
+              />
+            </>
+          )}
+          {acpCount !== undefined && (
+            <>
+              <Divider />
+              <StatChip
+                value={acpCount}
+                label="agents"
+                icon={<Bot />}
+                iconBg="color-mix(in srgb, var(--aurora-accent-strong) 10%, transparent)"
+                iconColor="var(--aurora-accent-strong)"
+              />
+            </>
+          )}
         </>
       )}
     </div>

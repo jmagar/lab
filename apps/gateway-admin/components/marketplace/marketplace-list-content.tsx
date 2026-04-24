@@ -7,9 +7,14 @@ import { MarketplaceCard } from './marketplace-card'
 import { MktSourceCard } from './mkt-source-card'
 import { MarketplaceStatsStrip } from './marketplace-stats-strip'
 import { AddMarketplaceModal } from './add-marketplace-modal'
+import { McpServerCard } from './mcp-server-card'
+import { AcpAgentCard } from './acp-agent-card'
+import { TypeFilter } from './type-filter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMarketplaces, usePlugins, useMarketplaceMutations } from '@/lib/hooks/use-marketplace'
 import type { Plugin as MarketplacePlugin } from '@/lib/types/marketplace'
+import type { MarketplaceItem, ItemTypeFilter } from '@/lib/marketplace/types'
+import { MOCK_MCP_SERVERS, MOCK_ACP_AGENTS } from '@/lib/marketplace/mocks'
 import { cn } from '@/lib/utils'
 import {
   AURORA_DISPLAY_1,
@@ -91,6 +96,7 @@ export function MarketplaceListContent() {
   const [sort, setSort] = useState<Sort>('name')
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [mktFilter, setMktFilter] = useState<string | null>(null)
+  const [typeFilter, setTypeFilter] = useState<ItemTypeFilter>('all')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
 
@@ -109,30 +115,80 @@ export function MarketplaceListContent() {
     }
   }, [refreshMarketplaces, refreshPlugins])
 
+  // Build unified item list from plugins + mocks
+  const allItems = useMemo<MarketplaceItem[]>(() => {
+    const pluginItems: MarketplaceItem[] = plugins.map(p => ({ kind: 'plugin' as const, data: p }))
+    const mcpItems: MarketplaceItem[] = MOCK_MCP_SERVERS.map(s => ({ kind: 'mcp_server' as const, data: s }))
+    const acpItems: MarketplaceItem[] = MOCK_ACP_AGENTS.map(a => ({ kind: 'acp_agent' as const, data: a }))
+    return [...pluginItems, ...mcpItems, ...acpItems]
+  }, [plugins])
+
   const filtered = useMemo(() => {
-    let list = tab === 'installed' ? plugins.filter(p => installedIds.has(p.id)) : plugins
-    if (mktFilter) list = list.filter(p => p.marketplaceId === mktFilter)
-    if (query) {
-      const q = query.toLowerCase()
-      list = list.filter(p =>
-        p.name.toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q) ||
-        (p.description ?? '').toLowerCase().includes(q) ||
-        (p.tags ?? []).some(t => t.toLowerCase().includes(q)) ||
-        p.marketplaceId.toLowerCase().includes(q)
+    let list: MarketplaceItem[] = tab === 'installed'
+      ? allItems.filter(item => item.kind === 'plugin' && installedIds.has(item.data.id))
+      : allItems
+
+    // Apply type filter
+    if (typeFilter !== 'all') {
+      list = list.filter(item => item.kind === typeFilter)
+    }
+
+    // Apply marketplace filter (only relevant for plugins)
+    if (mktFilter) {
+      list = list.filter(item =>
+        item.kind !== 'plugin' || (item.data as MarketplacePlugin).marketplaceId === mktFilter
       )
     }
+
+    // Apply search query
+    if (query) {
+      const q = query.toLowerCase()
+      list = list.filter(item => {
+        if (item.kind === 'plugin') {
+          const p = item.data as MarketplacePlugin
+          return (
+            p.name.toLowerCase().includes(q) ||
+            p.id.toLowerCase().includes(q) ||
+            (p.description ?? '').toLowerCase().includes(q) ||
+            (p.tags ?? []).some(t => t.toLowerCase().includes(q)) ||
+            p.marketplaceId.toLowerCase().includes(q)
+          )
+        }
+        if (item.kind === 'mcp_server') {
+          return (
+            item.data.name.toLowerCase().includes(q) ||
+            (item.data.description ?? '').toLowerCase().includes(q) ||
+            (item.data.package ?? '').toLowerCase().includes(q)
+          )
+        }
+        if (item.kind === 'acp_agent') {
+          return (
+            item.data.name.toLowerCase().includes(q) ||
+            item.data.id.toLowerCase().includes(q) ||
+            (item.data.description ?? '').toLowerCase().includes(q)
+          )
+        }
+        return false
+      })
+    }
+
+    // Sort — plugin-aware, MCP/ACP always sort by name
     return [...list].sort((a, b) => {
-      if (sort === 'name')        return a.name.localeCompare(b.name)
-      if (sort === 'marketplace') return a.marketplaceId.localeCompare(b.marketplaceId) || a.name.localeCompare(b.name)
-      if (sort === 'installed') {
-        const ai = installedIds.has(a.id), bi = installedIds.has(b.id)
-        return (ai === bi) ? a.name.localeCompare(b.name) : ai ? -1 : 1
+      if (a.kind !== 'plugin' || b.kind !== 'plugin') {
+        return a.data.name.localeCompare(b.data.name)
       }
-      if (sort === 'updated') return new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()
+      const pa = a.data as MarketplacePlugin
+      const pb = b.data as MarketplacePlugin
+      if (sort === 'name') return pa.name.localeCompare(pb.name)
+      if (sort === 'marketplace') return pa.marketplaceId.localeCompare(pb.marketplaceId) || pa.name.localeCompare(pb.name)
+      if (sort === 'installed') {
+        const ai = installedIds.has(pa.id), bi = installedIds.has(pb.id)
+        return (ai === bi) ? pa.name.localeCompare(pb.name) : ai ? -1 : 1
+      }
+      if (sort === 'updated') return new Date(pb.updatedAt ?? 0).getTime() - new Date(pa.updatedAt ?? 0).getTime()
       return 0
     })
-  }, [plugins, tab, query, sort, installedIds])
+  }, [allItems, tab, query, sort, typeFilter, mktFilter, installedIds])
 
   const ghUserForPlugin = useCallback((p: MarketplacePlugin) => {
     return marketplaces.find(m => m.id === p.marketplaceId)?.githubOwner
@@ -140,22 +196,45 @@ export function MarketplaceListContent() {
 
   const installedCountForMkt = (mktId: string) => plugins.filter(p => p.marketplaceId === mktId && installedIds.has(p.id)).length
 
+  // Per-type counts for the type filter UI
+  const typeCounts = useMemo(() => ({
+    all: allItems.length,
+    plugin: plugins.length,
+    mcp_server: MOCK_MCP_SERVERS.length,
+    acp_agent: MOCK_ACP_AGENTS.length,
+  }), [allItems, plugins])
+
+  function renderItemGrid(items: MarketplaceItem[]) {
+    return (
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+        {items.map((item, idx) => {
+          if (item.kind === 'plugin') {
+            return (
+              <MarketplaceCard
+                key={item.data.id}
+                plugin={item.data}
+                ghUser={ghUserForPlugin(item.data)}
+              />
+            )
+          }
+          if (item.kind === 'mcp_server') {
+            return <McpServerCard key={`mcp-${item.data.name}-${idx}`} server={item.data} />
+          }
+          if (item.kind === 'acp_agent') {
+            return <AcpAgentCard key={`acp-${item.data.id}`} agent={item.data} />
+          }
+          return null
+        })}
+      </div>
+    )
+  }
+
   function renderBrowseGrid() {
     if (loadError) {
       return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
     }
-    if (!filtered.length) return <EmptyState icon="🔍" title="No results" sub={`No plugins match "${query}"`} />
-    return (
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-        {filtered.map(p => (
-          <MarketplaceCard
-            key={p.id}
-            plugin={p}
-            ghUser={ghUserForPlugin(p)}
-          />
-        ))}
-      </div>
-    )
+    if (!filtered.length) return <EmptyState icon="🔍" title="No results" sub={`No items match "${query}"`} />
+    return renderItemGrid(filtered)
   }
 
   function renderInstalledGroups() {
@@ -164,7 +243,13 @@ export function MarketplaceListContent() {
     }
     if (query) return renderBrowseGrid()
     const groups: Record<string, MarketplacePlugin[]> = {}
-    filtered.forEach(p => { if (!groups[p.marketplaceId]) groups[p.marketplaceId] = []; groups[p.marketplaceId].push(p) })
+    filtered.forEach(item => {
+      if (item.kind === 'plugin') {
+        const p = item.data as MarketplacePlugin
+        if (!groups[p.marketplaceId]) groups[p.marketplaceId] = []
+        groups[p.marketplaceId].push(p)
+      }
+    })
     if (!Object.keys(groups).length) return <EmptyState icon="📦" title="Nothing installed" sub="Browse plugins above to get started" />
     return (
       <div className="flex flex-col gap-7">
@@ -207,7 +292,7 @@ export function MarketplaceListContent() {
     )
   }
 
-  const browseCount = plugins.length
+  const browseCount = allItems.length
   const installedCount = installedIds.size
   const mktCount = marketplaces.length
   const mobileFilterCount = (sort !== 'name' ? 1 : 0) + (mktFilter ? 1 : 0)
@@ -258,7 +343,7 @@ export function MarketplaceListContent() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 overflow-x-auto px-4 sm:px-6 border-b border-aurora-border-default bg-transparent flex-shrink-0 aurora-scrollbar">
+      <div className="hidden gap-0 overflow-x-auto px-4 sm:px-6 border-b border-aurora-border-default bg-transparent flex-shrink-0 aurora-scrollbar lg:flex">
         {([
           { id: 'browse' as const, label: 'Browse', count: browseCount },
           { id: 'installed' as const, label: 'Installed', count: installedCount },
@@ -286,13 +371,11 @@ export function MarketplaceListContent() {
       <div className="aurora-scrollbar flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:var(--aurora-border-default)_transparent] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-aurora-border-default [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb:hover]:bg-aurora-border-strong">
         <div className="max-w-[1740px] w-full mx-auto px-4 py-4 pb-8 sm:px-6 sm:py-6 flex flex-col gap-5">
 
-          {tab !== 'marketplaces' && (
-            <section className="grid grid-cols-3 gap-2 lg:hidden">
-              <MobileTabChip label="Browse" count={browseCount} active={tab === 'browse'} onClick={() => setTab('browse')} />
-              <MobileTabChip label="Installed" count={installedCount} active={tab === 'installed'} onClick={() => setTab('installed')} />
-              <MobileTabChip label="Sources" count={mktCount} active={false} onClick={() => setTab('marketplaces')} />
-            </section>
-          )}
+          <section className="grid grid-cols-3 gap-2 lg:hidden">
+            <MobileTabChip label="Browse" count={browseCount} active={tab === 'browse'} onClick={() => { setTab('browse'); setMktFilter(null) }} />
+            <MobileTabChip label="Installed" count={installedCount} active={tab === 'installed'} onClick={() => { setTab('installed'); setMktFilter(null) }} />
+            <MobileTabChip label="Sources" count={mktCount} active={tab === 'marketplaces'} onClick={() => { setTab('marketplaces'); setMktFilter(null) }} />
+          </section>
 
           {tab !== 'marketplaces' && (
             <>
@@ -304,6 +387,8 @@ export function MarketplaceListContent() {
                     value={query}
                     onChange={e => setQuery(e.target.value)}
                     placeholder="Search plugins"
+                    aria-label="Search plugins"
+                    name="marketplace-search"
                     className="w-full bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/80 pl-10 pr-[4.75rem] py-[10px] text-[13px] font-medium outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-small),var(--aurora-highlight-medium)]"
                   />
                   <div className="absolute inset-y-0 right-1 flex items-center gap-1">
@@ -433,7 +518,7 @@ export function MarketplaceListContent() {
                   type="text"
                   value={query}
                   onChange={e => setQuery(e.target.value)}
-                  placeholder="Search plugins, marketplaces, tags…"
+                  placeholder="Search plugins, MCP servers, agents…"
                   className="w-full bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/80 pl-10 pr-[14px] py-[10px] text-[13px] font-medium outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-small),var(--aurora-highlight-medium)]"
                 />
               </div>
@@ -466,7 +551,18 @@ export function MarketplaceListContent() {
                 marketplaces={marketplaces}
                 installedIds={installedIds}
                 variant="browse"
+                mcpCount={MOCK_MCP_SERVERS.length}
+                acpCount={MOCK_ACP_AGENTS.length}
               />
+              </div>
+
+              {/* Type filter — item-type filter for browse/installed views */}
+              <div className="flex items-center gap-3">
+                <TypeFilter
+                  value={typeFilter}
+                  onChange={setTypeFilter}
+                  counts={typeCounts}
+                />
               </div>
             </>
           )}
@@ -474,7 +570,7 @@ export function MarketplaceListContent() {
           <div className="flex items-center justify-between">
             <span className="font-sans text-[11px] font-bold uppercase tracking-[0.14em] text-aurora-text-muted">
               {tab === 'browse'
-                ? `${filtered.length} Plugins`
+                ? `${filtered.length} Items`
                 : tab === 'installed'
                   ? `${filtered.length} Installed Plugins`
                   : `${marketplaces.length} Marketplaces`}
