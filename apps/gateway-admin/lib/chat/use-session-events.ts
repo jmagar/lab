@@ -4,8 +4,13 @@ import * as React from 'react'
 import { normalizeGatewayApiBase } from '@/lib/api/gateway-config'
 import { gatewayHeaders } from '@/lib/api/gateway-request'
 import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
-import type { BridgeEvent } from '@/lib/acp/types'
-import { appendSessionEvent, resolveLastSessionEventSeq } from './session-events'
+import type { AcpEvent, BridgeEvent } from '@/lib/acp/types'
+import {
+  appendSessionEvent,
+  bridgeEventFromAcpEvent,
+  deriveTranscriptAndActivity,
+  resolveLastSessionEventSeq,
+} from './session-events'
 
 export type SessionEventConnectionState = 'idle' | 'connecting' | 'open' | 'error'
 
@@ -48,13 +53,13 @@ export function consumeSessionEventBuffer(buffer: string, lastSeq: number) {
       continue
     }
 
-    const event = JSON.parse(dataLines.join('\n')) as BridgeEvent
+    const event = JSON.parse(dataLines.join('\n')) as AcpEvent
     if (event.seq <= nextLastSeq) {
       continue
     }
 
     nextLastSeq = event.seq
-    events.push(event)
+    events.push(bridgeEventFromAcpEvent(event))
   }
 
   return {
@@ -167,5 +172,12 @@ export function useSessionEvents(sessionId: string | null) {
     }
   }, [acpBase, requestCredentials, sessionId])
 
-  return { events, connectionState }
+  const derived = React.useMemo(() => deriveTranscriptAndActivity(events), [events])
+
+  return {
+    events,
+    connectionState,
+    messages: derived.messages,
+    activity: derived.activity,
+  }
 }

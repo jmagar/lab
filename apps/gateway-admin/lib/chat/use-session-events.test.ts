@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import type { BridgeEvent } from '@/lib/acp/types'
 import { buildSessionEventsUrl, consumeSessionEventBuffer } from './use-session-events'
 
-function event(seq: number, text = `chunk-${seq}`): BridgeEvent {
+function event(seq: number, overrides: Partial<BridgeEvent> = {}): BridgeEvent {
   return {
     id: `evt-${seq}`,
     seq,
@@ -13,7 +13,8 @@ function event(seq: number, text = `chunk-${seq}`): BridgeEvent {
     kind: 'message.chunk',
     createdAt: '2026-04-23T00:00:00Z',
     role: 'assistant',
-    text,
+    text: `chunk-${seq}`,
+    ...overrides,
   }
 }
 
@@ -32,7 +33,7 @@ test('consumeSessionEventBuffer appends only new events and preserves trailing p
   const thirdFrame = sseFrame(event(3))
   const splitIndex = thirdFrame.length - 8
   const firstPass = consumeSessionEventBuffer(
-    sseFrame(event(1)) + sseFrame(event(1, 'duplicate')) + sseFrame(event(2)) + thirdFrame.slice(0, splitIndex),
+    sseFrame(event(1)) + sseFrame(event(1, { text: 'duplicate' })) + sseFrame(event(2)) + thirdFrame.slice(0, splitIndex),
     0,
   )
 
@@ -48,4 +49,31 @@ test('consumeSessionEventBuffer appends only new events and preserves trailing p
   assert.deepEqual(secondPass.events.map((entry) => entry.seq), [3])
   assert.equal(secondPass.lastSeq, 3)
   assert.equal(secondPass.buffer, '')
+})
+
+test('consumeSessionEventBuffer tolerates SSE metadata lines and canonical browser event kinds', () => {
+  const payload = [
+    ': keepalive',
+    'event: acp-event',
+    'id: evt-4',
+    'data: {"id":"evt-4","seq":4,"sessionId":"session-1","provider":"codex",',
+    'data: "kind":"status","createdAt":"2026-04-23T00:00:00Z","title":"Prompt completed","status":"completed"}',
+    '',
+    sseFrame(event(3, { text: 'stale duplicate' })).trimEnd(),
+    '',
+    'data: {"id":"evt-5","seq":5,"sessionId":"session-1","provider":"codex","kind":"error","createdAt":"2026-04-23T00:00:00Z","title":"Provider error","text":"Prompt failed","status":"failed"}',
+    '',
+  ].join('\n')
+
+  const consumed = consumeSessionEventBuffer(payload, 3)
+
+  assert.deepEqual(
+    consumed.events.map((entry) => [entry.seq, entry.kind, entry.title, entry.status]),
+    [
+      [4, 'status', 'Prompt completed', 'completed'],
+      [5, 'error', 'Provider error', 'failed'],
+    ],
+  )
+  assert.equal(consumed.lastSeq, 5)
+  assert.equal(consumed.buffer, '')
 })

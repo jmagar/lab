@@ -7,10 +7,10 @@
 //! immediately drop the map guard before doing anything that might `.await`.
 //! The guard is NEVER held across an `.await` point.
 //!
-//! ## Per-subscriber bounded mpsc (replaces broadcast)
+//! ## Per-subscriber bounded mpsc
 //! Each subscriber gets their own `mpsc::Sender<Arc<AcpEvent>>` (capacity 64).
-//! A fanout task converts `PendingBridgeEvent`s into `AcpEvent`s and sends to
-//! all subscribers. If a sender is full, that event is dropped for that
+//! A fanout task sends typed `AcpEvent`s to all subscribers. If a sender is
+//! full, that event is dropped for that
 //! subscriber only (WARN logged); the subscriber receives a `reconnect` signal
 //! before being removed.
 //!
@@ -32,19 +32,18 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::{Stream, StreamExt, stream};
-use tokio::sync::{Mutex, OnceCell, RwLock, broadcast, mpsc};
+use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 
 use lab_apis::acp::persistence::AcpPersistence;
 use lab_apis::acp::types::{AcpEvent, AcpProviderHealth, AcpSessionState, AcpSessionSummary};
 
-use crate::dispatch::acp::codex::codex_health;
 use crate::dispatch::acp::persistence::SqliteAcpPersistence;
 use crate::dispatch::error::ToolError;
 
-// Also re-export types that api/services/acp.rs still needs from the old shape.
-// (BridgeEvent is used in the SSE handler — bead 7 will clean that up.)
-use super::types::{BridgeEvent, PendingBridgeEvent, StartSessionInput};
-use super::runtime::{RuntimeHandle, launch_codex_runtime};
+use super::runtime::{RuntimeHandle, codex_provider_health, launch_codex_runtime};
+use super::types::{
+    StartSessionInput, event_created_at, session_title_from_event, stamp_event_sequence,
+};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -69,17 +68,13 @@ struct Session {
     handle: Mutex<Option<RuntimeHandle>>,
     /// Per-subscriber bounded mpsc senders. Fanout task pushes to all.
     subscribers: Mutex<Vec<mpsc::Sender<Arc<AcpEvent>>>>,
-    /// In-memory event buffer (capped at 500) for legacy callers.
-    events: RwLock<Vec<BridgeEvent>>,
+    /// In-memory typed event buffer (capped at 500) when persistence is unavailable.
+    events: RwLock<Vec<AcpEvent>>,
     next_seq: Mutex<u64>,
-    /// Legacy broadcast for the old api/services/acp.rs SSE handler.
-    /// Kept until bead 7 migrates that caller to the new Stream API.
-    broadcast_tx: broadcast::Sender<BridgeEvent>,
 }
 
 impl Session {
     fn new(id: String, principal: String, summary: AcpSessionSummary) -> Arc<Self> {
-        let (broadcast_tx, _) = broadcast::channel(256);
         Arc::new(Self {
             id,
             principal,
@@ -89,7 +84,6 @@ impl Session {
             subscribers: Mutex::new(Vec::new()),
             events: RwLock::new(Vec::new()),
             next_seq: Mutex::new(1),
-            broadcast_tx,
         })
     }
 }
@@ -157,20 +151,10 @@ impl AcpSessionRegistry {
 
     // ── Public API ─────────────────────────────────────────────────────────
 
-    /// Returns a synchronous provider health snapshot (async variant via codex_health).
-    ///
-    /// NOTE: For now this spawns a blocking task via tokio::task::block_in_place
-    /// to call `codex_health()`. In Phase 1 the upstream returns a simple stub.
+    /// Returns the provider health snapshot from the canonical ACP runtime path.
     #[must_use]
     pub fn provider_health(&self) -> AcpProviderHealth {
-        // codex_health() is async but we need sync here for AppState callers.
-        // Use block_in_place to avoid spawning a full blocking thread.
-        // This is safe inside an async context (axum handler) where we're on
-        // a multi-thread tokio runtime.
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(codex_health())
-        })
+        codex_provider_health()
     }
 
     pub async fn list_sessions(&self, principal: &str) -> Vec<AcpSessionSummary> {
@@ -221,9 +205,9 @@ impl AcpSessionRegistry {
         };
 
         // Launch the codex runtime (Phase 1: stub that drops rx immediately).
-        let (event_tx_bridge, event_rx_bridge) = mpsc::unbounded_channel::<PendingBridgeEvent>();
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
         let (runtime, started) =
-            launch_codex_runtime(session_id.clone(), StartSessionInput { cwd: cwd.clone(), title: input.title.clone(), principal: input.principal.clone() }, event_tx_bridge.clone())
+            launch_codex_runtime(session_id.clone(), StartSessionInput { cwd: cwd.clone(), title: input.title.clone(), principal: input.principal.clone() }, event_tx.clone())
                 .await
                 .map_err(|message| ToolError::Sdk {
                     sdk_kind: "internal_error".to_string(),
@@ -256,12 +240,21 @@ impl AcpSessionRegistry {
             map_guard.insert(session_id.clone(), Arc::clone(&session));
         }
 
-        // Spawn bridge forwarder (converts PendingBridgeEvent → legacy BridgeEvent broadcast).
-        self.spawn_bridge_forwarder(Arc::clone(&session), event_rx_bridge);
+        // Spawn typed ACP event fanout.
+        self.spawn_event_forwarder(Arc::clone(&session), event_rx);
 
         // Persist.
         if let Some(db) = self.persistence().await {
-            drop(db.save_session(&summary).await);
+            if let Err(error) = db.save_session(&summary).await {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "registry",
+                    action = "session.save",
+                    session_id = %summary.id,
+                    error = %error,
+                    "failed to persist session summary",
+                );
+            }
         }
 
         Ok(summary)
@@ -321,7 +314,16 @@ impl AcpSessionRegistry {
         // Persist updated state.
         if let Some(db) = self.persistence().await {
             let summary = session.summary.read().await;
-            drop(db.save_session(&*summary).await);
+            if let Err(error) = db.save_session(&summary).await {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "registry",
+                    action = "session.save",
+                    session_id,
+                    error = %error,
+                    "failed to persist session summary after prompt",
+                );
+            }
         }
 
         Ok(())
@@ -369,7 +371,19 @@ impl AcpSessionRegistry {
         }
 
         if let Some(db) = self.persistence().await {
-            drop(db.update_session_state(session_id, AcpSessionState::Cancelled).await);
+            if let Err(error) = db
+                .update_session_state(session_id, AcpSessionState::Cancelled)
+                .await
+            {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "registry",
+                    action = "session.state",
+                    session_id,
+                    error = %error,
+                    "failed to persist cancelled session state",
+                );
+            }
         }
 
         Ok(())
@@ -407,7 +421,19 @@ impl AcpSessionRegistry {
         }
 
         if let Some(db) = self.persistence().await {
-            drop(db.update_session_state(session_id, AcpSessionState::Closed).await);
+            if let Err(error) = db
+                .update_session_state(session_id, AcpSessionState::Closed)
+                .await
+            {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "registry",
+                    action = "session.state",
+                    session_id,
+                    error = %error,
+                    "failed to persist closed session state",
+                );
+            }
         }
 
         Ok(())
@@ -428,39 +454,23 @@ impl AcpSessionRegistry {
         Self::check_principal(&session, principal)?;
 
         if let Some(db) = self.persistence().await {
-            return db
-                .load_events_since(session_id, since_seq)
-                .await
-                .map_err(|e| ToolError::Sdk {
-                    sdk_kind: "internal_error".to_string(),
-                    message: format!("failed to load events: {e}"),
-                });
+            match db.load_events_since(session_id, since_seq).await {
+                Ok(events) => return Ok(events),
+                Err(error) => {
+                    tracing::warn!(
+                        surface = "acp",
+                        service = "registry",
+                        action = "events.load",
+                        session_id,
+                        since_seq,
+                        error = %error,
+                        "failed to load persisted events, falling back to in-memory transcript",
+                    );
+                }
+            }
         }
 
-        // No persistence — return in-memory legacy events, converted to AcpEvent::Unknown.
-        let bridge_events = {
-            let events = session.events.read().await;
-            events
-                .iter()
-                .filter(|e| e.seq > since_seq)
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-
-        Ok(bridge_events
-            .into_iter()
-            .map(|e| {
-                let raw = serde_json::to_value(&e).unwrap_or(serde_json::Value::Null);
-                lab_apis::acp::types::AcpEvent::Unknown {
-                    id: e.id,
-                    created_at: e.created_at,
-                    session_id: e.session_id,
-                    seq: e.seq,
-                    event_kind: e.kind,
-                    raw,
-                }
-            })
-            .collect())
+        Ok(load_in_memory_events(&session, since_seq).await)
     }
 
     /// Subscribe to a session's event stream.
@@ -495,11 +505,8 @@ impl AcpSessionRegistry {
 
         // Step 2: query SQLite backlog.
         let backlog: Vec<Arc<AcpEvent>> = if let Some(db) = self.persistence().await {
-            let raw_since = since_seq;
-            let capped_since = raw_since;
-            match db.load_events_since(session_id, capped_since).await {
+            match db.load_events_since(session_id, since_seq).await {
                 Ok(events) => {
-                    // Cap at BACKFILL_CAP events.
                     let start = events.len().saturating_sub(BACKFILL_CAP as usize);
                     events[start..].iter().cloned().map(Arc::new).collect()
                 }
@@ -510,13 +517,21 @@ impl AcpSessionRegistry {
                         action = "subscribe.backfill",
                         session_id,
                         error = %error,
-                        "failed to load backlog from SQLite",
+                        "failed to load backlog from SQLite, using in-memory transcript",
                     );
-                    Vec::new()
+                    load_in_memory_events(&session, since_seq)
+                        .await
+                        .into_iter()
+                        .map(Arc::new)
+                        .collect()
                 }
             }
         } else {
-            Vec::new()
+            load_in_memory_events(&session, since_seq)
+                .await
+                .into_iter()
+                .map(Arc::new)
+                .collect()
         };
 
         // Track the last backlog seq for deduplication at junction.
@@ -535,183 +550,54 @@ impl AcpSessionRegistry {
         Ok(backlog_stream.chain(live_stream))
     }
 
-    // ── Legacy subscribe (for api/services/acp.rs until bead 7) ───────────
-
-    /// Legacy subscribe returning `(Vec<BridgeEvent>, broadcast::Receiver<BridgeEvent>)`.
-    ///
-    /// This is kept for binary compatibility with the current `api/services/acp.rs`
-    /// handler. It will be removed in bead 7 when the SSE handler is migrated to
-    /// the new `Stream<Item = Arc<AcpEvent>>` shape.
-    pub async fn subscribe_legacy(
-        &self,
-        session_id: &str,
-        since_seq: u64,
-    ) -> Result<(Vec<BridgeEvent>, broadcast::Receiver<BridgeEvent>), ToolError> {
-        let session = {
-            let guard = self.sessions.read().await;
-            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
-        };
-
-        let backlog = {
-            let events = session.events.read().await;
-            events
-                .iter()
-                .filter(|e| e.seq > since_seq)
-                .cloned()
-                .collect()
-        };
-
-        Ok((backlog, session.broadcast_tx.subscribe()))
-    }
-
     // ── Internal helpers ───────────────────────────────────────────────────
 
-    /// Spawn a task that reads `PendingBridgeEvent`s from the legacy bridge channel
-    /// and fans them out to both the broadcast (legacy) and per-subscriber mpsc senders.
-    fn spawn_bridge_forwarder(
+    /// Spawn a task that reads typed ACP events from the runtime channel and
+    /// fans them out to typed subscriber streams.
+    fn spawn_event_forwarder(
         &self,
         session: Arc<Session>,
-        mut rx: mpsc::UnboundedReceiver<PendingBridgeEvent>,
+        mut rx: mpsc::UnboundedReceiver<AcpEvent>,
     ) {
-        let persistence = Arc::clone(&self.persistence);
+        let registry = self.clone();
         tokio::spawn(async move {
-            while let Some(pending) = rx.recv().await {
-                // Convert PendingBridgeEvent to BridgeEvent (legacy) and push.
-                let bridge_event = {
-                    let mut seq_guard = session.next_seq.lock().await;
-                    let seq = *seq_guard;
-                    *seq_guard += 1;
-                    BridgeEvent {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        seq,
-                        session_id: pending.session_id.clone(),
-                        provider: pending.provider.clone(),
-                        kind: pending.kind.clone(),
-                        created_at: pending.created_at.clone(),
-                        role: pending.role,
-                        message_id: pending.message_id,
-                        text: pending.text,
-                        title: pending.title,
-                        status: pending.status.clone(),
-                        tool_call_id: pending.tool_call_id,
-                        tool_kind: pending.tool_kind,
-                        raw_input: pending.raw_input,
-                        raw_output: pending.raw_output,
-                        tool_content: pending.tool_content,
-                        locations: pending.locations,
-                        plan: pending.plan,
-                        permission_options: pending.permission_options,
-                        permission_selection: pending.permission_selection,
-                        session_info: pending.session_info.clone(),
-                        usage: pending.usage,
-                        commands: pending.commands,
-                        current_mode: pending.current_mode,
-                        config_update: pending.config_update,
-                        prompt_stop_reason: pending.prompt_stop_reason,
-                        raw: pending.raw,
-                    }
-                };
+            while let Some(event) = rx.recv().await {
+                let event = next_session_event(&session, event).await;
+                persist_session_event(&registry, &event).await;
+                apply_session_event(&session, &event).await;
 
-                // Update summary and state from event — one lock at a time.
-                // Determine new state from the event kind/status (no locks yet).
-                let maybe_new_state: Option<AcpSessionState> =
-                    if bridge_event.kind == "status" {
-                        bridge_event.status.as_deref().and_then(|s| match s {
-                            "idle" => Some(AcpSessionState::Idle),
-                            "running" => Some(AcpSessionState::Running),
-                            "completed" => Some(AcpSessionState::Completed),
-                            "cancelled" => Some(AcpSessionState::Cancelled),
-                            "failed" => Some(AcpSessionState::Failed),
-                            _ => None,
-                        })
-                    } else if bridge_event.kind == "error" {
-                        Some(AcpSessionState::Failed)
-                    } else {
-                        None
-                    };
+                let dropped = fanout_event(&session, Arc::new(event.clone())).await;
+                if dropped > 0 {
+                    let marker = next_session_event(
+                        &session,
+                        AcpEvent::ProviderInfo {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            created_at: jiff::Timestamp::now().to_string(),
+                            session_id: session.id.clone(),
+                            seq: 0,
+                            provider: "lab".to_string(),
+                            raw: serde_json::json!({
+                                "type": "subscriber_backpressure",
+                                "dropped_subscribers": dropped,
+                                "after_seq": event.seq(),
+                            }),
+                        },
+                    )
+                    .await;
 
-                // Update summary (one scoped lock).
-                {
-                    let mut summary = session.summary.write().await;
-                    summary.updated_at = bridge_event.created_at.clone();
-                    if let Some(ref state) = maybe_new_state {
-                        summary.state = state.clone();
-                    }
-                    if bridge_event.kind == "session.info" {
-                        if let Some(title) = bridge_event
-                            .session_info
-                            .as_ref()
-                            .and_then(|v| v.get("title"))
-                            .and_then(|v| v.as_str())
-                        {
-                            summary.title = title.to_string();
-                        }
-                    }
-                } // summary guard dropped
+                    tracing::warn!(
+                        surface = "acp",
+                        service = "registry",
+                        action = "fanout.backpressure",
+                        session_id = %session.id,
+                        dropped_subscribers = dropped,
+                        after_seq = event.seq(),
+                        "subscriber backpressure removed live subscribers; replay required from transcript",
+                    );
 
-                // Update state (separate scoped lock).
-                if let Some(new_state) = maybe_new_state {
-                    let mut st = session.state.write().await;
-                    *st = new_state;
-                } // state guard dropped
-
-                // Update legacy in-memory event buffer (separate scoped lock).
-                {
-                    let mut events = session.events.write().await;
-                    events.push(bridge_event.clone());
-                    if events.len() > 500 {
-                        let extra = events.len() - 500;
-                        events.drain(0..extra);
-                    }
-                } // events guard dropped
-
-                // Broadcast to legacy receiver.
-                drop(session.broadcast_tx.send(bridge_event.clone()));
-
-                // Convert to AcpEvent (SessionUpdate variant for now; future beads
-                // will enrich this with proper variant translation).
-                let acp_event = Arc::new(AcpEvent::Unknown {
-                    id: bridge_event.id.clone(),
-                    created_at: bridge_event.created_at.clone(),
-                    session_id: bridge_event.session_id.clone(),
-                    seq: bridge_event.seq,
-                    event_kind: bridge_event.kind.clone(),
-                    raw: serde_json::to_value(&bridge_event).unwrap_or(serde_json::Value::Null),
-                });
-
-                // Fanout to per-subscriber mpsc senders.
-                let mut subs = session.subscribers.lock().await;
-                let mut to_remove: Vec<usize> = Vec::new();
-                for (i, tx) in subs.iter().enumerate() {
-                    match tx.try_send(Arc::clone(&acp_event)) {
-                        Ok(()) => {}
-                        Err(mpsc::error::TrySendError::Full(_)) => {
-                            tracing::warn!(
-                                surface = "acp",
-                                service = "registry",
-                                action = "fanout",
-                                subscriber_index = i,
-                                session_id = bridge_event.session_id,
-                                "subscriber mpsc full — dropping event for this subscriber",
-                            );
-                        }
-                        Err(mpsc::error::TrySendError::Closed(_)) => {
-                            to_remove.push(i);
-                        }
-                    }
-                }
-                // Remove closed subscribers (iterate in reverse to preserve indices).
-                for i in to_remove.into_iter().rev() {
-                    subs.swap_remove(i);
-                }
-
-                // Persist via SQLite if available.
-                if let Some(db) = persistence
-                    .get_or_try_init(|| async { SqliteAcpPersistence::from_env().await })
-                    .await
-                    .ok()
-                {
-                    drop(db.append_event(&*acp_event).await);
+                    persist_session_event(&registry, &marker).await;
+                    apply_session_event(&session, &marker).await;
+                    let _ = fanout_event(&session, Arc::new(marker)).await;
                 }
             }
         });
@@ -723,16 +609,16 @@ impl AcpSessionRegistry {
             (summary.cwd.clone(), summary.title.clone())
         };
 
-        let (event_tx_bridge, event_rx_bridge) = mpsc::unbounded_channel::<PendingBridgeEvent>();
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
         let (runtime, started) = launch_codex_runtime(
             session.id.clone(),
             StartSessionInput { cwd, title: Some(title), principal: None },
-            event_tx_bridge.clone(),
+            event_tx.clone(),
         )
         .await
         .map_err(internal_message)?;
 
-        self.spawn_bridge_forwarder(Arc::clone(session), event_rx_bridge);
+        self.spawn_event_forwarder(Arc::clone(session), event_rx);
 
         {
             let mut handle = session.handle.lock().await;
@@ -753,6 +639,113 @@ impl AcpSessionRegistry {
 impl Default for AcpSessionRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+async fn load_in_memory_events(session: &Arc<Session>, since_seq: u64) -> Vec<AcpEvent> {
+    let events = session.events.read().await;
+    let filtered: Vec<AcpEvent> = events
+        .iter()
+        .filter(|event| event.seq() > since_seq)
+        .cloned()
+        .collect();
+    let start = filtered.len().saturating_sub(BACKFILL_CAP as usize);
+    filtered[start..].to_vec()
+}
+
+async fn next_session_event(session: &Arc<Session>, event: AcpEvent) -> AcpEvent {
+    let mut seq_guard = session.next_seq.lock().await;
+    let seq = *seq_guard;
+    *seq_guard += 1;
+    stamp_event_sequence(event, seq)
+}
+
+async fn apply_session_event(session: &Arc<Session>, event: &AcpEvent) {
+    let maybe_new_state = session_state_from_event(event);
+
+    {
+        let mut summary = session.summary.write().await;
+        summary.updated_at = event_created_at(event).to_string();
+        if let Some(ref state) = maybe_new_state {
+            summary.state = state.clone();
+        }
+        if let Some(title) = session_title_from_event(event) {
+            summary.title = title;
+        }
+    }
+
+    if let Some(new_state) = maybe_new_state {
+        let mut state = session.state.write().await;
+        *state = new_state;
+    }
+
+    {
+        let mut events = session.events.write().await;
+        events.push(event.clone());
+        if events.len() > 500 {
+            let extra = events.len() - 500;
+            events.drain(0..extra);
+        }
+    }
+}
+
+fn session_state_from_event(event: &AcpEvent) -> Option<AcpSessionState> {
+    match event {
+        AcpEvent::SessionUpdate { state, .. } => Some(state.clone()),
+        AcpEvent::PermissionRequest { .. } => Some(AcpSessionState::WaitingForPermission),
+        AcpEvent::PermissionOutcome { granted, .. } => Some(if *granted {
+            AcpSessionState::Running
+        } else {
+            AcpSessionState::Cancelled
+        }),
+        _ => None,
+    }
+}
+
+async fn fanout_event(session: &Arc<Session>, event: Arc<AcpEvent>) -> usize {
+    let mut subs = session.subscribers.lock().await;
+    let mut to_remove: Vec<usize> = Vec::new();
+    let mut dropped = 0usize;
+    for (i, tx) in subs.iter().enumerate() {
+        match tx.try_send(Arc::clone(&event)) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                dropped += 1;
+                to_remove.push(i);
+                tracing::warn!(
+                    surface = "acp",
+                    service = "registry",
+                    action = "fanout",
+                    subscriber_index = i,
+                    session_id = event.session_id(),
+                    seq = event.seq(),
+                    "subscriber mpsc full — subscriber removed and must replay from transcript",
+                );
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                to_remove.push(i);
+            }
+        }
+    }
+    for i in to_remove.into_iter().rev() {
+        subs.swap_remove(i);
+    }
+    dropped
+}
+
+async fn persist_session_event(registry: &AcpSessionRegistry, event: &AcpEvent) {
+    if let Some(db) = registry.persistence().await {
+        if let Err(error) = db.append_event(event).await {
+            tracing::warn!(
+                surface = "acp",
+                service = "registry",
+                action = "event.persist",
+                session_id = event.session_id(),
+                seq = event.seq(),
+                error = %error,
+                "failed to persist typed acp event; replay is limited to in-memory history",
+            );
+        }
     }
 }
 

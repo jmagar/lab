@@ -26,6 +26,17 @@ type BrowserSession = {
   resumable: boolean
 }
 
+type BrowserEvent = {
+  id: string
+  seq: number
+  sessionId: string
+  provider: string
+  kind: string
+  createdAt: string
+  role?: 'user' | 'assistant' | 'thinking'
+  text?: string
+}
+
 function session(id: string, title: string): BrowserSession {
   return {
     id,
@@ -42,8 +53,12 @@ function session(id: string, title: string): BrowserSession {
   }
 }
 
-function sseMessage(sessionId: string, seq: number, text: string) {
-  return `data: ${JSON.stringify({
+function bridgeEvent(
+  sessionId: string,
+  seq: number,
+  overrides: Partial<BrowserEvent> = {},
+): BrowserEvent {
+  return {
     id: `evt-${sessionId}-${seq}`,
     seq,
     sessionId,
@@ -51,8 +66,13 @@ function sseMessage(sessionId: string, seq: number, text: string) {
     kind: 'message.chunk',
     createdAt: '2026-04-23T00:00:00Z',
     role: 'assistant',
-    text,
-  })}\n\n`
+    text: `chunk-${seq}`,
+    ...overrides,
+  }
+}
+
+function sseFrame(event: BrowserEvent) {
+  return `data: ${JSON.stringify(event)}\n\n`
 }
 
 async function waitForServer(url: string) {
@@ -101,6 +121,19 @@ async function startPreviewServer() {
   await previewServerReady
 }
 
+async function waitForCondition(predicate: () => boolean, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+
+  throw new Error('Timed out waiting for condition')
+}
+
 test.after(async () => {
   if (!previewServer) {
     return
@@ -118,7 +151,7 @@ test.after(async () => {
   }
 })
 
-test('chat shell bootstraps an initial session and resumes session streams from the last sequence on reselection', { concurrency: false }, async (t) => {
+test('chat shell sends prompts without bearer auth and resumes session streams from the last sequence on reselection', { concurrency: false }, async (t) => {
   await startPreviewServer()
 
   const browser = await chromium.launch({ headless: true })
@@ -129,10 +162,14 @@ test('chat shell bootstraps an initial session and resumes session streams from 
   const page = await browser.newPage({ viewport: { width: 1360, height: 960 } })
   const sessions: BrowserSession[] = []
   const streamSince = new Map<string, string[]>()
+  const promptRequests: Array<{ sessionId: string; prompt: string; authorization: string | null }> = []
+  const observedAuthorizations: Array<string | null> = []
 
   await page.route('**/v1/acp/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
+    const authorization = request.headers()['authorization'] ?? null
+    observedAuthorizations.push(authorization)
 
     if (url.pathname === '/v1/acp/provider') {
       await route.fulfill({
@@ -175,6 +212,23 @@ test('chat shell bootstraps an initial session and resumes session streams from 
       return
     }
 
+    const promptMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/prompt$/)
+    if (promptMatch && request.method() === 'POST') {
+      const payload = JSON.parse(request.postData() ?? '{}') as { prompt?: string }
+      promptRequests.push({
+        sessionId: decodeURIComponent(promptMatch[1]!),
+        prompt: payload.prompt ?? '',
+        authorization,
+      })
+
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ accepted: true }),
+      })
+      return
+    }
+
     const eventMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/events$/)
     if (eventMatch && request.method() === 'GET') {
       const sessionId = decodeURIComponent(eventMatch[1]!)
@@ -183,11 +237,11 @@ test('chat shell bootstraps an initial session and resumes session streams from 
 
       let body = ''
       if (sessionId === 'session-1' && since === '0') {
-        body = sseMessage(sessionId, 1, 'Hello session 1')
+        body = sseFrame(bridgeEvent(sessionId, 1, { text: 'Hello session 1' }))
       } else if (sessionId === 'session-1' && since === '1') {
-        body = sseMessage(sessionId, 2, 'Resumed session 1')
+        body = sseFrame(bridgeEvent(sessionId, 2, { text: 'Resumed session 1' }))
       } else if (sessionId === 'session-2' && since === '0') {
-        body = sseMessage(sessionId, 1, 'Hello session 2')
+        body = sseFrame(bridgeEvent(sessionId, 1, { text: 'Hello session 2' }))
       }
 
       await route.fulfill({
@@ -210,6 +264,18 @@ test('chat shell bootstraps an initial session and resumes session streams from 
   await assert.doesNotReject(() => page.getByText('Bootstrap session').first().waitFor())
   await assert.doesNotReject(() => page.getByText('Hello session 1').waitFor())
 
+  await page.getByLabel('Message').fill('Summarize Stage 3 browser coverage')
+  await page.getByRole('button', { name: 'Send message' }).click()
+
+  await waitForCondition(() => promptRequests.length === 1)
+  assert.deepEqual(promptRequests, [
+    {
+      sessionId: 'session-1',
+      prompt: 'Summarize Stage 3 browser coverage',
+      authorization: null,
+    },
+  ])
+
   await page.getByRole('button', { name: 'Start new session' }).click()
 
   await assert.doesNotReject(() => page.getByText('Second session').first().waitFor())
@@ -219,5 +285,122 @@ test('chat shell bootstraps an initial session and resumes session streams from 
 
   await assert.doesNotReject(() => page.getByText('Resumed session 1').waitFor())
   assert.deepEqual(streamSince.get('session-1'), ['0', '1'])
+  assert.deepEqual(streamSince.get('session-2'), ['0'])
+  assert.ok(observedAuthorizations.every((value) => value === null))
+})
+
+test('chat shell recovers from a failed session stream after switching sessions and reselecting the failed run', { concurrency: false }, async (t) => {
+  await startPreviewServer()
+
+  const browser = await chromium.launch({ headless: true })
+  t.after(async () => {
+    await browser.close()
+  })
+
+  const page = await browser.newPage({ viewport: { width: 1360, height: 960 } })
+  const sessions: BrowserSession[] = []
+  const streamSince = new Map<string, string[]>()
+  let sessionOneAttempts = 0
+
+  await page.route('**/v1/acp/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+
+    if (url.pathname === '/v1/acp/provider') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          provider: {
+            provider: 'codex',
+            ready: true,
+            command: 'npx',
+            args: ['@zed-industries/codex-acp'],
+            message: 'ready',
+          },
+        }),
+      })
+      return
+    }
+
+    if (url.pathname === '/v1/acp/sessions' && request.method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessions }),
+      })
+      return
+    }
+
+    if (url.pathname === '/v1/acp/sessions' && request.method() === 'POST') {
+      const created =
+        sessions.length === 0
+          ? session('session-1', 'Flaky session')
+          : session('session-2', 'Healthy session')
+      sessions.unshift(created)
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ session: created }),
+      })
+      return
+    }
+
+    const eventMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/events$/)
+    if (eventMatch && request.method() === 'GET') {
+      const sessionId = decodeURIComponent(eventMatch[1]!)
+      const since = url.searchParams.get('since') ?? '0'
+      streamSince.set(sessionId, [...(streamSince.get(sessionId) ?? []), since])
+
+      if (sessionId === 'session-1') {
+        sessionOneAttempts += 1
+        if (sessionOneAttempts === 1) {
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ message: 'stream failed' }),
+          })
+          return
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body: sseFrame(bridgeEvent(sessionId, 1, { text: 'Recovered session 1' })),
+        })
+        return
+      }
+
+      if (sessionId === 'session-2') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body: sseFrame(bridgeEvent(sessionId, 1, { text: 'Healthy session 2' })),
+        })
+        return
+      }
+    }
+
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: `Unhandled ACP request: ${url.pathname}` }),
+    })
+  })
+
+  await page.goto(`${BASE_URL}/chat/`, { waitUntil: 'networkidle' })
+
+  await assert.doesNotReject(() => page.getByText('Flaky session').first().waitFor())
+
+  await page.getByRole('button', { name: 'Start new session' }).click()
+
+  await assert.doesNotReject(() => page.getByText('Healthy session').first().waitFor())
+  await assert.doesNotReject(() => page.getByText('Healthy session 2').waitFor())
+
+  await page.locator('button').filter({ hasText: 'Flaky session' }).first().click()
+
+  await assert.doesNotReject(() => page.getByText('Recovered session 1').waitFor())
+  assert.deepEqual(streamSince.get('session-1'), ['0', '0'])
   assert.deepEqual(streamSince.get('session-2'), ['0'])
 })
