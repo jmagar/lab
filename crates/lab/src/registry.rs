@@ -396,6 +396,17 @@ pub fn build_default_registry() -> ToolRegistry {
     // runtime dispatch returns `workspace_not_configured` per-request when
     // `LAB_WORKSPACE_ROOT` is unset or invalid. The startup WARN log in
     // `cli::serve` surfaces the misconfiguration once at boot.
+    //
+    // NOTE: fs has TWO action surfaces. The canonical slice is
+    // `dispatch::fs::catalog::ACTIONS` (includes `fs.preview`); the MCP-filtered
+    // slice `mcp::services::fs::ACTIONS` omits `fs.preview` because preview
+    // streams raw bytes and is HTTP-only for prompt-injection reasons. The
+    // registry uses the MCP slice because all current catalog consumers (MCP
+    // `lab.help`, `lab://catalog`, CLI `lab help`) correctly treat preview as
+    // hidden — MCP must not expose it, and CLI cannot invoke it (no
+    // byte-streaming through clap). A future HTTP `/v1/<service>/actions`
+    // resource should read `dispatch::fs::catalog::ACTIONS` directly, not via
+    // this registry entry.
     #[cfg(feature = "fs")]
     reg.register(RegisteredService {
         name: "fs",
