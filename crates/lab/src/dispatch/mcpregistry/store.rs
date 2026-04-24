@@ -1346,6 +1346,7 @@ mod tests {
                 status_message: None,
                 updated_at: Some("2025-01-15T00:00:00Z".to_string()),
             }),
+            extensions: Default::default(),
         });
         let mut newer = make_server_response("io.github.user/weather", "2.0.0", true);
         newer.meta = Some(ResponseMeta {
@@ -1357,6 +1358,7 @@ mod tests {
                 status_message: None,
                 updated_at: Some("2025-02-15T00:00:00Z".to_string()),
             }),
+            extensions: Default::default(),
         });
         store.upsert_page(&[older, newer]).await.unwrap();
 
@@ -1369,7 +1371,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(filtered.servers.len(), 1);
-        assert_eq!(filtered.servers[0].version, "2.0.0");
+        assert_eq!(filtered.servers[0].server.version, "2.0.0");
 
         let no_match = store
             .list_servers(StoreListParams {
@@ -1397,6 +1399,7 @@ mod tests {
                 status_message: None,
                 updated_at: Some("2025-02-01T01:00:00+01:00".to_string()),
             }),
+            extensions: Default::default(),
         });
         store.upsert_page(&[response]).await.unwrap();
 

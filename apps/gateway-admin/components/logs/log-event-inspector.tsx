@@ -1,6 +1,7 @@
 'use client'
 
 import type { LogEvent } from '@/lib/types/logs'
+import { formatUiDateTime } from '@/lib/format-ui-time'
 import {
   AURORA_DISPLAY_2,
   AURORA_MESSAGE_SURFACE,
@@ -11,11 +12,6 @@ import {
 interface LogEventInspectorProps {
   event: LogEvent | null
 }
-
-const timestampFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'medium',
-})
 
 export function LogEventInspector({ event }: LogEventInspectorProps) {
   return (
@@ -37,7 +33,7 @@ export function LogEventInspector({ event }: LogEventInspectorProps) {
             </InspectorSection>
 
             <InspectorSection label="Fields">
-              <Field label="Time" value={timestampFormatter.format(new Date(event.ts))} />
+              <Field label="Time" value={formatUiDateTime(event.ts)} />
               <Field label="Level" value={event.level.toUpperCase()} accent={levelAccent(event.level)} />
               <Field label="Subsystem" value={event.subsystem} />
               <Field label="Surface" value={event.surface} />
@@ -46,9 +42,9 @@ export function LogEventInspector({ event }: LogEventInspectorProps) {
             </InspectorSection>
           </div>
 
-          <div className="border-t border-aurora-border-strong bg-[rgba(7,17,26,0.48)] px-5 py-4">
+          <div className="border-t border-aurora-border-strong bg-aurora-page-bg px-5 py-4">
             <p className={`${AURORA_MUTED_LABEL} mb-2`}>Metadata JSON</p>
-            <pre className={`${AURORA_MESSAGE_SURFACE} overflow-x-auto px-4 py-3 text-xs leading-6 text-aurora-text-primary`}>
+            <pre className={`${AURORA_MESSAGE_SURFACE} aurora-scrollbar overflow-x-auto px-4 py-3 text-xs leading-6 text-aurora-text-primary`}>
               {JSON.stringify(event.fields_json ?? {}, null, 2)}
             </pre>
           </div>

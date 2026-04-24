@@ -111,8 +111,8 @@ pub enum Command {
     Serve(serve::ServeArgs),
     /// Audit configured services and report problems.
     Doctor,
-    /// Query fleet devices from the configured master.
-    Device(device::DeviceArgs),
+    /// Query nodes from the configured controller.
+    Nodes(device::DeviceArgs),
     /// Quick reachability check for configured services.
     Health,
     /// Open the plugin manager TUI.
@@ -220,7 +220,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     match cli.command {
         Command::Serve(args) => serve::run(args, &config).await,
         Command::Doctor => doctor::run(format),
-        Command::Device(args) => device::run(args, format, &config).await,
+        Command::Nodes(args) => device::run(args, format, &config).await,
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
         Command::Audit(args) => audit::run(args, format),

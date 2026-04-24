@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::time::Instant;
 use sha2::{Digest, Sha256};
 
 use axum::http::{self, request::Parts};
@@ -782,10 +783,51 @@ impl ServerHandler for LabMcpServer {
         );
         let schema = Arc::new(action_schema());
         let mut tools = Vec::new();
+        let enabled_tool_search_gateways = if let Some(manager) = &self.gateway_manager {
+            manager.tool_search_enabled_gateways().await
+        } else {
+            Vec::new()
+        };
+        let tool_search_enabled = !enabled_tool_search_gateways.is_empty();
         for svc in self.registry.services() {
             if self.service_visible_on_mcp(svc.name).await {
                 tools.push(Tool::new(svc.name, svc.description, Arc::clone(&schema)));
             }
+        }
+        if tool_search_enabled {
+            let tool_search_schema = match serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "maxLength": 500 },
+                    "top_k": { "type": "integer", "minimum": 1, "maximum": 50 },
+                    "include_schema": { "type": "boolean", "default": false }
+                },
+                "required": ["query"]
+            }) {
+                Value::Object(map) => Arc::new(map),
+                _ => unreachable!("tool_search schema must be an object"),
+            };
+            tools.push(Tool::new(
+                "tool_search",
+                "Search the gateway's proxied upstream tool catalog",
+                tool_search_schema,
+            ));
+            let tool_invoke_schema = match serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "arguments": { "type": "object" }
+                },
+                "required": ["name", "arguments"]
+            }) {
+                Value::Object(map) => Arc::new(map),
+                _ => unreachable!("tool_invoke schema must be an object"),
+            };
+            tools.push(Tool::new(
+                "tool_invoke",
+                "Invoke one upstream tool discovered through tool_search",
+                tool_invoke_schema,
+            ));
         }
 
         // Merge upstream tools (healthy only, filtered for collisions with built-in services).
@@ -798,6 +840,13 @@ impl ServerHandler for LabMcpServer {
             }
             let upstream_tools = pool.healthy_tools().await;
             for ut in upstream_tools {
+                if tool_search_enabled
+                    && enabled_tool_search_gateways
+                        .iter()
+                        .any(|gateway| gateway == ut.upstream_name.as_ref())
+                {
+                    continue;
+                }
                 let tool_name = ut.tool.name.as_ref();
                 if builtin_names.contains(&tool_name) {
                     tracing::debug!(
@@ -869,6 +918,163 @@ impl ServerHandler for LabMcpServer {
         let param_key_count = params.as_object().map_or(0, serde_json::Map::len);
 
         let svc = self.registry.services().iter().find(|s| s.name == service);
+        if service == "tool_search" {
+            let query = args
+                .get("query")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let top_k = args.get("top_k").and_then(Value::as_u64).unwrap_or(10) as usize;
+            let include_schema = args
+                .get("include_schema")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let Some(manager) = &self.gateway_manager else {
+                let envelope = build_error(&service, "call_tool", "unknown_tool", "tool search is not enabled");
+                return Ok(CallToolResult::error(vec![Content::text(envelope.to_string())]));
+            };
+            return match manager.search_tools(&query, top_k, include_schema).await {
+                Ok(results) => Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string()),
+                )])),
+                Err(err) => {
+                    let kind = err.kind();
+                    let mut extra = serde_json::Map::new();
+                    if kind == "index_warming" {
+                        extra.insert("retry_after_ms".to_string(), serde_json::json!(2000));
+                    }
+                    if kind == "invalid_param" {
+                        extra.insert("param".to_string(), serde_json::json!("query"));
+                    }
+                    let env = build_error_extra(&service, "call_tool", kind, &err.to_string(), &Value::Object(extra));
+                    Ok(CallToolResult::error(vec![Content::text(env.to_string())]))
+                }
+            };
+        }
+        if service == "tool_invoke" {
+            let tool_name = args
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let arguments = args
+                .get("arguments")
+                .cloned()
+                .filter(|value| value.is_object())
+                .unwrap_or_else(|| serde_json::json!({}));
+            let arguments_hash = hash_arguments(&arguments);
+            let subject = self.request_subject_log_tag(&context);
+            if !tool_invoke_scope_allowed(auth_context_from_extensions(&context.extensions)) {
+                tracing::warn!(
+                    surface = "mcp",
+                    service = "tool_invoke",
+                    action = "call_tool",
+                    subject,
+                    upstream_tool = %tool_name,
+                    arguments_hash = %arguments_hash,
+                    kind = "forbidden",
+                    "gateway tool invoke denied by scope"
+                );
+                let env = build_error_extra(
+                    &service,
+                    "call_tool",
+                    "forbidden",
+                    "tool_invoke requires one of scopes: lab, lab:admin",
+                    &serde_json::json!({ "required_scopes": ["lab", "lab:admin"] }),
+                );
+                return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
+            }
+            let Some(manager) = &self.gateway_manager else {
+                let envelope = build_error(&service, "call_tool", "unknown_tool", "tool invoke is not enabled");
+                return Ok(CallToolResult::error(vec![Content::text(envelope.to_string())]));
+            };
+            let resolved = manager.resolve_tool_invoke(&tool_name).await;
+            let (upstream_name, _) = match resolved {
+                Ok(value) => value,
+                Err(err) => {
+                    let kind = err.kind();
+                    let mut extra = serde_json::Map::new();
+                    if kind == "unknown_tool" {
+                        extra.insert("hint".to_string(), serde_json::json!("Call tool_search to discover available tools"));
+                    }
+                    if kind == "ambiguous_tool" {
+                        extra.insert(
+                            "valid".to_string(),
+                            serde_json::json!(err.to_string().split(", ").collect::<Vec<_>>()),
+                        );
+                    }
+                    let env = build_error_extra(&service, "call_tool", kind, &err.to_string(), &Value::Object(extra));
+                    return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
+                }
+            };
+            if let Some(pool) = self.current_upstream_pool().await {
+                let started = Instant::now();
+                tracing::info!(
+                    surface = "mcp",
+                    service = "tool_invoke",
+                    action = "call_tool",
+                    subject,
+                    upstream = %upstream_name,
+                    upstream_tool = %tool_name,
+                    arguments_hash = %arguments_hash,
+                    "gateway tool invoke start"
+                );
+                let mut upstream_params = CallToolRequestParams::new(tool_name.clone());
+                upstream_params.arguments = Some(match arguments {
+                    Value::Object(map) => map,
+                    _ => serde_json::Map::new(),
+                });
+                match pool.call_tool(&upstream_name, upstream_params).await {
+                    Some(Ok(result)) => {
+                        tracing::info!(
+                            surface = "mcp",
+                            service = "tool_invoke",
+                            action = "call_tool",
+                            subject,
+                            upstream = %upstream_name,
+                            upstream_tool = %tool_name,
+                            arguments_hash = %arguments_hash,
+                            elapsed_ms = started.elapsed().as_millis(),
+                            "gateway tool invoke ok"
+                        );
+                        return Ok(result);
+                    }
+                    Some(Err(e)) => {
+                        tracing::warn!(
+                            surface = "mcp",
+                            service = "tool_invoke",
+                            action = "call_tool",
+                            subject,
+                            upstream = %upstream_name,
+                            upstream_tool = %tool_name,
+                            arguments_hash = %arguments_hash,
+                            elapsed_ms = started.elapsed().as_millis(),
+                            kind = "upstream_error",
+                            error = %e,
+                            "gateway tool invoke failed"
+                        );
+                        let env = build_error(&service, "call_tool", "upstream_error", &e);
+                        return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
+                    }
+                    None => {
+                        tracing::warn!(
+                            surface = "mcp",
+                            service = "tool_invoke",
+                            action = "call_tool",
+                            subject,
+                            upstream = %upstream_name,
+                            upstream_tool = %tool_name,
+                            arguments_hash = %arguments_hash,
+                            elapsed_ms = started.elapsed().as_millis(),
+                            kind = "upstream_error",
+                            "gateway tool invoke upstream disconnected"
+                        );
+                        let env = build_error(&service, "call_tool", "upstream_error", &format!("upstream `{upstream_name}` is not connected"));
+                        return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
+                    }
+                }
+            }
+        }
         if svc.is_some() && !self.service_visible_on_mcp(&service).await {
             let envelope = build_error(
                 &service,
@@ -1421,11 +1627,27 @@ impl LabMcpServer {
 }
 
 fn subject_from_extensions(extensions: &rmcp::model::Extensions) -> Option<&str> {
+    auth_context_from_extensions(extensions).map(|auth| auth.sub.as_str())
+}
+
+fn auth_context_from_extensions(
+    extensions: &rmcp::model::Extensions,
+) -> Option<&crate::api::oauth::AuthContext> {
     let parts = extensions.get::<Parts>()?;
-    parts
-        .extensions
-        .get::<crate::api::oauth::AuthContext>()
-        .map(|auth| auth.sub.as_str())
+    parts.extensions.get::<crate::api::oauth::AuthContext>()
+}
+
+fn tool_invoke_scope_allowed(auth: Option<&crate::api::oauth::AuthContext>) -> bool {
+    auth.is_none_or(|auth| {
+        auth.scopes
+            .iter()
+            .any(|scope| matches!(scope.as_str(), "lab" | "lab:admin"))
+    })
+}
+
+fn hash_arguments(arguments: &Value) -> String {
+    let bytes = serde_json::to_vec(arguments).unwrap_or_default();
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 /// Format the result of a dispatch operation into an MCP `CallToolResult`.

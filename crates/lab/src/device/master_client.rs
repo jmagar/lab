@@ -76,11 +76,7 @@ impl MasterClient {
     }
 
     pub fn from_config(config: &LabConfig, port_override: Option<u16>) -> Result<Self> {
-        let host = match config
-            .device
-            .as_ref()
-            .and_then(|prefs| prefs.master.as_deref())
-        {
+        let host = match config.controller_host() {
             Some(host) => host.to_string(),
             None => resolve_local_hostname()?,
         };

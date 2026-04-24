@@ -16,7 +16,7 @@ async fn hello_endpoint_updates_master_store() {
     let (app, _store, _enrollment_store) = test_device_router();
     let response = app
         .oneshot(hello_request(
-            r#"{"device_id":"dookie","role":"non-master","version":"1.0.0"}"#,
+            r#"{"node_id":"dookie","role":"non-master","version":"1.0.0"}"#,
         ))
         .await
         .unwrap();
@@ -25,11 +25,11 @@ async fn hello_endpoint_updates_master_store() {
 }
 
 #[tokio::test]
-async fn hello_endpoint_normalizes_device_id_before_storage() {
+async fn hello_endpoint_normalizes_node_id_before_storage() {
     let (app, store, _enrollment_store) = test_device_router();
     let response = app
         .oneshot(hello_request(
-            r#"{"device_id":"  dookie  ","role":"non-master","version":"1.0.0"}"#,
+            r#"{"node_id":"  dookie  ","role":"non-master","version":"1.0.0"}"#,
         ))
         .await
         .unwrap();
@@ -43,7 +43,7 @@ async fn syslog_batch_endpoint_accepts_normalized_events() {
     let (app, store, _enrollment_store) = test_device_router();
     let response = app
         .oneshot(syslog_request(
-            r#"{"device_id":"dookie","events":[{"device_id":"dookie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
+            r#"{"node_id":"dookie","events":[{"node_id":"dookie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
         ))
         .await
         .unwrap();
@@ -54,13 +54,13 @@ async fn syslog_batch_endpoint_accepts_normalized_events() {
 }
 
 #[tokio::test]
-async fn get_device_rejects_invalid_device_id() {
+async fn get_device_rejects_invalid_node_id() {
     let (app, _store, _enrollment_store) = test_device_router();
     let response = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/device/devices/%20%20%20")
+                .uri("/v1/nodes/%20%20%20")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -71,11 +71,11 @@ async fn get_device_rejects_invalid_device_id() {
 }
 
 #[tokio::test]
-async fn syslog_batch_endpoint_rejects_invalid_device_id() {
+async fn syslog_batch_endpoint_rejects_invalid_node_id() {
     let (app, _store, _enrollment_store) = test_device_router();
     let response = app
         .oneshot(syslog_request(
-            r#"{"device_id":"   ","events":[{"device_id":"dookie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
+            r#"{"node_id":"   ","events":[{"node_id":"dookie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
         ))
         .await
         .unwrap();
@@ -84,11 +84,11 @@ async fn syslog_batch_endpoint_rejects_invalid_device_id() {
 }
 
 #[tokio::test]
-async fn syslog_batch_endpoint_rejects_mismatched_event_device_id() {
+async fn syslog_batch_endpoint_rejects_mismatched_event_node_id() {
     let (app, _store, _enrollment_store) = test_device_router();
     let response = app
         .oneshot(syslog_request(
-            r#"{"device_id":"dookie","events":[{"device_id":"tootie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
+            r#"{"node_id":"dookie","events":[{"node_id":"tootie","source":"journald","timestamp_unix_ms":1,"message":"hello","fields":{}}]}"#,
         ))
         .await
         .unwrap();
@@ -169,11 +169,11 @@ async fn existing_fleet_logs_search_still_works() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/device/logs/search")
+                .uri("/v1/nodes/logs/search")
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
                     serde_json::json!({
-                        "device_id":"dookie",
+                        "node_id":"dookie",
                         "query":"hello"
                     })
                     .to_string(),
@@ -230,7 +230,7 @@ async fn list_enrollments_returns_pending_and_approved_records() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/device/enrollments")
+                .uri("/v1/nodes/enrollments")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -266,7 +266,7 @@ async fn approve_enrollment_promotes_pending_record() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/device/enrollments/pending-1/approve")
+                .uri("/v1/nodes/enrollments/pending-1/approve")
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"note":"ok"}"#))
                 .unwrap(),
@@ -302,7 +302,7 @@ async fn deny_enrollment_marks_record_denied() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/device/enrollments/pending-1/deny")
+                .uri("/v1/nodes/enrollments/pending-1/deny")
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"reason":"no"}"#))
                 .unwrap(),
@@ -333,7 +333,7 @@ fn test_device_router() -> (axum::Router, Arc<DeviceFleetStore>, Arc<EnrollmentS
 fn hello_request(body: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
-        .uri("/v1/device/hello")
+        .uri("/v1/nodes/hello")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_owned()))
         .unwrap()
@@ -342,7 +342,7 @@ fn hello_request(body: &str) -> Request<Body> {
 fn syslog_request(body: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
-        .uri("/v1/device/syslog/batch")
+        .uri("/v1/nodes/syslog/batch")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_owned()))
         .unwrap()
@@ -351,7 +351,7 @@ fn syslog_request(body: &str) -> Request<Body> {
 fn oauth_relay_start_request(body: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
-        .uri("/v1/device/oauth/relay/start")
+        .uri("/v1/nodes/oauth/relay/start")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_owned()))
         .unwrap()

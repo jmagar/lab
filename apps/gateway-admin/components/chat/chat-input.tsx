@@ -144,6 +144,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
       >
         <textarea
           ref={textareaRef}
+          name="chat-message"
           value={value}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
@@ -152,35 +153,38 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           placeholder={disabled ? 'ACP provider unavailable…' : 'Message the assistant… (Shift+Enter for newline)'}
           rows={1}
           className={cn(
-            'w-full resize-none bg-transparent px-4 pt-3 pb-2 text-[13px] leading-[1.55]',
+            'w-full resize-none bg-transparent px-3 pt-2.5 pb-1.5 text-[13px] leading-[1.55] sm:px-4 sm:pt-3 sm:pb-2',
             'text-aurora-text-primary placeholder:text-aurora-text-muted/50',
             'outline-none disabled:opacity-50',
           )}
           style={{ minHeight: '44px', maxHeight: '200px' }}
         />
 
-        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2 sm:gap-2">
+        <div className="flex items-center gap-2 px-2.5 pb-2 sm:gap-2.5 sm:px-3">
           <TooltipProvider delayDuration={400}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Attach file" disabled className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
-                  <Paperclip className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">Attach file</TooltipContent>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Attach file" disabled className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
+                    <Paperclip className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">Attach file</TooltipContent>
+              </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Tools" disabled className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
-                  <Wrench className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs">Tools</TooltipContent>
-            </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Tools" disabled className="size-7 rounded text-aurora-text-muted/50 hover:bg-aurora-hover-bg hover:text-aurora-text-muted">
+                    <Wrench className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">Tools</TooltipContent>
+              </Tooltip>
+            </div>
           </TooltipProvider>
 
-          <div ref={pickerRef} className="relative ml-auto">
+          <div className="ml-auto flex min-w-0 items-center gap-1.5">
+            <div ref={pickerRef} className="relative min-w-0">
             <button
               ref={triggerRef}
               type="button"
@@ -192,12 +196,12 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
               aria-controls={pickerId}
               className={cn(
                 'flex items-center gap-1.5 rounded-full border border-aurora-border-default',
-                'bg-aurora-panel-medium px-2.5 py-1 text-[11px] font-medium text-aurora-text-muted',
+                'max-w-[8.5rem] bg-aurora-panel-medium px-2.5 py-1 text-[11px] font-medium text-aurora-text-muted sm:max-w-[12rem]',
                 'transition-colors hover:border-aurora-border-strong hover:text-aurora-text-primary',
               )}
             >
-              {selectedAgent?.name ?? 'Select agent'}
-              <ChevronDown className="size-3" />
+              <span className="truncate">{selectedAgent?.name ?? 'Select agent'}</span>
+              <ChevronDown className="size-3 shrink-0" />
             </button>
 
             {agentPickerOpen && (
@@ -237,26 +241,27 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
                 ))}
               </div>
             )}
-          </div>
+            </div>
 
-          <Button
-            onClick={() => void handleSend()}
-            disabled={!value.trim() || disabled || sending}
-            size="icon"
-            aria-label="Send message"
-            className={cn(
-              'size-7 rounded-aurora-1 transition-all',
-              value.trim() && !disabled && !sending
-                ? 'bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong'
-                : 'bg-aurora-border-default text-aurora-text-muted/40',
-            )}
-          >
-            <Send className="size-3.5" />
-          </Button>
+            <Button
+              onClick={() => void handleSend()}
+              disabled={!value.trim() || disabled || sending}
+              size="icon"
+              aria-label="Send message"
+              className={cn(
+                'size-8 shrink-0 rounded-aurora-1 transition-all',
+                value.trim() && !disabled && !sending
+                  ? 'bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong'
+                  : 'bg-aurora-border-default text-aurora-text-muted/40',
+              )}
+            >
+              <Send className="size-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
 
-      <p className="mt-1.5 text-center text-[11px] text-aurora-text-muted/40">
+      <p className="mt-1.5 px-1 text-center text-[10px] text-aurora-text-muted/40 sm:text-[11px]">
         Assistant may make mistakes. Verify important information.
       </p>
     </div>

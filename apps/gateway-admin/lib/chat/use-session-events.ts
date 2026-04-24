@@ -9,6 +9,8 @@ import { appendSessionEvent, resolveLastSessionEventSeq } from './session-events
 
 export type SessionEventConnectionState = 'idle' | 'connecting' | 'open' | 'error'
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
 const sessionEventCache = new Map<string, BridgeEvent[]>()
 const sessionLastSeqCache = new Map<string, number>()
 
@@ -75,6 +77,13 @@ export function useSessionEvents(sessionId: string | null) {
 
   React.useEffect(() => {
     if (!sessionId) {
+      setEvents([])
+      setConnectionState('idle')
+      lastSeqRef.current = 0
+      return
+    }
+
+    if (USE_MOCK_DATA) {
       setEvents([])
       setConnectionState('idle')
       lastSeqRef.current = 0

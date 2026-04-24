@@ -40,6 +40,20 @@ pub struct GatewayConfigView {
     pub oauth_enabled: bool,
     #[serde(default)]
     pub proxy_resources: bool,
+    #[serde(default)]
+    pub proxy_prompts: bool,
+    #[serde(default)]
+    pub expose_tools: Option<Vec<String>>,
+    #[serde(default)]
+    pub expose_resources: Option<Vec<String>>,
+    #[serde(default)]
+    pub expose_prompts: Option<Vec<String>>,
+    #[serde(default)]
+    pub tool_search_enabled: bool,
+    #[serde(default)]
+    pub tool_search_top_k_default: usize,
+    #[serde(default)]
+    pub tool_search_max_tools: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

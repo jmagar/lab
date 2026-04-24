@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Component, Path};
 use std::sync::Arc;
 
 use lab_apis::core::action::ActionSpec;
@@ -9,6 +10,25 @@ use serde_json::Value;
 
 use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
+
+/// Reject any path input that contains a `Component::ParentDir` (`..`) segment.
+///
+/// This is a **lexical** check only. Callers that join the input against a
+/// trusted root MUST additionally `canonicalize` + `starts_with(root)` after
+/// writing to protect against symlinks escaping the jail (TOCTOU-weak, but
+/// strictly better than skipping). Windows UNC / absolute paths are rejected
+/// upstream by callers via `Path::is_absolute`.
+pub fn reject_path_traversal(rel_path: &str) -> Result<(), ToolError> {
+    for component in Path::new(rel_path).components() {
+        if matches!(component, Component::ParentDir) {
+            return Err(ToolError::InvalidParam {
+                message: format!("path traversal rejected: `{rel_path}` contains `..`"),
+                param: "path".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
 
 /// Read an environment variable, returning `None` if absent or empty.
 pub fn env_non_empty(name: &str) -> Option<String> {

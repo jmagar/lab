@@ -26,6 +26,7 @@ pub mod session;
 
 // Convenience re-exports of the canonical public surface.
 pub use error::{AcpError, PersistenceError};
+pub use session::{SessionCommand, SessionError, SessionHandle};
 pub use types::{
     AcpContentBlock, AcpEvent, AcpPermissionOption, AcpProviderHealth, AcpSessionState,
     AcpSessionSummary,

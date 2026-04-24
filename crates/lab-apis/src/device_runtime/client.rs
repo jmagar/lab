@@ -23,32 +23,32 @@ impl DeviceRuntimeClient {
     }
 
     pub async fn fetch_devices(&self) -> Result<serde_json::Value, ApiError> {
-        self.with_timeout(self.http.get_json("/v1/device/devices"))
+        self.with_timeout(self.http.get_json("/v1/nodes"))
             .await
     }
 
-    pub async fn fetch_device(&self, device_id: &str) -> Result<serde_json::Value, ApiError> {
-        let encoded_id = utf8_percent_encode(device_id, NON_ALPHANUMERIC).to_string();
+    pub async fn fetch_device(&self, node_id: &str) -> Result<serde_json::Value, ApiError> {
+        let encoded_id = utf8_percent_encode(node_id, NON_ALPHANUMERIC).to_string();
         self.with_timeout(
             self.http
-                .get_json(&format!("/v1/device/devices/{encoded_id}")),
+                .get_json(&format!("/v1/nodes/{encoded_id}")),
         )
         .await
     }
 
     pub async fn fetch_enrollments(&self) -> Result<serde_json::Value, ApiError> {
-        self.with_timeout(self.http.get_json("/v1/device/enrollments"))
+        self.with_timeout(self.http.get_json("/v1/nodes/enrollments"))
             .await
     }
 
     pub async fn approve_enrollment(
         &self,
-        device_id: &str,
+        node_id: &str,
         note: Option<&str>,
     ) -> Result<serde_json::Value, ApiError> {
-        let encoded_id = utf8_percent_encode(device_id, NON_ALPHANUMERIC).to_string();
+        let encoded_id = utf8_percent_encode(node_id, NON_ALPHANUMERIC).to_string();
         self.with_timeout(self.http.post_json(
-            &format!("/v1/device/enrollments/{encoded_id}/approve"),
+            &format!("/v1/nodes/enrollments/{encoded_id}/approve"),
             &serde_json::json!({ "note": note }),
         ))
         .await
@@ -56,12 +56,12 @@ impl DeviceRuntimeClient {
 
     pub async fn deny_enrollment(
         &self,
-        device_id: &str,
+        node_id: &str,
         reason: Option<&str>,
     ) -> Result<serde_json::Value, ApiError> {
-        let encoded_id = utf8_percent_encode(device_id, NON_ALPHANUMERIC).to_string();
+        let encoded_id = utf8_percent_encode(node_id, NON_ALPHANUMERIC).to_string();
         self.with_timeout(self.http.post_json(
-            &format!("/v1/device/enrollments/{encoded_id}/deny"),
+            &format!("/v1/nodes/enrollments/{encoded_id}/deny"),
             &serde_json::json!({ "reason": reason }),
         ))
         .await
@@ -77,14 +77,14 @@ impl DeviceRuntimeClient {
 
     pub async fn search_logs(
         &self,
-        device_id: &str,
+        node_id: &str,
         query: &str,
     ) -> Result<serde_json::Value, ApiError> {
         let request = SearchLogsRequest {
-            device_id: device_id.to_string(),
+            device_id: node_id.to_string(),
             query: query.to_string(),
         };
-        self.with_timeout(self.http.post_json("/v1/device/logs/search", &request))
+        self.with_timeout(self.http.post_json("/v1/nodes/logs/search", &request))
             .await
     }
 

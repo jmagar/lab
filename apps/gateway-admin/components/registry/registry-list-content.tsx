@@ -142,7 +142,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
             {config?.url && (
               <code
                 title={config.url}
-                className="hidden rounded-md border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.6)] px-2 py-1 font-mono text-xs text-aurora-text-muted md:inline-block"
+                className="hidden rounded-md border border-aurora-border-strong/60 bg-aurora-control-surface px-2 py-1 font-mono text-xs text-aurora-text-muted md:inline-block"
               >
                 {config.url}
               </code>
@@ -220,7 +220,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
             {Array.from({ length: 6 }, (_, i) => (
               <div
                 key={i}
-                className="h-20 animate-pulse rounded-lg border border-aurora-border-strong/40 bg-[rgba(14,31,44,0.4)]"
+                className="h-20 animate-pulse rounded-lg border border-aurora-border-strong/40 bg-aurora-control-surface/70"
               />
             ))}
           </div>
@@ -267,7 +267,7 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                   }}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
+                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-aurora-border-strong/60 bg-aurora-control-surface">
                       {avatarSrc ? (
                         <>
                           <img

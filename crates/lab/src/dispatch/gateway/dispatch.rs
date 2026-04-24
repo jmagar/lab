@@ -9,7 +9,7 @@ use super::client::require_gateway_manager;
 use super::manager::GatewayManager;
 use super::params::{
     GatewayAddParams, GatewayNameParams, GatewayOauthNameParams, GatewayReloadParams, GatewayStatusParams, GatewayTestParams, GatewayUpdatePatch,
-    GatewayUpdateParams, GatewayMcpCleanupParams, GatewayMcpToggleParams, ServiceConfigGetParams, ServiceConfigSetParams,
+    GatewayUpdateParams, GatewayMcpCleanupParams, GatewayMcpToggleParams, ServiceConfigGetParams, ServiceConfigSetParams, ToolInvokeParams, ToolSearchParams,
     VirtualServerMcpPolicyParams, VirtualServerNameParams, VirtualServerSurfaceParams,
 };
 use super::SHARED_GATEWAY_OAUTH_SUBJECT;
@@ -32,6 +32,44 @@ pub async fn dispatch_with_manager(
         "schema" => {
             let action_name = require_str(&params_value, "action")?;
             action_schema(ACTIONS, action_name)
+        }
+        "tool_search" => {
+            let params: ToolSearchParams = parse_params(params_value)?;
+            to_json(
+                manager
+                    .search_tools(&params.query, params.top_k.unwrap_or(10), params.include_schema)
+                    .await?,
+            )
+        }
+        "tool_invoke" => {
+            let params: ToolInvokeParams = parse_params(params_value)?;
+            let (upstream_name, _) = manager.resolve_tool_invoke(&params.name).await?;
+            let pool = manager.current_pool().await.ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "unknown_tool".to_string(),
+                message: format!("tool `{}` is not available", params.name),
+            })?;
+            let mut upstream_params = rmcp::model::CallToolRequestParams::new(params.name);
+            upstream_params.arguments = Some(match params.arguments {
+                Value::Object(map) => map,
+                _ => {
+                    return Err(ToolError::Sdk {
+                        sdk_kind: "invalid_param".to_string(),
+                        message: "arguments must be an object".to_string(),
+                    });
+                }
+            });
+            let result = pool
+                .call_tool(&upstream_name, upstream_params)
+                .await
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "upstream_error".to_string(),
+                    message: format!("upstream `{upstream_name}` is not connected"),
+                })?
+                .map_err(|error| ToolError::Sdk {
+                    sdk_kind: "upstream_error".to_string(),
+                    message: error,
+                })?;
+            to_json(result)
         }
         "gateway.list" => to_json(manager.list().await?),
         "gateway.server.get" => {
@@ -383,7 +421,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -416,7 +457,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -447,7 +491,10 @@ mod tests {
                 proxy_resources: true,
                 proxy_prompts: false,
                 expose_tools: Some(vec!["scrape".to_string()]),
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -860,7 +907,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -965,7 +1015,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -1004,7 +1057,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -1070,7 +1126,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 

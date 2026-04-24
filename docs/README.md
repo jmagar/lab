@@ -94,7 +94,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md)
   Lab-owned metadata layered onto mirrored MCP Registry entries: contract, validation, audit fields, filters, CLI, and UI behavior.
 - [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
-  Master/non-master runtime roles, `/v1/device/*`, AI CLI inventory upload, queueing, and device OAuth relay.
+  Master/non-master runtime roles, `/v1/nodes/*`, AI CLI inventory upload, queueing, and device OAuth relay.
 - [FLEET_LOGS.md](./FLEET_LOGS.md)
   Fleet log ingestion, queueing, search, and current storage limits.
 - [LOCAL_LOGS.md](./LOCAL_LOGS.md)
@@ -163,7 +163,7 @@ Use the smallest correct doc:
 - gateway control plane and exposure policy: [GATEWAY.md](./GATEWAY.md)
 - ACP service architecture and chat/backend boundary: [acp/README.md](./acp/README.md)
 - mirrored MCP Registry metadata contract: [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md)
-- device runtime roles, fleet ingest, and master gating: [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
+- node runtime roles, fleet ingest, and master gating: [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
 - fleet log ingestion and search: [FLEET_LOGS.md](./FLEET_LOGS.md)
 - local-master runtime log store and SSE console: [LOCAL_LOGS.md](./LOCAL_LOGS.md)
 - deployment topology and rollout guidance: [DEPLOY.md](./DEPLOY.md)

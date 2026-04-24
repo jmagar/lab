@@ -10,6 +10,7 @@ import { useGateways } from '@/lib/hooks/use-gateways'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/gateway/status-badge'
 import { TransportBadge } from '@/components/gateway/transport-badge'
+import { formatUiDate } from '@/lib/format-ui-time'
 import { cn } from '@/lib/utils'
 import {
   AURORA_DISPLAY_1,
@@ -160,21 +161,25 @@ export default function OverviewPage() {
 
         {/* Warnings Banner */}
         {!isLoading && stats.totalWarnings > 0 && (
-          <div className="flex items-center gap-3 rounded-aurora-2 border border-aurora-warn/30 bg-aurora-warn/8 p-4">
-            <div className="rounded-full border border-aurora-warn/30 bg-aurora-warn/12 p-2">
-              <AlertTriangle className="size-5 text-aurora-warn" />
+          <div className="rounded-aurora-2 border border-aurora-warn/30 bg-aurora-warn/8 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="rounded-full border border-aurora-warn/30 bg-aurora-warn/12 p-2">
+                  <AlertTriangle className="size-5 text-aurora-warn" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-aurora-warn">
+                    {stats.totalWarnings} warning{stats.totalWarnings !== 1 ? 's' : ''} across gateways
+                  </p>
+                  <p className="text-sm text-aurora-text-muted">
+                    Review unhealthy or overexposed gateways before publishing more downstream tools.
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="w-full sm:w-auto" asChild>
+                <Link href="/gateways">View gateways</Link>
+              </Button>
             </div>
-            <div className="flex-1">
-              <p className="font-semibold text-aurora-warn">
-                {stats.totalWarnings} warning{stats.totalWarnings !== 1 ? 's' : ''} across gateways
-              </p>
-              <p className="text-sm text-aurora-text-muted">
-                Review unhealthy or overexposed gateways before publishing more downstream tools.
-              </p>
-            </div>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/gateways">View gateways</Link>
-            </Button>
           </div>
         )}
 
@@ -251,7 +256,7 @@ export default function OverviewPage() {
                     <div className="flex flex-wrap items-center gap-3 text-xs text-aurora-text-muted">
                       <span className="inline-flex items-center gap-1">
                         <Clock3 className="size-3.5" />
-                        Updated {new Date(gateway.updated_at).toLocaleDateString()}
+                        {formatUiDate(gateway.updated_at)}
                       </span>
                       {gateway.warnings.length > 0 && (
                         <span className="text-aurora-warn">{gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}</span>

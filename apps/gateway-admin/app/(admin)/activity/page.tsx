@@ -33,12 +33,8 @@ import {
   type ActivityItem,
 } from '@/lib/dashboard/admin-insights'
 import { useBrowserSession } from '@/lib/auth/session'
+import { formatUiDateTime } from '@/lib/format-ui-time'
 import { cn } from '@/lib/utils'
-
-const activityTimestampFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
 
 const toneStyles = {
   success: 'border-aurora-accent-strong/30 bg-aurora-accent-strong/10 text-aurora-accent-strong',
@@ -238,7 +234,7 @@ export default function ActivityPage() {
                           <div className="flex flex-wrap items-center gap-3 text-xs text-aurora-text-muted">
                             <span className="inline-flex items-center gap-1.5">
                               <Clock3 className="size-3.5" />
-                              {activityTimestampFormatter.format(new Date(item.timestamp))}
+                              {formatUiDateTime(item.timestamp)}
                             </span>
                             {item.event.session_id ? <span>session {item.event.session_id.slice(0, 8)}</span> : null}
                             {item.event.request_id ? <span>req {item.event.request_id.slice(0, 8)}</span> : null}

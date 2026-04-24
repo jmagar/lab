@@ -2,6 +2,8 @@ import { normalizeGatewayApiBase } from './gateway-config.ts'
 import { isStandaloneBearerAuthMode } from '../auth/auth-mode.ts'
 import type { LogEvent } from '../types/logs.ts'
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
 export function logsStreamUrl(baseUrl?: string) {
   return `${normalizeGatewayApiBase(baseUrl)}/logs/stream`
 }
@@ -19,6 +21,39 @@ export function connectLogStream(
     standaloneBearerAuth?: boolean
   },
 ) {
+  if (USE_MOCK_DATA) {
+    handlers.onOpen?.()
+    const intervalId = window.setInterval(() => {
+      handlers.onEvent({
+        event_id: `mock-stream-${Date.now()}`,
+        ts: Date.now(),
+        level: 'info',
+        subsystem: 'gateway',
+        surface: 'web',
+        action: 'logs.stream',
+        message: 'Mock stream heartbeat.',
+        request_id: null,
+        session_id: null,
+        correlation_id: null,
+        trace_id: null,
+        span_id: null,
+        instance: null,
+        auth_flow: null,
+        outcome_kind: 'ok',
+        fields_json: { source: 'mock-stream' },
+        source_kind: 'mock',
+        source_node_id: null,
+        source_device_id: null,
+        ingest_path: 'mock',
+        upstream_event_id: null,
+      })
+    }, 12000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }
+
   // EventSource cannot carry bearer headers — only same-origin session cookies.
   // Refuse explicitly so callers in standalone-bearer deployments fail fast
   // instead of silently sending unauthenticated stream requests.

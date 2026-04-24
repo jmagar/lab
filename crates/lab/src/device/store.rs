@@ -16,7 +16,7 @@ pub struct DeviceFleetStore {
 
 #[derive(Debug, Clone)]
 pub struct DeviceSnapshot {
-    pub device_id: String,
+    pub node_id: String,
     pub connected: bool,
     pub last_seen: SystemTime,
     pub role: Option<String>,
@@ -29,9 +29,9 @@ impl DeviceFleetStore {
     pub async fn record_hello(&self, hello: DeviceHello) {
         let mut inner = self.inner.write().await;
         let snapshot = inner
-            .entry(hello.device_id.clone())
+            .entry(hello.node_id.clone())
             .or_insert_with(|| DeviceSnapshot {
-                device_id: hello.device_id.clone(),
+                node_id: hello.node_id.clone(),
                 connected: true,
                 last_seen: SystemTime::now(),
                 role: None,
@@ -39,7 +39,7 @@ impl DeviceFleetStore {
                 metadata: None,
                 logs: Vec::new(),
             });
-        snapshot.device_id = hello.device_id;
+        snapshot.node_id = hello.node_id;
         snapshot.connected = true;
         snapshot.last_seen = SystemTime::now();
         snapshot.role = Some(hello.role);
@@ -48,9 +48,9 @@ impl DeviceFleetStore {
     pub async fn record_status(&self, status: DeviceStatus) {
         let mut inner = self.inner.write().await;
         let snapshot = inner
-            .entry(status.device_id.clone())
+            .entry(status.node_id.clone())
             .or_insert_with(|| DeviceSnapshot {
-                device_id: status.device_id.clone(),
+                node_id: status.node_id.clone(),
                 connected: status.connected,
                 last_seen: SystemTime::now(),
                 role: None,
@@ -58,18 +58,18 @@ impl DeviceFleetStore {
                 metadata: None,
                 logs: Vec::new(),
             });
-        snapshot.device_id = status.device_id.clone();
+        snapshot.node_id = status.node_id.clone();
         snapshot.connected = status.connected;
         snapshot.last_seen = SystemTime::now();
         snapshot.status = Some(status);
     }
 
-    pub async fn set_connected(&self, device_id: &str, connected: bool) {
+    pub async fn set_connected(&self, node_id: &str, connected: bool) {
         let mut inner = self.inner.write().await;
         let snapshot = inner
-            .entry(device_id.to_string())
+            .entry(node_id.to_string())
             .or_insert_with(|| DeviceSnapshot {
-                device_id: device_id.to_string(),
+                node_id: node_id.to_string(),
                 connected,
                 last_seen: SystemTime::now(),
                 role: None,
@@ -84,9 +84,9 @@ impl DeviceFleetStore {
         }
     }
 
-    pub async fn device(&self, device_id: &str) -> Option<DeviceSnapshot> {
+    pub async fn device(&self, node_id: &str) -> Option<DeviceSnapshot> {
         let inner = self.inner.read().await;
-        inner.get(device_id).cloned()
+        inner.get(node_id).cloned()
     }
 
     pub async fn list_devices(&self) -> Vec<DeviceSnapshot> {
@@ -97,9 +97,9 @@ impl DeviceFleetStore {
     pub async fn record_metadata(&self, metadata: DeviceMetadataUpload) {
         let mut inner = self.inner.write().await;
         let snapshot = inner
-            .entry(metadata.device_id.clone())
+            .entry(metadata.node_id.clone())
             .or_insert_with(|| DeviceSnapshot {
-                device_id: metadata.device_id.clone(),
+                node_id: metadata.node_id.clone(),
                 connected: false,
                 last_seen: SystemTime::now(),
                 role: None,
@@ -107,17 +107,17 @@ impl DeviceFleetStore {
                 metadata: None,
                 logs: Vec::new(),
             });
-        snapshot.device_id = metadata.device_id.clone();
+        snapshot.node_id = metadata.node_id.clone();
         snapshot.last_seen = SystemTime::now();
         snapshot.metadata = Some(metadata);
     }
 
-    pub async fn record_logs(&self, device_id: &str, events: Vec<DeviceLogEvent>) {
+    pub async fn record_logs(&self, node_id: &str, events: Vec<DeviceLogEvent>) {
         let mut inner = self.inner.write().await;
         let snapshot = inner
-            .entry(device_id.to_string())
+            .entry(node_id.to_string())
             .or_insert_with(|| DeviceSnapshot {
-                device_id: device_id.to_string(),
+                node_id: node_id.to_string(),
                 connected: false,
                 last_seen: SystemTime::now(),
                 role: None,
@@ -138,13 +138,13 @@ impl DeviceFleetStore {
 
     pub async fn search_logs_for_device(
         &self,
-        device_id: &str,
+        node_id: &str,
         needle: &str,
         offset: usize,
         limit: usize,
     ) -> Vec<DeviceLogEvent> {
         let inner = self.inner.read().await;
-        let Some(snapshot) = inner.get(device_id) else {
+        let Some(snapshot) = inner.get(node_id) else {
             return Vec::new();
         };
 

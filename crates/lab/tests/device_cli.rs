@@ -1,4 +1,4 @@
-use lab::config::{DevicePreferences, LabConfig};
+use lab::config::{LabConfig, NodePreferences};
 use lab::device::master_client::MasterClient;
 use url::Url;
 
@@ -6,10 +6,10 @@ use url::Url;
 async fn device_list_command_reads_from_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/v1/device/devices"))
+        .and(wiremock::matchers::path("/v1/nodes"))
         .respond_with(
             wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"device_id":"dookie","connected":true}
+                {"node_id":"dookie","connected":true}
             ])),
         )
         .mount(&server)
@@ -24,9 +24,9 @@ async fn device_list_command_reads_from_master_api() {
 async fn device_enrollments_list_command_reads_from_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/v1/device/enrollments"))
+        .and(wiremock::matchers::path("/v1/nodes/enrollments"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "pending": {"device-1": {"device_id":"device-1"}},
+            "pending": {"device-1": {"node_id":"device-1"}},
             "approved": {},
             "denied": {}
         })))
@@ -42,11 +42,11 @@ async fn device_enrollments_list_command_reads_from_master_api() {
 async fn device_enrollments_approve_command_calls_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/device/enrollments/device%2D1/approve"))
+        .and(wiremock::matchers::path("/v1/nodes/enrollments/device%2D1/approve"))
         .and(wiremock::matchers::body_string_contains("\"note\":\"ok\""))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({"device_id":"device-1"})),
+                .set_body_json(serde_json::json!({"node_id":"device-1"})),
         )
         .mount(&server)
         .await;
@@ -55,18 +55,18 @@ async fn device_enrollments_approve_command_calls_master_api() {
     let value = lab::cli::device::approve_enrollment(&config, "device-1", Some("ok"))
         .await
         .unwrap();
-    assert_eq!(value["device_id"], "device-1");
+    assert_eq!(value["node_id"], "device-1");
 }
 
 #[tokio::test]
 async fn device_enrollments_deny_command_calls_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/device/enrollments/device%2D1/deny"))
+        .and(wiremock::matchers::path("/v1/nodes/enrollments/device%2D1/deny"))
         .and(wiremock::matchers::body_string_contains("\"reason\":\"no\""))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
-                .set_body_json(serde_json::json!({"device_id":"device-1"})),
+                .set_body_json(serde_json::json!({"node_id":"device-1"})),
         )
         .mount(&server)
         .await;
@@ -75,23 +75,23 @@ async fn device_enrollments_deny_command_calls_master_api() {
     let value = lab::cli::device::deny_enrollment(&config, "device-1", Some("no"))
         .await
         .unwrap();
-    assert_eq!(value["device_id"], "device-1");
+    assert_eq!(value["node_id"], "device-1");
 }
 
 #[tokio::test]
 async fn logs_search_command_reads_from_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/device/logs/search"))
+        .and(wiremock::matchers::path("/v1/nodes/logs/search"))
         .and(wiremock::matchers::body_string_contains(
-            "\"device_id\":\"dookie\"",
+            "\"node_id\":\"dookie\"",
         ))
         .and(wiremock::matchers::body_string_contains(
             "\"query\":\"hello\"",
         ))
         .respond_with(
             wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"device_id":"dookie","message":"hello"}
+                {"node_id":"dookie","message":"hello"}
             ])),
         )
         .mount(&server)
@@ -108,7 +108,7 @@ async fn logs_search_command_reads_from_master_api() {
 async fn master_client_applies_bearer_token_to_master_requests() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/v1/device/devices"))
+        .and(wiremock::matchers::path("/v1/nodes"))
         .and(wiremock::matchers::header(
             "authorization",
             "Bearer shared-secret",
@@ -128,8 +128,8 @@ async fn master_client_applies_bearer_token_to_master_requests() {
 fn config_for_master(uri: &str) -> LabConfig {
     let parsed = Url::parse(uri).unwrap();
     let mut config = LabConfig::default();
-    config.device = Some(DevicePreferences {
-        master: parsed.host_str().map(str::to_string),
+    config.node = Some(NodePreferences {
+        controller: parsed.host_str().map(str::to_string),
     });
     config.mcp.port = parsed.port();
     config
