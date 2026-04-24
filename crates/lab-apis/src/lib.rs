@@ -29,6 +29,9 @@ pub mod marketplace;
 /// Device-runtime control-plane client shared by CLI and runtime code.
 pub mod device_runtime;
 
+/// Agent Client Protocol (ACP) — types, error, persistence trait, and provider types.
+pub mod acp;
+
 /// Radarr movie management client.
 #[cfg(feature = "radarr")]
 pub mod radarr;
