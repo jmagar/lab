@@ -11,6 +11,7 @@ pub mod deploy;
 pub mod doctor;
 pub mod error;
 pub mod extract;
+pub mod fs;
 pub mod gateway;
 #[cfg(feature = "gotify")]
 pub mod gotify;
