@@ -404,12 +404,17 @@ pub async fn open_for_preview(root: &Path, params: Value) -> Result<Preview, Too
     // cannot distinguish "file does not exist" from "file exists but is
     // suppressed" — returning the latter would be an exfiltration oracle.
     if deny_globset().is_match(&parsed.rel_str) {
+        // Intentionally omit the `path` field: naming the matched credential
+        // file in structured logs turns the audit event itself into an
+        // exfiltration oracle (the deny-list aliases to `not_found` for the
+        // same reason). `kind = "deny_list"` is sufficient to count denials;
+        // operators who need to investigate can correlate by timestamp +
+        // `request_id` at the request layer.
         tracing::info!(
             surface = "api",
             service = "fs",
             action = "fs.preview",
             kind = "deny_list",
-            path = %parsed.rel_str,
             "preview rejected by credential deny-list"
         );
         return Err(ToolError::Sdk {
