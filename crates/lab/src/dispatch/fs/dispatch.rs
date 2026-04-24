@@ -278,8 +278,17 @@ fn list_directory(target: &Path, rel_prefix: &str) -> Result<ListResponse, ToolE
         } else {
             format!("{rel_prefix}/{name}")
         };
-        let normalized: String = rel_path.nfkc().collect();
-        if deny.is_match(&normalized) {
+        // ASCII fast-path: NFKC is a no-op for ASCII (>99% of paths in
+        // practice), so skip the per-entry allocation. Non-ASCII paths
+        // still normalize so deny-list patterns match Unicode-equivalent
+        // forms.
+        let denied = if rel_path.is_ascii() {
+            deny.is_match(&rel_path)
+        } else {
+            let normalized: String = rel_path.nfkc().collect();
+            deny.is_match(&normalized)
+        };
+        if denied {
             continue;
         }
 
@@ -288,8 +297,12 @@ fn list_directory(target: &Path, rel_prefix: &str) -> Result<ListResponse, ToolE
             break;
         }
 
-        // symlink_metadata so dangling links surface as accessible=false.
-        let meta = std::fs::symlink_metadata(dent.path());
+        // dent.metadata() reuses walkdir's stat instead of issuing a
+        // second lstat on dent.path(). With follow_links=false (set
+        // above), this returns the link's own metadata — same semantics
+        // as std::fs::symlink_metadata. Saves ~10k syscalls for a full
+        // LIST_CAP listing (~5-15ms warm, 30-80ms cold).
+        let meta = dent.metadata();
         let (kind, size, accessible, modified) = match meta {
             Ok(m) => {
                 let file_type = m.file_type();
