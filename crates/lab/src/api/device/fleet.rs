@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use axum::{
@@ -8,9 +10,10 @@ use axum::{
     },
     response::Response,
 };
-use futures::StreamExt;
+use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
+use tokio::sync::{RwLock, mpsc};
 
 use crate::api::{ToolError, state::AppState};
 use crate::config::DeviceRole;
@@ -19,6 +22,44 @@ use crate::device::enrollment::store::{
 };
 use crate::device::checkin::{DeviceHello, DeviceMetadataUpload, DeviceStatus};
 use crate::device::log_event::DeviceLogEvent;
+
+// --------------------------------------------------------------------------
+// Master → device sender registry
+// --------------------------------------------------------------------------
+// Keyed by device_id. Populated on WebSocket upgrade (after successful
+// `initialize`), removed on disconnect. `send_to_device` is the public
+// entry-point for dispatching RPC commands to a connected device.
+// --------------------------------------------------------------------------
+
+type SenderRegistry = Arc<RwLock<HashMap<String, mpsc::Sender<Message>>>>;
+
+fn sender_registry() -> &'static SenderRegistry {
+    static REGISTRY: OnceLock<SenderRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FleetDispatchError {
+    #[error("device `{device_id}` is not connected")]
+    NotConnected { device_id: String },
+    #[error("send channel for device `{device_id}` is closed")]
+    ChannelClosed { device_id: String },
+}
+
+/// Send a raw WebSocket `Message` to a specific connected device.
+///
+/// Returns `FleetDispatchError::NotConnected` when the device has no active WS
+/// session, and `FleetDispatchError::ChannelClosed` when the send channel was
+/// dropped (race with disconnect).
+pub async fn send_to_device(device_id: &str, msg: Message) -> Result<(), FleetDispatchError> {
+    let registry = sender_registry().read().await;
+    let sender = registry.get(device_id).ok_or_else(|| FleetDispatchError::NotConnected {
+        device_id: device_id.to_string(),
+    })?;
+    sender.send(msg).await.map_err(|_| FleetDispatchError::ChannelClosed {
+        device_id: device_id.to_string(),
+    })
+}
 
 pub async fn list_devices(
     State(state): State<AppState>,
@@ -106,44 +147,73 @@ pub async fn websocket_upgrade(
 }
 
 async fn handle_websocket(
-    mut socket: WebSocket,
+    socket: WebSocket,
     store: std::sync::Arc<crate::device::store::DeviceFleetStore>,
     enrollment_store: std::sync::Arc<EnrollmentStore>,
 ) -> Result<(), anyhow::Error> {
+    use axum::extract::ws::WebSocket;
+    use futures::stream::SplitSink;
+
+    // Split the WebSocket into independent send/receive halves.
+    // This avoids holding a Mutex across awaits and allows the sender registry
+    // to push frames to the device independently of the reader loop.
+    let (sink, mut stream) = socket.split();
+
+    // mpsc channel that funnels all outbound frames (RPC responses and
+    // master-initiated send_to_device pushes) into the writer task below.
+    let (tx, rx) = mpsc::channel::<Message>(64);
+
+    // Dedicated writer task: drains `rx` → `sink`.
+    let write_task: tokio::task::JoinHandle<Result<SplitSink<WebSocket, Message>, anyhow::Error>> =
+        tokio::spawn(async move {
+            let mut sink = sink;
+            let mut rx: mpsc::Receiver<Message> = rx;
+            while let Some(msg) = rx.recv().await {
+                sink.send(msg).await.map_err(|error| anyhow::anyhow!("ws send: {error}"))?;
+            }
+            Ok(sink)
+        });
+
     let mut session_device_id: Option<String> = None;
 
-    while let Some(message) = socket.next().await {
+    while let Some(message) = stream.next().await {
         match message? {
             Message::Text(text) => {
                 let request: RpcRequest =
                     serde_json::from_str(&text).map_err(|error| anyhow::anyhow!(error))?;
                 let response =
-                    handle_rpc_request(request, &store, &enrollment_store, &mut session_device_id)
+                    handle_rpc_request(request, &store, &enrollment_store, &mut session_device_id, &tx)
                         .await;
-                socket
-                    .send(Message::Text(response.to_string().into()))
-                    .await?;
+                // Ignore send errors — the write task surfaces them on next iteration.
+                let _ = tx.send(Message::Text(response.to_string().into())).await;
             }
             Message::Ping(payload) => {
-                socket.send(Message::Pong(payload)).await?;
+                let _ = tx.send(Message::Pong(payload)).await;
             }
             Message::Pong(_) => {}
             Message::Binary(_) => {
-                socket
+                let _ = tx
                     .send(Message::Text(
                         error_response(None, -32600, "binary websocket frames are not supported")
                             .to_string()
                             .into(),
                     ))
-                    .await?;
+                    .await;
             }
             Message::Close(_) => break,
         }
     }
 
-    if let Some(device_id) = session_device_id {
-        store.set_connected(&device_id, false).await;
+    // Remove sender from registry BEFORE dropping `tx` so the write task
+    // drains any pending frames cleanly.
+    if let Some(ref device_id) = session_device_id {
+        sender_registry().write().await.remove(device_id);
+        store.set_connected(device_id, false).await;
     }
+
+    // Signal the write task to exit by dropping `tx`, then await it.
+    drop(tx);
+    let _ = write_task.await;
 
     Ok(())
 }
@@ -153,6 +223,7 @@ async fn handle_rpc_request(
     store: &crate::device::store::DeviceFleetStore,
     enrollment_store: &EnrollmentStore,
     session_device_id: &mut Option<String>,
+    tx: &mpsc::Sender<Message>,
 ) -> serde_json::Value {
     match request.method.as_str() {
         "initialize" => {
@@ -171,6 +242,12 @@ async fn handle_rpc_request(
 
             match handle_initialize(store, enrollment_store, &params).await {
                 Ok(initialized) => {
+                    // Register this device's outbound sender so master can push RPC
+                    // requests later via `send_to_device`.
+                    sender_registry()
+                        .write()
+                        .await
+                        .insert(initialized.device_id.clone(), tx.clone());
                     *session_device_id = Some(initialized.device_id.clone());
                     success_response(
                         request.id,
