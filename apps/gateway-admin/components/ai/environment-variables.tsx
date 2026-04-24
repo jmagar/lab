@@ -39,10 +39,13 @@ export const EnvironmentVariables = ({
   ...props
 }: EnvironmentVariablesProps) => {
   const [internalShowValues, setInternalShowValues] = useState(defaultShowValues)
-  const showValues = controlledShowValues ?? internalShowValues
+  const isControlled = controlledShowValues !== undefined
+  const showValues = isControlled ? controlledShowValues : internalShowValues
 
   const setShowValues = (show: boolean) => {
-    setInternalShowValues(show)
+    if (!isControlled) {
+      setInternalShowValues(show)
+    }
     onShowValuesChange?.(show)
   }
 
