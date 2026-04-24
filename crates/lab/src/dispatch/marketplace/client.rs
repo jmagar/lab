@@ -142,7 +142,17 @@ fn sync_tree_to_target(
             .to_string_lossy()
             .into_owned();
         let dest = current_target.join(&file_name);
-        if source.is_dir() {
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            tracing::warn!(
+                service = "marketplace",
+                event = "sync.skipped",
+                path = %source.display(),
+                "skipping symlink during sync"
+            );
+            continue;
+        }
+        if ft.is_dir() {
             std::fs::create_dir_all(&dest).map_err(io_internal)?;
             sync_tree_to_target(workspace, target, &source, changed, skipped, removed, failed)?;
             continue;
@@ -209,7 +219,17 @@ fn preview_tree_sync(workspace: &Path, target: &Path, current: &Path) -> Result<
             .to_string_lossy()
             .into_owned();
         let dest = current_target.join(&file_name);
-        if source.is_dir() {
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            tracing::warn!(
+                service = "marketplace",
+                event = "preview.skipped",
+                path = %source.display(),
+                "skipping symlink during preview"
+            );
+            continue;
+        }
+        if ft.is_dir() {
             let nested = preview_tree_sync(workspace, target, &source)?;
             preview.changed.extend(nested.changed);
             preview.skipped.extend(nested.skipped);
