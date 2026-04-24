@@ -249,10 +249,12 @@ export function PromptInputProvider({
 const LocalAttachmentsContext = createContext<AttachmentsContext | null>(null)
 
 export const usePromptInputAttachments = () => {
-  // Dual-mode: prefer provider if present, otherwise use local
+  // Dual-mode: prefer the local (PromptInput-scoped) context when present so
+  // children see the validated `add` wrapper. Fall back to the raw provider
+  // context only when the consumer sits outside a PromptInput.
   const provider = useOptionalProviderAttachments()
   const local = useContext(LocalAttachmentsContext)
-  const context = provider ?? local
+  const context = local ?? provider
   if (!context) {
     throw new Error(
       "usePromptInputAttachments must be used within a PromptInput or PromptInputProvider",
@@ -499,6 +501,14 @@ export const PromptInput = ({
         })
         return null
       }
+      if (sized.length > 0 && sized.length < accepted.length) {
+        // Partial rejection: mirror the max_files branch so callers aren't
+        // left wondering why fewer files appeared than they selected.
+        onError?.({
+          code: "max_file_size",
+          message: "Some files exceeded the maximum size and were not added.",
+        })
+      }
       // Enforce single-file uploads when multiple is explicitly false. The
       // native file input honors this, but paste/drag-drop paths bypass it.
       const singleFileCap = multiple === false ? 1 : undefined
@@ -594,6 +604,14 @@ export const PromptInput = ({
       return
     }
     controller.__registerFileInput(inputRef, () => inputRef.current?.click())
+    return () => {
+      // Reset the registration on unmount so the provider doesn't retain a
+      // detached DOM reference (or a closure that would .click() on nothing).
+      controller.__registerFileInput(
+        { current: null } as RefObject<HTMLInputElement | null>,
+        () => {},
+      )
+    }
   }, [usingProvider, controller])
 
   // Note: File input cannot be programmatically set for security reasons
@@ -721,10 +739,13 @@ export const PromptInput = ({
           return (formData.get("message") as string) || ""
         })()
 
-    // Reset form immediately after capturing text to avoid race condition
-    // where user input during async blob conversion would be lost
-    if (!usingProvider) {
-      form.reset()
+    const clearOnSuccess = () => {
+      clear()
+      if (usingProvider) {
+        controller.textInput.clear()
+      } else {
+        form.reset()
+      }
     }
 
     // Convert blob URLs to data URLs asynchronously
@@ -745,24 +766,16 @@ export const PromptInput = ({
         try {
           const result = onSubmit({ text, files: convertedFiles }, event)
 
-          // Handle both sync and async onSubmit
+          // Handle both sync and async onSubmit. Reset the form only on
+          // success so typed text is preserved if the submit throws.
           if (result instanceof Promise) {
             result
-              .then(() => {
-                clear()
-                if (usingProvider) {
-                  controller.textInput.clear()
-                }
-              })
+              .then(clearOnSuccess)
               .catch(() => {
                 // Don't clear on error - user may want to retry
               })
           } else {
-            // Sync function completed without throwing, clear attachments
-            clear()
-            if (usingProvider) {
-              controller.textInput.clear()
-            }
+            clearOnSuccess()
           }
         } catch {
           // Don't clear on error - user may want to retry
@@ -792,9 +805,12 @@ export const PromptInput = ({
     </>
   )
 
-  return usingProvider ? (
-    inner
-  ) : (
+  // Always wrap inner with the local (validated) attachments context so that
+  // children like PromptInputTextarea see the validated `add` wrapper, even
+  // in provider mode. `usePromptInputAttachments` prefers the local context
+  // when both are present, so paste/drop from inside PromptInput is validated
+  // against `accept` / `maxFileSize` / `maxFiles`.
+  return (
     <LocalAttachmentsContext.Provider value={ctx}>{inner}</LocalAttachmentsContext.Provider>
   )
 }
@@ -1134,7 +1150,16 @@ export const PromptInputSpeechButton = ({
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop()
+        const r = recognitionRef.current
+        // Detach handlers before stopping so a late `onend` / `onerror` /
+        // `onresult` delivered after unmount cannot call setState on the
+        // unmounted component. stop() is asynchronous per Web Speech spec.
+        r.onstart = null
+        r.onend = null
+        r.onresult = null
+        r.onerror = null
+        r.stop()
+        recognitionRef.current = null
       }
     }
   }, [textareaRef, onTranscriptionChange])
