@@ -1,0 +1,304 @@
+//! `AcpRegistryClient` — read-only ACP Agent Registry client.
+
+use std::time::Duration;
+
+use reqwest::redirect;
+
+use crate::core::{ApiError, Auth, HttpClient};
+
+use super::error::AcpRegistryError;
+use super::types::{Agent, AcpRegistryResponse};
+
+/// Default ACP Registry CDN base URL; overridden by `ACP_REGISTRY_URL` env var.
+pub const REGISTRY_DEFAULT_URL: &str = "https://cdn.agentclientprotocol.com";
+
+/// Path to the full registry manifest.
+const REGISTRY_PATH: &str = "/registry/v1/latest/registry.json";
+
+/// Client for the ACP Agent Registry CDN.
+///
+/// All operations are unauthenticated read-only. Uses a custom `reqwest::Client` with:
+/// - 20 s request timeout
+/// - 5 s connect timeout
+/// - No redirect following (prevents SSRF via registry-hosted redirect chains)
+pub struct AcpRegistryClient {
+    pub(crate) http: HttpClient,
+}
+
+impl AcpRegistryClient {
+    /// Construct a new client targeting `base_url`.
+    ///
+    /// # Errors
+    /// Returns [`AcpRegistryError::Request`] wrapping [`ApiError::Internal`] if the TLS
+    /// backend fails to initialise.
+    pub fn new(base_url: &str) -> Result<Self, AcpRegistryError> {
+        let inner = reqwest::Client::builder()
+            .user_agent(concat!("lab-apis/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(20))
+            .redirect(redirect::Policy::none())
+            .build()
+            .map_err(|e| {
+                AcpRegistryError::Request(ApiError::Internal(format!(
+                    "reqwest::Client::build: {e}"
+                )))
+            })?;
+        Ok(Self {
+            http: HttpClient::from_parts(base_url, Auth::None, inner),
+        })
+    }
+
+    /// Fetch the full registry manifest and return all agents.
+    ///
+    /// # Errors
+    /// Returns [`AcpRegistryError`] on HTTP or decode failure.
+    pub async fn list_agents(&self) -> Result<Vec<Agent>, AcpRegistryError> {
+        let response: AcpRegistryResponse = self.http.get_json(REGISTRY_PATH).await?;
+        Ok(response.agents)
+    }
+
+    /// Fetch the registry and find an agent by `id` (client-side filter).
+    ///
+    /// Returns `None` if no agent with that id exists.
+    ///
+    /// # Errors
+    /// Returns [`AcpRegistryError`] on HTTP or decode failure.
+    pub async fn get_agent(&self, id: &str) -> Result<Option<Agent>, AcpRegistryError> {
+        let agents = self.list_agents().await?;
+        Ok(agents.into_iter().find(|a| a.id == id))
+    }
+
+    /// Raw health probe — fetches the registry manifest and returns Ok on success.
+    pub(super) async fn health_probe(&self) -> Result<AcpRegistryResponse, AcpRegistryError> {
+        Ok(self.http.get_json(REGISTRY_PATH).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+
+    /// Minimal fixture matching the real CDN response shape.
+    fn fixture_registry() -> serde_json::Value {
+        serde_json::json!({
+            "version": "1.0.0",
+            "agents": [
+                {
+                    "id": "anthropic/claude-code",
+                    "name": "Claude Code",
+                    "version": "1.2.3",
+                    "description": "AI coding agent by Anthropic",
+                    "distribution": {
+                        "binary": {
+                            "darwin-aarch64": { "archive": "https://example.com/darwin-arm.tar.gz", "cmd": "./claude-code" },
+                            "linux-x86_64":   { "archive": "https://example.com/linux-x64.tar.gz",  "cmd": "./claude-code" }
+                        }
+                    },
+                    "env": [
+                        { "name": "ANTHROPIC_API_KEY", "description": "Anthropic API key", "required": true }
+                    ]
+                },
+                {
+                    "id": "openai/codex-cli",
+                    "name": "Codex CLI",
+                    "version": "0.9.0",
+                    "distribution": {
+                        "npx": { "package": "@openai/codex", "version": "0.9.0" }
+                    },
+                    "env": []
+                }
+            ],
+            "extensions": []
+        })
+    }
+
+    fn make_client(base_url: &str) -> AcpRegistryClient {
+        AcpRegistryClient::new(base_url).expect("client construction should succeed")
+    }
+
+    // -----------------------------------------------------------------------
+    // 1. list_agents() returns deserialized agents from wrapper response
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_list_agents_parses_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(fixture_registry()))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let agents = client.list_agents().await.unwrap();
+        assert_eq!(agents.len(), 2);
+        assert_eq!(agents[0].id, "anthropic/claude-code");
+        assert_eq!(agents[0].name, "Claude Code");
+        assert_eq!(agents[0].version, "1.2.3");
+        assert_eq!(agents[1].id, "openai/codex-cli");
+    }
+
+    // -----------------------------------------------------------------------
+    // 2. get_agent(id) finds by id, returns None for unknown
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_get_agent_found() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(fixture_registry()))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let agent = client.get_agent("openai/codex-cli").await.unwrap();
+        assert!(agent.is_some());
+        let agent = agent.unwrap();
+        assert_eq!(agent.id, "openai/codex-cli");
+    }
+
+    #[tokio::test]
+    async fn test_get_agent_not_found_returns_none() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(fixture_registry()))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let agent = client.get_agent("nonexistent/agent").await.unwrap();
+        assert!(agent.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. HTTP 4xx → AcpRegistryError
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_4xx_returns_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("not found"))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let result = client.list_agents().await;
+        assert!(result.is_err(), "expected error on 404, got Ok");
+    }
+
+    // -----------------------------------------------------------------------
+    // 4. HTTP 5xx → AcpRegistryError
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_5xx_returns_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("service unavailable"))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let result = client.list_agents().await;
+        assert!(result.is_err(), "expected error on 503, got Ok");
+    }
+
+    // -----------------------------------------------------------------------
+    // 5. Network failure → error propagated
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_network_failure_propagated() {
+        // Use an invalid address that will refuse connections immediately
+        let client = AcpRegistryClient::new("http://127.0.0.1:1").unwrap();
+        let result = client.list_agents().await;
+        assert!(result.is_err(), "expected network error, got Ok");
+    }
+
+    // -----------------------------------------------------------------------
+    // 6. Snapshot test with minimal fixture of the real JSON shape
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_snapshot_minimal_fixture() {
+        let server = MockServer::start().await;
+        let minimal = serde_json::json!({
+            "version": "1.0.0",
+            "agents": [
+                {
+                    "id": "test/agent",
+                    "name": "Test Agent",
+                    "version": "0.1.0",
+                    "distribution": {
+                        "uvx": { "package": "test-agent", "version": "0.1.0" }
+                    }
+                }
+            ],
+            "extensions": []
+        });
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(minimal))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let agents = client.list_agents().await.unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].id, "test/agent");
+        assert_eq!(agents[0].version, "0.1.0");
+        // description defaults to None when absent
+        assert!(agents[0].description.is_none());
+        // env defaults to empty vec
+        assert!(agents[0].env.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Extra: unknown fields in Agent are silently ignored via flatten
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_unknown_agent_fields_ignored() {
+        let server = MockServer::start().await;
+        let with_extra = serde_json::json!({
+            "version": "1.0.0",
+            "agents": [
+                {
+                    "id": "acme/tool",
+                    "name": "Acme Tool",
+                    "version": "2.0.0",
+                    "distribution": {
+                        "npx": { "package": "@acme/tool", "version": "2.0.0" }
+                    },
+                    "future_field": "should not cause a panic",
+                    "another_unknown": 99
+                }
+            ],
+            "extensions": []
+        });
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(with_extra))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let result = client.list_agents().await;
+        assert!(
+            result.is_ok(),
+            "unknown fields should be silently captured: {result:?}"
+        );
+        let agents = result.unwrap();
+        assert_eq!(agents[0].id, "acme/tool");
+        // Extra fields end up in the `extra` HashMap
+        assert!(agents[0].extra.contains_key("future_field"));
+    }
+}
