@@ -191,6 +191,13 @@ impl From<ToolError> for DispatchError {
                 param: None,
                 hint: None,
             },
+            ToolError::AmbiguousTool { message, valid } => Self {
+                kind: "ambiguous_tool",
+                message,
+                valid: Some(valid),
+                param: None,
+                hint: None,
+            },
             ToolError::Sdk { sdk_kind, message } => Self {
                 kind: canonical_kind(&sdk_kind),
                 message,

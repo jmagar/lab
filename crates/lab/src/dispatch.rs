@@ -1,3 +1,4 @@
+pub mod acp;
 #[cfg(feature = "apprise")]
 pub mod apprise;
 #[cfg(feature = "arcane")]
@@ -7,6 +8,7 @@ pub mod bytestash;
 pub mod clients;
 #[cfg(feature = "deploy")]
 pub mod deploy;
+pub mod doctor;
 pub mod error;
 pub mod extract;
 pub mod gateway;

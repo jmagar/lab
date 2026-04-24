@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
 
 use arc_swap::ArcSwapOption;
+use tokio::task::AbortHandle;
 #[cfg(unix)]
 use nix::errno::Errno;
 use tokio::sync::RwLock;
+use tokio::time::Instant;
 use url::Url;
 
 use crate::config::{
@@ -69,10 +72,24 @@ pub fn diff_catalogs(
 
 static BUILTIN_SERVICE_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
 
+/// Minimum wall-clock age between consecutive live reprobes on the search
+/// hot path. Per-upstream; fresher indexes skip reprobe entirely.
+const TOOL_SEARCH_REPROBE_TTL: Duration = Duration::from_secs(30);
+
 #[derive(Clone)]
 struct GatewayToolIndexState {
     index: Arc<ArcSwapOption<ToolIndex>>,
     warming: Arc<AtomicBool>,
+    /// Monotonically increases on every spawned rebuild. Tasks that finish
+    /// with a stale generation are dropped instead of publishing, preventing
+    /// a last-writer-wins race where an earlier rebuild clobbers a later one.
+    generation: Arc<AtomicU64>,
+    /// Handle for the most recent spawned rebuild, aborted when a new
+    /// rebuild is scheduled so rapid config churn doesn't leak tasks.
+    in_flight: Arc<StdMutex<Option<AbortHandle>>>,
+    /// Timestamp of the last completed live reprobe. Search-path refresh
+    /// short-circuits when younger than `TOOL_SEARCH_REPROBE_TTL`.
+    last_reprobe_at: Arc<StdMutex<Option<Instant>>>,
 }
 
 impl Default for GatewayToolIndexState {
@@ -80,6 +97,9 @@ impl Default for GatewayToolIndexState {
         Self {
             index: Arc::new(ArcSwapOption::from(None)),
             warming: Arc::new(AtomicBool::new(false)),
+            generation: Arc::new(AtomicU64::new(0)),
+            in_flight: Arc::new(StdMutex::new(None)),
+            last_reprobe_at: Arc::new(StdMutex::new(None)),
         }
     }
 }
@@ -1512,13 +1532,13 @@ impl GatewayManager {
             });
         }
         if matches.len() > 1 {
-            return Err(ToolError::Sdk {
-                sdk_kind: "ambiguous_tool".to_string(),
-                message: matches
-                    .iter()
-                    .map(|(upstream, tool)| format!("{upstream}::{}", tool.tool.name))
-                    .collect::<Vec<_>>()
-                    .join(", "),
+            let valid = matches
+                .iter()
+                .map(|(upstream, tool)| format!("{upstream}::{}", tool.tool.name))
+                .collect::<Vec<_>>();
+            return Err(ToolError::AmbiguousTool {
+                message: format!("tool `{name}` matched multiple upstream tools"),
+                valid,
             });
         }
         Ok(matches.into_iter().next().expect("checked len"))
@@ -1531,7 +1551,16 @@ impl GatewayManager {
             .filter(|upstream| upstream.tool_search.enabled)
             .map(|upstream| upstream.name.clone())
             .collect::<std::collections::HashSet<_>>();
-        self.tool_indexes.retain(|name, _| enabled.contains(name));
+        self.tool_indexes.retain(|name, state| {
+            if !enabled.contains(name) {
+                if let Ok(mut guard) = state.in_flight.lock()
+                    && let Some(handle) = guard.take()
+                {
+                    handle.abort();
+                }
+            }
+            enabled.contains(name)
+        });
 
         let Some(pool) = pool else {
             self.tool_indexes.clear();
@@ -1544,41 +1573,88 @@ impl GatewayManager {
                 .entry(upstream.name.clone())
                 .or_default()
                 .clone();
+            // Abort the previous rebuild for this upstream before starting a
+            // new one, and bump the generation so any in-flight older task
+            // refuses to publish its result.
+            if let Ok(mut guard) = state.in_flight.lock()
+                && let Some(handle) = guard.take()
+            {
+                handle.abort();
+            }
+            let my_generation = state.generation.fetch_add(1, Ordering::Relaxed) + 1;
             let upstream = upstream.clone();
             let pool = pool.clone();
             state.warming.store(true, Ordering::Relaxed);
-            state.index.store(None);
-            tokio::spawn(async move {
+            let state_for_task = state.clone();
+            let handle = tokio::spawn(async move {
                 let healthy_tools = pool.healthy_tools_for_upstream(&upstream.name).await;
                 let built = tokio::task::spawn_blocking(move || {
                     ToolIndex::build_from_tools(&upstream, healthy_tools)
                 })
                 .await;
-                if let Ok(index) = built {
-                    state.index.store(Some(Arc::new(index)));
+                if state_for_task.generation.load(Ordering::Relaxed) == my_generation
+                    && let Ok(index) = built
+                {
+                    state_for_task.index.store(Some(Arc::new(index)));
                 }
-                state.warming.store(false, Ordering::Relaxed);
+                state_for_task.warming.store(false, Ordering::Relaxed);
             });
+            if let Ok(mut guard) = state.in_flight.lock() {
+                *guard = Some(handle.abort_handle());
+            }
         }
     }
 
+    /// Refresh per-upstream tool-search indexes on the search hot path.
+    ///
+    /// TTL-gated on `TOOL_SEARCH_REPROBE_TTL`: if the last successful reprobe
+    /// is younger than the TTL, skip the live probe and keep the cached
+    /// index. Remaining stale upstreams are reprobed concurrently.
     async fn refresh_tool_search_indexes_if_stale(&self) {
         let cfg = self.config.read().await.clone();
         let Some(pool) = self.current_pool().await else {
             return;
         };
 
+        let now = Instant::now();
+        let mut pending = Vec::new();
         for upstream in cfg.upstream.into_iter().filter(|u| u.tool_search.enabled) {
             let state = self
                 .tool_indexes
                 .entry(upstream.name.clone())
                 .or_default()
                 .clone();
-            let pool = pool.clone();
-            let upstream_clone = upstream.clone();
+            let fresh = state
+                .last_reprobe_at
+                .lock()
+                .ok()
+                .and_then(|guard| *guard)
+                .is_some_and(|t| now.duration_since(t) < TOOL_SEARCH_REPROBE_TTL);
+            if fresh {
+                continue;
+            }
+            pending.push((upstream, state));
+        }
+
+        let pool = &pool;
+        let tasks = pending.into_iter().map(|(upstream, state)| async move {
             state.warming.store(true, Ordering::Relaxed);
-            let _ = pool.reprobe_tools_for_upstream(&upstream).await;
+            let reprobe_started = Instant::now();
+            if let Err(err) = pool.reprobe_tools_for_upstream(&upstream).await {
+                tracing::warn!(
+                    surface = "mcp",
+                    service = "gateway",
+                    action = "tool_search.reprobe",
+                    elapsed_ms = reprobe_started.elapsed().as_millis(),
+                    error = %err,
+                    upstream = %upstream.name,
+                    "gateway tool index reprobe failed"
+                );
+                state.warming.store(false, Ordering::Relaxed);
+                return;
+            }
             let healthy_tools = pool.healthy_tools_for_upstream(&upstream.name).await;
+            let upstream_clone = upstream.clone();
             let built = tokio::task::spawn_blocking(move || {
                 ToolIndex::build_from_tools(&upstream_clone, healthy_tools)
             })
@@ -1593,8 +1669,13 @@ impl GatewayManager {
                     state.index.store(Some(Arc::new(index)));
                 }
             }
+            if let Ok(mut guard) = state.last_reprobe_at.lock() {
+                *guard = Some(Instant::now());
+            }
             state.warming.store(false, Ordering::Relaxed);
-        }
+        });
+
+        futures::future::join_all(tasks).await;
     }
 
     #[cfg(test)]
@@ -2242,7 +2323,6 @@ impl GatewayManager {
                 reconciled_at: persisted
                     .reconciled_at_epoch_secs
                     .and_then(epoch_secs_to_rfc3339),
-                ..Default::default()
             });
         }
         Ok(rows)
