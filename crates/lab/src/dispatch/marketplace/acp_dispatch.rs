@@ -300,12 +300,40 @@ async fn install_remote(
     });
 
     let result = send_rpc_to_node(node_id, "agent.install", params).await?;
+    // lab-zxx5.29: validate the node's response shape BEFORE reporting
+    // success to the caller. A well-behaved node returns
+    // `InstallComponentResult { written: [...], skipped: [...], errors: [...] }`.
+    // A malformed node that replies with {} or Null would previously propagate
+    // as `{"result": null}` — silent success. Reject with decode_error so SSE
+    // clients and CLI callers see a real failure.
+    validate_install_result(&result).map_err(|msg| ToolError::Sdk {
+        sdk_kind: "decode_error".to_string(),
+        message: format!("node `{node_id}` returned malformed agent.install result: {msg}"),
+    })?;
 
     Ok(serde_json::json!({
         "node_id": node_id,
         "agent_id": agent_id,
         "result": result,
     }))
+}
+
+/// Validate that a node RPC result conforms to the `InstallComponentResult`
+/// shape produced by `handle_install_component` / `handle_agent_install`:
+/// `{ written: Vec<String>, skipped: Vec<String>, errors: Vec<_> }`.
+///
+/// Returns a short explanation on mismatch. Used by `install_remote` and
+/// `plugin_cherry_pick` to guard against silent-success-on-garbage.
+fn validate_install_result(result: &Value) -> Result<(), &'static str> {
+    let obj = result.as_object().ok_or("result is not an object")?;
+    for field in &["written", "skipped", "errors"] {
+        match obj.get(*field) {
+            Some(Value::Array(_)) => {}
+            Some(_) => return Err("result has a required field of the wrong type"),
+            None => return Err("result is missing a required field (written/skipped/errors)"),
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

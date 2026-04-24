@@ -957,7 +957,22 @@ async fn plugin_cherry_pick<P: client::NodeRpcPort + ?Sized>(
             .send_rpc(node_id, "marketplace.install_component", rpc_params.clone())
             .await;
         results.push(match outcome {
-            Ok(_) => CherryPickNodeResult { node_id: node_id.clone(), ok: true, message: None },
+            // lab-zxx5.29: validate the node's response shape before
+            // reporting success. A malformed node that replies with {} or
+            // Null would previously show up as an uninspectable "ok: true"
+            // with no written/skipped/errors details.
+            Ok(result) => match validate_node_install_result(&result) {
+                Ok(()) => CherryPickNodeResult {
+                    node_id: node_id.clone(),
+                    ok: true,
+                    message: None,
+                },
+                Err(reason) => CherryPickNodeResult {
+                    node_id: node_id.clone(),
+                    ok: false,
+                    message: Some(format!("malformed install result: {reason}")),
+                },
+            },
             Err(e) => {
                 let msg = match &e {
                     ToolError::Sdk { message, .. } => message.clone(),
@@ -976,6 +991,27 @@ fn join_err(e: tokio::task::JoinError) -> ToolError {
         sdk_kind: "internal_error".into(),
         message: format!("spawn_blocking join error: {e}"),
     }
+}
+
+/// Validate that a `NodeRpcPort` response for an install RPC (cherry_pick
+/// or agent.install) has the expected `InstallComponentResult` shape:
+/// `{ written: Vec<String>, skipped: Vec<String>, errors: Vec<_> }`.
+///
+/// lab-zxx5.29 defense: a malformed node reply with no `result` field
+/// (response.get("result") fell through `.unwrap_or(Value::Null)` in
+/// `send_rpc_to_node`) would otherwise propagate as a successful null
+/// result — silent success on garbage. This check rejects that with a
+/// clear reason that the caller can surface to the operator.
+fn validate_node_install_result(result: &Value) -> Result<(), &'static str> {
+    let obj = result.as_object().ok_or("result is not an object")?;
+    for field in &["written", "skipped", "errors"] {
+        match obj.get(*field) {
+            Some(Value::Array(_)) => {}
+            Some(_) => return Err("result has a required field of the wrong type"),
+            None => return Err("result is missing a required field (written/skipped/errors)"),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1274,5 +1310,38 @@ mod tests {
             plugin.components.is_none(),
             "plugins.list must NOT populate components (requires manifest read per plugin)"
         );
+    }
+
+    // lab-zxx5.29: install result shape validator
+    #[test]
+    fn validate_node_install_result_accepts_well_formed() {
+        let result = json!({
+            "written": ["agents/foo.md"],
+            "skipped": [],
+            "errors": []
+        });
+        assert!(validate_node_install_result(&result).is_ok());
+    }
+
+    #[test]
+    fn validate_node_install_result_rejects_null() {
+        assert!(validate_node_install_result(&Value::Null).is_err());
+    }
+
+    #[test]
+    fn validate_node_install_result_rejects_empty_object() {
+        assert!(validate_node_install_result(&json!({})).is_err());
+    }
+
+    #[test]
+    fn validate_node_install_result_rejects_missing_errors_field() {
+        let result = json!({ "written": [], "skipped": [] });
+        assert!(validate_node_install_result(&result).is_err());
+    }
+
+    #[test]
+    fn validate_node_install_result_rejects_wrong_field_type() {
+        let result = json!({ "written": "not an array", "skipped": [], "errors": [] });
+        assert!(validate_node_install_result(&result).is_err());
     }
 }
