@@ -677,23 +677,45 @@ fn decode_component_files(
     Ok(out)
 }
 
-/// Classify an `install_component` handler error for the JSON-RPC error
-/// envelope's `data.kind` field.
+/// Classify an `install_component` / `agent.install` handler error for the
+/// JSON-RPC error envelope's `data.kind` field.
 ///
-/// lab-zxx5.27 cleanup: the prior version string-matched on `error.to_string()`
-/// for `"symlink"` / `"traversal"` / `"absolute"` / `"outside"` to derive a
-/// kind, which is a taxonomy trap — a future `anyhow!("symlink-safe write")`
-/// would misclassify. The reality is that `handle_install_component` never
-/// bubbles per-file security failures through the top-level `Result`: path
-/// traversal / symlink / write errors go into `InstallComponentResult.errors`
-/// as per-file entries. Only truly unrecoverable setup failures (e.g.
-/// `resolve_write_root`, `create_dir_all` on the write root) reach this
-/// classifier, and those are all `internal_error`.
+/// lab-zxx5.28: match on structured prefixes emitted by install helpers
+/// (`ERR_PATH_TRAVERSAL`, `ERR_SYMLINK`, `ERR_MISSING_PARAM`, `ERR_VALIDATION`
+/// in `node/install.rs`). Previously this returned `internal_error` for every
+/// handler-level failure, masking legitimate `path_traversal_rejected` /
+/// `validation_failed` / `missing_param` kinds. Walks the error chain so a
+/// prefix that rode through a `.with_context(...)` wrapper is still found.
 ///
-/// If a future refactor starts returning typed security errors at the
-/// handler boundary, replace this with a typed match.
-#[inline]
-fn error_kind(_error: &anyhow::Error) -> &'static str {
+/// Unrecognized errors (e.g. I/O failures from `create_dir_all`) still map
+/// to `internal_error`.
+fn error_kind(error: &anyhow::Error) -> &'static str {
+    use crate::node::install::{
+        ERR_MISSING_PARAM, ERR_PATH_TRAVERSAL, ERR_SYMLINK, ERR_VALIDATION,
+    };
+    fn match_marker(s: &str) -> Option<&'static str> {
+        if s.contains(ERR_PATH_TRAVERSAL) {
+            Some("path_traversal_rejected")
+        } else if s.contains(ERR_SYMLINK) {
+            Some("symlink_rejected")
+        } else if s.contains(ERR_MISSING_PARAM) {
+            Some("missing_param")
+        } else if s.contains(ERR_VALIDATION) {
+            Some("validation_failed")
+        } else {
+            None
+        }
+    }
+    // Search the full error chain — an anyhow with_context wraps the root
+    // cause, and we want the marker regardless of where it sits.
+    if let Some(k) = match_marker(&error.to_string()) {
+        return k;
+    }
+    for cause in error.chain() {
+        if let Some(k) = match_marker(&cause.to_string()) {
+            return k;
+        }
+    }
     "internal_error"
 }
 
@@ -1406,6 +1428,49 @@ mod tests {
         // validator compares via `Value` equality so both shapes work.
         let payload = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05"}}"#;
         assert!(validate_success_response(payload, &json!(1)).is_ok());
+    }
+
+    // ------------------------------------------------------------------
+    // lab-zxx5.28: error_kind recognises structured prefixes
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn error_kind_recognises_path_traversal_marker() {
+        let err = anyhow::anyhow!("lab.err:path_traversal_rejected: agent_id `../etc/passwd`");
+        assert_eq!(error_kind(&err), "path_traversal_rejected");
+    }
+
+    #[test]
+    fn error_kind_recognises_symlink_marker() {
+        let err = anyhow::anyhow!("lab.err:symlink_rejected: tempfile is a symlink");
+        assert_eq!(error_kind(&err), "symlink_rejected");
+    }
+
+    #[test]
+    fn error_kind_recognises_missing_param_marker() {
+        let err = anyhow::anyhow!("lab.err:missing_param: project_path required");
+        assert_eq!(error_kind(&err), "missing_param");
+    }
+
+    #[test]
+    fn error_kind_recognises_validation_marker() {
+        let err = anyhow::anyhow!("lab.err:validation_failed: HOME env var not set");
+        assert_eq!(error_kind(&err), "validation_failed");
+    }
+
+    #[test]
+    fn error_kind_walks_chain_through_with_context() {
+        // Simulate `install_helper()?.with_context(...)`: the inner error
+        // carries the marker and the outer wrapper adds contextual framing.
+        let inner = anyhow::anyhow!("lab.err:path_traversal_rejected: bad component");
+        let wrapped = inner.context("resolve write root");
+        assert_eq!(error_kind(&wrapped), "path_traversal_rejected");
+    }
+
+    #[test]
+    fn error_kind_returns_internal_error_for_unmarked_errors() {
+        let err = anyhow::anyhow!("plain io failure, no marker");
+        assert_eq!(error_kind(&err), "internal_error");
     }
 
     // ------------------------------------------------------------------
