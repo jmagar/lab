@@ -130,7 +130,8 @@ async fn handle_preview(
     let stream = ReaderStream::new(limited);
     let body = Body::from_stream(stream);
 
-    let disposition = if preview.inline {
+    let inline = crate::dispatch::fs::client::is_inline_mime(preview.content_type);
+    let disposition = if inline {
         format!("inline; filename=\"{}\"", preview.disposition_filename)
     } else {
         format!("attachment; filename=\"{}\"", preview.disposition_filename)
@@ -158,34 +159,8 @@ async fn handle_preview(
 
 fn log_dispatch(action: &'static str, elapsed_ms: u128, result: &Result<Value, ToolError>) {
     match result {
-        Ok(_) => tracing::info!(
-            surface = "api",
-            service = "fs",
-            action,
-            elapsed_ms,
-            "dispatch ok"
-        ),
-        Err(err) => {
-            if err.is_internal() {
-                tracing::error!(
-                    surface = "api",
-                    service = "fs",
-                    action,
-                    elapsed_ms,
-                    kind = err.kind(),
-                    "dispatch error"
-                );
-            } else {
-                tracing::warn!(
-                    surface = "api",
-                    service = "fs",
-                    action,
-                    elapsed_ms,
-                    kind = err.kind(),
-                    "dispatch error"
-                );
-            }
-        }
+        Ok(_) => log_ok(action, elapsed_ms, None, None, None, None),
+        Err(err) => log_err(action, elapsed_ms, err, None),
     }
 }
 
@@ -195,39 +170,59 @@ fn log_dispatch_preview(
     result: &Result<crate::dispatch::fs::Preview, ToolError>,
 ) {
     match result {
-        Ok(p) => tracing::info!(
+        Ok(p) => log_ok(
+            "fs.preview",
+            elapsed_ms,
+            Some(p.rel_path.as_str()),
+            Some(p.content_type),
+            Some(crate::dispatch::fs::client::is_inline_mime(p.content_type)),
+            Some(p.max_bytes),
+        ),
+        Err(err) => log_err("fs.preview", elapsed_ms, err, Some(path)),
+    }
+}
+
+fn log_ok(
+    action: &'static str,
+    elapsed_ms: u128,
+    path: Option<&str>,
+    mime: Option<&'static str>,
+    inline: Option<bool>,
+    max_bytes: Option<u64>,
+) {
+    tracing::info!(
+        surface = "api",
+        service = "fs",
+        action,
+        elapsed_ms,
+        path,
+        mime,
+        inline,
+        max_bytes,
+        "dispatch ok"
+    );
+}
+
+fn log_err(action: &'static str, elapsed_ms: u128, err: &ToolError, path: Option<&str>) {
+    if err.is_internal() {
+        tracing::error!(
             surface = "api",
             service = "fs",
-            action = "fs.preview",
+            action,
             elapsed_ms,
-            path = %p.rel_path,
-            mime = p.content_type,
-            inline = p.inline,
-            max_bytes = p.max_bytes,
-            "dispatch ok"
-        ),
-        Err(err) => {
-            if err.is_internal() {
-                tracing::error!(
-                    surface = "api",
-                    service = "fs",
-                    action = "fs.preview",
-                    elapsed_ms,
-                    kind = err.kind(),
-                    path = %path,
-                    "dispatch error"
-                );
-            } else {
-                tracing::warn!(
-                    surface = "api",
-                    service = "fs",
-                    action = "fs.preview",
-                    elapsed_ms,
-                    kind = err.kind(),
-                    path = %path,
-                    "dispatch error"
-                );
-            }
-        }
+            kind = err.kind(),
+            path,
+            "dispatch error"
+        );
+    } else {
+        tracing::warn!(
+            surface = "api",
+            service = "fs",
+            action,
+            elapsed_ms,
+            kind = err.kind(),
+            path,
+            "dispatch error"
+        );
     }
 }

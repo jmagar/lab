@@ -217,7 +217,7 @@ async fn target_within_root(root: &Path, relative: &Path) -> Result<PathBuf, Too
 
 #[cfg(feature = "fs")]
 #[derive(Debug, serde::Serialize)]
-pub struct Entry {
+pub(crate) struct Entry {
     pub name: String,
     /// Workspace-relative path of the entry (forward-slash joined).
     pub path: String,
@@ -236,7 +236,7 @@ pub struct Entry {
 
 #[cfg(feature = "fs")]
 #[derive(Debug, serde::Serialize)]
-pub struct ListResponse {
+pub(crate) struct ListResponse {
     pub entries: Vec<Entry>,
     pub truncated: bool,
 }
@@ -352,11 +352,9 @@ pub struct Preview {
     /// Opened file, async-ready via `tokio::fs::File::from_std`.
     pub file: tokio::fs::File,
     /// Safe Content-Type from the extension whitelist, or
-    /// `application/octet-stream`.
+    /// `application/octet-stream`. Callers decide inline vs attachment by
+    /// passing this through [`super::client::is_inline_mime`].
     pub content_type: &'static str,
-    /// `true` when `content_type` is an inline-safe image. `false` means
-    /// the caller should add `Content-Disposition: attachment`.
-    pub inline: bool,
     /// Upper bound on bytes to stream — already clamped to the server cap.
     pub max_bytes: u64,
     /// Basename for `Content-Disposition: attachment; filename="…"`,
@@ -434,7 +432,6 @@ pub async fn open_for_preview(root: &Path, params: Value) -> Result<Preview, Too
 
     let ext_path = std::path::Path::new(&rel_str);
     let content_type = safe_content_type(ext_path);
-    let inline = super::client::is_inline_mime(content_type);
 
     let disposition_filename = parsed
         .relative
@@ -446,7 +443,6 @@ pub async fn open_for_preview(root: &Path, params: Value) -> Result<Preview, Too
     Ok(Preview {
         file: tokio::fs::File::from_std(opened),
         content_type,
-        inline,
         max_bytes: effective_cap,
         disposition_filename,
         rel_path: rel_str,
@@ -681,7 +677,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_dangling_symlink_accessible_false() {
+    async fn list_dangling_symlink_reports_symlink_kind() {
         let tmp = tempdir().unwrap();
         unix_fs::symlink("/nonexistent/does/not/exist", tmp.path().join("broken")).unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
@@ -850,7 +846,7 @@ mod tests {
             .await
             .expect("ok");
         assert_eq!(preview.content_type, "application/octet-stream");
-        assert!(!preview.inline);
+        assert!(!super::super::client::is_inline_mime(preview.content_type));
     }
 
     #[tokio::test]
@@ -862,7 +858,7 @@ mod tests {
             .await
             .expect("ok");
         assert_eq!(preview.content_type, "image/png");
-        assert!(preview.inline);
+        assert!(super::super::client::is_inline_mime(preview.content_type));
     }
 
     #[tokio::test]

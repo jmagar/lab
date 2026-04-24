@@ -496,7 +496,7 @@ mod tests {
             r#"
 [[upstream]]
 name = "a"
-url = "http://127.0.0.1:9001"
+url = "https://example.com/mcp"
 
 [[upstream]]
 name = "b"

@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ConfigOptionUpdate, ContentBlock, ContentChunk,
@@ -55,6 +55,25 @@ struct RuntimeStarted {
     provider_session_id: String,
     agent_name: String,
     agent_version: String,
+}
+
+#[derive(Clone)]
+struct CodexLaunch {
+    command: String,
+    args: Vec<String>,
+}
+
+fn codex_launch_override() -> &'static Mutex<Option<CodexLaunch>> {
+    static OVERRIDE: OnceLock<Mutex<Option<CodexLaunch>>> = OnceLock::new();
+    OVERRIDE.get_or_init(|| Mutex::new(None))
+}
+
+#[doc(hidden)]
+pub fn set_codex_launch_override_for_tests(command: Option<String>, args: Vec<String>) {
+    let mut launch = codex_launch_override()
+        .lock()
+        .expect("codex launch override poisoned");
+    *launch = command.map(|command| CodexLaunch { command, args });
 }
 
 pub async fn launch_codex_runtime(
@@ -126,6 +145,14 @@ pub fn codex_provider_health() -> AcpProviderHealth {
 }
 
 fn resolve_codex_launch() -> (String, Vec<String>) {
+    if let Some(launch) = codex_launch_override()
+        .lock()
+        .expect("codex launch override poisoned")
+        .clone()
+    {
+        return (launch.command, launch.args);
+    }
+
     if let Some(command) = std::env::var("ACP_CODEX_COMMAND")
         .ok()
         .map(|value| value.trim().to_string())

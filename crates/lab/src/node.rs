@@ -12,4 +12,5 @@ pub mod queue;
 pub mod runtime;
 pub mod store;
 pub mod token;
+pub mod update;
 pub mod ws_client;

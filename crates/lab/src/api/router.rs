@@ -374,7 +374,22 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
             .iter()
             .any(|service| service.name == "fs")
         {
-            v1 = v1.nest("/fs", services::fs::routes(state.clone()));
+            // SECURITY: the /v1 route layer is removed when
+            // `web_ui_auth_disabled` is true (intended for static-asset dev
+            // flows), which would also remove bearer/session auth from
+            // /v1/fs. fs operations read workspace files, so refuse to
+            // mount them on an unauthenticated surface and surface a
+            // WARN so operators notice the misconfiguration.
+            if state.web_ui_auth_disabled {
+                tracing::warn!(
+                    subsystem = "startup",
+                    phase = "fs.mount.skipped",
+                    reason = "web_ui_auth_disabled",
+                    "fs service is configured but LAB_WEB_UI_AUTH_DISABLED=true would expose workspace files unauthenticated; refusing to mount /v1/fs"
+                );
+            } else {
+                v1 = v1.nest("/fs", services::fs::routes(state.clone()));
+            }
         }
     }
 

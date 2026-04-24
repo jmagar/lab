@@ -1,9 +1,9 @@
 //! `lab serve` — start the MCP server.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand, ValueEnum};
@@ -14,6 +14,7 @@ use rmcp::transport::streamable_http_server::{
     session::local::{LocalSessionManager, SessionConfig},
 };
 use tokio::sync::mpsc;
+use tokio::process::Command;
 
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
@@ -279,6 +280,9 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         None
     };
 
+    ensure_web_assets_are_fresh(&config.web)
+        .await
+        .context("prepare Labby web assets")?;
     let web_assets_dir = resolve_web_assets_dir(&config.web);
 
     let oauth_enabled = matches!(auth_config.mode, AuthMode::OAuth);
@@ -546,6 +550,127 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .into_iter()
         .flatten()
         .find(|path| path.join("index.html").is_file())
+}
+
+fn default_gateway_admin_app_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/gateway-admin")
+}
+
+fn default_gateway_admin_out_dir() -> PathBuf {
+    default_gateway_admin_app_dir().join("out")
+}
+
+fn gateway_admin_app_dir_for_assets(web: &crate::config::WebPreferences) -> Option<PathBuf> {
+    let app_dir = default_gateway_admin_app_dir();
+    let out_dir = default_gateway_admin_out_dir();
+
+    let candidate = std::env::var("LAB_WEB_ASSETS_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| web.assets_dir.clone())
+        .unwrap_or(out_dir);
+
+    let candidate = std::fs::canonicalize(&candidate).unwrap_or(candidate);
+    let out_dir = std::fs::canonicalize(&out_dir).unwrap_or(out_dir);
+
+    if candidate == out_dir {
+        Some(app_dir)
+    } else {
+        None
+    }
+}
+
+async fn ensure_web_assets_are_fresh(web: &crate::config::WebPreferences) -> Result<()> {
+    let Some(app_dir) = gateway_admin_app_dir_for_assets(web) else {
+        return Ok(());
+    };
+
+    let out_dir = app_dir.join("out");
+    let index_html = out_dir.join("index.html");
+    let needs_build = if !index_html.is_file() {
+        true
+    } else {
+        newest_mtime_under(&app_dir, &["out", ".next", "node_modules"])
+            .map(|source_mtime| source_mtime > file_mtime(&index_html))
+            .unwrap_or(false)
+    };
+
+    if !needs_build {
+        tracing::info!(
+            subsystem = "web_server",
+            phase = "assets.fresh",
+            path = %out_dir.display(),
+            "Labby web assets are up to date"
+        );
+        return Ok(());
+    }
+
+    tracing::info!(
+        subsystem = "web_server",
+        phase = "assets.build.start",
+        path = %app_dir.display(),
+        "building Labby web assets"
+    );
+
+    let output = Command::new("pnpm")
+        .arg("build")
+        .current_dir(&app_dir)
+        .output()
+        .await
+        .with_context(|| format!("spawn `pnpm build` in `{}`", app_dir.display()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() { stderr } else { stdout };
+        anyhow::bail!(
+            "Labby web asset build failed in `{}`: {}",
+            app_dir.display(),
+            detail
+        );
+    }
+
+    tracing::info!(
+        subsystem = "web_server",
+        phase = "assets.build.finish",
+        path = %out_dir.display(),
+        "Labby web assets built successfully"
+    );
+    Ok(())
+}
+
+fn newest_mtime_under(root: &Path, ignored_dirs: &[&str]) -> Option<SystemTime> {
+    let mut newest = None;
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(path) = stack.pop() {
+        let entries = std::fs::read_dir(&path).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            if path.is_dir() {
+                if ignored_dirs.iter().any(|ignored| *ignored == file_name) {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            newest = Some(match newest {
+                Some(current) if current > modified => current,
+                _ => modified,
+            });
+        }
+    }
+
+    newest
+}
+
+fn file_mtime(path: &Path) -> SystemTime {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
 fn resolve_web_ui_auth_disabled(

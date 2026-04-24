@@ -40,6 +40,25 @@ type ErrorPayload = {
   kind?: string
 }
 
+type RawSessionSummary = {
+  id: string
+  provider: string
+  title: string
+  cwd: string
+  status?: string
+  state?: string
+  createdAt?: string
+  updatedAt?: string
+  providerSessionId?: string
+  agentName?: string
+  agentVersion?: string
+  created_at?: string
+  updated_at?: string
+  provider_session_id?: string
+  agent_name?: string
+  agent_version?: string
+}
+
 export type SessionCreationIntent = 'bootstrap' | 'manual' | 'send'
 export type CreateSessionOptions = { closeSessionPanel?: boolean }
 export type CreateSessionFn = (options?: CreateSessionOptions) => Promise<ACPRun>
@@ -88,18 +107,34 @@ export async function ensurePromptRunId(
   return run.id
 }
 
-function toRun(session: BridgeSessionSummary): ACPRun {
+function normalizeSessionSummary(session: RawSessionSummary): BridgeSessionSummary {
   return {
     id: session.id,
-    projectId: 'workspace',
-    agentId: session.provider,
     provider: session.provider,
     title: session.title,
-    createdAt: new Date(session.createdAt),
-    updatedAt: new Date(session.updatedAt),
-    status: session.status,
-    providerSessionId: session.providerSessionId,
     cwd: session.cwd,
+    status: (session.status ?? session.state ?? 'idle') as BridgeSessionSummary['status'],
+    createdAt: session.createdAt ?? session.created_at ?? '',
+    updatedAt: session.updatedAt ?? session.updated_at ?? '',
+    providerSessionId: session.providerSessionId ?? session.provider_session_id ?? '',
+    agentName: session.agentName ?? session.agent_name ?? 'Codex',
+    agentVersion: session.agentVersion ?? session.agent_version ?? 'unknown',
+  }
+}
+
+function toRun(session: RawSessionSummary): ACPRun {
+  const normalized = normalizeSessionSummary(session)
+  return {
+    id: normalized.id,
+    projectId: 'workspace',
+    agentId: normalized.provider,
+    provider: normalized.provider,
+    title: normalized.title,
+    createdAt: new Date(normalized.createdAt),
+    updatedAt: new Date(normalized.updatedAt),
+    status: normalized.status,
+    providerSessionId: normalized.providerSessionId,
+    cwd: normalized.cwd,
   }
 }
 
@@ -118,7 +153,7 @@ function normalizeProviderHealth(payload: ProviderListPayload): ProviderHealth {
   }
 }
 
-function extractCreatedSession(payload: SessionCreatePayload): BridgeSessionSummary {
+function extractCreatedSession(payload: SessionCreatePayload): RawSessionSummary {
   return payload.session ?? payload
 }
 
@@ -212,7 +247,7 @@ export function useChatSessionController(options: {
       setSelectedRunId(null)
       return
     }
-    const payload = await readJsonSafe<{ sessions: BridgeSessionSummary[] }>(response)
+    const payload = await readJsonSafe<{ sessions: RawSessionSummary[] }>(response)
     if (!payload) {
       setRuns([])
       setSelectedRunId(null)

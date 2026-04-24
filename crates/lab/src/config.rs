@@ -90,6 +90,8 @@ pub struct DeployPreferences {
 pub struct DeployDefaults {
     pub remote_path: Option<String>,
     pub service: Option<String>,
+    #[serde(default)]
+    pub restart: Option<RestartModel>,
     pub service_scope: Option<ServiceScope>,
     pub max_parallel: Option<u32>,
     #[serde(default)]
@@ -104,7 +106,18 @@ pub struct DeployDefaults {
 pub struct DeployHostOverride {
     pub remote_path: Option<String>,
     pub service: Option<String>,
+    #[serde(default)]
+    pub restart: Option<RestartModel>,
     pub service_scope: Option<ServiceScope>,
+}
+
+/// Restart policy used by rollout/update flows after a binary install.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum RestartModel {
+    SystemService { service: String },
+    UserService { service: String },
+    WrapperCommand { command: Vec<String> },
 }
 
 /// Systemd scope for the unit restarted by deploy.
