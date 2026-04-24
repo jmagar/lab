@@ -6,7 +6,8 @@
 
 #[cfg(feature = "deploy")]
 pub mod deploy;
-pub mod device;
+pub mod doctor;
+pub mod nodes;
 pub mod extract;
 pub mod gateway;
 pub mod logs;

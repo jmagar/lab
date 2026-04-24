@@ -11,6 +11,7 @@
 pub mod helpers;
 
 pub mod acp;
+pub mod doctor;
 pub mod extract;
 pub mod gateway;
 pub mod logs;
