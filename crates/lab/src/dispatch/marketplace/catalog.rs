@@ -229,6 +229,51 @@ pub const ACTIONS: &[ActionSpec] = &[
             },
         ],
     },
+    // ── Plugin cherry-pick (lab-zxx5.6) ──────────────────────────────────────
+    ActionSpec {
+        name: "plugin.cherry_pick",
+        description: "Install selected components from a plugin to one or more devices",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "components",
+                ty: "array",
+                required: true,
+                description: "Component paths to install (e.g. `agents/my-agent.md`)",
+            },
+            ParamSpec {
+                name: "device_ids",
+                ty: "array",
+                required: true,
+                description: "Target device ids (`\"local\"` for the controller host)",
+            },
+            ParamSpec {
+                name: "scope",
+                ty: "string",
+                required: true,
+                description: "`global` (to `~/.claude/`) or `project` (to `project_path/.claude/`)",
+            },
+            ParamSpec {
+                name: "project_path",
+                ty: "string",
+                required: false,
+                description: "Absolute project path — required when `scope` is `project`",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be `true` to confirm this destructive operation",
+            },
+        ],
+        returns: "CherryPickResults",
+    },
     ActionSpec {
         name: "agent.uninstall",
         description: "Remove an installed ACP agent entry from `~/.lab/acp-providers.json`",
