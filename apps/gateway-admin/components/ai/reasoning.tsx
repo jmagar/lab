@@ -2,7 +2,7 @@
 
 import { Brain, ChevronDown } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
-import { createContext, memo, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
@@ -52,6 +52,11 @@ export const Reasoning = memo(function Reasoning({
   const duration = isDurationControlled ? durationProp : internalDuration
   const [hasAutoClosed, setHasAutoClosed] = useState(false)
   const [startTime, setStartTime] = useState<number | null>(null)
+  // Accumulate elapsed time across pause/resume cycles (e.g. SSE reconnects
+  // while a single reasoning response is in flight). Previously `setDuration`
+  // overwrote duration on every false-edge with only the most recent
+  // segment, so a 40-second response that paused twice would report "2s".
+  const accumulatedMsRef = useRef(0)
 
   useEffect(() => {
     if (isOpenControlled) {
@@ -90,7 +95,8 @@ export const Reasoning = memo(function Reasoning({
       return
     }
     if (!isStreaming && startTime !== null) {
-      setDuration(Math.ceil((Date.now() - startTime) / MS_IN_SECOND))
+      accumulatedMsRef.current += Date.now() - startTime
+      setDuration(Math.ceil(accumulatedMsRef.current / MS_IN_SECOND))
       setStartTime(null)
     }
   }, [isStreaming, setDuration, startTime])
