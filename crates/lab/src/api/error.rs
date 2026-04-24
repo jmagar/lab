@@ -28,7 +28,7 @@ impl IntoResponse for ToolError {
             "oauth_needs_reauth" => StatusCode::UNAUTHORIZED,
             "oauth_state_invalid" => StatusCode::BAD_REQUEST,
             "forbidden" => StatusCode::FORBIDDEN,
-            "unknown_action" | "unknown_subaction" | "unknown_instance" | "ambiguous_tool" => {
+            "unknown_action" | "unknown_subaction" | "unknown_instance" => {
                 StatusCode::BAD_REQUEST
             }
             "network_error"
@@ -48,7 +48,7 @@ impl IntoResponse for ToolError {
             | "verify_failed"
             | "arch_mismatch"
             | "integrity_mismatch" => StatusCode::BAD_GATEWAY,
-            "conflict" => StatusCode::CONFLICT,
+            "conflict" | "ambiguous_tool" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // Serialize self directly — byte-identical to the MCP error envelope.
