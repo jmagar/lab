@@ -468,7 +468,7 @@ export async function addMarketplace(
         'missing_param',
       )
     }
-    const target = input.repo ?? input.url
+    const target = (input.repo ?? input.url) as string
     return normalizeMarketplace({
       id: target,
       name: input.name ?? target,
