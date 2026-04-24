@@ -1247,4 +1247,29 @@ mod tests {
         );
         assert!(target.ends_with("installed/demo-plugin"), "{target:?}");
     }
+
+    // Invariant (bead lab-zxx5.14): the base `build_plugin` path used by
+    // `plugins.list` must leave `cache_path` and `components` as `None`.
+    // Populating them at list time requires a per-plugin disk stat — the
+    // perf hazard called out in the engineering review. Backends populate
+    // these on demand for `plugin.get` / `plugin.cherry_pick`.
+    #[test]
+    fn build_plugin_leaves_cache_path_and_components_none() {
+        let installed = HashMap::new();
+        let plugin_json = json!({
+            "name": "demo-plugin",
+            "version": "1.0.0",
+            "description": "Demo plugin",
+        });
+        let plugin = build_plugin("demo-market", &plugin_json, &installed)
+            .expect("build_plugin returns Some for well-formed input");
+        assert!(
+            plugin.cache_path.is_none(),
+            "plugins.list must NOT populate cache_path (per-plugin disk stat is a perf hazard)"
+        );
+        assert!(
+            plugin.components.is_none(),
+            "plugins.list must NOT populate components (requires manifest read per plugin)"
+        );
+    }
 }

@@ -13,16 +13,17 @@ pub enum MarketplaceRuntime {
 }
 
 /// Marketplace source kind. Matches `MarketplaceSource` on the frontend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PluginSource {
     Github,
     Git,
+    #[default]
     Local,
 }
 
 /// A configured marketplace (local JSON file or remote repo).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Marketplace {
     pub id: String,
     pub name: String,
@@ -95,7 +96,7 @@ pub struct PluginInstallState {
 }
 
 /// A plugin entry within a marketplace.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Plugin {
     pub id: String,
     pub name: String,
