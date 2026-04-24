@@ -47,6 +47,14 @@ pub enum ToolError {
         /// Known instance labels.
         valid: Vec<String>,
     },
+    /// Tool name matched multiple upstream tools; caller must qualify it
+    /// with the upstream prefix (e.g. `upstream::tool_name`).
+    AmbiguousTool {
+        /// Human-readable message.
+        message: String,
+        /// Fully-qualified candidate names the caller should choose from.
+        valid: Vec<String>,
+    },
     /// Destructive action invoked without the required confirmation signal.
     ConfirmationRequired {
         /// Human-readable message.
@@ -96,6 +104,11 @@ impl Serialize for ToolError {
                 "message": message,
                 "valid": valid,
             }),
+            Self::AmbiguousTool { message, valid } => serde_json::json!({
+                "kind": "ambiguous_tool",
+                "message": message,
+                "valid": valid,
+            }),
             Self::ConfirmationRequired { message } => serde_json::json!({
                 "kind": "confirmation_required",
                 "message": message,
@@ -138,6 +151,7 @@ impl ToolError {
             Self::MissingParam { .. } => "missing_param",
             Self::InvalidParam { .. } => "invalid_param",
             Self::UnknownInstance { .. } => "unknown_instance",
+            Self::AmbiguousTool { .. } => "ambiguous_tool",
             Self::ConfirmationRequired { .. } => "confirmation_required",
             Self::Conflict { .. } => "conflict",
             Self::Sdk { sdk_kind, .. } => sdk_kind.as_str(),

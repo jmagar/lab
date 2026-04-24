@@ -160,6 +160,7 @@ fn load_known_marketplaces() -> Result<Vec<Marketplace>, ToolError> {
             auto_update,
             total_plugins: plugin_count as u32,
             last_updated,
+            runtime: None,
         });
     }
     Ok(out)
@@ -350,6 +351,16 @@ fn build_plugin(
         has_update: None,
         installed_at: rec.map(|r| r.installed_at.clone()),
         updated_at: rec.map(|r| r.last_updated.clone()),
+        runtime: None,
+        enabled: None,
+        marketplace_id: None,
+        version: None,
+        description: None,
+        manifest: None,
+        components: None,
+        install_state: None,
+        source_path: None,
+        cache_path: None,
     })
 }
 
