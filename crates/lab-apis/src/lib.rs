@@ -123,3 +123,7 @@ pub mod deploy;
 /// MCP Registry client — browse and search the official MCP server registry.
 #[cfg(feature = "mcpregistry")]
 pub mod mcpregistry;
+
+/// ACP Agent Registry client — discover and install ACP-compatible AI coding agents.
+#[cfg(feature = "acp_registry")]
+pub mod acp_registry;

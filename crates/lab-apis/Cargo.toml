@@ -59,16 +59,17 @@ qdrant      = []
 tei         = []
 apprise     = []
 deploy      = []
-mcpregistry = []
-servarr     = []
-test-utils  = []
+mcpregistry  = []
+acp_registry = []
+servarr      = []
+test-utils   = []
 all = [
     "radarr", "sonarr", "prowlarr", "overseerr", "plex", "tautulli",
     "sabnzbd", "qbittorrent", "tailscale", "linkding",
     "memos", "bytestash", "paperless",
     "arcane", "unraid", "unifi",
     "gotify", "openai", "qdrant", "tei", "apprise",
-    "deploy", "mcpregistry",
+    "deploy", "mcpregistry", "acp_registry",
 ]
 
 [[test]]
