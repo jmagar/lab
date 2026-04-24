@@ -840,8 +840,12 @@ impl GatewayManager {
     }
 
     pub async fn list(&self) -> Result<Vec<ServerView>, ToolError> {
-        let cfg = self.config.read().await.clone();
-        let pool = self.runtime.current_pool().await;
+        let (cfg_guard, pool) = tokio::join!(
+            self.config.read(),
+            self.runtime.current_pool(),
+        );
+        let cfg = cfg_guard.clone();
+        drop(cfg_guard);
         let mut views = Vec::with_capacity(cfg.upstream.len() + cfg.virtual_servers.len());
         for upstream in &cfg.upstream {
             views.push(server_view_from_upstream(pool.as_deref(), upstream).await);
@@ -864,8 +868,12 @@ impl GatewayManager {
     }
 
     pub async fn get_server(&self, id: &str) -> Result<ServerView, ToolError> {
-        let cfg = self.config.read().await.clone();
-        let pool = self.runtime.current_pool().await;
+        let (cfg_guard, pool) = tokio::join!(
+            self.config.read(),
+            self.runtime.current_pool(),
+        );
+        let cfg = cfg_guard.clone();
+        drop(cfg_guard);
 
         if let Some(upstream) = cfg.upstream.iter().find(|upstream| upstream.name == id) {
             return Ok(server_view_from_upstream(pool.as_deref(), upstream).await);
