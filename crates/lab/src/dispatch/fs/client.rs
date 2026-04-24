@@ -18,7 +18,7 @@ use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
 
 #[cfg(feature = "fs")]
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
 /// Structured error when `LAB_WORKSPACE_ROOT` is unset or invalid.
 pub(crate) fn not_configured_error() -> ToolError {
@@ -103,7 +103,10 @@ fn build_deny_globset() -> GlobSet {
     let mut builder = GlobSetBuilder::new();
     for pattern in DENY_PATTERNS {
         builder.add(
-            Glob::new(pattern).unwrap_or_else(|e| panic!("invalid deny-list glob {pattern}: {e}")),
+            GlobBuilder::new(pattern)
+                .case_insensitive(true)
+                .build()
+                .unwrap_or_else(|e| panic!("invalid deny-list glob {pattern}: {e}")),
         );
     }
     builder
@@ -206,6 +209,25 @@ mod tests {
         assert!(set.is_match("home/.netrc"));
         assert!(!set.is_match("README.md"));
         assert!(!set.is_match("src/main.rs"));
+        assert!(!set.is_match("envoy.yaml"));
+    }
+
+    #[cfg(feature = "fs")]
+    #[test]
+    fn deny_globset_is_case_insensitive() {
+        // Case-insensitive filesystems (macOS APFS/HFS+ default, Windows NTFS
+        // default) treat `.ENV` and `.env` as the same file. Deny-list matching
+        // must therefore be case-insensitive — otherwise a user (or attacker)
+        // can read credential files via their uppercased names.
+        let set = deny_globset();
+        assert!(set.is_match(".ENV"));
+        assert!(set.is_match(".Env"));
+        assert!(set.is_match("server.PEM"));
+        assert!(set.is_match("Id_Rsa"));
+        assert!(set.is_match(".SSH/id_rsa"));
+        assert!(set.is_match("Credentials.JSON"));
+        // Negative cases must still be respected even with case-insensitive matching.
+        assert!(!set.is_match("README.md"));
         assert!(!set.is_match("envoy.yaml"));
     }
 
