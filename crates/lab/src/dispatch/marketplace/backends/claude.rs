@@ -10,7 +10,7 @@ use crate::dispatch::error::ToolError;
 use crate::dispatch::marketplace::backend::{MarketplaceBackend, PluginFilter};
 use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::package::{
-    components_from_manifest_and_layout, manifest_summary_from_marketplace_plugin,
+    components_from_manifest_and_layout, manifest_summary_from_marketplace_plugin, redact_home,
     tags_from_marketplace_plugin,
 };
 use crate::dispatch::marketplace::params::parse_plugin_id;
@@ -272,7 +272,7 @@ impl ClaudeMarketplaceBackend {
                 updated_at: rec.map(|r| r.last_updated.clone()),
             }),
             source_path: None,
-            cache_path: rec.map(|r| r.install_path.to_string_lossy().into_owned()),
+            cache_path: rec.map(|r| redact_home(&r.install_path.to_string_lossy())),
         })
     }
 }

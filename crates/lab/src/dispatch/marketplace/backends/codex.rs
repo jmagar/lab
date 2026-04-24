@@ -10,7 +10,7 @@ use crate::dispatch::error::ToolError;
 use crate::dispatch::marketplace::backend::{MarketplaceBackend, PluginFilter};
 use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::package::{
-    components_from_manifest_and_layout, manifest_summary_from_codex_manifest,
+    components_from_manifest_and_layout, manifest_summary_from_codex_manifest, redact_home,
 };
 use crate::dispatch::marketplace::params::parse_plugin_id;
 
@@ -224,8 +224,8 @@ impl CodexMarketplaceBackend {
                 installed_at: None,
                 updated_at: None,
             }),
-            source_path: source_path.map(|p| p.to_string_lossy().into_owned()),
-            cache_path: cache_path.map(|p| p.to_string_lossy().into_owned()),
+            source_path: source_path.map(|p| redact_home(&p.to_string_lossy())),
+            cache_path: cache_path.map(|p| redact_home(&p.to_string_lossy())),
         })
     }
 
