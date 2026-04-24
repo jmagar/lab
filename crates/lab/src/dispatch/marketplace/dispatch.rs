@@ -526,7 +526,19 @@ fn walk_artifacts_into(root: &Path, dir: &Path, out: &mut Vec<Artifact>) -> Resu
         if name == ".git" || name == "node_modules" || name == "target" {
             continue;
         }
-        let Ok(ft) = entry.file_type() else { continue };
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "artifact.read.file_type_failed",
+                    path = %p.display(),
+                    error = %error,
+                    "could not determine file type; skipping entry"
+                );
+                continue;
+            }
+        };
         if ft.is_symlink() {
             tracing::warn!(
                 service = "marketplace",
@@ -639,29 +651,38 @@ fn installed_target_for_plugin(id: &str) -> Result<Option<PathBuf>, ToolError> {
         return Ok(None);
     };
     let path = record.install_path;
-    let root = client::plugins_root()?;
-    // Validate the recorded install path hasn't been tampered to escape plugins_root.
-    if path.exists() {
-        let canonical = std::fs::canonicalize(&path).map_err(io_internal)?;
-        let canonical_root = std::fs::canonicalize(&root).map_err(io_internal)?;
-        if !canonical.starts_with(&canonical_root) {
-            return Err(ToolError::InvalidParam {
-                param: "id".into(),
-                message: format!("install path for `{id}` resolves outside the plugins directory"),
-            });
-        }
-        return Ok(Some(canonical));
+    if path.as_os_str().is_empty() {
+        return Err(ToolError::InvalidParam {
+            param: "id".into(),
+            message: format!("install path for `{id}` is empty"),
+        });
     }
-    // Path doesn't exist yet. For absolute paths, verify it's under plugins_root.
-    // For relative paths, reject any traversal components.
-    if path.is_absolute() {
-        if !path.starts_with(&root) {
-            return Err(ToolError::InvalidParam {
-                param: "id".into(),
-                message: format!("install path for `{id}` resolves outside the plugins directory"),
-            });
+    let root = client::plugins_root()?;
+    let canonical_root = std::fs::canonicalize(&root).map_err(io_internal)?;
+
+    // Resolve to an absolute, root-anchored path without following `..`.
+    let resolved = if path.is_absolute() {
+        // Reject any `..` or prefix/root-other components; only ordinary path segments allowed
+        // after the root so the prefix check cannot be bypassed textually.
+        for component in path.components() {
+            match component {
+                std::path::Component::Normal(_)
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_) => {}
+                std::path::Component::ParentDir | std::path::Component::CurDir => {
+                    return Err(ToolError::InvalidParam {
+                        param: "id".into(),
+                        message: format!(
+                            "install path for `{id}` contains invalid path components"
+                        ),
+                    });
+                }
+            }
         }
+        path
     } else {
+        // Reject any non-`Normal` component, then root under plugins_root so callers
+        // never receive a CWD-relative path.
         for component in path.components() {
             if !matches!(component, std::path::Component::Normal(_)) {
                 return Err(ToolError::InvalidParam {
@@ -670,8 +691,30 @@ fn installed_target_for_plugin(id: &str) -> Result<Option<PathBuf>, ToolError> {
                 });
             }
         }
+        canonical_root.join(path)
+    };
+
+    // Final containment check. If the path exists, canonicalize it (to catch any
+    // symlinks under the path); otherwise compare the lexically-cleaned absolute
+    // path directly — `..` components were already rejected above.
+    if resolved.exists() {
+        let canonical = std::fs::canonicalize(&resolved).map_err(io_internal)?;
+        if !canonical.starts_with(&canonical_root) {
+            return Err(ToolError::InvalidParam {
+                param: "id".into(),
+                message: format!("install path for `{id}` resolves outside the plugins directory"),
+            });
+        }
+        Ok(Some(canonical))
+    } else {
+        if !resolved.starts_with(&canonical_root) {
+            return Err(ToolError::InvalidParam {
+                param: "id".into(),
+                message: format!("install path for `{id}` resolves outside the plugins directory"),
+            });
+        }
+        Ok(Some(resolved))
     }
-    Ok(Some(path))
 }
 
 fn copy_tree(source: &Path, dest: &Path) -> Result<(), ToolError> {
@@ -683,7 +726,10 @@ fn copy_tree(source: &Path, dest: &Path) -> Result<(), ToolError> {
         if name == ".git" || name == "node_modules" || name == "target" {
             continue;
         }
-        let Ok(ft) = entry.file_type() else { continue };
+        let ft = entry.file_type().map_err(|error| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: format!("file_type failed for {}: {error}", path.display()),
+        })?;
         if ft.is_symlink() {
             tracing::warn!(
                 service = "marketplace",
@@ -1032,5 +1078,106 @@ mod tests {
             entry.get("path").and_then(Value::as_str) == Some("plugin.json")
                 && entry.get("afterContent").and_then(Value::as_str) == Some("{\"name\":\"previewed\"}")
         }));
+    }
+
+    /// Seed installed_plugins.json with an arbitrary `installPath` string for `demo-plugin@demo-market`.
+    fn seed_installed_with_path(home: &Path, install_path: &str) {
+        let plugins = home.join(".claude").join("plugins");
+        std::fs::create_dir_all(&plugins).unwrap();
+        std::fs::write(
+            plugins.join("installed_plugins.json"),
+            json!({
+                "plugins": {
+                    "demo-plugin@demo-market": [{
+                        "installPath": install_path,
+                        "installedAt": "2026-04-22T00:00:00Z",
+                        "lastUpdated": "2026-04-22T00:00:00Z"
+                    }]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn installed_target_rejects_empty_install_path() {
+        let dir = tempdir().unwrap();
+        let err = with_home(dir.path(), || {
+            seed_installed_with_path(dir.path(), "");
+            installed_target_for_plugin("demo-plugin@demo-market").unwrap_err()
+        });
+        match err {
+            ToolError::InvalidParam { message, .. } => assert!(message.contains("empty"), "{message}"),
+            other => panic!("expected InvalidParam, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn installed_target_rejects_absolute_path_with_parent_traversal() {
+        let dir = tempdir().unwrap();
+        let plugins_root = dir.path().join(".claude").join("plugins");
+        std::fs::create_dir_all(&plugins_root).unwrap();
+        let escape = format!("{}/../../etc/passwd", plugins_root.display());
+        let err = with_home(dir.path(), || {
+            seed_installed_with_path(dir.path(), &escape);
+            installed_target_for_plugin("demo-plugin@demo-market").unwrap_err()
+        });
+        match err {
+            ToolError::InvalidParam { message, .. } => {
+                assert!(message.contains("invalid") || message.contains("outside"), "{message}");
+            }
+            other => panic!("expected InvalidParam, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn installed_target_rejects_relative_path_with_parent_traversal() {
+        let dir = tempdir().unwrap();
+        let plugins_root = dir.path().join(".claude").join("plugins");
+        std::fs::create_dir_all(&plugins_root).unwrap();
+        let err = with_home(dir.path(), || {
+            seed_installed_with_path(dir.path(), "../../etc/passwd");
+            installed_target_for_plugin("demo-plugin@demo-market").unwrap_err()
+        });
+        match err {
+            ToolError::InvalidParam { message, .. } => {
+                assert!(message.contains("invalid"), "{message}");
+            }
+            other => panic!("expected InvalidParam, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn installed_target_rejects_absolute_path_outside_plugins_root() {
+        let dir = tempdir().unwrap();
+        let plugins_root = dir.path().join(".claude").join("plugins");
+        std::fs::create_dir_all(&plugins_root).unwrap();
+        let err = with_home(dir.path(), || {
+            seed_installed_with_path(dir.path(), "/tmp/evil-plugin");
+            installed_target_for_plugin("demo-plugin@demo-market").unwrap_err()
+        });
+        match err {
+            ToolError::InvalidParam { message, .. } => assert!(message.contains("outside"), "{message}"),
+            other => panic!("expected InvalidParam, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn installed_target_roots_relative_path_under_plugins_root() {
+        let dir = tempdir().unwrap();
+        let plugins_root = dir.path().join(".claude").join("plugins");
+        std::fs::create_dir_all(&plugins_root).unwrap();
+        let target = with_home(dir.path(), || {
+            seed_installed_with_path(dir.path(), "installed/demo-plugin");
+            installed_target_for_plugin("demo-plugin@demo-market").unwrap()
+        })
+        .unwrap();
+        let canonical_root = std::fs::canonicalize(&plugins_root).unwrap();
+        assert!(
+            target.starts_with(&canonical_root),
+            "{target:?} must be rooted under {canonical_root:?}"
+        );
+        assert!(target.ends_with("installed/demo-plugin"), "{target:?}");
     }
 }

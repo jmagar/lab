@@ -142,7 +142,20 @@ fn sync_tree_to_target(
             .to_string_lossy()
             .into_owned();
         let dest = current_target.join(&file_name);
-        let Ok(ft) = entry.file_type() else { continue };
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "sync.file_type_failed",
+                    path = %source.display(),
+                    error = %error,
+                    "could not determine file type during sync; marking failed"
+                );
+                failed.push(rel);
+                continue;
+            }
+        };
         if ft.is_symlink() {
             tracing::warn!(
                 service = "marketplace",
@@ -219,7 +232,20 @@ fn preview_tree_sync(workspace: &Path, target: &Path, current: &Path) -> Result<
             .to_string_lossy()
             .into_owned();
         let dest = current_target.join(&file_name);
-        let Ok(ft) = entry.file_type() else { continue };
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "preview.file_type_failed",
+                    path = %source.display(),
+                    error = %error,
+                    rel = %rel,
+                    "could not determine file type during preview; entry will be absent from preview"
+                );
+                continue;
+            }
+        };
         if ft.is_symlink() {
             tracing::warn!(
                 service = "marketplace",
