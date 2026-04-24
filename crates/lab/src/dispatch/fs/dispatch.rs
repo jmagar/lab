@@ -84,6 +84,21 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
         });
     }
 
+    // help/schema are catalog-discovery actions and MUST stay reachable
+    // regardless of workspace configuration state. Per
+    // `dispatch/CLAUDE.md`, "the catalog and `lab help` stay discoverable
+    // regardless of env state" — so we resolve them BEFORE
+    // `require_workspace_root()` would short-circuit with
+    // `workspace_not_configured`.
+    match action {
+        "help" => return Ok(help_payload("fs", ACTIONS)),
+        "schema" => {
+            let a = require_str(&params, "action")?;
+            return action_schema(ACTIONS, a);
+        }
+        _ => {}
+    }
+
     #[cfg(feature = "fs")]
     {
         let root = require_workspace_root()?;
@@ -92,19 +107,14 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
 
     #[cfg(not(feature = "fs"))]
     {
-        // Without the `fs` feature, only built-ins are exposed.
-        match action {
-            "help" => Ok(help_payload("fs", ACTIONS)),
-            "schema" => {
-                let a = require_str(&params, "action")?;
-                action_schema(ACTIONS, a)
-            }
-            unknown => Err(ToolError::UnknownAction {
-                message: format!("unknown action `fs.{unknown}`"),
-                valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
-                hint: None,
-            }),
-        }
+        // Without the `fs` feature, only built-ins (handled above) are
+        // exposed; everything else is unknown.
+        let _ = params;
+        Err(ToolError::UnknownAction {
+            message: format!("unknown action `fs.{action}`"),
+            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        })
     }
 }
 
@@ -118,6 +128,11 @@ pub async fn dispatch_with_root(
     params: Value,
 ) -> Result<Value, ToolError> {
     match action {
+        // Defense-in-depth: `dispatch_inner` already handles help/schema
+        // before workspace resolution, so the canonical MCP/CLI path never
+        // reaches these arms. They remain here so HTTP callers (or future
+        // direct callers) that invoke `dispatch_with_root` with "help" /
+        // "schema" still get a valid catalog payload.
         "help" => Ok(help_payload("fs", ACTIONS)),
         "schema" => {
             let a = require_str(&params, "action")?;
@@ -923,6 +938,37 @@ mod tests {
             ToolError::Sdk { sdk_kind, .. } => assert_eq!(sdk_kind, "permission_denied"),
             other => panic!("expected Sdk permission_denied; got {other:?}"),
         }
+    }
+
+    /// help must remain reachable through the canonical `dispatch()` entry
+    /// point regardless of whether `LAB_WORKSPACE_ROOT` is configured. The
+    /// fix moves help/schema in front of `require_workspace_root()` so the
+    /// catalog stays discoverable on any env state — see bead lab-f1t2.24.
+    ///
+    /// Note: `require_workspace_root()` reads a process-global `OnceLock`,
+    /// so this test does not control its state. The fix makes
+    /// `dispatch("help", _)` short-circuit BEFORE that lookup, so the test
+    /// is deterministic regardless of OnceLock seeding.
+    #[tokio::test]
+    async fn dispatch_help_works_without_workspace_configured() {
+        let v = dispatch("help", json!({})).await.expect("help ok without workspace");
+        let names: Vec<String> = v["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(names.contains(&"fs.list".to_string()), "{names:?}");
+    }
+
+    /// schema must likewise remain reachable without a configured
+    /// workspace — same rationale as the help test above.
+    #[tokio::test]
+    async fn dispatch_schema_works_without_workspace_configured() {
+        let v = dispatch("schema", json!({"action": "fs.list"}))
+            .await
+            .expect("schema ok without workspace");
+        assert_eq!(v["action"].as_str(), Some("fs.list"));
     }
 
     /// An intermediate symlink in the path (`sub -> .ssh`) must also be
