@@ -1,34 +1,17 @@
+#![allow(dead_code)]
+
 use std::path::Path;
 
 use lab_apis::marketplace::{PluginComponent, PluginComponentKind, PluginManifestSummary};
 use serde_json::{Map, Value};
 
-/// Replace the user's home-directory prefix with literal `~` so paths emitted
-/// in `plugin.list` / `plugin.get` responses don't leak the OS username.
+/// Replace the user's home-directory prefix with literal `~`.
 ///
-/// Security (bead lab-zxx5.14, finding D1): defeats home-dir / username
-/// disclosure in authenticated plugin responses without breaking per-runtime
-/// subdir visibility (`~/.claude/plugins/` vs `~/.codex/plugins/` still
-/// distinguishable). Safe on any input: if `HOME` is unset or the path
-/// doesn't sit under it, the input is returned unchanged.
-pub fn redact_home(path: &str) -> String {
-    let Some(home) = std::env::var_os("HOME") else {
-        return path.to_string();
-    };
-    let home = home.to_string_lossy();
-    let home = home.trim_end_matches('/');
-    if home.is_empty() {
-        return path.to_string();
-    }
-    if let Some(rest) = path.strip_prefix(home) {
-        let rest = rest.trim_start_matches('/');
-        if rest.is_empty() {
-            return "~".to_string();
-        }
-        return format!("~/{rest}");
-    }
-    path.to_string()
-}
+/// lab-zxx5.27: promoted to `dispatch::helpers::redact_home` so the `node/`
+/// install paths can call it without reaching into this marketplace module.
+/// This is a thin re-export wrapper; the canonical implementation lives in
+/// `dispatch/helpers.rs`.
+pub use crate::dispatch::helpers::redact_home;
 
 pub fn manifest_summary_from_marketplace_plugin(plugin_json: &Value) -> Option<PluginManifestSummary> {
     Some(PluginManifestSummary {
