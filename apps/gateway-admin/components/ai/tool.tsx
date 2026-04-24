@@ -11,15 +11,15 @@ import {
 } from "lucide-react"
 import type { ComponentProps, ReactNode } from "react"
 import { isValidElement } from "react"
-import { Badge } from "~/components/ui/badge"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { cn } from "~/lib/utils"
-import { CodeBlock } from "~/packages/ai/code-block"
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { cn } from "@/lib/utils"
+import { CodeBlock } from "@/components/ai/code-block"
 
 export type ToolProps = ComponentProps<typeof Collapsible>
 
 export const Tool = ({ className, ...props }: ToolProps) => (
-  <Collapsible className={cn("not-prose mb-4 w-full rounded-md border", className)} {...props} />
+  <Collapsible className={cn("group not-prose mb-4 w-full rounded-md border", className)} {...props} />
 )
 
 export interface ToolHeaderProps {
@@ -107,7 +107,9 @@ export type ToolOutputProps = ComponentProps<"div"> & {
 }
 
 export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutputProps) => {
-  if (!(output || errorText)) {
+  // Only drop when both are truly absent — `output` may legitimately be `false`,
+  // `0`, or `""`, and we should still render those.
+  if (output == null && !errorText) {
     return null
   }
 

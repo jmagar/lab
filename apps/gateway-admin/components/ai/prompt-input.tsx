@@ -34,7 +34,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { Button } from "~/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Command,
   CommandEmpty,
@@ -43,28 +43,28 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-} from "~/components/ui/command"
+} from "@/components/ui/command"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "~/components/ui/hover-card"
+} from "@/components/ui/dropdown-menu"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
-} from "~/components/ui/input-group"
+} from "@/components/ui/input-group"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/ui/select"
-import { cn } from "~/lib/utils"
+} from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 // ============================================================================
 // Provider Context & Types
@@ -465,14 +465,22 @@ export const PromptInput = ({
           const prefix = pattern.slice(0, -1) // e.g: image/* -> image/
           return f.type.startsWith(prefix)
         }
+        if (pattern.startsWith(".")) {
+          // Extension pattern (e.g. ".png"). Match on the file name's suffix
+          // case-insensitively; File.type is often empty for pasted/dropped files.
+          return f.name.toLowerCase().endsWith(pattern.toLowerCase())
+        }
         return f.type === pattern
       })
     },
     [accept],
   )
 
-  const addLocal = useCallback(
-    (fileList: File[] | FileList) => {
+  // Surface-agnostic validator: drops files that fail accept/size checks and
+  // reports counts back via onError. Used by both local and provider modes so
+  // constraints are never bypassed. Returns `null` if nothing is acceptable.
+  const filterValidFiles = useCallback(
+    (fileList: File[] | FileList, currentCount: number): File[] | null => {
       const incoming = Array.from(fileList)
       const accepted = incoming.filter(f => matchesAccept(f))
       if (incoming.length && accepted.length === 0) {
@@ -480,7 +488,7 @@ export const PromptInput = ({
           code: "accept",
           message: "No files match the accepted types.",
         })
-        return
+        return null
       }
       const withinSize = (f: File) => (maxFileSize ? f.size <= maxFileSize : true)
       const sized = accepted.filter(withinSize)
@@ -489,21 +497,40 @@ export const PromptInput = ({
           code: "max_file_size",
           message: "All files exceed the maximum size.",
         })
-        return
+        return null
       }
+      // Enforce single-file uploads when multiple is explicitly false. The
+      // native file input honors this, but paste/drag-drop paths bypass it.
+      const singleFileCap = multiple === false ? 1 : undefined
+      const effectiveMaxFiles =
+        singleFileCap !== undefined
+          ? typeof maxFiles === "number"
+            ? Math.min(maxFiles, singleFileCap)
+            : singleFileCap
+          : maxFiles
+      const capacity =
+        typeof effectiveMaxFiles === "number"
+          ? Math.max(0, effectiveMaxFiles - currentCount)
+          : undefined
+      const capped = typeof capacity === "number" ? sized.slice(0, capacity) : sized
+      if (typeof capacity === "number" && sized.length > capacity) {
+        onError?.({
+          code: "max_files",
+          message: "Too many files. Some were not added.",
+        })
+      }
+      return capped
+    },
+    [matchesAccept, maxFiles, maxFileSize, multiple, onError],
+  )
 
+  const addLocal = useCallback(
+    (fileList: File[] | FileList) => {
       setItems(prev => {
-        const capacity =
-          typeof maxFiles === "number" ? Math.max(0, maxFiles - prev.length) : undefined
-        const capped = typeof capacity === "number" ? sized.slice(0, capacity) : sized
-        if (typeof capacity === "number" && sized.length > capacity) {
-          onError?.({
-            code: "max_files",
-            message: "Too many files. Some were not added.",
-          })
-        }
+        const valid = filterValidFiles(fileList, prev.length)
+        if (!valid || valid.length === 0) return prev
         const next: (FileUIPart & { id: string })[] = []
-        for (const file of capped) {
+        for (const file of valid) {
           next.push({
             id: nanoid(),
             type: "file",
@@ -515,7 +542,7 @@ export const PromptInput = ({
         return prev.concat(next)
       })
     },
-    [matchesAccept, maxFiles, maxFileSize, onError],
+    [filterValidFiles],
   )
 
   const removeLocal = useCallback(
@@ -543,7 +570,20 @@ export const PromptInput = ({
     [],
   )
 
-  const add = usingProvider ? controller.attachments.add : addLocal
+  // In provider mode, wrap controller.attachments.add with the same validation
+  // the local path runs. Without this, accept/maxFileSize/maxFiles/multiple
+  // constraints are bypassed for paste/drag-drop/external callers.
+  const addProvider = useCallback(
+    (fileList: File[] | FileList) => {
+      if (!usingProvider) return
+      const valid = filterValidFiles(fileList, controller.attachments.files.length)
+      if (!valid || valid.length === 0) return
+      controller.attachments.add(valid)
+    },
+    [usingProvider, controller, filterValidFiles],
+  )
+
+  const add = usingProvider ? addProvider : addLocal
   const remove = usingProvider ? controller.attachments.remove : removeLocal
   const clear = usingProvider ? controller.attachments.clear : clearLocal
   const openFileDialog = usingProvider ? controller.attachments.openFileDialog : openFileDialogLocal

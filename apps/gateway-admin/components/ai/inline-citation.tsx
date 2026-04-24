@@ -9,10 +9,10 @@ import {
   useEffect,
   useState,
 } from "react"
-import { Badge } from "~/components/ui/badge"
-import { Carousel, type CarouselApi, CarouselContent, CarouselItem } from "~/components/ui/carousel"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "~/components/ui/hover-card"
-import { cn } from "~/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Carousel, type CarouselApi, CarouselContent, CarouselItem } from "@/components/ui/carousel"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { cn } from "@/lib/utils"
 
 export type InlineCitationProps = ComponentProps<"span">
 
@@ -36,6 +36,14 @@ export type InlineCitationCardTriggerProps = ComponentProps<typeof Badge> & {
   sources: string[]
 }
 
+const safeHostname = (raw: string): string => {
+  try {
+    return new URL(raw).hostname
+  } catch {
+    return raw
+  }
+}
+
 export const InlineCitationCardTrigger = ({
   sources,
   className,
@@ -45,7 +53,7 @@ export const InlineCitationCardTrigger = ({
     <Badge className={cn("ml-1 rounded-full", className)} variant="secondary" {...props}>
       {sources[0] ? (
         <>
-          {new URL(sources[0]).hostname} {sources.length > 1 && `+${sources.length - 1}`}
+          {safeHostname(sources[0])} {sources.length > 1 && `+${sources.length - 1}`}
         </>
       ) : (
         "unknown"
@@ -134,9 +142,13 @@ export const InlineCitationCarouselIndex = ({
     setCount(api.scrollSnapList().length)
     setCurrent(api.selectedScrollSnap() + 1)
 
-    api.on("select", () => {
+    const onSelect = () => {
       setCurrent(api.selectedScrollSnap() + 1)
-    })
+    }
+    api.on("select", onSelect)
+    return () => {
+      api.off("select", onSelect)
+    }
   }, [api])
 
   return (

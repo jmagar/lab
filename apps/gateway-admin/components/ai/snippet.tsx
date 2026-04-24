@@ -10,9 +10,9 @@ import {
   useRef,
   useState,
 } from "react"
-import { Button } from "~/components/ui/button"
-import { Input } from "~/components/ui/input"
-import { cn } from "~/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 
 interface SnippetContextType {
   code: string
@@ -116,11 +116,11 @@ export const SnippetCopyButton = ({
     <Button
       aria-label="Copy"
       className={cn("rounded-l-none", className)}
-      onClick={copyToClipboard}
       size="icon"
       title="Copy"
       variant="outline"
       {...props}
+      onClick={copyToClipboard}
     >
       {children ?? <Icon className="size-3.5" />}
     </Button>

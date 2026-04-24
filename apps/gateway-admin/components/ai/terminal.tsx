@@ -11,9 +11,9 @@ import {
   useRef,
   useState,
 } from "react"
-import { Button } from "~/components/ui/button"
-import { cn } from "~/lib/utils"
-import { Shimmer } from "./shimmer"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { Shimmer } from "@/components/ai/shimmer"
 
 interface TerminalContextType {
   output: string
@@ -159,10 +159,10 @@ export const TerminalCopyButton = ({
         "size-7 shrink-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
         className,
       )}
-      onClick={copyToClipboard}
       size="icon"
       variant="ghost"
       {...props}
+      onClick={copyToClipboard}
     >
       {children ?? <Icon size={14} />}
     </Button>
@@ -188,10 +188,10 @@ export const TerminalClearButton = ({
         "size-7 shrink-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
         className,
       )}
-      onClick={onClear}
       size="icon"
       variant="ghost"
       {...props}
+      onClick={onClear}
     >
       {children ?? <Trash2Icon size={14} />}
     </Button>

@@ -11,9 +11,9 @@ import {
 } from "lucide-react"
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react"
 import { createContext, useContext, useMemo } from "react"
-import { Button } from "~/components/ui/button"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "~/components/ui/hover-card"
-import { cn } from "~/lib/utils"
+import { Button } from "@/components/ui/button"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { cn } from "@/lib/utils"
 
 // ============================================================================
 // Types
@@ -167,7 +167,7 @@ export const Attachment = ({ data, onRemove, className, children, ...props }: At
           variant === "grid" && "size-24 overflow-hidden rounded-lg",
           variant === "inline" && [
             "flex h-8 cursor-pointer select-none items-center gap-1.5",
-            "rounded-md border border-border px-1.5",
+            "rounded-md border border-aurora-border-default px-1.5",
             "font-medium text-sm transition-all",
             "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
           ],
@@ -222,7 +222,7 @@ export const AttachmentPreview = ({
     )
 
   const renderIcon = (Icon: typeof ImageIcon) => (
-    <Icon className={cn(iconSize, "text-muted-foreground")} />
+    <Icon className={cn(iconSize, "text-aurora-text-muted")} />
   )
 
   const renderContent = () => {
@@ -251,9 +251,9 @@ export const AttachmentPreview = ({
     <div
       className={cn(
         "flex shrink-0 items-center justify-center overflow-hidden",
-        variant === "grid" && "size-full bg-muted",
-        variant === "inline" && "size-5 rounded bg-background",
-        variant === "list" && "size-12 rounded bg-muted",
+        variant === "grid" && "size-full bg-aurora-panel-medium",
+        variant === "inline" && "size-5 rounded bg-aurora-page-bg",
+        variant === "list" && "size-12 rounded bg-aurora-panel-medium",
         className,
       )}
       {...props}
@@ -287,7 +287,7 @@ export const AttachmentInfo = ({
     <div className={cn("min-w-0 flex-1", className)} {...props}>
       <span className="block truncate">{label}</span>
       {showMediaType && data.mediaType && (
-        <span className="block truncate text-muted-foreground text-xs">{data.mediaType}</span>
+        <span className="block truncate text-aurora-text-muted text-xs">{data.mediaType}</span>
       )}
     </div>
   )
@@ -319,9 +319,9 @@ export const AttachmentRemove = ({
       className={cn(
         variant === "grid" && [
           "absolute top-2 right-2 size-6 rounded-full p-0",
-          "bg-background/80 backdrop-blur-sm",
+          "bg-aurora-page-bg/80 backdrop-blur-sm",
           "opacity-0 transition-opacity group-hover:opacity-100",
-          "hover:bg-background",
+          "hover:bg-aurora-page-bg",
           "[&>svg]:size-3",
         ],
         variant === "inline" && [
@@ -384,7 +384,7 @@ export type AttachmentEmptyProps = HTMLAttributes<HTMLDivElement>
 
 export const AttachmentEmpty = ({ className, children, ...props }: AttachmentEmptyProps) => (
   <div
-    className={cn("flex items-center justify-center p-4 text-muted-foreground text-sm", className)}
+    className={cn("flex items-center justify-center p-4 text-aurora-text-muted text-sm", className)}
     {...props}
   >
     {children ?? "No attachments"}
@@ -430,7 +430,7 @@ export default function AttachmentsDemo() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-medium text-sm">Grid Variant</h3>
-          <span className="text-muted-foreground text-xs">Image thumbnails with remove button</span>
+          <span className="text-aurora-text-muted text-xs">Image thumbnails with remove button</span>
         </div>
         <Attachments variant="grid" className="ml-0 justify-start">
           {imageAttachments.map(attachment => (
@@ -450,7 +450,7 @@ export default function AttachmentsDemo() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-medium text-sm">Inline Variant</h3>
-          <span className="text-muted-foreground text-xs">Compact chips for mixed files</span>
+          <span className="text-aurora-text-muted text-xs">Compact chips for mixed files</span>
         </div>
         <Attachments variant="inline" className="justify-start">
           {[...imageAttachments.slice(0, 1), ...mixedAttachments].map(attachment => (
@@ -471,7 +471,7 @@ export default function AttachmentsDemo() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-medium text-sm">List Variant</h3>
-          <span className="text-muted-foreground text-xs">Full details with media type</span>
+          <span className="text-aurora-text-muted text-xs">Full details with media type</span>
         </div>
         <Attachments variant="list">
           {[imageAttachments[0], ...mixedAttachments.slice(0, 2)].map(attachment => (

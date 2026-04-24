@@ -4,9 +4,9 @@ import { useControllableState } from "@radix-ui/react-use-controllable-state"
 import { AlertTriangleIcon, CheckIcon, ChevronDownIcon, CopyIcon } from "lucide-react"
 import type { ComponentProps } from "react"
 import { createContext, memo, useContext, useMemo, useState } from "react"
-import { Button } from "~/components/ui/button"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { cn } from "~/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { cn } from "@/lib/utils"
 
 const STACK_FRAME_WITH_PARENS_REGEX = /^at\s+(.+?)\s+\((.+):(\d+):(\d+)\)$/
 const STACK_FRAME_WITHOUT_FN_REGEX = /^at\s+(.+):(\d+):(\d+)$/
@@ -104,15 +104,19 @@ const parseStackTrace = (trace: string): ParsedStackTrace => {
   const firstLine = lines[0].trim()
   let errorType: string | null = null
   let errorMessage = firstLine
+  // When the first line is already a frame (e.g. Node's `at ...` output with no
+  // error header), keep it in the frames list so we don't drop it.
+  const firstLineIsFrame = firstLine.startsWith("at ")
 
   const errorMatch = firstLine.match(ERROR_TYPE_REGEX)
   if (errorMatch) {
     errorType = errorMatch[1]
     errorMessage = errorMatch[2] || ""
+  } else if (firstLineIsFrame) {
+    errorMessage = ""
   }
 
-  const frames = lines
-    .slice(1)
+  const frames = (firstLineIsFrame ? lines : lines.slice(1))
     .filter(line => line.trim().startsWith("at "))
     .map(parseStackFrame)
 

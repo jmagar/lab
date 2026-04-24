@@ -154,9 +154,12 @@ distinct session lifecycle models.
 
 **Best-practices finding:** `async fn in trait` is stable (Rust 1.75+) but `dyn Trait` with `async
 fn` is NOT object-safe (no stable solution as of 2026). Recommended approach: **enum dispatch** for
-the known provider set (Codex, Claude, Gemini, Copilot, OpenCode) via the `enum_dispatch` crate,
-with a `Registry(Box<DynProvider>)` catch-all variant using `dynosaur` when ACP Registry loads
-dynamic providers.
+the known provider set (Codex, Claude, Gemini, Copilot, OpenCode) via the `enum_dispatch` crate.
+
+The repository rule in `CLAUDE.md` forbids `Box<dyn ServiceClient>` and `#[async_trait]`: prefer
+generics or concrete types over dynamic dispatch. For a dynamic-registry path, reach for
+generics over a bounded type parameter, or wrap providers in a new concrete enum variant rather
+than introducing `Box<dyn Trait>` / `dynosaur`-style adapters.
 
 ---
 

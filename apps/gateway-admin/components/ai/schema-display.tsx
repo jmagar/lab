@@ -2,9 +2,9 @@
 
 import { ChevronRightIcon } from "lucide-react"
 import { type ComponentProps, createContext, type HTMLAttributes, useContext } from "react"
-import { Badge } from "~/components/ui/badge"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { cn } from "~/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { cn } from "@/lib/utils"
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 
@@ -128,19 +128,36 @@ export type SchemaDisplayPathProps = HTMLAttributes<HTMLSpanElement>
 export const SchemaDisplayPath = ({ className, children, ...props }: SchemaDisplayPathProps) => {
   const { path } = useContext(SchemaDisplayContext)
 
-  // Highlight path parameters
-  const highlightedPath = path.replace(
-    /\{([^}]+)\}/g,
-    '<span class="text-blue-600 dark:text-blue-400">{$1}</span>',
-  )
+  // Split the path into literal/parameter segments and render as real React
+  // nodes, so values like `{<script>}` from `path` can never inject markup.
+  const segments: Array<{ type: "literal" | "param"; text: string }> = []
+  const paramRegex = /\{([^}]+)\}/g
+  let cursor = 0
+  let match: RegExpExecArray | null
+  while ((match = paramRegex.exec(path)) !== null) {
+    if (match.index > cursor) {
+      segments.push({ type: "literal", text: path.slice(cursor, match.index) })
+    }
+    segments.push({ type: "param", text: match[1] })
+    cursor = match.index + match[0].length
+  }
+  if (cursor < path.length) {
+    segments.push({ type: "literal", text: path.slice(cursor) })
+  }
 
   return (
-    <span
-      className={cn("font-mono text-sm", className)}
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: needed for parameter highlighting
-      dangerouslySetInnerHTML={{ __html: children?.toString() ?? highlightedPath }}
-      {...props}
-    />
+    <span className={cn("font-mono text-sm", className)} {...props}>
+      {children ??
+        segments.map((seg, i) =>
+          seg.type === "param" ? (
+            <span key={i} className="text-blue-600 dark:text-blue-400">
+              {`{${seg.text}}`}
+            </span>
+          ) : (
+            <span key={i}>{seg.text}</span>
+          ),
+        )}
+    </span>
   )
 }
 
@@ -311,7 +328,7 @@ export const SchemaDisplayProperty = ({
   className,
   ...props
 }: SchemaDisplayPropertyProps) => {
-  const hasChildren = properties || items
+  const hasChildren = (properties && properties.length > 0) || items != null
   const paddingLeft = 40 + depth * 16
 
   if (hasChildren) {

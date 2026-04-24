@@ -8,10 +8,10 @@ import {
   useContext,
   useState,
 } from "react"
-import { Badge } from "~/components/ui/badge"
-import { Button } from "~/components/ui/button"
-import { Switch } from "~/components/ui/switch"
-import { cn } from "~/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
 
 interface EnvironmentVariablesContextType {
   showValues: boolean
@@ -233,7 +233,11 @@ export const EnvironmentVariableCopyButton = ({
     if (copyFormat === "name") {
       textToCopy = name
     } else if (copyFormat === "export") {
-      textToCopy = `export ${name}="${value}"`
+      // POSIX single-quote escaping: wrap in single quotes, and for each embedded
+      // single quote emit `'\''`. This makes the pasted line safe even if `value`
+      // contains $, `, \, !, newlines, or quotes.
+      const escaped = value.replace(/'/g, "'\\''")
+      textToCopy = `export ${name}='${escaped}'`
     }
 
     try {
