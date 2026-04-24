@@ -24,6 +24,36 @@ pub mod persistence;
 /// `SessionHandle` and related provider types.
 pub mod session;
 
+use crate::core::plugin::{Category, EnvVar, PluginMeta};
+
+/// Compile-time metadata for the ACP service.
+pub const META: PluginMeta = PluginMeta {
+    name: "acp",
+    display_name: "ACP",
+    description: "Agent Client Protocol — session management and provider orchestration",
+    category: Category::Ai,
+    docs_url: "",
+    required_env: &[],
+    optional_env: &[
+        EnvVar {
+            name: "LAB_ACP_DB",
+            description: "Path to ACP SQLite database",
+            example: "~/.lab/acp.db",
+            secret: false,
+            ui: None,
+        },
+        EnvVar {
+            name: "LAB_ACP_HMAC_SECRET",
+            description: "HMAC key for permission outcome signing; auto-generated if absent",
+            example: "",
+            secret: true,
+            ui: None,
+        },
+    ],
+    default_port: None,
+    supports_multi_instance: false,
+};
+
 // Convenience re-exports of the canonical public surface.
 pub use error::{AcpError, PersistenceError};
 pub use session::{SessionCommand, SessionError, SessionHandle};

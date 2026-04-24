@@ -237,8 +237,8 @@ pub fn build_default_registry() -> ToolRegistry {
         description: "Manage fleet device enrollments",
         category: "bootstrap",
         status: "available",
-        actions: crate::mcp::services::device::ACTIONS,
-        dispatch: dispatch_fn!(crate::mcp::services::device::dispatch),
+        actions: crate::mcp::services::nodes::ACTIONS,
+        dispatch: dispatch_fn!(crate::mcp::services::nodes::dispatch),
     });
 
     // marketplace is always-on (synthetic service, no feature flag).
@@ -251,6 +251,19 @@ pub fn build_default_registry() -> ToolRegistry {
             status: "available",
             actions: crate::mcp::services::marketplace::ACTIONS,
             dispatch: dispatch_fn!(crate::mcp::services::marketplace::dispatch),
+        });
+    }
+
+    // acp is always-on (no feature flag). MCP and CLI surfaces are Phase 2.
+    {
+        let meta = lab_apis::acp::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+            status: "available",
+            actions: crate::dispatch::acp::catalog::ACTIONS,
+            dispatch: dispatch_fn!(crate::dispatch::acp::dispatch::dispatch),
         });
     }
 
@@ -555,6 +568,7 @@ mod tests {
         let http_router_services: std::collections::HashSet<&'static str> = {
             let mut s = std::collections::HashSet::new();
             s.insert(lab_apis::extract::META.name); // always-on
+            s.insert(lab_apis::acp::META.name); // always-on
             s.insert("device");
             s.insert("gateway");
             s.insert("logs");
