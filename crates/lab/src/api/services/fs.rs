@@ -13,7 +13,7 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Query, State},
-    http::{HeaderValue, StatusCode, header},
+    http::{HeaderName, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -21,14 +21,37 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::io::AsyncReadExt;
 use tokio_util::io::ReaderStream;
+use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::api::state::AppState;
 use crate::dispatch::error::ToolError;
 
+/// Build the `/v1/fs` subrouter.
+///
+/// Applies security headers (`X-Content-Type-Options`, `X-Frame-Options`,
+/// `Content-Security-Policy`) via a `SetResponseHeaderLayer` so that both
+/// success (200) and error responses (404/403/422/500) produced by
+/// `ToolError::into_response()` carry them. Inline header setting on the
+/// `handle_preview` 200 path does NOT cover error responses — the layer does.
+///
+/// `Cache-Control: no-store` remains response-specific (only preview needs
+/// it) and is set inline on the 200 response.
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/list", get(handle_list))
         .route("/preview", get(handle_preview))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-content-type-options"),
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static("default-src 'none'; sandbox"),
+        ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,16 +136,13 @@ async fn handle_preview(
         format!("attachment; filename=\"{}\"", preview.disposition_filename)
     };
 
+    // Security headers (nosniff, X-Frame-Options, CSP) are applied via
+    // `SetResponseHeaderLayer` in `routes()` so they cover both success and
+    // error responses. Only response-specific headers are set inline here.
     let mut response = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, preview.content_type)
         .header(header::CONTENT_DISPOSITION, disposition)
-        .header("X-Content-Type-Options", "nosniff")
-        .header("X-Frame-Options", "DENY")
-        .header(
-            header::CONTENT_SECURITY_POLICY,
-            HeaderValue::from_static("default-src 'none'; sandbox"),
-        )
         .header(header::CACHE_CONTROL, "private, no-store")
         .body(body)
         .map_err(|e| ToolError::Sdk {
