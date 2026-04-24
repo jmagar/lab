@@ -31,10 +31,7 @@ pub mod upstream_oauth;
 /// Browser-session endpoints for the hosted UI.
 pub mod browser_session;
 
-/// Device runtime ingestion routes mounted under `/v1/device/*`.
-pub mod device;
-
-/// Node runtime routes (renamed from `device`), mounted under `/v1/nodes/*`.
+/// Node runtime routes mounted under `/v1/nodes/*`.
 pub mod nodes;
 
 /// Static Labby web asset serving helpers.

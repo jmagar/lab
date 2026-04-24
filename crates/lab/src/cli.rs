@@ -6,7 +6,6 @@
 
 pub mod audit;
 pub mod completions;
-pub mod device;
 pub mod doctor;
 pub mod extract;
 pub mod gateway;
@@ -16,6 +15,7 @@ pub mod helpers;
 pub mod install;
 pub mod logs;
 pub mod marketplace;
+pub mod nodes;
 pub mod oauth;
 pub mod params;
 pub mod plugins;
@@ -110,7 +110,7 @@ pub enum Command {
     /// Audit configured services and report problems.
     Doctor,
     /// Query nodes from the configured controller.
-    Nodes(device::DeviceArgs),
+    Nodes(nodes::NodesArgs),
     /// Quick reachability check for configured services.
     Health,
     /// Open the plugin manager TUI.
@@ -214,8 +214,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let color = cli.color;
     match cli.command {
         Command::Serve(args) => serve::run(args, &config).await,
-        Command::Doctor => doctor::run(format),
-        Command::Nodes(args) => device::run(args, format, &config).await,
+        Command::Doctor => doctor::run(format).await,
+        Command::Nodes(args) => nodes::run(args, format, &config).await,
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
         Command::Audit(args) => audit::run(args, format),

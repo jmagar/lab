@@ -30,7 +30,7 @@ impl LabMcpServer {
     }
 
     pub(crate) async fn service_visible_on_mcp(&self, service: &str) -> bool {
-        if matches!(self.device_role, Some(crate::config::DeviceRole::NonMaster)) {
+        if matches!(self.node_role, Some(crate::config::NodeRole::NonMaster)) {
             return false;
         }
         match &self.gateway_manager {

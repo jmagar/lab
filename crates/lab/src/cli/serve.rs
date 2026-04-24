@@ -290,7 +290,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let web_ui_auth_disabled =
         resolve_web_ui_auth_disabled(&config.web, web_assets_dir.is_some(), oauth_enabled)?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
-    state = state.with_device_store(Arc::clone(&device_store));
+    state = state.with_node_store(Arc::clone(&device_store));
     state = state.with_enrollment_store(Arc::clone(&enrollment_store));
     state = state.with_log_system(logs_system);
     #[cfg(feature = "mcpregistry")]
@@ -358,7 +358,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     };
     // `_registry_sync_keepalive` keeps the background sync task alive for the
     // duration of `serve`; binding it by name preserves the JoinHandle.
-    state = state.with_device_role(device_role);
+    state = state.with_node_role(device_role);
     if let Some(web_assets_dir) = web_assets_dir {
         tracing::info!(
             subsystem = "web_server",
@@ -754,7 +754,7 @@ async fn run_stdio(
     let server = LabMcpServer {
         registry,
         gateway_manager: Some(Arc::clone(&gateway_manager)),
-        device_role: Some(device_role),
+        node_role: Some(device_role),
         peers: Arc::clone(&notifier.peers),
         logging_level: Arc::new(std::sync::atomic::AtomicU8::new(
             crate::mcp::logging::logging_level_rank(rmcp::model::LoggingLevel::Info),
@@ -815,7 +815,7 @@ fn build_mcp_service(
     // All HTTP sessions share the same PeerNotifier (and thus the same peers
     // vec) so that gateway reload notifications reach every connected session.
     let shared_peers = Arc::clone(&notifier.peers);
-    let device_role = state.device_role;
+    let node_role = state.node_role;
 
     Ok(StreamableHttpService::new(
         move || {
@@ -825,7 +825,7 @@ fn build_mcp_service(
             Ok(LabMcpServer {
                 registry: reg,
                 gateway_manager: manager,
-                device_role,
+                node_role,
                 peers,
                 logging_level: Arc::new(std::sync::atomic::AtomicU8::new(
                     crate::mcp::logging::logging_level_rank(rmcp::model::LoggingLevel::Info),

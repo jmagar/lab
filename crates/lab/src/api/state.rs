@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, build_catalog};
-use crate::config::DeviceRole;
+use crate::config::NodeRole;
 use crate::acp::registry::AcpSessionRegistry;
-use crate::device::enrollment::store::EnrollmentStore;
-use crate::device::store::DeviceFleetStore;
+use crate::node::enrollment::store::EnrollmentStore;
+use crate::node::store::NodeStore;
 use crate::dispatch::clients::ServiceClients;
 use crate::registry::{ToolRegistry, build_default_registry};
 
@@ -44,18 +44,22 @@ pub struct AppState {
     ///
     /// `None` when gateway management is not wired for this process.
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
-    /// Shared fleet state store for device runtime ingestion.
-    pub device_store: Option<Arc<DeviceFleetStore>>,
+    /// Shared fleet state store for node runtime ingestion.
+    pub node_store: Option<Arc<NodeStore>>,
     /// Shared durable enrollment store for fleet websocket admission control.
     pub enrollment_store: Option<Arc<EnrollmentStore>>,
     /// Shared local-master log runtime used by API SSE and adapter-local lookups.
     pub logs_system: Option<Arc<crate::dispatch::logs::types::LogSystem>>,
     /// Shared ACP session registry for browser chat/session routes.
     pub acp_registry: Arc<AcpSessionRegistry>,
-    /// Resolved device role for the current process.
-    pub device_role: Option<DeviceRole>,
+    /// Resolved node role for the current process.
+    pub node_role: Option<NodeRole>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
+    /// Canonical absolute path of the user-configured workspace root, or
+    /// `None` when `LAB_WORKSPACE_ROOT` is unset or invalid at startup.
+    /// Backs the `dispatch/fs/` service (workspace filesystem browser).
+    pub workspace_root: Option<Arc<PathBuf>>,
     /// When true, `/v1/*` skips auth middleware for hosted UI requests.
     pub web_ui_auth_disabled: bool,
     /// Shared SQLite-backed MCP registry store for `/v0.1` read endpoints.
@@ -98,12 +102,13 @@ impl AppState {
             auth_config: None,
             oauth_state: None,
             gateway_manager: None,
-            device_store: None,
+            node_store: None,
             enrollment_store: None,
             logs_system: None,
             acp_registry: Arc::new(AcpSessionRegistry::new()),
-            device_role: None,
+            node_role: None,
             web_assets_dir: None,
+            workspace_root: None,
             web_ui_auth_disabled: false,
             #[cfg(feature = "mcpregistry")]
             registry_store: None,
@@ -135,8 +140,8 @@ impl AppState {
     }
 
     #[must_use]
-    pub fn with_device_store(mut self, store: Arc<DeviceFleetStore>) -> Self {
-        self.device_store = Some(store);
+    pub fn with_node_store(mut self, store: Arc<NodeStore>) -> Self {
+        self.node_store = Some(store);
         self
     }
 
@@ -153,8 +158,8 @@ impl AppState {
     }
 
     #[must_use]
-    pub fn with_device_role(mut self, role: DeviceRole) -> Self {
-        self.device_role = Some(role);
+    pub fn with_node_role(mut self, role: NodeRole) -> Self {
+        self.node_role = Some(role);
         self
     }
 
@@ -172,9 +177,15 @@ impl AppState {
         self
     }
 
+    /// Returns `true` unless the current process is explicitly in `NonMaster` role.
+    ///
+    /// **Security note:** this MUST read the same field as
+    /// [`crate::api::nodes::fleet::require_master_store`] (`node_role`). Any
+    /// divergence reintroduces the authorization surface split that was closed
+    /// by the device→node consolidation.
     #[must_use]
     pub fn is_master(&self) -> bool {
-        !matches!(self.device_role, Some(DeviceRole::NonMaster))
+        !matches!(self.node_role, Some(NodeRole::NonMaster))
     }
 
     /// Attach the shared MCP registry store for `/v0.1` read endpoints.
