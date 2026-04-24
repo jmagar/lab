@@ -170,12 +170,14 @@ impl InstallProgressNotification {
 pub fn reject_path_traversal(rel_path: &str) -> Result<()> {
     let path = Path::new(rel_path);
     if path.as_os_str().is_empty() {
-        return Err(anyhow!("path rejected: empty"));
+        return Err(anyhow!(
+            "{ERR_PATH_TRAVERSAL}: path rejected: empty"
+        ));
     }
     for component in path.components() {
         if !matches!(component, Component::Normal(_)) {
             return Err(anyhow!(
-                "path rejected: `{rel_path}` contains non-normal component {component:?}"
+                "{ERR_PATH_TRAVERSAL}: path rejected: `{rel_path}` contains non-normal component {component:?}"
             ));
         }
     }
@@ -186,7 +188,7 @@ pub fn reject_path_traversal(rel_path: &str) -> Result<()> {
 pub async fn reject_symlink(path: &Path) -> Result<()> {
     match tokio::fs::symlink_metadata(path).await {
         Ok(meta) if meta.file_type().is_symlink() => Err(anyhow!(
-            "symlink rejected: `{}` is a symbolic link",
+            "{ERR_SYMLINK}: `{}` is a symbolic link",
             path.display()
         )),
         Ok(_) | Err(_) => Ok(()),
@@ -205,13 +207,27 @@ async fn ensure_target_within_write_root(write_root: &Path, target: &Path) -> Re
         .with_context(|| format!("canonicalize target parent `{}`", parent.display()))?;
     if !canonical_parent.starts_with(&canonical_root) {
         return Err(anyhow!(
-            "target `{}` resolves outside write root `{}`",
+            "{ERR_PATH_TRAVERSAL}: target `{}` resolves outside write root `{}`",
             target.display(),
             write_root.display()
         ));
     }
     Ok(())
 }
+
+// --------------------------------------------------------------------------
+// Error kind markers for the RPC error envelope classifier (lab-zxx5.28).
+//
+// `ws_client::error_kind` maps handler anyhow errors to stable taxonomy kinds
+// without typed variants, by looking for these literal prefixes in the error
+// chain. Adding a new kind: define a const here, prefix the anyhow! call
+// site, and extend ws_client::error_kind to recognise it.
+// --------------------------------------------------------------------------
+
+pub const ERR_PATH_TRAVERSAL: &str = "lab.err:path_traversal_rejected";
+pub const ERR_SYMLINK: &str = "lab.err:symlink_rejected";
+pub const ERR_MISSING_PARAM: &str = "lab.err:missing_param";
+pub const ERR_VALIDATION: &str = "lab.err:validation_failed";
 
 /// Atomically write `contents` to `target`, preventing symlink-based TOCTOU
 /// attacks. The sequence is:
@@ -314,23 +330,23 @@ pub fn resolve_write_root(scope: InstallScope, project_path: Option<&str>) -> Re
         InstallScope::Global => {
             let home = std::env::var("HOME")
                 .or_else(|_| std::env::var("USERPROFILE"))
-                .map_err(|_| anyhow!("HOME environment variable is not set"))?;
+                .map_err(|_| anyhow!("{ERR_VALIDATION}: HOME environment variable is not set"))?;
             Ok(PathBuf::from(home).join(".claude"))
         }
         InstallScope::Project => {
             let raw = project_path
-                .ok_or_else(|| anyhow!("project_path is required when scope == Project"))?;
+                .ok_or_else(|| anyhow!("{ERR_MISSING_PARAM}: project_path is required when scope == Project"))?;
             let p = PathBuf::from(raw);
             if !p.is_absolute() {
                 return Err(anyhow!(
-                    "project_path must be absolute; got `{}`",
+                    "{ERR_VALIDATION}: project_path must be absolute; got `{}`",
                     p.display()
                 ));
             }
             for component in p.components() {
                 if matches!(component, Component::ParentDir) {
                     return Err(anyhow!(
-                        "path traversal rejected in project_path: `{}`",
+                        "{ERR_PATH_TRAVERSAL}: project_path `{}`",
                         p.display()
                     ));
                 }
