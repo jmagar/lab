@@ -53,12 +53,7 @@ impl CodexMarketplaceBackend {
 
     fn read_catalog_sources(&self) -> Result<Vec<CatalogSource>, ToolError> {
         let mut out = Vec::new();
-        let home_catalog = client::home_dir()
-            .ok_or_else(|| ToolError::Sdk {
-                sdk_kind: "internal_error".to_string(),
-                message: "HOME directory is unavailable".to_string(),
-            })?
-            .join(".agents/plugins/marketplace.json");
+        let home_catalog = client::home_dir()?.join(".agents/plugins/marketplace.json");
         if home_catalog.exists() {
             out.push(self.catalog_from_path(
                 "codex-personal",
@@ -166,7 +161,7 @@ impl CodexMarketplaceBackend {
     }
 
     fn cache_path_for_plugin(&self, marketplace: &str, name: &str, version: Option<&str>) -> Option<PathBuf> {
-        let cache_root = client::codex_cache_root()?;
+        let cache_root = client::codex_cache_root().ok()?;
         let base = cache_root.join(marketplace).join(name);
         if let Some(version) = version {
             let candidate = base.join(version);
@@ -254,7 +249,7 @@ impl CodexMarketplaceBackend {
 
 impl MarketplaceBackend for CodexMarketplaceBackend {
     fn is_available(&self) -> bool {
-        client::home_dir().is_some_and(|home| {
+        client::home_dir().is_ok_and(|home| {
             home.join(".agents/plugins/marketplace.json").exists()
                 || home.join(".codex/config.toml").exists()
                 || std::env::current_dir().ok().is_some_and(|cwd| {
