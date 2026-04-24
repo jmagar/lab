@@ -329,12 +329,17 @@ async fn handle_websocket(
                         .and_then(serde_json::Value::as_str)
                     {
                         let rpc_id = rpc_id.to_string();
-                        // lab-zxx5.20: reject forged progress frames. A
-                        // compromised or curious node can only publish
-                        // progress for rpc_ids the master actually
-                        // dispatched TO IT. Drop with a WARN on mismatch
-                        // rather than terminating — a single malicious
-                        // frame is not session-fatal.
+                        // lab-zxx5.20: reject forged progress frames; a
+                        // compromised node can only publish progress for
+                        // rpc_ids the master actually dispatched TO IT.
+                        //
+                        // lab-zxx5.32: tier the log levels so the genuine
+                        // forgery case (rpc_id IS in flight, but to a
+                        // DIFFERENT node) is the only case that emits WARN.
+                        // The benign race case (rpc_id was already resolved,
+                        // pending_owners cleared, late progress frame from
+                        // the legitimate owner) drops to DEBUG so it can't
+                        // drown real audit signal.
                         match session_node_id.as_deref() {
                             Some(sender_id)
                                 if crate::dispatch::node::send::rpc_id_owned_by(
@@ -347,12 +352,27 @@ async fn handle_websocket(
                                 );
                             }
                             Some(sender_id) => {
-                                tracing::warn!(
-                                    surface = "api", service = "nodes",
-                                    sender_node_id = %sender_id,
-                                    rpc_id = %rpc_id,
-                                    "forged install/progress dropped (rpc_id not owned by sender)"
-                                );
+                                let in_flight =
+                                    crate::dispatch::node::send::rpc_id_in_flight(&rpc_id);
+                                if in_flight {
+                                    // Genuine forgery: rpc_id IS in flight,
+                                    // sender does NOT own it.
+                                    tracing::warn!(
+                                        surface = "api", service = "nodes",
+                                        sender_node_id = %sender_id,
+                                        rpc_id = %rpc_id,
+                                        "forged install/progress dropped (rpc_id not owned by sender)"
+                                    );
+                                } else {
+                                    // Benign late frame: rpc_id already
+                                    // resolved or never existed. DEBUG only.
+                                    tracing::debug!(
+                                        surface = "api", service = "nodes",
+                                        sender_node_id = %sender_id,
+                                        rpc_id = %rpc_id,
+                                        "install/progress for unknown rpc_id (likely late frame post-resolve)"
+                                    );
+                                }
                             }
                             None => {
                                 tracing::warn!(
@@ -363,9 +383,14 @@ async fn handle_websocket(
                             }
                         }
                     } else {
+                        // lab-zxx5.32: include sender node_id and frame size
+                        // so an operator searching logs by node can correlate.
+                        let frame_size = parsed_value.to_string().len();
                         tracing::warn!(
                             surface = "api", service = "nodes",
-                            "install/progress notification missing params.rpc_id"
+                            sender_node_id = ?session_node_id,
+                            frame_size,
+                            "install/progress notification missing params.rpc_id; frame dropped"
                         );
                     }
                     continue;
@@ -957,7 +982,7 @@ mod tests {
     async fn websocket_initialize_metadata_status_and_logs_round_trip_into_store() {
         // Use a unique node_id to avoid global sender_registry collisions with other
         // concurrent tests that also use "device-1".
-        let node_id = format!("device-roundtrip-{}", uuid::Uuid::new_v4());
+        let node_id = format!("device-roundtrip-{}", Uuid::new_v4());
         let store = Arc::new(crate::node::store::NodeStore::default());
         let enrollment_store = Arc::new(
             EnrollmentStore::open(test_enrollment_store_path("fleet-happy"))
@@ -1101,7 +1126,7 @@ mod tests {
         assert!(log_response.get("error").is_none());
 
         socket.close(None).await.expect("close");
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         let snapshot = store.node(&node_id).await.expect("snapshot");
         assert!(!snapshot.connected, "node must be disconnected after close");
@@ -1528,7 +1553,7 @@ mod tests {
     }
 
     fn test_enrollment_store_path(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("lab-{name}-{}.json", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!("lab-{name}-{}.json", Uuid::new_v4()))
     }
 
     async fn next_text(

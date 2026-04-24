@@ -564,8 +564,21 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
                 // A concurrent `install_binary` for the same agent_id allocates
                 // its own tempfile with a distinct random suffix, so there is
                 // no cross-call delete race here.
+                //
+                // lab-zxx5.32: log on cleanup failure so operators have
+                // visibility into orphan tempfiles. Don't promote to fatal —
+                // the install_timeout is the primary signal.
                 drop(file);
-                drop(tokio::fs::remove_file(dest).await);
+                if let Err(e) = tokio::fs::remove_file(dest).await {
+                    tracing::warn!(
+                        surface = "dispatch",
+                        service = "marketplace",
+                        action = "download_archive.stall.cleanup",
+                        path = %dest.display(),
+                        error = %e,
+                        "stall-cleanup remove_file failed; partial archive retained"
+                    );
+                }
                 return Err(ToolError::Sdk {
                     sdk_kind: "install_timeout".to_string(),
                     message: format!(
@@ -579,6 +592,13 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
 
     file.flush().await.map_err(|e| {
         ToolError::internal_message(format!("flush {}: {e}", dest.display()))
+    })?;
+    // lab-zxx5.32: durably commit before returning the SHA. Without this,
+    // the returned hash matches bytes that may not be on disk if the system
+    // crashes between flush-to-userspace-buffer and disk-commit. Matches
+    // the hardening in node/install.rs::write_atomic.
+    file.sync_all().await.map_err(|e| {
+        ToolError::internal_message(format!("fsync {}: {e}", dest.display()))
     })?;
 
     Ok(format!("{:x}", hasher.finalize()))

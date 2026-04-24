@@ -86,6 +86,14 @@ const MAX_PENDING_RPC: usize = 1024;
 /// Per-node cap (lab-zxx5.27). Prevents a single silent / misbehaving node
 /// (or a runaway operator script targeting one node) from filling the
 /// global `MAX_PENDING_RPC` budget and denying service to OTHER nodes.
+///
+/// **Cap is enforced approximately.** The check + insert is not atomic, so
+/// concurrent `send_rpc_to_node` calls to the same node can each pass the
+/// cap check (count = N-1) and then both insert, briefly observing
+/// `count > cap`. The drift is bounded by the number of concurrent callers
+/// AND the global `MAX_PENDING_RPC` enforces an absolute ceiling. This is
+/// intentional — the alternative (Mutex around scan + insert) would
+/// serialize all RPC dispatches and is not worth the contention.
 const MAX_PENDING_RPC_PER_NODE: usize = 32;
 
 /// Count how many pending RPC entries currently target `node_id`.
@@ -135,6 +143,18 @@ pub fn rpc_id_owned_by(rpc_id: &str, claimed_node_id: &str) -> bool {
         .get(rpc_id)
         .map(|entry| entry.value() == claimed_node_id)
         .unwrap_or(false)
+}
+
+/// Return true when an rpc_id has a recorded owner (i.e. the RPC is still
+/// in flight, regardless of which node owns it).
+///
+/// lab-zxx5.32: lets the master reader distinguish "genuine forgery"
+/// (rpc_id in flight, owner mismatch → WARN) from "benign late frame
+/// post-resolve" (rpc_id already cleared → DEBUG). Without this, every
+/// trailing legitimate progress frame after a quick RPC resolve looks
+/// like a forgery in the logs.
+pub fn rpc_id_in_flight(rpc_id: &str) -> bool {
+    pending_owners().contains_key(rpc_id)
 }
 
 // --------------------------------------------------------------------------
@@ -411,7 +431,7 @@ mod tests {
         // The receiver must observe Closed.
         let result = rx.recv().await;
         assert!(
-            matches!(result, Err(tokio::sync::broadcast::error::RecvError::Closed)),
+            matches!(result, Err(broadcast::error::RecvError::Closed)),
             "expected Closed, got {:?}",
             result
         );
@@ -442,6 +462,17 @@ mod tests {
     #[test]
     fn rpc_id_owned_by_returns_false_for_unknown_id() {
         assert!(!rpc_id_owned_by("never-registered", "any-node"));
+    }
+
+    // lab-zxx5.32: rpc_id_in_flight discriminator for log tiering.
+    #[tokio::test]
+    async fn rpc_id_in_flight_returns_true_only_when_owner_recorded() {
+        let rpc_id = Uuid::new_v4().to_string();
+        assert!(!rpc_id_in_flight(&rpc_id), "absent id is not in flight");
+        pending_owners().insert(rpc_id.clone(), "node-x".to_string());
+        assert!(rpc_id_in_flight(&rpc_id), "registered id is in flight");
+        pending_owners().remove(&rpc_id);
+        assert!(!rpc_id_in_flight(&rpc_id), "removed id is no longer in flight");
     }
 
     #[tokio::test]

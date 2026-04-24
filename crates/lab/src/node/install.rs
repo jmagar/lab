@@ -198,18 +198,18 @@ pub async fn reject_symlink(path: &Path) -> Result<()> {
 async fn ensure_target_within_write_root(write_root: &Path, target: &Path) -> Result<()> {
     let canonical_root = tokio::fs::canonicalize(write_root)
         .await
-        .with_context(|| format!("canonicalize write root `{}`", write_root.display()))?;
+        .with_context(|| format!("canonicalize write root `{}`", red_path(write_root)))?;
     let parent = target
         .parent()
-        .ok_or_else(|| anyhow!("target `{}` has no parent directory", target.display()))?;
+        .ok_or_else(|| anyhow!("target `{}` has no parent directory", red_path(target)))?;
     let canonical_parent = tokio::fs::canonicalize(parent)
         .await
-        .with_context(|| format!("canonicalize target parent `{}`", parent.display()))?;
+        .with_context(|| format!("canonicalize target parent `{}`", red_path(parent)))?;
     if !canonical_parent.starts_with(&canonical_root) {
         return Err(anyhow!(
             "{ERR_PATH_TRAVERSAL}: target `{}` resolves outside write root `{}`",
-            target.display(),
-            write_root.display()
+            red_path(target),
+            red_path(write_root)
         ));
     }
     Ok(())
@@ -228,6 +228,15 @@ pub const ERR_PATH_TRAVERSAL: &str = "lab.err:path_traversal_rejected";
 pub const ERR_SYMLINK: &str = "lab.err:symlink_rejected";
 pub const ERR_MISSING_PARAM: &str = "lab.err:missing_param";
 pub const ERR_VALIDATION: &str = "lab.err:validation_failed";
+
+/// Redact a `Path` for embedding in error messages and tracing fields.
+/// Wrapper around `dispatch::helpers::redact_home` that takes a `&Path`
+/// and returns an owned `String`. Defends against OS-username leakage
+/// when these errors flow back to the master via `result.errors[].error`
+/// (lab-zxx5.32).
+fn red_path(p: &Path) -> String {
+    crate::dispatch::helpers::redact_home(&p.to_string_lossy())
+}
 
 /// Atomically write `contents` to `target`, preventing symlink-based TOCTOU
 /// attacks. The sequence is:
@@ -248,7 +257,7 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("target has no parent: {}", target.display()))?;
     let file_name = target
         .file_name()
-        .ok_or_else(|| anyhow::anyhow!("target has no file name: {}", target.display()))?
+        .ok_or_else(|| anyhow::anyhow!("target has no file name: {}", red_path(target)))?
         .to_string_lossy();
     let tmp = parent.join(format!(
         "{}.tmp-{}",
@@ -285,19 +294,19 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
             .mode(0o600)
             .open(&tmp)
             .await
-            .with_context(|| format!("open tmpfile {}", tmp.display()))?;
+            .with_context(|| format!("open tmpfile {}", red_path(&tmp)))?;
         f.write_all(contents)
             .await
-            .with_context(|| format!("write tmpfile {}", tmp.display()))?;
+            .with_context(|| format!("write tmpfile {}", red_path(&tmp)))?;
         f.sync_all()
             .await
-            .with_context(|| format!("fsync tmpfile {}", tmp.display()))?;
+            .with_context(|| format!("fsync tmpfile {}", red_path(&tmp)))?;
     }
     #[cfg(not(unix))]
     {
         tokio::fs::write(&tmp, contents)
             .await
-            .with_context(|| format!("write tmpfile {}", tmp.display()))?;
+            .with_context(|| format!("write tmpfile {}", red_path(&tmp)))?;
     }
 
     // Defense in depth: the tempfile should be a regular file. (Under
@@ -305,16 +314,16 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
     // failed if someone planted a symlink, but verify explicitly.)
     let meta = tokio::fs::symlink_metadata(&tmp)
         .await
-        .with_context(|| format!("stat tmpfile {}", tmp.display()))?;
+        .with_context(|| format!("stat tmpfile {}", red_path(&tmp)))?;
     if meta.file_type().is_symlink() {
         return Err(anyhow::anyhow!(
-            "tempfile {} is a symlink; refusing to rename",
-            tmp.display()
+            "{ERR_SYMLINK}: tempfile {} is a symlink; refusing to rename",
+            red_path(&tmp)
         ));
     }
 
     tokio::fs::rename(&tmp, target).await.with_context(|| {
-        format!("rename {} -> {}", tmp.display(), target.display())
+        format!("rename {} -> {}", red_path(&tmp), red_path(target))
     })?;
     // Rename succeeded — disable cleanup so the renamed file stays at `target`.
     guard.0 = None;
@@ -379,7 +388,7 @@ pub async fn handle_install_component(
     let write_root = resolve_write_root(params.scope, params.project_path.as_deref())?;
     tokio::fs::create_dir_all(&write_root)
         .await
-        .with_context(|| format!("create write root `{}`", write_root.display()))?;
+        .with_context(|| format!("create write root `{}`", red_path(&write_root)))?;
 
     let mut result = InstallComponentResult::default();
 
@@ -420,7 +429,7 @@ pub async fn handle_install_component(
         if let Some(parent) = target.parent() {
             if let Err(err) = tokio::fs::create_dir_all(parent)
                 .await
-                .with_context(|| format!("create parent dir for `{}`", target.display()))
+                .with_context(|| format!("create parent dir for `{}`", red_path(&target)))
             {
                 let msg = err.to_string();
                 send_progress(progress_tx, &InstallProgressNotification::file_error(
@@ -516,7 +525,7 @@ pub async fn handle_agent_install(
     let write_root = resolve_write_root(scope, project_path)?;
     tokio::fs::create_dir_all(&write_root)
         .await
-        .with_context(|| format!("create write root `{}`", write_root.display()))?;
+        .with_context(|| format!("create write root `{}`", red_path(&write_root)))?;
     let agents_dir = write_root.join("agents");
     let target_file = format!("{}.json", params.agent_id);
     let target = agents_dir.join(&target_file);
@@ -541,7 +550,7 @@ pub async fn handle_agent_install(
     // Ensure agents dir exists.
     if let Err(err) = tokio::fs::create_dir_all(&agents_dir)
         .await
-        .with_context(|| format!("create agents dir `{}`", agents_dir.display()))
+        .with_context(|| format!("create agents dir `{}`", red_path(&agents_dir)))
     {
         let msg = err.to_string();
         send_progress(progress_tx, &InstallProgressNotification::file_error(
