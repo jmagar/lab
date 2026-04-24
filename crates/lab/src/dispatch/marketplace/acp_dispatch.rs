@@ -12,15 +12,14 @@
 //! Remote install via fleet WS supports `npx` only — the device-side `DistType`
 //! has no `Uvx` or `Binary` variant.
 
+use std::path::PathBuf;
+
 use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
 use crate::dispatch::marketplace::acp_catalog::ACP_ACTIONS;
 use crate::dispatch::marketplace::acp_client;
-
-#[cfg(feature = "acp_registry")]
-use std::path::PathBuf;
 
 #[cfg(feature = "acp_registry")]
 use crate::api::device::fleet::{FleetDispatchError, send_text_to_device};
@@ -454,8 +453,13 @@ fn validate_archive_url(url: &str) -> Result<(), ToolError> {
 }
 
 /// Download `url` to `dest`, return the hex SHA-256 of the downloaded bytes.
+///
+/// Streaming implementation: chunks are fed to both the SHA-256 hasher and the
+/// file writer concurrently so no full-archive buffer is needed in RAM.
 async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, ToolError> {
+    use futures::StreamExt;
     use sha2::{Digest, Sha256};
+    use tokio::io::AsyncWriteExt;
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -475,18 +479,29 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
         });
     }
 
-    let bytes = resp.bytes().await.map_err(|e| ToolError::Sdk {
-        sdk_kind: "network_error".to_string(),
-        message: format!("read body from {url}: {e}"),
+    let mut file = tokio::fs::File::create(dest).await.map_err(|e| {
+        ToolError::internal_message(format!("create {}: {e}", dest.display()))
     })?;
 
-    let sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let mut hasher = Sha256::new();
+    let mut stream = resp.bytes_stream();
 
-    std::fs::write(dest, &bytes).map_err(|e| {
-        ToolError::internal_message(format!("write {}: {e}", dest.display()))
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ToolError::Sdk {
+            sdk_kind: "network_error".to_string(),
+            message: format!("read body chunk from {url}: {e}"),
+        })?;
+        hasher.update(&chunk);
+        file.write_all(&chunk).await.map_err(|e| {
+            ToolError::internal_message(format!("write chunk to {}: {e}", dest.display()))
+        })?;
+    }
+
+    file.flush().await.map_err(|e| {
+        ToolError::internal_message(format!("flush {}: {e}", dest.display()))
     })?;
 
-    Ok(sha256)
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Extract `archive` into `dest_dir` using system `tar` or `unzip`.
@@ -572,7 +587,7 @@ struct ProviderEntry {
     sha256: Option<String>,
 }
 
-fn providers_path() -> Result<std::path::PathBuf, ToolError> {
+fn providers_path() -> Result<PathBuf, ToolError> {
     let env_path = crate::config::dotenv_path().ok_or_else(|| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: "cannot determine ~/.lab path".to_string(),
