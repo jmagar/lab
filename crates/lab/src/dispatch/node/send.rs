@@ -12,7 +12,7 @@ use std::time::Duration;
 use axum::extract::ws::Message;
 use dashmap::DashMap;
 use serde_json::{Value, json};
-use tokio::sync::{RwLock, mpsc, oneshot};
+use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::dispatch::error::ToolError;
@@ -88,11 +88,65 @@ fn pending_map() -> &'static DashMap<String, oneshot::Sender<Value>> {
     MAP.get_or_init(DashMap::new)
 }
 
+// --------------------------------------------------------------------------
+// Progress broadcast registry (lab-zxx5.16).
+// --------------------------------------------------------------------------
+// Per-rpc_id tokio broadcast channel for `install/progress` notifications.
+// The master WebSocket reader publishes each inbound progress frame to the
+// sender for that rpc_id; the SSE endpoint subscribes and forwards frames
+// as `data: {json}\n\n` events. Closing the broadcast sender terminates
+// every connected SSE stream, which we do when the correlated RPC response
+// arrives (the "done" signal).
+// --------------------------------------------------------------------------
+
+/// Capacity of each per-rpc_id progress broadcast channel. Small enough to
+/// apply backpressure on slow SSE consumers; large enough to absorb normal
+/// per-file progress bursts.
+const PROGRESS_CHANNEL_CAPACITY: usize = 32;
+
+fn progress_map() -> &'static DashMap<String, broadcast::Sender<Value>> {
+    static MAP: OnceLock<DashMap<String, broadcast::Sender<Value>>> = OnceLock::new();
+    MAP.get_or_init(DashMap::new)
+}
+
+/// Subscribe to `install/progress` frames tagged with the given `rpc_id`.
+///
+/// Creates the broadcast channel on first subscription (so the sender
+/// exists before the corresponding RPC starts emitting progress). The
+/// returned `Receiver` completes when the RPC terminates (the master
+/// reader or `resolve_pending_rpc` drops the sender).
+pub fn subscribe_progress(rpc_id: &str) -> broadcast::Receiver<Value> {
+    progress_map()
+        .entry(rpc_id.to_string())
+        .or_insert_with(|| broadcast::channel(PROGRESS_CHANNEL_CAPACITY).0)
+        .subscribe()
+}
+
+/// Publish a progress frame to every subscriber of `rpc_id`.
+///
+/// Returns the number of receivers that were delivered. A missing or empty
+/// channel is a silent no-op so the master reader can call this on every
+/// install/progress notification without branching.
+pub fn publish_progress(rpc_id: &str, frame: Value) -> usize {
+    progress_map()
+        .get(rpc_id)
+        .map(|entry| entry.value().send(frame).unwrap_or(0))
+        .unwrap_or(0)
+}
+
 /// Resolve the pending oneshot for `rpc_id` with the given response value.
 ///
 /// Called by the fleet WebSocket reader when a JSON-RPC response frame
 /// arrives with a known id. Returns `true` if a pending entry was resolved.
+/// Also drops any progress broadcast sender for the same rpc_id so open
+/// SSE streams terminate cleanly (the response frame is the "done" signal —
+/// see `lab-zxx5.16`).
 pub fn resolve_pending_rpc(rpc_id: &str, response: Value) -> bool {
+    // Drop any progress broadcast sender first — SSE receivers then see
+    // `RecvError::Closed` and complete their streams. Do this before
+    // resolving the pending RPC so the caller's `await` on send_rpc_to_node
+    // is guaranteed to see the closed state if it races.
+    progress_map().remove(rpc_id);
     if let Some((_, sender)) = pending_map().remove(rpc_id) {
         // send() returns Err if the awaiter dropped (timeout branch already
         // ran) — nothing to do in that case.
@@ -250,5 +304,53 @@ mod tests {
             !pending_map().contains_key(&rpc_id),
             "pending entry must be removed after resolve"
         );
+    }
+
+    // lab-zxx5.16: subscribe_progress must create the broadcast lazily so
+    // that the SSE handler can subscribe BEFORE the correlated RPC is even
+    // sent — otherwise the first few progress frames race the subscription.
+    #[tokio::test]
+    async fn subscribe_progress_creates_sender_lazily_and_receives_published_frame() {
+        let rpc_id = Uuid::new_v4().to_string();
+        let mut rx = subscribe_progress(&rpc_id);
+        let n = publish_progress(&rpc_id, json!({"status": "started"}));
+        assert_eq!(n, 1, "one subscriber must receive the frame");
+        let frame = rx.recv().await.expect("receive");
+        assert_eq!(frame["status"], "started");
+        // Clean up.
+        progress_map().remove(&rpc_id);
+    }
+
+    // lab-zxx5.16: resolving the RPC must drop the broadcast channel so any
+    // open SSE streams see Closed and terminate. The "done" signal on the
+    // wire is the RPC response; we surface it to SSE via channel closure.
+    #[tokio::test]
+    async fn resolve_pending_rpc_closes_progress_broadcast_for_same_id() {
+        let rpc_id = Uuid::new_v4().to_string();
+        let mut rx = subscribe_progress(&rpc_id);
+
+        // Register a pending oneshot so resolve_pending_rpc returns true.
+        let (tx, _orx) = oneshot::channel::<Value>();
+        pending_map().insert(rpc_id.clone(), tx);
+
+        // Resolve. Must drop the broadcast.
+        let resolved =
+            resolve_pending_rpc(&rpc_id, json!({"id": rpc_id.clone(), "result": {}}));
+        assert!(resolved);
+        assert!(!progress_map().contains_key(&rpc_id), "broadcast must be dropped");
+
+        // The receiver must observe Closed.
+        let result = rx.recv().await;
+        assert!(
+            matches!(result, Err(tokio::sync::broadcast::error::RecvError::Closed)),
+            "expected Closed, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn publish_progress_is_noop_for_unknown_id() {
+        let delivered = publish_progress("no-such-rpc-id", json!({"x": 1}));
+        assert_eq!(delivered, 0);
     }
 }

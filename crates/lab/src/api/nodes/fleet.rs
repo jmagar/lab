@@ -315,6 +315,31 @@ async fn handle_websocket(
                     );
                     continue;
                 }
+
+                // lab-zxx5.16: install/progress notifications have
+                // `method = "install/progress"` and carry the originating
+                // rpc_id in `params.rpc_id`. These are notifications, not
+                // requests (no reply expected) — publish to the progress
+                // broadcast channel so any subscribed SSE streams forward
+                // them to clients, then drop.
+                if parsed_value.get("method").and_then(serde_json::Value::as_str)
+                    == Some("install/progress")
+                {
+                    if let Some(rpc_id) = parsed_value
+                        .get("params")
+                        .and_then(|p| p.get("rpc_id"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        let rpc_id = rpc_id.to_string();
+                        crate::dispatch::node::send::publish_progress(&rpc_id, parsed_value);
+                    } else {
+                        tracing::warn!(
+                            surface = "api", service = "nodes",
+                            "install/progress notification missing params.rpc_id"
+                        );
+                    }
+                    continue;
+                }
                 let request: RpcRequest = match serde_json::from_value(parsed_value) {
                     Ok(r) => r,
                     Err(error) => return Err(anyhow::anyhow!(error)),
