@@ -266,7 +266,7 @@ function normalizePluginManifest(raw: RawPluginManifestSummary): PluginManifestS
 export async function fetchMarketplaces(signal?: AbortSignal): Promise<Marketplace[]> {
   if (USE_MOCK_DATA) {
     signal?.throwIfAborted?.()
-    return cloneValue(MOCK_MARKETPLACES)
+    return cloneValue(MOCK_MARKETPLACES).map(normalizeMarketplace)
   }
   const marketplaces = await marketplaceAction<RawMarketplace[]>('sources.list', {}, signal)
   return marketplaces.map(normalizeMarketplace)
@@ -275,7 +275,7 @@ export async function fetchMarketplaces(signal?: AbortSignal): Promise<Marketpla
 export async function fetchPlugins(signal?: AbortSignal): Promise<Plugin[]> {
   if (USE_MOCK_DATA) {
     signal?.throwIfAborted?.()
-    return cloneValue(MOCK_PLUGINS)
+    return cloneValue(MOCK_PLUGINS).map(normalizePlugin)
   }
   const plugins = await marketplaceAction<RawPlugin[]>('plugins.list', {}, signal)
   return plugins.map(normalizePlugin)
@@ -331,7 +331,7 @@ export async function getPluginWorkspace(pluginId: string, signal?: AbortSignal)
       deployTarget: '~/.lab/plugins',
       files: artifacts.map((artifact) => ({
         path: artifact.path,
-        lang: artifact.lang === 'text' ? 'text' : artifact.lang,
+        lang: artifact.lang === 'text' ? 'markdown' : artifact.lang,
         content: artifact.content,
       })),
     }
@@ -427,13 +427,48 @@ export async function installAcpAgent(
   return marketplaceAction<AcpAgentInstallResult>('agent.install', params, signal)
 }
 
+// ── Cherry-pick ────────────────────────────────────────────────────────────
+
+export interface CherryPickPluginParams {
+  plugin_id: string
+  /** Paths of the selected PluginComponent items */
+  components: string[]
+  device_ids: string[]
+  scope: 'global' | 'project'
+  project_path?: string
+  confirm: true
+}
+
+export interface CherryPickPluginResult {
+  /** RPC ID for SSE progress stream; absent when install completes synchronously */
+  rpc_id?: string
+}
+
+export async function cherryPickPlugin(
+  params: CherryPickPluginParams,
+  signal?: AbortSignal,
+): Promise<CherryPickPluginResult> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return { rpc_id: `mock-rpc-${Date.now()}` }
+  }
+  return marketplaceAction<CherryPickPluginResult>('plugin.cherry_pick', params, signal)
+}
+
 export async function addMarketplace(
   input: { repo?: string; url?: string; name?: string; autoUpdate: boolean },
   signal?: AbortSignal,
 ): Promise<Marketplace> {
   if (USE_MOCK_DATA) {
     signal?.throwIfAborted?.()
-    const target = input.repo ?? input.url ?? `custom-${Date.now()}`
+    if (!input.repo && !input.url) {
+      throw new MarketplaceApiError(
+        'addMarketplace requires either `repo` or `url`',
+        400,
+        'missing_param',
+      )
+    }
+    const target = input.repo ?? input.url
     return normalizeMarketplace({
       id: target,
       name: input.name ?? target,
