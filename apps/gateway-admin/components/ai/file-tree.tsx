@@ -2,8 +2,8 @@
 
 import { ChevronRightIcon, FileIcon, FolderIcon, FolderOpenIcon } from "lucide-react"
 import { createContext, type HTMLAttributes, type ReactNode, useContext, useState } from "react"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { cn } from "~/lib/utils"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { cn } from "@/lib/utils"
 
 interface FileTreeContextType {
   expandedPaths: Set<string>

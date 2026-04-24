@@ -2,8 +2,8 @@
 
 import { ArrowRightIcon, MinusIcon, PackageIcon, PlusIcon } from "lucide-react"
 import { createContext, type HTMLAttributes, type ReactNode, useContext } from "react"
-import { Badge } from "~/components/ui/badge"
-import { cn } from "~/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 
 type ChangeType = "major" | "minor" | "patch" | "added" | "removed"
 

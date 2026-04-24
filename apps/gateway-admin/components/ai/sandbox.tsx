@@ -2,10 +2,10 @@
 
 import { CheckCircleIcon, ChevronDownIcon, CircleIcon, Code, XCircleIcon } from "lucide-react"
 import type { ComponentProps, ReactNode } from "react"
-import { Badge } from "~/components/ui/badge"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs"
-import { cn } from "~/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
 
 type SandboxState = "running" | "completed" | "error"
 
