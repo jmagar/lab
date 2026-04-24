@@ -36,7 +36,8 @@ export const FileTree = ({
   ...props
 }: FileTreeProps) => {
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded)
-  const expandedPaths = controlledExpanded ?? internalExpanded
+  const isControlled = controlledExpanded !== undefined
+  const expandedPaths = isControlled ? controlledExpanded : internalExpanded
 
   const togglePath = (path: string) => {
     const newExpanded = new Set(expandedPaths)
@@ -45,7 +46,9 @@ export const FileTree = ({
     } else {
       newExpanded.add(path)
     }
-    setInternalExpanded(newExpanded)
+    if (!isControlled) {
+      setInternalExpanded(newExpanded)
+    }
     onExpandedChange?.(newExpanded)
   }
 

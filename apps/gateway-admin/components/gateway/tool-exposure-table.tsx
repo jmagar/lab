@@ -90,8 +90,14 @@ export function ToolExposureTable({
   useEffect(() => {
     setMobileFilterOpen(false)
   }, [manageMode])
-  const effectiveSearch = searchValue ?? search
-  const setEffectiveSearch = onSearchValueChange ?? setSearch
+  const isSearchControlled = searchValue !== undefined
+  const effectiveSearch = isSearchControlled ? searchValue : search
+  const setEffectiveSearch = (next: string) => {
+    if (!isSearchControlled) {
+      setSearch(next)
+    }
+    onSearchValueChange?.(next)
+  }
 
   const filteredTools = useMemo(
     () => filterToolsForExposureView(tools, filter, effectiveSearch),
