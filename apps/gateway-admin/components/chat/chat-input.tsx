@@ -30,6 +30,11 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
   const [agentPickerOpen, setAgentPickerOpen] = React.useState(false)
   const [attachments, setAttachments] = React.useState<AttachmentRef[]>([])
   const [workspacePickerOpen, setWorkspacePickerOpen] = React.useState(false)
+  // Synchronous send-lock: state updates batch across a render tick, so a fast
+  // Enter+Click can fire handleSend twice before `sending` flips. The ref
+  // engages on the same tick, blocking the second caller. `sending` state is
+  // retained for UI (button disabled, textarea opacity).
+  const sendingRef = React.useRef(false)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const pickerRef = React.useRef<HTMLDivElement>(null)
   const triggerRef = React.useRef<HTMLButtonElement>(null)
@@ -43,7 +48,10 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
 
   const handleSend = async () => {
     const trimmed = value.trim()
-    if (!hasContent || disabled || sending) return
+    if (!hasContent || disabled || sendingRef.current) return
+    // Acquire the lock synchronously BEFORE any async work so a re-entrant
+    // call within the same tick observes the lock and bails.
+    sendingRef.current = true
     setSending(true)
     try {
       await onSend({ text: trimmed, attachments })
@@ -53,6 +61,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
         textareaRef.current.style.height = 'auto'
       }
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }

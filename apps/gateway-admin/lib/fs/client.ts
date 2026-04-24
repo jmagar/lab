@@ -93,7 +93,36 @@ export async function previewWorkspaceFile(
     throw await parseError(res)
   }
   const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
-  const blob = await res.blob()
+  // Stream the body via getReader() rather than res.blob(). res.blob() reads
+  // the stream to completion without honoring AbortSignal mid-flight, so a
+  // rapid attach/remove holds bytes in memory until the full body lands.
+  // With a manual reader loop we can check AbortSignal between chunks and
+  // bail early — releasing the underlying connection and freeing buffers.
+  if (!res.body) {
+    // No streaming body available; fall back to the one-shot blob read.
+    const blob = await res.blob()
+    return { blob, contentType }
+  }
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  try {
+    while (true) {
+      if (options?.signal?.aborted) {
+        // DOMException name 'AbortError' matches what fetch itself throws on
+        // signal abort, so callers (e.g. AttachmentChip) can treat both
+        // identically with a single .catch.
+        throw new DOMException('preview aborted', 'AbortError')
+      }
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) chunks.push(value)
+    }
+  } finally {
+    // cancel() is a no-op once the stream is fully read; safe to always call
+    // so an aborted loop releases the underlying connection promptly.
+    void reader.cancel().catch(() => {})
+  }
+  const blob = new Blob(chunks as BlobPart[], { type: contentType })
   return { blob, contentType }
 }
 
