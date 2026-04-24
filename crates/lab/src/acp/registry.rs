@@ -478,7 +478,7 @@ impl AcpSessionRegistry {
         session_id: &str,
         since_seq: u64,
         principal: &str,
-    ) -> Result<impl Stream<Item = Arc<AcpEvent>>, ToolError> {
+    ) -> Result<impl Stream<Item = Arc<AcpEvent>> + use<>, ToolError> {
         let session = {
             let guard = self.sessions.read().await;
             guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
