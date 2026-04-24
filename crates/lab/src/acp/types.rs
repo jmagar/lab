@@ -1,5 +1,26 @@
+//! ACP types for the `lab` binary crate.
+//!
+//! Canonical public types now live in `lab_apis::acp::types` under the `Acp*`
+//! prefix. This file re-exports them for convenience and retains the legacy
+//! `Bridge*` types that `runtime.rs` and `persistence.rs` still use
+//! (migration handled by beads 3 and 4).
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+// ---------------------------------------------------------------------------
+// Canonical re-exports from lab-apis
+// ---------------------------------------------------------------------------
+
+pub use lab_apis::acp::{
+    AcpContentBlock, AcpError, AcpEvent, AcpPermissionOption, AcpProviderHealth, AcpSessionState,
+    AcpSessionSummary, PersistenceError,
+};
+
+// ---------------------------------------------------------------------------
+// Legacy Bridge* types — still used by runtime.rs and persistence.rs
+// (do not remove until beads 3+4 migrate those files)
+// ---------------------------------------------------------------------------
 
 pub type AcpProviderKind = String;
 
