@@ -215,10 +215,10 @@ function errorKindToMessage(kind: string | undefined): string | undefined {
       return 'Workspace browsing is not configured on the server.'
     case 'not_found':
       return 'That directory no longer exists.'
-    case 'forbidden':
+    case 'permission_denied':
       return 'You do not have permission to view that directory.'
-    case 'http_only':
-      return 'Workspace browsing is unavailable over this connection.'
+    case 'internal_error':
+      return 'An unexpected error occurred while loading the directory.'
     default:
       return undefined
   }
