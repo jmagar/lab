@@ -7,12 +7,11 @@ import {
   type HTMLAttributes,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from "react"
 import { type BundledLanguage, codeToHtml, type ShikiTransformer } from "shiki"
-import { Button } from "~/components/ui/button"
-import { cn } from "~/lib/utils"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string
@@ -80,19 +79,17 @@ export const CodeBlock = ({
 }: CodeBlockProps) => {
   const [html, setHtml] = useState<string>("")
   const [darkHtml, setDarkHtml] = useState<string>("")
-  const mounted = useRef(false)
 
   useEffect(() => {
+    let active = true
     highlightCode(code, language, showLineNumbers).then(([light, dark]) => {
-      if (!mounted.current) {
-        setHtml(light)
-        setDarkHtml(dark)
-        mounted.current = true
-      }
+      if (!active) return
+      setHtml(light)
+      setDarkHtml(dark)
     })
 
     return () => {
-      mounted.current = false
+      active = false
     }
   }, [code, language, showLineNumbers])
 

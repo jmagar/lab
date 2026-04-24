@@ -11,11 +11,11 @@ import {
 } from "lucide-react"
 import type { ComponentProps, ReactNode } from "react"
 import { createContext, useContext, useEffect, useState } from "react"
-import { Button } from "~/components/ui/button"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { Input } from "~/components/ui/input"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip"
-import { cn } from "~/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
 
 export interface WebPreviewContextValue {
   url: string
@@ -144,7 +144,7 @@ export const WebPreviewUrl = ({ value, onChange, onKeyDown, ...props }: WebPrevi
   return (
     <Input
       className="h-8 flex-1 text-sm"
-      onChange={onChange ?? handleChange}
+      onChange={handleChange}
       onKeyDown={handleKeyDown}
       placeholder="Enter URL..."
       value={value ?? inputValue}
@@ -157,14 +157,23 @@ export type WebPreviewBodyProps = ComponentProps<"iframe"> & {
   loading?: ReactNode
 }
 
-export const WebPreviewBody = ({ className, loading, src, ...props }: WebPreviewBodyProps) => {
+export const WebPreviewBody = ({
+  className,
+  loading,
+  src,
+  sandbox,
+  ...props
+}: WebPreviewBodyProps) => {
   const { url } = useWebPreview()
 
   return (
     <div className="flex-1">
       <iframe
         className={cn("size-full", className)}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+        // Safe default: omit `allow-same-origin` so untrusted preview content
+        // cannot escape the sandbox by reading/writing the parent origin. Callers
+        // who know the previewed URL is trusted can pass their own `sandbox` prop.
+        sandbox={sandbox ?? "allow-scripts allow-forms allow-popups allow-presentation"}
         src={(src ?? url) || undefined}
         title="Preview"
         {...props}

@@ -8,9 +8,9 @@ import {
   XCircleIcon,
 } from "lucide-react"
 import { type ComponentProps, createContext, type HTMLAttributes, useContext } from "react"
-import { Badge } from "~/components/ui/badge"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible"
-import { cn } from "~/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { cn } from "@/lib/utils"
 
 type TestStatus = "passed" | "failed" | "skipped" | "running"
 
@@ -105,7 +105,7 @@ export const TestResultsDuration = ({
 }: TestResultsDurationProps) => {
   const { summary } = useContext(TestResultsContext)
 
-  if (!summary?.duration) return null
+  if (summary?.duration == null) return null
 
   const formatDuration = (ms: number) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(2)}s`)
 
@@ -127,8 +127,8 @@ export const TestResultsProgress = ({
 
   if (!summary) return null
 
-  const passedPercent = (summary.passed / summary.total) * 100
-  const failedPercent = (summary.failed / summary.total) * 100
+  const passedPercent = summary.total > 0 ? (summary.passed / summary.total) * 100 : 0
+  const failedPercent = summary.total > 0 ? (summary.failed / summary.total) * 100 : 0
 
   return (
     <div className={cn("space-y-2", className)} {...props}>

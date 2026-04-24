@@ -272,7 +272,7 @@ export function ToolExposureTable({
               {hiddenCount} hidden
             </span>
             {unsavedChangesIndicator}
-            {!manageMode && !hideManageModeToggle ? (
+            {hideManageModeToggle ? null : !manageMode ? (
               <Button variant="outline" size="sm" onClick={() => onManageModeChange(true)}>
                 <SlidersHorizontal className="mr-2 size-4" />
                 Manage Tools
@@ -301,12 +301,14 @@ export function ToolExposureTable({
             {hiddenCount} hidden
           </span>
           {unsavedChangesIndicator}
-          {!manageMode && !hideManageModeToggle ? (
+          {!manageMode ? (
+            hideManageModeToggle ? null : (
             <Button variant="outline" size="sm" onClick={() => onManageModeChange(true)}>
               <SlidersHorizontal className="mr-2 size-4" />
               Manage Tools
             </Button>
-          ) : (
+            )
+          ) : hideManageModeToggle ? null : (
             <>
               <div className="flex items-center gap-2 rounded-full border bg-aurora-page-bg px-3 py-1">
                 <span className="text-sm font-medium">Expose all</span>
@@ -442,7 +444,7 @@ export function ToolExposureTable({
         )}
       </div>
 
-      <div className="hidden max-h-[60vh] overflow-auto rounded-lg border md:block">
+      <div className="aurora-scrollbar hidden max-h-[60vh] overflow-auto rounded-lg border md:block">
         <Table>
           <TableHeader>
             <TableRow className="sticky top-0 z-10 bg-aurora-page-bg">
