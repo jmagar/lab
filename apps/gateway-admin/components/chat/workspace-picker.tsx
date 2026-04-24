@@ -59,6 +59,11 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
 
     listWorkspace(cwd || undefined, { signal: controller.signal })
       .then((response) => {
+        // Re-check abort BEFORE committing to state: fetch resolves and
+        // `res.json()` consumes the body before this lands; without this
+        // guard, a stale response from the previous cwd can overwrite the
+        // current directory when the user navigates quickly.
+        if (controller.signal.aborted) return
         setEntries(response.entries)
         setTruncated(response.truncated)
       })
