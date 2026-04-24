@@ -28,7 +28,9 @@ impl IntoResponse for ToolError {
             "oauth_needs_reauth" => StatusCode::UNAUTHORIZED,
             "oauth_state_invalid" => StatusCode::BAD_REQUEST,
             "forbidden" => StatusCode::FORBIDDEN,
-            "unknown_action" | "unknown_subaction" | "unknown_instance" => StatusCode::BAD_REQUEST,
+            "unknown_action" | "unknown_subaction" | "unknown_instance" | "ambiguous_tool" => {
+                StatusCode::BAD_REQUEST
+            }
             "network_error"
             | "server_error"
             | "upstream_error"
