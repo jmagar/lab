@@ -71,33 +71,46 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
 }
 
 async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError> {
-    match action {
-        "help" => Ok(help_payload("fs", ACTIONS)),
-        "schema" => {
-            let a = require_str(&params, "action")?;
-            action_schema(ACTIONS, a)
-        }
-        #[cfg(feature = "fs")]
-        "fs.list" => {
-            let root = require_workspace_root()?;
-            list_action(root, params).await
-        }
-        #[cfg(feature = "fs")]
-        "fs.preview" => Err(ToolError::Sdk {
+    // On the MCP/CLI path, fs.preview is not serviceable — the streaming
+    // byte body cannot be returned through a JSON action-dispatch envelope.
+    // Surface the stable `http_only` kind BEFORE resolving the workspace
+    // root so callers get a deterministic error regardless of config state.
+    #[cfg(feature = "fs")]
+    if action == "fs.preview" {
+        return Err(ToolError::Sdk {
             sdk_kind: "http_only".to_string(),
             message: "fs.preview is not available on the MCP surface; use GET /v1/fs/preview"
                 .to_string(),
-        }),
-        unknown => Err(ToolError::UnknownAction {
-            message: format!("unknown action `fs.{unknown}`"),
-            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
-            hint: None,
-        }),
+        });
+    }
+
+    #[cfg(feature = "fs")]
+    {
+        let root = require_workspace_root()?;
+        dispatch_with_root(root, action, params).await
+    }
+
+    #[cfg(not(feature = "fs"))]
+    {
+        // Without the `fs` feature, only built-ins are exposed.
+        match action {
+            "help" => Ok(help_payload("fs", ACTIONS)),
+            "schema" => {
+                let a = require_str(&params, "action")?;
+                action_schema(ACTIONS, a)
+            }
+            unknown => Err(ToolError::UnknownAction {
+                message: format!("unknown action `fs.{unknown}`"),
+                valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+                hint: None,
+            }),
+        }
     }
 }
 
-/// Dispatch entry point for adapters that already resolved the workspace
-/// root from `AppState`. Built-ins still fall through to the shared helpers.
+/// Single dispatch body. `dispatch()` resolves the workspace root from
+/// `LAB_WORKSPACE_ROOT` (or returns `workspace_not_configured`) and
+/// delegates here; HTTP handlers pass the canonical root from `AppState`.
 #[cfg(feature = "fs")]
 pub async fn dispatch_with_root(
     root: &Path,
