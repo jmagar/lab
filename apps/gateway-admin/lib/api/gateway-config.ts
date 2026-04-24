@@ -15,6 +15,10 @@ export function marketplaceActionUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/marketplace`
 }
 
+export function nodesUrl(baseUrl?: string): string {
+  return `${normalizeGatewayApiBase(baseUrl)}/nodes`
+}
+
 export function gatewayDetailHref(id: string): string {
   return `/gateway/?id=${encodeURIComponent(id)}`
 }

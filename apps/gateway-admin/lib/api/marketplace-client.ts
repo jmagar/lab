@@ -1,4 +1,14 @@
-import type { Marketplace, Plugin, Artifact, ArtifactLang, MarketplaceSource } from '../types/marketplace.js'
+import type {
+  Marketplace,
+  Plugin,
+  Artifact,
+  ArtifactLang,
+  MarketplaceSource,
+  MarketplaceRuntime,
+  PluginComponent,
+  PluginInstallState,
+  PluginManifestSummary,
+} from '../types/marketplace.js'
 import { marketplaceActionUrl } from './gateway-config.ts'
 import { performServiceAction, type ServiceActionError } from './service-action-client.ts'
 import type {
@@ -160,6 +170,9 @@ export function detectArtifactLang(path: string): ArtifactLang {
 type RawMarketplace = Pick<Marketplace, 'id' | 'name' | 'owner'> & Partial<Marketplace>
 type RawPlugin = Pick<Plugin, 'id' | 'name' | 'tags' | 'installed'> & Partial<Plugin>
 type RawArtifact = Omit<Artifact, 'lang'> & { lang?: ArtifactLang | null }
+type RawPluginComponent = Partial<PluginComponent> & Pick<PluginComponent, 'path' | 'name'>
+type RawPluginInstallState = Partial<PluginInstallState> & Pick<PluginInstallState, 'installed'>
+type RawPluginManifestSummary = Partial<PluginManifestSummary>
 
 function normalizeMarketplace(raw: RawMarketplace): Marketplace {
   const source = (raw.source ?? 'local') as MarketplaceSource
@@ -200,6 +213,14 @@ function normalizePlugin(raw: RawPlugin): Plugin {
   const marketplaceId = raw.marketplaceId ?? raw.mkt ?? ''
   const version = raw.version ?? raw.ver ?? ''
   const description = raw.description ?? raw.desc ?? ''
+  const runtime = raw.runtime as MarketplaceRuntime | undefined
+  const components = raw.components?.map((component) => normalizePluginComponent(component as RawPluginComponent))
+  const installState = raw.installState
+    ? normalizePluginInstallState(raw.installState as RawPluginInstallState)
+    : undefined
+  const manifest = raw.manifest
+    ? normalizePluginManifest(raw.manifest as RawPluginManifestSummary)
+    : undefined
 
   return {
     ...raw,
@@ -209,6 +230,36 @@ function normalizePlugin(raw: RawPlugin): Plugin {
     mkt: marketplaceId,
     ver: version,
     desc: description,
+    runtime,
+    components,
+    installState,
+    manifest,
+  }
+}
+
+function normalizePluginComponent(raw: RawPluginComponent): PluginComponent {
+  return {
+    kind: (raw.kind ?? 'files') as PluginComponent['kind'],
+    path: raw.path,
+    name: raw.name,
+    metadata: raw.metadata,
+  }
+}
+
+function normalizePluginInstallState(raw: RawPluginInstallState): PluginInstallState {
+  return {
+    installed: raw.installed,
+    enabled: raw.enabled,
+    installedAt: raw.installedAt,
+    updatedAt: raw.updatedAt,
+  }
+}
+
+function normalizePluginManifest(raw: RawPluginManifestSummary): PluginManifestSummary {
+  return {
+    description: raw.description,
+    version: raw.version,
+    interface: raw.interface,
   }
 }
 
@@ -245,6 +296,14 @@ export async function getArtifacts(pluginId: string, signal?: AbortSignal): Prom
     ...artifact,
     lang: artifact.lang ?? detectArtifactLang(artifact.path),
   }))
+}
+
+export async function getPluginComponents(pluginId: string, signal?: AbortSignal): Promise<PluginComponent[]> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return []
+  }
+  return marketplaceAction<PluginComponent[]>('plugin.components', { id: pluginId }, signal)
 }
 
 export async function installPlugin(pluginId: string, signal?: AbortSignal): Promise<void> {
@@ -335,6 +394,37 @@ export async function previewPluginWorkspaceDeploy(
     { id: pluginId },
     signal,
   )
+}
+
+export interface AcpAgentInstallParams {
+  agent_id: string
+  device_ids: string[]
+  scope: 'global' | 'project'
+  project_path?: string
+  env_vars?: Record<string, string>
+}
+
+export interface AcpAgentInstallDeviceResult {
+  device_id: string
+  ok: boolean
+  message?: string
+}
+
+export interface AcpAgentInstallResult {
+  results: AcpAgentInstallDeviceResult[]
+}
+
+export async function installAcpAgent(
+  params: AcpAgentInstallParams,
+  signal?: AbortSignal,
+): Promise<AcpAgentInstallResult> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return {
+      results: params.device_ids.map(device_id => ({ device_id, ok: true })),
+    }
+  }
+  return marketplaceAction<AcpAgentInstallResult>('agent.install', params, signal)
 }
 
 export async function addMarketplace(
