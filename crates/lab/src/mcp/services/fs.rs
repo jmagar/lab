@@ -4,7 +4,7 @@
 //!
 //! # Why this file filters `fs.preview` out
 //!
-//! `crate::dispatch::fs::ACTIONS` contains both `fs.list` and `fs.preview`
+//! `crate::dispatch::fs::catalog::ACTIONS` contains both `fs.list` and `fs.preview`
 //! — the latter is intentionally **not** exposed over MCP. An LLM agent
 //! constructs the request body, so no param-based confirmation gate is
 //! safe against prompt injection: an attacker who gets a prompt-injection
@@ -35,7 +35,12 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str};
 /// MCP-exposed slice of the fs action catalog. Filters out `fs.preview`.
 pub static ACTIONS: &[ActionSpec] = MCP_ACTIONS;
 
-/// Compile-time filtered view of [`crate::dispatch::fs::ACTIONS`].
+/// Canonical action names that are intentionally filtered out of the MCP
+/// surface (HTTP-only). Shared between the dispatch rejection arm and the
+/// coverage test so adding a new HTTP-only action touches exactly one place.
+const HTTP_ONLY_ACTIONS: &[&str] = &["fs.preview"];
+
+/// Compile-time filtered view of [`crate::dispatch::fs::catalog::ACTIONS`].
 ///
 /// `fs.preview` must not be discoverable on MCP (see module-level doc on the
 /// prompt-injection exfil risk). Since `&'static [ActionSpec]` cannot be
@@ -82,7 +87,11 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let a = require_str(&params, "action")?;
             action_schema(MCP_ACTIONS, a)
         }
-        "fs.preview" => Err(http_only_error("fs.preview", "/v1/fs/preview")),
+        other if HTTP_ONLY_ACTIONS.contains(&other) => {
+            // All HTTP-only actions today live under /v1/fs/<tail>.
+            let tail = other.strip_prefix("fs.").unwrap_or(other);
+            Err(http_only_error(other, &format!("/v1/fs/{tail}")))
+        }
         other => crate::dispatch::fs::dispatch(other, params).await,
     }
 }
@@ -99,16 +108,22 @@ mod tests {
     }
 
     #[test]
-    fn mcp_actions_subset_of_canonical() {
-        let canonical: Vec<&str> = crate::dispatch::fs::ACTIONS
-            .iter()
-            .map(|a| a.name)
-            .collect();
-        for a in MCP_ACTIONS {
+    fn mcp_actions_cover_canonical_except_http_only() {
+        let mcp_names: Vec<&str> = MCP_ACTIONS.iter().map(|a| a.name).collect();
+        for canonical in crate::dispatch::fs::catalog::ACTIONS {
+            if HTTP_ONLY_ACTIONS.contains(&canonical.name) {
+                // Intentionally excluded — assert it's NOT in MCP.
+                assert!(
+                    !mcp_names.contains(&canonical.name),
+                    "`{}` is in HTTP_ONLY_ACTIONS but still present in MCP_ACTIONS",
+                    canonical.name
+                );
+                continue;
+            }
             assert!(
-                canonical.contains(&a.name),
-                "MCP action `{}` missing from canonical catalog",
-                a.name
+                mcp_names.contains(&canonical.name),
+                "canonical action `{}` missing from MCP_ACTIONS — add it to MCP_ACTIONS or HTTP_ONLY_ACTIONS",
+                canonical.name
             );
         }
     }
@@ -122,7 +137,7 @@ mod tests {
     #[test]
     fn mcp_actions_deep_match_canonical() {
         for mcp in MCP_ACTIONS {
-            let canonical = crate::dispatch::fs::ACTIONS
+            let canonical = crate::dispatch::fs::catalog::ACTIONS
                 .iter()
                 .find(|c| c.name == mcp.name)
                 .unwrap_or_else(|| {
