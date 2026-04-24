@@ -37,13 +37,33 @@ impl AcpSessionRegistry {
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|_| ".".to_string())
         });
-        let registry = Self {
-            sessions: Arc::new(RwLock::new(HashMap::new())),
+        let sessions = Self::load_sessions_sync(&persistence);
+        Self {
+            sessions: Arc::new(RwLock::new(sessions)),
             persistence,
             default_cwd,
-        };
-        registry.hydrate();
-        registry
+        }
+    }
+
+    fn load_sessions_sync(persistence: &JsonFileAcpPersistence) -> HashMap<String, SessionRecord> {
+        let mut map = HashMap::new();
+        for summary in persistence.load_sessions_sync() {
+            let events = persistence.load_events_sync(&summary.id);
+            let next_seq = events.last().map(|event| event.seq + 1).unwrap_or(1);
+            let (broadcast_tx, _) = broadcast::channel(256);
+            map.insert(
+                summary.id.clone(),
+                SessionRecord {
+                    summary,
+                    events,
+                    next_seq,
+                    runtime: None,
+                    event_tx: None,
+                    broadcast_tx,
+                },
+            );
+        }
+        map
     }
 
     #[must_use]
@@ -182,33 +202,6 @@ impl AcpSessionRegistry {
             .cloned()
             .collect();
         Ok((backlog, record.broadcast_tx.subscribe()))
-    }
-
-    fn hydrate(&self) {
-        let sessions = self.persistence.load_sessions_sync();
-        let mut map = HashMap::new();
-        for summary in sessions {
-            let events = self.persistence.load_events_sync(&summary.id);
-            let next_seq = events.last().map(|event| event.seq + 1).unwrap_or(1);
-            let (broadcast_tx, _) = broadcast::channel(256);
-            map.insert(
-                summary.id.clone(),
-                SessionRecord {
-                    summary,
-                    events,
-                    next_seq,
-                    runtime: None,
-                    event_tx: None,
-                    broadcast_tx,
-                },
-            );
-        }
-
-        let mut guard = self
-            .sessions
-            .try_write()
-            .expect("ACP session registry lock unavailable during hydrate");
-        *guard = map;
     }
 
     fn spawn_event_forwarder(self: &Arc<Self>, session_id: String, mut event_rx: mpsc::UnboundedReceiver<PendingBridgeEvent>) {
