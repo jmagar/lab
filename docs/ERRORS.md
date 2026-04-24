@@ -57,6 +57,14 @@ Dispatch layers may add the following kinds on top of SDK errors:
 - `conflict` — resource already exists with the given identifier; HTTP 409
 - `ambiguous_tool` — unqualified tool name resolved to multiple upstream gateway candidates; envelope carries `valid: Vec<String>` of fully-qualified `{upstream}::{tool}` names the caller must choose from. HTTP 409.
 
+### Fleet-WS install hardening kinds (lab-zxx5.18)
+
+- `symlink_rejected` — the target write path (or a component along it) is a symlink. Emitted by `marketplace.install_component` when `write_atomic`'s defense-in-depth check finds the tempfile is a symlink or the target's parent chain resolves through a symlink outside `write_root`. HTTP 422.
+- `path_traversal_rejected` — the relative component path contains `..`, `.`, or is absolute; or the canonicalized target resolves outside the install root. Raised before any write. HTTP 422.
+- `content_too_large` — a single component exceeds `MAX_COMPONENT_FILE_SIZE` (5 MB) or the aggregate of all components in one `install_component` RPC exceeds `MAX_COMPONENT_AGGREGATE_SIZE` (32 MB). Enforced before the handler is spawned so oversized payloads can't OOM the node or lock a worker permit. HTTP 413.
+- `invalid_encoding` — an install_component `files[].encoding` is missing, not `"utf8"` or `"base64"`, or the base64 payload fails to decode. No implicit fallback — explicit encoding is required to defeat utf8/base64 ambiguity. HTTP 422.
+- `install_timeout` — the `agent.install` download watchdog fired (no bytes received for 30s), or the overall RPC ack timeout elapsed. The partial tempfile is cleaned up on fire. HTTP 504.
+
 ### mcpregistry-specific kinds
 
 - `no_remote_transport` — `server.install` called on a server with no HTTP remote transports (stdio-only); cannot be added as a gateway upstream
@@ -288,6 +296,11 @@ Default mapping expectations:
 - `unknown_instance` -> `400 Bad Request`
 - `ambiguous_tool` -> `409 Conflict`
 - `conflict` -> `409 Conflict`
+- `symlink_rejected` -> `422 Unprocessable Entity`
+- `path_traversal_rejected` -> `422 Unprocessable Entity`
+- `invalid_encoding` -> `422 Unprocessable Entity`
+- `content_too_large` -> `413 Payload Too Large`
+- `install_timeout` -> `504 Gateway Timeout`
 - `confirmation_required` -> `422 Unprocessable Entity`
 - `sync_in_progress` -> `503 Service Unavailable`
 - `invalid_grant` -> `400 Bad Request`
