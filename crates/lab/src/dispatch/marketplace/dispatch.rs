@@ -28,6 +28,9 @@ pub async fn dispatch_with_port(
     if action.starts_with("agent.") {
         return acp_dispatch::dispatch_acp(action, params).await;
     }
+    if action.starts_with("mcp.") {
+        return crate::dispatch::marketplace::mcp_dispatch::dispatch_mcp(action, params).await;
+    }
     match action {
         "help" => Ok(help_payload("marketplace", ACTIONS)),
         "schema" => {
