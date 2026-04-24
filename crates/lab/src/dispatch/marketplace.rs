@@ -5,6 +5,9 @@
 //! merges with each marketplace's `.claude-plugin/marketplace.json`, and shells
 //! out to `claude plugin install/uninstall` for destructive operations.
 
+mod acp_catalog;
+mod acp_client;
+mod acp_dispatch;
 mod catalog;
 mod client;
 mod dispatch;
