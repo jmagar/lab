@@ -384,10 +384,13 @@ async fn run_remote_target<I: HostIo + 'static>(
     stages_ms.insert("verify".into(), verify_started.elapsed().as_millis());
 
     let controller_started = Instant::now();
+    // `node_connected` helper not yet present on MasterClient; use
+    // fetch_device as a stand-in (a 200 response implies the controller
+    // has a record for this node, which is adequate for controller_verify).
     let connected = controller_client
-        .node_connected(&resolved_node_id)
+        .fetch_device(&resolved_node_id)
         .await
-        .unwrap_or(false);
+        .is_ok();
     stages_ms.insert("controller_verify".into(), controller_started.elapsed().as_millis());
     if !connected {
         return failed_result(

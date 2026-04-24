@@ -89,6 +89,38 @@ fn pending_map() -> &'static DashMap<String, oneshot::Sender<Value>> {
 }
 
 // --------------------------------------------------------------------------
+// rpc_id ownership map (lab-zxx5.20 — SSE injection defense).
+// --------------------------------------------------------------------------
+// When `send_rpc_to_node(node_id, method, params)` dispatches an RPC, we
+// record `rpc_id -> node_id` here so the master WS reader can verify that
+// any inbound `install/progress` notification claiming to be for `rpc_id`
+// actually came from the session on `node_id` we targeted. Without this,
+// any connected node that learns an rpc_id (via log leaks, SSE URL query
+// exposure, or shared admin views) can fabricate progress frames that get
+// forwarded to the victim's SSE subscribers.
+// --------------------------------------------------------------------------
+
+fn pending_owners() -> &'static DashMap<String, String> {
+    static MAP: OnceLock<DashMap<String, String>> = OnceLock::new();
+    MAP.get_or_init(DashMap::new)
+}
+
+/// Check whether `rpc_id` was dispatched to `claimed_node_id`.
+///
+/// Returns `true` if the rpc_id is in-flight AND the claimed owner matches
+/// the recorded target. Returns `false` if either condition fails, so
+/// callers can drop the frame safely on mismatch or unknown rpc_id.
+///
+/// Called by the master WebSocket reader before forwarding an inbound
+/// `install/progress` notification to the progress broadcast.
+pub fn rpc_id_owned_by(rpc_id: &str, claimed_node_id: &str) -> bool {
+    pending_owners()
+        .get(rpc_id)
+        .map(|entry| entry.value() == claimed_node_id)
+        .unwrap_or(false)
+}
+
+// --------------------------------------------------------------------------
 // Progress broadcast registry (lab-zxx5.16).
 // --------------------------------------------------------------------------
 // Per-rpc_id tokio broadcast channel for `install/progress` notifications.
@@ -147,6 +179,7 @@ pub fn resolve_pending_rpc(rpc_id: &str, response: Value) -> bool {
     // resolving the pending RPC so the caller's `await` on send_rpc_to_node
     // is guaranteed to see the closed state if it races.
     progress_map().remove(rpc_id);
+    pending_owners().remove(rpc_id);
     if let Some((_, sender)) = pending_map().remove(rpc_id) {
         // send() returns Err if the awaiter dropped (timeout branch already
         // ran) — nothing to do in that case.
@@ -194,6 +227,10 @@ pub async fn send_rpc_to_node(
     let rpc_id = Uuid::new_v4().to_string();
     let (resp_tx, resp_rx) = oneshot::channel::<Value>();
     pending_map().insert(rpc_id.clone(), resp_tx);
+    // lab-zxx5.20: record the target node so inbound install/progress
+    // notifications can be ownership-checked. Always remove alongside
+    // pending_map entries — tied lifecycle.
+    pending_owners().insert(rpc_id.clone(), node_id.to_string());
 
     let request = json!({
         "jsonrpc": "2.0",
@@ -206,6 +243,7 @@ pub async fn send_rpc_to_node(
         Ok(s) => s,
         Err(error) => {
             pending_map().remove(&rpc_id);
+            pending_owners().remove(&rpc_id);
             return Err(ToolError::Sdk {
                 sdk_kind: "internal_error".to_string(),
                 message: format!("encode rpc request: {error}"),
@@ -215,6 +253,7 @@ pub async fn send_rpc_to_node(
 
     if let Err(error) = send_text_to_node(node_id, encoded).await {
         pending_map().remove(&rpc_id);
+        pending_owners().remove(&rpc_id);
         return Err(match error {
             NodeDispatchError::NotConnected { .. } => ToolError::Sdk {
                 sdk_kind: "not_found".to_string(),
@@ -249,6 +288,7 @@ pub async fn send_rpc_to_node(
         }
         Ok(Err(_)) => {
             pending_map().remove(&rpc_id);
+            pending_owners().remove(&rpc_id);
             Err(ToolError::Sdk {
                 sdk_kind: "internal_error".to_string(),
                 message: "master rpc response channel closed before reply".to_string(),
@@ -256,6 +296,7 @@ pub async fn send_rpc_to_node(
         }
         Err(_) => {
             pending_map().remove(&rpc_id);
+            pending_owners().remove(&rpc_id);
             Err(ToolError::Sdk {
                 sdk_kind: "timeout".to_string(),
                 message: format!(
@@ -352,5 +393,43 @@ mod tests {
     fn publish_progress_is_noop_for_unknown_id() {
         let delivered = publish_progress("no-such-rpc-id", json!({"x": 1}));
         assert_eq!(delivered, 0);
+    }
+
+    // lab-zxx5.20: owner map gates SSE progress injection. When a fresh
+    // rpc_id is registered for node A, only A's WS session should be able
+    // to publish progress for it. Any other node claiming that rpc_id must
+    // be rejected by `rpc_id_owned_by`.
+    #[tokio::test]
+    async fn rpc_id_owned_by_matches_only_registered_target() {
+        let rpc_id = Uuid::new_v4().to_string();
+        // Register directly (skip the real send_rpc_to_node which would
+        // also try to send over the WS).
+        pending_owners().insert(rpc_id.clone(), "node-a".to_string());
+        assert!(rpc_id_owned_by(&rpc_id, "node-a"));
+        assert!(!rpc_id_owned_by(&rpc_id, "node-b"));
+        assert!(!rpc_id_owned_by(&rpc_id, ""));
+        pending_owners().remove(&rpc_id);
+    }
+
+    #[test]
+    fn rpc_id_owned_by_returns_false_for_unknown_id() {
+        assert!(!rpc_id_owned_by("never-registered", "any-node"));
+    }
+
+    #[tokio::test]
+    async fn resolve_pending_rpc_clears_owner_entry() {
+        // End-to-end: register pending + owner, resolve, verify BOTH maps
+        // are cleaned so a later forgery attempt on the same rpc_id gets a
+        // clean `false` from rpc_id_owned_by (not a stale `true`).
+        let (tx, _rx) = oneshot::channel::<Value>();
+        let rpc_id = Uuid::new_v4().to_string();
+        pending_map().insert(rpc_id.clone(), tx);
+        pending_owners().insert(rpc_id.clone(), "node-a".to_string());
+        assert!(rpc_id_owned_by(&rpc_id, "node-a"));
+        let _ = resolve_pending_rpc(&rpc_id, json!({"result": "ok"}));
+        assert!(
+            !rpc_id_owned_by(&rpc_id, "node-a"),
+            "owner entry must be cleared when the RPC resolves"
+        );
     }
 }

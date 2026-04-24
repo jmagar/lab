@@ -569,7 +569,7 @@ fn gateway_admin_app_dir_for_assets(web: &crate::config::WebPreferences) -> Opti
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
         .or_else(|| web.assets_dir.clone())
-        .unwrap_or(out_dir);
+        .unwrap_or_else(|| out_dir.clone());
 
     let candidate = std::fs::canonicalize(&candidate).unwrap_or(candidate);
     let out_dir = std::fs::canonicalize(&out_dir).unwrap_or(out_dir);

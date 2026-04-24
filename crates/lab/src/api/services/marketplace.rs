@@ -1,8 +1,6 @@
 //! HTTP route group for the `marketplace` service.
 
 use std::convert::Infallible;
-use std::future::Future;
-use std::pin::Pin;
 use std::time::Duration;
 
 use axum::{
@@ -37,15 +35,13 @@ pub fn routes(_state: AppState) -> Router<AppState> {
 pub(crate) struct WsNodeRpcPort;
 
 impl NodeRpcPort for WsNodeRpcPort {
-    fn send_rpc(
+    async fn send_rpc(
         &self,
         node_id: &str,
         method: &str,
         params: Value,
-    ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + '_>> {
-        let node_id = node_id.to_string();
-        let method = method.to_string();
-        Box::pin(async move { send_rpc_to_node(&node_id, &method, params).await })
+    ) -> Result<Value, ToolError> {
+        send_rpc_to_node(node_id, method, params).await
     }
 }
 

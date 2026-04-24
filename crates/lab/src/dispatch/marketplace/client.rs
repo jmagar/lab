@@ -6,11 +6,9 @@
 //! `claude plugin install/uninstall`.
 
 use std::collections::HashSet;
-use std::future::Future;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::path::PathBuf;
-use std::pin::Pin;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -24,13 +22,16 @@ use crate::dispatch::helpers::env_non_empty;
 /// that wraps `dispatch::node::send::send_rpc_to_node`). CLI/MCP surfaces
 /// that have no direct WS session use `NoopNodeRpcPort`, which returns a
 /// structured `not_connected` error for any call.
+///
+/// lab-zxx5.26: uses native `async fn in trait` (Rust 1.75+) per project
+/// convention — no `#[async_trait]`, no hand-rolled `Pin<Box<dyn Future>>`.
 pub trait NodeRpcPort: Send + Sync {
     fn send_rpc(
         &self,
         node_id: &str,
         method: &str,
         params: Value,
-    ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + '_>>;
+    ) -> impl std::future::Future<Output = Result<Value, ToolError>> + Send;
 }
 
 /// Fallback port used by surfaces that can't reach the WS sender registry
@@ -39,20 +40,17 @@ pub trait NodeRpcPort: Send + Sync {
 pub(super) struct NoopNodeRpcPort;
 
 impl NodeRpcPort for NoopNodeRpcPort {
-    fn send_rpc(
+    async fn send_rpc(
         &self,
         node_id: &str,
         _method: &str,
         _params: Value,
-    ) -> Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send + '_>> {
-        let node_id = node_id.to_string();
-        Box::pin(async move {
-            Err(ToolError::Sdk {
-                sdk_kind: "not_connected".into(),
-                message: format!(
-                    "node RPC to `{node_id}` is unavailable on this surface (use the HTTP API)"
-                ),
-            })
+    ) -> Result<Value, ToolError> {
+        Err(ToolError::Sdk {
+            sdk_kind: "not_connected".into(),
+            message: format!(
+                "node RPC to `{node_id}` is unavailable on this surface (use the HTTP API)"
+            ),
         })
     }
 }
@@ -396,20 +394,20 @@ pub(crate) use super::dispatch::walk_artifacts;
 /// var is set. Do NOT fall back to `/root` — a silent root fallback is the
 /// Docker footgun this helper was created to avoid. Callers that legitimately
 /// need a home-less path should pass one in explicitly.
-pub(crate) fn home_dir() -> Result<std::path::PathBuf, ToolError> {
+pub(crate) fn home_dir() -> Result<PathBuf, ToolError> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(std::path::PathBuf::from)
+        .map(PathBuf::from)
         .ok_or_else(|| io_internal("HOME env var not set"))
 }
 
 /// Path to the Codex TOML config file (`~/.codex/config.toml`).
-pub(crate) fn codex_config_path() -> Result<std::path::PathBuf, ToolError> {
+pub(crate) fn codex_config_path() -> Result<PathBuf, ToolError> {
     Ok(home_dir()?.join(".codex").join("config.toml"))
 }
 
 /// Root of the Codex cache directory (`~/.codex/cache/`).
-pub(crate) fn codex_cache_root() -> Result<std::path::PathBuf, ToolError> {
+pub(crate) fn codex_cache_root() -> Result<PathBuf, ToolError> {
     Ok(home_dir()?.join(".codex").join("cache"))
 }
 

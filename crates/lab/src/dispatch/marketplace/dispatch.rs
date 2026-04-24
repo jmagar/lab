@@ -20,10 +20,10 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     dispatch_with_port(action, params, &client::NoopNodeRpcPort).await
 }
 
-pub async fn dispatch_with_port(
+pub async fn dispatch_with_port<P: client::NodeRpcPort + ?Sized>(
     action: &str,
     params: Value,
-    port: &dyn client::NodeRpcPort,
+    port: &P,
 ) -> Result<Value, ToolError> {
     if action.starts_with("agent.") {
         return acp_dispatch::dispatch_acp(action, params).await;
@@ -940,9 +940,9 @@ struct CherryPickResult {
     results: Vec<CherryPickNodeResult>,
 }
 
-async fn plugin_cherry_pick(
+async fn plugin_cherry_pick<P: client::NodeRpcPort + ?Sized>(
     cp: params::CherryPickParams,
-    port: &dyn client::NodeRpcPort,
+    port: &P,
 ) -> Result<Value, ToolError> {
     let rpc_params = serde_json::json!({
         "plugin_id": cp.plugin_id,

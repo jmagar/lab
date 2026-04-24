@@ -22,7 +22,7 @@ use crate::dispatch::marketplace::acp_catalog::ACP_ACTIONS;
 use crate::dispatch::marketplace::acp_client;
 
 #[cfg(feature = "acp_registry")]
-use crate::dispatch::node::{NodeDispatchError, send_text_to_node};
+use crate::dispatch::node::send::send_rpc_to_node;
 
 #[cfg(feature = "acp_registry")]
 use lab_apis::acp_registry::client::AcpRegistryClient;
@@ -286,41 +286,25 @@ async fn install_remote(
         }
     };
 
-    // JSON-RPC 2.0 fire-and-forget — node processes async; we don't wait for
-    // a response because `send_text_to_node` is a one-way channel. ID is 0
-    // since no response correlation is needed here.
-    let msg = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 0,
-        "method": "agent.install",
-        "params": {
-            "agent_id": agent_id,
-            "distribution": {
-                "type": "npx",
-                "package": package,
-                "version": version,
-            }
+    // lab-zxx5.21: route through send_rpc_to_node so a UUIDv4 rpc_id is
+    // generated and response/progress correlation uses the same machinery
+    // as cherry-pick. Previously used send_text_to_node with hard-coded
+    // id=0, which collided under concurrency and blocked SSE progress.
+    let params = serde_json::json!({
+        "agent_id": agent_id,
+        "distribution": {
+            "type": "npx",
+            "package": package,
+            "version": version,
         }
-    })
-    .to_string();
+    });
 
-    send_text_to_node(node_id, msg)
-        .await
-        .map_err(|e| match e {
-            NodeDispatchError::NotConnected { .. } => ToolError::Sdk {
-                sdk_kind: "not_found".to_string(),
-                message: format!("node `{node_id}` is not connected"),
-            },
-            NodeDispatchError::ChannelClosed { .. } => ToolError::Sdk {
-                sdk_kind: "network_error".to_string(),
-                message: format!("send channel for node `{node_id}` closed (race with disconnect)"),
-            },
-        })?;
+    let result = send_rpc_to_node(node_id, "agent.install", params).await?;
 
     Ok(serde_json::json!({
         "node_id": node_id,
         "agent_id": agent_id,
-        "queued": true,
+        "result": result,
     }))
 }
 
@@ -537,6 +521,12 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
 }
 
 /// Extract `archive` into `dest_dir` using system `tar` or `unzip`.
+///
+/// lab-zxx5.24: zip-slip defense. BSD tar (macOS) and older unzip versions
+/// don't reliably reject archive entries with `../` or absolute paths, so
+/// after extraction we walk `dest_dir` and canonicalize-check every entry
+/// against the extraction root. Any path that escapes is a fatal error and
+/// the partial extraction is cleaned up.
 fn extract_archive(
     archive: &std::path::Path,
     dest_dir: &std::path::Path,
@@ -571,6 +561,68 @@ fn extract_archive(
             sdk_kind: "internal_error".to_string(),
             message: format!("extraction failed (exit {})", exit),
         });
+    }
+
+    // Post-extract containment check. Canonicalize the root ONCE, then walk
+    // and assert every entry's canonical path starts with it. We bail on
+    // the first escape — a zip-slip archive is malicious and the whole
+    // extraction should be thrown out.
+    let canonical_root = std::fs::canonicalize(dest_dir).map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("canonicalize extract root {}: {e}", dest_dir.display()),
+    })?;
+    validate_no_escape(&canonical_root, dest_dir)?;
+
+    Ok(())
+}
+
+/// Recursive helper for `extract_archive`: walk `dir` and verify every
+/// entry canonicalizes under `canonical_root`. Rejects any symlink
+/// anywhere in the tree as a defense-in-depth measure (archives that add
+/// symlinks pointing outside are another escape vector even when the
+/// symlink itself is inside the tree).
+fn validate_no_escape(
+    canonical_root: &std::path::Path,
+    dir: &std::path::Path,
+) -> Result<(), ToolError> {
+    let rd = std::fs::read_dir(dir).map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("walk extract dir {}: {e}", dir.display()),
+    })?;
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let meta = match std::fs::symlink_metadata(&path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if meta.file_type().is_symlink() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "path_traversal_rejected".to_string(),
+                message: format!(
+                    "archive contains symlink at `{}`; rejected (zip-slip defense)",
+                    path.display()
+                ),
+            });
+        }
+        // canonicalize resolves any remaining non-symlink indirection and
+        // lets us prefix-match against the root.
+        let canon = std::fs::canonicalize(&path).map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!("canonicalize {}: {e}", path.display()),
+        })?;
+        if !canon.starts_with(canonical_root) {
+            return Err(ToolError::Sdk {
+                sdk_kind: "path_traversal_rejected".to_string(),
+                message: format!(
+                    "archive entry `{}` escapes extract root `{}`",
+                    canon.display(),
+                    canonical_root.display()
+                ),
+            });
+        }
+        if meta.file_type().is_dir() {
+            validate_no_escape(canonical_root, &path)?;
+        }
     }
     Ok(())
 }
