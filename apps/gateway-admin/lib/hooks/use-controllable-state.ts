@@ -22,21 +22,32 @@ export function useControllableState<T>({
     onChangeRef.current = onChange
   }, [onChange])
 
-  const setValue = useCallback(
-    (next: T | ((prev: T | undefined) => T)) => {
-      const resolved =
-        typeof next === 'function'
-          ? (next as (prev: T | undefined) => T)(isControlled ? prop : uncontrolled)
-          : next
-      if (!isControlled) {
-        setUncontrolled(resolved)
-      }
-      if (resolved !== value) {
+  const isControlledRef = useRef(isControlled)
+  const propRef = useRef(prop)
+  useEffect(() => {
+    isControlledRef.current = isControlled
+    propRef.current = prop
+  }, [isControlled, prop])
+
+  const setValue = useCallback((next: T | ((prev: T | undefined) => T)) => {
+    const isFn = typeof next === 'function'
+    if (isControlledRef.current) {
+      const resolved = isFn
+        ? (next as (prev: T | undefined) => T)(propRef.current)
+        : next
+      if (resolved !== propRef.current) {
         onChangeRef.current?.(resolved)
       }
-    },
-    [isControlled, prop, uncontrolled, value],
-  )
+      return
+    }
+    setUncontrolled((prev) => {
+      const resolved = isFn ? (next as (prev: T | undefined) => T)(prev) : next
+      if (resolved !== prev) {
+        onChangeRef.current?.(resolved)
+      }
+      return resolved
+    })
+  }, [])
 
   return [value, setValue]
 }

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow};
 use tokio::sync::OnceCell;
 
-use crate::config::{NodeRole, LabConfig, ResolvedNodeRuntime};
+use crate::config::{LabConfig, NodeRole, ResolvedNodeRuntime};
 use crate::node::checkin::NodeMetadataUpload;
 use crate::node::config_scan::discover_ai_cli_configs;
 use crate::node::identity::resolve_runtime_role;

@@ -4,7 +4,7 @@
 **OpenAPI spec:** `docs/upstream-api/radarr.openapi.json` (164 unique paths, 238 operations)
 **SDK sub-modules:** `crates/lab-apis/src/radarr/client/` (21 modules, 54 methods)
 **Dispatch module:** `crates/lab/src/dispatch/radarr/` (catalog.rs, dispatch.rs, system.rs, movies.rs, queue.rs, calendar.rs, commands.rs, history.rs, config.rs, wanted.rs, customformat.rs) — 51 dispatch actions + built-in `help` + `schema`
-**MCP service:** `crates/lab/src/mcp/services/radarr.rs` (thin adapter over dispatch layer)
+**MCP registration:** `crates/lab/src/registry.rs` (thin adapter over dispatch layer)
 **CLI subcommands:** `crates/lab/src/cli/radarr.rs` (39 typed subcommands — Tier-1 pattern)
 **API handler:** `crates/lab/src/api/services/radarr.rs` (single POST route, dispatches via shared dispatch layer)
 
@@ -263,7 +263,7 @@
 
 ### MCP Surface
 - **51 actions** available via MCP tool `radarr`
-- Thin adapter: `mcp/services/radarr.rs` delegates to dispatch layer
+- Thin adapter: `registry.rs` delegates to dispatch layer
 - Built-in `help` and `schema` actions (via dispatcher)
 
 ### CLI Surface
@@ -379,7 +379,7 @@
 
 **Dispatch Layer:** The single source of truth. All 51 actions are defined in `crates/lab/src/dispatch/radarr/` (catalog.rs registers them, domain modules implement them). Dispatch functions return `Result<Value, ToolError>` — surface-neutral semantics.
 
-**MCP:** Thin adapter in `crates/lab/src/mcp/services/radarr.rs`. Delegates `actions()` and `dispatch()` to dispatch layer. Built-in `help` and `schema` are handled by dispatcher.
+**MCP:** Thin adapter in `crates/lab/src/registry.rs`. Delegates `actions()` and `dispatch()` to dispatch layer. Built-in `help` and `schema` are handled by dispatcher.
 
 **CLI:** Tier-1 typed subcommands in `crates/lab/src/cli/radarr.rs`. Not all 51 dispatch actions have corresponding CLI subcommands — only the primary ones with meaningful human UX. Destructive actions require `-y` / `--yes` flag. Commands call dispatch layer via `crate::dispatch::radarr::dispatch()`.
 

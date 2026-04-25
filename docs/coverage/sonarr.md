@@ -21,7 +21,7 @@ endpoints below.
 |---------|--------|-------|
 | SDK (`lab-apis`) | ✅ | `SonarrClient` in `crates/lab-apis/src/sonarr/client.rs` |
 | Dispatch layer | ✅ | `crates/lab/src/dispatch/sonarr/` — catalog, client, params, dispatch |
-| MCP | ✅ | `crates/lab/src/mcp/services/sonarr.rs` — thin wrapper over dispatch layer |
+| MCP | ✅ | `crates/lab/src/registry.rs` — direct registry entry to dispatch layer |
 | CLI | ✅ | `crates/lab/src/cli/sonarr.rs` — thin shim calling `dispatch::sonarr::dispatch` |
 | API | ✅ | `crates/lab/src/api/services/sonarr.rs` — axum route calling `dispatch_with_client` |
 

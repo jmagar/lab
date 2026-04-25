@@ -4,9 +4,7 @@ This document covers all JSON-RPC 2.0 methods available on the fleet WebSocket e
 
 ## Auth Model
 
-The endpoint is intentionally placed **outside bearer-auth middleware**. An unauthenticated WebSocket connection can only call `initialize`. All node methods (`nodes/*`) require an active authenticated session established by a prior `initialize` call.
-
-MCP demux methods (see below) are allowlisted by name and may be called pre-initialize for discovery only.
+The endpoint is intentionally placed **outside bearer-auth middleware**. Until a session is established by a successful `initialize` call, the only methods the server will execute are `initialize` itself and the MCP demux methods that are allowlisted by name (see below) for discovery. All node methods (`nodes/*`) require an active authenticated session established by a prior `initialize` call.
 
 ## General Envelope
 
@@ -39,7 +37,7 @@ Error `code` conventions:
 **Auth required:** no (this establishes auth)  
 **Phase:** stable  
 
-Performs enrollment validation and establishes the node session. Must be the first message sent; the server closes the connection if no `initialize` arrives within 10 seconds.
+Performs enrollment validation and establishes the node session. The server closes the connection if no first WebSocket message arrives within 10 seconds.
 
 **Params:**
 ```jsonc
@@ -196,7 +194,7 @@ Batch-uploads structured log events from the node.
 **Auth required:** yes (session must be initialized)  
 **Phase:** beta  
 
-Registers or re-confirms a node identity in the node store. Idempotent if role matches; returns `enroll_conflict` on role mismatch.
+Registers or re-confirms a node identity in the node store. Idempotent if role matches; returns `enroll_rejected` on role mismatch.
 
 **Params:**
 ```jsonc

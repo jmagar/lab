@@ -13,15 +13,11 @@ use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService,
     session::local::{LocalSessionManager, SessionConfig},
 };
-use tokio::sync::mpsc;
 use tokio::process::Command;
+use tokio::sync::mpsc;
 
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
-use crate::node::identity::{resolve_local_hostname, resolve_runtime_role};
-use crate::node::enrollment::store::EnrollmentStore;
-use crate::node::runtime::NodeRuntime;
-use crate::node::store::NodeStore;
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
@@ -32,6 +28,10 @@ use crate::dispatch::logs::client::{
 };
 use crate::mcp::peers::PeerNotifier;
 use crate::mcp::server::LabMcpServer;
+use crate::node::enrollment::store::EnrollmentStore;
+use crate::node::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::node::runtime::NodeRuntime;
+use crate::node::store::NodeStore;
 #[cfg(target_os = "linux")]
 use crate::process::unix::{exe_path, terminate_sigterm};
 use crate::registry::{ToolRegistry, build_default_registry};
@@ -142,7 +142,35 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         "node runtime resolved"
     );
     let node_runtime = NodeRuntime::from_config(resolved_runtime, config, Some(port))?;
-    let node_store = Arc::new(NodeStore::default());
+    let log_retention_days = config
+        .node
+        .as_ref()
+        .and_then(|n| n.log_retention_days)
+        .unwrap_or(crate::node::log_store::DEFAULT_RETENTION_DAYS);
+    let node_log_db_path = node_runtime.home_dir().join(".lab/node-logs.sqlite");
+    let node_store = match crate::node::log_store::SqliteNodeLogStore::open(
+        node_log_db_path.clone(),
+        log_retention_days,
+    )
+    .await
+    {
+        Ok(log_store) => {
+            tracing::info!(
+                path = %node_log_db_path.display(),
+                retention_days = log_retention_days,
+                "node log store opened"
+            );
+            Arc::new(NodeStore::with_log_store(log_store))
+        }
+        Err(err) => {
+            tracing::warn!(
+                path = %node_log_db_path.display(),
+                error = %err,
+                "node log store unavailable; falling back to in-memory store"
+            );
+            Arc::new(NodeStore::default())
+        }
+    };
     let enrollment_store = Arc::new(
         EnrollmentStore::open(node_runtime.home_dir().join(".lab/node-enrollments.json"))
             .await
@@ -179,8 +207,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         subsystem = "gateway_client",
         phase = "discovery.start",
         upstream_count = config.upstream.len(),
-        oauth_upstream_count = config.upstream.iter().filter(|upstream| upstream.oauth.is_some()).count(),
-        in_process_peer_count = registry.services().iter().filter(|service| !service.actions.is_empty()).count(),
+        oauth_upstream_count = config
+            .upstream
+            .iter()
+            .filter(|upstream| upstream.oauth.is_some())
+            .count(),
+        in_process_peer_count = registry
+            .services()
+            .iter()
+            .filter(|service| !service.actions.is_empty())
+            .count(),
         "starting upstream gateway discovery"
     );
     let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
@@ -242,6 +278,12 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             phase = "disabled",
             "web server disabled for stdio transport"
         );
+        // ACP registry must be installed for stdio MCP dispatch too.
+        // The HTTP path installs it via `state.acp_registry`, but stdio
+        // never builds an `AppState`, so wire a fresh registry here.
+        let stdio_acp_registry =
+            std::sync::Arc::new(crate::acp::registry::AcpSessionRegistry::new());
+        crate::dispatch::acp::install_registry(stdio_acp_registry);
         return run_stdio(
             Arc::new(registry),
             Arc::clone(&gateway_manager),
@@ -309,8 +351,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                     Ok(sync_client) => Some(tokio::spawn(async move {
                         // Fire immediately at startup — do not wait for the first interval tick.
                         if let Err(e) = crate::dispatch::marketplace::sync::perform_sync(
-                            &sync_store, &sync_client, false, "startup",
-                        ).await {
+                            &sync_store,
+                            &sync_client,
+                            false,
+                            "startup",
+                        )
+                        .await
+                        {
                             tracing::warn!(
                                 service = "mcpregistry",
                                 event = "sync.failed",
@@ -318,8 +365,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                                 "initial sync failed; will retry next hour"
                             );
                         }
-                        let mut interval =
-                            tokio::time::interval(Duration::from_secs(3600));
+                        let mut interval = tokio::time::interval(Duration::from_secs(3600));
                         // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
                         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                         // Consume the immediate tick so the first loop iteration is at T+1h.
@@ -327,8 +373,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                         loop {
                             interval.tick().await;
                             if let Err(e) = crate::dispatch::marketplace::sync::perform_sync(
-                                &sync_store, &sync_client, false, "hourly",
-                            ).await {
+                                &sync_store,
+                                &sync_client,
+                                false,
+                                "hourly",
+                            )
+                            .await
+                            {
                                 tracing::warn!(
                                     service = "mcpregistry",
                                     event = "sync.failed",
@@ -364,12 +415,17 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     // duration of `serve`; binding it by name preserves the JoinHandle.
     state = state.with_node_role(node_role);
 
-    // Wire the user-configured workspace root into AppState so the fs
-    // service serves `fs.list` / `fs.preview` without re-reading the env
-    // var per request. Failure is non-fatal: absent / invalid root means
-    // the fs service is simply omitted from the catalog.
-    match crate::dispatch::fs::resolve_workspace_root_from_env() {
-        Some(Ok(root)) => {
+    // Wire the configured workspace root into AppState so the fs
+    // service serves `fs.list` / `fs.preview` without re-reading config
+    // per request. Failure is non-fatal: invalid root keeps fs calls on the
+    // structured `workspace_not_configured` path.
+    //
+    // Guarded by `feature = "fs"` so a build without fs cannot report the
+    // service as enabled at startup just because a `[workspace].root` is
+    // configured.
+    #[cfg(feature = "fs")]
+    match crate::dispatch::fs::resolve_workspace_root(config) {
+        Ok(root) => {
             tracing::info!(
                 subsystem = "startup",
                 phase = "fs.workspace_root",
@@ -378,23 +434,12 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             );
             state = state.with_workspace_root(root);
         }
-        Some(Err(e)) => {
+        Err(e) => {
             tracing::warn!(
                 subsystem = "startup",
                 phase = "fs.workspace_root",
                 error = %e,
-                "LAB_WORKSPACE_ROOT set but invalid; fs service disabled"
-            );
-        }
-        None => {
-            // fs is still registered in the catalog when the feature is enabled,
-            // but every fs.* call will return `workspace_not_configured` until
-            // the operator sets LAB_WORKSPACE_ROOT. Log once at startup so the
-            // misconfiguration is discoverable without per-request noise.
-            tracing::warn!(
-                subsystem = "startup",
-                phase = "fs.workspace_root",
-                "LAB_WORKSPACE_ROOT not set; fs service registered but every fs.* call will return workspace_not_configured until it is configured"
+                "workspace.root invalid; fs service disabled"
             );
         }
     }
@@ -421,7 +466,10 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         web_server_enabled = state.web_assets_dir.is_some(),
         mcp_server_enabled = matches!(transport, Transport::Http),
         gateway_client_enabled = !config.upstream.is_empty(),
-        oauth_upstream_enabled = config.upstream.iter().any(|upstream| upstream.oauth.is_some()),
+        oauth_upstream_enabled = config
+            .upstream
+            .iter()
+            .any(|upstream| upstream.oauth.is_some()),
         web_ui_auth_disabled = state.web_ui_auth_disabled,
         "startup plan resolved"
     );
@@ -613,12 +661,28 @@ async fn ensure_web_assets_are_fresh(web: &crate::config::WebPreferences) -> Res
         "building Labby web assets"
     );
 
-    let output = Command::new("pnpm")
+    let output = match Command::new("pnpm")
         .arg("build")
         .current_dir(&app_dir)
         .output()
         .await
-        .with_context(|| format!("spawn `pnpm build` in `{}`", app_dir.display()))?;
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && index_html.is_file() => {
+            tracing::warn!(
+                subsystem = "web_server",
+                phase = "assets.build.skipped",
+                path = %out_dir.display(),
+                error = %error,
+                "pnpm unavailable; serving existing Labby web assets"
+            );
+            return Ok(());
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("spawn `pnpm build` in `{}`", app_dir.display()));
+        }
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -648,7 +712,10 @@ fn newest_mtime_under(root: &Path, ignored_dirs: &[&str]) -> Option<SystemTime> 
         let entries = std::fs::read_dir(&path).ok()?;
         for entry in entries.flatten() {
             let path = entry.path();
-            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
             if path.is_dir() {
                 if ignored_dirs.iter().any(|ignored| *ignored == file_name) {
                     continue;
@@ -842,7 +909,11 @@ async fn run_http(
     );
     tracing::info!(
         subsystem = "web_server",
-        phase = if web_assets_enabled { "ready" } else { "disabled" },
+        phase = if web_assets_enabled {
+            "ready"
+        } else {
+            "disabled"
+        },
         addr,
         pid = std::process::id(),
         route = "/",
@@ -1092,17 +1163,19 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
                                 return Ok(l);
                             }
                             Err(e2) if e2.kind() == ErrorKind::AddrInUse => continue,
-                            Err(e2) => return Err(anyhow::Error::from(e2)
-                                .context(format!("failed to bind HTTP listener on `{addr}`"))),
+                            Err(e2) => {
+                                return Err(anyhow::Error::from(e2)
+                                    .context(format!("failed to bind HTTP listener on `{addr}`")));
+                            }
                         }
                     }
                 }
             }
-            Err(anyhow::Error::from(e)
-                .context(format!("failed to bind HTTP listener on `{addr}`")))
+            Err(anyhow::Error::from(e).context(format!("failed to bind HTTP listener on `{addr}`")))
         }
-        Err(e) => Err(anyhow::Error::from(e)
-            .context(format!("failed to bind HTTP listener on `{addr}`"))),
+        Err(e) => {
+            Err(anyhow::Error::from(e).context(format!("failed to bind HTTP listener on `{addr}`")))
+        }
     }
 }
 
@@ -1162,7 +1235,7 @@ fn lab_executable_path(pid: u32) -> Option<PathBuf> {
 fn is_lab_executable(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
-        Some("lab") | Some("lab (deleted)")
+        Some("lab" | "lab (deleted)")
     )
 }
 
@@ -1178,9 +1251,13 @@ fn find_pid_for_port(port: u16) -> Option<u32> {
     let target = format!("socket:[{inode}]");
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
         let pid_str = entry.file_name();
-        let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else { continue };
+        let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else {
+            continue;
+        };
         let fd_dir = format!("/proc/{pid}/fd");
-        let Ok(fds) = std::fs::read_dir(&fd_dir) else { continue };
+        let Ok(fds) = std::fs::read_dir(&fd_dir) else {
+            continue;
+        };
         for fd in fds.flatten() {
             if let Ok(link) = std::fs::read_link(fd.path()) {
                 if link.to_string_lossy() == target {
@@ -1293,10 +1370,14 @@ mod tests {
     #[test]
     fn web_ui_auth_disabled_resolution_prefers_config_then_default() {
         assert!(
-            resolve_web_ui_auth_disabled(&WebPreferences {
-                assets_dir: None,
-                disable_auth: Some(true),
-            }, false, false)
+            resolve_web_ui_auth_disabled(
+                &WebPreferences {
+                    assets_dir: None,
+                    disable_auth: Some(true),
+                },
+                false,
+                false
+            )
             .unwrap()
         );
         assert!(resolve_web_ui_auth_disabled(&WebPreferences::default(), true, false).unwrap());

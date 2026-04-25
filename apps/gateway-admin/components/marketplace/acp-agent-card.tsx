@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, CheckCircle2, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { AcpAgent } from '@/lib/marketplace/types'
@@ -10,6 +10,27 @@ import { AcpAgentInstallModal } from './acp-agent-install-modal'
 
 interface AcpAgentCardProps {
   agent: AcpAgent
+}
+
+const META_PILL =
+  'inline-flex items-center gap-1 rounded-full border border-aurora-border-default bg-aurora-control-surface px-2 py-0.5 text-[10px] font-semibold text-aurora-text-muted'
+
+function MetaLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={cn(META_PILL, 'hover:text-aurora-text-primary')}
+    >
+      {children}
+      <ExternalLink className="size-2.5" />
+    </a>
+  )
+}
+
+function MetaPill({ children }: { children: React.ReactNode }) {
+  return <span className={META_PILL}>{children}</span>
 }
 
 function getDistributionKey(dist: AcpAgent['distribution']): string | null {
@@ -54,6 +75,12 @@ export function AcpAgentCard({ agent }: AcpAgentCardProps) {
               {distLabel}
             </Badge>
           )}
+          {agent.installed && (
+            <Badge variant="outline" className="shrink-0 gap-1 text-[10px] uppercase tracking-[0.12em] text-aurora-success">
+              <CheckCircle2 className="size-3" />
+              Installed
+            </Badge>
+          )}
         </div>
 
         {/* Description */}
@@ -61,6 +88,15 @@ export function AcpAgentCard({ agent }: AcpAgentCardProps) {
           <p className="text-[13px] text-aurora-text-muted leading-[1.55] line-clamp-3">
             {agent.description}
           </p>
+        )}
+
+        {(agent.repository || agent.website || agent.license || agent.authors?.length) && (
+          <div className="flex flex-wrap gap-1.5">
+            {agent.repository && <MetaLink href={agent.repository}>Repo</MetaLink>}
+            {agent.website && <MetaLink href={agent.website}>Website</MetaLink>}
+            {agent.license && <MetaPill>{agent.license}</MetaPill>}
+            {agent.authors?.[0] && <MetaPill>{agent.authors[0]}</MetaPill>}
+          </div>
         )}
 
         {/* Footer */}
@@ -71,10 +107,11 @@ export function AcpAgentCard({ agent }: AcpAgentCardProps) {
           <button
             type="button"
             onClick={() => setInstallOpen(true)}
+            disabled={agent.installed}
             className="inline-flex items-center gap-1.5 rounded-aurora-1 border border-aurora-accent-primary/40 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_10%,transparent)] px-3 py-1.5 text-[12px] font-semibold text-aurora-accent-primary hover:bg-[color-mix(in_srgb,var(--aurora-accent-primary)_16%,transparent)] transition-colors duration-150"
             aria-label={`Install ${agent.name}`}
           >
-            Install
+            {agent.installed ? 'Installed' : 'Install'}
           </button>
         </div>
       </div>

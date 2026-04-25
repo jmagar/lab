@@ -4,10 +4,10 @@ import type { LogSearchQuery, LogSearchResult, LogStoreStats } from '../types/lo
 
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
 
-const MOCK_LOG_EVENTS = [
+const MOCK_LOG_EVENT_TEMPLATES = [
   {
     event_id: 'log_1',
-    ts: Date.now() - 1000 * 60 * 18,
+    ts_offset_ms: 1000 * 60 * 18,
     level: 'info',
     subsystem: 'gateway',
     surface: 'web',
@@ -30,7 +30,7 @@ const MOCK_LOG_EVENTS = [
   },
   {
     event_id: 'log_2',
-    ts: Date.now() - 1000 * 60 * 12,
+    ts_offset_ms: 1000 * 60 * 12,
     level: 'warn',
     subsystem: 'api',
     surface: 'web',
@@ -53,7 +53,7 @@ const MOCK_LOG_EVENTS = [
   },
   {
     event_id: 'log_3',
-    ts: Date.now() - 1000 * 60 * 5,
+    ts_offset_ms: 1000 * 60 * 5,
     level: 'error',
     subsystem: 'auth_webui',
     surface: 'web',
@@ -141,7 +141,12 @@ export async function fetchLogs(
 ): Promise<LogSearchResult> {
   if (USE_MOCK_DATA) {
     options?.signal?.throwIfAborted?.()
-    const filtered = MOCK_LOG_EVENTS
+    const now = Date.now()
+    const mockEvents = MOCK_LOG_EVENT_TEMPLATES.map(({ ts_offset_ms, ...rest }) => ({
+      ...rest,
+      ts: now - ts_offset_ms,
+    }))
+    const filtered = mockEvents
       .filter((event) => !query.after_ts || event.ts >= query.after_ts)
       .filter((event) => !query.before_ts || event.ts <= query.before_ts)
       .filter((event) => !query.levels?.length || query.levels.includes(event.level))
@@ -169,12 +174,13 @@ export async function fetchLogs(
 export async function fetchLogStats(options?: LogsRequestOptions): Promise<LogStoreStats> {
   if (USE_MOCK_DATA) {
     options?.signal?.throwIfAborted?.()
-    const timestamps = MOCK_LOG_EVENTS.map((event) => event.ts)
+    const now = Date.now()
+    const timestamps = MOCK_LOG_EVENT_TEMPLATES.map((event) => now - event.ts_offset_ms)
     return {
       on_disk_bytes: 48_320,
       oldest_retained_ts: Math.min(...timestamps),
       newest_retained_ts: Math.max(...timestamps),
-      total_event_count: MOCK_LOG_EVENTS.length,
+      total_event_count: MOCK_LOG_EVENT_TEMPLATES.length,
       dropped_event_count: 0,
       retention: {
         max_age_days: 7,

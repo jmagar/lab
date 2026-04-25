@@ -5,9 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
-    extract::State,
+    extract::{Query, State},
     http::{HeaderName, HeaderValue, Method, Request, StatusCode, header},
     middleware::Next,
     response::{Html, IntoResponse},
@@ -24,6 +24,25 @@ use tower_http::{
 use tracing::Level;
 
 use lab_auth::error::AuthError as LabAuthError;
+
+const DEV_MARKETPLACE_READ_ACTIONS: &[&str] = &[
+    "help",
+    "schema",
+    "sources.list",
+    "plugins.list",
+    "plugin.get",
+    "plugin.artifacts",
+    "plugin.workspace",
+    "plugin.components",
+    "plugin.deploy.preview",
+    "agent.list",
+    "agent.get",
+    "mcp.config",
+    "mcp.list",
+    "mcp.get",
+    "mcp.versions",
+    "mcp.meta.get",
+];
 
 /// Constant-time byte comparison using `subtle::ConstantTimeEq` to prevent
 /// timing-based token prefix leakage (lab-63jc).
@@ -92,28 +111,28 @@ async fn auth_jwks(State(state): State<AppState>) -> Result<impl IntoResponse, L
 
 async fn auth_register(
     State(state): State<AppState>,
-    body: axum::Json<lab_auth::types::ClientRegistrationRequest>,
+    body: Json<lab_auth::types::ClientRegistrationRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::register_client(State(app_auth_state(&state)?), body).await?)
 }
 
 async fn auth_authorize(
     State(state): State<AppState>,
-    query: axum::extract::Query<lab_auth::types::AuthorizeQuery>,
+    query: Query<lab_auth::types::AuthorizeQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::authorize(State(app_auth_state(&state)?), query).await?)
 }
 
 async fn auth_browser_login(
     State(state): State<AppState>,
-    query: axum::extract::Query<lab_auth::types::BrowserLoginQuery>,
+    query: Query<lab_auth::types::BrowserLoginQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::browser_login(State(app_auth_state(&state)?), query).await?)
 }
 
 async fn auth_callback(
     State(state): State<AppState>,
-    query: axum::extract::Query<lab_auth::types::CallbackQuery>,
+    query: Query<lab_auth::types::CallbackQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::callback(State(app_auth_state(&state)?), query).await?)
 }
@@ -438,6 +457,37 @@ fn build_v0_1_router() -> Router<AppState> {
     Router::new().nest("/v0.1", services::registry_v01::routes())
 }
 
+async fn dev_marketplace_readonly(
+    headers: axum::http::HeaderMap,
+    Json(req): Json<crate::api::ActionRequest>,
+) -> Result<Json<serde_json::Value>, ToolError> {
+    let action = req.action.trim().to_string();
+    if !DEV_MARKETPLACE_READ_ACTIONS.contains(&action.as_str()) {
+        return Err(ToolError::Sdk {
+            sdk_kind: "dev_preview_read_only".to_string(),
+            message: format!("dev preview route blocked mutating marketplace action `{action}`"),
+        });
+    }
+
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    services::helpers::handle_action(
+        "marketplace",
+        "api",
+        request_id,
+        req,
+        crate::dispatch::marketplace::actions(),
+        |action, params| async move {
+            crate::dispatch::marketplace::dispatch_with_port(
+                &action,
+                params,
+                &services::marketplace::WsNodeRpcPort,
+            )
+            .await
+        },
+    )
+    .await
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn build_router(
     mut state: AppState,
@@ -605,6 +655,16 @@ pub fn build_router(
             .route("/token", post(auth_token));
     }
 
+    // Dev routes — handlers live in crate::api::dev_mockups (not here) so they
+    // survive router.rs refactors. Registered BEFORE the static-file fallback.
+    router = router
+        .route("/dev/api/marketplace", post(dev_marketplace_readonly))
+        .route("/dev", get(crate::api::dev_mockups::serve))
+        .route("/dev/", get(crate::api::dev_mockups::serve))
+        .route("/dev/{name}", get(crate::api::dev_mockups::serve_named))
+        .route("/dev/{name}/", get(crate::api::dev_mockups::serve_named));
+
+    // Static-file fallback for the Next.js SPA.
     if state.web_assets_dir.is_some() {
         router = router.fallback(crate::api::web::serve_web_request);
     }
@@ -720,7 +780,7 @@ fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
 async fn service_actions(
     State(state): State<AppState>,
     axum::extract::Path(service): axum::extract::Path<String>,
-) -> Result<axum::Json<serde_json::Value>, ToolError> {
+) -> Result<Json<serde_json::Value>, ToolError> {
     let entry = state
         .catalog
         .services
@@ -734,7 +794,7 @@ async fn service_actions(
         sdk_kind: "internal_error".into(),
         message: format!("serialize actions: {e}"),
     })?;
-    Ok(axum::Json(actions))
+    Ok(Json(actions))
 }
 
 #[cfg(test)]
@@ -1595,5 +1655,108 @@ mod tests {
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(json["kind"], "service_unavailable");
         }
+    }
+
+    /// POST /dev/api/marketplace must accept whitelisted read-only actions without auth.
+    #[tokio::test]
+    async fn dev_marketplace_allows_whitelisted_read_actions() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        for action in DEV_MARKETPLACE_READ_ACTIONS {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/dev/api/marketplace")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(
+                            serde_json::to_string(&serde_json::json!({ "action": action }))
+                                .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            // 200 OK or 4xx from dispatch (action not implemented in test env) — never 403
+            assert_ne!(
+                response.status(),
+                StatusCode::FORBIDDEN,
+                "read-only action `{action}` must not be blocked by dev guard"
+            );
+        }
+    }
+
+    /// POST /dev/api/marketplace must block mutating actions without requiring auth.
+    #[tokio::test]
+    async fn dev_marketplace_blocks_mutating_actions() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        for action in &[
+            "plugin.install",
+            "plugin.uninstall",
+            "sources.add",
+            "sources.remove",
+            "plugin.workspace.save",
+            "plugin.deploy",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/dev/api/marketplace")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(
+                            serde_json::to_string(&serde_json::json!({ "action": action }))
+                                .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                response.status(),
+                StatusCode::FORBIDDEN,
+                "mutating action `{action}` must be blocked by dev guard"
+            );
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["kind"], "dev_preview_read_only");
+        }
+    }
+
+    /// POST /dev/api/marketplace must be reachable without a bearer token
+    /// (the route is intentionally outside the v1 auth middleware).
+    #[tokio::test]
+    async fn dev_marketplace_requires_no_auth() {
+        let state = AppState::new();
+        // Router configured with a bearer token — /dev/api/marketplace must bypass it.
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/dev/api/marketplace")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"action":"plugin.install"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Must reach the dev guard (403) rather than the auth middleware (401).
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "/dev/api/marketplace must be reachable unauthenticated and fail with 403, not 401"
+        );
     }
 }

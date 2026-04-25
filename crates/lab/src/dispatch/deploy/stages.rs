@@ -191,9 +191,7 @@ where
     }
 
     // 6) ensure the binary is executable (upload preserves no mode bits)
-    let (code, _stdout, stderr) = io
-        .run_argv(&["chmod", "755", "--", &remote_path])
-        .await?;
+    let (code, _stdout, stderr) = io.run_argv(&["chmod", "755", "--", &remote_path]).await?;
     if code != 0 {
         return Err(DeployError::InstallFailed {
             host: "?".into(),

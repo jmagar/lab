@@ -3,17 +3,18 @@
 //! Extracted from `cli/serve.rs` so that both the stdio and HTTP transports
 //! can share the same handler logic.
 
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Instant;
-use sha2::{Digest, Sha256};
 
 use axum::http::{self, request::Parts};
 use rmcp::model::{
-    AnnotateAble, CallToolRequestParams, CallToolResult, Content, GetPromptRequestParams,
-    GetPromptResult, ListPromptsResult, ListResourcesResult, ListToolsResult, LoggingLevel,
-    PaginatedRequestParams, RawResource, ReadResourceRequestParams, ReadResourceResult,
-    ResourceContents, ServerCapabilities, ServerInfo, SetLevelRequestParams, Tool,
+    AnnotateAble, CallToolRequestParams, CallToolResult, CompleteRequestParams, CompleteResult,
+    CompletionInfo, Content, GetPromptRequestParams, GetPromptResult, ListPromptsResult,
+    ListResourcesResult, ListToolsResult, LoggingLevel, PaginatedRequestParams, RawResource,
+    ReadResourceRequestParams, ReadResourceResult, ResourceContents, ServerCapabilities,
+    ServerInfo, SetLevelRequestParams, Tool,
 };
 use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
@@ -52,6 +53,39 @@ fn action_schema() -> serde_json::Map<String, Value> {
     .as_object()
     .cloned()
     .expect("schema literal is always an object")
+}
+
+fn completion_info(values: Vec<String>) -> CompletionInfo {
+    CompletionInfo {
+        total: Some(values.len() as u32),
+        has_more: Some(false),
+        values,
+    }
+}
+
+fn complete_prompt_arg(
+    registry: &ToolRegistry,
+    prompt_name: &str,
+    argument_name: &str,
+    prefix: &str,
+) -> CompletionInfo {
+    match (prompt_name, argument_name) {
+        ("run-action", "action") => completion_info(registry.action_name_completions(prefix)),
+        ("run-action" | "service-discover", "service") => {
+            completion_info(service_name_completions(registry, prefix))
+        }
+        _ => completion_info(Vec::new()),
+    }
+}
+
+fn service_name_completions(registry: &ToolRegistry, prefix: &str) -> Vec<String> {
+    registry
+        .services()
+        .iter()
+        .map(|service| service.name)
+        .filter(|name| name.starts_with(prefix))
+        .map(str::to_string)
+        .collect()
 }
 
 /// MCP server handler — one tool per registered service.
@@ -106,6 +140,7 @@ impl ServerHandler for LabMcpServer {
                 .enable_prompts()
                 .enable_prompts_list_changed()
                 .enable_logging()
+                .enable_completions()
                 .build(),
         )
     }
@@ -136,6 +171,61 @@ impl ServerHandler for LabMcpServer {
             peer_count = peers.len(),
             "mcp session connected"
         );
+    }
+
+    async fn complete(
+        &self,
+        request: CompleteRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CompleteResult, ErrorData> {
+        let start = Instant::now();
+        let subject = self.request_subject_log_tag(&context);
+        let reference_type = request.r#ref.reference_type();
+        let prompt = request.r#ref.as_prompt_name().map(str::to_string);
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "completion.complete",
+            subject,
+            reference_type,
+            prompt = prompt.as_deref().unwrap_or(""),
+            argument = %request.argument.name,
+            "dispatch start"
+        );
+
+        let completion = match prompt.as_deref() {
+            Some(prompt_name) => complete_prompt_arg(
+                &self.registry,
+                prompt_name,
+                &request.argument.name,
+                &request.argument.value,
+            ),
+            None => completion_info(Vec::new()),
+        };
+
+        let elapsed_ms = start.elapsed().as_millis();
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "completion.complete",
+            subject,
+            reference_type,
+            prompt = prompt.as_deref().unwrap_or(""),
+            argument = %request.argument.name,
+            result_count = completion.values.len(),
+            elapsed_ms,
+            "completion ok"
+        );
+        self.emit_dispatch_notification(
+            &context,
+            "lab",
+            "completion.complete",
+            elapsed_ms,
+            DispatchLogOutcome::Success,
+        )
+        .await;
+
+        Ok(CompleteResult::new(completion))
     }
 
     async fn list_prompts(
@@ -534,7 +624,8 @@ impl ServerHandler for LabMcpServer {
                 surface = "mcp",
                 service = "lab",
                 action = "read_resource",
-                resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
+                resource_uri =
+                    crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                 route = "upstream",
                 "dispatch route selected"
             );
@@ -551,7 +642,8 @@ impl ServerHandler for LabMcpServer {
                         action = "read_resource",
                         subject,
                         upstream,
-                        resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
+                        resource_uri =
+                            crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
                         "resource proxy ok"
                     );
@@ -606,7 +698,8 @@ impl ServerHandler for LabMcpServer {
                         service = "lab",
                         action = "read_resource",
                         upstream,
-                        resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
+                        resource_uri =
+                            crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                         elapsed_ms,
                         kind = "not_found",
                         "upstream not connected for resource"
@@ -930,8 +1023,15 @@ impl ServerHandler for LabMcpServer {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             let Some(manager) = &self.gateway_manager else {
-                let envelope = build_error(&service, "call_tool", "unknown_tool", "tool search is not enabled");
-                return Ok(CallToolResult::error(vec![Content::text(envelope.to_string())]));
+                let envelope = build_error(
+                    &service,
+                    "call_tool",
+                    "unknown_tool",
+                    "tool search is not enabled",
+                );
+                return Ok(CallToolResult::error(vec![Content::text(
+                    envelope.to_string(),
+                )]));
             };
             return match manager.search_tools(&query, top_k, include_schema).await {
                 Ok(results) => Ok(CallToolResult::success(vec![Content::text(
@@ -946,7 +1046,13 @@ impl ServerHandler for LabMcpServer {
                     if kind == "invalid_param" {
                         extra.insert("param".to_string(), serde_json::json!("query"));
                     }
-                    let env = build_error_extra(&service, "call_tool", kind, &err.to_string(), &Value::Object(extra));
+                    let env = build_error_extra(
+                        &service,
+                        "call_tool",
+                        kind,
+                        &err.to_string(),
+                        &Value::Object(extra),
+                    );
                     Ok(CallToolResult::error(vec![Content::text(env.to_string())]))
                 }
             };
@@ -985,8 +1091,15 @@ impl ServerHandler for LabMcpServer {
                 return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
             }
             let Some(manager) = &self.gateway_manager else {
-                let envelope = build_error(&service, "call_tool", "unknown_tool", "tool invoke is not enabled");
-                return Ok(CallToolResult::error(vec![Content::text(envelope.to_string())]));
+                let envelope = build_error(
+                    &service,
+                    "call_tool",
+                    "unknown_tool",
+                    "tool invoke is not enabled",
+                );
+                return Ok(CallToolResult::error(vec![Content::text(
+                    envelope.to_string(),
+                )]));
             };
             let resolved = manager.resolve_tool_invoke(&tool_name).await;
             let (upstream_name, _) = match resolved {
@@ -1007,9 +1120,18 @@ impl ServerHandler for LabMcpServer {
                     let kind = err.kind();
                     let mut extra = serde_json::Map::new();
                     if kind == "unknown_tool" {
-                        extra.insert("hint".to_string(), serde_json::json!("Call tool_search to discover available tools"));
+                        extra.insert(
+                            "hint".to_string(),
+                            serde_json::json!("Call tool_search to discover available tools"),
+                        );
                     }
-                    let env = build_error_extra(&service, "call_tool", kind, &err.to_string(), &Value::Object(extra));
+                    let env = build_error_extra(
+                        &service,
+                        "call_tool",
+                        kind,
+                        &err.to_string(),
+                        &Value::Object(extra),
+                    );
                     return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
                 }
             };
@@ -1075,11 +1197,40 @@ impl ServerHandler for LabMcpServer {
                             kind = "upstream_error",
                             "gateway tool invoke upstream disconnected"
                         );
-                        let env = build_error(&service, "call_tool", "upstream_error", &format!("upstream `{upstream_name}` is not connected"));
+                        let env = build_error(
+                            &service,
+                            "call_tool",
+                            "upstream_error",
+                            &format!("upstream `{upstream_name}` is not connected"),
+                        );
                         return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
                     }
                 }
             }
+            // resolve_tool_invoke succeeded but no upstream pool is wired
+            // yet (e.g. gateway manager present but runtime handle hasn't
+            // swapped in a pool). Without this branch, execution falls
+            // through to the catch-all "no dispatcher wired" error below,
+            // which is misleading — surface a structured upstream_error
+            // envelope instead.
+            tracing::warn!(
+                surface = "mcp",
+                service = "tool_invoke",
+                action = "call_tool",
+                subject,
+                upstream = %upstream_name,
+                upstream_tool = %tool_name,
+                arguments_hash = %arguments_hash,
+                kind = "upstream_error",
+                "gateway tool invoke dispatched without upstream pool"
+            );
+            let env = build_error(
+                &service,
+                "call_tool",
+                "upstream_error",
+                "no upstream pool available to dispatch tool_invoke",
+            );
+            return Ok(CallToolResult::error(vec![Content::text(env.to_string())]));
         }
         if svc.is_some() && !self.service_visible_on_mcp(&service).await {
             let envelope = build_error(
@@ -1207,7 +1358,8 @@ impl ServerHandler for LabMcpServer {
                 .await
                 .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
             let elapsed_ms = start.elapsed().as_millis();
-            let (result, outcome) = format_dispatch_result(result, &service, &action, elapsed_ms, &subject);
+            let (result, outcome) =
+                format_dispatch_result(result, &service, &action, elapsed_ms, &subject);
             self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
                 .await;
             return Ok(result);
@@ -1530,7 +1682,8 @@ impl ServerHandler for LabMcpServer {
         // Neither built-in nor upstream.
         let elapsed_ms = start.elapsed().as_millis();
         let err = anyhow::anyhow!("service `{service}` has no dispatcher wired");
-        let (result, outcome) = format_dispatch_result(Err(err), &service, &action, elapsed_ms, &subject);
+        let (result, outcome) =
+            format_dispatch_result(Err(err), &service, &action, elapsed_ms, &subject);
         self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
             .await;
         Ok(result)
@@ -1546,13 +1699,13 @@ fn inject_gateway_origin_param(params: Value, subject: Option<&str>) -> Value {
     let Some(mut object) = params.as_object().cloned() else {
         return params;
     };
-    object
-        .entry("owner".to_string())
-        .or_insert_with(|| serde_json::json!({
+    object.entry("owner".to_string()).or_insert_with(|| {
+        serde_json::json!({
             "surface": "mcp",
             "subject": subject,
             "raw": raw,
-        }));
+        })
+    });
     object
         .entry("origin".to_string())
         .or_insert_with(|| Value::String(raw));
@@ -1859,12 +2012,65 @@ pub fn extract_error_info(e: &anyhow::Error) -> (&'static str, String, Option<Va
 
 #[cfg(test)]
 mod tests {
-    use super::{logging_level_rank, normalize_upstream_result};
+    use super::{extract_error_info, logging_level_rank, normalize_upstream_result};
     use crate::dispatch::error::ToolError;
     use crate::mcp::envelope::build_error;
-    use crate::mcp::error::canonical_kind;
+    use crate::mcp::error::{DispatchError, canonical_kind};
+    use crate::registry::{RegisteredService, ToolRegistry};
+    use lab_apis::core::action::ActionSpec;
     use rmcp::ServerHandler;
     use rmcp::model::{CallToolResult, Content};
+    use serde_json::Value;
+    use std::future::Future;
+
+    #[tokio::test]
+    async fn extract_error_info_preserves_unknown_action_from_real_dispatch_downcast() {
+        let err =
+            crate::dispatch::lab_admin::dispatch("definitely.unknown", serde_json::json!({}))
+                .await
+                .expect_err("unknown lab_admin action should fail");
+        let dispatch_error = DispatchError::from(err);
+        let anyhow_error = anyhow::Error::from(dispatch_error);
+
+        let (kind, message, extra) = extract_error_info(&anyhow_error);
+
+        assert_eq!(kind, "unknown_action");
+        assert_eq!(
+            message,
+            "unknown action `lab_admin.definitely.unknown`"
+        );
+        let extra = extra.expect("unknown_action should preserve valid action extras");
+        assert_eq!(extra["valid"][0], "help");
+        assert_eq!(extra["param"], Value::Null);
+        assert_eq!(extra["hint"], Value::Null);
+    }
+
+    #[test]
+    fn extract_error_info_preserves_unknown_action_from_json_fallback() {
+        let serialized = serde_json::json!({
+            "kind": "unknown_action",
+            "message": "unknown action `movie.serch` for service `radarr`",
+            "valid": ["movie.search", "movie.add"],
+            "hint": "movie.search"
+        })
+        .to_string();
+        let anyhow_error = anyhow::anyhow!(serialized);
+
+        let (kind, message, extra) = extract_error_info(&anyhow_error);
+
+        assert_eq!(kind, "unknown_action");
+        assert_eq!(
+            message,
+            "unknown action `movie.serch` for service `radarr`"
+        );
+        let extra = extra.expect("json fallback should preserve structured extras");
+        assert_eq!(
+            extra["valid"],
+            serde_json::json!(["movie.search", "movie.add"])
+        );
+        assert_eq!(extra["param"], Value::Null);
+        assert_eq!(extra["hint"], serde_json::json!("movie.search"));
+    }
 
     /// Every kind that `ToolError::kind()` can return must have an explicit arm
     /// in `canonical_kind()`.  If a new variant or SDK kind is added to `ToolError`
@@ -1952,7 +2158,7 @@ mod tests {
     #[test]
     fn server_capabilities_advertise_list_changed_support() {
         let server = super::LabMcpServer {
-            registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
+            registry: std::sync::Arc::new(ToolRegistry::new()),
             gateway_manager: None,
             node_role: None,
             peers: std::sync::Arc::new(tokio::sync::RwLock::new(Vec::new())),
@@ -1978,6 +2184,121 @@ mod tests {
             info.capabilities.logging.is_some(),
             "RMCP logging capability must be advertised"
         );
+        assert!(
+            info.capabilities.completions.is_some(),
+            "RMCP completion capability must be advertised"
+        );
+    }
+
+    const TEST_ACTIONS_ONE: &[ActionSpec] = &[
+        ActionSpec {
+            name: "queue.list",
+            description: "List queue",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+        ActionSpec {
+            name: "movie.search",
+            description: "Search movies",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+    ];
+
+    const TEST_ACTIONS_TWO: &[ActionSpec] = &[
+        ActionSpec {
+            name: "calendar.list",
+            description: "List calendar",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+        ActionSpec {
+            name: "movie.lookup",
+            description: "Look up movie",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+    ];
+
+    fn noop_dispatch(
+        _action: String,
+        _params: Value,
+    ) -> std::pin::Pin<
+        Box<dyn Future<Output = Result<Value, ToolError>> + Send>,
+    > {
+        Box::pin(async { Ok(Value::Null) })
+    }
+
+    fn completion_test_registry() -> ToolRegistry {
+        let mut registry = ToolRegistry::new();
+        registry.register(RegisteredService {
+            name: "radarr",
+            description: "Movies",
+            category: "media",
+            status: "available",
+            actions: TEST_ACTIONS_ONE,
+            dispatch: noop_dispatch,
+        });
+        registry.register(RegisteredService {
+            name: "sonarr",
+            description: "Shows",
+            category: "media",
+            status: "available",
+            actions: TEST_ACTIONS_TWO,
+            dispatch: noop_dispatch,
+        });
+        registry
+    }
+
+    #[test]
+    fn completion_run_action_empty_action_prefix_uses_cached_action_names() {
+        let registry = completion_test_registry();
+
+        let completion = super::complete_prompt_arg(&registry, "run-action", "action", "");
+
+        assert_eq!(completion.values, registry.action_name_completions(""));
+        assert_eq!(completion.total, Some(registry.action_names().len() as u32));
+        assert_eq!(completion.has_more, Some(false));
+    }
+
+    #[test]
+    fn completion_run_action_action_prefix_filters_cached_action_names() {
+        let registry = completion_test_registry();
+
+        let completion = super::complete_prompt_arg(&registry, "run-action", "action", "movie.");
+
+        assert_eq!(
+            completion.values,
+            vec!["movie.lookup".to_string(), "movie.search".to_string()]
+        );
+    }
+
+    #[test]
+    fn completion_prompt_service_arguments_filter_service_names() {
+        let registry = completion_test_registry();
+
+        let run_action =
+            super::complete_prompt_arg(&registry, "run-action", "service", "ra");
+        let discover =
+            super::complete_prompt_arg(&registry, "service-discover", "service", "so");
+
+        assert_eq!(run_action.values, vec!["radarr".to_string()]);
+        assert_eq!(discover.values, vec!["sonarr".to_string()]);
+    }
+
+    #[test]
+    fn completion_unknown_prompt_argument_returns_empty_result() {
+        let registry = completion_test_registry();
+
+        let completion = super::complete_prompt_arg(&registry, "run-action", "params", "{");
+
+        assert!(completion.values.is_empty());
+        assert_eq!(completion.total, Some(0));
+        assert_eq!(completion.has_more, Some(false));
     }
 
     #[tokio::test]
@@ -1989,7 +2310,7 @@ mod tests {
         ));
         let notifier = super::PeerNotifier::default();
         let server = super::LabMcpServer {
-            registry: std::sync::Arc::new(crate::registry::ToolRegistry::new()),
+            registry: std::sync::Arc::new(ToolRegistry::new()),
             gateway_manager: Some(std::sync::Arc::clone(&manager)),
             node_role: None,
             peers: std::sync::Arc::clone(&notifier.peers),

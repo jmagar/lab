@@ -65,19 +65,6 @@ pub fn patch_cli_rs(name: &str, content: &str) -> Result<String> {
     }
 }
 
-pub fn patch_mcp_services_rs(name: &str, content: &str) -> Result<String> {
-    let module_decl = format!("pub mod {name};\n");
-    if content.contains(&module_decl) {
-        return Ok(content.to_string());
-    }
-    let marker = "// [lab-scaffold: mcp-services]\n";
-    insert_once(
-        content,
-        marker,
-        &format!("#[cfg(feature = \"{name}\")]\n{module_decl}{marker}"),
-    )
-}
-
 pub fn patch_mcp_registry_rs(name: &str, content: &str) -> Result<String> {
     insert_once(
         content,

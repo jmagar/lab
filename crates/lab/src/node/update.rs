@@ -130,7 +130,9 @@ fn controller_host(config: &LabConfig, local_host: &str) -> String {
     config
         .controller_host()
         .and_then(normalize_host_identifier)
-        .unwrap_or_else(|| normalize_host_identifier(local_host).unwrap_or_else(|| "localhost".into()))
+        .unwrap_or_else(|| {
+            normalize_host_identifier(local_host).unwrap_or_else(|| "localhost".into())
+        })
 }
 
 fn resolve_targets(
@@ -149,7 +151,8 @@ fn resolve_targets(
 
     if all {
         for target in inventory.iter() {
-            if is_local_controller && ssh_target_matches_local(target, local_host, controller_host) {
+            if is_local_controller && ssh_target_matches_local(target, local_host, controller_host)
+            {
                 local_controller = Some(LocalTarget {
                     identity: controller_host.to_string(),
                 });
@@ -175,7 +178,8 @@ fn resolve_targets(
                 .cloned()
                 .ok_or_else(|| anyhow!("unknown node target `{requested}`"))?;
 
-            if is_local_controller && ssh_target_matches_local(&target, local_host, controller_host) {
+            if is_local_controller && ssh_target_matches_local(&target, local_host, controller_host)
+            {
                 local_controller = Some(LocalTarget {
                     identity: controller_host.to_string(),
                 });
@@ -240,7 +244,12 @@ fn legacy_restart_model(deploy: &DeployPreferences, target: &str) -> Option<Rest
 
     let scope = host
         .and_then(|entry| entry.service_scope)
-        .or_else(|| deploy.defaults.as_ref().and_then(|entry| entry.service_scope))
+        .or_else(|| {
+            deploy
+                .defaults
+                .as_ref()
+                .and_then(|entry| entry.service_scope)
+        })
         .unwrap_or(ServiceScope::System);
 
     Some(match scope {
@@ -317,10 +326,10 @@ async fn run_remote_target<I: HostIo + 'static>(
         };
         let transfer_result = transfer_and_install(
             io.clone(),
-                target_config.install_path.clone(),
-                artifact.sha256.clone(),
-                file,
-            )
+            target_config.install_path.clone(),
+            artifact.sha256.clone(),
+            file,
+        )
         .await;
         stages_ms.insert("transfer".into(), transfer_started.elapsed().as_millis());
         if let Err(error) = transfer_result {
@@ -391,7 +400,10 @@ async fn run_remote_target<I: HostIo + 'static>(
         .fetch_device(&resolved_node_id)
         .await
         .is_ok();
-    stages_ms.insert("controller_verify".into(), controller_started.elapsed().as_millis());
+    stages_ms.insert(
+        "controller_verify".into(),
+        controller_started.elapsed().as_millis(),
+    );
     if !connected {
         return failed_result(
             alias.clone(),
@@ -400,7 +412,10 @@ async fn run_remote_target<I: HostIo + 'static>(
             skipped_transfer,
             "controller_verify".into(),
             stages_ms,
-            format!("controller did not report node `{}` as connected", resolved_node_id),
+            format!(
+                "controller did not report node `{}` as connected",
+                resolved_node_id
+            ),
         );
     }
 
@@ -518,7 +533,9 @@ async fn normalize_remote_runtime<I: HostIo + 'static>(
     let home_dir = remote_home_dir(io.clone()).await?;
     let lab_dir = format!("{home_dir}/.lab");
     let config_path = format!("{lab_dir}/config.toml");
-    let current = read_remote_file(io.clone(), &config_path).await.unwrap_or_default();
+    let current = read_remote_file(io.clone(), &config_path)
+        .await
+        .unwrap_or_default();
 
     let mut config = if current.trim().is_empty() {
         LabConfig::default()
@@ -553,7 +570,9 @@ async fn normalize_local_runtime(controller_host: &str) -> Result<()> {
         .await
         .with_context(|| format!("create {}", lab_dir.display()))?;
     let config_path = lab_dir.join("config.toml");
-    let current = tokio::fs::read_to_string(&config_path).await.unwrap_or_default();
+    let current = tokio::fs::read_to_string(&config_path)
+        .await
+        .unwrap_or_default();
     let mut config = if current.trim().is_empty() {
         LabConfig::default()
     } else {
@@ -570,8 +589,8 @@ async fn normalize_local_runtime(controller_host: &str) -> Result<()> {
         .await
         .with_context(|| format!("write {}", config_path.display()))?;
 
-    let _ = tokio::fs::remove_file(lab_dir.join("device-token")).await;
-    let _ = tokio::fs::remove_file(lab_dir.join("device-enrollments.json")).await;
+    drop(tokio::fs::remove_file(lab_dir.join("device-token")).await);
+    drop(tokio::fs::remove_file(lab_dir.join("device-enrollments.json")).await);
     Ok(())
 }
 
@@ -645,14 +664,28 @@ async fn restart_target<I: HostIo + 'static>(
 async fn restart_local_target(restart_model: Option<&RestartModel>) -> Result<RestartSelection> {
     let selection = match restart_model {
         Some(RestartModel::SystemService { service }) => {
-            run_local_command(["systemctl", "restart", service.as_str()]).await?;
-            run_local_command(["systemctl", "is-active", "--wait", service.as_str()]).await?;
+            run_local_command(["sudo", "-n", "systemctl", "restart", service.as_str()]).await?;
+            run_local_command([
+                "sudo",
+                "-n",
+                "systemctl",
+                "is-active",
+                "--wait",
+                service.as_str(),
+            ])
+            .await?;
             RestartSelection::SystemService
         }
         Some(RestartModel::UserService { service }) => {
             run_local_command(["systemctl", "--user", "restart", service.as_str()]).await?;
-            run_local_command(["systemctl", "--user", "is-active", "--wait", service.as_str()])
-                .await?;
+            run_local_command([
+                "systemctl",
+                "--user",
+                "is-active",
+                "--wait",
+                service.as_str(),
+            ])
+            .await?;
             RestartSelection::UserService
         }
         Some(RestartModel::WrapperCommand { command }) => {
@@ -679,6 +712,9 @@ async fn run_wrapper_restart<I: HostIo + 'static>(io: Arc<I>, command: &[String]
 async fn install_local_artifact(source: &Path, target: &Path) -> Result<()> {
     validate_remote_path(&target.display().to_string())
         .context("validate local controller install path")?;
+    if local_install_requires_sudo(target) {
+        return install_local_artifact_with_sudo(source, target).await;
+    }
     if let Some(parent) = target.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -716,6 +752,25 @@ async fn install_local_artifact(source: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn install_local_artifact_with_sudo(source: &Path, target: &Path) -> Result<()> {
+    let staged = target.with_extension("new");
+    let backup = target.with_extension(format!(
+        "bak.{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs())
+            .unwrap_or_default()
+    ));
+    let script = format!(
+        "install -m 755 -- {src} {staged}\nif [ -e {target} ]; then mv -- {target} {backup}; fi\nmv -- {staged} {target}",
+        src = shell_quote(&source.display().to_string()),
+        staged = shell_quote(&staged.display().to_string()),
+        target = shell_quote(&target.display().to_string()),
+        backup = shell_quote(&backup.display().to_string()),
+    );
+    run_local_command_vec(&["sudo".into(), "-n".into(), "sh".into(), "-c".into(), script]).await
+}
+
 async fn verify_local_health() -> Result<()> {
     let mut stream = tokio::net::TcpStream::connect("127.0.0.1:8765")
         .await
@@ -734,6 +789,12 @@ async fn verify_local_health() -> Result<()> {
         bail!("local controller health check did not return 200");
     }
     Ok(())
+}
+
+fn local_install_requires_sudo(target: &Path) -> bool {
+    ["/usr", "/opt", "/etc", "/bin", "/sbin"]
+        .iter()
+        .any(|prefix| target.starts_with(prefix))
 }
 
 async fn run_local_command<const N: usize>(argv: [&str; N]) -> Result<()> {
@@ -796,10 +857,14 @@ fn hosts_match(left: &str, right: &str) -> bool {
         return false;
     };
     left == right
-        || left.split('.').next().unwrap_or(&left) == right.split('.').next().unwrap_or(&right)
+        || left.split('.').next().unwrap_or(&left) == right.split('.').next().unwrap_or(&left)
 }
 
-fn ssh_target_matches_local(target: &SshHostTarget, local_host: &str, controller_host: &str) -> bool {
+fn ssh_target_matches_local(
+    target: &SshHostTarget,
+    local_host: &str,
+    controller_host: &str,
+) -> bool {
     hosts_match(&target.alias, local_host)
         || target
             .hostname
@@ -865,6 +930,7 @@ mod tests {
     async fn normalize_remote_runtime_removes_legacy_files_and_writes_node_controller() {
         let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::ok("/home/lab"));
+        io.push_run(RunResp::ok(""));
         io.push_run(RunResp::ok(""));
         io.push_run(RunResp::ok(""));
 

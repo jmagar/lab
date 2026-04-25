@@ -51,6 +51,8 @@ test('gateway table uses aurora lifted surfaces and muted operational pills', ()
       onEdit: () => {},
       onTest: () => {},
       onReload: () => {},
+      onCleanup: () => {},
+      onClearCleanupHistory: () => {},
       onToggleEnabled: () => {},
       onDelete: () => {},
     }),
@@ -65,4 +67,49 @@ test('gateway table uses aurora lifted surfaces and muted operational pills', ()
   assert.match(markup, />14</)
   assert.match(markup, /prompts/)
   assert.doesNotMatch(markup, /Reload required to apply policy changes/)
+})
+
+test('gateway table exposes stale service removal for unknown in-process services', () => {
+  const staleService: Gateway = {
+    ...gateway,
+    id: 'stale-registry',
+    name: 'mcpregistry',
+    transport: 'in_process',
+    source: 'in_process',
+    status: {
+      ...gateway.status,
+      healthy: false,
+      connected: false,
+      discovered_tool_count: 0,
+      exposed_tool_count: 0,
+      discovered_resource_count: 0,
+      exposed_resource_count: 0,
+      discovered_prompt_count: 0,
+      exposed_prompt_count: 0,
+    },
+    warnings: [
+      {
+        code: 'unknown_service',
+        message: 'service `mcpregistry` is not registered in this lab binary',
+        timestamp: '2026-04-25T12:00:00Z',
+      },
+    ],
+  }
+
+  const markup = renderToStaticMarkup(
+    React.createElement(GatewayTable, {
+      gateways: [staleService],
+      density: 'comfortable',
+      onEdit: () => {},
+      onTest: () => {},
+      onReload: () => {},
+      onCleanup: () => {},
+      onClearCleanupHistory: () => {},
+      onToggleEnabled: () => {},
+      onDelete: () => {},
+    }),
+  )
+
+  assert.match(markup, /Remove stale service/)
+  assert.doesNotMatch(markup, /Remove gateway/)
 })

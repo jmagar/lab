@@ -51,9 +51,14 @@ pub fn redact_home(path: &str) -> String {
 /// upstream by callers via `Path::is_absolute`.
 pub fn reject_path_traversal(rel_path: &str) -> Result<(), ToolError> {
     for component in Path::new(rel_path).components() {
-        if matches!(component, Component::ParentDir) {
+        if matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        ) {
             return Err(ToolError::InvalidParam {
-                message: format!("path traversal rejected: `{rel_path}` contains `..`"),
+                message: format!(
+                    "path traversal rejected: `{rel_path}` must be a relative path with only normal components"
+                ),
                 param: "path".to_string(),
             });
         }
@@ -367,13 +372,26 @@ pub fn instance_env_keys(prefix: &str, label: &str) -> (String, String) {
 #[allow(dead_code)]
 pub fn create_db_file_0600(path: &std::path::PathBuf) {
     use std::os::unix::fs::OpenOptionsExt;
-    // Only set mode on creation; if the file already exists, leave perms alone.
-    std::fs::OpenOptions::new()
+    // Only set mode on creation; if the file already exists, leave perms
+    // alone. Any other failure (permission denied, parent missing, EROFS,
+    // etc.) is logged at WARN — silently swallowing every error here can
+    // hide real misconfigurations of the secure-DB-file path.
+    match std::fs::OpenOptions::new()
         .write(true)
-        .create_new(true) // fails silently if file exists — that's fine
+        .create_new(true)
         .mode(0o600)
         .open(path)
-        .ok();
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to pre-create secure DB file with 0600 permissions"
+            );
+        }
+    }
 }
 
 /// Build a request body from params.

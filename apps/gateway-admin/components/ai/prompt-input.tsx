@@ -409,8 +409,6 @@ export type PromptInputProps = Omit<HTMLAttributes<HTMLFormElement>, "onSubmit" 
   multiple?: boolean
   // When true, accepts drops anywhere on document. Default false (opt-in).
   globalDrop?: boolean
-  // Render a hidden input with given name and keep it in sync for native form posts. Default false.
-  syncHiddenInput?: boolean
   // Minimal constraints
   maxFiles?: number
   maxFileSize?: number // bytes
@@ -423,7 +421,6 @@ export const PromptInput = ({
   accept,
   multiple,
   globalDrop,
-  syncHiddenInput,
   maxFiles,
   maxFileSize,
   onError,
@@ -613,14 +610,6 @@ export const PromptInput = ({
       )
     }
   }, [usingProvider, controller])
-
-  // Note: File input cannot be programmatically set for security reasons
-  // The syncHiddenInput prop is no longer functional
-  useEffect(() => {
-    if (syncHiddenInput && inputRef.current && files.length === 0) {
-      inputRef.current.value = ""
-    }
-  }, [files, syncHiddenInput])
 
   // Attach drop handlers on nearest form and document (opt-in)
   useEffect(() => {

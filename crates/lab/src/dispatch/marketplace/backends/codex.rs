@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 
 use lab_apis::marketplace::{
@@ -10,7 +12,7 @@ use crate::dispatch::error::ToolError;
 use crate::dispatch::marketplace::backend::{MarketplaceBackend, PluginFilter};
 use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::package::{
-    components_from_manifest_and_layout, manifest_summary_from_codex_manifest, redact_home,
+    components_from_manifest_and_layout, manifest_summary_from_codex_manifest,
 };
 use crate::dispatch::marketplace::params::parse_plugin_id;
 
@@ -133,8 +135,16 @@ impl CodexMarketplaceBackend {
         })
     }
 
-    fn source_dir_for_plugin(&self, marketplace: &str, plugin_json: &Value, base_dir: Option<&Path>) -> Option<PathBuf> {
-        let explicit = plugin_json.get("path").and_then(Value::as_str).map(PathBuf::from);
+    fn source_dir_for_plugin(
+        &self,
+        marketplace: &str,
+        plugin_json: &Value,
+        base_dir: Option<&Path>,
+    ) -> Option<PathBuf> {
+        let explicit = plugin_json
+            .get("path")
+            .and_then(Value::as_str)
+            .map(PathBuf::from);
         if let Some(path) = explicit {
             return Some(if path.is_absolute() {
                 path
@@ -160,7 +170,12 @@ impl CodexMarketplaceBackend {
         Self::read_json(&manifest).ok()
     }
 
-    fn cache_path_for_plugin(&self, marketplace: &str, name: &str, version: Option<&str>) -> Option<PathBuf> {
+    fn cache_path_for_plugin(
+        &self,
+        marketplace: &str,
+        name: &str,
+        version: Option<&str>,
+    ) -> Option<PathBuf> {
         let cache_root = client::codex_cache_root().ok()?;
         let base = cache_root.join(marketplace).join(name);
         if let Some(version) = version {
@@ -172,7 +187,11 @@ impl CodexMarketplaceBackend {
         let Ok(entries) = std::fs::read_dir(&base) else {
             return None;
         };
-        let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        let mut dirs: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
         dirs.sort();
         dirs.pop()
     }
@@ -189,11 +208,20 @@ impl CodexMarketplaceBackend {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        let source_path = self.source_dir_for_plugin(&catalog.marketplace.id, plugin_json, catalog.base_dir.as_deref());
-        let manifest_json = source_path.as_deref().and_then(|path| self.codex_manifest_for_source(path));
-        let components = components_from_manifest_and_layout(source_path.as_deref(), manifest_json.as_ref());
+        let source_path = self.source_dir_for_plugin(
+            &catalog.marketplace.id,
+            plugin_json,
+            catalog.base_dir.as_deref(),
+        );
+        let manifest_json = source_path
+            .as_deref()
+            .and_then(|path| self.codex_manifest_for_source(path));
+        let components =
+            components_from_manifest_and_layout(source_path.as_deref(), manifest_json.as_ref());
         let installed_names = self.installed_plugin_names();
-        let installed = installed_names.iter().any(|entry| entry.eq_ignore_ascii_case(&name));
+        let installed = installed_names
+            .iter()
+            .any(|entry| entry.eq_ignore_ascii_case(&name));
         let cache_path = self.cache_path_for_plugin(&catalog.marketplace.id, &name, Some(&version));
         Some(Plugin {
             id: format!("{name}@{}", catalog.marketplace.id),
@@ -211,7 +239,9 @@ impl CodexMarketplaceBackend {
             marketplace_id: Some(catalog.marketplace.id.clone()),
             version: Some(version),
             description: Some(description),
-            manifest: manifest_json.as_ref().and_then(manifest_summary_from_codex_manifest),
+            manifest: manifest_json
+                .as_ref()
+                .and_then(manifest_summary_from_codex_manifest),
             components: Some(components),
             install_state: Some(PluginInstallState {
                 installed,
@@ -219,8 +249,11 @@ impl CodexMarketplaceBackend {
                 installed_at: None,
                 updated_at: None,
             }),
-            source_path: source_path.map(|p| redact_home(&p.to_string_lossy())),
-            cache_path: cache_path.map(|p| redact_home(&p.to_string_lossy())),
+            // Store raw filesystem paths — `list_artifacts` reads these
+            // back as `PathBuf`. `redact_home` is applied at the response
+            // boundary instead so logs/UI don't leak `$HOME`.
+            source_path: source_path.map(|p| p.to_string_lossy().into_owned()),
+            cache_path: cache_path.map(|p| p.to_string_lossy().into_owned()),
         })
     }
 
@@ -260,7 +293,11 @@ impl MarketplaceBackend for CodexMarketplaceBackend {
     }
 
     fn list_sources(&self) -> Result<Vec<Marketplace>, ToolError> {
-        Ok(self.read_catalog_sources()?.into_iter().map(|source| source.marketplace).collect())
+        Ok(self
+            .read_catalog_sources()?
+            .into_iter()
+            .map(|source| source.marketplace)
+            .collect())
     }
 
     fn list_plugins(&self, filter: PluginFilter) -> Result<Vec<Plugin>, ToolError> {
@@ -300,7 +337,10 @@ impl MarketplaceBackend for CodexMarketplaceBackend {
         })
     }
 
-    fn list_components(&self, id: &str) -> Result<Vec<lab_apis::marketplace::PluginComponent>, ToolError> {
+    fn list_components(
+        &self,
+        id: &str,
+    ) -> Result<Vec<lab_apis::marketplace::PluginComponent>, ToolError> {
         let plugin = self.find_plugin(id)?;
         Ok(plugin.components.unwrap_or_default())
     }

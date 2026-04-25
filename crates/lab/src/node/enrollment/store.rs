@@ -129,11 +129,7 @@ impl EnrollmentStore {
         Ok(pending)
     }
 
-    pub async fn approve(
-        &self,
-        node_id: &str,
-        note: Option<String>,
-    ) -> Result<ApprovedEnrollment> {
+    pub async fn approve(&self, node_id: &str, note: Option<String>) -> Result<ApprovedEnrollment> {
         let _guard = self.io_lock.lock().await;
         let mut snapshot = self.read_snapshot().await?;
         if let Some(approved) = snapshot.approved.get(node_id) {
@@ -150,7 +146,9 @@ impl EnrollmentStore {
             approved_at_unix_ms: now_unix_ms()?,
             approval_note: note,
         };
-        snapshot.approved.insert(node_id.to_string(), approved.clone());
+        snapshot
+            .approved
+            .insert(node_id.to_string(), approved.clone());
         snapshot.denied.remove(node_id);
         write_snapshot_atomically(&self.path, &snapshot).await?;
         Ok(approved)
@@ -359,10 +357,7 @@ mod tests {
             .record_pending(attempt("device-1", "token-1"))
             .await
             .expect("record pending");
-        let approved = store
-            .approve("device-1", None)
-            .await
-            .expect("approve");
+        let approved = store.approve("device-1", None).await.expect("approve");
 
         let allowed = store
             .validate("device-1", "token-1")

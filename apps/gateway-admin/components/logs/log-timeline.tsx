@@ -114,7 +114,7 @@ export function LogTimeline({
                   <button
                     type="button"
                     className="inline-flex h-9 w-9 items-center justify-center self-start rounded-full border border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(14,31,44,0.98))] text-aurora-text-muted shadow-[0_8px_16px_rgba(0,0,0,0.16),var(--aurora-highlight-medium)] transition-colors hover:bg-[rgba(7,17,26,0.64)] hover:text-aurora-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/45"
-                    {...(expanded ? { 'aria-controls': detailsId } : {})}
+                    aria-controls={detailsId}
                     aria-expanded={expanded}
                     aria-label={expanded ? 'Collapse log details' : 'Expand log details'}
                     onClick={() => {

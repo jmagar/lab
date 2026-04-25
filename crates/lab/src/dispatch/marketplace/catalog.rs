@@ -1,5 +1,7 @@
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
+use super::mcp_catalog::MCP_ACTIONS;
+
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         name: "help",
@@ -124,6 +126,276 @@ pub const ACTIONS: &[ActionSpec] = &[
             description: "Plugin id in `name@marketplace` form",
         }],
         returns: "DeployPreviewResult",
+    },
+    ActionSpec {
+        name: "artifact.fork",
+        description: "Fork artifact(s) or an entire plugin into your stash with upstream tracking.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifacts",
+                ty: "array",
+                required: false,
+                description: "Relative artifact paths to fork; omit for a plugin-level fork",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "ForkResult",
+    },
+    ActionSpec {
+        name: "artifact.list",
+        description: "List forked marketplace artifact stashes with drift status.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: false,
+                description: "Optional plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "ForkedPluginStatus[]",
+    },
+    ActionSpec {
+        name: "artifact.unfork",
+        description: "Remove fork tracking metadata for artifact(s) or a plugin stash.",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifacts",
+                ty: "array",
+                required: false,
+                description: "Relative artifact paths to unfork; omit for the entire plugin fork",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm this destructive operation",
+            },
+        ],
+        returns: "UnforkResult",
+    },
+    ActionSpec {
+        name: "artifact.reset",
+        description: "Reset forked artifact(s) back to their upstream base snapshot.",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifacts",
+                ty: "array",
+                required: false,
+                description: "Relative artifact paths to reset; omit for all forked artifacts",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm this destructive operation",
+            },
+        ],
+        returns: "ResetResult",
+    },
+    ActionSpec {
+        name: "artifact.diff",
+        description: "Show diffs between forked artifact content and upstream/base snapshots.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifact_path",
+                ty: "string",
+                required: false,
+                description: "Optional relative artifact path; omitted returns all fork diffs",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "ArtifactDiffResult",
+    },
+    ActionSpec {
+        name: "artifact.patch",
+        description: "Apply a patch to one forked artifact in the marketplace stash.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifact_path",
+                ty: "string",
+                required: true,
+                description: "Relative artifact path inside the plugin stash",
+            },
+            ParamSpec {
+                name: "patch",
+                ty: "string",
+                required: true,
+                description: "Unified patch content to apply",
+            },
+            ParamSpec {
+                name: "description",
+                ty: "string",
+                required: false,
+                description: "Optional patch record description",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "PatchResult",
+    },
+    ActionSpec {
+        name: "artifact.update.check",
+        description: "Check whether a forked plugin artifact stash has an upstream update",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "plugin_id",
+            ty: "string",
+            required: false,
+            description: "Optional plugin id in `name@marketplace` form; omitted scans all forked artifact stashes",
+        }],
+        returns: "UpdateCheckResult[]",
+    },
+    ActionSpec {
+        name: "artifact.update.preview",
+        description: "Preview artifact update changes and conflicts for a forked plugin stash",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "plugin_id",
+            ty: "string",
+            required: true,
+            description: "Plugin id in `name@marketplace` form",
+        }],
+        returns: "UpdatePreviewResult",
+    },
+    ActionSpec {
+        name: "artifact.update.apply",
+        description: "Apply a pending upstream artifact update to a forked plugin stash",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "strategy",
+                ty: "string",
+                required: false,
+                description: "Merge strategy: keep_mine, take_upstream, always_ask, ai_suggest",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm this destructive update",
+            },
+        ],
+        returns: "ApplyResult",
+    },
+    ActionSpec {
+        name: "artifact.merge.suggest",
+        description: "Request an AI merge suggestion for one conflicted artifact file",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifact_path",
+                ty: "string",
+                required: true,
+                description: "Relative artifact path inside the plugin stash",
+            },
+        ],
+        returns: "MergeSuggestResult",
+    },
+    ActionSpec {
+        name: "artifact.config.set",
+        description: "Update artifact update preferences for a forked plugin stash",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "strategy",
+                ty: "string",
+                required: false,
+                description: "Merge strategy: keep_mine, take_upstream, always_ask, ai_suggest",
+            },
+            ParamSpec {
+                name: "notify",
+                ty: "boolean",
+                required: false,
+                description: "Whether to notify when updates are available",
+            },
+        ],
+        returns: "ConfigSetResult",
     },
     ActionSpec {
         name: "sources.add",
@@ -295,3 +567,13 @@ pub const ACTIONS: &[ActionSpec] = &[
         ],
     },
 ];
+
+pub fn actions() -> &'static [ActionSpec] {
+    static ACTIONS: std::sync::LazyLock<&'static [ActionSpec]> = std::sync::LazyLock::new(|| {
+        let mut all = Vec::new();
+        all.extend_from_slice(self::ACTIONS);
+        all.extend_from_slice(MCP_ACTIONS);
+        Vec::leak(all)
+    });
+    &ACTIONS
+}

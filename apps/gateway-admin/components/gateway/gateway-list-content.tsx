@@ -122,7 +122,7 @@ export interface GatewayListViewProps {
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
-  const { testGateway, reloadGateway, cleanupGateway, removeGateway, createGateway, updateGateway, enableGateway, disableGateway } =
+  const { testGateway, reloadGateway, cleanupGateway, removeGateway, removeVirtualServer, createGateway, updateGateway, enableGateway, disableGateway } =
     useGatewayMutations()
 
   const [primaryView, setPrimaryView] = useState<GatewayPrimaryLens | 'tools'>(DEFAULT_GATEWAY_LENS)
@@ -316,8 +316,13 @@ export function GatewayListContent() {
     if (!deleteGateway) return
 
     try {
-      await removeGateway(deleteGateway.id)
-      toast.success('Gateway removed successfully')
+      if (deleteGateway.source === 'in_process') {
+        await removeVirtualServer(deleteGateway.id)
+        toast.success('Stale service removed successfully')
+      } else {
+        await removeGateway(deleteGateway.id)
+        toast.success('Gateway removed successfully')
+      }
       setDeleteGateway(null)
     } catch (requestError) {
       toast.error(getErrorMessage(requestError, 'Failed to remove gateway'))

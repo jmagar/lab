@@ -4,9 +4,9 @@ use serde::Serialize;
 use super::state::AppState;
 use crate::api::ToolError;
 
+pub mod enrollments;
 pub mod fleet;
 pub mod hello;
-pub mod enrollments;
 pub mod logs;
 pub mod metadata;
 pub mod oauth;
@@ -31,10 +31,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/status", post(status::handle))
         .route("/metadata", post(metadata::handle))
         .route("/enrollments", axum::routing::get(enrollments::list))
-        .route(
-            "/enrollments/{node_id}/approve",
-            post(enrollments::approve),
-        )
+        .route("/enrollments/{node_id}/approve", post(enrollments::approve))
         .route("/enrollments/{node_id}/deny", post(enrollments::deny))
         .route("/", axum::routing::get(fleet::list_nodes))
         .route("/{node_id}", axum::routing::get(fleet::get_node))

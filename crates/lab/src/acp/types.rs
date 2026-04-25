@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! ACP types for the `lab` binary crate.
 //!
 //! Canonical public types live in `lab_apis::acp::types` under the `Acp*`
@@ -8,6 +10,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[allow(unused_imports)]
 pub use lab_apis::acp::{
     AcpContentBlock, AcpError, AcpEvent, AcpPermissionOption, AcpProviderHealth, AcpSessionState,
     AcpSessionSummary, PersistenceError,
@@ -315,6 +318,7 @@ pub(crate) fn session_title_from_event(event: &AcpEvent) -> Option<String> {
 
 #[derive(Debug, Clone)]
 pub struct StartSessionInput {
+    pub provider: Option<String>,
     pub cwd: String,
     pub title: Option<String>,
     pub principal: Option<String>,

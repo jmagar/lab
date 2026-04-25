@@ -59,7 +59,10 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     assert_eq!(drained.len(), 1);
     assert_eq!(drained[0].kind, "metadata");
     assert_eq!(drained[0].payload["node_id"], "dookie");
-    assert_eq!(drained[0].payload["discovered_configs"][0]["path"], ".claude.json");
+    assert_eq!(
+        drained[0].payload["discovered_configs"][0]["path"],
+        ".claude.json"
+    );
     assert!(
         drained[0].payload["discovered_configs"][0]["content_hash"]
             .as_str()

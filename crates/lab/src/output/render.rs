@@ -107,11 +107,7 @@ fn render_human(value: &Value, theme: CliTheme) -> String {
     }
 }
 
-fn render_object(
-    map: &serde_json::Map<String, Value>,
-    theme: CliTheme,
-    indent: usize,
-) -> String {
+fn render_object(map: &serde_json::Map<String, Value>, theme: CliTheme, indent: usize) -> String {
     if is_extract_report(map) {
         return render_extract_report(map, theme, indent);
     }
@@ -179,7 +175,7 @@ fn render_record_array(items: &[Value], theme: CliTheme, field_name: Option<&str
             headers
                 .iter()
                 .map(|header| {
-                        map.get(header)
+                    map.get(header)
                         .map_or_else(String::new, |value| render_table_cell(header, value, theme))
                 })
                 .collect::<Vec<_>>()
@@ -762,7 +758,11 @@ fn collect_headers(items: &[Value]) -> Vec<String> {
     headers
 }
 
-fn render_doctor_report(map: &serde_json::Map<String, Value>, theme: CliTheme, _indent: usize) -> String {
+fn render_doctor_report(
+    map: &serde_json::Map<String, Value>,
+    theme: CliTheme,
+    _indent: usize,
+) -> String {
     let findings = map
         .get("findings")
         .and_then(Value::as_array)
@@ -863,11 +863,7 @@ fn render_doctor_report(map: &serde_json::Map<String, Value>, theme: CliTheme, _
                     theme.warn(format!("{ok}/{total}").as_str())
                 }
             );
-            vec![
-                format!("  {status}"),
-                theme.display(service),
-                env_summary,
-            ]
+            vec![format!("  {status}"), theme.display(service), env_summary]
         })
         .collect();
 
@@ -1048,8 +1044,6 @@ fn indent_str(level: usize) -> String {
 // success          #7dd3c7       115
 // warning          #c6a36b       180
 // error            #c78490       174
-
-
 
 #[cfg(test)]
 mod tests {

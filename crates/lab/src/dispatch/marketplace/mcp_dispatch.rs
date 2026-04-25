@@ -15,12 +15,12 @@ use serde_json::Value;
 use crate::dispatch::error::ToolError;
 #[cfg(feature = "mcpregistry")]
 use crate::dispatch::helpers::to_json;
+#[cfg(feature = "mcpregistry")]
+use crate::dispatch::marketplace::LAB_REGISTRY_META_NAMESPACE;
+use crate::dispatch::marketplace::mcp_catalog::MCP_ACTIONS;
 use crate::dispatch::marketplace::mcp_client;
 #[cfg(feature = "mcpregistry")]
 use crate::dispatch::marketplace::mcp_params;
-use crate::dispatch::marketplace::mcp_catalog::MCP_ACTIONS;
-#[cfg(feature = "mcpregistry")]
-use crate::dispatch::marketplace::LAB_REGISTRY_META_NAMESPACE;
 
 /// Dispatch a `mcp.*` action using a freshly constructed client.
 ///
@@ -47,7 +47,7 @@ pub async fn dispatch_mcp_with_client(
 ) -> Result<Value, ToolError> {
     match action {
         "mcp.config" => Ok(serde_json::json!({
-            "url": std::env::var("MCPREGISTRY_URL").unwrap_or_else(|_| "(not set)".to_string())
+            "url": mcp_client::configured_registry_url()?
         })),
         "mcp.list" => {
             let p = mcp_params::list_servers_params(&params)?;
@@ -72,12 +72,10 @@ pub async fn dispatch_mcp_with_client(
             to_json(client.list_versions(&name).await?)
         }
         "mcp.validate" => {
-            let server_json: ServerJSON =
-                serde_json::from_value(params["server_json"].clone()).map_err(|e| {
-                    ToolError::Sdk {
-                        sdk_kind: "invalid_param".to_string(),
-                        message: format!("invalid server_json: {e}"),
-                    }
+            let server_json: ServerJSON = serde_json::from_value(params["server_json"].clone())
+                .map_err(|e| ToolError::Sdk {
+                    sdk_kind: "invalid_param".to_string(),
+                    message: format!("invalid server_json: {e}"),
                 })?;
             to_json(client.validate(&server_json).await?)
         }
@@ -106,19 +104,12 @@ pub async fn dispatch_mcp_with_client(
         "mcp.sync" => {
             use crate::config;
             let db_path = config::registry_db_path();
-            let store =
-                crate::dispatch::marketplace::store::RegistryStore::open(&db_path)
-                    .await
-                    .map_err(|e| {
-                        ToolError::internal_message(format!("registry store open: {e}"))
-                    })?;
-            let count = crate::dispatch::marketplace::sync::perform_sync(
-                &store,
-                client,
-                true,
-                "manual",
-            )
-            .await?;
+            let store = crate::dispatch::marketplace::store::RegistryStore::open(&db_path)
+                .await
+                .map_err(|e| ToolError::internal_message(format!("registry store open: {e}")))?;
+            let count =
+                crate::dispatch::marketplace::sync::perform_sync(&store, client, true, "manual")
+                    .await?;
             Ok(serde_json::json!({ "synced": count }))
         }
         unknown => Err(ToolError::UnknownAction {
@@ -251,8 +242,9 @@ async fn install_http(
     let url_for_check = url.clone();
     tokio::task::spawn_blocking(move || mcp_params::validate_registry_url(&url_for_check))
         .await
-        .map_err(|e| ToolError::internal_message(format!("SSRF validation task panicked: {e}")))?
-        ?;
+        .map_err(|e| {
+            ToolError::internal_message(format!("SSRF validation task panicked: {e}"))
+        })??;
 
     // Probe for OAuth support — non-fatal, install proceeds without OAuth on failure.
     let discovered_oauth: Option<Value> =
@@ -366,11 +358,12 @@ fn install_stdio(
             sdk_kind: "internal_error".to_string(),
             message: format!("failed to back up .env: {e}"),
         })?;
-        let conflicts =
-            config::write_env_pairs(&env_path, &resolved_env, false).map_err(|e| ToolError::Sdk {
+        let conflicts = config::write_env_pairs(&env_path, &resolved_env, false).map_err(|e| {
+            ToolError::Sdk {
                 sdk_kind: "internal_error".to_string(),
                 message: format!("failed to write env vars to .env: {e}"),
-            })?;
+            }
+        })?;
         if !conflicts.is_empty() {
             tracing::warn!(
                 service = "marketplace",
@@ -424,13 +417,14 @@ async fn dispatch_mcp_local(action: &str, params: Value) -> Result<Value, ToolEr
         "mcp.meta.set" => {
             let name = mcp_params::require_name(&params)?;
             let requested_version = params["version"].as_str().unwrap_or("latest");
-            let metadata = params
-                .get("metadata")
-                .cloned()
-                .ok_or_else(|| ToolError::MissingParam {
-                    message: "missing required parameter `metadata`".to_string(),
-                    param: "metadata".to_string(),
-                })?;
+            let metadata =
+                params
+                    .get("metadata")
+                    .cloned()
+                    .ok_or_else(|| ToolError::MissingParam {
+                        message: "missing required parameter `metadata`".to_string(),
+                        param: "metadata".to_string(),
+                    })?;
             let metadata = mcp_params::parse_lab_metadata(&metadata)?;
             let updated_by = params
                 .get("updated_by")

@@ -6,7 +6,9 @@ pub struct ServiceProbeParams<'a> {
     pub instance: Option<&'a str>,
 }
 
-pub fn parse_service_probe(params: &serde_json::Value) -> Result<ServiceProbeParams<'_>, ToolError> {
+pub fn parse_service_probe(
+    params: &serde_json::Value,
+) -> Result<ServiceProbeParams<'_>, ToolError> {
     let service = require_str(params, "service")?;
     // Reject any URL in params — resolution must come from env (SSRF defense).
     if service.starts_with("http://") || service.starts_with("https://") {

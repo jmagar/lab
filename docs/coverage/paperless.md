@@ -17,7 +17,7 @@ implemented.
 **SDK (lab-apis):** Fully implemented with `PaperlessClient` methods covering all actions.
 **Dispatch (crates/lab/src/dispatch/paperless):** Complete with catalog, params, dispatch routing.
 **CLI (crates/lab/src/cli/paperless.rs):** Thin dispatch shim using action+params pattern.
-**MCP (crates/lab/src/mcp/services/paperless.rs):** Test-verified; delegates to dispatch.
+**MCP (crates/lab/src/registry.rs):** Test-verified; delegates to dispatch.
 **API (crates/lab/src/api/services/paperless.rs):** Full route handler with shared dispatch integration.
 
 All surfaces route through the shared dispatch layer (`crate::dispatch::paperless`).
@@ -351,7 +351,7 @@ Implementation: `PaperlessClient::probe()` in SDK, integrated into `lab doctor`.
 - Supports all destructive flag patterns (`-y`, `--yes`, `--no-confirm`, `--dry-run`)
 - Output formatting via `OutputFormat` (Human table or JSON)
 
-### MCP (crates/lab/src/mcp/services/paperless.rs)
+### MCP (crates/lab/src/registry.rs)
 - Test module verifying catalog completeness
 - Delegates to shared dispatch; tool registered in `registry.rs`
 - Supports `help` and `schema` built-in actions

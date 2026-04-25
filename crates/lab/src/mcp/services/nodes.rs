@@ -1,8 +1,8 @@
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 use serde_json::{Value, json};
 
-use crate::node::enrollment::store::EnrollmentStore;
 use crate::dispatch::error::ToolError;
+use crate::node::enrollment::store::EnrollmentStore;
 
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
@@ -98,13 +98,12 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 })?;
             Ok(action_json(schema))
         }
-        "enrollments.list" => serde_json::to_value(
-            store
-                .list()
-                .await
-                .map_err(|error| ToolError::internal_message(format!("list enrollments: {error}")))?,
-        )
-        .map_err(|error| ToolError::internal_message(format!("serialize enrollments: {error}"))),
+        "enrollments.list" => {
+            serde_json::to_value(store.list().await.map_err(|error| {
+                ToolError::internal_message(format!("list enrollments: {error}"))
+            })?)
+            .map_err(|error| ToolError::internal_message(format!("serialize enrollments: {error}")))
+        }
         "enrollments.approve" => {
             let node_id = params
                 .get("node_id")
@@ -113,11 +112,17 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                     message: "missing required param `node_id`".to_string(),
                     param: "node_id".to_string(),
                 })?;
-            let note = params.get("note").and_then(Value::as_str).map(str::to_string);
-            let approved = store.approve(node_id, note).await.map_err(|error| ToolError::Sdk {
-                sdk_kind: "not_found".to_string(),
-                message: error.to_string(),
-            })?;
+            let note = params
+                .get("note")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let approved = store
+                .approve(node_id, note)
+                .await
+                .map_err(|error| ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: error.to_string(),
+                })?;
             serde_json::to_value(approved).map_err(|error| {
                 ToolError::internal_message(format!("serialize approved enrollment: {error}"))
             })
@@ -134,10 +139,13 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 .get("reason")
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            let denied = store.deny(node_id, reason).await.map_err(|error| ToolError::Sdk {
-                sdk_kind: "not_found".to_string(),
-                message: error.to_string(),
-            })?;
+            let denied = store
+                .deny(node_id, reason)
+                .await
+                .map_err(|error| ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: error.to_string(),
+                })?;
             serde_json::to_value(denied).map_err(|error| {
                 ToolError::internal_message(format!("serialize denied enrollment: {error}"))
             })

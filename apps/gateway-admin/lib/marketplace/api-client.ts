@@ -77,7 +77,12 @@ export async function installMcpServer(
   params: McpInstallParams,
   signal?: AbortSignal,
 ): Promise<McpInstallResult> {
-  return marketplaceAction<McpInstallResult>('mcp.install', { ...params, confirm: true }, signal)
+  const { server_name, env_vars, ...rest } = params
+  return marketplaceAction<McpInstallResult>(
+    'mcp.install',
+    { ...rest, name: server_name, env_values: env_vars, confirm: true },
+    signal,
+  )
 }
 
 // ── ACP Agents ───────────────────────────────────────────────────────────────
@@ -87,8 +92,8 @@ export interface AcpListResult {
 }
 
 export async function listAcpAgents(signal?: AbortSignal): Promise<AcpAgent[]> {
-  const res = await marketplaceAction<AcpListResult>('agent.list', {}, signal)
-  return res.agents ?? []
+  const res = await marketplaceAction<AcpListResult | AcpAgent[]>('agent.list', {}, signal)
+  return Array.isArray(res) ? res : (res.agents ?? [])
 }
 
 export async function getAcpAgent(id: string, signal?: AbortSignal): Promise<AcpAgent> {
@@ -117,7 +122,11 @@ export async function installAcpAgent(
   params: AcpAgentInstallParams,
   signal?: AbortSignal,
 ): Promise<AcpAgentInstallResult> {
-  return marketplaceAction<AcpAgentInstallResult>('agent.install', { ...params, confirm: true }, signal)
+  return marketplaceAction<AcpAgentInstallResult>(
+    'agent.install',
+    { id: params.agent_id, node_ids: params.device_ids, confirm: true },
+    signal,
+  )
 }
 
 // ── Cherry-pick ───────────────────────────────────────────────────────────────

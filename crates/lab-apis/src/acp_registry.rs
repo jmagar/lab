@@ -14,7 +14,7 @@ pub use error::AcpRegistryError;
 
 use std::time::Instant;
 
-use crate::core::plugin::{Category, PluginMeta};
+use crate::core::plugin::{Category, EnvVar, PluginMeta};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the acp_registry module.
@@ -25,7 +25,13 @@ pub const META: PluginMeta = PluginMeta {
     category: Category::Marketplace,
     docs_url: "https://agentclientprotocol.com",
     required_env: &[],
-    optional_env: &[],
+    optional_env: &[EnvVar {
+        name: "ACP_REGISTRY_URL",
+        description: "Override the ACP Agent Registry CDN URL (defaults to the official endpoint)",
+        example: "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json",
+        secret: false,
+        ui: None,
+    }],
     default_port: None,
     supports_multi_instance: false,
 };
@@ -49,8 +55,13 @@ impl ServiceClient for AcpRegistryClient {
                 latency_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                 message: None,
             }),
-            Err(AcpRegistryError::Request(e)) => Ok(ServiceStatus::unreachable(e.to_string())),
-            Err(e) => Ok(ServiceStatus::unreachable(e.to_string())),
+            // Network-level failures (DNS, connect, timeout) ⇒ unreachable.
+            Err(AcpRegistryError::Request(ApiError::Network(e))) => {
+                Ok(ServiceStatus::unreachable(e.to_string()))
+            }
+            // Server responded but with an error status, or we couldn't decode
+            // the body — the host is reachable, the service is just degraded.
+            Err(e) => Ok(ServiceStatus::degraded(e.to_string())),
         }
     }
 }

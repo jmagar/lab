@@ -4,7 +4,7 @@
 **Source spec:** `docs/upstream-api/bytestash.md`
 **SDK surface:** `crates/lab-apis/src/bytestash/client.rs`
 **Shared dispatch:** `crates/lab/src/dispatch/bytestash/` (catalog.rs, client.rs, params.rs, dispatch.rs)
-**MCP adapter:** `crates/lab/src/mcp/services/bytestash.rs` (tests only; registry wires dispatch directly)
+**MCP registration:** `crates/lab/src/registry.rs` (registry wires dispatch directly)
 **CLI surface:** `crates/lab/src/cli/bytestash.rs` (generic `action` + `key=value` params → `run_confirmable_action_command`)
 **API handler:** `crates/lab/src/api/services/bytestash.rs` (thin adapter over shared dispatch)
 
@@ -206,7 +206,7 @@ Destructive actions (registered in the catalog) require `-y` or `--dry-run` on n
 
 ### MCP
 
-Single tool: `bytestash`. The `mcp/services/bytestash.rs` file contains only tests; the registry
+Single tool: `bytestash`. The `registry.rs` file contains only tests; the registry
 in `mcp/registry.rs` wires `crate::dispatch::bytestash::dispatch` directly (not a thin adapter).
 
 Tool schema and action catalog are auto-generated from `dispatch/bytestash/catalog.rs` via `ACTIONS`.

@@ -35,7 +35,7 @@ impl IntoResponse for ToolError {
             "install_timeout" | "timeout" => StatusCode::GATEWAY_TIMEOUT,
             "oauth_needs_reauth" => StatusCode::UNAUTHORIZED,
             "oauth_state_invalid" => StatusCode::BAD_REQUEST,
-            "forbidden" => StatusCode::FORBIDDEN,
+            "forbidden" | "dev_preview_read_only" => StatusCode::FORBIDDEN,
             "unknown_action" | "unknown_subaction" | "unknown_instance" => {
                 StatusCode::BAD_REQUEST
             }

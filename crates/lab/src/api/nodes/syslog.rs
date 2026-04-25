@@ -26,9 +26,7 @@ pub async fn handle_batch(
             normalize_node_id_value(&event.node_id, &format!("events[{index}].node_id"))?;
         if event_id != node_id {
             return Err(ToolError::InvalidParam {
-                message: format!(
-                    "events[{index}].node_id must match batch node_id `{node_id}`"
-                ),
+                message: format!("events[{index}].node_id must match batch node_id `{node_id}`"),
                 param: format!("events[{index}].node_id"),
             });
         }

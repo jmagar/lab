@@ -33,10 +33,17 @@ mod tests {
     async fn unifi_service_help_lists_core_actions() {
         let value = dispatch("help", serde_json::json!({})).await.unwrap();
         let actions = value["actions"].as_array().unwrap();
+        assert!(actions.iter().any(|a| a["name"] == "help"));
         assert!(actions.iter().any(|a| a["name"] == "system.info"));
         assert!(actions.iter().any(|a| a["name"] == "sites.list"));
         assert!(actions.iter().any(|a| a["name"] == "clients.list"));
+        assert!(actions.iter().any(|a| a["name"] == "networks.list"));
         assert!(actions.iter().any(|a| a["name"] == "wifi.broadcasts.list"));
+    }
+
+    #[test]
+    fn action_count_matches_service_layer() {
+        assert_eq!(actions().len(), 81);
     }
 
     #[test]

@@ -80,10 +80,16 @@ pub async fn run(args: NodesArgs, format: OutputFormat, config: &LabConfig) -> R
                 print(&fetch_enrollments(config).await?, format)?;
             }
             EnrollmentCommand::Approve { node_id, note } => {
-                print(&approve_enrollment(config, &node_id, note.as_deref()).await?, format)?;
+                print(
+                    &approve_enrollment(config, &node_id, note.as_deref()).await?,
+                    format,
+                )?;
             }
             EnrollmentCommand::Deny { node_id, reason } => {
-                print(&deny_enrollment(config, &node_id, reason.as_deref()).await?, format)?;
+                print(
+                    &deny_enrollment(config, &node_id, reason.as_deref()).await?,
+                    format,
+                )?;
             }
         },
     }

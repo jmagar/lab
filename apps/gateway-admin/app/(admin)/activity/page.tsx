@@ -11,6 +11,10 @@ import {
   ListTree,
   MessageSquare,
   Plug,
+  Server,
+  Settings,
+  Smartphone,
+  Store,
   Wrench,
   XCircle,
 } from 'lucide-react'
@@ -44,11 +48,16 @@ const toneStyles = {
 } as const
 
 const kindIcons = {
-  session: Plug,
-  tool: Wrench,
-  resource: ListTree,
-  prompt: MessageSquare,
+  artifact: LinkIcon,
+  device: Smartphone,
+  gateway: Server,
+  marketplace: Store,
   oauth: KeyRound,
+  prompt: MessageSquare,
+  resource: ListTree,
+  session: Plug,
+  settings: Settings,
+  tool: Wrench,
   other: LinkIcon,
 } as const
 
@@ -119,7 +128,7 @@ export default function ActivityPage() {
   const { items: allItems, loading, error } = useActivityFeed()
   const session = useBrowserSession()
   const viewerSub = session.status === 'authenticated' ? session.user.sub : undefined
-  const [mineOnly, setMineOnly] = React.useState(true)
+  const [mineOnly, setMineOnly] = React.useState(false)
 
   const items = React.useMemo(() => {
     if (!mineOnly || !viewerSub) return allItems
@@ -157,7 +166,7 @@ export default function ActivityPage() {
             <p className={AURORA_MUTED_LABEL}>Control Plane</p>
             <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Activity</h1>
             <p className="mt-2 text-sm text-aurora-text-muted">
-              Live feed of MCP sessions, tool calls, resource reads, and OAuth flows from the log store.
+              Live feed of gateway changes, service exposure, devices, chat sessions, artifacts, tools, resources, prompts, marketplace changes, settings, and OAuth flows from the log store.
               Need structured search?{' '}
               <Link href="/logs" className="font-medium text-aurora-accent-primary underline-offset-4 hover:underline">
                 Open the log console
@@ -170,7 +179,7 @@ export default function ActivityPage() {
             <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
               <p className={AURORA_MUTED_LABEL}>Events</p>
               <p className={cn(AURORA_DISPLAY_NUMBER, 'mt-2 text-aurora-text-primary')}>{items.length}</p>
-              <p className="mt-1 text-sm text-aurora-text-muted">Most recent {ACTIVITY_LIMIT} events across MCP and OAuth subsystems.</p>
+              <p className="mt-1 text-sm text-aurora-text-muted">Most recent {ACTIVITY_LIMIT} user-visible events across the app.</p>
             </div>
             <div className={cn(AURORA_MEDIUM_PANEL, 'px-5 py-4')}>
               <p className={AURORA_MUTED_LABEL}>Tool calls</p>

@@ -42,9 +42,7 @@ fn assert_security_headers(response: &axum::response::Response) {
         "X-Content-Type-Options must be nosniff on error responses"
     );
     assert_eq!(
-        headers
-            .get("x-frame-options")
-            .and_then(|v| v.to_str().ok()),
+        headers.get("x-frame-options").and_then(|v| v.to_str().ok()),
         Some("DENY"),
         "X-Frame-Options must be DENY on error responses"
     );

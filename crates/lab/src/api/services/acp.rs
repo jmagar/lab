@@ -4,7 +4,10 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Response, sse::{Event, KeepAlive, Sse}},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
 use futures::StreamExt;
@@ -41,6 +44,7 @@ async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
 
 #[derive(Deserialize)]
 struct CreateSessionBody {
+    provider: Option<String>,
     cwd: Option<String>,
     title: Option<String>,
 }
@@ -50,6 +54,7 @@ async fn create_session(
     Json(body): Json<CreateSessionBody>,
 ) -> impl IntoResponse {
     let params = json!({
+        "provider": body.provider,
         "cwd": body.cwd,
         "title": body.title,
     });
@@ -125,7 +130,10 @@ async fn stream_events(
                 principal
             }
             Err(e) => {
-                return (StatusCode::UNAUTHORIZED, Json(serde_json::to_value(&e).unwrap_or_default()))
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::to_value(&e).unwrap_or_default()),
+                )
                     .into_response();
             }
         }
@@ -144,15 +152,12 @@ async fn stream_events(
         Err(e) => e.into_response(),
         Ok(event_stream) => {
             let sse_stream = event_stream.map(|event| {
-                let data = serde_json::to_string(&*event)
-                    .unwrap_or_else(|_| "{}".to_string());
-                Ok::<Event, Infallible>(
-                    Event::default()
-                        .id(event.seq().to_string())
-                        .data(data),
-                )
+                let data = serde_json::to_string(&*event).unwrap_or_else(|_| "{}".to_string());
+                Ok::<Event, Infallible>(Event::default().id(event.seq().to_string()).data(data))
             });
-            Sse::new(sse_stream).keep_alive(KeepAlive::default()).into_response()
+            Sse::new(sse_stream)
+                .keep_alive(KeepAlive::default())
+                .into_response()
         }
     }
 }

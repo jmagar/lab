@@ -170,9 +170,7 @@ impl InstallProgressNotification {
 pub fn reject_path_traversal(rel_path: &str) -> Result<()> {
     let path = Path::new(rel_path);
     if path.as_os_str().is_empty() {
-        return Err(anyhow!(
-            "{ERR_PATH_TRAVERSAL}: path rejected: empty"
-        ));
+        return Err(anyhow!("{ERR_PATH_TRAVERSAL}: path rejected: empty"));
     }
     for component in path.components() {
         if !matches!(component, Component::Normal(_)) {
@@ -259,11 +257,7 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
         .file_name()
         .ok_or_else(|| anyhow::anyhow!("target has no file name: {}", red_path(target)))?
         .to_string_lossy();
-    let tmp = parent.join(format!(
-        "{}.tmp-{}",
-        file_name,
-        uuid::Uuid::new_v4()
-    ));
+    let tmp = parent.join(format!("{}.tmp-{}", file_name, uuid::Uuid::new_v4()));
 
     // Local RAII cleanup: if any step below fails, remove the tempfile on
     // return. On success we `forget()` the guard so the file isn't deleted
@@ -322,9 +316,9 @@ pub async fn write_atomic(target: &Path, contents: &[u8]) -> Result<()> {
         ));
     }
 
-    tokio::fs::rename(&tmp, target).await.with_context(|| {
-        format!("rename {} -> {}", red_path(&tmp), red_path(target))
-    })?;
+    tokio::fs::rename(&tmp, target)
+        .await
+        .with_context(|| format!("rename {} -> {}", red_path(&tmp), red_path(target)))?;
     // Rename succeeded — disable cleanup so the renamed file stays at `target`.
     guard.0 = None;
     Ok(())
@@ -343,8 +337,9 @@ pub fn resolve_write_root(scope: InstallScope, project_path: Option<&str>) -> Re
             Ok(PathBuf::from(home).join(".claude"))
         }
         InstallScope::Project => {
-            let raw = project_path
-                .ok_or_else(|| anyhow!("{ERR_MISSING_PARAM}: project_path is required when scope == Project"))?;
+            let raw = project_path.ok_or_else(|| {
+                anyhow!("{ERR_MISSING_PARAM}: project_path is required when scope == Project")
+            })?;
             let p = PathBuf::from(raw);
             if !p.is_absolute() {
                 return Err(anyhow!(
@@ -383,7 +378,11 @@ pub async fn handle_install_component(
     progress_tx: &mpsc::Sender<String>,
 ) -> Result<InstallComponentResult> {
     // Send started progress notification.
-    send_progress(progress_tx, &InstallProgressNotification::started(rpc_id.clone())).await;
+    send_progress(
+        progress_tx,
+        &InstallProgressNotification::started(rpc_id.clone()),
+    )
+    .await;
 
     let write_root = resolve_write_root(params.scope, params.project_path.as_deref())?;
     tokio::fs::create_dir_all(&write_root)
@@ -396,11 +395,15 @@ pub async fn handle_install_component(
         // Security: reject path traversal.
         if let Err(err) = reject_path_traversal(&component_path) {
             let msg = err.to_string();
-            send_progress(progress_tx, &InstallProgressNotification::file_error(
-                        rpc_id.clone(),
-                        component_path.clone(),
-                        msg.clone(),
-                    )).await;
+            send_progress(
+                progress_tx,
+                &InstallProgressNotification::file_error(
+                    rpc_id.clone(),
+                    component_path.clone(),
+                    msg.clone(),
+                ),
+            )
+            .await;
             result.errors.push(InstallError {
                 file: component_path,
                 error: msg,
@@ -413,11 +416,15 @@ pub async fn handle_install_component(
         // Security: reject symlink at target path.
         if let Err(err) = reject_symlink(&target).await {
             let msg = err.to_string();
-            send_progress(progress_tx, &InstallProgressNotification::file_error(
-                        rpc_id.clone(),
-                        component_path.clone(),
-                        msg.clone(),
-                    )).await;
+            send_progress(
+                progress_tx,
+                &InstallProgressNotification::file_error(
+                    rpc_id.clone(),
+                    component_path.clone(),
+                    msg.clone(),
+                ),
+            )
+            .await;
             result.errors.push(InstallError {
                 file: component_path,
                 error: msg,
@@ -432,11 +439,15 @@ pub async fn handle_install_component(
                 .with_context(|| format!("create parent dir for `{}`", red_path(&target)))
             {
                 let msg = err.to_string();
-                send_progress(progress_tx, &InstallProgressNotification::file_error(
-                            rpc_id.clone(),
-                            component_path.clone(),
-                            msg.clone(),
-                        )).await;
+                send_progress(
+                    progress_tx,
+                    &InstallProgressNotification::file_error(
+                        rpc_id.clone(),
+                        component_path.clone(),
+                        msg.clone(),
+                    ),
+                )
+                .await;
                 result.errors.push(InstallError {
                     file: component_path,
                     error: msg,
@@ -447,11 +458,15 @@ pub async fn handle_install_component(
 
         if let Err(err) = ensure_target_within_write_root(&write_root, &target).await {
             let msg = err.to_string();
-            send_progress(progress_tx, &InstallProgressNotification::file_error(
-                        rpc_id.clone(),
-                        component_path.clone(),
-                        msg.clone(),
-                    )).await;
+            send_progress(
+                progress_tx,
+                &InstallProgressNotification::file_error(
+                    rpc_id.clone(),
+                    component_path.clone(),
+                    msg.clone(),
+                ),
+            )
+            .await;
             result.errors.push(InstallError {
                 file: component_path,
                 error: msg,
@@ -475,19 +490,27 @@ pub async fn handle_install_component(
                     path = %crate::dispatch::helpers::redact_home(&target.to_string_lossy()),
                     "wrote component file"
                 );
-                send_progress(progress_tx, &InstallProgressNotification::file_written(
-                            rpc_id.clone(),
-                            component_path.clone(),
-                        )).await;
+                send_progress(
+                    progress_tx,
+                    &InstallProgressNotification::file_written(
+                        rpc_id.clone(),
+                        component_path.clone(),
+                    ),
+                )
+                .await;
                 result.written.push(component_path);
             }
             Err(err) => {
                 let msg = format!("write failed: {err}");
-                send_progress(progress_tx, &InstallProgressNotification::file_error(
-                            rpc_id.clone(),
-                            component_path.clone(),
-                            msg.clone(),
-                        )).await;
+                send_progress(
+                    progress_tx,
+                    &InstallProgressNotification::file_error(
+                        rpc_id.clone(),
+                        component_path.clone(),
+                        msg.clone(),
+                    ),
+                )
+                .await;
                 result.errors.push(InstallError {
                     file: component_path,
                     error: msg,
@@ -518,7 +541,11 @@ pub async fn handle_agent_install(
     progress_tx: &mpsc::Sender<String>,
 ) -> Result<InstallComponentResult> {
     // Send started progress notification.
-    send_progress(progress_tx, &InstallProgressNotification::started(rpc_id.clone())).await;
+    send_progress(
+        progress_tx,
+        &InstallProgressNotification::started(rpc_id.clone()),
+    )
+    .await;
 
     reject_path_traversal(&params.agent_id)?;
 
@@ -535,11 +562,15 @@ pub async fn handle_agent_install(
     // Security: reject symlink at target path.
     if let Err(err) = reject_symlink(&target).await {
         let msg = err.to_string();
-        send_progress(progress_tx, &InstallProgressNotification::file_error(
-                    rpc_id.clone(),
-                    target_file.clone(),
-                    msg.clone(),
-                )).await;
+        send_progress(
+            progress_tx,
+            &InstallProgressNotification::file_error(
+                rpc_id.clone(),
+                target_file.clone(),
+                msg.clone(),
+            ),
+        )
+        .await;
         result.errors.push(InstallError {
             file: target_file,
             error: msg,
@@ -553,11 +584,15 @@ pub async fn handle_agent_install(
         .with_context(|| format!("create agents dir `{}`", red_path(&agents_dir)))
     {
         let msg = err.to_string();
-        send_progress(progress_tx, &InstallProgressNotification::file_error(
-                    rpc_id.clone(),
-                    target_file.clone(),
-                    msg.clone(),
-                )).await;
+        send_progress(
+            progress_tx,
+            &InstallProgressNotification::file_error(
+                rpc_id.clone(),
+                target_file.clone(),
+                msg.clone(),
+            ),
+        )
+        .await;
         result.errors.push(InstallError {
             file: target_file,
             error: msg,
@@ -567,11 +602,15 @@ pub async fn handle_agent_install(
 
     if let Err(err) = ensure_target_within_write_root(&write_root, &target).await {
         let msg = err.to_string();
-        send_progress(progress_tx, &InstallProgressNotification::file_error(
-                    rpc_id.clone(),
-                    target_file.clone(),
-                    msg.clone(),
-                )).await;
+        send_progress(
+            progress_tx,
+            &InstallProgressNotification::file_error(
+                rpc_id.clone(),
+                target_file.clone(),
+                msg.clone(),
+            ),
+        )
+        .await;
         result.errors.push(InstallError {
             file: target_file,
             error: msg,
@@ -588,11 +627,15 @@ pub async fn handle_agent_install(
         Ok(bytes) => bytes,
         Err(err) => {
             let msg = format!("serialize distribution: {err}");
-            send_progress(progress_tx, &InstallProgressNotification::file_error(
-                        rpc_id.clone(),
-                        target_file.clone(),
-                        msg.clone(),
-                    )).await;
+            send_progress(
+                progress_tx,
+                &InstallProgressNotification::file_error(
+                    rpc_id.clone(),
+                    target_file.clone(),
+                    msg.clone(),
+                ),
+            )
+            .await;
             result.errors.push(InstallError {
                 file: target_file,
                 error: msg,
@@ -615,19 +658,24 @@ pub async fn handle_agent_install(
                 agent_id = %params.agent_id,
                 "wrote agent install descriptor"
             );
-            send_progress(progress_tx, &InstallProgressNotification::file_written(
-                        rpc_id.clone(),
-                        target_file.clone(),
-                    )).await;
+            send_progress(
+                progress_tx,
+                &InstallProgressNotification::file_written(rpc_id.clone(), target_file.clone()),
+            )
+            .await;
             result.written.push(target_file);
         }
         Err(err) => {
             let msg = format!("write failed: {err}");
-            send_progress(progress_tx, &InstallProgressNotification::file_error(
-                        rpc_id.clone(),
-                        target_file.clone(),
-                        msg.clone(),
-                    )).await;
+            send_progress(
+                progress_tx,
+                &InstallProgressNotification::file_error(
+                    rpc_id.clone(),
+                    target_file.clone(),
+                    msg.clone(),
+                ),
+            )
+            .await;
             result.errors.push(InstallError {
                 file: target_file,
                 error: msg,
@@ -705,8 +753,14 @@ mod tests {
         #[cfg(unix)]
         tokio::fs::symlink(&target, &link).await.expect("symlink");
         #[cfg(unix)]
-        assert!(reject_symlink(&link).await.is_err(), "should reject symlink");
-        assert!(reject_symlink(&target).await.is_ok(), "should allow real file");
+        assert!(
+            reject_symlink(&link).await.is_err(),
+            "should reject symlink"
+        );
+        assert!(
+            reject_symlink(&target).await.is_ok(),
+            "should allow real file"
+        );
     }
 
     #[tokio::test]
@@ -722,19 +776,19 @@ mod tests {
         };
         let files = vec![("agents/my-agent.md".to_string(), b"# My Agent\n".to_vec())];
 
-        let result = handle_install_component(params, files, serde_json::json!("req-1"), &progress_tx)
-            .await
-            .expect("install");
+        let result =
+            handle_install_component(params, files, serde_json::json!("req-1"), &progress_tx)
+                .await
+                .expect("install");
 
         assert_eq!(result.written, vec!["agents/my-agent.md"]);
         assert!(result.errors.is_empty());
         assert!(result.skipped.is_empty());
 
-        let written_content = tokio::fs::read_to_string(
-            tempdir.path().join(".claude/agents/my-agent.md"),
-        )
-        .await
-        .expect("read written file");
+        let written_content =
+            tokio::fs::read_to_string(tempdir.path().join(".claude/agents/my-agent.md"))
+                .await
+                .expect("read written file");
         assert_eq!(written_content, "# My Agent\n");
 
         // At least one progress notification should have been sent.
@@ -812,11 +866,10 @@ mod tests {
         assert_eq!(result.written, vec!["claude-agent.json"]);
         assert!(result.errors.is_empty());
 
-        let written = tokio::fs::read_to_string(
-            tempdir.path().join(".claude/agents/claude-agent.json"),
-        )
-        .await
-        .expect("read agent file");
+        let written =
+            tokio::fs::read_to_string(tempdir.path().join(".claude/agents/claude-agent.json"))
+                .await
+                .expect("read agent file");
         let v: Value = serde_json::from_str(&written).expect("parse");
         assert_eq!(v["agent_id"], "claude-agent");
         assert_eq!(v["distribution"]["package"], "@anthropic/claude-agent-acp");
@@ -872,7 +925,9 @@ mod tests {
         // symlink into the victim file.
         let dir = tempfile::tempdir().unwrap();
         let victim = dir.path().join("victim.txt");
-        tokio::fs::write(&victim, b"DO NOT OVERWRITE").await.unwrap();
+        tokio::fs::write(&victim, b"DO NOT OVERWRITE")
+            .await
+            .unwrap();
         let target = dir.path().join("out.md");
 
         #[cfg(unix)]

@@ -88,5 +88,5 @@ export interface PluginInstallState {
 export interface PluginManifestSummary {
   description?: string
   version?: string
-  interface?: string
+  interface?: unknown
 }

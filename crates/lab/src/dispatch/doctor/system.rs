@@ -13,7 +13,11 @@ fn path_check(service: &str, label: &str, path: &str, severity_on_missing: Sever
     Finding {
         service: service.to_string(),
         check: label.to_string(),
-        severity: if exists { Severity::Ok } else { severity_on_missing },
+        severity: if exists {
+            Severity::Ok
+        } else {
+            severity_on_missing
+        },
         message: if exists {
             format!("{path} found")
         } else {
@@ -40,6 +44,29 @@ fn command_check(service: &str, label: &str, cmd: &str) -> Finding {
     }
 }
 
+/// Verify `docker compose` (the v2 CLI plugin) is actually wired up,
+/// not just that the `docker` binary exists.
+///
+/// Runs `docker compose version` and treats a non-zero exit (or missing
+/// binary) as the plugin being unavailable.
+fn compose_plugin_check() -> Finding {
+    let found = std::process::Command::new("docker")
+        .args(["compose", "version"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    Finding {
+        service: "system".to_string(),
+        check: "docker:compose-plugin".to_string(),
+        severity: if found { Severity::Ok } else { Severity::Warn },
+        message: if found {
+            "`docker compose` plugin is available".to_string()
+        } else {
+            "`docker compose` plugin not available".to_string()
+        },
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -58,7 +85,11 @@ pub fn run_system_checks() -> Vec<Finding> {
             findings.push(Finding {
                 service: service_name.into(),
                 check: format!("env:{}", env.name),
-                severity: if present { Severity::Ok } else { Severity::Fail },
+                severity: if present {
+                    Severity::Ok
+                } else {
+                    Severity::Fail
+                },
                 message: if present {
                     format!("{} is set", env.name)
                 } else {
@@ -84,7 +115,11 @@ pub fn run_system_checks() -> Vec<Finding> {
     ));
 
     // --- AI assistant configs (informational) ---
-    for (name, rel_path) in [(".claude", "claude"), (".codex", "codex"), (".gemini", "gemini")] {
+    for (name, rel_path) in [
+        (".claude", "claude"),
+        (".codex", "codex"),
+        (".gemini", "gemini"),
+    ] {
         let full = format!("{home}/{name}");
         let exists = std::path::Path::new(&full).exists();
         findings.push(Finding {
@@ -107,7 +142,7 @@ pub fn run_system_checks() -> Vec<Finding> {
         Severity::Warn,
     ));
     findings.push(command_check("system", "docker:cli", "docker"));
-    findings.push(command_check("system", "docker:compose-plugin", "docker"));
+    findings.push(compose_plugin_check());
 
     // --- Rust toolchain ---
     findings.push(command_check("system", "rust:cargo", "cargo"));
@@ -135,7 +170,11 @@ fn disk_check(findings: &mut Vec<Finding>) {
         findings.push(Finding {
             service: "system".into(),
             check: "disk:/".into(),
-            severity: if used >= 90 { Severity::Warn } else { Severity::Ok },
+            severity: if used >= 90 {
+                Severity::Warn
+            } else {
+                Severity::Ok
+            },
             message: format!("/ is {used}% used"),
         });
     }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! ACP persistence — JSON-file implementation (legacy) and re-export of the
 //! new `AcpPersistence` trait.
 //!
@@ -13,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use tokio::fs;
 
+#[allow(unused_imports)]
 pub use lab_apis::acp::persistence::AcpPersistence;
 
 use super::types::{BridgeEvent, BridgeSessionSummary};

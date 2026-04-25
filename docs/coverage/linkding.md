@@ -4,7 +4,7 @@
 **Source spec:** `docs/upstream-api/linkding.md`
 **SDK surface:** `crates/lab-apis/src/linkding/client.rs` (20 public methods: 19 wrappers + `probe()`)
 **Shared dispatch:** `crates/lab/src/dispatch/linkding/` (catalog.rs, dispatch.rs, client.rs, params.rs)
-**MCP adapter:** `crates/lab/src/mcp/services/linkding.rs` (tests-only validation; dispatch logic in shared layer)
+**MCP registration:** `crates/lab/src/registry.rs` (direct registry entry to dispatch layer)
 **CLI surface:** `crates/lab/src/cli/linkding.rs` (Tier 2: generic `action` + `--params JSON` shim)
 **API handler:** `crates/lab/src/api/services/linkding.rs` (thin dispatch adapter with bearer auth + confirmation gating)
 

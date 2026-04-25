@@ -72,6 +72,7 @@ test('gatewayApi.create sends confirm=true with destructive gateway adds', async
   await withGatewayFetch(
     {
       'gateway.add': () => standardGatewayView,
+      'gateway.mcp.list': () => [],
       'gateway.test': () => standardGatewayView.runtime,
       'gateway.discovered_tools': () => ['tool.alpha'],
       'gateway.discovered_resources': () => ['lab://resource.alpha'],
@@ -98,6 +99,7 @@ test('gatewayApi.create sends pasted bearer tokens as a separate payload field',
   await withGatewayFetch(
     {
       'gateway.add': () => standardGatewayView,
+      'gateway.mcp.list': () => [],
       'gateway.test': () => standardGatewayView.runtime,
       'gateway.discovered_tools': () => ['tool.alpha'],
       'gateway.discovered_resources': () => ['lab://resource.alpha'],
@@ -122,6 +124,7 @@ test('gatewayApi.create sends pasted bearer tokens as a separate payload field',
           args: [],
           bearer_token_env: 'LAB_GW_GITHUB_AUTH_HEADER',
           proxy_resources: false,
+          proxy_prompts: true,
           expose_tools: null,
         },
       )
@@ -137,6 +140,7 @@ test('gatewayApi.update sends confirm=true with destructive gateway updates', as
   await withGatewayFetch(
     {
       'gateway.update': () => standardGatewayView,
+      'gateway.mcp.list': () => [],
       'gateway.test': () => standardGatewayView.runtime,
       'gateway.discovered_tools': () => ['tool.alpha'],
       'gateway.discovered_resources': () => ['lab://resource.alpha'],
@@ -166,6 +170,7 @@ test('gatewayApi.update sends pasted bearer tokens as a separate payload field',
   await withGatewayFetch(
     {
       'gateway.update': () => standardGatewayView,
+      'gateway.mcp.list': () => [],
       'gateway.test': () => standardGatewayView.runtime,
       'gateway.discovered_tools': () => ['tool.alpha'],
       'gateway.discovered_resources': () => ['lab://resource.alpha'],
@@ -204,6 +209,21 @@ test('gatewayApi.remove sends confirm=true with destructive gateway removals', a
         requests.find((request) => request.action === 'gateway.remove')?.params.confirm,
         true,
       )
+    },
+  )
+})
+
+test('gatewayApi.removeVirtualServer sends confirm=true with virtual-server removals', async () => {
+  await withGatewayFetch(
+    {
+      'gateway.virtual_server.remove': () => ({ id: 'stale-registry' }),
+    },
+    async (requests) => {
+      await gatewayApi.removeVirtualServer('stale-registry')
+
+      const request = requests.find((request) => request.action === 'gateway.virtual_server.remove')
+      assert.equal(request?.params.id, 'stale-registry')
+      assert.equal(request?.params.confirm, true)
     },
   )
 })
@@ -296,7 +316,198 @@ test('gatewayApi.list does not refresh browser session for non-csrf validation e
     expiresAt: 123,
     csrfToken: 'csrf-old',
   })
-  assert.deepEqual(urls, ['/v1/gateway'])
+  assert.deepEqual(urls, ['/v1/gateway', '/v1/gateway'])
+})
+
+test('gatewayApi.list keeps loading when a stale in-process service has no action catalog', async () => {
+  const originalWarn = console.warn
+  console.warn = () => {}
+  try {
+    await withGatewayFetch(
+      {
+        'gateway.list': () => ([
+          {
+            id: 'mcpregistry',
+            name: 'mcpregistry',
+            source: 'in_process',
+            configured: true,
+            enabled: false,
+            connected: false,
+            discovered_tool_count: 0,
+            exposed_tool_count: 0,
+            discovered_resource_count: 0,
+            exposed_resource_count: 0,
+            discovered_prompt_count: 0,
+            exposed_prompt_count: 0,
+            surfaces: {
+              cli: { enabled: false, connected: false },
+              api: { enabled: false, connected: false },
+              mcp: { enabled: false, connected: false },
+              webui: { enabled: false, connected: false },
+            },
+            warnings: [],
+            config_summary: {
+              transport: 'in_process',
+              target: 'mcpregistry',
+            },
+          },
+        ]),
+        'gateway.mcp.list': () => [],
+        'gateway.service_actions': () => new Response(
+          JSON.stringify({
+            kind: 'invalid_param',
+            message: 'unknown service `mcpregistry`',
+            param: 'service',
+          }),
+          {
+            status: 422,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+        'gateway.virtual_server.get_mcp_policy': () => ({ allowed_actions: [] }),
+      },
+      async () => {
+        const gateways = await gatewayApi.list()
+
+        assert.equal(gateways.length, 1)
+        assert.equal(gateways[0]?.id, 'mcpregistry')
+        assert.equal(gateways[0]?.discovery.tools.length, 0)
+        assert.match(gateways[0]?.warnings[0]?.message ?? '', /unknown service `mcpregistry`/)
+      },
+    )
+  } finally {
+    console.warn = originalWarn
+  }
+})
+
+test('gatewayApi.list logs degraded gateway row warning counts once', async () => {
+  const originalWarn = console.warn
+  const warnings: unknown[][] = []
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args)
+  }
+
+  try {
+    await withGatewayFetch(
+      {
+        'gateway.list': () => ([
+          {
+            id: 'mcpregistry',
+            name: 'mcpregistry',
+            source: 'in_process',
+            configured: true,
+            enabled: false,
+            connected: false,
+            discovered_tool_count: 0,
+            exposed_tool_count: 0,
+            discovered_resource_count: 0,
+            exposed_resource_count: 0,
+            discovered_prompt_count: 0,
+            exposed_prompt_count: 0,
+            surfaces: {
+              cli: { enabled: false, connected: false },
+              api: { enabled: false, connected: false },
+              mcp: { enabled: false, connected: false },
+              webui: { enabled: false, connected: false },
+            },
+            warnings: [
+              {
+                code: 'unknown_service',
+                message: 'service `mcpregistry` is not registered in this lab binary',
+              },
+            ],
+            config_summary: {
+              transport: 'in_process',
+              target: 'mcpregistry',
+            },
+          },
+        ]),
+        'gateway.mcp.list': () => [],
+        'gateway.service_actions': () => new Response(
+          JSON.stringify({
+            kind: 'invalid_param',
+            message: 'unknown service `mcpregistry`',
+            param: 'service',
+          }),
+          {
+            status: 422,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+        'gateway.virtual_server.get_mcp_policy': () => ({ allowed_actions: [] }),
+      },
+      async () => {
+        await gatewayApi.list()
+
+        assert.equal(warnings.length, 1)
+        assert.equal(warnings[0][0], '[gateway] degraded gateway rows')
+        assert.deepEqual(warnings[0][1], {
+          unknown_service: 1,
+          service_catalog_unavailable: 1,
+        })
+      },
+    )
+  } finally {
+    console.warn = originalWarn
+  }
+})
+
+test('gatewayApi.list rethrows aborts instead of degrading rows', async () => {
+  const originalWarn = console.warn
+  const warnings: unknown[][] = []
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args)
+  }
+  const controller = new AbortController()
+
+  try {
+    await withGatewayFetch(
+      {
+        'gateway.list': () => ([
+          {
+            id: 'plex',
+            name: 'plex',
+            source: 'in_process',
+            configured: true,
+            enabled: true,
+            connected: false,
+            discovered_tool_count: 0,
+            exposed_tool_count: 0,
+            discovered_resource_count: 0,
+            exposed_resource_count: 0,
+            discovered_prompt_count: 0,
+            exposed_prompt_count: 0,
+            surfaces: {
+              cli: { enabled: false, connected: false },
+              api: { enabled: false, connected: false },
+              mcp: { enabled: true, connected: false },
+              webui: { enabled: false, connected: false },
+            },
+            warnings: [],
+            config_summary: {
+              transport: 'in_process',
+              target: 'plex',
+            },
+          },
+        ]),
+        'gateway.mcp.list': () => [],
+        'gateway.service_actions': () => {
+          controller.abort()
+          throw new DOMException('Aborted', 'AbortError')
+        },
+        'gateway.virtual_server.get_mcp_policy': () => ({ allowed_actions: [] }),
+      },
+      async () => {
+        await assert.rejects(
+          () => gatewayApi.list(controller.signal),
+          (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
+        )
+        assert.equal(warnings.length, 0)
+      },
+    )
+  } finally {
+    console.warn = originalWarn
+  }
 })
 
 test('gatewayApi destructive mutations send confirm=true', async () => {
@@ -322,6 +533,13 @@ test('gatewayApi destructive mutations send confirm=true', async () => {
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
+    }
+
+    if (payload.action === 'gateway.mcp.list') {
+      return new Response('[]', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
     }
 
     if (payload.action === 'gateway.add' || payload.action === 'gateway.update') {

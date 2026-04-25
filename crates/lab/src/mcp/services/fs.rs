@@ -112,7 +112,10 @@ mod tests {
     fn mcp_actions_cover_canonical_except_http_only() {
         let mcp_names: Vec<&str> = MCP_ACTIONS.iter().map(|a| a.name).collect();
         for canonical in crate::dispatch::fs::catalog::ACTIONS {
-            if HTTP_ONLY_ACTIONS.iter().any(|(name, _)| *name == canonical.name) {
+            if HTTP_ONLY_ACTIONS
+                .iter()
+                .any(|(name, _)| *name == canonical.name)
+            {
                 assert!(
                     !mcp_names.contains(&canonical.name),
                     "`{}` is in HTTP_ONLY_ACTIONS but still present in MCP_ACTIONS",
@@ -141,10 +144,7 @@ mod tests {
                 .iter()
                 .find(|c| c.name == mcp.name)
                 .unwrap_or_else(|| {
-                    panic!(
-                        "MCP action `{}` missing from canonical catalog",
-                        mcp.name
-                    )
+                    panic!("MCP action `{}` missing from canonical catalog", mcp.name)
                 });
             assert_eq!(
                 mcp.description, canonical.description,

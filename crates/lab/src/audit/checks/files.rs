@@ -28,7 +28,6 @@ pub fn run(name: &str, repo_root: &Path) -> Vec<(String, CheckResult)> {
         format!("crates/lab/src/dispatch/{name}/dispatch.rs"),
         format!("crates/lab/src/dispatch/{name}/params.rs"),
         format!("crates/lab/src/cli/{name}.rs"),
-        format!("crates/lab/src/mcp/services/{name}.rs"),
         format!("crates/lab/src/api/services/{name}.rs"),
     ] {
         let path = repo_root.join(&rel);

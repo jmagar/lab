@@ -10,6 +10,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Read [CONVENTIONS.md](./CONVENTIONS.md) before changing implementation patterns or core APIs.
 - Use [SERVICES.md](./SERVICES.md), [CLI.md](./CLI.md), [MCP.md](./MCP.md), and [TUI.md](./TUI.md) for surface-specific behavior.
 - Use [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md) for the human-readable CLI output language and shared color policy.
+- Use [design/component-development.md](./design/component-development.md) and [design/design-system-contract.md](./design/design-system-contract.md) when building or revising Labby web UI components.
 - Use [CONFIG.md](./CONFIG.md), [EXTRACT.md](./EXTRACT.md), and [OPERATIONS.md](./OPERATIONS.md) for setup and operator workflows.
 - Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, lab-issued JWT behavior, and callback-forwarding constraints.
 - Use [GATEWAY.md](./GATEWAY.md) when managing upstream MCP gateways over CLI, MCP, or `/v1/gateway`.
@@ -71,9 +72,10 @@ The docs are split by topic so contributors do not have to recover architecture,
 5. [UPSTREAM.md](./UPSTREAM.md) (if proxying upstream MCP servers)
 6. [EXTRACT.md](./EXTRACT.md)
 7. [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
-8. [DEPLOY.md](./DEPLOY.md)
-9. [OPERATIONS.md](./OPERATIONS.md)
-10. [CLI.md](./CLI.md)
+8. [NODE_RUNTIME_CONTRACT.md](./NODE_RUNTIME_CONTRACT.md)
+9. [DEPLOY.md](./DEPLOY.md)
+10. [OPERATIONS.md](./OPERATIONS.md)
+11. [CLI.md](./CLI.md)
 
 ## Topic Map
 
@@ -95,6 +97,8 @@ The docs are split by topic so contributors do not have to recover architecture,
   Lab-owned metadata layered onto mirrored MCP Registry entries: contract, validation, audit fields, filters, CLI, and UI behavior.
 - [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
   Master/non-master runtime roles, `/v1/nodes/*`, AI CLI inventory upload, queueing, and device OAuth relay.
+- [NODE_RUNTIME_CONTRACT.md](./NODE_RUNTIME_CONTRACT.md)
+  Controller/node runtime split, node-only artifact rules, HTTP surface boundaries, and rollout verification requirements.
 - [FLEET_LOGS.md](./FLEET_LOGS.md)
   Fleet log ingestion, queueing, search, and current storage limits.
 - [LOCAL_LOGS.md](./LOCAL_LOGS.md)
@@ -107,6 +111,10 @@ The docs are split by topic so contributors do not have to recover architecture,
   Stdio and streamable HTTP transport: middleware stack, session management, DNS rebinding protection, CORS.
 - `apps/gateway-admin/README.md`
   Labby admin UI: local frontend workflow, static export, and same-origin deployment model.
+- [design/component-development.md](./design/component-development.md)
+  Web UI component workflow: feature specs, `/dev/*` live read-only previews, render iteration, design-system review, and browser verification.
+- [design/design-system-contract.md](./design/design-system-contract.md)
+  Labby web UI design-system contract: Aurora tokens, typography, surfaces, components, page patterns, accessibility, and approval rules.
 - [SERVICES.md](./SERVICES.md)
   Service inventory, feature gates, plugin metadata, multi-instance support, coverage docs, and add-a-service workflow.
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
@@ -164,6 +172,7 @@ Use the smallest correct doc:
 - ACP service architecture and chat/backend boundary: [acp/README.md](./acp/README.md)
 - mirrored MCP Registry metadata contract: [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md)
 - node runtime roles, fleet ingest, and master gating: [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
+- controller/node runtime split and node artifact contract: [NODE_RUNTIME_CONTRACT.md](./NODE_RUNTIME_CONTRACT.md)
 - fleet log ingestion and search: [FLEET_LOGS.md](./FLEET_LOGS.md)
 - local-master runtime log store and SSE console: [LOCAL_LOGS.md](./LOCAL_LOGS.md)
 - deployment topology and rollout guidance: [DEPLOY.md](./DEPLOY.md)

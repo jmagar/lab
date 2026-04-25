@@ -25,6 +25,7 @@ pub mod persistence;
 pub mod session;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_OPTIONAL_FIELD, TEXT_OPTIONAL_FIELD};
 
 /// Compile-time metadata for the ACP service.
 pub const META: PluginMeta = PluginMeta {
@@ -40,14 +41,14 @@ pub const META: PluginMeta = PluginMeta {
             description: "Path to ACP SQLite database",
             example: "~/.lab/acp.db",
             secret: false,
-            ui: None,
+            ui: Some(&TEXT_OPTIONAL_FIELD),
         },
         EnvVar {
             name: "LAB_ACP_HMAC_SECRET",
             description: "HMAC key for permission outcome signing; auto-generated if absent",
             example: "",
             secret: true,
-            ui: None,
+            ui: Some(&SECRET_OPTIONAL_FIELD),
         },
     ],
     default_port: None,

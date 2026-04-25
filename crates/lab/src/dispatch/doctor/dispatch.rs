@@ -23,7 +23,12 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             return action_schema(ACTIONS, a);
         }
         "system.checks" => {
-            let findings = system::run_system_checks();
+            let findings = tokio::task::spawn_blocking(system::run_system_checks)
+                .await
+                .map_err(|e| ToolError::Sdk {
+                    sdk_kind: "internal_error".to_string(),
+                    message: format!("system.checks task panicked: {e}"),
+                })?;
             return to_json(Report { findings });
         }
         a if !ACTIONS.iter().any(|s| s.name == a) => {
@@ -61,8 +66,13 @@ pub async fn dispatch_with_clients(
             action_schema(ACTIONS, a)
         }
         "system.checks" => {
-            let findings = system::run_system_checks();
-            to_json(Report { findings })
+            match tokio::task::spawn_blocking(system::run_system_checks).await {
+                Ok(findings) => to_json(Report { findings }),
+                Err(e) => Err(ToolError::Sdk {
+                    sdk_kind: "internal_error".to_string(),
+                    message: format!("system.checks task panicked: {e}"),
+                }),
+            }
         }
         "service.probe" => {
             let p = parse_service_probe(&params)?;

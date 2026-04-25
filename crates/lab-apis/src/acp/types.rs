@@ -31,10 +31,7 @@ impl AcpSessionState {
                 | (Self::Idle, Self::Running | Self::Closed)
                 | (
                     Self::Running,
-                    Self::Completed
-                        | Self::Failed
-                        | Self::Cancelled
-                        | Self::WaitingForPermission
+                    Self::Completed | Self::Failed | Self::Cancelled | Self::WaitingForPermission
                 )
                 | (
                     Self::WaitingForPermission,

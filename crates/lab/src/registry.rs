@@ -33,16 +33,17 @@ macro_rules! dispatch_fn {
     };
 }
 
-/// Register a standard service (feature name == module name, uses `mcp::services::$svc`).
+/// Register a standard service (feature name == module name, uses `dispatch::$svc`).
 ///
 /// Expands to the `#[cfg(feature)] { reg.register(RegisteredService { ... }) }` block,
 /// eliminating the 7-line boilerplate that would otherwise be repeated per service.
 ///
 /// Two forms:
-/// - Default: `register_service!(reg, "foo", foo)` — uses `mcp::services::foo::ACTIONS` and
-///   `mcp::services::foo::dispatch`.
+/// - Default: `register_service!(reg, "foo", foo)` — uses `dispatch::foo::ACTIONS` and
+///   `dispatch::foo::dispatch`.
 /// - Override: `register_service!(reg, "foo", foo, actions = $expr, dispatch = $expr)` —
-///   for migrated services whose catalog and/or dispatch live outside `mcp::services`.
+///   for services whose catalog is exposed through `actions()` instead of a top-level
+///   `ACTIONS` const, or for proven MCP-specific exception modules.
 ///
 /// # Consistency invariant
 ///
@@ -77,12 +78,12 @@ macro_rules! register_service {
             });
         }
     };
-    // Default: use mcp::services::$svc ACTIONS const and dispatch fn.
+    // Default: use dispatch::$svc ACTIONS const and dispatch fn.
     ($reg:expr, $feature:literal, $svc:ident) => {
         #[cfg(feature = $feature)]
         {
             let meta = lab_apis::$svc::META;
-            let actions: &'static [ActionSpec] = crate::mcp::services::$svc::ACTIONS;
+            let actions: &'static [ActionSpec] = crate::dispatch::$svc::ACTIONS;
             $reg.register(RegisteredService {
                 name: meta.name,
                 description: meta.description,
@@ -93,7 +94,7 @@ macro_rules! register_service {
                     "available"
                 },
                 actions,
-                dispatch: dispatch_fn!(crate::mcp::services::$svc::dispatch),
+                dispatch: dispatch_fn!(crate::dispatch::$svc::dispatch),
             });
         }
     };
@@ -135,6 +136,7 @@ impl std::fmt::Debug for RegisteredService {
 #[derive(Debug, Default)]
 pub struct ToolRegistry {
     services: Vec<RegisteredService>,
+    action_names: Vec<&'static str>,
 }
 
 impl ToolRegistry {
@@ -143,6 +145,7 @@ impl ToolRegistry {
     pub const fn new() -> Self {
         Self {
             services: Vec::new(),
+            action_names: Vec::new(),
         }
     }
 
@@ -168,15 +171,44 @@ impl ToolRegistry {
             service.status,
             service.actions.len(),
         );
-        if !self.services.iter().any(|s| s.name == service.name) {
-            self.services.push(service);
+        if self.services.iter().any(|s| s.name == service.name) {
+            return;
         }
+
+        for action in service.actions {
+            if let Err(index) = self.action_names.binary_search(&action.name) {
+                self.action_names.insert(index, action.name);
+            }
+        }
+        self.services.push(service);
     }
 
     /// Borrow the current service list.
     #[must_use]
     pub fn services(&self) -> &[RegisteredService] {
         &self.services
+    }
+
+    /// Borrow the cached sorted unique action-name list.
+    #[must_use]
+    pub fn action_names(&self) -> &[&'static str] {
+        &self.action_names
+    }
+
+    /// Return cached action-name completions matching `prefix`.
+    ///
+    /// The cache is sorted and deduplicated during registration, so completion does not collect,
+    /// sort, or deduplicate action names on the request path.
+    #[must_use]
+    pub fn action_name_completions(&self, prefix: &str) -> Vec<String> {
+        let action_names = self.action_names();
+        let start = action_names.partition_point(|candidate| *candidate < prefix);
+
+        action_names[start..]
+            .iter()
+            .take_while(|candidate| candidate.starts_with(prefix))
+            .map(|candidate| (*candidate).to_string())
+            .collect()
     }
 
     /// Look up one registered service by name.
@@ -199,7 +231,7 @@ pub fn build_default_registry() -> ToolRegistry {
     // extract is always-on (no feature flag).
     {
         let meta = lab_apis::extract::META;
-        let actions: &'static [ActionSpec] = crate::mcp::services::extract::ACTIONS;
+        let actions: &'static [ActionSpec] = crate::dispatch::extract::ACTIONS;
         reg.register(RegisteredService {
             name: meta.name,
             description: meta.description,
@@ -210,7 +242,7 @@ pub fn build_default_registry() -> ToolRegistry {
                 "available"
             },
             actions,
-            dispatch: dispatch_fn!(crate::mcp::services::extract::dispatch),
+            dispatch: dispatch_fn!(crate::dispatch::extract::dispatch),
         });
     }
 
@@ -219,8 +251,8 @@ pub fn build_default_registry() -> ToolRegistry {
         description: "Manage proxied upstream MCP gateways",
         category: "bootstrap",
         status: "available",
-        actions: crate::mcp::services::gateway::ACTIONS,
-        dispatch: dispatch_fn!(crate::mcp::services::gateway::dispatch),
+        actions: crate::dispatch::gateway::ACTIONS,
+        dispatch: dispatch_fn!(crate::dispatch::gateway::dispatch),
     });
 
     // doctor is always-on (bootstrap utility; no feature flag).
@@ -231,8 +263,8 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             status: "available",
-            actions: crate::mcp::services::doctor::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::doctor::dispatch),
+            actions: crate::dispatch::doctor::ACTIONS,
+            dispatch: dispatch_fn!(crate::dispatch::doctor::dispatch),
         });
     }
 
@@ -241,8 +273,8 @@ pub fn build_default_registry() -> ToolRegistry {
         description: "Search and stream local-master runtime logs",
         category: "bootstrap",
         status: "available",
-        actions: crate::mcp::services::logs::ACTIONS,
-        dispatch: dispatch_fn!(crate::mcp::services::logs::dispatch),
+        actions: crate::dispatch::logs::ACTIONS,
+        dispatch: dispatch_fn!(crate::dispatch::logs::dispatch),
     });
 
     reg.register(RegisteredService {
@@ -262,8 +294,8 @@ pub fn build_default_registry() -> ToolRegistry {
             description: meta.description,
             category: category_slug(meta.category),
             status: "available",
-            actions: crate::mcp::services::marketplace::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::marketplace::dispatch),
+            actions: crate::dispatch::marketplace::actions(),
+            dispatch: dispatch_fn!(crate::dispatch::marketplace::dispatch),
         });
     }
 
@@ -284,8 +316,8 @@ pub fn build_default_registry() -> ToolRegistry {
         reg,
         "radarr",
         radarr,
-        actions = crate::mcp::services::radarr::actions(),
-        dispatch = dispatch_fn!(crate::mcp::services::radarr::dispatch)
+        actions = crate::dispatch::radarr::actions(),
+        dispatch = dispatch_fn!(crate::dispatch::radarr::dispatch)
     );
 
     register_service!(reg, "sonarr", sonarr);
@@ -318,7 +350,7 @@ pub fn build_default_registry() -> ToolRegistry {
         "sabnzbd",
         sabnzbd,
         actions = crate::dispatch::sabnzbd::ACTIONS,
-        dispatch = dispatch_fn!(crate::mcp::services::sabnzbd::dispatch)
+        dispatch = dispatch_fn!(crate::dispatch::sabnzbd::dispatch)
     );
 
     register_service!(reg, "qbittorrent", qbittorrent);
@@ -377,7 +409,13 @@ pub fn build_default_registry() -> ToolRegistry {
     register_service!(reg, "qdrant", qdrant);
     register_service!(reg, "tei", tei);
     register_service!(reg, "apprise", apprise);
-    register_service!(reg, "deploy", deploy);
+    register_service!(
+        reg,
+        "deploy",
+        deploy,
+        actions = crate::mcp::services::deploy::ACTIONS,
+        dispatch = dispatch_fn!(crate::mcp::services::deploy::dispatch)
+    );
 
     #[cfg(feature = "lab-admin")]
     if lab_admin_enabled() {
@@ -386,16 +424,16 @@ pub fn build_default_registry() -> ToolRegistry {
             description: "Internal onboarding audit tool",
             category: "bootstrap",
             status: "available",
-            actions: crate::mcp::services::lab_admin::ACTIONS,
-            dispatch: dispatch_fn!(crate::mcp::services::lab_admin::dispatch),
+            actions: crate::dispatch::lab_admin::ACTIONS,
+            dispatch: dispatch_fn!(crate::dispatch::lab_admin::dispatch),
         });
     }
 
     // fs — workspace filesystem browser. Registered unconditionally when the
     // `fs` feature is enabled so the catalog and `lab help` stay discoverable;
     // runtime dispatch returns `workspace_not_configured` per-request when
-    // `LAB_WORKSPACE_ROOT` is unset or invalid. The startup WARN log in
-    // `cli::serve` surfaces the misconfiguration once at boot.
+    // the configured `workspace.root` cannot be resolved. `cli::serve` logs
+    // invalid configuration as a warning once at boot.
     //
     // SECURITY: unlike `/v1/fs` (which refuses to mount when
     // `LAB_WEB_UI_AUTH_DISABLED=true`), MCP `fs` registration has no
@@ -511,7 +549,11 @@ const fn category_slug(cat: lab_apis::core::Category) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_default_registry, service_meta};
+    use super::{RegisteredService, ToolRegistry, build_default_registry, service_meta};
+    use lab_apis::core::action::ActionSpec;
+    use serde_json::Value;
+    use std::future::Future;
+    use std::time::Duration;
 
     #[test]
     fn extract_is_always_registered() {
@@ -696,5 +738,137 @@ mod tests {
             .expect("extract must be registered");
         let result = (extract.dispatch)("help".to_string(), serde_json::json!({})).await;
         assert!(result.is_ok(), "extract help dispatch should succeed");
+    }
+
+    const ACTIONS_ONE: &[ActionSpec] = &[
+        ActionSpec {
+            name: "queue.list",
+            description: "List queue",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+        ActionSpec {
+            name: "movie.search",
+            description: "Search movies",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+    ];
+
+    const ACTIONS_TWO: &[ActionSpec] = &[
+        ActionSpec {
+            name: "movie.search",
+            description: "Search movies again",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+        ActionSpec {
+            name: "calendar.list",
+            description: "List calendar",
+            destructive: false,
+            params: &[],
+            returns: "object",
+        },
+    ];
+
+    fn noop_dispatch(
+        _action: String,
+        _params: Value,
+    ) -> std::pin::Pin<
+        Box<dyn Future<Output = Result<Value, crate::dispatch::error::ToolError>> + Send>,
+    > {
+        Box::pin(async { Ok(Value::Null) })
+    }
+
+    fn legacy_sorted_action_names(registry: &ToolRegistry) -> Vec<String> {
+        let mut names: Vec<String> = registry
+            .services()
+            .iter()
+            .flat_map(|service| service.actions.iter().map(|action| action.name.to_string()))
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    #[test]
+    fn action_names_cache_is_sorted_and_deduplicated_at_registration_time() {
+        let mut registry = ToolRegistry::new();
+        registry.register(RegisteredService {
+            name: "one",
+            description: "First test service",
+            category: "test",
+            status: "available",
+            actions: ACTIONS_ONE,
+            dispatch: noop_dispatch,
+        });
+        registry.register(RegisteredService {
+            name: "two",
+            description: "Second test service",
+            category: "test",
+            status: "available",
+            actions: ACTIONS_TWO,
+            dispatch: noop_dispatch,
+        });
+
+        assert_eq!(
+            registry.action_names(),
+            &["calendar.list", "movie.search", "queue.list"]
+        );
+    }
+
+    #[test]
+    fn action_name_completions_match_legacy_collect_sort_dedup_output() {
+        let registry = build_default_registry();
+
+        assert_eq!(
+            registry.action_name_completions(""),
+            legacy_sorted_action_names(&registry)
+        );
+    }
+
+    #[test]
+    fn action_name_completions_filter_by_prefix_from_cached_names() {
+        let mut registry = ToolRegistry::new();
+        registry.register(RegisteredService {
+            name: "one",
+            description: "First test service",
+            category: "test",
+            status: "available",
+            actions: ACTIONS_ONE,
+            dispatch: noop_dispatch,
+        });
+        registry.register(RegisteredService {
+            name: "two",
+            description: "Second test service",
+            category: "test",
+            status: "available",
+            actions: ACTIONS_TWO,
+            dispatch: noop_dispatch,
+        });
+
+        assert_eq!(
+            registry.action_name_completions("movie."),
+            vec!["movie.search"]
+        );
+    }
+
+    #[test]
+    fn action_name_completions_empty_prefix_returns_all_actions_under_one_ms() {
+        let registry = build_default_registry();
+        let expected = registry.action_names().len();
+
+        let start = std::time::Instant::now();
+        let completions = registry.action_name_completions("");
+        let elapsed = start.elapsed();
+
+        assert_eq!(completions.len(), expected);
+        assert!(
+            elapsed < Duration::from_millis(1),
+            "empty-prefix action completion took {elapsed:?} for {expected} cached actions"
+        );
     }
 }

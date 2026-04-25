@@ -110,10 +110,7 @@ fn install_fake_provider() -> LaunchGuard {
     LaunchGuard
 }
 
-async fn create_owned_session(
-    registry: &AcpSessionRegistry,
-    principal: &str,
-) -> String {
+async fn create_owned_session(registry: &AcpSessionRegistry, principal: &str) -> String {
     let cwd = std::env::current_dir().expect("cwd");
     let value = dispatch_with_registry(
         registry,
@@ -127,10 +124,7 @@ async fn create_owned_session(
     .await
     .expect("session.start");
 
-    value["id"]
-        .as_str()
-        .expect("session id")
-        .to_string()
+    value["id"].as_str().expect("session id").to_string()
 }
 
 async fn json_body(response: axum::response::Response) -> Value {
@@ -252,8 +246,7 @@ async fn subscribe_ticket_validation_covers_success_and_failure_paths() {
     assert_eq!(validated_session_id, session_id);
     assert_eq!(validated_principal, "alice");
 
-    let malformed = validate_subscribe_ticket("%%%")
-        .expect_err("malformed ticket must fail");
+    let malformed = validate_subscribe_ticket("%%%").expect_err("malformed ticket must fail");
     assert_eq!(malformed.kind(), "auth_failed");
 
     let raw = B64.decode(ticket).expect("decode issued ticket");
@@ -262,8 +255,8 @@ async fn subscribe_ticket_validation_covers_success_and_failure_paths() {
     tampered.push(if last == '0' { '1' } else { '0' });
     let tampered_ticket = B64.encode(tampered.as_bytes());
 
-    let bad_signature = validate_subscribe_ticket(&tampered_ticket)
-        .expect_err("tampered ticket must fail");
+    let bad_signature =
+        validate_subscribe_ticket(&tampered_ticket).expect_err("tampered ticket must fail");
     assert_eq!(bad_signature.kind(), "auth_failed");
 }
 
@@ -344,7 +337,9 @@ async fn sse_event_subscription_requires_authenticated_ticketed_access() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/v1/acp/sessions/{session_id}/events?{ticket_query}"))
+                .uri(format!(
+                    "/v1/acp/sessions/{session_id}/events?{ticket_query}"
+                ))
                 .header(header::AUTHORIZATION, "Bearer secret-token")
                 .body(Body::empty())
                 .expect("request"),

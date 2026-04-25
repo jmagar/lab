@@ -4,7 +4,7 @@
 **Source spec:** `docs/upstream-api/unifi.md`
 **SDK surface:** `crates/lab-apis/src/unifi/client.rs` (20 public methods: 13 typed wrappers + 7 generic helpers)
 **Shared dispatch layer:** `crates/lab/src/dispatch/unifi/` (catalog.rs, client.rs, params.rs, dispatch.rs, and 10 domain modules)
-**MCP actions:** delegated directly from `dispatch::unifi::dispatch` (tests in `mcp/services/unifi.rs`)
+**MCP actions:** delegated directly from `dispatch::unifi::dispatch` (tests in `registry.rs`)
 **CLI surface:** `crates/lab/src/cli/unifi.rs` (action string + `key=value` trailing params)
 **API handler:** `crates/lab/src/api/services/unifi.rs` (thin adapter over the shared dispatch layer)
 **Total actions:** 81 (1 built-in `help` + 80 resource actions)
@@ -263,7 +263,7 @@ Single tool: `unifi({ "action": "<name>", "params": {...} })`
 - All 80 actions reachable via the unified tool dispatcher
 - Built-in `help` and `schema` actions (introspection)
 - Elicitation enforced for destructive actions (confirms before executing)
-- `mcp/services/unifi.rs` contains only tests; dispatch wired directly to
+- `registry.rs` tests moved to dispatch; dispatch wired directly to
   `dispatch::unifi::dispatch` in the registry
 
 ### API (`crates/lab/src/api/services/unifi.rs`)

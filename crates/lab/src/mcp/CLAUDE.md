@@ -4,18 +4,24 @@ This directory is the translation layer between `lab-apis` (pure SDK) and the MC
 
 ## One tool per service
 
-Each enabled service registers exactly one MCP tool in `crates/lab/src/registry.rs` (not `mcp/registry.rs`, which is a thin re-export). The tool name matches the service name (`radarr`, `sonarr`, `extract`, ...). Registration uses the `register_service!` macro and is feature-gated:
+Each enabled service registers exactly one MCP tool in `crates/lab/src/registry.rs` (not `mcp/registry.rs`, which is a thin re-export). The tool name matches the service name (`radarr`, `sonarr`, `extract`, ...). Normal services register directly from the shared dispatch layer:
 
 ```rust
 #[cfg(feature = "radarr")]
 register_service!(reg, "radarr", radarr);
 ```
 
+The default macro path reads `crate::dispatch::<service>::ACTIONS` and calls `crate::dispatch::<service>::dispatch`.
+
 ## Dispatch pattern
 
-For **migrated services**, `services/<service>.rs` is a thin bridge that delegates to `dispatch/<service>/dispatch.rs`. The dispatch module owns action routing, catalog, param validation, and client resolution. See `crates/lab/src/dispatch/CLAUDE.md` for the required layout and templates.
+For normal services, `dispatch/<service>/dispatch.rs` owns action routing, catalog, param validation, and client resolution. See `crates/lab/src/dispatch/CLAUDE.md` for the required layout and templates.
 
-For **legacy stubs** (not yet migrated), `services/<service>.rs` does the full dispatch inline. When migrating, the MCP service module becomes a one-line delegate to the shared dispatch layer.
+`mcp/services/` is now an exception layer, not the default adapter surface. Keep a module there only when it owns MCP-specific behavior that cannot live in shared dispatch. Current examples:
+
+- `deploy` sets the MCP elicitation context before calling shared deploy dispatch.
+- `fs` filters `fs.preview` out of MCP discovery and execution.
+- `nodes` owns MCP-only enrollment actions.
 
 **No business logic anywhere in `mcp/`.** If you find yourself calling `reqwest`, parsing JSON beyond param extraction, or retrying, move it to `lab-apis/src/<service>/client.rs`.
 

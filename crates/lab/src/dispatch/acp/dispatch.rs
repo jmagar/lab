@@ -17,6 +17,20 @@ use super::params::{opt_str, opt_u64, require_str};
 /// SSE ticket lifetime in seconds.
 const TICKET_TTL_SECS: u64 = 30;
 
+fn require_confirm(params: &Value, action: &str) -> Result<(), ToolError> {
+    if params
+        .get("confirm")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        Ok(())
+    } else {
+        Err(ToolError::ConfirmationRequired {
+            message: format!("{action} is destructive; pass `\"confirm\": true` to proceed"),
+        })
+    }
+}
+
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
         "help" => Ok(help_payload("acp", ACTIONS)),
@@ -51,23 +65,35 @@ pub async fn dispatch_with_registry(
         }
 
         // ── Provider actions ──────────────────────────────────────────────
-
         "provider.list" => {
-            let health = registry.provider_health();
+            let providers: Vec<_> = registry
+                .provider_healths()
+                .into_iter()
+                .map(|health| {
+                    json!({
+                        "name": health.provider,
+                        "available": health.available,
+                        "version": health.version,
+                        "error": health.message,
+                    })
+                })
+                .collect();
             to_json(json!({
-                "providers": [{
-                    "name": health.provider,
-                    "available": health.available,
-                    "version": health.version,
-                    "error": health.message,
-                }]
+                "providers": providers
             }))
         }
 
         "provider.get" => {
-            let _provider = require_str(&params, "provider")?;
-            // Phase 1: single provider — return health regardless of name.
-            let health = registry.provider_health();
+            let provider = require_str(&params, "provider")?;
+            let provider = crate::acp::runtime::normalize_provider_id(Some(provider));
+            let health = registry
+                .provider_healths()
+                .into_iter()
+                .find(|health| health.provider == provider)
+                .ok_or_else(|| ToolError::InvalidParam {
+                    message: format!("unknown provider `{provider}`"),
+                    param: "provider".to_string(),
+                })?;
             to_json(json!({
                 "name": health.provider,
                 "available": health.available,
@@ -78,10 +104,14 @@ pub async fn dispatch_with_registry(
 
         "provider.select" => {
             let provider = require_str(&params, "provider")?;
-            // Phase 1: stub — only "codex" is supported.
-            if provider != "codex" {
+            let provider = crate::acp::runtime::normalize_provider_id(Some(provider));
+            if !registry
+                .provider_healths()
+                .iter()
+                .any(|health| health.provider == provider)
+            {
                 return Err(ToolError::InvalidParam {
-                    message: format!("unknown provider `{provider}`; only 'codex' is supported"),
+                    message: format!("unknown provider `{provider}`"),
                     param: "provider".to_string(),
                 });
             }
@@ -89,7 +119,6 @@ pub async fn dispatch_with_registry(
         }
 
         // ── Session read actions ──────────────────────────────────────────
-
         "session.list" => {
             let principal = opt_str(&params, "principal").unwrap_or("");
             let sessions = registry.list_sessions(principal).await;
@@ -98,12 +127,13 @@ pub async fn dispatch_with_registry(
 
         "session.get" => {
             let session_id = require_str(&params, "session_id")?;
-            let summary = registry.get_session(session_id).await.ok_or_else(|| {
-                ToolError::Sdk {
+            let summary = registry
+                .get_session(session_id)
+                .await
+                .ok_or_else(|| ToolError::Sdk {
                     sdk_kind: "not_found".to_string(),
                     message: format!("session `{session_id}` not found"),
-                }
-            })?;
+                })?;
             to_json(summary)
         }
 
@@ -118,13 +148,14 @@ pub async fn dispatch_with_registry(
         }
 
         // ── Session write actions ─────────────────────────────────────────
-
         "session.start" => {
             let principal = opt_str(&params, "principal").unwrap_or("");
+            let provider = opt_str(&params, "provider").map(|s| s.to_string());
             let title = opt_str(&params, "title").map(|s| s.to_string());
             let cwd = opt_str(&params, "cwd").unwrap_or("").to_string();
 
             let input = StartSessionInput {
+                provider,
                 title,
                 cwd,
                 principal: if principal.is_empty() {
@@ -149,21 +180,12 @@ pub async fn dispatch_with_registry(
                     param: "text".to_string(),
                 })?;
 
-            registry
-                .prompt_session(session_id, text, principal)
-                .await?;
+            registry.prompt_session(session_id, text, principal).await?;
             to_json(json!({ "ok": true, "session_id": session_id }))
         }
 
         "session.cancel" => {
-            // Destructive — callers must pass `"confirm": true` in params.
-            let confirmed = params.get("confirm").and_then(|v| v.as_bool()).unwrap_or(false);
-            if !confirmed {
-                return Err(ToolError::ConfirmationRequired {
-                    message: "session.cancel is destructive; pass `\"confirm\": true` to proceed"
-                        .to_string(),
-                });
-            }
+            require_confirm(&params, "session.cancel")?;
             let session_id = require_str(&params, "session_id")?;
             let principal = opt_str(&params, "principal").unwrap_or("");
             registry.cancel_session(session_id, principal).await?;
@@ -171,14 +193,7 @@ pub async fn dispatch_with_registry(
         }
 
         "session.close" => {
-            // Destructive — callers must pass `"confirm": true` in params.
-            let confirmed = params.get("confirm").and_then(|v| v.as_bool()).unwrap_or(false);
-            if !confirmed {
-                return Err(ToolError::ConfirmationRequired {
-                    message: "session.close is destructive; pass `\"confirm\": true` to proceed"
-                        .to_string(),
-                });
-            }
+            require_confirm(&params, "session.close")?;
             let session_id = require_str(&params, "session_id")?;
             let principal = opt_str(&params, "principal").unwrap_or("");
             registry.close_session(session_id, principal).await?;
@@ -227,10 +242,7 @@ fn issue_subscribe_ticket(session_id: &str, principal: &str) -> Result<String, T
     })?;
     mac.update(payload.as_bytes());
     let sig = mac.finalize().into_bytes();
-    let sig_hex = sig
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
+    let sig_hex = sig.iter().map(|b| format!("{b:02x}")).collect::<String>();
 
     let ticket = format!("{payload}:{sig_hex}");
     Ok(B64.encode(ticket.as_bytes()))
@@ -299,16 +311,15 @@ fn load_hmac_key() -> &'static [u8] {
             }
         }
         // Fall back to process-ephemeral key — stable for the process lifetime.
-        use sha2::Digest;
+        use sha2::{Digest, Sha256};
         let pid = std::process::id();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        sha2::Sha256::digest(format!("lab-acp-hmac-ephemeral:{pid}:{now}").as_bytes()).to_vec()
+        Sha256::digest(format!("lab-acp-hmac-ephemeral:{pid}:{now}").as_bytes()).to_vec()
     })
 }
-
 
 #[cfg(test)]
 mod tests {

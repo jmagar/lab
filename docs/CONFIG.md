@@ -7,14 +7,14 @@ Configuration is intentionally split between secrets and preferences.
 | Category | Where | Examples |
 |----------|-------|----------|
 | Secrets | `~/.lab/.env` | `*_API_KEY`, `*_TOKEN`, `*_PASSWORD`, `LAB_MCP_HTTP_TOKEN` |
-| URLs | `~/.lab/.env` | `*_URL`, `*_BASE_URL` |
-| Everything else | `config.toml` | logging, MCP transport, CORS, admin flags, per-service prefs |
+| Service endpoints | `~/.lab/.env` | `RADARR_URL`, `PLEX_URL`, other per-instance upstream URLs |
+| Non-secret preferences and defaults | `config.toml` | logging, MCP transport, CORS, admin flags, registry URLs, workspace roots, per-service prefs |
 
 All `config.toml` values can still be overridden by env vars. Env always wins.
 
 ## Sources
 
-Secrets and URLs live in:
+Secrets and service instance endpoints live in:
 
 - `~/.lab/.env`
 
@@ -128,6 +128,36 @@ Rules:
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
 | `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `lab serve --transport http` |
+
+### `[workspace]`
+
+Shared local workspace/stash preferences.
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `root` | — | `~/.lab/stash` | Shared Lab workspace root. Backs the read-only attachment picker and local writable stash workspaces. Marketplace editable plugin mirrors live under `<root>/plugins/`. |
+
+Example:
+
+```toml
+[workspace]
+root = "~/.lab/stash"
+```
+
+### `[mcpregistry]`
+
+MCP Registry upstream preferences.
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `url` | — | `https://registry.modelcontextprotocol.io` | Base URL for the upstream MCP Registry used by marketplace `mcp.*` actions and registry background sync. |
+
+Example:
+
+```toml
+[mcpregistry]
+url = "https://registry.modelcontextprotocol.io"
+```
 
 ### `[oauth.machines.<id>]`
 

@@ -8,7 +8,7 @@
 //!
 //! # Phase 1 scope (lab-f1t2.1)
 //!
-//! - Workspace-root resolution from `LAB_WORKSPACE_ROOT`.
+//! - Workspace-root resolution from `config.toml` `[workspace].root`.
 //! - Structured `workspace_not_configured` error for callers.
 //!
 //! Phases 2 and 3 add `fs.list` (MCP + HTTP) and `fs.preview` (HTTP only)
@@ -28,10 +28,8 @@ pub mod dispatch;
 #[cfg(feature = "fs")]
 pub mod params;
 
-#[cfg(feature = "fs")]
-pub use catalog::ACTIONS;
 pub(crate) use client::not_configured_error;
-pub use client::resolve_workspace_root_from_env;
+pub use client::resolve_workspace_root;
 
 #[cfg(feature = "fs")]
-pub use dispatch::{Preview, dispatch, dispatch_with_root, open_for_preview};
+pub use dispatch::{dispatch, dispatch_with_root, open_for_preview};

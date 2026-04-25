@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use lab_apis::marketplace::{Artifact, Marketplace, Plugin, PluginComponent};
 
 use crate::dispatch::error::ToolError;

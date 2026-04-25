@@ -25,13 +25,37 @@ mod tests {
         assert!(names.contains(&"help"), "must include help");
         assert!(names.contains(&"schema"), "must include schema");
         assert!(names.contains(&"library.list"), "must include library.list");
+        assert!(names.contains(&"library.get"), "must include library.get");
+        assert!(names.contains(&"library.scan"), "must include library.scan");
+        assert!(
+            names.contains(&"library.refresh"),
+            "must include library.refresh"
+        );
         assert!(names.contains(&"media.search"), "must include media.search");
+        assert!(names.contains(&"media.get"), "must include media.get");
         assert!(names.contains(&"session.list"), "must include session.list");
+        assert!(
+            names.contains(&"session.terminate"),
+            "must include session.terminate"
+        );
         assert!(
             names.contains(&"playlist.list"),
             "must include playlist.list"
         );
+        assert!(names.contains(&"playlist.get"), "must include playlist.get");
+        assert!(
+            names.contains(&"playlist.create"),
+            "must include playlist.create"
+        );
+        assert!(
+            names.contains(&"playlist.delete"),
+            "must include playlist.delete"
+        );
         assert!(names.contains(&"server.info"), "must include server.info");
+        assert!(
+            names.contains(&"server.capabilities"),
+            "must include server.capabilities"
+        );
         assert!(names.contains(&"health"), "must include health");
     }
 

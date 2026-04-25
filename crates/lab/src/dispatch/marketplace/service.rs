@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use lab_apis::marketplace::{Artifact, Marketplace, MarketplaceRuntime, Plugin, PluginComponent};
 use serde_json::Value;
 
@@ -27,7 +29,9 @@ pub fn list_plugins_sync(
     runtime: Option<MarketplaceRuntime>,
     filter: Option<String>,
 ) -> Result<Vec<Plugin>, ToolError> {
-    let filter = PluginFilter { marketplace: filter };
+    let filter = PluginFilter {
+        marketplace: filter,
+    };
     match runtime {
         Some(MarketplaceRuntime::Claude) => claude_backend().list_plugins(filter),
         Some(MarketplaceRuntime::Codex) => codex_backend().list_plugins(filter),
@@ -47,7 +51,9 @@ pub fn list_plugins_sync(
     }
 }
 
-pub async fn sources_list(runtime: Option<MarketplaceRuntime>) -> Result<Vec<Marketplace>, ToolError> {
+pub async fn sources_list(
+    runtime: Option<MarketplaceRuntime>,
+) -> Result<Vec<Marketplace>, ToolError> {
     tokio::task::spawn_blocking(move || match runtime {
         Some(MarketplaceRuntime::Claude) => claude_backend().list_sources(),
         Some(MarketplaceRuntime::Codex) => codex_backend().list_sources(),
@@ -78,7 +84,10 @@ pub async fn plugins_list(
         .map_err(join_err)?
 }
 
-pub async fn plugin_get(runtime: Option<MarketplaceRuntime>, id: &str) -> Result<Plugin, ToolError> {
+pub async fn plugin_get(
+    runtime: Option<MarketplaceRuntime>,
+    id: &str,
+) -> Result<Plugin, ToolError> {
     let id = id.to_string();
     tokio::task::spawn_blocking(move || get_plugin_sync(runtime, &id))
         .await
@@ -93,17 +102,29 @@ pub async fn plugin_artifacts(
     tokio::task::spawn_blocking(move || match runtime {
         Some(MarketplaceRuntime::Claude) => claude_backend().list_artifacts(&id),
         Some(MarketplaceRuntime::Codex) => codex_backend().list_artifacts(&id),
-        Some(MarketplaceRuntime::Gemini) => Err(unsupported_runtime_action(MarketplaceRuntime::Gemini, "plugin.artifacts")),
+        Some(MarketplaceRuntime::Gemini) => Err(unsupported_runtime_action(
+            MarketplaceRuntime::Gemini,
+            "plugin.artifacts",
+        )),
         None => {
             if let Ok(plugin) = get_plugin_sync(None, &id) {
                 match plugin.runtime {
                     Some(MarketplaceRuntime::Claude) => claude_backend().list_artifacts(&id),
                     Some(MarketplaceRuntime::Codex) => codex_backend().list_artifacts(&id),
-                    Some(MarketplaceRuntime::Gemini) => Err(unsupported_runtime_action(MarketplaceRuntime::Gemini, "plugin.artifacts")),
-                    None => Err(ToolError::Sdk { sdk_kind: "not_found".into(), message: format!("plugin `{id}` not found") }),
+                    Some(MarketplaceRuntime::Gemini) => Err(unsupported_runtime_action(
+                        MarketplaceRuntime::Gemini,
+                        "plugin.artifacts",
+                    )),
+                    None => Err(ToolError::Sdk {
+                        sdk_kind: "not_found".into(),
+                        message: format!("plugin `{id}` not found"),
+                    }),
                 }
             } else {
-                Err(ToolError::Sdk { sdk_kind: "not_found".into(), message: format!("plugin `{id}` not found") })
+                Err(ToolError::Sdk {
+                    sdk_kind: "not_found".into(),
+                    message: format!("plugin `{id}` not found"),
+                })
             }
         }
     })
@@ -133,10 +154,19 @@ pub async fn plugin_components(
     .map_err(join_err)?
 }
 
-pub fn require_claude_write(runtime: Option<MarketplaceRuntime>, action: &str) -> Result<(), ToolError> {
+pub fn require_claude_write(
+    runtime: Option<MarketplaceRuntime>,
+    action: &str,
+) -> Result<(), ToolError> {
     match runtime {
-        Some(MarketplaceRuntime::Codex) => Err(unsupported_runtime_action(MarketplaceRuntime::Codex, action)),
-        Some(MarketplaceRuntime::Gemini) => Err(unsupported_runtime_action(MarketplaceRuntime::Gemini, action)),
+        Some(MarketplaceRuntime::Codex) => Err(unsupported_runtime_action(
+            MarketplaceRuntime::Codex,
+            action,
+        )),
+        Some(MarketplaceRuntime::Gemini) => Err(unsupported_runtime_action(
+            MarketplaceRuntime::Gemini,
+            action,
+        )),
         _ => Ok(()),
     }
 }
@@ -170,7 +200,9 @@ fn get_plugin_sync(runtime: Option<MarketplaceRuntime>, id: &str) -> Result<Plug
                 }),
                 1 => Ok(matches.remove(0)),
                 _ => Err(ToolError::Conflict {
-                    message: format!("plugin `{id}` exists in multiple runtimes; pass `runtime` explicitly"),
+                    message: format!(
+                        "plugin `{id}` exists in multiple runtimes; pass `runtime` explicitly"
+                    ),
                     existing_id: id.to_string(),
                 }),
             }

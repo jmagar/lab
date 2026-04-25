@@ -4,6 +4,7 @@ use lab_apis::deploy::DeployError;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// Artifact produced by a successful local build.
 #[derive(Debug, Clone)]
@@ -14,7 +15,8 @@ pub struct BuildOutcome {
     pub target_triple: String,
 }
 
-/// Run `cargo build --release --all-features -p lab` and hash the output.
+/// Run `cargo build --release --all-features --manifest-path <workspace>/crates/lab/Cargo.toml`
+/// and hash the output.
 pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     let free = tokio::task::spawn_blocking(estimate_free_bytes)
         .await
@@ -22,31 +24,46 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
             reason: format!("disk-space check join: {e}"),
         })??;
     check_disk_space(free, 1_500_000_000)?;
-    let pkg_spec = concat!("lab@", env!("CARGO_PKG_VERSION"));
-    let output = tokio::process::Command::new("cargo")
-        .args(["build", "--release", "--all-features", "-p", pkg_spec])
-        .output()
-        .await
-        .map_err(|e| DeployError::BuildFailed {
-            reason: format!("spawn cargo: {e}"),
-        })?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: Vec<&str> = stderr.lines().rev().take(10).collect();
-        let tail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
-        return Err(DeployError::BuildFailed { reason: tail });
-    }
     let path = expected_artifact_path("lab");
+    let target_triple = detect_host_triple();
+    let rebuild_needed = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || rebuild_needed(&path)
+    })
+    .await
+    .map_err(|e| DeployError::BuildFailed {
+        reason: format!("rebuild check join: {e}"),
+    })??;
+    let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    if rebuild_needed {
+        let output = tokio::process::Command::new("cargo")
+            .args(["build", "--release", "--all-features", "--manifest-path"])
+            .arg(&manifest_path)
+            .output()
+            .await
+            .map_err(|e| DeployError::BuildFailed {
+                reason: format!("spawn cargo: {e}"),
+            })?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let tail: Vec<&str> = stderr.lines().rev().take(10).collect();
+            let tail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+            return Err(DeployError::BuildFailed { reason: tail });
+        }
+    } else {
+        tracing::info!(artifact = %path.display(), "deploy.build.reuse_existing_release");
+    }
     // Stat + sha256 + host-triple detection are all blocking I/O or subprocess
     // calls; run them inside spawn_blocking to avoid stalling the async runtime.
     let (metadata, sha256, target_triple) = tokio::task::spawn_blocking({
         let p = path.clone();
+        let target_triple = target_triple.clone();
         move || -> Result<_, DeployError> {
             let meta = std::fs::metadata(&p).map_err(|e| DeployError::BuildFailed {
                 reason: format!("stat artifact: {e}"),
             })?;
             let sha256 = sha256_file_blocking(&p)?;
-            Ok((meta, sha256, detect_host_triple()))
+            Ok((meta, sha256, target_triple))
         }
     })
     .await
@@ -149,6 +166,75 @@ fn estimate_free_bytes() -> Result<u64, DeployError> {
     Ok(u64::MAX)
 }
 
+fn rebuild_needed(artifact_path: &Path) -> Result<bool, DeployError> {
+    let artifact_meta = match std::fs::metadata(artifact_path) {
+        Ok(meta) => meta,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+        Err(err) => {
+            return Err(DeployError::BuildFailed {
+                reason: format!("stat artifact: {err}"),
+            });
+        }
+    };
+    let artifact_mtime = artifact_meta
+        .modified()
+        .map_err(|err| DeployError::BuildFailed {
+            reason: format!("artifact modified time: {err}"),
+        })?;
+
+    Ok(newest_build_input_mtime()? > artifact_mtime)
+}
+
+fn newest_build_input_mtime() -> Result<SystemTime, DeployError> {
+    let root = workspace_root();
+    let inputs = [
+        root.join("Cargo.toml"),
+        root.join("Cargo.lock"),
+        root.join("crates/lab/Cargo.toml"),
+        root.join("crates/lab/src"),
+        root.join("crates/lab-apis/Cargo.toml"),
+        root.join("crates/lab-apis/src"),
+        root.join("crates/lab-auth/Cargo.toml"),
+        root.join("crates/lab-auth/src"),
+    ];
+
+    let mut newest = SystemTime::UNIX_EPOCH;
+    for input in inputs {
+        newest = newest.max(path_latest_mtime(&input)?);
+    }
+    Ok(newest)
+}
+
+fn path_latest_mtime(path: &Path) -> Result<SystemTime, DeployError> {
+    let metadata = std::fs::metadata(path).map_err(|err| DeployError::BuildFailed {
+        reason: format!("stat build input `{}`: {err}", path.display()),
+    })?;
+    if metadata.is_file() {
+        return metadata.modified().map_err(|err| DeployError::BuildFailed {
+            reason: format!("mtime build input `{}`: {err}", path.display()),
+        });
+    }
+
+    let mut newest = SystemTime::UNIX_EPOCH;
+    for entry in std::fs::read_dir(path).map_err(|err| DeployError::BuildFailed {
+        reason: format!("read build input dir `{}`: {err}", path.display()),
+    })? {
+        let entry = entry.map_err(|err| DeployError::BuildFailed {
+            reason: format!("read build input entry `{}`: {err}", path.display()),
+        })?;
+        newest = newest.max(path_latest_mtime(&entry.path())?);
+    }
+    Ok(newest)
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 fn detect_host_triple() -> String {
     let out = std::process::Command::new("rustc").arg("-vV").output();
     if let Ok(o) = out {
@@ -228,5 +314,16 @@ mod tests {
     fn disk_preflight_rejects_below_threshold() {
         let err = check_disk_space(10, 100).unwrap_err();
         assert_eq!(err.kind(), "preflight_failed");
+    }
+
+    #[test]
+    fn workspace_root_points_at_repo_root() {
+        let root = workspace_root();
+        assert!(root.join("Cargo.toml").exists(), "got {}", root.display());
+        assert!(
+            root.join("crates/lab/Cargo.toml").exists(),
+            "got {}",
+            root.display()
+        );
     }
 }

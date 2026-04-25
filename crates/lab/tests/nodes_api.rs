@@ -187,8 +187,7 @@ async fn existing_fleet_logs_search_still_works() {
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let events: Vec<lab::node::log_event::NodeLogEvent> =
-        serde_json::from_slice(&body).unwrap();
+    let events: Vec<lab::node::log_event::NodeLogEvent> = serde_json::from_slice(&body).unwrap();
     assert_eq!(events.len(), 1);
     assert!(events[0].message.contains("fleet search"));
 }
@@ -238,7 +237,9 @@ async fn list_enrollments_returns_pending_and_approved_records() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(payload["pending"]["pending-2"].is_object());
     assert!(payload["approved"]["pending-1"].is_object());
@@ -327,7 +328,11 @@ fn test_device_router() -> (axum::Router, Arc<NodeStore>, Arc<EnrollmentStore>) 
     let state = AppState::new()
         .with_node_store(Arc::clone(&store))
         .with_enrollment_store(Arc::clone(&enrollment_store));
-    (build_router_with_bearer(state, None, None), store, enrollment_store)
+    (
+        build_router_with_bearer(state, None, None),
+        store,
+        enrollment_store,
+    )
 }
 
 fn hello_request(body: &str) -> Request<Body> {

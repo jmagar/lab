@@ -35,7 +35,9 @@ impl DoctorClient {
     /// - `Ok(())` from `get_void` → fully reachable
     /// - `Auth` error → reachable but `auth_ok = false`
     /// - `Server` error → reachable but degraded
-    /// - `Network` / `Internal` → unreachable
+    /// - `Network` → unreachable (true transport failure)
+    /// - Other non-network errors (`NotFound`, `RateLimited`, `Validation`,
+    ///   `Decode`, `Internal`) → reachable but degraded
     ///
     /// # Errors
     /// Always returns `Ok`; transport errors are captured inside `ServiceStatus`.
@@ -64,7 +66,16 @@ impl DoctorClient {
                 latency_ms: elapsed(),
                 message: Some(format!("HTTP {status}")),
             }),
-            Err(e) => Ok(ServiceStatus::unreachable(e.to_string())),
+            Err(ApiError::Network(msg)) => Ok(ServiceStatus::unreachable(msg)),
+            Err(e) => {
+                // Non-network errors (NotFound, RateLimited, Validation,
+                // Decode, Internal) mean the host responded — classify as
+                // degraded rather than unreachable to avoid false "service
+                // down" reports.
+                let mut status = ServiceStatus::degraded(e.to_string());
+                status.latency_ms = elapsed();
+                Ok(status)
+            }
         }
     }
 }

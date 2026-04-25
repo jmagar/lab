@@ -19,9 +19,7 @@ fn registry_slot() -> &'static RwLock<Option<Arc<AcpSessionRegistry>>> {
 /// Called once at startup (e.g. `cli/serve.rs`) with the same `Arc<AcpSessionRegistry>`
 /// that is stored in `AppState`. Subsequent `require_registry()` calls return this Arc.
 pub fn install_registry(registry: Arc<AcpSessionRegistry>) {
-    *registry_slot()
-        .write()
-        .expect("ACP registry lock poisoned") = Some(registry);
+    *registry_slot().write().expect("ACP registry lock poisoned") = Some(registry);
 }
 
 /// Return the installed registry, or a structured error if not yet installed.

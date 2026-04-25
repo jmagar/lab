@@ -23,10 +23,10 @@ use uuid::Uuid;
 use crate::api::{ToolError, state::AppState};
 use crate::config::NodeRole;
 use crate::dispatch::node::send::{SessionToken, sender_registry};
+use crate::node::checkin::{NodeHello, NodeMetadataUpload, NodeStatus};
 use crate::node::enrollment::store::{
     EnrollmentAttempt, EnrollmentDecision, EnrollmentStore, TailnetIdentity,
 };
-use crate::node::checkin::{NodeHello, NodeMetadataUpload, NodeStatus};
 use crate::node::log_event::NodeLogEvent;
 
 // --------------------------------------------------------------------------
@@ -111,13 +111,10 @@ pub async fn get_node(
 ) -> Result<Json<serde_json::Value>, ToolError> {
     let store = require_master_store(&state)?;
     let node_id = super::normalize_node_id_value(&node_id, "node_id")?;
-    let snapshot = store
-        .node(&node_id)
-        .await
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "not_found".to_string(),
-            message: format!("unknown node `{node_id}`"),
-        })?;
+    let snapshot = store.node(&node_id).await.ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "not_found".to_string(),
+        message: format!("unknown node `{node_id}`"),
+    })?;
     Ok(Json(json!({
         "node_id": snapshot.node_id,
         "connected": snapshot.connected,
@@ -159,11 +156,13 @@ pub async fn websocket_upgrade(
     let store = require_master_store(&state)?;
     let enrollment_store = require_enrollment_store(&state)?;
     let registry = Arc::clone(&state.registry);
-    Ok(ws.max_message_size(10 * 1024 * 1024).on_upgrade(move |socket| async move {
-        if let Err(error) = handle_websocket(socket, store, enrollment_store, registry).await {
-            tracing::warn!(error = %error, "nodes websocket session failed");
-        }
-    }))
+    Ok(ws
+        .max_message_size(10 * 1024 * 1024)
+        .on_upgrade(move |socket| async move {
+            if let Err(error) = handle_websocket(socket, store, enrollment_store, registry).await {
+                tracing::warn!(error = %error, "nodes websocket session failed");
+            }
+        }))
 }
 
 async fn handle_websocket(
@@ -190,7 +189,9 @@ async fn handle_websocket(
             let mut sink = sink;
             let mut rx: mpsc::Receiver<Message> = rx;
             while let Some(msg) = rx.recv().await {
-                sink.send(msg).await.map_err(|error| anyhow::anyhow!("ws send: {error}"))?;
+                sink.send(msg)
+                    .await
+                    .map_err(|error| anyhow::anyhow!("ws send: {error}"))?;
             }
             Ok(sink)
         });
@@ -207,7 +208,9 @@ async fn handle_websocket(
         loop {
             interval.tick().await;
             let sent = tx_sweep
-                .send(Message::Text(json!({"_lab_internal":"sweep_tick"}).to_string().into()))
+                .send(Message::Text(
+                    json!({"_lab_internal":"sweep_tick"}).to_string().into(),
+                ))
                 .await;
             if sent.is_err() || tx_sweep.is_closed() {
                 break;
@@ -220,8 +223,11 @@ async fn handle_websocket(
     let first_message = match first_msg_result {
         Err(_timeout) => {
             tracing::warn!(
-                surface = "api", service = "nodes", action = "ws.initialize",
-                kind = "timeout", "nodes websocket: initialize timeout — closing connection"
+                surface = "api",
+                service = "nodes",
+                action = "ws.initialize",
+                kind = "timeout",
+                "nodes websocket: initialize timeout — closing connection"
             );
             drop(tx);
             sweep_task.abort();
@@ -241,12 +247,24 @@ async fn handle_websocket(
     match first_message? {
         Message::Text(text) => {
             if !text.contains("_lab_internal") {
-                let request: RpcRequest = serde_json::from_str(&text).map_err(|e| anyhow::anyhow!(e))?;
+                let request: RpcRequest =
+                    serde_json::from_str(&text).map_err(|e| anyhow::anyhow!(e))?;
                 let response = handle_rpc_request(
-                    request, &store, &enrollment_store, &registry,
-                    &mut session_node_id, session_token, &tx, &mut command_states,
-                ).await;
-                if tx.send(Message::Text(response.to_string().into())).await.is_err() {
+                    request,
+                    &store,
+                    &enrollment_store,
+                    &registry,
+                    &mut session_node_id,
+                    session_token,
+                    &tx,
+                    &mut command_states,
+                )
+                .await;
+                if tx
+                    .send(Message::Text(response.to_string().into()))
+                    .await
+                    .is_err()
+                {
                     drop(tx);
                     sweep_task.abort();
                     drop(write_task.await);
@@ -254,7 +272,9 @@ async fn handle_websocket(
                 }
             }
         }
-        Message::Ping(payload) => { let _pong = tx.send(Message::Pong(payload)).await; }
+        Message::Ping(payload) => {
+            let _pong = tx.send(Message::Pong(payload)).await;
+        }
         Message::Close(_) | Message::Binary(_) | Message::Pong(_) => {}
     }
 
@@ -285,13 +305,12 @@ async fn handle_websocket(
                 // `error`, no `method`). Try the response path first using
                 // the pending-map resolver; if no pending id matches, fall
                 // through to the request path.
-                let parsed_value: serde_json::Value =
-                    match serde_json::from_str(&text) {
-                        Ok(v) => v,
-                        Err(error) => {
-                            return Err(anyhow::anyhow!(error));
-                        }
-                    };
+                let parsed_value: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(v) => v,
+                    Err(error) => {
+                        return Err(anyhow::anyhow!(error));
+                    }
+                };
                 let looks_like_response = parsed_value.get("method").is_none()
                     && (parsed_value.get("result").is_some()
                         || parsed_value.get("error").is_some());
@@ -308,7 +327,8 @@ async fn handle_websocket(
                     // Response whose id doesn't match any pending entry: drop
                     // with a warning; don't break the session.
                     tracing::warn!(
-                        surface = "api", service = "nodes",
+                        surface = "api",
+                        service = "nodes",
                         "received rpc response with unknown id"
                     );
                     continue;
@@ -320,7 +340,9 @@ async fn handle_websocket(
                 // requests (no reply expected) — publish to the progress
                 // broadcast channel so any subscribed SSE streams forward
                 // them to clients, then drop.
-                if parsed_value.get("method").and_then(serde_json::Value::as_str)
+                if parsed_value
+                    .get("method")
+                    .and_then(serde_json::Value::as_str)
                     == Some("install/progress")
                 {
                     if let Some(rpc_id) = parsed_value
@@ -400,10 +422,21 @@ async fn handle_websocket(
                     Err(error) => return Err(anyhow::anyhow!(error)),
                 };
                 let response = handle_rpc_request(
-                    request, &store, &enrollment_store, &registry,
-                    &mut session_node_id, session_token, &tx, &mut command_states,
-                ).await;
-                if tx.send(Message::Text(response.to_string().into())).await.is_err() {
+                    request,
+                    &store,
+                    &enrollment_store,
+                    &registry,
+                    &mut session_node_id,
+                    session_token,
+                    &tx,
+                    &mut command_states,
+                )
+                .await;
+                if tx
+                    .send(Message::Text(response.to_string().into()))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -468,18 +501,17 @@ async fn handle_rpc_request(
 ) -> serde_json::Value {
     match request.method.as_str() {
         "initialize" => {
-            let params: InitializeParams = match serde_json::from_value(
-                request.params.unwrap_or(serde_json::Value::Null),
-            ) {
-                Ok(params) => params,
-                Err(error) => {
-                    return error_response(
-                        request.id,
-                        -32602,
-                        format!("invalid initialize params: {error}"),
-                    );
-                }
-            };
+            let params: InitializeParams =
+                match serde_json::from_value(request.params.unwrap_or(serde_json::Value::Null)) {
+                    Ok(params) => params,
+                    Err(error) => {
+                        return error_response(
+                            request.id,
+                            -32602,
+                            format!("invalid initialize params: {error}"),
+                        );
+                    }
+                };
 
             match handle_initialize(store, enrollment_store, &params).await {
                 Ok(initialized) => {
@@ -507,28 +539,30 @@ async fn handle_rpc_request(
                 Err(error) => tool_error_response(request.id, &error),
             }
         }
-        "nodes/status.push" => match require_initialized_node_id(session_node_id)
-            .and_then(|node_id| {
+        "nodes/status.push" => {
+            match require_initialized_node_id(session_node_id).and_then(|node_id| {
                 let params = request.params.unwrap_or(serde_json::Value::Null);
                 parse_status_params(params, &node_id)
             }) {
-            Ok(status) => {
-                store.record_status(status).await;
-                success_response(request.id, json!({}))
+                Ok(status) => {
+                    store.record_status(status).await;
+                    success_response(request.id, json!({}))
+                }
+                Err(error) => tool_error_response(request.id, &error),
             }
-            Err(error) => tool_error_response(request.id, &error),
-        },
-        "nodes/metadata.push" => match require_initialized_node_id(session_node_id)
-            .and_then(|node_id| {
+        }
+        "nodes/metadata.push" => {
+            match require_initialized_node_id(session_node_id).and_then(|node_id| {
                 let params = request.params.unwrap_or(serde_json::Value::Null);
                 parse_metadata_params(params, &node_id)
             }) {
-            Ok(metadata) => {
-                store.record_metadata(metadata).await;
-                success_response(request.id, json!({}))
+                Ok(metadata) => {
+                    store.record_metadata(metadata).await;
+                    success_response(request.id, json!({}))
+                }
+                Err(error) => tool_error_response(request.id, &error),
             }
-            Err(error) => tool_error_response(request.id, &error),
-        },
+        }
         "nodes/log.event" => {
             let start = Instant::now();
             match require_initialized_node_id(session_node_id).and_then(|node_id| {
@@ -559,9 +593,27 @@ async fn handle_rpc_request(
             success_response(request.id, json!({}))
         }
         "nodes/device.enroll" => {
-            let node_id_opt = session_node_id.clone();
-            match handle_device_enroll(store, request.params.unwrap_or(serde_json::Value::Null), node_id_opt).await {
-                Ok(enrolled_node_id) => success_response(request.id, json!({"enrolled": true, "node_id": enrolled_node_id})),
+            // Require an initialized session: the WS endpoint is intentionally
+            // outside bearer-auth middleware, but every method except
+            // `initialize` must run on a session that has already passed
+            // `handle_initialize` (device-token + tailnet-identity validation).
+            // Without this gate any unauthenticated peer that opened the
+            // socket could upsert/overwrite arbitrary `node_id` enrollments.
+            let node_id_opt = match require_initialized_node_id(session_node_id) {
+                Ok(id) => Some(id),
+                Err(error) => return tool_error_response(request.id, &error),
+            };
+            match handle_device_enroll(
+                store,
+                request.params.unwrap_or(serde_json::Value::Null),
+                node_id_opt,
+            )
+            .await
+            {
+                Ok(enrolled_node_id) => success_response(
+                    request.id,
+                    json!({"enrolled": true, "node_id": enrolled_node_id}),
+                ),
                 Err(error) => json!({
                     "jsonrpc": "2.0", "id": request.id,
                     "error": {"code": -32602, "message": error.to_string(), "data": {"kind": "enroll_rejected"}}
@@ -575,8 +627,16 @@ async fn handle_rpc_request(
             };
             let params = request.params.unwrap_or(serde_json::Value::Null);
             let command_id = Uuid::new_v4();
-            let (output_tx, _output_rx) = mpsc::channel::<serde_json::Value>(COMMAND_CHANNEL_CAPACITY);
-            command_states.insert(command_id, CommandState { output_tx, started_at: Instant::now(), node_id: node_id.clone() });
+            let (output_tx, _output_rx) =
+                mpsc::channel::<serde_json::Value>(COMMAND_CHANNEL_CAPACITY);
+            command_states.insert(
+                command_id,
+                CommandState {
+                    output_tx,
+                    started_at: Instant::now(),
+                    node_id: node_id.clone(),
+                },
+            );
             let invoke_msg = json!({
                 "jsonrpc": "2.0", "id": command_id.to_string(), "method": "nodes/command.invoke",
                 "params": {"command_id": command_id.to_string(), "command": params.get("command").cloned().unwrap_or(serde_json::Value::Null)}
@@ -593,14 +653,23 @@ async fn handle_rpc_request(
             let params = request.params.unwrap_or(serde_json::Value::Null);
             let command_id_str = match params.get("command_id").and_then(|v| v.as_str()) {
                 Some(s) => s.to_string(),
-                None => return error_response(request.id, -32602, "missing command_id in command.output"),
+                None => {
+                    return error_response(
+                        request.id,
+                        -32602,
+                        "missing command_id in command.output",
+                    );
+                }
             };
             let command_id = match Uuid::parse_str(&command_id_str) {
                 Ok(id) => id,
                 Err(_) => return error_response(request.id, -32602, "invalid command_id format"),
             };
             if let Some(cmd_state) = command_states.get(&command_id) {
-                let chunk = params.get("chunk").cloned().unwrap_or(serde_json::Value::Null);
+                let chunk = params
+                    .get("chunk")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 drop(cmd_state.output_tx.try_send(chunk));
                 tracing::debug!(surface = "api", service = "nodes", action = "ws.command.output", node_id = %node_id, command_id = %command_id, "nodes websocket command output chunk");
             }
@@ -614,28 +683,54 @@ async fn handle_rpc_request(
             let params = request.params.unwrap_or(serde_json::Value::Null);
             let command_id_str = match params.get("command_id").and_then(|v| v.as_str()) {
                 Some(s) => s.to_string(),
-                None => return error_response(request.id, -32602, "missing command_id in command.result"),
+                None => {
+                    return error_response(
+                        request.id,
+                        -32602,
+                        "missing command_id in command.result",
+                    );
+                }
             };
             let command_id = match Uuid::parse_str(&command_id_str) {
                 Ok(id) => id,
                 Err(_) => return error_response(request.id, -32602, "invalid command_id format"),
             };
             command_states.remove(&command_id);
-            let exit_code = params.get("exit_code").and_then(|v| v.as_i64()).unwrap_or(0);
-            let success_flag = params.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
+            let exit_code = params
+                .get("exit_code")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let success_flag = params
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
             tracing::info!(surface = "api", service = "nodes", action = "ws.command.result", node_id = %node_id, command_id = %command_id, exit_code, success = success_flag, "nodes websocket command completed");
-            success_response(request.id, json!({"command_id": command_id.to_string(), "exit_code": exit_code, "success": success_flag}))
+            success_response(
+                request.id,
+                json!({"command_id": command_id.to_string(), "exit_code": exit_code, "success": success_flag}),
+            )
         }
         "nodes/peer.invoke" => {
-            tracing::debug!(surface = "api", service = "nodes", action = "ws.peer.invoke", "nodes/peer.invoke is not yet implemented");
+            tracing::debug!(
+                surface = "api",
+                service = "nodes",
+                action = "ws.peer.invoke",
+                "nodes/peer.invoke is not yet implemented"
+            );
             json!({"jsonrpc": "2.0", "id": request.id, "error": {"code": -32601, "message": "peer.invoke not yet implemented", "data": {"kind": "not_implemented"}}})
         }
         other => {
             let method_clamped = other.chars().take(256).collect::<String>();
             if other.starts_with("nodes/") {
-                error_response(request.id, -32601, format!("unsupported nodes websocket method `{method_clamped}`"))
+                error_response(
+                    request.id,
+                    -32601,
+                    format!("unsupported nodes websocket method `{method_clamped}`"),
+                )
             } else if DEMUX_ALLOWLIST.contains(&other) {
-                let node_id = session_node_id.clone().unwrap_or_else(|| "<unauthenticated>".to_string());
+                let node_id = session_node_id
+                    .clone()
+                    .unwrap_or_else(|| "<unauthenticated>".to_string());
                 handle_demux(request.id, other, request.params, registry, &node_id).await
             } else {
                 tracing::debug!(surface = "api", service = "nodes", action = "ws.demux.blocked", method = %method_clamped, "demux: method not in allowlist");
@@ -655,16 +750,24 @@ async fn handle_demux(
 ) -> serde_json::Value {
     let (service_name, action) = match method.split_once('.') {
         Some((s, a)) => (s, a),
-        None => return json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"malformed demux method","data":{"kind":"not_permitted"}}}),
+        None => {
+            return json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"malformed demux method","data":{"kind":"not_permitted"}}});
+        }
     };
     let svc = match registry.service(service_name) {
         Some(s) => s,
-        None => return json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":format!("service `{service_name}` not found"),"data":{"kind":"not_permitted"}}}),
+        None => {
+            return json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":format!("service `{service_name}` not found"),"data":{"kind":"not_permitted"}}});
+        }
     };
     let dispatch_params = params.unwrap_or(serde_json::Value::Null);
     tracing::info!(surface = "api", service = "nodes", action = "ws.demux.forward", method = %method, node_id = %node_id, "demux: forwarding allowlisted method to registry");
     let dispatch_fn = svc.dispatch;
-    let result = tokio::time::timeout(Duration::from_secs(30), dispatch_fn(action.to_string(), dispatch_params)).await;
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        dispatch_fn(action.to_string(), dispatch_params),
+    )
+    .await;
     match result {
         Err(_timeout) => {
             tracing::warn!(surface = "api", service = "nodes", action = "ws.demux.timeout", method = %method, node_id = %node_id, kind = "upstream_timeout", "demux: upstream call timed out");
@@ -681,17 +784,41 @@ async fn handle_device_enroll(
     params: serde_json::Value,
     _session_node_id: Option<String>,
 ) -> Result<String, ToolError> {
-    let node_id = params.get("node_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
-        .ok_or_else(|| ToolError::InvalidParam { message: "nodes/device.enroll requires non-empty `node_id`".to_string(), param: "node_id".to_string() })?.to_string();
-    let role = params.get("role").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
-        .ok_or_else(|| ToolError::InvalidParam { message: "nodes/device.enroll requires non-empty `role`".to_string(), param: "role".to_string() })?.to_string();
-    let version = params.get("version").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
-        .ok_or_else(|| ToolError::InvalidParam { message: "nodes/device.enroll requires non-empty `version`".to_string(), param: "version".to_string() })?.to_string();
+    let node_id = params
+        .get("node_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ToolError::InvalidParam {
+            message: "nodes/device.enroll requires non-empty `node_id`".to_string(),
+            param: "node_id".to_string(),
+        })?
+        .to_string();
+    let role = params
+        .get("role")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ToolError::InvalidParam {
+            message: "nodes/device.enroll requires non-empty `role`".to_string(),
+            param: "role".to_string(),
+        })?
+        .to_string();
+    let version = params
+        .get("version")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ToolError::InvalidParam {
+            message: "nodes/device.enroll requires non-empty `version`".to_string(),
+            param: "version".to_string(),
+        })?
+        .to_string();
 
     const KNOWN_ROLES: &[&str] = &["node", "master"];
     if !KNOWN_ROLES.contains(&role.as_str()) {
         return Err(ToolError::InvalidParam {
-            message: format!("unknown role `{role}`; accepted roles: {}", KNOWN_ROLES.join(", ")),
+            message: format!(
+                "unknown role `{role}`; accepted roles: {}",
+                KNOWN_ROLES.join(", ")
+            ),
             param: "role".to_string(),
         });
     }
@@ -699,10 +826,19 @@ async fn handle_device_enroll(
         let existing_role = snapshot.role.as_deref().unwrap_or("");
         if !existing_role.is_empty() && existing_role != role {
             tracing::warn!(surface = "api", service = "nodes", action = "ws.device.enroll", node_id = %node_id, existing_role = %existing_role, requested_role = %role, "enroll conflict: role mismatch");
-            return Err(ToolError::Sdk { sdk_kind: "enroll_conflict".to_string(), message: "re-enrollment requires explicit force flag".to_string() });
+            return Err(ToolError::Sdk {
+                sdk_kind: "enroll_conflict".to_string(),
+                message: "re-enrollment requires explicit force flag".to_string(),
+            });
         }
     }
-    store.record_hello(NodeHello { node_id: node_id.clone(), role: role.clone(), version: version.clone() }).await;
+    store
+        .record_hello(NodeHello {
+            node_id: node_id.clone(),
+            role: role.clone(),
+            version: version.clone(),
+        })
+        .await;
     tracing::info!(surface = "api", service = "nodes", action = "ws.device.enroll", node_id = %node_id, role = %role, version = %version, "nodes/device.enroll: node enrolled");
     Ok(node_id)
 }
@@ -712,10 +848,13 @@ async fn handle_initialize(
     enrollment_store: &EnrollmentStore,
     params: &InitializeParams,
 ) -> Result<InitializedDevice, ToolError> {
-    let meta = params.meta.as_ref().ok_or_else(|| ToolError::InvalidParam {
-        message: "initialize params must include `_meta`".to_string(),
-        param: "_meta".to_string(),
-    })?;
+    let meta = params
+        .meta
+        .as_ref()
+        .ok_or_else(|| ToolError::InvalidParam {
+            message: "initialize params must include `_meta`".to_string(),
+            param: "_meta".to_string(),
+        })?;
     let node_id = super::normalize_node_id_value(&meta.node_id, "_meta.lab.node_id")?;
     if meta.device_token.trim().is_empty() {
         return Err(ToolError::InvalidParam {
@@ -723,13 +862,13 @@ async fn handle_initialize(
             param: "_meta.lab.device_token".to_string(),
         });
     }
-    let tailnet_identity = meta
-        .tailnet_identity
-        .clone()
-        .ok_or_else(|| ToolError::InvalidParam {
-            message: "initialize `_meta.lab.tailnet_identity` must be present".to_string(),
-            param: "_meta.lab.tailnet_identity".to_string(),
-        })?;
+    let tailnet_identity =
+        meta.tailnet_identity
+            .clone()
+            .ok_or_else(|| ToolError::InvalidParam {
+                message: "initialize `_meta.lab.tailnet_identity` must be present".to_string(),
+                param: "_meta.lab.tailnet_identity".to_string(),
+            })?;
 
     match enrollment_store
         .validate(&node_id, &meta.device_token)
@@ -746,19 +885,25 @@ async fn handle_initialize(
                     if now.duration_since(*last_seen) < INITIALIZE_DEBOUNCE {
                         return Err(ToolError::Sdk {
                             sdk_kind: "enrollment_required".to_string(),
-                            message: format!("node `{node_id}` sent initialize within debounce window; retry after 30s"),
+                            message: format!(
+                                "node `{node_id}` sent initialize within debounce window; retry after 30s"
+                            ),
                         });
                     }
                 }
                 map.insert(node_id.clone(), now);
+                // Inline GC: drop entries whose debounce window has expired so
+                // the map can't grow unbounded across distinct node_ids.
+                map.retain(|_, last_seen| {
+                    now.duration_since(*last_seen) < INITIALIZE_DEBOUNCE
+                });
             }
 
             // Pending enrollment cap check.
             const MAX_PENDING_ENROLLMENTS: usize = 1000;
-            let snapshot = enrollment_store
-                .list()
-                .await
-                .map_err(|error| ToolError::internal_message(format!("list enrollments: {error}")))?;
+            let snapshot = enrollment_store.list().await.map_err(|error| {
+                ToolError::internal_message(format!("list enrollments: {error}"))
+            })?;
             if snapshot.pending.len() >= MAX_PENDING_ENROLLMENTS {
                 return Err(ToolError::Sdk {
                     sdk_kind: "enrollment_cap_exceeded".to_string(),
@@ -775,7 +920,9 @@ async fn handle_initialize(
                     metadata: None,
                 })
                 .await
-                .map_err(|error| ToolError::internal_message(format!("record pending enrollment: {error}")))?;
+                .map_err(|error| {
+                    ToolError::internal_message(format!("record pending enrollment: {error}"))
+                })?;
             return Err(ToolError::Sdk {
                 sdk_kind: "enrollment_required".to_string(),
                 message: format!("node `{node_id}` is pending enrollment approval"),
@@ -806,7 +953,10 @@ async fn handle_initialize(
     Ok(InitializedDevice { node_id })
 }
 
-fn parse_status_params(params: serde_json::Value, session_node_id: &str) -> Result<NodeStatus, ToolError> {
+fn parse_status_params(
+    params: serde_json::Value,
+    session_node_id: &str,
+) -> Result<NodeStatus, ToolError> {
     let mut status: NodeStatus =
         serde_json::from_value(params).map_err(|error| ToolError::InvalidParam {
             message: format!("invalid nodes/status.push params: {error}"),
@@ -825,7 +975,10 @@ fn parse_status_params(params: serde_json::Value, session_node_id: &str) -> Resu
     Ok(status)
 }
 
-fn parse_log_events(params: serde_json::Value, session_node_id: &str) -> Result<Vec<NodeLogEvent>, ToolError> {
+fn parse_log_events(
+    params: serde_json::Value,
+    session_node_id: &str,
+) -> Result<Vec<NodeLogEvent>, ToolError> {
     let payload: NodeLogEventParams =
         serde_json::from_value(params).map_err(|error| ToolError::InvalidParam {
             message: format!("invalid nodes/log.event params: {error}"),
@@ -847,9 +1000,7 @@ fn parse_log_events(params: serde_json::Value, session_node_id: &str) -> Result<
             super::normalize_node_id_value(&event.node_id, &format!("events[{index}].node_id"))?;
         if event.node_id != node_id {
             return Err(ToolError::InvalidParam {
-                message: format!(
-                    "events[{index}].node_id must match batch node_id `{node_id}`"
-                ),
+                message: format!("events[{index}].node_id must match batch node_id `{node_id}`"),
                 param: format!("events[{index}].node_id"),
             });
         }
@@ -857,14 +1008,16 @@ fn parse_log_events(params: serde_json::Value, session_node_id: &str) -> Result<
     Ok(events)
 }
 
-fn parse_metadata_params(params: serde_json::Value, session_node_id: &str) -> Result<NodeMetadataUpload, ToolError> {
+fn parse_metadata_params(
+    params: serde_json::Value,
+    session_node_id: &str,
+) -> Result<NodeMetadataUpload, ToolError> {
     let mut metadata: NodeMetadataUpload =
         serde_json::from_value(params).map_err(|error| ToolError::InvalidParam {
             message: format!("invalid nodes/metadata.push params: {error}"),
             param: "params".to_string(),
         })?;
-    metadata.node_id =
-        super::normalize_node_id_value(&metadata.node_id, "params.node_id")?;
+    metadata.node_id = super::normalize_node_id_value(&metadata.node_id, "params.node_id")?;
     if metadata.node_id != session_node_id {
         return Err(ToolError::InvalidParam {
             message: format!(
@@ -878,11 +1031,9 @@ fn parse_metadata_params(params: serde_json::Value, session_node_id: &str) -> Re
 }
 
 fn require_initialized_node_id(session_node_id: &Option<String>) -> Result<String, ToolError> {
-    session_node_id
-        .clone()
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "auth_failed".to_string(),
-            message: "websocket session must send initialize before node methods".to_string(),
+    session_node_id.clone().ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "auth_failed".to_string(),
+        message: "websocket session must send initialize before node methods".to_string(),
     })
 }
 
@@ -914,7 +1065,11 @@ fn success_response(id: Option<serde_json::Value>, result: serde_json::Value) ->
     })
 }
 
-fn error_response(id: Option<serde_json::Value>, code: i64, message: impl Into<String>) -> serde_json::Value {
+fn error_response(
+    id: Option<serde_json::Value>,
+    code: i64,
+    message: impl Into<String>,
+) -> serde_json::Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -1138,7 +1293,10 @@ mod tests {
                 .map(|metadata| metadata.discovered_configs.len()),
             Some(0)
         );
-        assert_eq!(snapshot.status.as_ref().and_then(|s| s.os.as_deref()), Some("linux"));
+        assert_eq!(
+            snapshot.status.as_ref().and_then(|s| s.os.as_deref()),
+            Some("linux")
+        );
         assert_eq!(snapshot.logs.len(), 1);
         assert_eq!(snapshot.logs[0].message, "hello from ws");
 
@@ -1148,8 +1306,11 @@ mod tests {
     #[tokio::test]
     async fn initialize_unknown_device_creates_pending_and_rejects() {
         let store = Arc::new(crate::node::store::NodeStore::default());
-        let enrollment_store =
-            Arc::new(EnrollmentStore::open(test_enrollment_store_path("fleet-unknown")).await.expect("open"));
+        let enrollment_store = Arc::new(
+            EnrollmentStore::open(test_enrollment_store_path("fleet-unknown"))
+                .await
+                .expect("open"),
+        );
         let state = AppState::new()
             .with_node_store(store)
             .with_enrollment_store(enrollment_store.clone());
@@ -1161,7 +1322,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         send_initialize(&mut socket, "device-unknown", "token-unknown").await;
         let response = next_text(&mut socket).await;
@@ -1185,7 +1348,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         send_initialize(&mut socket, "device-1", "token-1").await;
         let response = next_text(&mut socket).await;
@@ -1198,8 +1363,11 @@ mod tests {
     #[tokio::test]
     async fn initialize_denied_device_is_rejected() {
         let store = Arc::new(crate::node::store::NodeStore::default());
-        let enrollment_store =
-            Arc::new(EnrollmentStore::open(test_enrollment_store_path("fleet-denied")).await.expect("open"));
+        let enrollment_store = Arc::new(
+            EnrollmentStore::open(test_enrollment_store_path("fleet-denied"))
+                .await
+                .expect("open"),
+        );
         enrollment_store
             .record_pending(EnrollmentAttempt {
                 node_id: "device-1".to_string(),
@@ -1229,7 +1397,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         send_initialize(&mut socket, "device-1", "token-1").await;
         let response = next_text(&mut socket).await;
@@ -1249,7 +1419,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         send_initialize(&mut socket, "device-1", "wrong-token").await;
         let response = next_text(&mut socket).await;
@@ -1269,7 +1441,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         socket
             .send(Message::Text(
@@ -1300,8 +1474,11 @@ mod tests {
 
     async fn approved_ws_state(node_id: &str, token: &str) -> AppState {
         let store = Arc::new(crate::node::store::NodeStore::default());
-        let enrollment_store =
-            Arc::new(EnrollmentStore::open(test_enrollment_store_path("fleet-approved")).await.expect("open"));
+        let enrollment_store = Arc::new(
+            EnrollmentStore::open(test_enrollment_store_path("fleet-approved"))
+                .await
+                .expect("open"),
+        );
         enrollment_store
             .record_pending(EnrollmentAttempt {
                 node_id: node_id.to_string(),
@@ -1316,14 +1493,19 @@ mod tests {
             })
             .await
             .expect("record pending");
-        enrollment_store.approve(node_id, None).await.expect("approve");
+        enrollment_store
+            .approve(node_id, None)
+            .await
+            .expect("approve");
         AppState::new()
             .with_node_store(store)
             .with_enrollment_store(enrollment_store)
     }
 
     async fn send_initialize(
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        socket: &mut tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
         node_id: &str,
         token: &str,
     ) {
@@ -1369,7 +1551,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         send_initialize(&mut socket, "device-ping", "token-ping").await;
         let _init = next_text(&mut socket).await;
@@ -1388,8 +1572,15 @@ mod tests {
             .await
             .expect("send ping");
         let ping_response = next_text(&mut socket).await;
-        assert!(ping_response.get("error").is_none(), "ping must not return error: {ping_response}");
-        assert_eq!(ping_response["result"], json!({}), "ping result must be empty object");
+        assert!(
+            ping_response.get("error").is_none(),
+            "ping must not return error: {ping_response}"
+        );
+        assert_eq!(
+            ping_response["result"],
+            json!({}),
+            "ping result must be empty object"
+        );
 
         server.abort();
     }
@@ -1405,7 +1596,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         // Send ping without initializing first.
         socket
@@ -1422,7 +1615,10 @@ mod tests {
             .await
             .expect("send ping pre-init");
         let response = next_text(&mut socket).await;
-        assert_eq!(response["error"]["data"]["kind"], "auth_failed", "pre-init ping must return auth_failed: {response}");
+        assert_eq!(
+            response["error"]["data"]["kind"], "auth_failed",
+            "pre-init ping must return auth_failed: {response}"
+        );
 
         server.abort();
     }
@@ -1438,7 +1634,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         send_initialize(&mut socket, "device-cmd", "token-cmd").await;
         let _init = next_text(&mut socket).await;
@@ -1463,8 +1661,14 @@ mod tests {
         // the server and client share the same WS connection, so the server-push
         // nodes/command.invoke frame arrives before the RPC response.
         let invoke_response = next_text_skip_method(&mut socket).await;
-        assert!(invoke_response.get("error").is_none(), "command.invoke must not error: {invoke_response}");
-        let command_id = invoke_response["result"]["command_id"].as_str().expect("command_id string").to_string();
+        assert!(
+            invoke_response.get("error").is_none(),
+            "command.invoke must not error: {invoke_response}"
+        );
+        let command_id = invoke_response["result"]["command_id"]
+            .as_str()
+            .expect("command_id string")
+            .to_string();
         assert!(!command_id.is_empty(), "command_id must be non-empty");
 
         // Send command.result back.
@@ -1482,8 +1686,14 @@ mod tests {
             .await
             .expect("send command.result");
         let result_response = next_text(&mut socket).await;
-        assert!(result_response.get("error").is_none(), "command.result must not error: {result_response}");
-        assert_eq!(result_response["result"]["exit_code"], 0, "exit_code must be 0");
+        assert!(
+            result_response.get("error").is_none(),
+            "command.result must not error: {result_response}"
+        );
+        assert_eq!(
+            result_response["result"]["exit_code"], 0,
+            "exit_code must be 0"
+        );
 
         server.abort();
     }
@@ -1499,7 +1709,9 @@ mod tests {
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
-        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws")).await.expect("connect");
+        let (mut socket, _) = connect_async(format!("ws://{addr}/v1/nodes/ws"))
+            .await
+            .expect("connect");
 
         send_initialize(&mut socket, "device-demux", "token-demux").await;
         let _init = next_text(&mut socket).await;
@@ -1531,7 +1743,9 @@ mod tests {
     /// (server-push frames). Use when the server pushes a frame to the node before
     /// returning the RPC response (e.g. `nodes/command.invoke`).
     async fn next_text_skip_method(
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        socket: &mut tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
     ) -> serde_json::Value {
         loop {
             match socket.next().await.expect("message").expect("ok") {
@@ -1557,7 +1771,9 @@ mod tests {
     }
 
     async fn next_text(
-        socket: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        socket: &mut tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
     ) -> serde_json::Value {
         loop {
             match socket.next().await.expect("message").expect("ok") {
@@ -1589,8 +1805,16 @@ mod tests {
         let result = require_master_store(&state);
         assert!(result.is_err(), "NonMaster must be rejected");
         let err = result.err().expect("err");
-        assert_eq!(err.kind(), "not_found", "kind must be not_found, was {}", err.kind());
-        assert!(!state.is_master(), "is_master() must agree with require_master_store()");
+        assert_eq!(
+            err.kind(),
+            "not_found",
+            "kind must be not_found, was {}",
+            err.kind()
+        );
+        assert!(
+            !state.is_master(),
+            "is_master() must agree with require_master_store()"
+        );
     }
 
     #[tokio::test]
@@ -1600,7 +1824,10 @@ mod tests {
             .with_node_store(Arc::clone(&store))
             .with_node_role(NodeRole::Master);
         assert!(state.is_master(), "Master role must be is_master()");
-        assert!(require_master_store(&state).is_ok(), "Master with store must be allowed");
+        assert!(
+            require_master_store(&state).is_ok(),
+            "Master with store must be allowed"
+        );
     }
 
     #[tokio::test]

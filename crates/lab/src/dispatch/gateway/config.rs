@@ -242,12 +242,10 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
                 param: "tool_search.top_k_default".to_string(),
             }
         }
-        crate::config::ConfigError::InvalidToolSearchMaxTools { .. } => {
-            ToolError::InvalidParam {
-                message: e.to_string(),
-                param: "tool_search.max_tools".to_string(),
-            }
-        }
+        crate::config::ConfigError::InvalidToolSearchMaxTools { .. } => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "tool_search.max_tools".to_string(),
+        },
     })?;
 
     match (&upstream.url, &upstream.command) {
@@ -465,7 +463,7 @@ mod tests {
                     expose_resources: None,
                     expose_prompts: None,
                     oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                    tool_search: crate::config::ToolSearchConfig::default(),
                 },
                 UpstreamConfig {
                     enabled: true,
@@ -480,7 +478,7 @@ mod tests {
                     expose_resources: None,
                     expose_prompts: None,
                     oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                    tool_search: crate::config::ToolSearchConfig::default(),
                 },
             ],
             ..LabConfig::default()
@@ -531,7 +529,7 @@ args = ["server.js"]
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect("insert");
@@ -709,7 +707,7 @@ args = ["server.js"]
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("duplicate should fail");
@@ -735,7 +733,7 @@ args = ["server.js"]
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             }],
             ..LabConfig::default()
         };
@@ -762,7 +760,7 @@ args = ["server.js"]
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             }],
             ..LabConfig::default()
         };
@@ -788,7 +786,7 @@ args = ["server.js"]
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("invalid scheme");
@@ -813,7 +811,7 @@ args = ["server.js"]
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("bind-all should be rejected");
@@ -838,7 +836,7 @@ args = ["server.js"]
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("raw bearer token should be rejected");
