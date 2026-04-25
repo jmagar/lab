@@ -30,6 +30,7 @@ import type {
   SupportedService,
 } from '@/lib/types/gateway'
 import { useCallback } from 'react'
+import { safeFanout } from '@/lib/api/service-action-client'
 
 // Set NEXT_PUBLIC_MOCK_DATA=true to use mock data for development
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
@@ -78,28 +79,34 @@ const fetchGateways = async (): Promise<Gateway[]> => {
     return gateways
   }
 
-  const serviceEntries = await Promise.all(
-    missingServices.map(async (service) => {
-      const [configResult, actionsResult] = await Promise.allSettled([
-        gatewayApi.getServiceConfig(service.key),
-        gatewayApi.serviceActions(service.key),
-      ])
+  const serviceEntries = await safeFanout(
+    missingServices,
+    async (service) => {
+      const [configResult, actionsResult] = await safeFanout(
+        ['config', 'actions'] as const,
+        (kind) => kind === 'config'
+          ? gatewayApi.getServiceConfig(service.key)
+          : gatewayApi.serviceActions(service.key),
+      )
 
       return {
         key: service.key,
-        config: configResult.status === 'fulfilled' ? configResult.value : undefined,
-        actions: actionsResult.status === 'fulfilled' ? actionsResult.value : undefined,
+        config: configResult.ok ? configResult.value as ServiceConfig : undefined,
+        actions: actionsResult.ok ? actionsResult.value as ServiceAction[] : undefined,
       }
-    }),
+    },
   )
+  const loadedServiceEntries = serviceEntries
+    .filter((entry) => entry.ok)
+    .map((entry) => entry.value)
 
   const serviceConfigs = new Map(
-    serviceEntries
+    loadedServiceEntries
       .filter((entry) => entry.config !== undefined)
       .map((entry) => [entry.key, entry.config!]),
   )
   const serviceActions = new Map(
-    serviceEntries
+    loadedServiceEntries
       .filter((entry) => entry.actions !== undefined)
       .map((entry) => [entry.key, entry.actions!]),
   )
@@ -303,6 +310,16 @@ export function useGatewayMutations() {
       return
     }
     await gatewayApi.remove(id)
+    await refreshGatewayCache()
+  }, [])
+
+  const removeVirtualServer = useCallback(async (id: string): Promise<void> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      await mutate(GATEWAYS_KEY, (current: Gateway[] = []) => current.filter(g => g.id !== id), false)
+      return
+    }
+    await gatewayApi.removeVirtualServer(id)
     await refreshGatewayCache()
   }, [])
 
@@ -560,6 +577,7 @@ export function useGatewayMutations() {
     createGateway,
     updateGateway,
     removeGateway,
+    removeVirtualServer,
     testGateway,
     reloadGateway,
     setExposurePolicy,

@@ -130,7 +130,7 @@ lab arcane container.start --params '{"env_id":"default","container_id":"my-app"
 
 Defaults to `help` when no action given. Destructive actions require `-y` / `--yes` flag on interactive terminals.
 
-### MCP Surface (`crates/lab/src/mcp/services/arcane.rs`)
+### MCP Surface (`crates/lab/src/registry.rs`)
 
 One MCP tool named `arcane`. Dispatches actions via shared dispatch layer:
 

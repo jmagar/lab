@@ -6,12 +6,12 @@
 
 #![cfg(test)]
 
-use std::time::Instant;
-use std::time::Duration;
-use tempfile::NamedTempFile;
-use tempfile::TempDir;
 use crate::node::log_event::NodeLogEvent;
 use crate::node::log_store::SqliteNodeLogStore;
+use std::time::Duration;
+use std::time::Instant;
+use tempfile::NamedTempFile;
+use tempfile::TempDir;
 
 /// Build a test log event with the given message.
 fn test_event(node_id: &str, message: &str, timestamp_unix_ms: i64) -> NodeLogEvent {
@@ -62,17 +62,25 @@ async fn durability_survives_store_drop_and_reopen() {
         let store = SqliteNodeLogStore::open(db_path.clone(), 30)
             .await
             .expect("open");
-        store.ingest(test_event("node-1", "hello after restart", 1_000)).await.expect("ingest");
+        store
+            .ingest(test_event("node-1", "hello after restart", 1_000))
+            .await
+            .expect("ingest");
         // Give the batch writer time to flush (25ms timeout + margin).
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
     // Reopen and search.
-    let store2 = SqliteNodeLogStore::open(db_path, 30)
-        .await
-        .expect("reopen");
+    let store2 = SqliteNodeLogStore::open(db_path, 30).await.expect("reopen");
     let results = store2
-        .search("node-1".to_string(), "restart".to_string(), None, None, 0, 10)
+        .search(
+            "node-1".to_string(),
+            "restart".to_string(),
+            None,
+            None,
+            0,
+            10,
+        )
         .await
         .expect("search");
     assert_eq!(results.len(), 1, "event must survive store reopen");
@@ -85,9 +93,7 @@ async fn durability_survives_store_drop_and_reopen() {
 async fn search_50k_events_under_200ms() {
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("perf-test.db");
-    let store = SqliteNodeLogStore::open(db_path, 30)
-        .await
-        .expect("open");
+    let store = SqliteNodeLogStore::open(db_path, 30).await.expect("open");
 
     // Seed 50,000 events in batches using direct ingestion.
     for i in 0i64..50_000 {
@@ -101,7 +107,14 @@ async fn search_50k_events_under_200ms() {
 
     let start = Instant::now();
     let results = store
-        .search("perf-node".to_string(), "message-42".to_string(), None, None, 0, 1000)
+        .search(
+            "perf-node".to_string(),
+            "message-42".to_string(),
+            None,
+            None,
+            0,
+            1000,
+        )
         .await
         .expect("search");
     let elapsed = start.elapsed();
@@ -122,9 +135,7 @@ async fn search_50k_events_under_200ms() {
 async fn ttl_retention_removes_rows_older_than_retention_days() {
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("ttl-test.db");
-    let store = SqliteNodeLogStore::open(db_path, 30)
-        .await
-        .expect("open");
+    let store = SqliteNodeLogStore::open(db_path, 30).await.expect("open");
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -135,8 +146,14 @@ async fn ttl_retention_removes_rows_older_than_retention_days() {
     let old_ts = now_ms - 31 * 86_400 * 1_000;
     let fresh_ts = now_ms;
 
-    store.ingest(test_event("ttl-node", "old-message", old_ts)).await.expect("ingest old");
-    store.ingest(test_event("ttl-node", "fresh-message", fresh_ts)).await.expect("ingest fresh");
+    store
+        .ingest(test_event("ttl-node", "old-message", old_ts))
+        .await
+        .expect("ingest old");
+    store
+        .ingest(test_event("ttl-node", "fresh-message", fresh_ts))
+        .await
+        .expect("ingest fresh");
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Run a retention sweep synchronously via the exposed test helper.
@@ -164,9 +181,7 @@ async fn ttl_retention_removes_rows_older_than_retention_days() {
 async fn retention_convergence_guard_clears_large_backlog() {
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("convergence-test.db");
-    let store = SqliteNodeLogStore::open(db_path, 30)
-        .await
-        .expect("open");
+    let store = SqliteNodeLogStore::open(db_path, 30).await.expect("open");
 
     let old_ts = {
         let now_ms = std::time::SystemTime::now()
@@ -216,8 +231,7 @@ async fn db_file_created_with_0600_permissions() {
     let meta = std::fs::metadata(&db_path).expect("metadata");
     let mode = meta.permissions().mode() & 0o777;
     assert_eq!(
-        mode,
-        0o600,
+        mode, 0o600,
         "DB file must be created with 0600 permissions; got {mode:o}",
     );
 }
@@ -238,8 +252,7 @@ async fn fresh_db_has_auto_vacuum_incremental() {
         .pragma_query_value(None, "auto_vacuum", |r| r.get(0))
         .expect("query auto_vacuum");
     assert_eq!(
-        av,
-        2,
+        av, 2,
         "fresh DB must have auto_vacuum=INCREMENTAL (2); got {av}",
     );
 }
@@ -277,9 +290,7 @@ async fn existing_db_with_no_auto_vacuum_opens_and_logs_warn() {
 async fn oversized_fields_are_rejected_at_ingest() {
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("fields-cap-test.db");
-    let store = SqliteNodeLogStore::open(db_path, 30)
-        .await
-        .expect("open");
+    let store = SqliteNodeLogStore::open(db_path, 30).await.expect("open");
 
     // Build a fields map that serializes to > 4096 bytes.
     let mut big_fields = serde_json::Map::new();
@@ -292,13 +303,23 @@ async fn oversized_fields_are_rejected_at_ingest() {
 
     let event = test_event_with_fields("cap-node", "large-fields-event", 1, big_fields);
     // ingest must return Ok (best-effort) even when dropping the event.
-    store.ingest(event).await.expect("ingest returns Ok even on drop");
+    store
+        .ingest(event)
+        .await
+        .expect("ingest returns Ok even on drop");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // The event must NOT appear in search results (was dropped).
     let results = store
-        .search("cap-node".to_string(), "large-fields-event".to_string(), None, None, 0, 10)
+        .search(
+            "cap-node".to_string(),
+            "large-fields-event".to_string(),
+            None,
+            None,
+            0,
+            10,
+        )
         .await
         .expect("search");
     assert_eq!(
@@ -314,9 +335,7 @@ async fn oversized_fields_are_rejected_at_ingest() {
 async fn like_wildcards_in_query_are_escaped_and_treated_as_literals() {
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("like-escape-test.db");
-    let store = SqliteNodeLogStore::open(db_path, 30)
-        .await
-        .expect("open");
+    let store = SqliteNodeLogStore::open(db_path, 30).await.expect("open");
 
     // Insert a message that literally contains % and _.
     store
@@ -363,30 +382,63 @@ async fn like_wildcards_in_query_are_escaped_and_treated_as_literals() {
 async fn search_with_time_range_filters_correctly() {
     let dir = TempDir::new().expect("temp dir");
     let db_path = dir.path().join("range-test.db");
-    let store = SqliteNodeLogStore::open(db_path, 30)
-        .await
-        .expect("open");
+    let store = SqliteNodeLogStore::open(db_path, 30).await.expect("open");
 
-    store.ingest(test_event("range-node", "early", 1_000)).await.expect("ingest early");
-    store.ingest(test_event("range-node", "middle", 2_000)).await.expect("ingest middle");
-    store.ingest(test_event("range-node", "late", 3_000)).await.expect("ingest late");
+    store
+        .ingest(test_event("range-node", "early", 1_000))
+        .await
+        .expect("ingest early");
+    store
+        .ingest(test_event("range-node", "middle", 2_000))
+        .await
+        .expect("ingest middle");
+    store
+        .ingest(test_event("range-node", "late", 3_000))
+        .await
+        .expect("ingest late");
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // since_ms=1500 should exclude "early".
     let results = store
-        .search("range-node".to_string(), String::new(), Some(1_500), None, 0, 10)
+        .search(
+            "range-node".to_string(),
+            String::new(),
+            Some(1_500),
+            None,
+            0,
+            10,
+        )
         .await
         .expect("search since");
     let messages: Vec<&str> = results.iter().map(|e| e.message.as_str()).collect();
-    assert!(!messages.contains(&"early"), "since_ms must exclude early: {messages:?}");
-    assert!(messages.contains(&"middle"), "since_ms must include middle: {messages:?}");
+    assert!(
+        !messages.contains(&"early"),
+        "since_ms must exclude early: {messages:?}"
+    );
+    assert!(
+        messages.contains(&"middle"),
+        "since_ms must include middle: {messages:?}"
+    );
 
     // until_ms=2500 should exclude "late".
     let results2 = store
-        .search("range-node".to_string(), String::new(), None, Some(2_500), 0, 10)
+        .search(
+            "range-node".to_string(),
+            String::new(),
+            None,
+            Some(2_500),
+            0,
+            10,
+        )
         .await
         .expect("search until");
     let messages2: Vec<&str> = results2.iter().map(|e| e.message.as_str()).collect();
-    assert!(!messages2.contains(&"late"), "until_ms must exclude late: {messages2:?}");
-    assert!(messages2.contains(&"middle"), "until_ms must include middle: {messages2:?}");
+    assert!(
+        !messages2.contains(&"late"),
+        "until_ms must exclude late: {messages2:?}"
+    );
+    assert!(
+        messages2.contains(&"middle"),
+        "until_ms must include middle: {messages2:?}"
+    );
 }

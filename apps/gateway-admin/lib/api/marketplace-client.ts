@@ -414,6 +414,31 @@ export interface AcpAgentInstallResult {
   results: AcpAgentInstallDeviceResult[]
 }
 
+type RawAcpAgentInstallDeviceResult = {
+  device_id?: string
+  node_id?: string
+  ok: boolean
+  message?: string
+  error?: unknown
+}
+
+type RawAcpAgentInstallResult = {
+  results?: RawAcpAgentInstallDeviceResult[]
+}
+
+function normalizeAcpInstallResult(raw: RawAcpAgentInstallResult): AcpAgentInstallResult {
+  return {
+    results: (raw.results ?? []).map((result) => {
+      const message = result.message ?? (typeof result.error === 'string' ? result.error : undefined)
+      return {
+        device_id: result.device_id ?? result.node_id ?? 'unknown',
+        ok: result.ok,
+        ...(message ? { message } : {}),
+      }
+    }),
+  }
+}
+
 export async function installAcpAgent(
   params: AcpAgentInstallParams,
   signal?: AbortSignal,
@@ -424,7 +449,12 @@ export async function installAcpAgent(
       results: params.device_ids.map(device_id => ({ device_id, ok: true })),
     }
   }
-  return marketplaceAction<AcpAgentInstallResult>('agent.install', params, signal)
+  const raw = await marketplaceAction<RawAcpAgentInstallResult>(
+    'agent.install',
+    { id: params.agent_id, node_ids: params.device_ids, confirm: true },
+    signal,
+  )
+  return normalizeAcpInstallResult(raw)
 }
 
 // ── Cherry-pick ────────────────────────────────────────────────────────────

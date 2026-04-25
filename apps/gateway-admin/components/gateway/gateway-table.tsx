@@ -66,6 +66,14 @@ const AURORA_GATEWAY_TABLE_SHELL =
 
 const rowToneClass = (index: number) => (index % 2 === 0 ? 'gateway-row-tone-a' : 'gateway-row-tone-b')
 
+function isStaleVirtualServer(gateway: Gateway): boolean {
+  return gateway.source === 'in_process' && gateway.warnings.some((warning) => warning.code === 'unknown_service')
+}
+
+function canRemoveGateway(gateway: Gateway): boolean {
+  return gateway.source !== 'in_process' || isStaleVirtualServer(gateway)
+}
+
 interface GatewayTableProps {
   gateways: Gateway[]
   density: 'comfortable' | 'condensed'
@@ -293,6 +301,7 @@ export function GatewayTable({
         <div className="divide-y divide-aurora-border-strong/70">
           {gateways.map((gateway, index) => {
             const supportsProbeControls = gateway.source !== 'in_process'
+            const canRemoveGatewayRow = canRemoveGateway(gateway)
             const isDisabled = !(gateway.enabled ?? true)
             const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
             const endpointPreview = buildGatewayEndpointPreview(gateway)
@@ -433,12 +442,12 @@ export function GatewayTable({
                           ) : null}
                         </>
                       ) : null}
-                      {gateway.source !== 'in_process' ? (
+                      {canRemoveGatewayRow ? (
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-aurora-error focus:text-aurora-error">
                             <Trash2 className="size-4 mr-2" />
-                            Remove gateway
+                            {gateway.source === 'in_process' ? 'Remove stale service' : 'Remove gateway'}
                           </DropdownMenuItem>
                         </>
                       ) : null}
@@ -474,6 +483,7 @@ export function GatewayTable({
           <TableBody>
             {sortedGateways.map((gateway, index) => {
               const supportsProbeControls = gateway.source !== 'in_process'
+              const canRemoveGatewayRow = canRemoveGateway(gateway)
               const endpointPreview = buildGatewayEndpointPreview(gateway)
               const isDisabled = !(gateway.enabled ?? true)
               const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
@@ -603,6 +613,17 @@ export function GatewayTable({
                           <span className="sr-only">Reload gateway</span>
                         </Button>
                       ) : null}
+                      {isStaleVirtualServer(gateway) && density === 'comfortable' ? (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={cn(gatewayActionTone(), 'size-9 opacity-100 text-destructive transition-opacity hover:bg-aurora-hover-bg hover:text-destructive md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100')}
+                          onClick={() => onDelete(gateway)}
+                        >
+                          <Trash2 className="size-4" />
+                          <span className="sr-only">Remove stale service</span>
+                        </Button>
+                      ) : null}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="icon" className={cn(gatewayActionTone(), 'size-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
@@ -672,12 +693,12 @@ export function GatewayTable({
                               ) : null}
                             </>
                           ) : null}
-                          {gateway.source !== 'in_process' ? (
+                          {canRemoveGatewayRow ? (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
                                 <Trash2 className="mr-2 size-4" />
-                                Remove gateway
+                                {gateway.source === 'in_process' ? 'Remove stale service' : 'Remove gateway'}
                               </DropdownMenuItem>
                             </>
                           ) : null}

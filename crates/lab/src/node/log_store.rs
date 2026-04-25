@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! SQLite-backed node log persistence.
 //!
 //! # Architecture
@@ -99,7 +101,9 @@ impl std::fmt::Debug for SqliteNodeLogStore {
     }
 }
 
-fn node_log_pragma_init(query_only: bool) -> impl Fn(&mut Connection) -> rusqlite::Result<()> + Send + Sync + 'static {
+fn node_log_pragma_init(
+    query_only: bool,
+) -> impl Fn(&mut Connection) -> rusqlite::Result<()> + Send + Sync + 'static {
     // FACT: WAL journal_mode must be applied per-connection via pragma_update
     // (never inside a migration transaction — silent no-op there; prior incident lab-fstf.4).
     move |conn| {
@@ -130,8 +134,7 @@ impl SqliteNodeLogStore {
         let (write_pool, read_pool, writer_task_conn) =
             tokio::task::spawn_blocking(move || -> Result<_, String> {
                 if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| format!("create_dir_all: {e}"))?;
+                    std::fs::create_dir_all(parent).map_err(|e| format!("create_dir_all: {e}"))?;
                 }
 
                 // Create the file with 0600 perms on first open (Unix only).
@@ -143,8 +146,8 @@ impl SqliteNodeLogStore {
                 // SQLite commits the first page. Switching to WAL mode writes to the DB
                 // header and locks in the vacuum setting; we must migrate first.
                 {
-                    let migration_conn = Connection::open(&path)
-                        .map_err(|e| format!("open migration conn: {e}"))?;
+                    let migration_conn =
+                        Connection::open(&path).map_err(|e| format!("open migration conn: {e}"))?;
                     migrate(&migration_conn).map_err(|e| format!("migrate: {e}"))?;
                 }
 
@@ -165,8 +168,7 @@ impl SqliteNodeLogStore {
                     .map_err(|e| format!("build read pool: {e}"))?;
 
                 // Dedicated single-owner writer connection for the hot-path batch inserts.
-                let rw_flags =
-                    OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+                let rw_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
                 let mut tc = Connection::open_with_flags(&path, rw_flags)
                     .map_err(|e| format!("open writer conn: {e}"))?;
                 node_log_pragma_init(false)(&mut tc)
@@ -181,7 +183,11 @@ impl SqliteNodeLogStore {
         let (event_tx, event_rx) = mpsc::channel::<NodeLogEvent>(4096);
 
         let writer_conn = Arc::new(Mutex::new(writer_task_conn));
-        tokio::spawn(writer_task(Arc::clone(&writer_conn), event_rx, retention_days));
+        tokio::spawn(writer_task(
+            Arc::clone(&writer_conn),
+            event_rx,
+            retention_days,
+        ));
 
         Ok(Self {
             write_pool,
@@ -204,8 +210,8 @@ impl SqliteNodeLogStore {
     /// dropped with a WARN log and `Ok(())` is returned (best-effort ingest).
     pub async fn ingest(&self, event: NodeLogEvent) -> Result<(), String> {
         // Enforce 4 KB fields cap at ingest.
-        let fields_str = serde_json::to_string(&event.fields)
-            .map_err(|e| format!("serialize fields: {e}"))?;
+        let fields_str =
+            serde_json::to_string(&event.fields).map_err(|e| format!("serialize fields: {e}"))?;
         if fields_str.len() > FIELDS_MAX_BYTES {
             tracing::warn!(
                 surface = "node",
@@ -281,8 +287,11 @@ async fn writer_task(
         // Collect up to BATCH_SIZE events within BATCH_TIMEOUT, also watching
         // for the retention ticker. This is the single writer task pattern.
         'collect: loop {
+            // NOTE: do not mark this select `biased`. Under sustained ingest the
+            // `rx.recv()` branch can fire on every poll, and a biased select would
+            // never give the retention ticker a turn — TTL sweeps would silently
+            // stop running. Random poll order ensures both branches make progress.
             tokio::select! {
-                biased;
                 recv_result = tokio::time::timeout_at(deadline, rx.recv()) => {
                     match recv_result {
                         Ok(Some(event)) => {
@@ -326,7 +335,9 @@ async fn flush_batch(conn: &Arc<Mutex<Connection>>, batch: &mut Vec<NodeLogEvent
     let count = events.len();
     let conn = Arc::clone(conn);
     let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|_| "writer mutex poisoned".to_string())?;
+        let c = conn
+            .lock()
+            .map_err(|_| "writer mutex poisoned".to_string())?;
         db_batch_insert(&c, &events).map_err(|e| format!("batch insert: {e}"))
     })
     .await;
@@ -366,7 +377,9 @@ async fn run_retention(conn: &Arc<Mutex<Connection>>, retention_days: u32) {
     let conn = Arc::clone(conn);
     // Convergence guard: loop until fewer than RETENTION_BATCH_SIZE rows deleted.
     let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|_| "writer mutex poisoned".to_string())?;
+        let c = conn
+            .lock()
+            .map_err(|_| "writer mutex poisoned".to_string())?;
         loop {
             let affected = c
                 .execute(
@@ -469,8 +482,7 @@ fn db_batch_insert(conn: &Connection, events: &[NodeLogEvent]) -> Result<(), Str
         .map_err(|e| format!("begin transaction: {e}"))?;
 
     for event in events {
-        let fields_str = serde_json::to_string(&event.fields)
-            .unwrap_or_else(|_| "{}".to_string());
+        let fields_str = serde_json::to_string(&event.fields).unwrap_or_else(|_| "{}".to_string());
         tx.execute(
             "INSERT INTO node_logs (node_id, source, timestamp_unix_ms, level, message, fields)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",

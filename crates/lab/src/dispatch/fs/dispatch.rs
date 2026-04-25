@@ -112,7 +112,7 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
 }
 
 /// Single dispatch body. `dispatch()` resolves the workspace root from
-/// `LAB_WORKSPACE_ROOT` (or returns `workspace_not_configured`) and
+/// `config.toml` (or returns `workspace_not_configured`) and
 /// delegates here; HTTP handlers pass the canonical root from `AppState`.
 #[cfg(feature = "fs")]
 pub async fn dispatch_with_root(
@@ -180,20 +180,22 @@ async fn target_within_root(root: &Path, relative: &Path) -> Result<PathBuf, Too
     } else {
         root.join(relative)
     };
-    let canonical = tokio::fs::canonicalize(&joined).await.map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => ToolError::Sdk {
-            sdk_kind: "not_found".into(),
-            message: format!("path does not exist: `{}`", relative.display()),
-        },
-        std::io::ErrorKind::PermissionDenied => ToolError::Sdk {
-            sdk_kind: "permission_denied".into(),
-            message: "permission denied".into(),
-        },
-        _ => ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: e.to_string(),
-        },
-    })?;
+    let canonical = tokio::fs::canonicalize(&joined)
+        .await
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ToolError::Sdk {
+                sdk_kind: "not_found".into(),
+                message: format!("path does not exist: `{}`", relative.display()),
+            },
+            std::io::ErrorKind::PermissionDenied => ToolError::Sdk {
+                sdk_kind: "permission_denied".into(),
+                message: "permission denied".into(),
+            },
+            _ => ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: e.to_string(),
+            },
+        })?;
     if !canonical.starts_with(root) {
         return Err(ToolError::Sdk {
             sdk_kind: "permission_denied".into(),
@@ -315,7 +317,11 @@ fn list_directory(target: &Path, rel_prefix: &str) -> Result<ListResponse, ToolE
                 } else {
                     "other"
                 };
-                let size = if file_type.is_file() { Some(m.len()) } else { None };
+                let size = if file_type.is_file() {
+                    Some(m.len())
+                } else {
+                    None
+                };
                 let modified = m
                     .modified()
                     .ok()
@@ -571,6 +577,22 @@ fn open_no_follow_fallback(root: &Path, rel: &Path) -> Result<std::fs::File, Too
             message: "path escapes workspace root".into(),
         });
     }
+    // Re-validate the canonical relative path against the deny-list. The
+    // input `rel` was already screened in `open_for_preview`, but the
+    // canonical form may differ (case, redundant separators, unicode
+    // normalization, etc.) — without this check, an alias path like
+    // `Dot.env` on a case-insensitive filesystem could resolve to `.env`
+    // and bypass the original deny-list match. Surfaces as `not_found`
+    // to preserve the deny-list ambiguity.
+    if let Ok(canonical_rel) = canonical.strip_prefix(root) {
+        let canonical_rel_str = canonical_rel.to_string_lossy();
+        if deny_globset().is_match(canonical_rel_str.as_ref()) {
+            return Err(ToolError::Sdk {
+                sdk_kind: "not_found".into(),
+                message: format!("path not found: `{}`", rel.display()),
+            });
+        }
+    }
     let meta = std::fs::symlink_metadata(&canonical).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: e.to_string(),
@@ -633,7 +655,9 @@ mod tests {
     async fn list_root_suppresses_top_level_dotenv() {
         let tmp = tree_layout();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
-        let value = dispatch_with_root(&root, "fs.list", json!({})).await.unwrap();
+        let value = dispatch_with_root(&root, "fs.list", json!({}))
+            .await
+            .unwrap();
         let names: Vec<String> = value["entries"]
             .as_array()
             .unwrap()
@@ -695,7 +719,9 @@ mod tests {
     async fn list_rejects_unknown_action() {
         let tmp = tempdir().unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
-        let err = dispatch_with_root(&root, "fs.nuke", json!({})).await.unwrap_err();
+        let err = dispatch_with_root(&root, "fs.nuke", json!({}))
+            .await
+            .unwrap_err();
         assert!(matches!(err, ToolError::UnknownAction { .. }), "{err:?}");
     }
 
@@ -710,8 +736,10 @@ mod tests {
         let err = dispatch_with_root(&root, "fs.list", json!({"path": "escape"}))
             .await
             .expect_err("err");
-        assert!(matches!(&err, ToolError::Sdk { sdk_kind, .. } if sdk_kind == "permission_denied"),
-                "expected permission_denied; got {err:?}");
+        assert!(
+            matches!(&err, ToolError::Sdk { sdk_kind, .. } if sdk_kind == "permission_denied"),
+            "expected permission_denied; got {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -719,7 +747,9 @@ mod tests {
         let tmp = tempdir().unwrap();
         unix_fs::symlink("/nonexistent/does/not/exist", tmp.path().join("broken")).unwrap();
         let root = std::fs::canonicalize(tmp.path()).unwrap();
-        let value = dispatch_with_root(&root, "fs.list", json!({})).await.unwrap();
+        let value = dispatch_with_root(&root, "fs.list", json!({}))
+            .await
+            .unwrap();
         let entries = value["entries"].as_array().unwrap();
         let broken = entries
             .iter()
@@ -739,7 +769,9 @@ mod tests {
             std::fs::write(tmp.path().join(format!("f{i}")), "").unwrap();
         }
         let root = std::fs::canonicalize(tmp.path()).unwrap();
-        let value = dispatch_with_root(&root, "fs.list", json!({})).await.unwrap();
+        let value = dispatch_with_root(&root, "fs.list", json!({}))
+            .await
+            .unwrap();
         assert_eq!(value["truncated"], false);
         assert_eq!(value["entries"].as_array().unwrap().len(), 5);
     }
@@ -780,7 +812,10 @@ mod tests {
         let err = dispatch_with_root(&root, "fs.preview", json!({"path": "foo"}))
             .await
             .expect_err("err");
-        assert!(matches!(&err, ToolError::Sdk { sdk_kind, .. } if sdk_kind == "http_only"), "{err:?}");
+        assert!(
+            matches!(&err, ToolError::Sdk { sdk_kind, .. } if sdk_kind == "http_only"),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]
@@ -933,7 +968,7 @@ mod tests {
     }
 
     /// help must remain reachable through the canonical `dispatch()` entry
-    /// point regardless of whether `LAB_WORKSPACE_ROOT` is configured. The
+    /// point regardless of whether `workspace.root` is configured. The
     /// fix moves help/schema in front of `require_workspace_root()` so the
     /// catalog stays discoverable on any env state — see bead lab-f1t2.24.
     ///
@@ -943,7 +978,9 @@ mod tests {
     /// is deterministic regardless of OnceLock seeding.
     #[tokio::test]
     async fn dispatch_help_works_without_workspace_configured() {
-        let v = dispatch("help", json!({})).await.expect("help ok without workspace");
+        let v = dispatch("help", json!({}))
+            .await
+            .expect("help ok without workspace");
         let names: Vec<String> = v["actions"]
             .as_array()
             .unwrap()

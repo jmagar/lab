@@ -6,9 +6,9 @@
 //!   3. `config.toml` (searched: `./` → `~/.lab/` → `~/.config/lab/`)
 //!   4. Built-in defaults
 //!
-//! URLs and secrets belong in `.env`. Everything else (logging, CORS,
-//! MCP transport, admin flags, per-service preferences) belongs in
-//! `config.toml` but can still be overridden via env vars.
+//! Service credentials and instance endpoints belong in `.env`. Non-secret
+//! operator preferences and defaults (logging, CORS, MCP transport, admin
+//! flags, registry URLs, workspace roots) belong in `config.toml`.
 //!
 //! Multi-instance services follow the `S_<LABEL>_URL` pattern: a service
 //! like `unraid` reads `UNRAID_URL` as the default instance and
@@ -25,6 +25,8 @@ use anyhow::{Context, Result};
 use lab_apis::extract::types::ServiceCreds;
 use lab_auth::config as auth_config;
 use serde::{Deserialize, Serialize, Serializer};
+
+pub const DEFAULT_MCPREGISTRY_URL: &str = "https://registry.modelcontextprotocol.io";
 
 /// Fully-resolved `lab` configuration, assembled from env + TOML.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -47,6 +49,13 @@ pub struct LabConfig {
     /// Web UI preferences.
     #[serde(default)]
     pub web: WebPreferences,
+    /// Shared Lab workspace root. Backs the read-only attachment picker and
+    /// local writable stash workspaces.
+    #[serde(default)]
+    pub workspace: WorkspacePreferences,
+    /// MCP Registry upstream preferences.
+    #[serde(default)]
+    pub mcpregistry: McpRegistryPreferences,
     /// OAuth callback relay preferences.
     #[serde(default)]
     pub oauth: OauthPreferences,
@@ -71,6 +80,9 @@ pub struct LabConfig {
     /// Virtual MCP servers backed by canonically configured Lab services.
     #[serde(default)]
     pub virtual_servers: Vec<VirtualServerConfig>,
+    /// Virtual servers whose backing service is no longer registered in this binary.
+    #[serde(default)]
+    pub quarantined_virtual_servers: Vec<VirtualServerConfig>,
     /// Deploy service preferences (feature-gated at the consumer level).
     #[serde(default)]
     pub deploy: Option<DeployPreferences>,
@@ -173,7 +185,11 @@ impl LabConfig {
         self.node
             .as_ref()
             .and_then(|prefs| prefs.controller.as_deref())
-            .or_else(|| self.device.as_ref().and_then(|prefs| prefs.master.as_deref()))
+            .or_else(|| {
+                self.device
+                    .as_ref()
+                    .and_then(|prefs| prefs.master.as_deref())
+            })
     }
 }
 
@@ -624,6 +640,35 @@ pub struct WebPreferences {
     pub disable_auth: Option<bool>,
 }
 
+/// Shared workspace root for Lab-managed files.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorkspacePreferences {
+    /// Root directory used by fs browsing and stash-backed writable workspaces.
+    /// Defaults to `~/.lab/stash`.
+    #[serde(default)]
+    pub root: Option<PathBuf>,
+}
+
+/// MCP Registry upstream preferences.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpRegistryPreferences {
+    /// Upstream MCP Registry base URL.
+    #[serde(default = "default_mcpregistry_url_option")]
+    pub url: Option<String>,
+}
+
+impl Default for McpRegistryPreferences {
+    fn default() -> Self {
+        Self {
+            url: default_mcpregistry_url_option(),
+        }
+    }
+}
+
+fn default_mcpregistry_url_option() -> Option<String> {
+    Some(DEFAULT_MCPREGISTRY_URL.to_string())
+}
+
 /// OAuth local relay preferences.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OauthPreferences {
@@ -759,6 +804,43 @@ fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
+}
+
+#[must_use]
+pub fn mcpregistry_url(config: &LabConfig) -> &str {
+    config
+        .mcpregistry
+        .url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .unwrap_or(DEFAULT_MCPREGISTRY_URL)
+}
+
+#[must_use]
+pub fn workspace_root_for_home(config: &LabConfig, home: &Path) -> PathBuf {
+    config
+        .workspace
+        .root
+        .as_deref()
+        .map(|root| expand_home_path(root, home))
+        .unwrap_or_else(|| home.join(".lab").join("stash"))
+}
+
+pub fn workspace_root_path(config: &LabConfig) -> Result<PathBuf> {
+    let home = home_dir().ok_or_else(|| anyhow::anyhow!("HOME env var not set"))?;
+    Ok(workspace_root_for_home(config, &home))
+}
+
+fn expand_home_path(path: &Path, home: &Path) -> PathBuf {
+    let raw = path.as_os_str().to_string_lossy();
+    if raw == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        return home.join(rest);
+    }
+    path.to_path_buf()
 }
 
 /// Standard location for the `.env` file: `~/.lab/.env`.
@@ -1069,7 +1151,11 @@ pub fn write_env(path: &Path, new_creds: &[ServiceCreds], force: bool) -> Result
 ///
 /// # Errors
 /// Returns an error if the tmp file cannot be written or renamed.
-pub fn write_env_pairs(path: &Path, pairs: &[(String, String)], force: bool) -> Result<Vec<String>> {
+pub fn write_env_pairs(
+    path: &Path,
+    pairs: &[(String, String)],
+    force: bool,
+) -> Result<Vec<String>> {
     let existing_raw = if path.exists() {
         std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?
     } else {
@@ -1287,6 +1373,70 @@ assets_dir = "/tmp/labby"
 
         assert!(cfg.oauth.machines.is_empty());
         assert_eq!(cfg.web.assets_dir, Some(PathBuf::from("/tmp/labby")));
+    }
+
+    #[test]
+    fn mcpregistry_url_defaults_to_official_registry() {
+        let cfg = toml::from_str::<LabConfig>("").expect("empty config should parse");
+
+        assert_eq!(
+            cfg.mcpregistry.url.as_deref(),
+            Some(DEFAULT_MCPREGISTRY_URL)
+        );
+    }
+
+    #[test]
+    fn quarantined_virtual_servers_round_trip_through_toml() {
+        let raw = r#"
+[[quarantined_virtual_servers]]
+id = "stale-registry"
+service = "mcpregistry"
+enabled = true
+
+[quarantined_virtual_servers.surfaces]
+mcp = true
+"#;
+        let cfg = toml::from_str::<LabConfig>(raw).expect("quarantine config should parse");
+        assert_eq!(cfg.quarantined_virtual_servers.len(), 1);
+        assert_eq!(cfg.quarantined_virtual_servers[0].id, "stale-registry");
+        assert_eq!(cfg.quarantined_virtual_servers[0].service, "mcpregistry");
+        assert!(cfg.quarantined_virtual_servers[0].surfaces.mcp);
+
+        let serialized = toml::to_string(&cfg).expect("config should serialize");
+        let reparsed =
+            toml::from_str::<LabConfig>(&serialized).expect("serialized config should parse");
+        assert_eq!(reparsed.quarantined_virtual_servers.len(), 1);
+        assert_eq!(
+            reparsed.quarantined_virtual_servers[0].id,
+            "stale-registry"
+        );
+    }
+
+    #[test]
+    fn workspace_root_defaults_to_lab_stash_under_home() {
+        let cfg = toml::from_str::<LabConfig>("").expect("empty config should parse");
+        let home = Path::new("/tmp/lab-home");
+
+        assert_eq!(
+            workspace_root_for_home(&cfg, home),
+            home.join(".lab").join("stash")
+        );
+    }
+
+    #[test]
+    fn workspace_root_reads_config_toml_value() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[workspace]
+root = "/srv/lab-stash"
+"#,
+        )
+        .expect("workspace config should parse");
+
+        assert_eq!(
+            workspace_root_for_home(&cfg, Path::new("/tmp/ignored")),
+            PathBuf::from("/srv/lab-stash")
+        );
     }
 
     #[test]

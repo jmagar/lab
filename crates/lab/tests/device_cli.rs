@@ -25,11 +25,13 @@ async fn device_enrollments_list_command_reads_from_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path("/v1/nodes/enrollments"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "pending": {"device-1": {"node_id":"device-1"}},
-            "approved": {},
-            "denied": {}
-        })))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "pending": {"device-1": {"node_id":"device-1"}},
+                "approved": {},
+                "denied": {}
+            })),
+        )
         .mount(&server)
         .await;
 
@@ -42,7 +44,9 @@ async fn device_enrollments_list_command_reads_from_master_api() {
 async fn device_enrollments_approve_command_calls_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/nodes/enrollments/device%2D1/approve"))
+        .and(wiremock::matchers::path(
+            "/v1/nodes/enrollments/device%2D1/approve",
+        ))
         .and(wiremock::matchers::body_string_contains("\"note\":\"ok\""))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
@@ -62,8 +66,12 @@ async fn device_enrollments_approve_command_calls_master_api() {
 async fn device_enrollments_deny_command_calls_master_api() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::path("/v1/nodes/enrollments/device%2D1/deny"))
-        .and(wiremock::matchers::body_string_contains("\"reason\":\"no\""))
+        .and(wiremock::matchers::path(
+            "/v1/nodes/enrollments/device%2D1/deny",
+        ))
+        .and(wiremock::matchers::body_string_contains(
+            "\"reason\":\"no\"",
+        ))
         .respond_with(
             wiremock::ResponseTemplate::new(200)
                 .set_body_json(serde_json::json!({"node_id":"device-1"})),

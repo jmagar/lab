@@ -3,11 +3,12 @@
 //! Serde rules:
 //! - No `deny_unknown_fields` on `Agent` — the registry adds fields freely.
 //! - Use `#[serde(default)]` liberally for optional arrays/fields.
-//! - `Distribution` variants use `snake_case` renaming to match JSON keys exactly.
+//! - `Distribution` is a struct, not an enum — agents may ship multiple methods.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 // ---------------------------------------------------------------------------
 // Top-level response
@@ -25,7 +26,7 @@ pub struct AcpRegistryResponse {
     pub agents: Vec<Agent>,
     /// Extension entries (reserved for future use; currently empty `[]`).
     #[serde(default)]
-    pub extensions: Vec<serde_json::Value>,
+    pub extensions: Vec<Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -51,24 +52,31 @@ pub struct Agent {
     pub env: Vec<AgentEnvVar>,
     /// Any additional fields not captured above.
     #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    pub extra: HashMap<String, Value>,
 }
 
 // ---------------------------------------------------------------------------
 // Distribution
 // ---------------------------------------------------------------------------
 
-/// Distribution method and assets for an agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Distribution {
+/// Distribution methods for an agent. An agent may provide multiple methods
+/// simultaneously (e.g. both `binary` and `npx`). All fields are optional;
+/// unknown method keys are captured in `extra` for forward-compatibility.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Distribution {
     /// Pre-compiled binary assets keyed by platform triple
     /// (e.g. `"darwin-aarch64"`, `"linux-x86_64"`, `"windows-x86_64"`).
-    Binary(HashMap<String, BinaryAsset>),
+    #[serde(default)]
+    pub binary: Option<HashMap<String, BinaryAsset>>,
     /// Run via `npx <package>`.
-    Npx(NpxAsset),
+    #[serde(default)]
+    pub npx: Option<NpxAsset>,
     /// Run via `uvx <package>`.
-    Uvx(UvxAsset),
+    #[serde(default)]
+    pub uvx: Option<UvxAsset>,
+    /// Unknown distribution methods (forward-compat).
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 /// A single platform binary asset.
@@ -78,6 +86,9 @@ pub struct BinaryAsset {
     pub archive: String,
     /// Command to run after extraction (e.g. `"./my-agent"`).
     pub cmd: String,
+    /// Extra CLI arguments appended after `cmd`.
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 /// npm/npx distribution asset.
@@ -85,8 +96,18 @@ pub struct BinaryAsset {
 pub struct NpxAsset {
     /// npm package name (e.g. `"@scope/agent"`).
     pub package: String,
-    /// Package version (e.g. `"1.2.3"`).
-    pub version: String,
+    /// Package version — optional in the live registry.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Extra CLI arguments passed to npx.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Environment variable overrides (key → value).
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    /// Unknown fields for forward-compatibility.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 /// uv/uvx distribution asset.
@@ -94,8 +115,15 @@ pub struct NpxAsset {
 pub struct UvxAsset {
     /// PyPI package name.
     pub package: String,
-    /// Package version (e.g. `"1.2.3"`).
-    pub version: String,
+    /// Package version — optional in the live registry.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Extra CLI arguments passed to uvx.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Unknown fields for forward-compatibility.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 // ---------------------------------------------------------------------------

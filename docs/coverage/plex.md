@@ -109,7 +109,7 @@ lab plex session.terminate --params '{"session_id":"123"}' --yes
 - Respects `-y` / `--yes` for destructive operations
 - Respects `--dry-run` for dry-run mode
 
-### MCP (`crates/lab/src/mcp/services/plex.rs`)
+### MCP (`crates/lab/src/registry.rs`)
 
 Thin bridge that delegates to dispatch layer. Registered as one tool `plex` with:
 

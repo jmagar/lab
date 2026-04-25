@@ -18,7 +18,9 @@ use crate::acp::types::{AcpEvent, AcpSessionState, AcpSessionSummary};
 /// storage-layer failures and `serde_json::Error` for serialisation failures.
 pub trait AcpPersistence: Send + Sync + Clone + 'static {
     /// Return all session summaries, ordered by `updated_at` descending.
-    fn load_sessions(&self) -> impl Future<Output = Result<Vec<AcpSessionSummary>, AcpError>> + Send;
+    fn load_sessions(
+        &self,
+    ) -> impl Future<Output = Result<Vec<AcpSessionSummary>, AcpError>> + Send;
 
     /// Return all events for the given session ordered by `seq` ascending.
     fn load_events(
@@ -46,10 +48,7 @@ pub trait AcpPersistence: Send + Sync + Clone + 'static {
     /// Implementations are encouraged to batch consecutive `append_event`
     /// calls (e.g., via an mpsc writer task) rather than issuing one INSERT
     /// per call on the hot path.
-    fn append_event(
-        &self,
-        event: &AcpEvent,
-    ) -> impl Future<Output = Result<(), AcpError>> + Send;
+    fn append_event(&self, event: &AcpEvent) -> impl Future<Output = Result<(), AcpError>> + Send;
 
     /// Atomically update the `state` and `updated_at` columns for a session.
     fn update_session_state(

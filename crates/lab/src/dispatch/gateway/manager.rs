@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::Duration;
 
 use arc_swap::ArcSwapOption;
-use tokio::task::AbortHandle;
 #[cfg(unix)]
 use nix::errno::Errno;
 use tokio::sync::RwLock;
+use tokio::task::AbortHandle;
 use tokio::time::Instant;
 use url::Url;
 
@@ -72,9 +72,21 @@ pub fn diff_catalogs(
 
 static BUILTIN_SERVICE_REGISTRY: OnceLock<ToolRegistry> = OnceLock::new();
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct VirtualServerMigration {
+    quarantined: Vec<String>,
+}
+
+impl VirtualServerMigration {
+    fn changed(&self) -> bool {
+        !self.quarantined.is_empty()
+    }
+}
+
 /// Minimum wall-clock age between consecutive live reprobes on the search
 /// hot path. Per-upstream; fresher indexes skip reprobe entirely.
 const TOOL_SEARCH_REPROBE_TTL: Duration = Duration::from_secs(30);
+const WARNING_UNKNOWN_SERVICE: &str = "unknown_service";
 
 #[derive(Clone)]
 struct GatewayToolIndexState {
@@ -840,10 +852,7 @@ impl GatewayManager {
     }
 
     pub async fn list(&self) -> Result<Vec<ServerView>, ToolError> {
-        let (cfg_guard, pool) = tokio::join!(
-            self.config.read(),
-            self.runtime.current_pool(),
-        );
+        let (cfg_guard, pool) = tokio::join!(self.config.read(), self.runtime.current_pool(),);
         let cfg = cfg_guard.clone();
         drop(cfg_guard);
         let mut views = Vec::with_capacity(cfg.upstream.len() + cfg.virtual_servers.len());
@@ -864,14 +873,19 @@ impl GatewayManager {
                 None,
             ));
         }
+        let unknown_service_count = degraded_server_warning_count(&views, WARNING_UNKNOWN_SERVICE);
+        if unknown_service_count > 0 {
+            tracing::warn!(
+                action = "gateway.list",
+                unknown_service_count,
+                "gateway list returned degraded rows with unknown services"
+            );
+        }
         Ok(views)
     }
 
     pub async fn get_server(&self, id: &str) -> Result<ServerView, ToolError> {
-        let (cfg_guard, pool) = tokio::join!(
-            self.config.read(),
-            self.runtime.current_pool(),
-        );
+        let (cfg_guard, pool) = tokio::join!(self.config.read(), self.runtime.current_pool(),);
         let cfg = cfg_guard.clone();
         drop(cfg_guard);
 
@@ -964,6 +978,10 @@ impl GatewayManager {
     }
 
     pub async fn mcp_action_allowed_for_service(&self, service: &str, action: &str) -> bool {
+        if service_meta(service).is_none() {
+            return true;
+        }
+
         if !self.surface_enabled_for_service(service, "mcp").await {
             return false;
         }
@@ -1047,6 +1065,85 @@ impl GatewayManager {
         self.set_virtual_server_enabled(id, false).await
     }
 
+    pub async fn remove_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
+        let mut cfg = self.config.read().await.clone();
+        let index = cfg
+            .virtual_servers
+            .iter()
+            .position(|server| server.id == id)
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("virtual server `{id}` not found"),
+            })?;
+        let removed = cfg.virtual_servers.remove(index);
+        let removed_view =
+            server_view_from_virtual_server(&removed, UpstreamCachedSummary::default(), None, None);
+
+        self.persist_config(cfg).await?;
+        Ok(removed_view)
+    }
+
+    pub async fn list_quarantined_virtual_servers(&self) -> Result<Vec<ServerView>, ToolError> {
+        let cfg = self.config.read().await;
+        Ok(cfg
+            .quarantined_virtual_servers
+            .iter()
+            .map(|virtual_server| {
+                server_view_from_virtual_server(
+                    virtual_server,
+                    UpstreamCachedSummary::default(),
+                    None,
+                    None,
+                )
+            })
+            .collect())
+    }
+
+    pub async fn restore_quarantined_virtual_server(
+        &self,
+        id: &str,
+    ) -> Result<ServerView, ToolError> {
+        let mut cfg = self.config.read().await.clone();
+        let index = cfg
+            .quarantined_virtual_servers
+            .iter()
+            .position(|server| server.id == id)
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("quarantined virtual server `{id}` not found"),
+            })?;
+        let restored = cfg.quarantined_virtual_servers.remove(index);
+        if service_meta(&restored.service).is_none() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "unknown_service".to_string(),
+                message: format!(
+                    "service `{}` is not registered in this lab binary",
+                    restored.service
+                ),
+            });
+        }
+        if cfg
+            .virtual_servers
+            .iter()
+            .any(|server| server.id == restored.id)
+        {
+            return Err(ToolError::InvalidParam {
+                message: format!("virtual server `{id}` already exists"),
+                param: "id".to_string(),
+            });
+        }
+
+        let restored_view = server_view_from_virtual_server(
+            &restored,
+            UpstreamCachedSummary::default(),
+            None,
+            None,
+        );
+        cfg.virtual_servers.push(restored);
+        self.persist_config(cfg).await?;
+        Ok(restored_view)
+    }
+
     pub async fn set_virtual_server_surface(
         &self,
         id: &str,
@@ -1079,7 +1176,12 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
         let virtual_server = find_virtual_server(&cfg, id)?;
-        Ok(server_view_from_virtual_server(virtual_server, UpstreamCachedSummary::default(), None, None))
+        Ok(server_view_from_virtual_server(
+            virtual_server,
+            UpstreamCachedSummary::default(),
+            None,
+            None,
+        ))
     }
 
     pub async fn get_virtual_server_mcp_policy(
@@ -1303,10 +1405,22 @@ impl GatewayManager {
         let cfg = tokio::task::spawn_blocking(move || load_gateway_config(&path))
             .await
             .map_err(|e| ToolError::internal_message(format!("config read task failed: {e}")))??;
+        let (cfg, migration) = quarantine_unregistered_virtual_servers(cfg);
+        if migration.changed() {
+            tracing::warn!(
+                action = "gateway.config.migrate",
+                stale_virtual_server_count = migration.quarantined.len(),
+                stale_virtual_servers = ?migration.quarantined,
+                "quarantined virtual servers with unregistered backing services"
+            );
+            self.persist_config(cfg.clone()).await?;
+        }
         tracing::info!(
             action = "gateway.reload",
             phase = "config.load.finish",
             upstream_count = cfg.upstream.len(),
+            virtual_server_count = cfg.virtual_servers.len(),
+            quarantined_virtual_server_count = cfg.quarantined_virtual_servers.len(),
             "gateway reconcile"
         );
         if let Some(cache) = &self.oauth_client_cache {
@@ -1575,7 +1689,11 @@ impl GatewayManager {
             return;
         };
 
-        for upstream in cfg.upstream.iter().filter(|upstream| upstream.tool_search.enabled) {
+        for upstream in cfg
+            .upstream
+            .iter()
+            .filter(|upstream| upstream.tool_search.enabled)
+        {
             let state = self
                 .tool_indexes
                 .entry(upstream.name.clone())
@@ -1668,11 +1786,9 @@ impl GatewayManager {
             })
             .await;
             if let Ok(index) = built {
-                let should_publish = state
-                    .index
-                    .load_full()
-                    .as_ref()
-                    .is_none_or(|current| current.metadata.catalog_hash != index.metadata.catalog_hash);
+                let should_publish = state.index.load_full().as_ref().is_none_or(|current| {
+                    current.metadata.catalog_hash != index.metadata.catalog_hash
+                });
                 if should_publish {
                     state.index.store(Some(Arc::new(index)));
                 }
@@ -1754,7 +1870,12 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let cfg = self.config.read().await;
         let virtual_server = find_virtual_server(&cfg, id)?;
-        Ok(server_view_from_virtual_server(virtual_server, UpstreamCachedSummary::default(), None, None))
+        Ok(server_view_from_virtual_server(
+            virtual_server,
+            UpstreamCachedSummary::default(),
+            None,
+            None,
+        ))
     }
 
     fn env_path(&self) -> PathBuf {
@@ -1801,11 +1922,11 @@ impl GatewayManager {
                 .refresh_from_env_path(&env_path)
                 .await
                 .map_err(|e| {
-                ToolError::internal_message(format!(
-                    "failed to refresh service clients from {}: {e}",
-                    env_path.display()
-                ))
-            })?;
+                    ToolError::internal_message(format!(
+                        "failed to refresh service clients from {}: {e}",
+                        env_path.display()
+                    ))
+                })?;
         }
 
         Ok(())
@@ -1823,9 +1944,7 @@ impl GatewayManager {
         );
         tokio::task::spawn_blocking(move || write_gateway_config(&path, &cfg_clone))
             .await
-            .map_err(|e| {
-                ToolError::internal_message(format!("config write task failed: {e}"))
-            })??;
+            .map_err(|e| ToolError::internal_message(format!("config write task failed: {e}")))??;
         *self.config.write().await = cfg;
         tracing::info!(
             action = "gateway.config.write",
@@ -1974,6 +2093,32 @@ fn find_virtual_server_for_service<'a>(
     cfg.virtual_servers
         .iter()
         .find(|server| server.service == service || server.id == service)
+}
+
+fn quarantine_unregistered_virtual_servers(
+    mut cfg: LabConfig,
+) -> (LabConfig, VirtualServerMigration) {
+    let mut migration = VirtualServerMigration::default();
+    let mut active = Vec::with_capacity(cfg.virtual_servers.len());
+
+    for virtual_server in std::mem::take(&mut cfg.virtual_servers) {
+        if service_meta(&virtual_server.service).is_some() {
+            active.push(virtual_server);
+            continue;
+        }
+
+        migration.quarantined.push(virtual_server.id.clone());
+        let already_quarantined = cfg
+            .quarantined_virtual_servers
+            .iter()
+            .any(|existing| existing.id == virtual_server.id);
+        if !already_quarantined {
+            cfg.quarantined_virtual_servers.push(virtual_server);
+        }
+    }
+
+    cfg.virtual_servers = active;
+    (cfg, migration)
 }
 
 fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
@@ -2304,8 +2449,10 @@ impl GatewayManager {
                 age_seconds: runtime
                     .as_ref()
                     .and_then(|meta| meta.started_at)
-                    .and_then(|started_at| std::time::SystemTime::now().duration_since(started_at).ok())
-                    .map(|elapsed: std::time::Duration| elapsed.as_secs())
+                    .and_then(|started_at| {
+                        std::time::SystemTime::now().duration_since(started_at).ok()
+                    })
+                    .map(|elapsed: Duration| elapsed.as_secs())
                     .or_else(|| {
                         fallback
                             .and_then(|entry| entry.started_at_epoch_secs)
@@ -2401,18 +2548,9 @@ impl GatewayManager {
             } else {
                 0
             },
-            gateway_matches: gateway_matches
-                .iter()
-                .map(cleanup_match_view)
-                .collect(),
-            local_matches: local_matches
-                .iter()
-                .map(cleanup_match_view)
-                .collect(),
-            aggressive_matches: aggressive_matches
-                .iter()
-                .map(cleanup_match_view)
-                .collect(),
+            gateway_matches: gateway_matches.iter().map(cleanup_match_view).collect(),
+            local_matches: local_matches.iter().map(cleanup_match_view).collect(),
+            aggressive_matches: aggressive_matches.iter().map(cleanup_match_view).collect(),
         };
 
         let cfg = self.config.read().await.clone();
@@ -2491,8 +2629,7 @@ fn system_time_to_epoch_secs(time: std::time::SystemTime) -> Option<u64> {
 }
 
 fn age_from_epoch_secs(epoch_secs: u64) -> Option<u64> {
-    let started_at =
-        std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_secs(epoch_secs))?;
+    let started_at = std::time::UNIX_EPOCH.checked_add(Duration::from_secs(epoch_secs))?;
     std::time::SystemTime::now()
         .duration_since(started_at)
         .ok()
@@ -2567,7 +2704,12 @@ fn current_and_parent_pids() -> std::collections::HashSet<u32> {
 fn matching_processes(patterns: &[String]) -> Vec<GatewayCleanupMatch> {
     let excluded_pids = current_and_parent_pids();
     let mut matched: BTreeMap<String, BTreeSet<u32>> = BTreeMap::new();
-    for entry in std::fs::read_dir("/proc").ok().into_iter().flatten().flatten() {
+    for entry in std::fs::read_dir("/proc")
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
         let pid_str = entry.file_name();
         let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else {
             continue;
@@ -2635,6 +2777,13 @@ fn terminate_process(_pid: u32) -> Result<(), ()> {
     Ok(())
 }
 
+fn degraded_server_warning_count(views: &[ServerView], code: &str) -> usize {
+    views
+        .iter()
+        .filter(|view| view.warnings.iter().any(|warning| warning.code == code))
+        .count()
+}
+
 fn server_view_from_virtual_server(
     config: &crate::config::VirtualServerConfig,
     summary: UpstreamCachedSummary,
@@ -2645,6 +2794,7 @@ fn server_view_from_virtual_server(
     let service = match &record.source {
         VirtualServerSource::LabService { service } => service.clone(),
     };
+    let service_known = service_meta(&service).is_some();
     let peer_connected = last_error.is_none()
         && (summary.discovered_tool_count > 0
             || summary.discovered_resource_count > 0
@@ -2652,7 +2802,7 @@ fn server_view_from_virtual_server(
     let health_connected = health
         .map(|health| health.reachable && health.auth_ok)
         .unwrap_or(false);
-    let connected = record.enabled && (peer_connected || health_connected);
+    let connected = service_known && record.enabled && (peer_connected || health_connected);
     let mcp_exposed = record.enabled && record.surfaces.mcp;
     let discovered_tool_count = summary.discovered_tool_count;
     let policy_exposed_tool_count = record.mcp_policy.as_ref().and_then(|policy| {
@@ -2666,10 +2816,24 @@ fn server_view_from_virtual_server(
         0
     };
     let discovered_resource_count = summary.discovered_resource_count;
-    let exposed_resource_count = if mcp_exposed { summary.exposed_resource_count } else { 0 };
+    let exposed_resource_count = if mcp_exposed {
+        summary.exposed_resource_count
+    } else {
+        0
+    };
     let discovered_prompt_count = summary.discovered_prompt_count;
-    let exposed_prompt_count = if mcp_exposed { summary.exposed_prompt_count } else { 0 };
+    let exposed_prompt_count = if mcp_exposed {
+        summary.exposed_prompt_count
+    } else {
+        0
+    };
     let mut warnings = Vec::new();
+    if !service_known {
+        warnings.push(super::view_models::ServerWarningView {
+            code: WARNING_UNKNOWN_SERVICE.to_string(),
+            message: format!("service `{service}` is not registered in this lab binary"),
+        });
+    }
     if let Some(message) = last_error {
         warnings.push(super::view_models::ServerWarningView {
             code: "connection_error".to_string(),
@@ -2720,7 +2884,6 @@ fn builtin_service_registry() -> &'static ToolRegistry {
     BUILTIN_SERVICE_REGISTRY.get_or_init(crate::registry::build_default_registry)
 }
 
-
 fn read_env_values(path: &std::path::Path) -> Result<HashMap<String, String>, ToolError> {
     Ok(dotenvy::from_path_iter(path)
         .ok()
@@ -2728,10 +2891,7 @@ fn read_env_values(path: &std::path::Path) -> Result<HashMap<String, String>, To
         .unwrap_or_default())
 }
 
-fn values_to_service_creds(
-    service: &str,
-    values: &BTreeMap<String, String>,
-) -> Vec<ServiceCreds> {
+fn values_to_service_creds(service: &str, values: &BTreeMap<String, String>) -> Vec<ServiceCreds> {
     values
         .iter()
         .map(|(field, value)| {
@@ -2782,9 +2942,11 @@ fn service_config_view(
         configured: if fields.is_empty() {
             true
         } else {
-            meta.required_env
-                .iter()
-                .all(|env| fields.iter().any(|field| field.name == env.name && field.present))
+            meta.required_env.iter().all(|env| {
+                fields
+                    .iter()
+                    .any(|field| field.name == env.name && field.present)
+            })
         },
         fields,
     }
@@ -2898,7 +3060,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-        tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let patterns = upstream_cleanup_patterns(&upstream, false);
@@ -2912,10 +3074,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn process_matcher_uses_joined_cmdline_text() {
-        let patterns = vec![
-            "uvx github-chat-mcp".to_string(),
-            "github-chat".to_string(),
-        ];
+        let patterns = vec!["uvx github-chat-mcp".to_string(), "github-chat".to_string()];
         assert!(process_matches_patterns(
             "uvx github-chat-mcp --transport stdio",
             &patterns,
@@ -2952,7 +3111,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -3019,7 +3178,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -3055,7 +3214,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -3087,7 +3246,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-        tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -3113,7 +3272,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-        tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -3143,7 +3302,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-        tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -3178,6 +3337,152 @@ mod tests {
         assert!(plex.configured);
         assert!(!plex.enabled);
         assert_eq!(plex.source, "in_process");
+    }
+
+    #[tokio::test]
+    async fn stale_virtual_server_with_unknown_service_does_not_break_list() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "mcpregistry".to_string(),
+                    service: "mcpregistry".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: true,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        let servers = manager.list().await.expect("list should fail open");
+        let stale = servers
+            .iter()
+            .find(|server| server.id == "mcpregistry")
+            .expect("stale server row");
+
+        assert!(!stale.connected);
+        assert!(!stale.surfaces.mcp.connected);
+        assert_eq!(stale.discovered_tool_count, 0);
+        assert_eq!(
+            stale.warnings.first().map(|warning| warning.code.as_str()),
+            Some("unknown_service")
+        );
+    }
+
+    #[tokio::test]
+    async fn reload_quarantines_virtual_servers_for_unregistered_services() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        write_gateway_config(
+            &path,
+            &LabConfig {
+                virtual_servers: vec![
+                    VirtualServerConfig {
+                        id: "plex".to_string(),
+                        service: "plex".to_string(),
+                        enabled: true,
+                        surfaces: VirtualServerSurfacesConfig {
+                            mcp: true,
+                            ..VirtualServerSurfacesConfig::default()
+                        },
+                        mcp_policy: None,
+                    },
+                    VirtualServerConfig {
+                        id: "stale-registry".to_string(),
+                        service: "mcpregistry".to_string(),
+                        enabled: true,
+                        surfaces: VirtualServerSurfacesConfig {
+                            mcp: true,
+                            ..VirtualServerSurfacesConfig::default()
+                        },
+                        mcp_policy: None,
+                    },
+                ],
+                ..LabConfig::default()
+            },
+        )
+        .expect("write config");
+
+        let manager = GatewayManager::new(path.clone(), GatewayRuntimeHandle::default());
+        manager
+            .reload_with_origin(None, None)
+            .await
+            .expect("reload");
+
+        let listed = manager.list().await.expect("list");
+        assert!(listed.iter().any(|server| server.id == "plex"));
+        assert!(!listed.iter().any(|server| server.id == "stale-registry"));
+
+        let migrated = load_gateway_config(&path).expect("load migrated config");
+        assert_eq!(migrated.virtual_servers.len(), 1);
+        assert_eq!(migrated.virtual_servers[0].id, "plex");
+        assert_eq!(migrated.quarantined_virtual_servers.len(), 1);
+        assert_eq!(migrated.quarantined_virtual_servers[0].id, "stale-registry");
+    }
+
+    #[tokio::test]
+    async fn reload_does_not_duplicate_existing_quarantined_virtual_server() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let stale = VirtualServerConfig {
+            id: "stale-registry".to_string(),
+            service: "mcpregistry".to_string(),
+            enabled: true,
+            surfaces: VirtualServerSurfacesConfig {
+                mcp: true,
+                ..VirtualServerSurfacesConfig::default()
+            },
+            mcp_policy: None,
+        };
+        write_gateway_config(
+            &path,
+            &LabConfig {
+                virtual_servers: vec![stale.clone()],
+                quarantined_virtual_servers: vec![stale],
+                ..LabConfig::default()
+            },
+        )
+        .expect("write config");
+
+        let manager = GatewayManager::new(path.clone(), GatewayRuntimeHandle::default());
+        manager
+            .reload_with_origin(None, None)
+            .await
+            .expect("reload");
+
+        let migrated = load_gateway_config(&path).expect("load migrated config");
+        assert!(migrated.virtual_servers.is_empty());
+        assert_eq!(migrated.quarantined_virtual_servers.len(), 1);
+        assert_eq!(migrated.quarantined_virtual_servers[0].id, "stale-registry");
+    }
+
+    #[test]
+    fn quarantine_migration_is_noop_when_only_existing_quarantine_remains() {
+        let stale = VirtualServerConfig {
+            id: "stale-registry".to_string(),
+            service: "mcpregistry".to_string(),
+            enabled: true,
+            surfaces: VirtualServerSurfacesConfig::default(),
+            mcp_policy: None,
+        };
+
+        let (migrated, migration) = quarantine_unregistered_virtual_servers(LabConfig {
+            quarantined_virtual_servers: vec![stale],
+            ..LabConfig::default()
+        });
+
+        assert!(!migration.changed());
+        assert!(migrated.virtual_servers.is_empty());
+        assert_eq!(migrated.quarantined_virtual_servers.len(), 1);
     }
 
     #[tokio::test]
@@ -3257,7 +3562,10 @@ mod tests {
 
         let mut values = BTreeMap::new();
         values.insert("OPENAI_API_KEY".to_string(), "token".to_string());
-        values.insert("OPENAI_URL".to_string(), "https://api.openai.com/v1".to_string());
+        values.insert(
+            "OPENAI_URL".to_string(),
+            "https://api.openai.com/v1".to_string(),
+        );
 
         let config = manager
             .set_service_config("openai", &values)
@@ -3288,7 +3596,7 @@ mod tests {
                     expose_resources: None,
                     expose_prompts: None,
                     oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                    tool_search: crate::config::ToolSearchConfig::default(),
                 },
                 Some("ghp_secret".to_string()),
                 None,
@@ -3628,6 +3936,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn synthetic_services_without_gateway_metadata_allow_mcp_actions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path, GatewayRuntimeHandle::default());
+
+        manager.seed_config(LabConfig::default()).await;
+
+        assert!(
+            manager
+                .mcp_action_allowed_for_service("marketplace", "mcp.config")
+                .await
+        );
+    }
+
+    #[tokio::test]
     async fn runtime_view_includes_last_upstream_error() {
         let pool = UpstreamPool::new();
         let upstream_name: Arc<str> = Arc::from("broken-upstream");
@@ -3685,7 +4008,7 @@ mod tests {
                     expose_resources: None,
                     expose_prompts: None,
                     oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                    tool_search: crate::config::ToolSearchConfig::default(),
                 }],
                 ..LabConfig::default()
             },
@@ -3785,7 +4108,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .await;
@@ -3847,7 +4170,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .await;
@@ -3871,7 +4194,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-        tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
         let upstream_name: Arc<str> = Arc::from("partial-upstream");
         let entry = crate::dispatch::upstream::types::UpstreamEntry {

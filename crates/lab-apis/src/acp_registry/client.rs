@@ -7,7 +7,7 @@ use reqwest::redirect;
 use crate::core::{ApiError, Auth, HttpClient};
 
 use super::error::AcpRegistryError;
-use super::types::{Agent, AcpRegistryResponse};
+use super::types::{AcpRegistryResponse, Agent};
 
 /// Default ACP Registry CDN base URL; overridden by `ACP_REGISTRY_URL` env var.
 pub const REGISTRY_DEFAULT_URL: &str = "https://cdn.agentclientprotocol.com";
@@ -106,7 +106,7 @@ mod tests {
                     "name": "Codex CLI",
                     "version": "0.9.0",
                     "distribution": {
-                        "npx": { "package": "@openai/codex", "version": "0.9.0" }
+                        "npx": { "package": "@openai/codex", "args": ["--acp"] }
                     },
                     "env": []
                 }
@@ -238,7 +238,7 @@ mod tests {
                     "name": "Test Agent",
                     "version": "0.1.0",
                     "distribution": {
-                        "uvx": { "package": "test-agent", "version": "0.1.0" }
+                        "uvx": { "package": "test-agent" }
                     }
                 }
             ],
@@ -259,6 +259,51 @@ mod tests {
         assert!(agents[0].description.is_none());
         // env defaults to empty vec
         assert!(agents[0].env.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // 7. Hybrid distribution (binary + npx) decodes without error
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_hybrid_distribution_decodes() {
+        let server = MockServer::start().await;
+        let hybrid = serde_json::json!({
+            "version": "1.0.0",
+            "agents": [
+                {
+                    "id": "acme/hybrid",
+                    "name": "Hybrid Agent",
+                    "version": "1.0.0",
+                    "distribution": {
+                        "binary": {
+                            "linux-x86_64": {
+                                "archive": "https://example.com/linux.tar.gz",
+                                "cmd": "./agent",
+                                "args": ["--acp"]
+                            }
+                        },
+                        "npx": { "package": "@acme/hybrid-acp" }
+                    }
+                }
+            ],
+            "extensions": []
+        });
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(hybrid))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let result = client.list_agents().await;
+        assert!(result.is_ok(), "hybrid distribution should decode: {result:?}");
+        let agents = result.unwrap();
+        assert_eq!(agents[0].id, "acme/hybrid");
+        assert!(agents[0].distribution.binary.is_some());
+        assert!(agents[0].distribution.npx.is_some());
+        let bin = agents[0].distribution.binary.as_ref().unwrap();
+        assert_eq!(bin["linux-x86_64"].args, vec!["--acp"]);
     }
 
     // -----------------------------------------------------------------------

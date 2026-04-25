@@ -47,7 +47,10 @@ pub async fn load_or_create(path: impl AsRef<Path>) -> Result<String> {
 }
 
 fn temp_path(path: &Path) -> PathBuf {
-    let file_name = path.file_name().and_then(|value| value.to_str()).unwrap_or("node-token");
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("node-token");
     path.with_file_name(format!("{file_name}.{}.tmp", Uuid::new_v4()))
 }
 

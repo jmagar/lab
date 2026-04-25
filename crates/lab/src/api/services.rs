@@ -44,10 +44,10 @@ pub mod tailscale;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 
-#[cfg(feature = "mcpregistry")]
-pub mod registry_v01;
 #[cfg(feature = "memos")]
 pub mod memos;
+#[cfg(feature = "mcpregistry")]
+pub mod registry_v01;
 
 #[cfg(feature = "bytestash")]
 pub mod bytestash;

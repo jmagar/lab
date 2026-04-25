@@ -8,11 +8,9 @@ use serde_json::{Map, Value};
 use tempfile::NamedTempFile;
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::{
-    action_schema, help_payload, optional_str, require_str, to_json,
-};
+use crate::dispatch::helpers::{action_schema, help_payload, optional_str, require_str, to_json};
 use crate::dispatch::marketplace::acp_dispatch;
-use crate::dispatch::marketplace::catalog::ACTIONS;
+use crate::dispatch::marketplace::catalog;
 use crate::dispatch::marketplace::client;
 use crate::dispatch::marketplace::params::{self, parse_plugin_id};
 
@@ -31,11 +29,14 @@ pub async fn dispatch_with_port<P: client::NodeRpcPort>(
     if action.starts_with("mcp.") {
         return crate::dispatch::marketplace::mcp_dispatch::dispatch_mcp(action, params).await;
     }
+    if action.starts_with("artifact.") {
+        return dispatch_artifact_action(action, params).await;
+    }
     match action {
-        "help" => Ok(help_payload("marketplace", ACTIONS)),
+        "help" => Ok(help_payload("marketplace", catalog::actions())),
         "schema" => {
             let a = require_str(&params, "action")?;
-            action_schema(ACTIONS, a)
+            action_schema(catalog::actions(), a)
         }
         "sources.list" => sources_list().await,
         "sources.add" => {
@@ -88,9 +89,42 @@ pub async fn dispatch_with_port<P: client::NodeRpcPort>(
         }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `marketplace.{unknown}`"),
-            valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            valid: catalog::actions()
+                .iter()
+                .map(|a| a.name.to_string())
+                .collect(),
             hint: None,
         }),
+    }
+}
+
+async fn dispatch_artifact_action(action: &str, params: Value) -> Result<Value, ToolError> {
+    match action {
+        "artifact.fork" => {
+            let params = params::parse_fork_params(&params)?;
+            crate::dispatch::marketplace::fork::artifact_fork(params).await
+        }
+        "artifact.list" => {
+            let params = params::parse_artifact_list_params(&params)?;
+            crate::dispatch::marketplace::fork::artifact_list(params).await
+        }
+        "artifact.unfork" => {
+            let params = params::parse_unfork_params(&params)?;
+            crate::dispatch::marketplace::fork::artifact_unfork(params).await
+        }
+        "artifact.reset" => {
+            let params = params::parse_artifact_reset_params(&params)?;
+            crate::dispatch::marketplace::fork::artifact_reset(params).await
+        }
+        "artifact.diff" => {
+            let params = params::parse_artifact_diff_params(&params)?;
+            crate::dispatch::marketplace::patch::artifact_diff(params).await
+        }
+        "artifact.patch" => {
+            let params = params::parse_patch_params(&params)?;
+            crate::dispatch::marketplace::patch::artifact_patch(params).await
+        }
+        _ => crate::dispatch::marketplace::update::dispatch_update_action(action, params).await,
     }
 }
 
@@ -179,8 +213,14 @@ fn parse_source(
     String,
 ) {
     let kind = m.get("source").and_then(Value::as_str).unwrap_or("local");
-    let url = m.get("url").and_then(Value::as_str).map(ToString::to_string);
-    let repo = m.get("repo").and_then(Value::as_str).map(ToString::to_string);
+    let url = m
+        .get("url")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let repo = m
+        .get("repo")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
     let path = m
         .get("path")
         .and_then(Value::as_str)
@@ -387,9 +427,7 @@ async fn plugins_list(filter: Option<String>) -> Result<Value, ToolError> {
                     continue;
                 }
             }
-            let install_loc = client::plugins_root()?
-                .join("marketplaces")
-                .join(&m.id);
+            let install_loc = client::plugins_root()?.join("marketplaces").join(&m.id);
             let Some(manifest) = read_marketplace_manifest(&install_loc) else {
                 continue;
             };
@@ -451,8 +489,8 @@ async fn plugin_workspace(id: &str) -> Result<Value, ToolError> {
     let id_owned = id.to_string();
     let workspace = tokio::task::spawn_blocking(move || -> Result<PluginWorkspace, ToolError> {
         let dir = ensure_workspace_for_plugin(&id_owned)?;
-        let target = installed_target_for_plugin(&id_owned)?
-            .map(|path| path.to_string_lossy().into_owned());
+        let target =
+            installed_target_for_plugin(&id_owned)?.map(|path| path.to_string_lossy().into_owned());
         let files = walk_artifacts(&dir, &dir)?;
         Ok(PluginWorkspace {
             plugin_id: id_owned,
@@ -479,9 +517,11 @@ async fn plugin_save(id: &str, rel_path: &str, content: &str) -> Result<Value, T
         }
         let temp_dir = target.parent().unwrap_or(&workspace);
         let mut temp = NamedTempFile::new_in(temp_dir).map_err(io_internal)?;
-        temp.write_all(content_owned.as_bytes()).map_err(io_internal)?;
+        temp.write_all(content_owned.as_bytes())
+            .map_err(io_internal)?;
         temp.flush().map_err(io_internal)?;
-        temp.persist(&target).map_err(|err| io_internal(err.error))?;
+        temp.persist(&target)
+            .map_err(|err| io_internal(err.error))?;
         Ok(SaveResult {
             saved_at: jiff::Timestamp::now().to_string(),
         })
@@ -512,15 +552,17 @@ async fn plugin_deploy_preview(id: &str) -> Result<Value, ToolError> {
     let id_owned = id.to_string();
     let result =
         tokio::task::spawn_blocking(move || -> Result<client::DeployPreviewResult, ToolError> {
-        let workspace = ensure_workspace_for_plugin(&id_owned)?;
-        let target = installed_target_for_plugin(&id_owned)?.ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "not_found".into(),
-            message: format!("plugin `{id_owned}` must be installed before deployment can be previewed"),
-        })?;
-        client::preview_workspace_sync(&workspace, &target)
-    })
-    .await
-    .map_err(join_err)??;
+            let workspace = ensure_workspace_for_plugin(&id_owned)?;
+            let target = installed_target_for_plugin(&id_owned)?.ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".into(),
+                message: format!(
+                    "plugin `{id_owned}` must be installed before deployment can be previewed"
+                ),
+            })?;
+            client::preview_workspace_sync(&workspace, &target)
+        })
+        .await
+        .map_err(join_err)??;
     to_json(result)
 }
 
@@ -578,7 +620,11 @@ fn walk_artifacts_into(root: &Path, dir: &Path, out: &mut Vec<Artifact>) -> Resu
             walk_artifacts_into(root, &p, out)?;
             continue;
         }
-        if entry.metadata().ok().is_some_and(|m| m.len() > MAX_ARTIFACT_BYTES) {
+        if entry
+            .metadata()
+            .ok()
+            .is_some_and(|m| m.len() > MAX_ARTIFACT_BYTES)
+        {
             continue;
         }
         let rel = p
@@ -613,17 +659,47 @@ fn walk_artifacts_into(root: &Path, dir: &Path, out: &mut Vec<Artifact>) -> Resu
                 continue;
             }
         };
-        out.push(Artifact { path: rel, lang, content });
+        out.push(Artifact {
+            path: rel,
+            lang,
+            content,
+        });
     }
     Ok(())
 }
 
 fn workspace_root() -> Result<PathBuf, ToolError> {
-    Ok(client::plugins_root()?.join("workspaces"))
+    #[cfg(test)]
+    if let Some(home) = client::test_plugins_home_override() {
+        return Ok(crate::config::workspace_root_for_home(
+            &crate::config::LabConfig::default(),
+            &home,
+        )
+        .join("plugins"));
+    }
+
+    let cfg = crate::config::load_toml(&crate::config::toml_candidates()).map_err(|e| {
+        ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: format!("load config.toml: {e}"),
+        }
+    })?;
+    Ok(crate::config::workspace_root_path(&cfg)
+        .map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: e.to_string(),
+        })?
+        .join("plugins"))
 }
 
 fn workspace_dir_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
     Ok(workspace_root()?.join(sanitize_plugin_id(id)))
+}
+
+fn legacy_workspace_dir_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
+    Ok(client::plugins_root()?
+        .join("workspaces")
+        .join(sanitize_plugin_id(id)))
 }
 
 fn sanitize_plugin_id(id: &str) -> String {
@@ -665,6 +741,29 @@ fn ensure_workspace_for_plugin(id: &str) -> Result<PathBuf, ToolError> {
     let workspace = workspace_dir_for_plugin(id)?;
     if workspace.exists() {
         return Ok(workspace);
+    }
+    let legacy_workspace = legacy_workspace_dir_for_plugin(id)?;
+    if legacy_workspace.exists() {
+        if let Some(parent) = workspace.parent() {
+            std::fs::create_dir_all(parent).map_err(io_internal)?;
+        }
+        match std::fs::rename(&legacy_workspace, &workspace) {
+            Ok(()) => return Ok(workspace),
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "workspace.migrate.rename_failed",
+                    source = %legacy_workspace.display(),
+                    target = %workspace.display(),
+                    error = %error,
+                    "legacy workspace rename failed; falling back to copy"
+                );
+                std::fs::create_dir_all(&workspace).map_err(io_internal)?;
+                copy_tree(&legacy_workspace, &workspace)?;
+                std::fs::remove_dir_all(&legacy_workspace).map_err(io_internal)?;
+                return Ok(workspace);
+            }
+        }
     }
     let source = source_path_for_plugin(id)?;
     std::fs::create_dir_all(&workspace).map_err(io_internal)?;
@@ -978,7 +1077,11 @@ async fn plugin_cherry_pick<P: client::NodeRpcPort>(
                     ToolError::Sdk { message, .. } => message.clone(),
                     _ => "node RPC failed".into(),
                 };
-                CherryPickNodeResult { node_id: node_id.clone(), ok: false, message: Some(msg) }
+                CherryPickNodeResult {
+                    node_id: node_id.clone(),
+                    ok: false,
+                    message: Some(msg),
+                }
             }
         });
     }
@@ -1037,7 +1140,13 @@ mod tests {
 
     fn seed_marketplace(home: &Path) {
         let plugins = home.join(".claude").join("plugins");
-        std::fs::create_dir_all(plugins.join("marketplaces").join("demo-market").join("demo-plugin")).unwrap();
+        std::fs::create_dir_all(
+            plugins
+                .join("marketplaces")
+                .join("demo-market")
+                .join("demo-plugin"),
+        )
+        .unwrap();
         std::fs::write(
             plugins.join("known_marketplaces.json"),
             json!({
@@ -1052,7 +1161,10 @@ mod tests {
         )
         .unwrap();
         std::fs::write(
-            plugins.join("marketplaces").join("demo-market").join("marketplace.json"),
+            plugins
+                .join("marketplaces")
+                .join("demo-market")
+                .join("marketplace.json"),
             json!({
                 "name": "Demo Market",
                 "plugins": [{ "name": "demo-plugin", "version": "1.0.0", "description": "Demo" }]
@@ -1061,7 +1173,11 @@ mod tests {
         )
         .unwrap();
         std::fs::write(
-            plugins.join("marketplaces").join("demo-market").join("demo-plugin").join("plugin.json"),
+            plugins
+                .join("marketplaces")
+                .join("demo-market")
+                .join("demo-plugin")
+                .join("plugin.json"),
             r#"{"name":"demo-plugin"}"#,
         )
         .unwrap();
@@ -1071,7 +1187,11 @@ mod tests {
         let plugins = home.join(".claude").join("plugins");
         let install_path = plugins.join("installed").join("demo-plugin");
         std::fs::create_dir_all(&install_path).unwrap();
-        std::fs::write(install_path.join("plugin.json"), r#"{"name":"demo-plugin","version":"0.9.0"}"#).unwrap();
+        std::fs::write(
+            install_path.join("plugin.json"),
+            r#"{"name":"demo-plugin","version":"0.9.0"}"#,
+        )
+        .unwrap();
         std::fs::write(
             plugins.join("installed_plugins.json"),
             json!({
@@ -1094,16 +1214,35 @@ mod tests {
         let dir = tempdir().unwrap();
         with_home(dir.path(), || {
             seed_marketplace(dir.path());
-            let source = dir.path().join(".claude").join("plugins").join("marketplaces").join("demo-market").join("demo-plugin");
+            let source = dir
+                .path()
+                .join(".claude")
+                .join("plugins")
+                .join("marketplaces")
+                .join("demo-market")
+                .join("demo-plugin");
             std::fs::create_dir_all(source.join(".claude-plugin")).unwrap();
-            std::fs::write(source.join(".claude-plugin").join("plugin.json"), r#"{"name":"demo"}"#).unwrap();
+            std::fs::write(
+                source.join(".claude-plugin").join("plugin.json"),
+                r#"{"name":"demo"}"#,
+            )
+            .unwrap();
         });
 
-        let response =
-            dispatch_with_home(dir.path(), "plugin.workspace", json!({ "id": "demo-plugin@demo-market" })).unwrap();
+        let response = dispatch_with_home(
+            dir.path(),
+            "plugin.workspace",
+            json!({ "id": "demo-plugin@demo-market" }),
+        )
+        .unwrap();
 
         let files = response.get("files").and_then(Value::as_array).unwrap();
-        assert!(files.iter().any(|file| file.get("path").and_then(Value::as_str) == Some(".claude-plugin/plugin.json")));
+        assert!(
+            files
+                .iter()
+                .any(|file| file.get("path").and_then(Value::as_str)
+                    == Some(".claude-plugin/plugin.json"))
+        );
     }
 
     #[test]
@@ -1122,12 +1261,55 @@ mod tests {
 
         let saved = dir
             .path()
+            .join(".lab")
+            .join("stash")
+            .join("plugins")
+            .join("demo-plugin@demo-market")
+            .join("plugin.json");
+        assert_eq!(
+            std::fs::read_to_string(saved).unwrap(),
+            "{\"name\":\"edited\"}"
+        );
+    }
+
+    #[test]
+    fn workspace_action_migrates_legacy_workspace_if_present() {
+        let dir = tempdir().unwrap();
+        let legacy_workspace = dir
+            .path()
             .join(".claude")
             .join("plugins")
             .join("workspaces")
+            .join("demo-plugin@demo-market");
+        std::fs::create_dir_all(&legacy_workspace).unwrap();
+        std::fs::write(
+            legacy_workspace.join("plugin.json"),
+            r#"{"name":"legacy-edit"}"#,
+        )
+        .unwrap();
+        with_home(dir.path(), || {
+            seed_marketplace(dir.path());
+        });
+
+        dispatch_with_home(
+            dir.path(),
+            "plugin.workspace",
+            json!({ "id": "demo-plugin@demo-market" }),
+        )
+        .unwrap();
+
+        let migrated = dir
+            .path()
+            .join(".lab")
+            .join("stash")
+            .join("plugins")
             .join("demo-plugin@demo-market")
             .join("plugin.json");
-        assert_eq!(std::fs::read_to_string(saved).unwrap(), "{\"name\":\"edited\"}");
+        assert_eq!(
+            std::fs::read_to_string(migrated).unwrap(),
+            r#"{"name":"legacy-edit"}"#
+        );
+        assert!(!legacy_workspace.exists());
     }
 
     #[test]
@@ -1145,14 +1327,25 @@ mod tests {
         )
         .unwrap();
 
-        let deployed =
-            dispatch_with_home(dir.path(), "plugin.deploy", json!({ "id": "demo-plugin@demo-market" })).unwrap();
+        let deployed = dispatch_with_home(
+            dir.path(),
+            "plugin.deploy",
+            json!({ "id": "demo-plugin@demo-market" }),
+        )
+        .unwrap();
 
         assert_eq!(
             std::fs::read_to_string(install_path.join("plugin.json")).unwrap(),
             "{\"name\":\"deployed\"}"
         );
-        assert!(deployed.get("changed").and_then(Value::as_array).unwrap().iter().any(|item| item == "plugin.json"));
+        assert!(
+            deployed
+                .get("changed")
+                .and_then(Value::as_array)
+                .unwrap()
+                .iter()
+                .any(|item| item == "plugin.json")
+        );
     }
 
     #[test]
@@ -1178,12 +1371,34 @@ mod tests {
         )
         .unwrap();
 
-        assert!(preview.get("changed").and_then(Value::as_array).unwrap().iter().any(|item| item == "plugin.json"));
-        assert!(preview.get("removed").and_then(Value::as_array).unwrap().iter().any(|item| item == "stale.txt"));
-        assert!(preview.get("entries").and_then(Value::as_array).unwrap().iter().any(|entry| {
-            entry.get("path").and_then(Value::as_str) == Some("plugin.json")
-                && entry.get("afterContent").and_then(Value::as_str) == Some("{\"name\":\"previewed\"}")
-        }));
+        assert!(
+            preview
+                .get("changed")
+                .and_then(Value::as_array)
+                .unwrap()
+                .iter()
+                .any(|item| item == "plugin.json")
+        );
+        assert!(
+            preview
+                .get("removed")
+                .and_then(Value::as_array)
+                .unwrap()
+                .iter()
+                .any(|item| item == "stale.txt")
+        );
+        assert!(
+            preview
+                .get("entries")
+                .and_then(Value::as_array)
+                .unwrap()
+                .iter()
+                .any(|entry| {
+                    entry.get("path").and_then(Value::as_str) == Some("plugin.json")
+                        && entry.get("afterContent").and_then(Value::as_str)
+                            == Some("{\"name\":\"previewed\"}")
+                })
+        );
     }
 
     /// Seed installed_plugins.json with an arbitrary `installPath` string for `demo-plugin@demo-market`.
@@ -1214,7 +1429,9 @@ mod tests {
             installed_target_for_plugin("demo-plugin@demo-market").unwrap_err()
         });
         match err {
-            ToolError::InvalidParam { message, .. } => assert!(message.contains("empty"), "{message}"),
+            ToolError::InvalidParam { message, .. } => {
+                assert!(message.contains("empty"), "{message}")
+            }
             other => panic!("expected InvalidParam, got {other:?}"),
         }
     }
@@ -1231,7 +1448,10 @@ mod tests {
         });
         match err {
             ToolError::InvalidParam { message, .. } => {
-                assert!(message.contains("invalid") || message.contains("outside"), "{message}");
+                assert!(
+                    message.contains("invalid") || message.contains("outside"),
+                    "{message}"
+                );
             }
             other => panic!("expected InvalidParam, got {other:?}"),
         }
@@ -1264,7 +1484,9 @@ mod tests {
             installed_target_for_plugin("demo-plugin@demo-market").unwrap_err()
         });
         match err {
-            ToolError::InvalidParam { message, .. } => assert!(message.contains("outside"), "{message}"),
+            ToolError::InvalidParam { message, .. } => {
+                assert!(message.contains("outside"), "{message}")
+            }
             other => panic!("expected InvalidParam, got {other:?}"),
         }
     }

@@ -4,12 +4,12 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::acp::registry::AcpSessionRegistry;
 use crate::catalog::{Catalog, build_catalog};
 use crate::config::NodeRole;
-use crate::acp::registry::AcpSessionRegistry;
+use crate::dispatch::clients::ServiceClients;
 use crate::node::enrollment::store::EnrollmentStore;
 use crate::node::store::NodeStore;
-use crate::dispatch::clients::ServiceClients;
 use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Application state passed to every axum handler via `State<AppState>`.
@@ -56,8 +56,8 @@ pub struct AppState {
     pub node_role: Option<NodeRole>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
-    /// Canonical absolute path of the user-configured workspace root, or
-    /// `None` when `LAB_WORKSPACE_ROOT` is unset or invalid at startup.
+    /// Canonical absolute path of the configured workspace root, or
+    /// `None` when `workspace.root` is invalid at startup.
     /// Backs the `dispatch/fs/` service (workspace filesystem browser).
     pub workspace_root: Option<Arc<PathBuf>>,
     /// When true, `/v1/*` skips auth middleware for hosted UI requests.

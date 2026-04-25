@@ -10,11 +10,11 @@ pub mod catalog;
 pub mod cli;
 pub mod config;
 #[allow(unreachable_pub)]
-pub mod node;
-#[allow(unreachable_pub)]
 pub mod dispatch;
 #[allow(unreachable_pub)]
 pub mod mcp;
+#[allow(unreachable_pub)]
+pub mod node;
 #[allow(unreachable_pub)]
 pub mod oauth;
 pub mod output;

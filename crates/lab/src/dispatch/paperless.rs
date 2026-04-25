@@ -27,14 +27,21 @@ mod tests {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
         assert!(names.contains(&"documents.list"));
         assert!(names.contains(&"documents.get"));
+        assert!(names.contains(&"documents.metadata"));
         assert!(names.contains(&"documents.update"));
         assert!(names.contains(&"documents.delete"));
         assert!(names.contains(&"tags.list"));
+        assert!(names.contains(&"tags.get"));
         assert!(names.contains(&"tags.create"));
+        assert!(names.contains(&"tags.delete"));
         assert!(names.contains(&"correspondents.list"));
+        assert!(names.contains(&"correspondents.get"));
         assert!(names.contains(&"correspondents.create"));
+        assert!(names.contains(&"correspondents.delete"));
         assert!(names.contains(&"document_types.list"));
+        assert!(names.contains(&"document_types.get"));
         assert!(names.contains(&"document_types.create"));
+        assert!(names.contains(&"document_types.delete"));
         assert!(names.contains(&"statistics"));
         assert!(names.contains(&"tasks.list"));
     }

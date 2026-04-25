@@ -50,10 +50,18 @@ pub struct GatewayConfigView {
     pub expose_prompts: Option<Vec<String>>,
     #[serde(default)]
     pub tool_search_enabled: bool,
-    #[serde(default)]
+    #[serde(default = "default_tool_search_top_k_default")]
     pub tool_search_top_k_default: usize,
-    #[serde(default)]
+    #[serde(default = "default_tool_search_max_tools")]
     pub tool_search_max_tools: usize,
+}
+
+fn default_tool_search_top_k_default() -> usize {
+    crate::config::ToolSearchConfig::default().top_k_default
+}
+
+fn default_tool_search_max_tools() -> usize {
+    crate::config::ToolSearchConfig::default().max_tools
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

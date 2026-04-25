@@ -13,7 +13,9 @@ use serde_json::{Map, Value};
 /// `dispatch/helpers.rs`.
 pub use crate::dispatch::helpers::redact_home;
 
-pub fn manifest_summary_from_marketplace_plugin(plugin_json: &Value) -> Option<PluginManifestSummary> {
+pub fn manifest_summary_from_marketplace_plugin(
+    plugin_json: &Value,
+) -> Option<PluginManifestSummary> {
     Some(PluginManifestSummary {
         description: plugin_json
             .get("description")
@@ -65,7 +67,10 @@ pub fn tags_from_marketplace_plugin(plugin_json: &Value) -> Vec<String> {
     tags
 }
 
-pub fn components_from_manifest_and_layout(root: Option<&Path>, manifest: Option<&Value>) -> Vec<PluginComponent> {
+pub fn components_from_manifest_and_layout(
+    root: Option<&Path>,
+    manifest: Option<&Value>,
+) -> Vec<PluginComponent> {
     let mut out = Vec::new();
     if let Some(manifest) = manifest {
         collect_components_from_value(manifest, &mut out);
@@ -213,10 +218,7 @@ fn collect_components_from_layout(root: &Path, out: &mut Vec<PluginComponent>) {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .into_owned();
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .into_owned();
+            let name = entry.file_name().to_string_lossy().into_owned();
             out.push(PluginComponent {
                 kind,
                 path: rel,

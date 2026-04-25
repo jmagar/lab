@@ -74,6 +74,15 @@ Dispatch layers may add the following kinds on top of SDK errors:
 `no_remote_transport` and `ssrf_blocked` use `ToolError::Sdk { sdk_kind, message }`. HTTP status: 422.
 `sync_in_progress` uses `ToolError::Sdk { sdk_kind, message }`. HTTP status: 503.
 
+### Marketplace artifact update kinds
+
+- `git_not_available` — `artifact.update.check` could not spawn `git`. Install git on the controller host to use update checking. HTTP 500.
+- `marketplace_auth_required` — `artifact.update.check` received git exit code 128 while fetching a marketplace; the message names the marketplace and does not include credentials or git stderr. HTTP 401.
+- `not_forked` — an artifact update action was requested for a plugin without forked `.stash.json` metadata. HTTP 404.
+- `stale_preview` — `artifact.update.apply` was called with a pending preview whose upstream fingerprint no longer matches the current marketplace source. Caller must run `artifact.update.preview` again. HTTP 409.
+- `ai_backend_not_configured` — `artifact.merge.suggest` or AI merge application needs an AI backend, but no merge backend is configured. HTTP 422.
+- `content_contains_secrets` — `artifact.merge.suggest` rejected changed artifact content before transmission because it matched credential-like patterns. HTTP 422.
+
 Additional MCP-only flow-control cases may include:
 
 - `elicitation_declined`
@@ -303,6 +312,9 @@ Default mapping expectations:
 - `install_timeout` -> `504 Gateway Timeout`
 - `confirmation_required` -> `422 Unprocessable Entity`
 - `sync_in_progress` -> `503 Service Unavailable`
+- `stale_preview` -> `409 Conflict`
+- `ai_backend_not_configured` -> `422 Unprocessable Entity`
+- `content_contains_secrets` -> `422 Unprocessable Entity`
 - `invalid_grant` -> `400 Bad Request`
 - `network_error` -> `502 Bad Gateway`
 - `server_error` -> `502 Bad Gateway`

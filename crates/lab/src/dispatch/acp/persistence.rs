@@ -97,7 +97,9 @@ pub struct SqliteAcpPersistence {
     hmac_key: Arc<Vec<u8>>,
 }
 
-fn acp_pragma_init(query_only: bool) -> impl Fn(&mut Connection) -> rusqlite::Result<()> + Send + Sync + 'static {
+fn acp_pragma_init(
+    query_only: bool,
+) -> impl Fn(&mut Connection) -> rusqlite::Result<()> + Send + Sync + 'static {
     move |conn| {
         conn.busy_timeout(std::time::Duration::from_millis(5_000))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -133,8 +135,7 @@ impl SqliteAcpPersistence {
         let (write_pool, read_pool, writer_task_conn) =
             tokio::task::spawn_blocking(move || -> Result<_, String> {
                 if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| format!("create_dir_all: {e}"))?;
+                    std::fs::create_dir_all(parent).map_err(|e| format!("create_dir_all: {e}"))?;
                 }
 
                 // Create the file with 0600 perms if it doesn't exist.
@@ -151,7 +152,9 @@ impl SqliteAcpPersistence {
 
                 // Run migrations on a connection from the write pool.
                 {
-                    let conn = write_pool.get().map_err(|e| format!("get write conn: {e}"))?;
+                    let conn = write_pool
+                        .get()
+                        .map_err(|e| format!("get write conn: {e}"))?;
                     migrate(&conn).map_err(|e| format!("migrate: {e}"))?;
                 }
 
@@ -166,12 +169,10 @@ impl SqliteAcpPersistence {
                 // Writer task connection — dedicated single-owner connection
                 // for the hot-path batch inserts. Not pooled because the
                 // writer task is serial by design.
-                let rw_flags =
-                    OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
+                let rw_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
                 let mut tc = Connection::open_with_flags(&path, rw_flags)
                     .map_err(|e| format!("open writer conn: {e}"))?;
-                acp_pragma_init(false)(&mut tc)
-                    .map_err(|e| format!("writer conn pragmas: {e}"))?;
+                acp_pragma_init(false)(&mut tc).map_err(|e| format!("writer conn pragmas: {e}"))?;
 
                 Ok((write_pool, read_pool, tc))
             })
@@ -253,7 +254,7 @@ impl AcpPersistence for SqliteAcpPersistence {
         self.blocking_read("load_events", move |c| {
             db_load_events(c, &sid, None, hmac_key.as_slice())
         })
-            .await
+        .await
     }
 
     async fn load_events_since(
@@ -326,7 +327,7 @@ async fn writer_task(conn: Arc<Mutex<Connection>>, mut rx: mpsc::Receiver<Persis
                 }
                 Ok(None) => {
                     // Channel closed — flush and exit task.
-                    let _ = flush_batch(&conn, &mut batch).await;
+                    drop(flush_batch(&conn, &mut batch).await);
                     return;
                 }
                 Err(_) => {
@@ -357,9 +358,10 @@ async fn flush_batch(
     let retry_events = events.clone();
     let conn = Arc::clone(conn);
     let result = tokio::task::spawn_blocking(move || {
-        let c = conn.lock().map_err(|_| "writer mutex poisoned".to_string())?;
-        db_batch_insert_events(&c, &events)
-            .map_err(|e| format!("batch insert events: {e}"))
+        let c = conn
+            .lock()
+            .map_err(|_| "writer mutex poisoned".to_string())?;
+        db_batch_insert_events(&c, &events).map_err(|e| format!("batch insert events: {e}"))
     })
     .await;
     match result {
@@ -654,10 +656,7 @@ fn corrupt_persisted_event(
     }
 }
 
-fn db_batch_insert_events(
-    conn: &Connection,
-    events: &[(AcpEvent, String)],
-) -> Result<(), String> {
+fn db_batch_insert_events(conn: &Connection, events: &[(AcpEvent, String)]) -> Result<(), String> {
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| format!("begin transaction: {e}"))?;
@@ -834,7 +833,10 @@ fn redact_event_payload(event: &AcpEvent, hmac_key: &[u8]) -> serde_json::Result
         && let Some(message) = permission_outcome_message(&value)
         && let Value::Object(map) = &mut value
     {
-        map.insert("hmac".to_string(), Value::String(hmac_tag(hmac_key, &message)));
+        map.insert(
+            "hmac".to_string(),
+            Value::String(hmac_tag(hmac_key, &message)),
+        );
     }
     redact_value(&mut value);
     serde_json::to_string(&value)

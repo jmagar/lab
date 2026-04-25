@@ -27,6 +27,8 @@ export function DeleteGatewayDialog({
 }: DeleteGatewayDialogProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isVirtualServer = gateway?.source === 'in_process'
+  const noun = isVirtualServer ? 'Service' : 'Gateway'
 
   const handleConfirm = async () => {
     setIsDeleting(true)
@@ -49,10 +51,10 @@ export function DeleteGatewayDialog({
             <div className="flex size-10 items-center justify-center rounded-full bg-destructive/10">
               <AlertTriangle className="size-5 text-destructive" />
             </div>
-            <AlertDialogTitle>Remove Gateway</AlertDialogTitle>
+            <AlertDialogTitle>Remove {noun}</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="pt-2">
-            Are you sure you want to remove <strong>{gateway?.name}</strong>? This action cannot be undone and permanently deletes the gateway configuration.
+            Are you sure you want to remove <strong>{gateway?.name}</strong>? This action cannot be undone and permanently deletes the {isVirtualServer ? 'Lab service gateway entry' : 'gateway configuration'}.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error ? (
@@ -69,7 +71,7 @@ export function DeleteGatewayDialog({
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {isDeleting && <Loader2 className="size-4 mr-2 animate-spin" />}
-            Remove Gateway
+            Remove {noun}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -51,7 +51,7 @@ pub struct FsPreviewParams {
 pub fn parse_preview(params: &Value) -> Result<FsPreviewParams, ToolError> {
     let raw = match params.get("path") {
         Some(Value::String(s)) if !s.is_empty() => s.as_str(),
-        Some(Value::String(_)) | None | Some(Value::Null) => {
+        Some(Value::String(_) | Value::Null) | None => {
             return Err(ToolError::MissingParam {
                 message: "missing required parameter `path`".into(),
                 param: "path".into(),
@@ -198,7 +198,8 @@ mod tests {
     use super::*;
 
     fn reject(input: &str) {
-        let err = validate_workspace_rel_path(input).expect_err(&format!("should reject {input:?}"));
+        let err =
+            validate_workspace_rel_path(input).expect_err(&format!("should reject {input:?}"));
         assert!(matches!(err, ToolError::InvalidParam { .. }), "{err:?}");
     }
 

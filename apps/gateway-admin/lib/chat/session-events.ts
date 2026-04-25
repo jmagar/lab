@@ -1,4 +1,4 @@
-import type { AcpEvent, BridgeEvent, BridgeSessionSummary } from '@/lib/acp/types'
+import type { AcpEvent, BridgeEvent, BridgeSessionStatus, BridgeSessionSummary } from '@/lib/acp/types'
 import type { ACPMessage, ActivityItem, TranscriptToolCall } from '@/components/chat/types'
 
 export const MAX_SESSION_EVENTS = 500
@@ -19,7 +19,17 @@ type ToolCallPatch = {
 }
 
 const INTERNAL_EVENT_KINDS = new Set(['tool_call_metadata'])
+const SESSION_STATUSES = new Set<BridgeSessionStatus>([
+  'idle',
+  'running',
+  'waiting_for_permission',
+  'completed',
+  'failed',
+  'cancelled',
+  'closed',
+])
 
+// Keep transcript derivation resilient to providers that emit unstable chunk ids.
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -72,6 +82,10 @@ function providerRawType(raw: unknown) {
     return null
   }
   return raw.type
+}
+
+function isBridgeSessionStatus(value: unknown): value is BridgeSessionStatus {
+  return typeof value === 'string' && SESSION_STATUSES.has(value as BridgeSessionStatus)
 }
 
 function bridgeBaseEvent(event: AcpEvent, kind: BridgeEvent['kind'], provider = 'codex'): BridgeEvent {
@@ -319,6 +333,19 @@ export function resolveLastSessionEventSeq(events: BridgeEvent[], cachedLastSeq 
   return Math.max(cachedLastSeq, events.at(-1)?.seq ?? 0)
 }
 
+export function resolveSessionStatusFromEvents(
+  events: BridgeEvent[],
+  fallback: BridgeSessionStatus = 'idle',
+) {
+  let status = fallback
+  for (const event of events) {
+    if (event.kind === 'status' && isBridgeSessionStatus(event.status)) {
+      status = event.status
+    }
+  }
+  return status
+}
+
 function upsertToolCall(toolCalls: TranscriptToolCall[], patch: ToolCallPatch): TranscriptToolCall[] {
   const next = [...toolCalls]
   const index = next.findIndex((toolCall) => toolCall.id === patch.id)
@@ -405,8 +432,8 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
       const role = event.role === 'user' ? 'user' : 'assistant'
       const activeMessageId = role === 'user' ? activeUserMessageId : activeAssistantMessageId
       const key =
-        event.messageId ??
         activeMessageId ??
+        event.messageId ??
         `${role}-${event.sessionId}-${orderedMessageIds.length + 1}`
       const existing = messages.get(key)
 
@@ -434,6 +461,7 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
       }
 
       if (role === 'assistant') {
+        activeUserMessageId = null
         activeAssistantMessageId = key
         lastAssistantMessageId = key
       }

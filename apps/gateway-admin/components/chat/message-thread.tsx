@@ -32,6 +32,30 @@ function EmptyState() {
   )
 }
 
+function SessionStatusNotice({ run }: { run: ACPRun }) {
+  if (run.status !== 'running' && run.status !== 'waiting_for_permission') {
+    return null
+  }
+
+  const waitingForPermission = run.status === 'waiting_for_permission'
+
+  return (
+    <div className="rounded-aurora-2 border border-aurora-accent-primary/25 bg-aurora-accent-deep/10 px-3 py-2 text-[12px] text-aurora-text-muted shadow-[var(--aurora-highlight-soft)]">
+      <div className="flex items-center gap-2">
+        <span className="size-1.5 rounded-full bg-aurora-accent-primary animate-pulse" />
+        <span className="font-medium text-aurora-text-primary">
+          {waitingForPermission ? 'Session waiting for permission' : 'Session still running'}
+        </span>
+      </div>
+      <p className="mt-1 leading-[1.45]">
+        {waitingForPermission
+          ? 'The ACP bridge is waiting on a permission decision before the turn can continue.'
+          : 'The ACP bridge has not received a terminal turn event yet.'}
+      </p>
+    </div>
+  )
+}
+
 export function MessageThread({ run, messages }: MessageThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null)
 
@@ -46,6 +70,7 @@ export function MessageThread({ run, messages }: MessageThreadProps) {
   return (
     <ScrollArea className="min-h-0 flex-1 overflow-hidden">
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
+        <SessionStatusNotice run={run} />
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}

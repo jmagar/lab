@@ -157,9 +157,9 @@ fn` is NOT object-safe (no stable solution as of 2026). Recommended approach: **
 the known provider set (Codex, Claude, Gemini, Copilot, OpenCode) via the `enum_dispatch` crate.
 
 The repository rule in `CLAUDE.md` forbids `Box<dyn ServiceClient>` and `#[async_trait]`: prefer
-generics or concrete types over dynamic dispatch. For a dynamic-registry path, reach for
-generics over a bounded type parameter, or wrap providers in a new concrete enum variant rather
-than introducing `Box<dyn Trait>` / `dynosaur`-style adapters.
+generics or concrete types over dynamic dispatch. For a dynamic-registry path, keep enum dispatch
+for the closed provider set and use a dedicated extension-boundary adapter (for example, a
+`dynosaur`-style erased trait) instead of widening this into `Box<dyn ServiceClient>`.
 
 ---
 

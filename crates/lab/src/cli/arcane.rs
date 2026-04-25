@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::cli::helpers::run_confirmable_action_command;
+use crate::cli::helpers::{action_parser, run_confirmable_action_command};
 use crate::cli::params::parse_kv_params;
 use crate::dispatch::arcane::ACTIONS;
 use crate::output::OutputFormat;
@@ -17,6 +17,7 @@ use crate::output::OutputFormat;
 #[derive(Debug, Args)]
 pub struct ArcaneArgs {
     /// Action to run, e.g. `help`, `system.health`, `container.list`.
+    #[arg(default_value = "help", value_parser = action_parser(ACTIONS))]
     pub action: String,
 
     /// Optional `key=value` params for the action.

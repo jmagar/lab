@@ -7,6 +7,7 @@ import {
   deriveTranscriptAndActivity,
   MAX_SESSION_EVENTS,
   resolveLastSessionEventSeq,
+  resolveSessionStatusFromEvents,
 } from './session-events'
 
 function event(seq: number, overrides: Partial<BridgeEvent> = {}): BridgeEvent {
@@ -46,6 +47,37 @@ test('resolveLastSessionEventSeq prefers the newest cached sequence', () => {
   assert.equal(resolveLastSessionEventSeq([], 7), 7)
   assert.equal(resolveLastSessionEventSeq([event(3), event(9)], 4), 9)
   assert.equal(resolveLastSessionEventSeq([event(3), event(9)], 12), 12)
+})
+
+test('resolveSessionStatusFromEvents returns the latest typed status event', () => {
+  assert.equal(resolveSessionStatusFromEvents([], 'running'), 'running')
+  assert.equal(
+    resolveSessionStatusFromEvents([
+      event(1, { kind: 'status', status: 'running' }),
+      event(2, { role: 'assistant', text: 'ok' }),
+      event(3, { kind: 'status', status: 'completed' }),
+      event(4, { kind: 'status', status: 'closed' }),
+    ]),
+    'closed',
+  )
+})
+
+test('deriveTranscriptAndActivity appends streaming chunks when provider message ids churn', () => {
+  const derived = deriveTranscriptAndActivity([
+    event(1, { role: 'user', messageId: 'user-1', text: 'First prompt' }),
+    event(2, { role: 'assistant', messageId: 'assistant-a', text: 'loading ' }),
+    event(3, { role: 'assistant', messageId: 'assistant-b', text: 'the ' }),
+    event(4, { role: 'assistant', messageId: 'assistant-c', text: 'session' }),
+    event(5, { role: 'user', messageId: 'user-2', text: 'Second prompt' }),
+    event(6, { role: 'assistant', messageId: 'assistant-d', text: 'next ' }),
+    event(7, { role: 'assistant', messageId: 'assistant-e', text: 'reply' }),
+  ])
+
+  assert.equal(derived.messages.length, 4)
+  assert.equal(derived.messages[0]?.text, 'First prompt')
+  assert.equal(derived.messages[1]?.text, 'loading the session')
+  assert.equal(derived.messages[2]?.text, 'Second prompt')
+  assert.equal(derived.messages[3]?.text, 'next reply')
 })
 
 test('deriveTranscriptAndActivity preserves browser tool, permission, plan, and status semantics', () => {
@@ -140,7 +172,7 @@ test('deriveTranscriptAndActivity preserves browser tool, permission, plan, and 
 
   const assistant = derived.messages[1]!
   assert.equal(assistant.role, 'assistant')
-  assert.equal(assistant.text, 'I am checking the bridge.')
+  assert.equal(assistant.text, 'I am checking the browser stream.')
   assert.deepEqual(assistant.thoughts, ['Inspecting the active session stream.'])
   assert.equal(assistant.isStreaming, false)
   assert.deepEqual(assistant.toolCalls, [

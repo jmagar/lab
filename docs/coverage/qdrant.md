@@ -41,8 +41,8 @@ The following actions are implemented end-to-end (SDK → dispatch → MCP → C
 | `index.create` | `index_create(collection, req)` | `collection: string`, `field_name: string`, `field_schema: object` | Value | no | ✅ | ✅ | ✅ |
 
 **Surface wiring:**
-- **MCP:** `mcp/services/qdrant.rs` delegates to `dispatch::qdrant::dispatch()`
-- **CLI:** `cli/qdrant.rs` (Tier-2 shim) calls `mcp::services::qdrant::dispatch()` directly, which delegates to dispatch
+- **MCP:** `registry.rs` registers `dispatch::qdrant::dispatch()` directly
+- **CLI:** `cli/qdrant.rs` calls `dispatch::qdrant::dispatch()` directly
 - **API:** `api/services/qdrant.rs` calls `dispatch::qdrant::dispatch_with_client()` with pre-built client from `AppState`
 
 **Auth:** `QDRANT_URL` is required. `QDRANT_API_KEY` is optional — if present, sent as `api-key` header; if absent, `Auth::None` is used (unauthenticated local instance).

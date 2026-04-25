@@ -2,8 +2,8 @@
 //!
 //! Responsibilities:
 //!
-//! - Resolve + canonicalize the user-configured workspace root from
-//!   `LAB_WORKSPACE_ROOT` at startup.
+//! - Resolve + canonicalize the configured Lab workspace root from
+//!   `config.toml` at startup.
 //! - Cache the canonical root in a process-global `OnceLock` so MCP dispatch
 //!   (which has no `AppState` handle) can reach it without re-canonicalizing
 //!   per-request.
@@ -14,48 +14,52 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use crate::config::LabConfig;
 use crate::dispatch::error::ToolError;
-use crate::dispatch::helpers::env_non_empty;
 
 #[cfg(feature = "fs")]
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
-/// Structured error when `LAB_WORKSPACE_ROOT` is unset or invalid.
+/// Structured error when `workspace.root` is invalid.
 pub(crate) fn not_configured_error() -> ToolError {
     ToolError::Sdk {
         sdk_kind: "workspace_not_configured".to_string(),
-        message: "LAB_WORKSPACE_ROOT is not set or does not point at an existing directory"
-            .to_string(),
+        message: "workspace.root does not point at an existing directory".to_string(),
     }
 }
 
 /// Resolve the configured workspace root, canonicalize it, and verify it
-/// exists and is a directory. Returns `None` when the env var is absent.
+/// exists and is a directory.
 ///
 /// Called once at startup (from `cli::serve`). Keep pure — no logging, no
 /// side effects. The returned path is what callers feed into
 /// `AppState::with_workspace_root`.
-pub fn resolve_workspace_root_from_env() -> Option<std::io::Result<PathBuf>> {
-    let raw = env_non_empty("LAB_WORKSPACE_ROOT")?;
-    Some(canonicalize_existing_dir(PathBuf::from(raw)))
+pub fn resolve_workspace_root(config: &LabConfig) -> std::io::Result<PathBuf> {
+    let root = crate::config::workspace_root_path(config)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
+    canonicalize_workspace_dir(root)
 }
 
-fn canonicalize_existing_dir(path: PathBuf) -> std::io::Result<PathBuf> {
+fn canonicalize_workspace_dir(path: PathBuf) -> std::io::Result<PathBuf> {
     if !path.is_absolute() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("LAB_WORKSPACE_ROOT must be absolute; got {}", path.display()),
+            format!("workspace.root must be absolute; got {}", path.display()),
         ));
     }
+    if path.exists() && !std::fs::metadata(&path)?.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("workspace.root is not a directory: {}", path.display()),
+        ));
+    }
+    std::fs::create_dir_all(&path)?;
     let canonical = std::fs::canonicalize(&path)?;
     let meta = std::fs::metadata(&canonical)?;
     if !meta.is_dir() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!(
-                "LAB_WORKSPACE_ROOT is not a directory: {}",
-                canonical.display()
-            ),
+            format!("workspace.root is not a directory: {}", canonical.display()),
         ));
     }
     Ok(canonical)
@@ -63,38 +67,63 @@ fn canonicalize_existing_dir(path: PathBuf) -> std::io::Result<PathBuf> {
 
 static WORKSPACE_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
 
-/// Return the canonical workspace root, or a structured error if the env
-/// var is unset or invalid. First call canonicalizes; subsequent calls
+/// Return the canonical workspace root, or a structured error if config is
+/// invalid. First call canonicalizes; subsequent calls
 /// return the cached value.
 pub fn require_workspace_root() -> Result<&'static PathBuf, ToolError> {
-    let cached = WORKSPACE_ROOT.get_or_init(|| match resolve_workspace_root_from_env() {
-        Some(Ok(p)) => Some(p),
-        _ => None,
+    let cached = WORKSPACE_ROOT.get_or_init(|| {
+        let cfg = crate::config::load_toml(&crate::config::toml_candidates()).ok()?;
+        resolve_workspace_root(&cfg).ok()
     });
     cached.as_ref().ok_or_else(not_configured_error)
 }
 
 #[cfg(feature = "fs")]
 const DENY_PATTERNS: &[&str] = &[
-    ".env", "**/.env", ".env.*", "**/.env.*",
-    "*.pem", "**/*.pem", "*.key", "**/*.key",
-    "*.pfx", "**/*.pfx", "*.p12", "**/*.p12",
-    ".git/config", "**/.git/config",
-    ".git/credentials", "**/.git/credentials",
-    ".ssh/**", "**/.ssh/**",
-    "id_rsa*", "**/id_rsa*",
-    "id_ecdsa*", "**/id_ecdsa*",
-    "id_ed25519*", "**/id_ed25519*",
-    "authorized_keys", "**/authorized_keys",
-    "known_hosts", "**/known_hosts",
-    ".aws/credentials", "**/.aws/credentials",
-    ".aws/config", "**/.aws/config",
-    ".gnupg/**", "**/.gnupg/**",
-    ".netrc", "**/.netrc",
-    ".pgpass", "**/.pgpass",
-    ".docker/config.json", "**/.docker/config.json",
-    "credentials", "**/credentials",
-    "credentials.json", "**/credentials.json",
+    ".env",
+    "**/.env",
+    ".env.*",
+    "**/.env.*",
+    "*.pem",
+    "**/*.pem",
+    "*.key",
+    "**/*.key",
+    "*.pfx",
+    "**/*.pfx",
+    "*.p12",
+    "**/*.p12",
+    ".git/config",
+    "**/.git/config",
+    ".git/credentials",
+    "**/.git/credentials",
+    ".ssh/**",
+    "**/.ssh/**",
+    "id_rsa*",
+    "**/id_rsa*",
+    "id_ecdsa*",
+    "**/id_ecdsa*",
+    "id_ed25519*",
+    "**/id_ed25519*",
+    "authorized_keys",
+    "**/authorized_keys",
+    "known_hosts",
+    "**/known_hosts",
+    ".aws/credentials",
+    "**/.aws/credentials",
+    ".aws/config",
+    "**/.aws/config",
+    ".gnupg/**",
+    "**/.gnupg/**",
+    ".netrc",
+    "**/.netrc",
+    ".pgpass",
+    "**/.pgpass",
+    ".docker/config.json",
+    "**/.docker/config.json",
+    "credentials",
+    "**/credentials",
+    "credentials.json",
+    "**/credentials.json",
 ];
 
 #[cfg(feature = "fs")]
@@ -155,7 +184,10 @@ pub fn safe_content_type(path: &std::path::Path) -> &'static str {
 #[cfg(feature = "fs")]
 #[must_use]
 pub fn is_inline_mime(mime: &str) -> bool {
-    matches!(mime, "image/png" | "image/jpeg" | "image/gif" | "image/webp")
+    matches!(
+        mime,
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+    )
 }
 
 #[cfg(test)]
@@ -166,22 +198,23 @@ mod tests {
     #[test]
     fn canonicalize_existing_dir_accepts_absolute_existing_dir() {
         let tmp = tempdir().expect("tempdir");
-        let resolved = canonicalize_existing_dir(tmp.path().to_path_buf()).expect("ok");
+        let resolved = canonicalize_workspace_dir(tmp.path().to_path_buf()).expect("ok");
         assert!(resolved.is_absolute());
         assert!(resolved.is_dir());
     }
 
     #[test]
     fn canonicalize_existing_dir_rejects_relative() {
-        let err = canonicalize_existing_dir(PathBuf::from("relative/path")).expect_err("err");
+        let err = canonicalize_workspace_dir(PathBuf::from("relative/path")).expect_err("err");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 
     #[test]
-    fn canonicalize_existing_dir_rejects_nonexistent() {
-        let err = canonicalize_existing_dir(PathBuf::from("/nonexistent/lab-f1t2-probe"))
-            .expect_err("err");
-        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    fn canonicalize_existing_dir_creates_missing_directory() {
+        let tmp = tempdir().expect("tempdir");
+        let missing = tmp.path().join("created");
+        let resolved = canonicalize_workspace_dir(missing.clone()).expect("ok");
+        assert_eq!(resolved, std::fs::canonicalize(missing).expect("canonical"));
     }
 
     #[test]
@@ -189,7 +222,7 @@ mod tests {
         let tmp = tempdir().expect("tempdir");
         let file = tmp.path().join("a-file");
         std::fs::write(&file, b"hi").expect("write");
-        let err = canonicalize_existing_dir(file).expect_err("err");
+        let err = canonicalize_workspace_dir(file).expect_err("err");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 
@@ -240,10 +273,22 @@ mod tests {
         assert_eq!(safe_content_type(Path::new("c.jpeg")), "image/jpeg");
         assert_eq!(safe_content_type(Path::new("d.gif")), "image/gif");
         assert_eq!(safe_content_type(Path::new("e.webp")), "image/webp");
-        assert_eq!(safe_content_type(Path::new("evil.svg")), "application/octet-stream");
-        assert_eq!(safe_content_type(Path::new("index.html")), "application/octet-stream");
-        assert_eq!(safe_content_type(Path::new("script.js")), "application/octet-stream");
-        assert_eq!(safe_content_type(Path::new("no-ext")), "application/octet-stream");
+        assert_eq!(
+            safe_content_type(Path::new("evil.svg")),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            safe_content_type(Path::new("index.html")),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            safe_content_type(Path::new("script.js")),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            safe_content_type(Path::new("no-ext")),
+            "application/octet-stream"
+        );
     }
 
     #[cfg(feature = "fs")]

@@ -14,8 +14,9 @@ mod catalog;
 mod cli;
 mod config;
 mod dispatch;
-mod node;
+mod log_fmt;
 mod mcp;
+mod node;
 mod oauth;
 mod output;
 mod process;
@@ -23,18 +24,12 @@ mod registry;
 mod scaffold;
 #[cfg(test)]
 mod test_support;
-mod log_fmt;
 mod tui;
 
 use std::process::ExitCode;
 
 use clap::Parser;
-use tracing_subscriber::{
-    EnvFilter,
-    filter::filter_fn,
-    fmt,
-    prelude::*,
-};
+use tracing_subscriber::{EnvFilter, filter::filter_fn, fmt, prelude::*};
 
 use crate::cli::Cli;
 use crate::dispatch::logs::ingest::LogIngestLayer;
@@ -80,11 +75,16 @@ fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy) {
             .init();
     } else {
         let fmt_layer = fmt::layer()
-            .with_ansi(human_output_styling_enabled(color_policy, RenderEnv::stderr()))
+            .with_ansi(human_output_styling_enabled(
+                color_policy,
+                RenderEnv::stderr(),
+            ))
             .with_target(false)
             .event_format(PremiumEventFormatter)
             .with_writer(std::io::stderr)
-            .with_filter(filter_fn(|metadata| human_console_target_enabled(metadata.target())));
+            .with_filter(filter_fn(|metadata| {
+                human_console_target_enabled(metadata.target())
+            }));
         tracing_subscriber::registry()
             .with(filter)
             .with(LogIngestLayer)

@@ -15,8 +15,8 @@ use crate::dispatch::helpers::env_non_empty;
 /// Build an `AcpRegistryClient` against `LAB_ACP_REGISTRY_URL` or the public default.
 #[cfg(feature = "acp_registry")]
 pub fn require_acp_client() -> Result<AcpRegistryClient, ToolError> {
-    let url = env_non_empty("LAB_ACP_REGISTRY_URL")
-        .unwrap_or_else(|| REGISTRY_DEFAULT_URL.to_string());
+    let url =
+        env_non_empty("LAB_ACP_REGISTRY_URL").unwrap_or_else(|| REGISTRY_DEFAULT_URL.to_string());
     AcpRegistryClient::new(&url).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: format!("AcpRegistry client init failed: {e}"),

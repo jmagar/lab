@@ -6,13 +6,13 @@ use jiff::Zoned;
 
 use crate::output::theme::aurora;
 use tracing::{
-    field::{Field, Visit},
     Event, Subscriber,
+    field::{Field, Visit},
 };
 use tracing_subscriber::{
     fmt::{
-        format::{FormatEvent, FormatFields, Writer},
         FmtContext,
+        format::{FormatEvent, FormatFields, Writer},
     },
     registry::LookupSpan,
 };
@@ -72,12 +72,16 @@ pub(crate) struct PremiumEventFormatter;
 fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> stdfmt::Result {
     if ansi {
         let s = match level {
-            tracing::Level::ERROR => {
-                Style::new().color256(aurora::ERROR).bold().apply_to("ERROR").to_string()
-            }
-            tracing::Level::WARN => {
-                Style::new().color256(aurora::WARN).bold().apply_to(" WARN").to_string()
-            }
+            tracing::Level::ERROR => Style::new()
+                .color256(aurora::ERROR)
+                .bold()
+                .apply_to("ERROR")
+                .to_string(),
+            tracing::Level::WARN => Style::new()
+                .color256(aurora::WARN)
+                .bold()
+                .apply_to(" WARN")
+                .to_string(),
             tracing::Level::INFO => Style::new().apply_to(" INFO").to_string(),
             tracing::Level::DEBUG => Style::new().dim().apply_to("DEBUG").to_string(),
             tracing::Level::TRACE => Style::new().dim().apply_to("TRACE").to_string(),
@@ -99,34 +103,52 @@ fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> st
 fn style_value(key: &str, value: &str, level: tracing::Level) -> String {
     match key {
         // SERVICE_NAME pink — service identifiers
-        "service" => Style::new().color256(aurora::SERVICE_NAME).apply_to(value).to_string(),
+        "service" => Style::new()
+            .color256(aurora::SERVICE_NAME)
+            .apply_to(value)
+            .to_string(),
         // ACCENT_PRIMARY blue — names, addresses, routes
         "tool" | "prompt" | "resource_uri" | "upstream" | "route" | "action" | "addr"
-        | "instance" | "target" | "capability" => {
-            Style::new().color256(aurora::ACCENT_PRIMARY).apply_to(value).to_string()
-        }
+        | "instance" | "target" | "capability" => Style::new()
+            .color256(aurora::ACCENT_PRIMARY)
+            .apply_to(value)
+            .to_string(),
         // TEXT_MUTED — metadata / phase markers
-        "subsystem" | "phase" | "transport" | "operation" => {
-            Style::new().color256(aurora::TEXT_MUTED).apply_to(value).to_string()
-        }
+        "subsystem" | "phase" | "transport" | "operation" => Style::new()
+            .color256(aurora::TEXT_MUTED)
+            .apply_to(value)
+            .to_string(),
         // status codes: SUCCESS 2xx, WARN 3xx/4xx, ERROR 5xx
         "status" => {
             if let Ok(n) = value.parse::<u16>() {
                 if n < 300 {
-                    Style::new().color256(aurora::SUCCESS).apply_to(value).to_string()
+                    Style::new()
+                        .color256(aurora::SUCCESS)
+                        .apply_to(value)
+                        .to_string()
                 } else if n < 500 {
-                    Style::new().color256(aurora::WARN).apply_to(value).to_string()
+                    Style::new()
+                        .color256(aurora::WARN)
+                        .apply_to(value)
+                        .to_string()
                 } else {
-                    Style::new().color256(aurora::ERROR).apply_to(value).to_string()
+                    Style::new()
+                        .color256(aurora::ERROR)
+                        .apply_to(value)
+                        .to_string()
                 }
             } else {
                 value.to_string()
             }
         }
-        "error" => Style::new().color256(aurora::ERROR).apply_to(value).to_string(),
-        "kind" if matches!(level, tracing::Level::WARN | tracing::Level::ERROR) => {
-            Style::new().color256(aurora::WARN).apply_to(value).to_string()
-        }
+        "error" => Style::new()
+            .color256(aurora::ERROR)
+            .apply_to(value)
+            .to_string(),
+        "kind" if matches!(level, tracing::Level::WARN | tracing::Level::ERROR) => Style::new()
+            .color256(aurora::WARN)
+            .apply_to(value)
+            .to_string(),
         _ => value.to_string(),
     }
 }
@@ -134,11 +156,20 @@ fn style_value(key: &str, value: &str, level: tracing::Level) -> String {
 /// Strip Unicode control characters from upstream-controlled field values to prevent ANSI injection.
 /// Tab (0x09) and newline (0x0A) are preserved.
 pub(crate) fn sanitize_field_value(value: &str) -> std::borrow::Cow<'_, str> {
-    if value.chars().any(|c| c.is_control() && c != '\t' && c != '\n') {
+    if value
+        .chars()
+        .any(|c| c.is_control() && c != '\t' && c != '\n')
+    {
         std::borrow::Cow::Owned(
             value
                 .chars()
-                .map(|c| if c.is_control() && c != '\t' && c != '\n' { '\u{FFFD}' } else { c })
+                .map(|c| {
+                    if c.is_control() && c != '\t' && c != '\n' {
+                        '\u{FFFD}'
+                    } else {
+                        c
+                    }
+                })
                 .collect(),
         )
     } else {
@@ -155,10 +186,7 @@ pub(crate) fn format_field_value(value: &str) -> String {
 }
 
 pub(crate) fn should_skip_field(key: &str, value: &str) -> bool {
-    matches!(
-        (key, value),
-        ("subject_scoped" | "destructive", "false")
-    )
+    matches!((key, value), ("subject_scoped" | "destructive", "false"))
 }
 
 impl<S, N> FormatEvent<S, N> for PremiumEventFormatter
@@ -184,9 +212,7 @@ where
             .unwrap_or_default();
 
         // HH:MM:SS (local time, dim)
-        let ts = Zoned::now()
-            .strftime("%H:%M:%S")
-            .to_string();
+        let ts = Zoned::now().strftime("%H:%M:%S").to_string();
         if ansi {
             write!(writer, "{}  ", Style::new().dim().apply_to(&ts))?;
         } else {
@@ -203,7 +229,14 @@ where
                     write!(writer, " ")?;
                 }
                 if i == 0 {
-                    write!(writer, "{}", Style::new().color256(aurora::SERVICE_NAME).bold().apply_to(token))?;
+                    write!(
+                        writer,
+                        "{}",
+                        Style::new()
+                            .color256(aurora::SERVICE_NAME)
+                            .bold()
+                            .apply_to(token)
+                    )?;
                 } else if let Some(eq) = token.find('=') {
                     write!(
                         writer,
@@ -267,11 +300,7 @@ where
         }
 
         // Remaining fields in alphabetical order (BTreeMap guarantees this).
-        let remaining: Vec<_> = fields
-            .fields
-            .iter()
-            .map(|(k, v)| (*k, v.clone()))
-            .collect();
+        let remaining: Vec<_> = fields.fields.iter().map(|(k, v)| (*k, v.clone())).collect();
         for (key, val) in remaining {
             if should_skip_field(key, &val) {
                 continue;
@@ -310,7 +339,10 @@ mod tests {
         let injected = "tool\x1b[31mFAKE";
         let sanitized = sanitize_field_value(injected);
         assert!(!sanitized.contains('\x1b'), "ESC should be replaced");
-        assert!(sanitized.contains('\u{FFFD}'), "should contain replacement char");
+        assert!(
+            sanitized.contains('\u{FFFD}'),
+            "should contain replacement char"
+        );
     }
 
     #[test]

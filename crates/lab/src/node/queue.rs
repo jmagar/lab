@@ -95,7 +95,8 @@ impl NodeOutboundQueue {
         let _guard = self.io_lock.lock().await;
         self.ensure_storage_exists().await?;
         let mut state = self.read_state().await?;
-        let mut line = serde_json::to_string(&envelope).context("serialize queue entry for append")?;
+        let mut line =
+            serde_json::to_string(&envelope).context("serialize queue entry for append")?;
         line.push('\n');
         let line_bytes =
             u64::try_from(line.len()).context("queue entry length does not fit in u64")?;
@@ -103,7 +104,10 @@ impl NodeOutboundQueue {
         let active_path = self.segment_path(state.active_segment);
         let current_len = file_len(&active_path).await?;
         if current_len > 0 && current_len.saturating_add(line_bytes) > self.segment_bytes {
-            state.active_segment = state.active_segment.max(state.head_segment).saturating_add(1);
+            state.active_segment = state
+                .active_segment
+                .max(state.head_segment)
+                .saturating_add(1);
         }
 
         let active_path = self.segment_path(state.active_segment);
@@ -126,7 +130,10 @@ impl NodeOutboundQueue {
         let segments = self.list_segments().await?;
         let mut drained = Vec::new();
 
-        for segment in segments.into_iter().filter(|segment| *segment >= state.head_segment) {
+        for segment in segments
+            .into_iter()
+            .filter(|segment| *segment >= state.head_segment)
+        {
             let skip = if segment == state.head_segment {
                 state.head_offset
             } else {
@@ -171,7 +178,7 @@ impl NodeOutboundQueue {
             } else {
                 0
             };
-                let available = line_count.saturating_sub(consumed);
+            let available = line_count.saturating_sub(consumed);
 
             if remaining < available {
                 state.head_segment = segment;
@@ -422,7 +429,10 @@ fn atomic_temp_path(path: &Path) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("queue");
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("queue");
     path.with_file_name(format!("{file_name}.{suffix}.tmp"))
 }
 
@@ -461,7 +471,10 @@ mod tests {
         }
 
         let segments = queue.list_segments().await.expect("segments");
-        assert!(segments.len() > 1, "expected multiple segments, got {segments:?}");
+        assert!(
+            segments.len() > 1,
+            "expected multiple segments, got {segments:?}"
+        );
     }
 
     #[tokio::test]
@@ -479,9 +492,13 @@ mod tests {
         }
 
         let segment_path = queue.segment_path(1);
-        let before = fs::read_to_string(&segment_path).await.expect("read segment");
+        let before = fs::read_to_string(&segment_path)
+            .await
+            .expect("read segment");
         queue.ack_drained(1).await.expect("ack");
-        let after = fs::read_to_string(&segment_path).await.expect("read segment");
+        let after = fs::read_to_string(&segment_path)
+            .await
+            .expect("read segment");
         assert_eq!(before, after, "segment file should remain immutable");
 
         let drained = queue.drain_batch(10).await.expect("drain");
@@ -509,8 +526,15 @@ mod tests {
         let first_segment = queue.segment_path(1);
         assert!(fs::try_exists(&first_segment).await.expect("exists"));
         let first_count = count_segment_entries(&first_segment).await.expect("count");
-        queue.ack_drained(first_count).await.expect("ack first segment");
-        assert!(!fs::try_exists(&first_segment).await.expect("exists after ack"));
+        queue
+            .ack_drained(first_count)
+            .await
+            .expect("ack first segment");
+        assert!(
+            !fs::try_exists(&first_segment)
+                .await
+                .expect("exists after ack")
+        );
     }
 
     #[tokio::test]
@@ -522,9 +546,13 @@ mod tests {
             .map(|entry| serde_json::to_string(&entry).expect("serialize"))
             .collect::<Vec<_>>()
             .join("\n");
-        fs::write(&path, format!("{legacy}\n")).await.expect("write legacy");
+        fs::write(&path, format!("{legacy}\n"))
+            .await
+            .expect("write legacy");
 
-        let queue = NodeOutboundQueue::open(path.clone()).await.expect("open queue");
+        let queue = NodeOutboundQueue::open(path.clone())
+            .await
+            .expect("open queue");
         assert!(!fs::try_exists(&path).await.expect("legacy removed"));
         let drained = queue.drain_batch(10).await.expect("drain");
         assert_eq!(drained.len(), 2);

@@ -8,7 +8,6 @@ import type {
   PromptResponse,
   RequestPermissionRequest,
   SessionInfoUpdate,
-  SessionMode,
   SessionNotification,
   ToolCallContent,
   ToolCallStatus,
@@ -24,6 +23,7 @@ export type BridgeSessionStatus =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'closed'
 
 export type ProviderHealth = {
   provider: AcpProviderKind

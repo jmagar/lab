@@ -40,7 +40,9 @@ use lab_apis::acp::types::{AcpEvent, AcpProviderHealth, AcpSessionState, AcpSess
 use crate::dispatch::acp::persistence::SqliteAcpPersistence;
 use crate::dispatch::error::ToolError;
 
-use super::runtime::{RuntimeHandle, codex_provider_health, launch_codex_runtime};
+use super::runtime::{
+    RuntimeHandle, launch_codex_runtime, normalize_provider_id, provider_healths,
+};
 use super::types::{
     StartSessionInput, event_created_at, session_title_from_event, stamp_event_sequence,
 };
@@ -134,6 +136,16 @@ impl AcpSessionRegistry {
             .ok()
     }
 
+    // ── Session lookup ─────────────────────────────────────────────────────
+
+    async fn get_session_arc(&self, session_id: &str) -> Result<Arc<Session>, ToolError> {
+        let guard = self.sessions.read().await;
+        guard
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| not_found("unknown ACP session"))
+    }
+
     // ── Principal check ────────────────────────────────────────────────────
 
     fn check_principal(session: &Session, principal: &str) -> Result<(), ToolError> {
@@ -151,10 +163,9 @@ impl AcpSessionRegistry {
 
     // ── Public API ─────────────────────────────────────────────────────────
 
-    /// Returns the provider health snapshot from the canonical ACP runtime path.
     #[must_use]
-    pub fn provider_health(&self) -> AcpProviderHealth {
-        codex_provider_health()
+    pub fn provider_healths(&self) -> Vec<AcpProviderHealth> {
+        provider_healths()
     }
 
     pub async fn list_sessions(&self, principal: &str) -> Vec<AcpSessionSummary> {
@@ -164,9 +175,7 @@ impl AcpSessionRegistry {
             guard
                 .values()
                 .filter(|s| {
-                    principal.is_empty()
-                        || s.principal.is_empty()
-                        || s.principal == principal
+                    principal.is_empty() || s.principal.is_empty() || s.principal == principal
                 })
                 .cloned()
                 .collect()
@@ -206,23 +215,36 @@ impl AcpSessionRegistry {
 
         // Launch the codex runtime (Phase 1: stub that drops rx immediately).
         let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
-        let (runtime, started) =
-            launch_codex_runtime(session_id.clone(), StartSessionInput { cwd: cwd.clone(), title: input.title.clone(), principal: input.principal.clone() }, event_tx.clone())
-                .await
-                .map_err(|message| ToolError::Sdk {
-                    sdk_kind: "internal_error".to_string(),
-                    message,
-                })?;
+        let (runtime, started) = launch_codex_runtime(
+            session_id.clone(),
+            StartSessionInput {
+                provider: input.provider.clone(),
+                cwd: cwd.clone(),
+                title: input.title.clone(),
+                principal: input.principal.clone(),
+            },
+            event_tx.clone(),
+        )
+        .await
+        .map_err(|message| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message,
+        })?;
 
+        let provider = normalize_provider_id(input.provider.as_deref());
         let summary = AcpSessionSummary {
             id: session_id.clone(),
-            provider: "codex".to_string(),
+            provider,
             title: input.title.unwrap_or_else(|| "New session".to_string()),
             cwd: cwd.clone(),
             state: AcpSessionState::Idle,
             created_at: created_at.clone(),
             updated_at: created_at,
-            principal: if principal.is_empty() { None } else { Some(principal.to_string()) },
+            principal: if principal.is_empty() {
+                None
+            } else {
+                Some(principal.to_string())
+            },
             provider_session_id: Some(started.provider_session_id),
             agent_name: Some(started.agent_name),
             agent_version: Some(started.agent_version),
@@ -267,10 +289,7 @@ impl AcpSessionRegistry {
         principal: &str,
     ) -> Result<(), ToolError> {
         // Clone Arc, drop map guard.
-        let session = {
-            let guard = self.sessions.read().await;
-            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
-        };
+        let session = self.get_session_arc(session_id).await?;
 
         Self::check_principal(&session, principal)?;
 
@@ -307,9 +326,14 @@ impl AcpSessionRegistry {
 
         let runtime = {
             let handle = session.handle.lock().await;
-            handle.clone().ok_or_else(|| internal("ACP runtime unavailable"))?
+            handle
+                .clone()
+                .ok_or_else(|| internal("ACP runtime unavailable"))?
         };
-        runtime.prompt(prompt.to_string()).await.map_err(internal_message)?;
+        runtime
+            .prompt(prompt.to_string())
+            .await
+            .map_err(internal_message)?;
 
         // Persist updated state.
         if let Some(db) = self.persistence().await {
@@ -329,15 +353,8 @@ impl AcpSessionRegistry {
         Ok(())
     }
 
-    pub async fn cancel_session(
-        &self,
-        session_id: &str,
-        principal: &str,
-    ) -> Result<(), ToolError> {
-        let session = {
-            let guard = self.sessions.read().await;
-            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
-        };
+    pub async fn cancel_session(&self, session_id: &str, principal: &str) -> Result<(), ToolError> {
+        let session = self.get_session_arc(session_id).await?;
 
         Self::check_principal(&session, principal)?;
 
@@ -389,15 +406,8 @@ impl AcpSessionRegistry {
         Ok(())
     }
 
-    pub async fn close_session(
-        &self,
-        session_id: &str,
-        principal: &str,
-    ) -> Result<(), ToolError> {
-        let session = {
-            let guard = self.sessions.read().await;
-            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
-        };
+    pub async fn close_session(&self, session_id: &str, principal: &str) -> Result<(), ToolError> {
+        let session = self.get_session_arc(session_id).await?;
 
         Self::check_principal(&session, principal)?;
 
@@ -445,11 +455,8 @@ impl AcpSessionRegistry {
         session_id: &str,
         since_seq: u64,
         principal: &str,
-    ) -> Result<Vec<lab_apis::acp::types::AcpEvent>, ToolError> {
-        let session = {
-            let guard = self.sessions.read().await;
-            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
-        };
+    ) -> Result<Vec<AcpEvent>, ToolError> {
+        let session = self.get_session_arc(session_id).await?;
 
         Self::check_principal(&session, principal)?;
 
@@ -489,10 +496,7 @@ impl AcpSessionRegistry {
         since_seq: u64,
         principal: &str,
     ) -> Result<impl Stream<Item = Arc<AcpEvent>> + use<>, ToolError> {
-        let session = {
-            let guard = self.sessions.read().await;
-            guard.get(session_id).cloned().ok_or_else(|| not_found("unknown ACP session"))?
-        };
+        let session = self.get_session_arc(session_id).await?;
 
         Self::check_principal(&session, principal)?;
 
@@ -604,15 +608,24 @@ impl AcpSessionRegistry {
     }
 
     async fn reattach_runtime(&self, session: &Arc<Session>) -> Result<(), ToolError> {
-        let (cwd, title) = {
+        let (provider, cwd, title) = {
             let summary = session.summary.read().await;
-            (summary.cwd.clone(), summary.title.clone())
+            (
+                summary.provider.clone(),
+                summary.cwd.clone(),
+                summary.title.clone(),
+            )
         };
 
         let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
         let (runtime, started) = launch_codex_runtime(
             session.id.clone(),
-            StartSessionInput { cwd, title: Some(title), principal: None },
+            StartSessionInput {
+                provider: Some(provider),
+                cwd,
+                title: Some(title),
+                principal: None,
+            },
             event_tx.clone(),
         )
         .await
@@ -744,6 +757,20 @@ async fn persist_session_event(registry: &AcpSessionRegistry, event: &AcpEvent) 
                 seq = event.seq(),
                 error = %error,
                 "failed to persist typed acp event; replay is limited to in-memory history",
+            );
+        }
+
+        if let Some(state) = session_state_from_event(event)
+            && let Err(error) = db.update_session_state(event.session_id(), state).await
+        {
+            tracing::warn!(
+                surface = "acp",
+                service = "registry",
+                action = "session.state.persist",
+                session_id = event.session_id(),
+                seq = event.seq(),
+                error = %error,
+                "failed to persist acp session state from event",
             );
         }
     }

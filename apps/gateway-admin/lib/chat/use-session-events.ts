@@ -10,6 +10,7 @@ import {
   bridgeEventFromAcpEvent,
   deriveTranscriptAndActivity,
   resolveLastSessionEventSeq,
+  resolveSessionStatusFromEvents,
 } from './session-events'
 
 export type SessionEventConnectionState = 'idle' | 'connecting' | 'open' | 'error'
@@ -53,13 +54,17 @@ export function consumeSessionEventBuffer(buffer: string, lastSeq: number) {
       continue
     }
 
-    const event = JSON.parse(dataLines.join('\n')) as AcpEvent
+    const event = JSON.parse(dataLines.join('\n')) as AcpEvent | BridgeEvent
     if (event.seq <= nextLastSeq) {
       continue
     }
 
     nextLastSeq = event.seq
-    events.push(bridgeEventFromAcpEvent(event))
+    if ('session_id' in event) {
+      events.push(bridgeEventFromAcpEvent(event))
+    } else {
+      events.push(event)
+    }
   }
 
   return {
@@ -177,6 +182,7 @@ export function useSessionEvents(sessionId: string | null) {
   return {
     events,
     connectionState,
+    sessionStatus: resolveSessionStatusFromEvents(events),
     messages: derived.messages,
     activity: derived.activity,
   }

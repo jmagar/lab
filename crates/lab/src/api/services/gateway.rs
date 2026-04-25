@@ -56,14 +56,14 @@ fn inject_gateway_owner(params: Value, subject: Option<&str>, request_id: Option
         (None, Some(request_id)) => Some(format!("api:anonymous:{request_id}")),
         (None, None) => Some("api:anonymous".to_string()),
     };
-    object
-        .entry("owner".to_string())
-        .or_insert_with(|| serde_json::json!({
+    object.entry("owner".to_string()).or_insert_with(|| {
+        serde_json::json!({
             "surface": "api",
             "subject": subject,
             "request_id": request_id,
             "raw": raw,
-        }));
+        })
+    });
     if let Some(origin) = raw {
         object
             .entry("origin".to_string())
@@ -86,19 +86,34 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::api::{router::build_router_with_bearer, state::AppState};
+    use crate::config::{LabConfig, VirtualServerConfig, VirtualServerSurfacesConfig};
+    use crate::dispatch::gateway::config::{load_gateway_config, write_gateway_config};
     use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
     use crate::registry::build_default_registry;
 
-    fn test_app() -> Router {
+    fn test_manager_with_path() -> (Arc<GatewayManager>, std::path::PathBuf) {
         static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
         let path = std::env::temp_dir().join(format!(
             "lab-gateway-api-test-{}-{}.toml",
             std::process::id(),
             NEXT_ID.fetch_add(1, Ordering::Relaxed)
         ));
-        let state = AppState::from_registry(build_default_registry()).with_gateway_manager(
-            Arc::new(GatewayManager::new(path, GatewayRuntimeHandle::default())),
-        );
+        (
+            Arc::new(GatewayManager::new(path.clone(), GatewayRuntimeHandle::default())),
+            path,
+        )
+    }
+
+    fn test_manager() -> Arc<GatewayManager> {
+        test_manager_with_path().0
+    }
+
+    fn test_app() -> Router {
+        test_app_with_manager(test_manager())
+    }
+
+    fn test_app_with_manager(manager: Arc<GatewayManager>) -> Router {
+        let state = AppState::from_registry(build_default_registry()).with_gateway_manager(manager);
         build_router_with_bearer(state, None, None)
     }
 
@@ -135,6 +150,86 @@ mod tests {
     async fn gateway_list_route_exists() {
         let response = post_gateway_fresh(json!({"action":"gateway.list","params":{}})).await;
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn gateway_list_returns_stale_virtual_server_warning() {
+        let manager = test_manager();
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "stale-registry".to_string(),
+                    service: "mcpregistry".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        mcp: true,
+                        ..VirtualServerSurfacesConfig::default()
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        let response = post_gateway(
+            test_app_with_manager(manager),
+            json!({"action":"gateway.list","params":{}}),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(payload[0]["id"], "stale-registry");
+        assert_eq!(payload[0]["warnings"][0]["code"], "unknown_service");
+    }
+
+    #[tokio::test]
+    async fn gateway_reload_quarantines_stale_virtual_server_before_list() {
+        let (manager, path) = test_manager_with_path();
+        write_gateway_config(
+            &path,
+            &LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "stale-registry".to_string(),
+                    service: "mcpregistry".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        mcp: true,
+                        ..VirtualServerSurfacesConfig::default()
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            },
+        )
+        .expect("write config");
+        let app = test_app_with_manager(manager);
+
+        let reloaded = post_gateway(
+            app.clone(),
+            json!({"action":"gateway.reload","params":{"confirm":true}}),
+        )
+        .await;
+        assert_eq!(reloaded.status(), StatusCode::OK);
+
+        let listed = post_gateway(app, json!({"action":"gateway.list","params":{}})).await;
+        assert_eq!(listed.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(listed.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(payload.as_array().expect("array").len(), 0);
+
+        let migrated = load_gateway_config(&path).expect("load migrated config");
+        assert!(migrated.virtual_servers.is_empty());
+        assert_eq!(migrated.quarantined_virtual_servers.len(), 1);
+        assert_eq!(
+            migrated.quarantined_virtual_servers[0].id,
+            "stale-registry"
+        );
     }
 
     #[tokio::test]

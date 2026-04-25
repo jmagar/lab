@@ -75,16 +75,16 @@ pub fn validate_stdio_argv(args: &[String]) -> Result<(), ToolError> {
 pub fn validate_env_var_name(name: &str) -> Result<(), ToolError> {
     let valid = !name.is_empty()
         && name.starts_with(|c: char| c.is_ascii_uppercase())
-        && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
 
     if valid {
         Ok(())
     } else {
         Err(ToolError::Sdk {
             sdk_kind: "invalid_param".to_string(),
-            message: format!(
-                "env var name '{name}' is invalid; must match ^[A-Z][A-Z0-9_]*$"
-            ),
+            message: format!("env var name '{name}' is invalid; must match ^[A-Z][A-Z0-9_]*$"),
         })
     }
 }
@@ -187,12 +187,11 @@ pub fn list_servers_params(params: &Value) -> Result<ListServersParams, ToolErro
 
 #[cfg(feature = "mcpregistry")]
 pub fn parse_lab_metadata(value: &Value) -> Result<LabRegistryMetadata, ToolError> {
-    let metadata: LabRegistryMetadata = serde_json::from_value(value.clone()).map_err(|e| {
-        ToolError::Sdk {
+    let metadata: LabRegistryMetadata =
+        serde_json::from_value(value.clone()).map_err(|e| ToolError::Sdk {
             sdk_kind: "invalid_param".to_string(),
             message: format!("invalid Lab metadata: {e}"),
-        }
-    })?;
+        })?;
     validate_lab_metadata(&metadata)?;
     Ok(normalize_lab_metadata(metadata))
 }
@@ -209,7 +208,9 @@ fn validate_lab_metadata(metadata: &LabRegistryMetadata) -> Result<(), ToolError
     if let Some(curation) = &metadata.curation {
         for tag in &curation.tags {
             if tag.trim().is_empty() {
-                return Err(invalid_metadata("curation.tags must not contain empty values"));
+                return Err(invalid_metadata(
+                    "curation.tags must not contain empty values",
+                ));
             }
         }
     }
@@ -222,12 +223,22 @@ fn validate_lab_metadata(metadata: &LabRegistryMetadata) -> Result<(), ToolError
             "quality.last_install_tested_at",
         )?;
         match quality.transport_score {
-            Some(LabRegistryTransportScore::Good | LabRegistryTransportScore::Mixed | LabRegistryTransportScore::Poor) | None => {}
+            Some(
+                LabRegistryTransportScore::Good
+                | LabRegistryTransportScore::Mixed
+                | LabRegistryTransportScore::Poor,
+            )
+            | None => {}
         }
     }
     if let Some(ux) = &metadata.ux {
         match ux.setup_difficulty {
-            Some(LabRegistrySetupDifficulty::Easy | LabRegistrySetupDifficulty::Medium | LabRegistrySetupDifficulty::Hard) | None => {}
+            Some(
+                LabRegistrySetupDifficulty::Easy
+                | LabRegistrySetupDifficulty::Medium
+                | LabRegistrySetupDifficulty::Hard,
+            )
+            | None => {}
         }
     }
     Ok(())
@@ -256,7 +267,8 @@ fn normalize_lab_metadata(mut metadata: LabRegistryMetadata) -> LabRegistryMetad
         trust.reviewed_at = normalize_optional_string(trust.reviewed_at.take());
     }
     if let Some(quality) = metadata.quality.as_mut() {
-        quality.last_install_tested_at = normalize_optional_string(quality.last_install_tested_at.take());
+        quality.last_install_tested_at =
+            normalize_optional_string(quality.last_install_tested_at.take());
     }
     metadata
 }
@@ -275,9 +287,9 @@ fn validate_timestamp(value: Option<&str>, field: &str) -> Result<(), ToolError>
     let Some(value) = value else {
         return Ok(());
     };
-    value.parse::<jiff::Timestamp>().map_err(|_| invalid_metadata(&format!(
-        "`{field}` must be an RFC3339 timestamp"
-    )))?;
+    value
+        .parse::<jiff::Timestamp>()
+        .map_err(|_| invalid_metadata(&format!("`{field}` must be an RFC3339 timestamp")))?;
     Ok(())
 }
 

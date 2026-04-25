@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -52,9 +54,18 @@ impl ClaudeMarketplaceBackend {
         String,
     ) {
         let kind = m.get("source").and_then(Value::as_str).unwrap_or("local");
-        let url = m.get("url").and_then(Value::as_str).map(ToString::to_string);
-        let repo = m.get("repo").and_then(Value::as_str).map(ToString::to_string);
-        let path = m.get("path").and_then(Value::as_str).map(ToString::to_string);
+        let url = m
+            .get("url")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let repo = m
+            .get("repo")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let path = m
+            .get("path")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
         let gh_user = repo
             .as_deref()
             .and_then(|r| r.split('/').next())
@@ -83,7 +94,10 @@ impl ClaudeMarketplaceBackend {
                     .and_then(Value::as_array)
                     .cloned()
                     .unwrap_or_default();
-                let display_name = v.get("name").and_then(Value::as_str).map(ToString::to_string);
+                let display_name = v
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string);
                 let owner_name = v
                     .get("owner")
                     .and_then(|o| o.get("name"))
@@ -134,7 +148,9 @@ impl ClaudeMarketplaceBackend {
                 .get("installLocation")
                 .and_then(Value::as_str)
                 .map(PathBuf::from);
-            let manifest = install_loc.as_deref().and_then(Self::read_marketplace_manifest);
+            let manifest = install_loc
+                .as_deref()
+                .and_then(Self::read_marketplace_manifest);
             let plugin_count = manifest.as_ref().map(|m| m.plugins.len()).unwrap_or(0);
             let display_name = manifest
                 .as_ref()
@@ -279,7 +295,9 @@ impl ClaudeMarketplaceBackend {
 
 impl MarketplaceBackend for ClaudeMarketplaceBackend {
     fn is_available(&self) -> bool {
-        client::claude_plugins_root().ok().is_some_and(|path| path.exists())
+        client::claude_plugins_root()
+            .ok()
+            .is_some_and(|path| path.exists())
     }
 
     fn list_sources(&self) -> Result<Vec<Marketplace>, ToolError> {
@@ -296,7 +314,9 @@ impl MarketplaceBackend for ClaudeMarketplaceBackend {
                     continue;
                 }
             }
-            let install_loc = client::claude_plugins_root()?.join("marketplaces").join(&market.id);
+            let install_loc = client::claude_plugins_root()?
+                .join("marketplaces")
+                .join(&market.id);
             let Some(manifest) = Self::read_marketplace_manifest(&install_loc) else {
                 continue;
             };
@@ -312,7 +332,9 @@ impl MarketplaceBackend for ClaudeMarketplaceBackend {
     fn get_plugin(&self, id: &str) -> Result<Plugin, ToolError> {
         let (name, marketplace) = parse_plugin_id(id)?;
         let installed = self.load_installed()?;
-        let install_loc = client::claude_plugins_root()?.join("marketplaces").join(marketplace);
+        let install_loc = client::claude_plugins_root()?
+            .join("marketplaces")
+            .join(marketplace);
         let Some(manifest) = Self::read_marketplace_manifest(&install_loc) else {
             return Err(ToolError::Sdk {
                 sdk_kind: "not_found".into(),
@@ -323,10 +345,12 @@ impl MarketplaceBackend for ClaudeMarketplaceBackend {
             if plugin_json.get("name").and_then(Value::as_str) != Some(name) {
                 continue;
             }
-            let mut plugin = self.build_plugin(marketplace, plugin_json, &installed).ok_or_else(|| ToolError::Sdk {
-                sdk_kind: "not_found".into(),
-                message: format!("plugin `{id}` not found"),
-            })?;
+            let mut plugin = self
+                .build_plugin(marketplace, plugin_json, &installed)
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "not_found".into(),
+                    message: format!("plugin `{id}` not found"),
+                })?;
             let source = self.source_path_for_plugin(id)?;
             plugin.source_path = Some(source.to_string_lossy().into_owned());
             plugin.components = Some(components_from_manifest_and_layout(Some(&source), None));
@@ -343,7 +367,10 @@ impl MarketplaceBackend for ClaudeMarketplaceBackend {
         client::walk_artifacts(&source, &source)
     }
 
-    fn list_components(&self, id: &str) -> Result<Vec<lab_apis::marketplace::PluginComponent>, ToolError> {
+    fn list_components(
+        &self,
+        id: &str,
+    ) -> Result<Vec<lab_apis::marketplace::PluginComponent>, ToolError> {
         let source = self.source_path_for_plugin(id)?;
         Ok(components_from_manifest_and_layout(Some(&source), None))
     }

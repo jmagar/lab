@@ -8,11 +8,9 @@ pub fn run(name: &str, repo_root: &Path) -> Vec<(String, CheckResult)> {
     let mut out = Vec::new();
     let sdk = repo_root.join(format!("crates/lab-apis/tests/{name}_client.rs"));
     let dispatch = repo_root.join(format!("crates/lab/src/dispatch/{name}/dispatch.rs"));
-    let mcp = repo_root.join(format!("crates/lab/src/mcp/services/{name}.rs"));
     let api = repo_root.join(format!("crates/lab/src/api/services/{name}.rs"));
     out.push(("tests.sdk".into(), file_or_skip(&sdk)));
     out.push(("impl.dispatch".into(), file_or_skip(&dispatch)));
-    out.push(("impl.mcp".into(), file_or_skip(&mcp)));
     out.push(("impl.api".into(), file_or_skip(&api)));
     out
 }

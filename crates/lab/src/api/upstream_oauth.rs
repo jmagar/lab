@@ -269,25 +269,24 @@ async fn start(
             "upstream OAuth not configured (missing SQLite store)",
         ));
     }
-    let begin =
-        crate::dispatch::gateway::oauth::begin_authorization(
-            &manager,
-            &body.upstream,
-            SHARED_GATEWAY_OAUTH_SUBJECT,
-        )
-        .await
-        .inspect_err(|error| {
-            warn!(
-                surface = "api",
-                service = "upstream_oauth",
-                action = "start",
-                subject = %auth.sub,
-                oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
-                elapsed_ms = started.elapsed().as_millis(),
-                kind = error.kind(),
-                "upstream oauth start failed"
-            );
-        })?;
+    let begin = crate::dispatch::gateway::oauth::begin_authorization(
+        &manager,
+        &body.upstream,
+        SHARED_GATEWAY_OAUTH_SUBJECT,
+    )
+    .await
+    .inspect_err(|error| {
+        warn!(
+            surface = "api",
+            service = "upstream_oauth",
+            action = "start",
+            subject = %auth.sub,
+            oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
+            elapsed_ms = started.elapsed().as_millis(),
+            kind = error.kind(),
+            "upstream oauth start failed"
+        );
+    })?;
     info!(
         surface = "api",
         service = "upstream_oauth",

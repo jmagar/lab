@@ -7,8 +7,3 @@
 //! cross-surface callers.
 
 pub mod send;
-
-pub use send::{
-    NodeDispatchError, SenderRegistry, SessionToken, send_text_to_node, send_to_node,
-    sender_registry,
-};

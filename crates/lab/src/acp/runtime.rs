@@ -1,28 +1,48 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ConfigOptionUpdate, ContentBlock, ContentChunk,
     CreateTerminalRequest, CurrentModeUpdate, FileSystemCapabilities, Implementation,
     InitializeRequest, KillTerminalRequest, PermissionOptionKind, ProtocolVersion,
-    ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionInfoUpdate, SessionNotification, SessionUpdate, StopReason,
-    TerminalOutputRequest, WaitForTerminalExitRequest, WriteTextFileRequest, WriteTextFileResponse,
+    ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionInfoUpdate, SessionNotification, SessionUpdate, StopReason, TerminalOutputRequest,
+    WaitForTerminalExitRequest, WriteTextFileRequest, WriteTextFileResponse,
 };
-use agent_client_protocol::util::MatchDispatch;
-use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, on_receive_request};
+use agent_client_protocol::{
+    Agent, ByteStreams, Client, ConnectionTo, Dispatch, JsonRpcMessage, on_receive_request,
+};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+#[cfg(unix)]
+use nix::sys::signal::{Signal, killpg};
+#[cfg(unix)]
+use nix::unistd::Pid;
+
 use super::types::{
     AcpEvent, AcpPermissionOption, AcpProviderHealth, StartSessionInput, StartSessionResult,
 };
+use crate::acp::providers::{AcpProviderEntry, read_providers};
 
 fn acp_internal_error(message: impl Into<String>) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(message.into())
+}
+
+const DEFAULT_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn acp_prompt_idle_timeout() -> Duration {
+    std::env::var("LAB_ACP_PROMPT_IDLE_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .filter(|duration| !duration.is_zero())
+        .unwrap_or(DEFAULT_PROMPT_IDLE_TIMEOUT)
 }
 
 #[derive(Clone)]
@@ -51,14 +71,80 @@ enum SessionCommand {
     Cancel,
 }
 
+#[derive(Default)]
+struct StreamMessageIds {
+    user: Option<String>,
+    assistant: Option<String>,
+}
+
+impl StreamMessageIds {
+    fn user_message_id(&mut self) -> String {
+        self.user
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+            .clone()
+    }
+
+    fn assistant_message_id(&mut self) -> String {
+        self.assistant
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+            .clone()
+    }
+}
+
 struct RuntimeStarted {
     provider_session_id: String,
     agent_name: String,
     agent_version: String,
 }
 
+#[derive(Default)]
+struct PromptLifecycle {
+    active: AtomicBool,
+    terminal_sent: AtomicBool,
+    saw_prompt_progress: AtomicBool,
+}
+
+impl PromptLifecycle {
+    fn start(&self) {
+        self.active.store(true, Ordering::SeqCst);
+        self.terminal_sent.store(false, Ordering::SeqCst);
+        self.saw_prompt_progress.store(false, Ordering::SeqCst);
+    }
+
+    fn note_prompt_progress(&self) {
+        self.saw_prompt_progress.store(true, Ordering::SeqCst);
+    }
+
+    fn finish(&self) {
+        self.terminal_sent.store(true, Ordering::SeqCst);
+        self.active.store(false, Ordering::SeqCst);
+    }
+
+    fn take_unfinished_prompt(&self) -> Option<bool> {
+        let was_active = self.active.swap(false, Ordering::SeqCst);
+        let terminal_sent = self.terminal_sent.load(Ordering::SeqCst);
+        if was_active && !terminal_sent {
+            self.terminal_sent.store(true, Ordering::SeqCst);
+            return Some(self.saw_prompt_progress.load(Ordering::SeqCst));
+        }
+        None
+    }
+}
+
+struct SessionDispatchProgress {
+    assistant_output: bool,
+    prompt_progress: bool,
+}
+
 #[derive(Clone)]
 struct CodexLaunch {
+    command: String,
+    args: Vec<String>,
+}
+
+#[derive(Clone)]
+struct ProviderLaunch {
+    id: String,
     command: String,
     args: Vec<String>,
 }
@@ -69,6 +155,7 @@ fn codex_launch_override() -> &'static Mutex<Option<CodexLaunch>> {
 }
 
 #[doc(hidden)]
+#[allow(dead_code)]
 pub fn set_codex_launch_override_for_tests(command: Option<String>, args: Vec<String>) {
     let mut launch = codex_launch_override()
         .lock()
@@ -114,6 +201,30 @@ pub async fn launch_codex_runtime(
     ))
 }
 
+pub fn normalize_provider_id(provider: Option<&str>) -> String {
+    match provider.filter(|value| !value.trim().is_empty()) {
+        Some("codex") | None => "codex-acp".to_string(),
+        Some(provider) => provider.to_string(),
+    }
+}
+
+pub fn provider_healths() -> Vec<AcpProviderHealth> {
+    let mut providers: Vec<AcpProviderHealth> = read_providers()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|provider| health_for_provider_entry(&provider))
+        .collect();
+
+    if !providers
+        .iter()
+        .any(|provider| provider.provider == "codex-acp")
+    {
+        providers.insert(0, codex_provider_health());
+    }
+
+    providers
+}
+
 pub fn codex_provider_health() -> AcpProviderHealth {
     let (command, _args) = resolve_codex_launch();
     let ready = if std::env::var("ACP_CODEX_COMMAND")
@@ -130,7 +241,7 @@ pub fn codex_provider_health() -> AcpProviderHealth {
     };
 
     AcpProviderHealth {
-        provider: "codex".to_string(),
+        provider: "codex-acp".to_string(),
         available: ready,
         version: None,
         message: if ready {
@@ -142,6 +253,59 @@ pub fn codex_provider_health() -> AcpProviderHealth {
             )
         },
     }
+}
+
+fn health_for_provider_entry(provider: &AcpProviderEntry) -> AcpProviderHealth {
+    let launch = launch_from_provider_entry(provider);
+    let available = command_available(&launch.command);
+    AcpProviderHealth {
+        provider: provider.id.clone(),
+        available,
+        version: Some(provider.version.clone()),
+        message: if available {
+            None
+        } else {
+            Some(format!(
+                "ACP provider command `{}` is unavailable",
+                launch.command
+            ))
+        },
+    }
+}
+
+fn command_available(command: &str) -> bool {
+    if command.contains('/') || command.contains('\\') {
+        return Path::new(command).exists();
+    }
+    cached_command_lookup(command)
+}
+
+/// TTL cache for `which`/`where` lookups. Provider health endpoints can be
+/// polled per-request; without this each call shells out once per provider.
+fn cached_command_lookup(command: &str) -> bool {
+    const CACHE_TTL: Duration = Duration::from_secs(10);
+
+    static CACHE: OnceLock<Mutex<std::collections::HashMap<String, (Instant, bool)>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+
+    if let Ok(map) = cache.lock() {
+        if let Some((stored_at, available)) = map.get(command) {
+            if stored_at.elapsed() < CACHE_TTL {
+                return *available;
+            }
+        }
+    }
+
+    let probe = std::process::Command::new(if cfg!(windows) { "where" } else { "which" })
+        .arg(command)
+        .output();
+    let available = probe.is_ok_and(|output| output.status.success());
+
+    if let Ok(mut map) = cache.lock() {
+        map.insert(command.to_string(), (Instant::now(), available));
+    }
+    available
 }
 
 fn resolve_codex_launch() -> (String, Vec<String>) {
@@ -170,6 +334,43 @@ fn resolve_codex_launch() -> (String, Vec<String>) {
     (command, vec!["@zed-industries/codex-acp".to_string()])
 }
 
+fn launch_from_provider_entry(provider: &AcpProviderEntry) -> ProviderLaunch {
+    let mut parts = provider.command.split_whitespace();
+    let command = parts.next().unwrap_or("").to_string();
+    let args = parts.map(ToOwned::to_owned).collect();
+    ProviderLaunch {
+        id: provider.id.clone(),
+        command,
+        args,
+    }
+}
+
+fn resolve_provider_launch(provider: Option<&str>) -> Result<ProviderLaunch, String> {
+    let provider_id = normalize_provider_id(provider);
+    if provider_id == "codex-acp" {
+        if let Some(entry) = read_providers()
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|entry| entry.id == provider_id)
+        {
+            return Ok(launch_from_provider_entry(&entry));
+        }
+        let (command, args) = resolve_codex_launch();
+        return Ok(ProviderLaunch {
+            id: provider_id,
+            command,
+            args,
+        });
+    }
+
+    read_providers()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|entry| entry.id == provider_id)
+        .map(|entry| launch_from_provider_entry(&entry))
+        .ok_or_else(|| format!("ACP provider `{provider_id}` is not installed"))
+}
+
 async fn run_codex_session(
     session_id: String,
     input: StartSessionInput,
@@ -177,41 +378,46 @@ async fn run_codex_session(
     started_tx: oneshot::Sender<Result<RuntimeStarted, String>>,
     mut command_rx: mpsc::UnboundedReceiver<SessionCommand>,
 ) -> Result<(), String> {
-    let (command, args) = resolve_codex_launch();
-    let mut child = tokio::process::Command::new(&command)
-        .args(&args)
+    let launch = resolve_provider_launch(input.provider.as_deref())?;
+    let provider_id = launch.id.clone();
+    let mut command = tokio::process::Command::new(&launch.command);
+    command
+        .args(&launch.args)
         .current_dir(Path::new(&input.cwd))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| error.to_string())?;
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn().map_err(|error| error.to_string())?;
+    let child_process_group = child.id();
 
     let stdin = child
         .stdin
         .take()
-        .ok_or_else(|| "codex-acp stdin unavailable".to_string())?;
+        .ok_or_else(|| format!("{provider_id} stdin unavailable"))?;
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "codex-acp stdout unavailable".to_string())?;
+        .ok_or_else(|| format!("{provider_id} stdout unavailable"))?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| "codex-acp stderr unavailable".to_string())?;
+        .ok_or_else(|| format!("{provider_id} stderr unavailable"))?;
 
     let stderr_tx = event_tx.clone();
     let stderr_session = session_id.clone();
+    let stderr_provider = provider_id.clone();
     tokio::spawn(async move {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
             drop(stderr_tx.send(provider_info_event(
                 stderr_session.clone(),
-                "codex",
+                &stderr_provider,
                 json!({
                     "type": "stderr",
-                    "title": "codex-acp stderr",
+                    "title": format!("{stderr_provider} stderr"),
                     "text": line,
                 }),
             )));
@@ -220,6 +426,8 @@ async fn run_codex_session(
 
     let transport = ByteStreams::new(stdin.compat_write(), stdout.compat());
     let started_tx = Arc::new(Mutex::new(Some(started_tx)));
+    let prompt_lifecycle = Arc::new(PromptLifecycle::default());
+    let connection_provider = provider_id.clone();
     let run_result = Client
         .builder()
         .on_receive_request(
@@ -358,11 +566,15 @@ async fn run_codex_session(
             let event_tx = event_tx.clone();
             let cwd = input.cwd.clone();
             let started_tx = Arc::clone(&started_tx);
+            let prompt_lifecycle = Arc::clone(&prompt_lifecycle);
+            let provider_id = connection_provider.clone();
             move |connection: ConnectionTo<Agent>| {
                 let session_id = session_id.clone();
                 let event_tx = event_tx.clone();
                 let cwd = cwd.clone();
                 let started_tx = Arc::clone(&started_tx);
+                let prompt_lifecycle = Arc::clone(&prompt_lifecycle);
+                let provider_id = provider_id.clone();
                 async move {
                     let initialized = connection
                         .send_request(
@@ -404,7 +616,7 @@ async fn run_codex_session(
                                     .agent_info
                                     .as_ref()
                                     .map(|info| info.name.clone())
-                                    .unwrap_or_else(|| "Codex ACP".to_string())
+                                    .unwrap_or_else(|| provider_id.clone())
                             }),
                         agent_version: initialized
                             .agent_info
@@ -419,13 +631,16 @@ async fn run_codex_session(
                     while let Some(command) = command_rx.recv().await {
                         match command {
                             SessionCommand::Prompt(prompt) => {
+                                prompt_lifecycle.start();
+                                let stream_message_ids =
+                                    Arc::new(Mutex::new(StreamMessageIds::default()));
                                 drop(event_tx.send(session_state_event(
                                     session_id.clone(),
                                     lab_apis::acp::types::AcpSessionState::Running,
                                 )));
                                 drop(event_tx.send(provider_info_event(
                                     session_id.clone(),
-                                    "codex",
+                                    &provider_id,
                                     json!({
                                         "type": "prompt_started",
                                         "title": "Prompt started",
@@ -437,27 +652,49 @@ async fn run_codex_session(
                                     .send_prompt(prompt)
                                     .map_err(|error| acp_internal_error(error.to_string()))?;
 
+                                let mut saw_assistant_output = false;
                                 loop {
-                                    match session.read_update().await {
+                                    let update = tokio::select! {
+                                        update = session.read_update() => Some(update),
+                                        () = tokio::time::sleep(acp_prompt_idle_timeout()), if saw_assistant_output => None,
+                                    };
+                                    let update = match update {
+                                        Some(update) => update,
+                                        None => {
+                                            drop(event_tx.send(session_state_event(
+                                                session_id.clone(),
+                                                lab_apis::acp::types::AcpSessionState::Completed,
+                                            )));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                &provider_id,
+                                                json!({
+                                                    "type": "idle_completion",
+                                                    "title": "Prompt completed after provider idle timeout",
+                                                    "status": "completed",
+                                                    "timeout_ms": acp_prompt_idle_timeout().as_millis(),
+                                                }),
+                                            )));
+                                            prompt_lifecycle.finish();
+                                            break;
+                                        }
+                                    };
+
+                                    match update {
                                         Ok(agent_client_protocol::SessionMessage::SessionMessage(
                                             dispatch,
                                         )) => {
-                                            MatchDispatch::new(dispatch)
-                                                .if_notification({
-                                                    let session_id = session_id.clone();
-                                                    let event_tx = event_tx.clone();
-                                                    async move |notification: SessionNotification| {
-                                                        drop(push_session_update(
-                                                            &session_id,
-                                                            &event_tx,
-                                                            notification.update,
-                                                        ));
-                                                        Ok(())
-                                                    }
-                                                })
-                                                .await
-                                                .otherwise_ignore()
-                                                .map_err(|error| acp_internal_error(error.to_string()))?;
+                                            let progress = handle_session_dispatch(
+                                                &session_id,
+                                                &event_tx,
+                                                dispatch,
+                                                &stream_message_ids,
+                                            )
+                                            .map_err(acp_internal_error)?;
+                                            saw_assistant_output |= progress.assistant_output;
+                                            if progress.prompt_progress {
+                                                prompt_lifecycle.note_prompt_progress();
+                                            }
                                         }
                                         Ok(agent_client_protocol::SessionMessage::StopReason(
                                             stop_reason,
@@ -475,7 +712,7 @@ async fn run_codex_session(
                                             )));
                                             drop(event_tx.send(provider_info_event(
                                                 session_id.clone(),
-                                                "codex",
+                                                &provider_id,
                                                 json!({
                                                     "type": "stop_reason",
                                                     "title": "Prompt completed",
@@ -486,12 +723,13 @@ async fn run_codex_session(
                                                     "stop_reason": stop_reason,
                                                 }),
                                             )));
+                                            prompt_lifecycle.finish();
                                             break;
                                         }
                                         Ok(_) => {
                                             drop(event_tx.send(provider_info_event(
                                                 session_id.clone(),
-                                                "codex",
+                                                &provider_id,
                                                 json!({
                                                     "type": "unhandled_provider_message",
                                                     "title": "Unhandled provider update",
@@ -505,13 +743,14 @@ async fn run_codex_session(
                                             )));
                                             drop(event_tx.send(provider_info_event(
                                                 session_id.clone(),
-                                                "codex",
+                                                &provider_id,
                                                 json!({
                                                     "type": "provider_error",
                                                     "title": "Provider error",
                                                     "text": error.to_string(),
                                                 }),
                                             )));
+                                            prompt_lifecycle.finish();
                                             break;
                                         }
                                     }
@@ -534,21 +773,66 @@ async fn run_codex_session(
         })
         .await;
 
-    if let Err(error) = run_result {
+    if let Some(saw_assistant_output) = prompt_lifecycle.take_unfinished_prompt() {
+        let state = if saw_assistant_output {
+            lab_apis::acp::types::AcpSessionState::Completed
+        } else {
+            lab_apis::acp::types::AcpSessionState::Failed
+        };
+        let status = match state {
+            lab_apis::acp::types::AcpSessionState::Completed => "completed",
+            _ => "failed",
+        };
+        drop(event_tx.send(session_state_event(session_id.clone(), state)));
+        drop(event_tx.send(provider_info_event(
+            session_id.clone(),
+            &provider_id,
+            json!({
+                "type": "runtime_exit_without_stop_reason",
+                "title": "ACP provider exited before sending a prompt stop reason",
+                "status": status,
+            }),
+        )));
+    }
+
+    let run_error = run_result.err();
+
+    terminate_codex_child(&mut child, child_process_group).await;
+
+    if let Some(error) = run_error {
         if let Some(sender) = started_tx.lock().ok().and_then(|mut guard| guard.take()) {
             drop(sender.send(Err(error.to_string())));
         }
         return Err(error.to_string());
     }
 
-    drop(child.kill().await);
     Ok(())
+}
+
+async fn terminate_codex_child(
+    child: &mut tokio::process::Child,
+    child_process_group: Option<u32>,
+) {
+    #[cfg(unix)]
+    if let Some(pid) = child_process_group.and_then(|value| i32::try_from(value).ok()) {
+        let pgid = Pid::from_raw(pid);
+        let _ = killpg(pgid, Signal::SIGTERM);
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        if matches!(child.try_wait(), Ok(None)) {
+            let _ = killpg(pgid, Signal::SIGKILL);
+        }
+        drop(child.wait().await);
+        return;
+    }
+
+    drop(child.kill().await);
 }
 
 fn push_session_update(
     session_id: &str,
     event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: SessionUpdate,
+    message_ids: &mut StreamMessageIds,
 ) -> Result<(), String> {
     match update {
         SessionUpdate::UserMessageChunk(ContentChunk { content, .. }) => {
@@ -560,7 +844,7 @@ fn push_session_update(
                     seq: 0,
                     role: "user".to_string(),
                     text: content_to_text(content),
-                    message_id: uuid::Uuid::new_v4().to_string(),
+                    message_id: message_ids.user_message_id(),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
@@ -573,7 +857,7 @@ fn push_session_update(
                     seq: 0,
                     role: "assistant".to_string(),
                     text: content_to_text(content),
-                    message_id: uuid::Uuid::new_v4().to_string(),
+                    message_id: message_ids.assistant_message_id(),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
@@ -694,6 +978,93 @@ fn push_session_update(
     }
 
     Ok(())
+}
+
+fn handle_session_dispatch(
+    session_id: &str,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+    dispatch: Dispatch,
+    stream_message_ids: &Arc<Mutex<StreamMessageIds>>,
+) -> Result<SessionDispatchProgress, String> {
+    match dispatch {
+        Dispatch::Notification(notification)
+            if SessionNotification::matches_method(notification.method()) =>
+        {
+            let notification =
+                SessionNotification::parse_message(notification.method(), notification.params())
+                    .map_err(|error| error.to_string())?;
+            let is_assistant_output =
+                matches!(notification.update, SessionUpdate::AgentMessageChunk(_));
+            let is_prompt_progress = is_prompt_progress_update(&notification.update);
+            let mut message_ids = stream_message_ids
+                .lock()
+                .map_err(|_| "ACP stream message id tracker poisoned".to_string())?;
+            push_session_update(session_id, event_tx, notification.update, &mut message_ids)?;
+            Ok(SessionDispatchProgress {
+                assistant_output: is_assistant_output,
+                prompt_progress: is_prompt_progress,
+            })
+        }
+        Dispatch::Notification(notification) => event_tx
+            .send(provider_info_event(
+                session_id.to_string(),
+                "codex",
+                json!({
+                    "type": "unhandled_provider_notification",
+                    "title": "Unhandled provider notification",
+                    "method": notification.method(),
+                }),
+            ))
+            .map_err(|_| "ACP event channel closed".to_string())
+            .map(|()| SessionDispatchProgress {
+                assistant_output: false,
+                prompt_progress: false,
+            }),
+        Dispatch::Request(request, responder) => {
+            drop(responder.respond_with_error(agent_client_protocol::Error::method_not_found()));
+            event_tx
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "unhandled_provider_request",
+                        "title": "Unhandled provider request",
+                        "method": request.method(),
+                    }),
+                ))
+                .map_err(|_| "ACP event channel closed".to_string())
+                .map(|()| SessionDispatchProgress {
+                    assistant_output: false,
+                    prompt_progress: false,
+                })
+        }
+        Dispatch::Response(_, _) => event_tx
+            .send(provider_info_event(
+                session_id.to_string(),
+                "codex",
+                json!({
+                    "type": "unhandled_provider_response",
+                    "title": "Unhandled provider response",
+                }),
+            ))
+            .map_err(|_| "ACP event channel closed".to_string())
+            .map(|()| SessionDispatchProgress {
+                assistant_output: false,
+                prompt_progress: false,
+            }),
+    }
+}
+
+fn is_prompt_progress_update(update: &SessionUpdate) -> bool {
+    matches!(
+        update,
+        SessionUpdate::AgentMessageChunk(_)
+            | SessionUpdate::AgentThoughtChunk(_)
+            | SessionUpdate::ToolCall(_)
+            | SessionUpdate::ToolCallUpdate(_)
+            | SessionUpdate::Plan(_)
+            | SessionUpdate::AvailableCommandsUpdate(_)
+    )
 }
 
 fn emit_current_mode(
@@ -819,5 +1190,79 @@ fn map_stop_reason(stop_reason: &StopReason) -> &'static str {
         StopReason::MaxTurnRequests => "max_turn_requests",
         StopReason::Refusal => "refusal",
         _ => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_client_protocol::schema::{AvailableCommandsUpdate, TextContent, ToolCall};
+
+    fn text_chunk(text: &str) -> ContentChunk {
+        ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
+    }
+
+    fn received_message_id(rx: &mut mpsc::UnboundedReceiver<AcpEvent>) -> String {
+        match rx.try_recv().expect("message chunk event") {
+            AcpEvent::MessageChunk { message_id, .. } => message_id,
+            other => panic!("expected message chunk event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn streamed_message_chunks_share_stable_message_ids_per_role() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut message_ids = StreamMessageIds::default();
+
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::UserMessageChunk(text_chunk("hello ")),
+            &mut message_ids,
+        )
+        .expect("first user chunk");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::UserMessageChunk(text_chunk("world")),
+            &mut message_ids,
+        )
+        .expect("second user chunk");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::AgentMessageChunk(text_chunk("reply ")),
+            &mut message_ids,
+        )
+        .expect("first assistant chunk");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::AgentMessageChunk(text_chunk("done")),
+            &mut message_ids,
+        )
+        .expect("second assistant chunk");
+
+        let first_user_message_id = received_message_id(&mut rx);
+        let second_user_message_id = received_message_id(&mut rx);
+        let first_assistant_message_id = received_message_id(&mut rx);
+        let second_assistant_message_id = received_message_id(&mut rx);
+
+        assert_eq!(first_user_message_id, second_user_message_id);
+        assert_eq!(first_assistant_message_id, second_assistant_message_id);
+        assert_ne!(first_user_message_id, first_assistant_message_id);
+    }
+
+    #[test]
+    fn prompt_progress_includes_provider_turn_activity() {
+        assert!(is_prompt_progress_update(
+            &SessionUpdate::AgentThoughtChunk(text_chunk("thinking"))
+        ));
+        assert!(is_prompt_progress_update(&SessionUpdate::ToolCall(
+            ToolCall::new("tool-1", "Read file")
+        )));
+        assert!(is_prompt_progress_update(
+            &SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![]))
+        ));
     }
 }

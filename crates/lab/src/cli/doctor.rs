@@ -11,8 +11,8 @@ use crate::dispatch::clients::ServiceClients;
 use crate::dispatch::doctor::{Finding, Report, Severity};
 use crate::output::OutputFormat;
 
+#[cfg(test)]
 pub use crate::dispatch::doctor::service_env_checks;
-
 
 /// Run the doctor subcommand, streaming results as they arrive.
 pub async fn run(format: OutputFormat) -> Result<ExitCode> {
@@ -42,10 +42,12 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
                 Severity::Warn => "⚠",
                 Severity::Fail => "✗",
             };
-            println!("{icon} [{service}] {check}: {msg}",
+            println!(
+                "{icon} [{service}] {check}: {msg}",
                 service = f.service,
                 check = f.check,
-                msg = f.message);
+                msg = f.message
+            );
             findings.push(f);
         }
         let report = Report { findings };

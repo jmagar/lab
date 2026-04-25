@@ -16,6 +16,7 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
+use crate::acp::providers::{AcpProviderEntry, read_providers, remove_provider, upsert_provider};
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
 use crate::dispatch::marketplace::acp_catalog::ACP_ACTIONS;
@@ -27,7 +28,7 @@ use crate::dispatch::node::send::send_rpc_to_node;
 #[cfg(feature = "acp_registry")]
 use lab_apis::acp_registry::client::AcpRegistryClient;
 #[cfg(feature = "acp_registry")]
-use lab_apis::acp_registry::types::{Agent, BinaryAsset, Distribution};
+use lab_apis::acp_registry::types::{Agent, BinaryAsset};
 
 /// Dispatch an `agent.*` action using a freshly constructed client.
 pub async fn dispatch_acp(action: &str, params: Value) -> Result<Value, ToolError> {
@@ -63,7 +64,7 @@ pub async fn dispatch_acp_with_client(
     match action {
         "agent.list" => {
             let agents = client.list_agents().await?;
-            to_json(agents)
+            to_json(enrich_agents_with_install_state(agents)?)
         }
         "agent.get" => {
             let id = require_str(&params, "id")?.to_string();
@@ -71,7 +72,7 @@ pub async fn dispatch_acp_with_client(
                 sdk_kind: "not_found".to_string(),
                 message: format!("agent `{id}` not found in registry"),
             })?;
-            to_json(agent)
+            to_json(enrich_agents_with_install_state(vec![agent])?.remove(0))
         }
         "agent.install" => dispatch_install(client, &params).await,
         "agent.uninstall" => {
@@ -86,15 +87,48 @@ pub async fn dispatch_acp_with_client(
     }
 }
 
+#[cfg(feature = "acp_registry")]
+fn enrich_agents_with_install_state(mut agents: Vec<Agent>) -> Result<Vec<Agent>, ToolError> {
+    let providers = read_providers()?;
+    let codex_ready = crate::acp::runtime::codex_provider_health().available;
+    for agent in &mut agents {
+        let installed = providers.iter().find(|provider| provider.id == agent.id);
+        if let Some(provider) = installed {
+            agent
+                .extra
+                .insert("installed".to_string(), Value::Bool(true));
+            agent.extra.insert(
+                "installedAt".to_string(),
+                Value::String(provider.installed_at.clone()),
+            );
+            agent.extra.insert(
+                "command".to_string(),
+                Value::String(provider.command.clone()),
+            );
+        } else if agent.id == "codex-acp" && codex_ready {
+            agent
+                .extra
+                .insert("installed".to_string(), Value::Bool(true));
+            agent.extra.insert("builtin".to_string(), Value::Bool(true));
+            agent.extra.insert(
+                "command".to_string(),
+                Value::String("npx @zed-industries/codex-acp".to_string()),
+            );
+        } else {
+            agent
+                .extra
+                .insert("installed".to_string(), Value::Bool(false));
+        }
+    }
+    Ok(agents)
+}
+
 // ---------------------------------------------------------------------------
 // agent.install
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "acp_registry")]
-async fn dispatch_install(
-    client: &AcpRegistryClient,
-    params: &Value,
-) -> Result<Value, ToolError> {
+async fn dispatch_install(client: &AcpRegistryClient, params: &Value) -> Result<Value, ToolError> {
     let id = require_str(params, "id")?.to_string();
 
     let node_ids: Vec<String> = match params.get("node_ids") {
@@ -180,49 +214,68 @@ async fn install_local(
     agent_id: &str,
     platform_override: Option<&str>,
 ) -> Result<Value, ToolError> {
-    let (distribution_kind, command, sha256) = match &agent.distribution {
-        Distribution::Binary(map) => {
-            let platform = platform_override
-                .map(str::to_string)
-                .unwrap_or_else(detect_platform);
-            let asset = map.get(&platform).ok_or_else(|| ToolError::Sdk {
-                sdk_kind: "not_found".to_string(),
-                message: format!(
-                    "agent `{}` has no binary asset for platform `{}` (available: {})",
-                    agent.id,
-                    platform,
-                    map.keys().cloned().collect::<Vec<_>>().join(", ")
-                ),
-            })?;
-            let (cmd_path, digest) = install_binary(agent_id, asset).await?;
-            return {
-                let entry = ProviderEntry {
-                    id: agent_id.to_string(),
-                    name: agent.name.clone(),
-                    version: agent.version.clone(),
-                    distribution: "binary".to_string(),
-                    command: cmd_path.to_string_lossy().into_owned(),
-                    installed_at: jiff::Timestamp::now().to_string(),
-                    sha256: Some(digest),
-                };
-                upsert_provider(&entry)?;
-                serde_json::to_value(&entry)
-                    .map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")))
-            };
+    // Prefer binary if the platform is covered, then npx, then uvx.
+    if let Some(map) = &agent.distribution.binary {
+        let platform = platform_override
+            .map(str::to_string)
+            .unwrap_or_else(detect_platform);
+        let asset = map.get(&platform).ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message: format!(
+                "agent `{}` has no binary asset for platform `{}` (available: {})",
+                agent.id,
+                platform,
+                map.keys().cloned().collect::<Vec<_>>().join(", ")
+            ),
+        })?;
+        let (cmd_path, digest) = install_binary(agent_id, asset).await?;
+        let entry = AcpProviderEntry {
+            id: agent_id.to_string(),
+            name: agent.name.clone(),
+            version: agent.version.clone(),
+            distribution: "binary".to_string(),
+            command: cmd_path.to_string_lossy().into_owned(),
+            installed_at: jiff::Timestamp::now().to_string(),
+            sha256: Some(digest),
+        };
+        upsert_provider(&entry)?;
+        return serde_json::to_value(&entry)
+            .map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")));
+    }
+
+    let (distribution_kind, command, sha256) = if let Some(asset) = &agent.distribution.npx {
+        let pkg = match &asset.version {
+            Some(v) => format!("{}@{}", asset.package, v),
+            None => asset.package.clone(),
+        };
+        let mut cmd = format!("npx -y {pkg}");
+        for arg in &asset.args {
+            cmd.push(' ');
+            cmd.push_str(arg);
         }
-        Distribution::Npx(asset) => (
-            "npx",
-            format!("npx -y {}@{}", asset.package, asset.version),
-            None,
-        ),
-        Distribution::Uvx(asset) => (
-            "uvx",
-            format!("uvx {}=={}", asset.package, asset.version),
-            None,
-        ),
+        ("npx", cmd, None)
+    } else if let Some(asset) = &agent.distribution.uvx {
+        let pkg = match &asset.version {
+            Some(v) => format!("{}=={}", asset.package, v),
+            None => asset.package.clone(),
+        };
+        let mut cmd = format!("uvx {pkg}");
+        for arg in &asset.args {
+            cmd.push(' ');
+            cmd.push_str(arg);
+        }
+        ("uvx", cmd, None)
+    } else {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_supported".to_string(),
+            message: format!(
+                "agent `{agent_id}` has no supported local distribution method \
+                 (binary/npx/uvx)"
+            ),
+        });
     };
 
-    let entry = ProviderEntry {
+    let entry = AcpProviderEntry {
         id: agent_id.to_string(),
         name: agent.name.clone(),
         version: agent.version.clone(),
@@ -233,7 +286,8 @@ async fn install_local(
     };
 
     upsert_provider(&entry)?;
-    serde_json::to_value(&entry).map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")))
+    serde_json::to_value(&entry)
+        .map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")))
 }
 
 fn detect_platform() -> String {
@@ -259,31 +313,33 @@ fn detect_platform() -> String {
 /// Only `npx` distribution is supported because the device-side `DistType` only
 /// has an `Npx` variant. `uvx` and `binary` return a structured error.
 #[cfg(feature = "acp_registry")]
-async fn install_remote(
-    node_id: &str,
-    agent: &Agent,
-    agent_id: &str,
-) -> Result<Value, ToolError> {
-    let (package, version) = match &agent.distribution {
-        Distribution::Npx(asset) => (asset.package.clone(), asset.version.clone()),
-        Distribution::Uvx(_) => {
-            return Err(ToolError::Sdk {
-                sdk_kind: "not_implemented".to_string(),
-                message: format!(
-                    "remote install of `{agent_id}` is not supported for uvx distribution \
-                     (node runtime only handles npx)"
-                ),
-            });
-        }
-        Distribution::Binary(_) => {
-            return Err(ToolError::Sdk {
-                sdk_kind: "not_implemented".to_string(),
-                message: format!(
-                    "remote install of `{agent_id}` is not supported for binary distribution \
-                     (node runtime only handles npx)"
-                ),
-            });
-        }
+async fn install_remote(node_id: &str, agent: &Agent, agent_id: &str) -> Result<Value, ToolError> {
+    // Remote install only supports npx; uvx and binary are device-side gaps.
+    let (package, version) = if let Some(asset) = &agent.distribution.npx {
+        (asset.package.clone(), asset.version.clone())
+    } else if agent.distribution.uvx.is_some() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_implemented".to_string(),
+            message: format!(
+                "remote install of `{agent_id}` is not supported for uvx distribution \
+                 (node runtime only handles npx)"
+            ),
+        });
+    } else if agent.distribution.binary.is_some() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_implemented".to_string(),
+            message: format!(
+                "remote install of `{agent_id}` is not supported for binary distribution \
+                 (node runtime only handles npx)"
+            ),
+        });
+    } else {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_supported".to_string(),
+            message: format!(
+                "agent `{agent_id}` has no supported remote distribution method (npx required)"
+            ),
+        });
     };
 
     // lab-zxx5.21: route through send_rpc_to_node so a UUIDv4 rpc_id is
@@ -344,7 +400,10 @@ fn validate_install_result(result: &Value) -> Result<(), &'static str> {
 ///
 /// Returns `(installed_path, sha256_hex)`.
 #[cfg(feature = "acp_registry")]
-async fn install_binary(agent_id: &str, asset: &BinaryAsset) -> Result<(PathBuf, String), ToolError> {
+async fn install_binary(
+    agent_id: &str,
+    asset: &BinaryAsset,
+) -> Result<(PathBuf, String), ToolError> {
     validate_archive_url(&asset.archive)?;
 
     let install_dir = agent_bin_dir(agent_id)?;
@@ -370,14 +429,13 @@ async fn install_binary(agent_id: &str, asset: &BinaryAsset) -> Result<(PathBuf,
         .and_then(|n| n.to_str())
         .unwrap_or(asset.cmd.trim_start_matches("./"));
 
-    let src = find_binary_in_dir(tmp_extract.path(), binary_name).ok_or_else(|| {
-        ToolError::Sdk {
+    let src =
+        find_binary_in_dir(tmp_extract.path(), binary_name).ok_or_else(|| ToolError::Sdk {
             sdk_kind: "not_found".to_string(),
             message: format!(
                 "binary `{binary_name}` not found in extracted archive for agent `{agent_id}`"
             ),
-        }
-    })?;
+        })?;
 
     let dest = install_dir.join(binary_name);
 
@@ -533,9 +591,9 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
         });
     }
 
-    let mut file = tokio::fs::File::create(dest).await.map_err(|e| {
-        ToolError::internal_message(format!("create {}: {e}", dest.display()))
-    })?;
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(|e| ToolError::internal_message(format!("create {}: {e}", dest.display())))?;
 
     let mut hasher = Sha256::new();
     let mut stream = resp.bytes_stream();
@@ -590,16 +648,16 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
         }
     }
 
-    file.flush().await.map_err(|e| {
-        ToolError::internal_message(format!("flush {}: {e}", dest.display()))
-    })?;
+    file.flush()
+        .await
+        .map_err(|e| ToolError::internal_message(format!("flush {}: {e}", dest.display())))?;
     // lab-zxx5.32: durably commit before returning the SHA. Without this,
     // the returned hash matches bytes that may not be on disk if the system
     // crashes between flush-to-userspace-buffer and disk-commit. Matches
     // the hardening in node/install.rs::write_atomic.
-    file.sync_all().await.map_err(|e| {
-        ToolError::internal_message(format!("fsync {}: {e}", dest.display()))
-    })?;
+    file.sync_all()
+        .await
+        .map_err(|e| ToolError::internal_message(format!("fsync {}: {e}", dest.display())))?;
 
     Ok(format!("{:x}", hasher.finalize()))
 }
@@ -839,107 +897,4 @@ fn dispatch_uninstall(id: &str) -> Result<Value, ToolError> {
         "id": id,
         "removed": removed,
     }))
-}
-
-// ---------------------------------------------------------------------------
-// Provider config persistence (~/.lab/acp-providers.json)
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct ProviderEntry {
-    id: String,
-    name: String,
-    version: String,
-    distribution: String,
-    command: String,
-    installed_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sha256: Option<String>,
-}
-
-fn providers_path() -> Result<PathBuf, ToolError> {
-    let env_path = crate::config::dotenv_path().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "internal_error".to_string(),
-        message: "cannot determine ~/.lab path".to_string(),
-    })?;
-    let dir = env_path
-        .parent()
-        .ok_or_else(|| ToolError::internal_message("dotenv path has no parent"))?;
-    Ok(dir.join("acp-providers.json"))
-}
-
-fn read_providers() -> Result<Vec<ProviderEntry>, ToolError> {
-    let path = providers_path()?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let bytes = std::fs::read(&path).map_err(|e| ToolError::internal_message(format!(
-        "read {}: {e}",
-        path.display()
-    )))?;
-    if bytes.is_empty() {
-        return Ok(Vec::new());
-    }
-    serde_json::from_slice(&bytes).map_err(|e| ToolError::Sdk {
-        sdk_kind: "decode_error".to_string(),
-        message: format!("parse {}: {e}", path.display()),
-    })
-}
-
-fn write_providers(entries: &[ProviderEntry]) -> Result<(), ToolError> {
-    use std::io::Write;
-    let path = providers_path()?;
-    let dir = path
-        .parent()
-        .ok_or_else(|| ToolError::internal_message("providers path has no parent"))?;
-    std::fs::create_dir_all(dir).map_err(|e| ToolError::internal_message(format!(
-        "create {}: {e}",
-        dir.display()
-    )))?;
-    let mut tmp = tempfile::NamedTempFile::new_in(dir)
-        .map_err(|e| ToolError::internal_message(format!("temp file: {e}")))?;
-    let body = serde_json::to_vec_pretty(entries)
-        .map_err(|e| ToolError::internal_message(format!("serialize providers: {e}")))?;
-    tmp.write_all(&body)
-        .map_err(|e| ToolError::internal_message(format!("write temp: {e}")))?;
-    tmp.flush()
-        .map_err(|e| ToolError::internal_message(format!("flush temp: {e}")))?;
-    // Symlink-safety: refuse to overwrite a symlink at the destination.
-    if let Ok(meta) = std::fs::symlink_metadata(&path)
-        && meta.file_type().is_symlink()
-    {
-        return Err(ToolError::Sdk {
-            sdk_kind: "invalid_param".to_string(),
-            message: format!(
-                "refusing to overwrite symlink at {} (acp-providers.json must be a regular file)",
-                path.display()
-            ),
-        });
-    }
-    tmp.persist(&path).map_err(|e| ToolError::internal_message(format!(
-        "persist {}: {e}",
-        path.display()
-    )))?;
-    Ok(())
-}
-
-fn upsert_provider(entry: &ProviderEntry) -> Result<(), ToolError> {
-    let mut entries = read_providers()?;
-    if let Some(existing) = entries.iter_mut().find(|e| e.id == entry.id) {
-        *existing = entry.clone();
-    } else {
-        entries.push(entry.clone());
-    }
-    write_providers(&entries)
-}
-
-fn remove_provider(id: &str) -> Result<bool, ToolError> {
-    let mut entries = read_providers()?;
-    let before = entries.len();
-    entries.retain(|e| e.id != id);
-    let removed = entries.len() != before;
-    if removed {
-        write_providers(&entries)?;
-    }
-    Ok(removed)
 }

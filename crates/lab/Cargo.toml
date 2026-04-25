@@ -51,14 +51,17 @@ crossterm.workspace          = true
 
 base64.workspace             = true
 fd-lock                      = "4"
+fs4                          = "1"
 tempfile                     = "3.10"
 subtle                       = "2"
 indexmap                     = { version = "2", features = ["serde"] }
 secrecy                      = "0.8"
 sha2                         = "0.10"
+xxhash-rust                  = { version = "0.8", features = ["xxh3"] }
 hmac.workspace               = true
 chacha20poly1305             = "0.10"
 dashmap                      = "6"
+diffy-imara                  = "0.3"
 arc-swap                     = "1"
 tokio-util                   = { version = "0.7", features = ["rt", "compat"] }
 strip-ansi-escapes           = "0.2"

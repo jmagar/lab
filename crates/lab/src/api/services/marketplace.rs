@@ -24,6 +24,20 @@ use crate::dispatch::node::send::{send_rpc_to_node, subscribe_progress};
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/", post(handle))
+        .route("/artifact/fork", post(handle_artifact_fork))
+        .route("/artifact/list", post(handle_artifact_list))
+        .route("/artifact/unfork", post(handle_artifact_unfork))
+        .route("/artifact/reset", post(handle_artifact_reset))
+        .route("/artifact/diff", post(handle_artifact_diff))
+        .route("/artifact/patch", post(handle_artifact_patch))
+        .route("/artifact/update/check", post(handle_artifact_update_check))
+        .route(
+            "/artifact/update/preview",
+            post(handle_artifact_update_preview),
+        )
+        .route("/artifact/update/apply", post(handle_artifact_update_apply))
+        .route("/artifact/merge/suggest", post(handle_artifact_merge_suggest))
+        .route("/artifact/config/set", post(handle_artifact_config_set))
         .route("/cherry-pick/progress", get(cherry_pick_progress))
 }
 
@@ -50,20 +64,117 @@ async fn handle(
     headers: HeaderMap,
     Json(req): Json<ActionRequest>,
 ) -> Result<Json<Value>, ToolError> {
+    handle_marketplace_action(headers, req).await
+}
+
+async fn handle_marketplace_action(
+    headers: HeaderMap,
+    req: ActionRequest,
+) -> Result<Json<Value>, ToolError> {
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
     handle_action(
         "marketplace",
         "api",
         request_id,
         req,
-        crate::dispatch::marketplace::ACTIONS,
+        crate::dispatch::marketplace::actions(),
         |action, params| async move {
-            crate::dispatch::marketplace::dispatch_with_port(
-                &action,
-                params,
-                &WsNodeRpcPort,
-            )
-            .await
+            crate::dispatch::marketplace::dispatch_with_port(&action, params, &WsNodeRpcPort).await
+        },
+    )
+    .await
+}
+
+async fn handle_artifact_fork(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.fork", body).await
+}
+
+async fn handle_artifact_list(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.list", body).await
+}
+
+async fn handle_artifact_unfork(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.unfork", body).await
+}
+
+async fn handle_artifact_reset(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.reset", body).await
+}
+
+async fn handle_artifact_diff(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.diff", body).await
+}
+
+async fn handle_artifact_patch(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.patch", body).await
+}
+
+async fn handle_artifact_update_check(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.update.check", body).await
+}
+
+async fn handle_artifact_update_preview(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.update.preview", body).await
+}
+
+async fn handle_artifact_update_apply(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.update.apply", body).await
+}
+
+async fn handle_artifact_merge_suggest(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.merge.suggest", body).await
+}
+
+async fn handle_artifact_config_set(
+    headers: HeaderMap,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    handle_artifact_path_action(headers, "artifact.config.set", body).await
+}
+
+async fn handle_artifact_path_action(
+    headers: HeaderMap,
+    action: &'static str,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ToolError> {
+    let params = body
+        .map(|Json(value)| value)
+        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+    handle_marketplace_action(
+        headers,
+        ActionRequest {
+            action: action.to_string(),
+            params,
         },
     )
     .await
@@ -144,9 +255,7 @@ async fn cherry_pick_progress(
                             "cherry-pick SSE subscriber lagged"
                         );
                         return Some((
-                            Ok(Event::default()
-                                .event("lag")
-                                .data(skipped.to_string())),
+                            Ok(Event::default().event("lag").data(skipped.to_string())),
                             (receiver, rpc_id, opened_at),
                         ));
                     }
@@ -166,6 +275,9 @@ async fn cherry_pick_progress(
         },
     );
 
-    Ok(Sse::new(event_stream)
-        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)).text("keepalive")))
+    Ok(Sse::new(event_stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keepalive"),
+    ))
 }

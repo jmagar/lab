@@ -17,7 +17,7 @@ pub use client::QbittorrentClient;
 pub use error::QbittorrentError;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
-use crate::core::plugin_ui::{SECRET_FIELD, SECRET_OPTIONAL_FIELD, TEXT_FIELD, URL_FIELD};
+use crate::core::plugin_ui::{SECRET_FIELD, SECRET_OPTIONAL_FIELD, TEXT_OPTIONAL_FIELD, URL_FIELD};
 
 /// Compile-time metadata for the qbittorrent module.
 pub const META: PluginMeta = PluginMeta {
@@ -48,7 +48,7 @@ pub const META: PluginMeta = PluginMeta {
             description: "WebUI username (defaults to 'admin')",
             example: "admin",
             secret: false,
-            ui: Some(&TEXT_FIELD),
+            ui: Some(&TEXT_OPTIONAL_FIELD),
         },
         EnvVar {
             name: "QBITTORRENT_SID",

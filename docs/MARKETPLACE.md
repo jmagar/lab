@@ -139,7 +139,7 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 ```json
 {
   "pluginId": "aurora-design@jmagar-lab",
-  "workspaceRoot": "/Users/jmagar/.claude/plugins/workspaces/aurora-design-jmagar-lab",
+  "workspaceRoot": "/Users/jmagar/.lab/stash/plugins/aurora-design-jmagar-lab",
   "deployTarget": "/Users/jmagar/.claude/skills/aurora-design",
   "hasDirtyFiles": false,
   "files": [
@@ -152,7 +152,7 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 }
 ```
 
-The workspace mirror is created on first load from the marketplace source tree and preserved separately from the installed Claude Code target.
+The workspace mirror is created under `<workspace.root>/plugins/` on first load from the marketplace source tree and preserved separately from the installed Claude Code target. By default `workspace.root` is `~/.lab/stash`, and it also backs the read-only attachment picker. Legacy mirrors under `~/.claude/plugins/workspaces/` are migrated to `<workspace.root>/plugins/` on first access when the new mirror does not already exist.
 
 ### `SaveResult` (from `plugin.save`)
 

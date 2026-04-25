@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { useSWRConfig } from 'swr'
 import { Bot, CheckCircle, XCircle } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
@@ -45,6 +46,7 @@ function DeviceResultRow({ result }: { result: AcpAgentInstallDeviceResult }) {
 }
 
 export function AcpAgentInstallModal({ agent, open, onClose }: AcpAgentInstallModalProps) {
+  const { mutate } = useSWRConfig()
   const distKey = getDistributionKey(agent.distribution)
   const distLabel = distKey ? (DIST_LABELS[distKey] ?? distKey) : null
 
@@ -101,6 +103,7 @@ export function AcpAgentInstallModal({ agent, open, onClose }: AcpAgentInstallMo
         project_path: scope === 'project' ? projectPath.trim() : undefined,
       })
       setResults(result.results)
+      void mutate('marketplace:acp-agents')
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Installation failed')
     } finally {

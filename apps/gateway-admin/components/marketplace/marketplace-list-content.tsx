@@ -11,10 +11,10 @@ import { McpServerCard } from './mcp-server-card'
 import { AcpAgentCard } from './acp-agent-card'
 import { TypeFilter } from './type-filter'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useMarketplaces, usePlugins, useMarketplaceMutations } from '@/lib/hooks/use-marketplace'
+import { useAcpAgents, useMarketplaces, usePlugins, useMarketplaceMutations } from '@/lib/hooks/use-marketplace'
 import type { Plugin as MarketplacePlugin } from '@/lib/types/marketplace'
 import type { MarketplaceItem, ItemTypeFilter } from '@/lib/marketplace/types'
-import { MOCK_MCP_SERVERS, MOCK_ACP_AGENTS } from '@/lib/marketplace/mocks'
+import { MOCK_MCP_SERVERS } from '@/lib/marketplace/mocks'
 import { cn } from '@/lib/utils'
 import {
   AURORA_DISPLAY_1,
@@ -89,6 +89,10 @@ export function MarketplaceListContent() {
     error: pluginsError,
     mutate: refreshPlugins,
   } = usePlugins()
+  const {
+    data: acpAgents = [],
+    mutate: refreshAcpAgents,
+  } = useAcpAgents()
   const { addSource } = useMarketplaceMutations()
 
   const [tab, setTab] = useState<Tab>('browse')
@@ -109,19 +113,19 @@ export function MarketplaceListContent() {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
     try {
-      await Promise.all([refreshMarketplaces(), refreshPlugins()])
+      await Promise.all([refreshMarketplaces(), refreshPlugins(), refreshAcpAgents()])
     } finally {
       setIsRefreshing(false)
     }
-  }, [refreshMarketplaces, refreshPlugins])
+  }, [refreshMarketplaces, refreshPlugins, refreshAcpAgents])
 
   // Build unified item list from plugins + mocks
   const allItems = useMemo<MarketplaceItem[]>(() => {
     const pluginItems: MarketplaceItem[] = plugins.map(p => ({ kind: 'plugin' as const, data: p }))
     const mcpItems: MarketplaceItem[] = MOCK_MCP_SERVERS.map(s => ({ kind: 'mcp_server' as const, data: s }))
-    const acpItems: MarketplaceItem[] = MOCK_ACP_AGENTS.map(a => ({ kind: 'acp_agent' as const, data: a }))
+    const acpItems: MarketplaceItem[] = acpAgents.map(a => ({ kind: 'acp_agent' as const, data: a }))
     return [...pluginItems, ...mcpItems, ...acpItems]
-  }, [plugins])
+  }, [acpAgents, plugins])
 
   const filtered = useMemo(() => {
     let list: MarketplaceItem[] = tab === 'installed'
@@ -201,8 +205,8 @@ export function MarketplaceListContent() {
     all: allItems.length,
     plugin: plugins.length,
     mcp_server: MOCK_MCP_SERVERS.length,
-    acp_agent: MOCK_ACP_AGENTS.length,
-  }), [allItems, plugins])
+    acp_agent: acpAgents.length,
+  }), [acpAgents.length, allItems.length, plugins.length])
 
   function renderItemGrid(items: MarketplaceItem[]) {
     return (
@@ -556,7 +560,7 @@ export function MarketplaceListContent() {
                 installedIds={installedIds}
                 variant="browse"
                 mcpCount={MOCK_MCP_SERVERS.length}
-                acpCount={MOCK_ACP_AGENTS.length}
+                acpCount={acpAgents.length}
               />
               </div>
 

@@ -13,7 +13,7 @@ import {
 
 import { Badge } from '@/components/ui/badge'
 import { CommandItem, CommandShortcut } from '@/components/ui/command'
-import { formatUiDateTime } from '@/lib/format-ui-time'
+import { formatUiDateTime, formatUiRelativeTime } from '@/lib/format-ui-time'
 import { cn } from '@/lib/utils'
 import type { CommandPaletteItem } from './command-palette-data'
 
@@ -49,7 +49,9 @@ export function CommandPaletteRow({
 }: CommandPaletteRowProps) {
   const Icon = ICONS[item.icon]
   const recentLabel = item.recentTimestamp
-    ? formatUiDateTime(item.recentTimestamp)
+    ? item.type === 'recent'
+      ? formatUiRelativeTime(item.recentTimestamp)
+      : formatUiDateTime(item.recentTimestamp)
     : null
 
   return (

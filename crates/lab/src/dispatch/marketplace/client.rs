@@ -5,7 +5,10 @@
 //! filesystem I/O plus optional `tokio::process::Command` shell-out to
 //! `claude plugin install/uninstall`.
 
+#![allow(dead_code)]
+
 use std::collections::HashSet;
+use std::future::Future;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::path::PathBuf;
@@ -31,7 +34,7 @@ pub trait NodeRpcPort: Send + Sync {
         node_id: &str,
         method: &str,
         params: Value,
-    ) -> impl std::future::Future<Output = Result<Value, ToolError>> + Send;
+    ) -> impl Future<Output = Result<Value, ToolError>> + Send;
 }
 
 /// Fallback port used by surfaces that can't reach the WS sender registry
@@ -212,7 +215,9 @@ fn sync_tree_to_target(
         }
         if ft.is_dir() {
             std::fs::create_dir_all(&dest).map_err(io_internal)?;
-            sync_tree_to_target(workspace, target, &source, changed, skipped, removed, failed)?;
+            sync_tree_to_target(
+                workspace, target, &source, changed, skipped, removed, failed,
+            )?;
             continue;
         }
 
@@ -256,7 +261,11 @@ fn sync_tree_to_target(
     Ok(())
 }
 
-fn preview_tree_sync(workspace: &Path, target: &Path, current: &Path) -> Result<SyncPreview, ToolError> {
+fn preview_tree_sync(
+    workspace: &Path,
+    target: &Path,
+    current: &Path,
+) -> Result<SyncPreview, ToolError> {
     let current_rel = current.strip_prefix(workspace).unwrap_or(current);
     let current_target = if current_rel.as_os_str().is_empty() {
         target.to_path_buf()
@@ -430,4 +439,18 @@ pub(super) fn with_test_plugins_root<T>(home: &Path, run: impl FnOnce() -> T) ->
     let mut slot = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap();
     *slot = previous;
     result
+}
+
+#[cfg(test)]
+pub(super) fn test_plugins_home_override() -> Option<PathBuf> {
+    TEST_PLUGINS_ROOT_OVERRIDE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|plugins| {
+            plugins
+                .parent()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf)
+        })
 }

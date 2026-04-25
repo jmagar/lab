@@ -45,6 +45,7 @@ pub struct NodeSnapshot {
 
 impl NodeStore {
     /// Create a `NodeStore` backed by a durable SQLite log store.
+    #[allow(dead_code)]
     pub fn with_log_store(log_store: SqliteNodeLogStore) -> Self {
         Self {
             inner: Arc::new(RwLock::new(BTreeMap::new())),

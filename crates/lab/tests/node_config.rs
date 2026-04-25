@@ -7,7 +7,7 @@ fn parses_node_controller_config_block() {
         controller = "tootie"
     "#;
 
-    let parsed: lab::config::LabConfig = toml::from_str(raw).unwrap();
+    let parsed: LabConfig = toml::from_str(raw).unwrap();
     assert_eq!(
         parsed.node.as_ref().unwrap().controller.as_deref(),
         Some("tootie")
@@ -16,7 +16,7 @@ fn parses_node_controller_config_block() {
 
 #[test]
 fn defaults_node_config_when_block_missing() {
-    let parsed: lab::config::LabConfig = toml::from_str("").unwrap();
+    let parsed: LabConfig = toml::from_str("").unwrap();
     assert!(parsed.node.is_none());
 }
 
@@ -34,7 +34,14 @@ fn parses_deploy_restart_model_blocks() {
 
     let parsed: LabConfig = toml::from_str(raw).unwrap();
     assert_eq!(
-        parsed.deploy.as_ref().unwrap().defaults.as_ref().unwrap().restart,
+        parsed
+            .deploy
+            .as_ref()
+            .unwrap()
+            .defaults
+            .as_ref()
+            .unwrap()
+            .restart,
         Some(RestartModel::SystemService {
             service: "lab".into()
         })
@@ -49,7 +56,12 @@ fn parses_deploy_restart_model_blocks() {
             .unwrap()
             .restart,
         Some(RestartModel::WrapperCommand {
-            command: vec!["sudo".into(), "systemctl".into(), "restart".into(), "lab".into()]
+            command: vec![
+                "sudo".into(),
+                "systemctl".into(),
+                "restart".into(),
+                "lab".into()
+            ]
         })
     );
 }

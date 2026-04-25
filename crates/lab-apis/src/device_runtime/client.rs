@@ -23,17 +23,13 @@ impl DeviceRuntimeClient {
     }
 
     pub async fn fetch_devices(&self) -> Result<serde_json::Value, ApiError> {
-        self.with_timeout(self.http.get_json("/v1/nodes"))
-            .await
+        self.with_timeout(self.http.get_json("/v1/nodes")).await
     }
 
     pub async fn fetch_device(&self, node_id: &str) -> Result<serde_json::Value, ApiError> {
         let encoded_id = utf8_percent_encode(node_id, NON_ALPHANUMERIC).to_string();
-        self.with_timeout(
-            self.http
-                .get_json(&format!("/v1/nodes/{encoded_id}")),
-        )
-        .await
+        self.with_timeout(self.http.get_json(&format!("/v1/nodes/{encoded_id}")))
+            .await
     }
 
     pub async fn fetch_enrollments(&self) -> Result<serde_json::Value, ApiError> {

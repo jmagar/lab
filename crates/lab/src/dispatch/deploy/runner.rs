@@ -666,9 +666,10 @@ where
                     run_id = %run_id,
                 );
                 let io = Arc::new(io_factory(&host));
-                let res = run_host_pipeline(io, host.clone(), remote_path, unit, scope, build, None)
-                    .instrument(span)
-                    .await;
+                let res =
+                    run_host_pipeline(io, host.clone(), remote_path, unit, scope, build, None)
+                        .instrument(span)
+                        .await;
                 if fail_fast && !res.succeeded {
                     stop.store(true, Ordering::SeqCst);
                 }
@@ -706,7 +707,16 @@ async fn run_single_job(
             };
         }
     };
-    run_host_pipeline(io, job.host, job.remote_path, job.unit, job.scope, build, job.master_url).await
+    run_host_pipeline(
+        io,
+        job.host,
+        job.remote_path,
+        job.unit,
+        job.scope,
+        build,
+        job.master_url,
+    )
+    .await
 }
 
 pub async fn run_host_pipeline<I: HostIo + 'static>(

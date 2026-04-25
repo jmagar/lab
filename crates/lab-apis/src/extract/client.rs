@@ -1102,10 +1102,12 @@ mod tests {
         assert_eq!(cred.service, "radarr");
         assert_eq!(cred.secret.as_deref(), Some("secret-key"));
         assert!(!cred.url_verified);
-        assert!(reads
-            .lock()
-            .expect("reads")
-            .contains(&PathBuf::from("/srv/appdata/radarr/config.xml")));
+        assert!(
+            reads
+                .lock()
+                .expect("reads")
+                .contains(&PathBuf::from("/srv/appdata/radarr/config.xml"))
+        );
     }
 
     #[tokio::test]

@@ -70,9 +70,10 @@ pub async fn perform_sync(
         }
     }
 
-    let sync_result = store.sync_from_upstream(client, trigger).await.map_err(|e| {
-        ToolError::internal_message(format!("sync failed: {e}"))
-    });
+    let sync_result = store
+        .sync_from_upstream(client, trigger)
+        .await
+        .map_err(|e| ToolError::internal_message(format!("sync failed: {e}")));
 
     if rate_limit {
         *last_sync_at().lock().unwrap() = Some(std::time::Instant::now());

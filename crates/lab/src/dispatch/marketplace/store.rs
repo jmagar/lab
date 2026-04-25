@@ -175,15 +175,14 @@ impl RegistryStore {
             // Per-connection init: set busy_timeout, foreign_keys, synchronous.
             // These are connection-local pragmas and must be set on every
             // connection that the pool hands out.
-            let manager =
-                SqliteConnectionManager::file(&path).with_init(|conn| {
-                    conn.pragma_update(None, "journal_mode", "WAL")?;
-                    conn.execute_batch(
-                        "PRAGMA busy_timeout = 5000;\
+            let manager = SqliteConnectionManager::file(&path).with_init(|conn| {
+                conn.pragma_update(None, "journal_mode", "WAL")?;
+                conn.execute_batch(
+                    "PRAGMA busy_timeout = 5000;\
                          PRAGMA foreign_keys = ON;\
                          PRAGMA synchronous = NORMAL;",
-                    )
-                });
+                )
+            });
 
             let pool = Pool::builder()
                 .max_size(4)
@@ -336,11 +335,13 @@ impl RegistryStore {
         }
         let pool = self.pool.clone();
         let servers = servers.to_vec();
-        Ok(tokio::task::spawn_blocking(move || -> Result<SyncStats, RegistryStoreError> {
-            let mut conn = pool.get()?;
-            Ok(upsert_page_sync(&mut conn, &servers)?)
-        })
-        .await??)
+        Ok(
+            tokio::task::spawn_blocking(move || -> Result<SyncStats, RegistryStoreError> {
+                let mut conn = pool.get()?;
+                Ok(upsert_page_sync(&mut conn, &servers)?)
+            })
+            .await??,
+        )
     }
 
     /// Recompute `is_latest` for all servers in a single batch UPDATE.
@@ -499,7 +500,9 @@ fn list_servers_sync(
         args.push((reviewed as i64).into());
     }
     if let Some(recommended) = params.recommended {
-        sql.push_str(" AND COALESCE(json_extract(lm.meta_json, '$.ux.recommended_for_homelab'), 0) = ?");
+        sql.push_str(
+            " AND COALESCE(json_extract(lm.meta_json, '$.ux.recommended_for_homelab'), 0) = ?",
+        );
         args.push((recommended as i64).into());
     }
     if let Some(hidden) = params.hidden {
@@ -533,9 +536,7 @@ fn list_servers_sync(
         let cursor_data: CursorData = serde_json::from_slice(&decoded)
             .map_err(|e| RegistryStoreError::InvalidCursor(format!("json decode: {e}")))?;
         // Compound tiebreaker: OR is load-bearing to handle equal server_name with different version.
-        sql.push_str(
-            " AND (s.server_name > ? OR (s.server_name = ? AND s.version > ?))",
-        );
+        sql.push_str(" AND (s.server_name > ? OR (s.server_name = ? AND s.version > ?))");
         args.push(cursor_data.s.clone().into());
         args.push(cursor_data.s.into());
         args.push(cursor_data.v.into());
@@ -560,31 +561,39 @@ fn list_servers_sync(
         })?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .map(|(server_json, response_meta_json, local_meta_json, local_updated_at, local_updated_by)| {
-            let local_meta = match (local_meta_json, local_updated_at) {
-                (Some(meta_json), Some(updated_at)) => Some(LocalMetadataRecord {
-                    metadata: serde_json::from_str::<serde_json::Value>(&meta_json).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            4,
-                            rusqlite::types::Type::Text,
-                            Box::new(e),
-                        )
-                    })?,
-                    updated_at,
-                    updated_by: local_updated_by,
-                }),
-                _ => None,
-            };
-            decode_server_response(server_json, response_meta_json, local_meta).map_err(
-                |e| {
+        .map(
+            |(
+                server_json,
+                response_meta_json,
+                local_meta_json,
+                local_updated_at,
+                local_updated_by,
+            )| {
+                let local_meta = match (local_meta_json, local_updated_at) {
+                    (Some(meta_json), Some(updated_at)) => Some(LocalMetadataRecord {
+                        metadata: serde_json::from_str::<serde_json::Value>(&meta_json).map_err(
+                            |e| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    4,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(e),
+                                )
+                            },
+                        )?,
+                        updated_at,
+                        updated_by: local_updated_by,
+                    }),
+                    _ => None,
+                };
+                decode_server_response(server_json, response_meta_json, local_meta).map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(
                         2,
                         rusqlite::types::Type::Text,
                         Box::new(e),
                     )
-                },
-            )
-        })
+                })
+            },
+        )
         .collect::<Result<Vec<_>, _>>()?;
 
     // Determine next cursor before truncating.
@@ -604,7 +613,10 @@ fn list_servers_sync(
         None
     };
 
-    Ok(PagedServers { servers: rows, next_cursor })
+    Ok(PagedServers {
+        servers: rows,
+        next_cursor,
+    })
 }
 
 #[allow(dead_code)]
@@ -662,7 +674,13 @@ fn get_server_sync(
     };
 
     match result {
-        Ok((server_json, response_meta_json, local_meta_json, local_updated_at, local_updated_by)) => {
+        Ok((
+            server_json,
+            response_meta_json,
+            local_meta_json,
+            local_updated_at,
+            local_updated_by,
+        )) => {
             let local_meta = match (local_meta_json, local_updated_at) {
                 (Some(meta_json), Some(updated_at)) => Some(LocalMetadataRecord {
                     metadata: serde_json::from_str(&meta_json)?,
@@ -671,7 +689,11 @@ fn get_server_sync(
                 }),
                 _ => None,
             };
-            Ok(Some(decode_server_response(server_json, response_meta_json, local_meta)?))
+            Ok(Some(decode_server_response(
+                server_json,
+                response_meta_json,
+                local_meta,
+            )?))
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(RegistryStoreError::Db(e)),
@@ -706,31 +728,37 @@ fn list_versions_sync(
         })?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .map(|(server_json, response_meta_json, local_meta_json, local_updated_at, local_updated_by)| {
-            let local_meta = match (local_meta_json, local_updated_at) {
-                (Some(meta_json), Some(updated_at)) => Some(LocalMetadataRecord {
-                    metadata: serde_json::from_str(&meta_json).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Text,
-                            Box::new(e),
-                        )
-                    })?,
-                    updated_at,
-                    updated_by: local_updated_by,
-                }),
-                _ => None,
-            };
-            decode_server_response(server_json, response_meta_json, local_meta).map_err(
-                |e| {
+        .map(
+            |(
+                server_json,
+                response_meta_json,
+                local_meta_json,
+                local_updated_at,
+                local_updated_by,
+            )| {
+                let local_meta = match (local_meta_json, local_updated_at) {
+                    (Some(meta_json), Some(updated_at)) => Some(LocalMetadataRecord {
+                        metadata: serde_json::from_str(&meta_json).map_err(|e| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                2,
+                                rusqlite::types::Type::Text,
+                                Box::new(e),
+                            )
+                        })?,
+                        updated_at,
+                        updated_by: local_updated_by,
+                    }),
+                    _ => None,
+                };
+                decode_server_response(server_json, response_meta_json, local_meta).map_err(|e| {
                     rusqlite::Error::FromSqlConversionFailure(
                         0,
                         rusqlite::types::Type::Text,
                         Box::new(e),
                     )
-                },
-            )
-        })
+                })
+            },
+        )
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(rows)
@@ -827,7 +855,12 @@ fn upsert_page_sync(
                     stats.deleted += 1;
                 }
             }
-            Some((existing_status, existing_server_json, existing_meta_json, existing_updated_at)) => {
+            Some((
+                existing_status,
+                existing_server_json,
+                existing_meta_json,
+                existing_updated_at,
+            )) => {
                 let changed = existing_status != status
                     || existing_server_json != server_json
                     || existing_meta_json != response_meta_json
@@ -951,7 +984,11 @@ fn decode_server_response(
     if let Some(local) = local_meta {
         meta.insert_extension(
             super::LAB_REGISTRY_META_NAMESPACE,
-            audited_metadata_value(local.metadata, &local.updated_at, local.updated_by.as_deref())?,
+            audited_metadata_value(
+                local.metadata,
+                &local.updated_at,
+                local.updated_by.as_deref(),
+            )?,
         );
     }
     let meta = if meta.is_empty() { None } else { Some(meta) };
@@ -1085,9 +1122,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.pragma_update(None, "user_version", 2)?;
     }
     if version == 2 {
-        conn.execute_batch(
-            "ALTER TABLE registry_server_meta ADD COLUMN updated_by TEXT;",
-        )?;
+        conn.execute_batch("ALTER TABLE registry_server_meta ADD COLUMN updated_by TEXT;")?;
         conn.pragma_update(None, "user_version", 3)?;
     }
     conn.execute_batch("COMMIT;")?;
@@ -1135,8 +1170,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let path = std::env::temp_dir()
-            .join(format!("lab-registry-test-{}-{unique}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "lab-registry-test-{}-{unique}.db",
+            std::process::id()
+        ));
         RegistryStore::open(&path).await.unwrap()
     }
 
@@ -1159,8 +1196,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let path = std::env::temp_dir()
-            .join(format!("lab-registry-idem-{}-{unique}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "lab-registry-idem-{}-{unique}.db",
+            std::process::id()
+        ));
         // Open twice — second open re-runs migrate() which must be a no-op.
         drop(RegistryStore::open(&path).await.unwrap());
         let store2 = RegistryStore::open(&path).await.unwrap();
@@ -1180,8 +1219,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let path = std::env::temp_dir()
-            .join(format!("lab-registry-perm-{}-{unique}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "lab-registry-perm-{}-{unique}.db",
+            std::process::id()
+        ));
         drop(RegistryStore::open(&path).await.unwrap());
         let meta = std::fs::metadata(&path).unwrap();
         let mode = meta.permissions().mode() & 0o777;
@@ -1265,10 +1306,7 @@ mod tests {
         let r2 = make_server_response("io.github.user/weather", "2.0.0", true);
         store.upsert_page(&[r1, r2]).await.unwrap();
 
-        let versions = store
-            .list_versions("io.github.user/weather")
-            .await
-            .unwrap();
+        let versions = store.list_versions("io.github.user/weather").await.unwrap();
         assert_eq!(versions.len(), 2);
     }
 
@@ -1286,7 +1324,10 @@ mod tests {
         }
         store.upsert_page(&batch).await.unwrap();
 
-        let params = StoreListParams { limit: Some(3), ..Default::default() };
+        let params = StoreListParams {
+            limit: Some(3),
+            ..Default::default()
+        };
         let page = store.list_servers(params).await.unwrap();
         assert_eq!(page.servers.len(), 3);
         assert!(page.next_cursor.is_some());

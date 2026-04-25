@@ -49,14 +49,19 @@ pub enum NodeDispatchError {
 pub async fn send_to_node(node_id: &str, msg: Message) -> Result<(), NodeDispatchError> {
     let sender = {
         let registry = sender_registry().read().await;
-        let (_, sender) = registry.get(node_id).ok_or_else(|| NodeDispatchError::NotConnected {
-            node_id: node_id.to_string(),
-        })?;
+        let (_, sender) = registry
+            .get(node_id)
+            .ok_or_else(|| NodeDispatchError::NotConnected {
+                node_id: node_id.to_string(),
+            })?;
         sender.clone()
     };
-    sender.send(msg).await.map_err(|_| NodeDispatchError::ChannelClosed {
-        node_id: node_id.to_string(),
-    })
+    sender
+        .send(msg)
+        .await
+        .map_err(|_| NodeDispatchError::ChannelClosed {
+            node_id: node_id.to_string(),
+        })
 }
 
 /// Convenience wrapper: send a JSON text frame to a connected node.
@@ -330,7 +335,10 @@ pub async fn send_rpc_to_node(
                     .and_then(Value::as_str)
                     .unwrap_or("node rpc returned error")
                     .to_string();
-                return Err(ToolError::Sdk { sdk_kind: kind, message });
+                return Err(ToolError::Sdk {
+                    sdk_kind: kind,
+                    message,
+                });
             }
             Ok(response.get("result").cloned().unwrap_or(Value::Null))
         }
@@ -423,10 +431,12 @@ mod tests {
         pending_map().insert(rpc_id.clone(), tx);
 
         // Resolve. Must drop the broadcast.
-        let resolved =
-            resolve_pending_rpc(&rpc_id, json!({"id": rpc_id.clone(), "result": {}}));
+        let resolved = resolve_pending_rpc(&rpc_id, json!({"id": rpc_id.clone(), "result": {}}));
         assert!(resolved);
-        assert!(!progress_map().contains_key(&rpc_id), "broadcast must be dropped");
+        assert!(
+            !progress_map().contains_key(&rpc_id),
+            "broadcast must be dropped"
+        );
 
         // The receiver must observe Closed.
         let result = rx.recv().await;
@@ -472,7 +482,10 @@ mod tests {
         pending_owners().insert(rpc_id.clone(), "node-x".to_string());
         assert!(rpc_id_in_flight(&rpc_id), "registered id is in flight");
         pending_owners().remove(&rpc_id);
-        assert!(!rpc_id_in_flight(&rpc_id), "removed id is no longer in flight");
+        assert!(
+            !rpc_id_in_flight(&rpc_id),
+            "removed id is no longer in flight"
+        );
     }
 
     #[tokio::test]

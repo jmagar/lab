@@ -35,8 +35,9 @@ pub use error::ApiError;
 pub use http::HttpClient;
 pub use plugin::{Category, EnvVar, PluginMeta};
 pub use plugin_ui::{
-    FieldKind, FieldValidation, UiSchema, WizardKind, BOOL_FIELD, SECRET_FIELD,
-    SECRET_OPTIONAL_FIELD, TEXT_FIELD, TEXT_OPTIONAL_FIELD, URL_FIELD, URL_OPTIONAL_FIELD,
+    BOOL_FIELD, FIELD_VALIDATION_DEFAULT, FieldKind, FieldValidation, SECRET_FIELD,
+    SECRET_OPTIONAL_FIELD, TEXT_FIELD, TEXT_OPTIONAL_FIELD, UI_SCHEMA_DEFAULT, URL_FIELD,
+    URL_OPTIONAL_FIELD, UiSchema, WizardKind, file_path_within_root,
 };
 pub use status::ServiceStatus;
 pub use traits::ServiceClient;

@@ -26,6 +26,8 @@ type ProviderListPayload = {
     available?: boolean
     version?: string | null
     error?: string | null
+    command?: string | null
+    args?: string[] | null
   }>
   provider?: ProviderHealth
 }
@@ -153,6 +155,20 @@ function normalizeProviderHealth(payload: ProviderListPayload): ProviderHealth {
   }
 }
 
+function normalizeProviderList(payload: ProviderListPayload): ProviderHealth[] {
+  if (payload.provider) {
+    return [payload.provider]
+  }
+
+  return (payload.providers ?? []).map((provider) => ({
+    provider: provider.name ?? 'codex-acp',
+    ready: Boolean(provider.available),
+    command: provider.command ?? '',
+    args: provider.args ?? [],
+    message: provider.error ?? '',
+  }))
+}
+
 function extractCreatedSession(payload: SessionCreatePayload): RawSessionSummary {
   return payload.session ?? payload
 }
@@ -188,7 +204,9 @@ export function useChatSessionController(options: {
   const [runs, setRuns] = React.useState<ACPRun[]>([])
   const [selectedRunId, setSelectedRunId] = React.useState<string | null>(null)
   const [providerHealth, setProviderHealth] = React.useState<ProviderHealth | null>(null)
-  const { events, messages, activity, connectionState } = useSessionEvents(selectedRunId)
+  const [providers, setProviders] = React.useState<ProviderHealth[]>([])
+  const [selectedProviderId, setSelectedProviderId] = React.useState<string | null>(null)
+  const { events, messages, activity, connectionState, sessionStatus } = useSessionEvents(selectedRunId)
 
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null
   const projects = React.useMemo(
@@ -210,17 +228,24 @@ export function useChatSessionController(options: {
     [runs],
   )
 
+  const agents = React.useMemo<ACPAgent[]>(
+    () =>
+      providers.map((provider) => ({
+        ...ACP_AGENT,
+        id: provider.provider,
+        name: provider.provider === 'codex-acp' ? 'Codex ACP' : provider.provider,
+        version: ACP_AGENT.version,
+      })),
+    [providers],
+  )
+
   const selectedAgent = selectedRun
-    ? {
+    ? (agents.find((agent) => agent.id === selectedRun.provider) ?? {
         ...ACP_AGENT,
         id: selectedRun.provider,
-        name: `${selectedRun.provider} ACP`,
-      }
-    : {
-        ...ACP_AGENT,
-        id: providerHealth?.provider ?? ACP_AGENT.id,
-        name: `${providerHealth?.provider ?? ACP_AGENT.id} ACP`,
-      }
+        name: selectedRun.provider,
+      })
+    : (agents.find((agent) => agent.id === selectedProviderId) ?? agents[0] ?? ACP_AGENT)
 
   const fetchAcp = React.useCallback(
     async (path: string, init?: RequestInit) => {
@@ -261,24 +286,35 @@ export function useChatSessionController(options: {
   const refreshProvider = React.useCallback(async () => {
     const response = await fetchAcp('/provider')
     if (!response.ok) {
-      setProviderHealth({
-        provider: 'codex',
+      const unavailable = {
+        provider: 'codex-acp',
         ready: false,
         command: '',
         args: [],
         message: 'ACP provider unavailable.',
-      })
+      }
+      setProviders([unavailable])
+      setSelectedProviderId('codex-acp')
+      setProviderHealth(unavailable)
       return
     }
     const payload = (await response.json()) as ProviderListPayload
-    setProviderHealth(normalizeProviderHealth(payload))
+    const nextProviders = normalizeProviderList(payload)
+    const selected = nextProviders.find((provider) => provider.ready) ?? nextProviders[0] ?? normalizeProviderHealth(payload)
+    setProviders(nextProviders.length > 0 ? nextProviders : [selected])
+    setSelectedProviderId((current) =>
+      current && nextProviders.some((provider) => provider.provider === current)
+        ? current
+        : selected.provider,
+    )
+    setProviderHealth(selected)
   }, [fetchAcp])
 
   const createSession = React.useCallback<CreateSessionFn>(
     async (createOptions) => {
       const response = await fetchAcp('/sessions', {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify({ provider: selectedProviderId ?? providerHealth?.provider ?? 'codex-acp' }),
       })
       const payload = await readJsonSafe<SessionCreatePayload | ErrorPayload>(response)
       if (!response.ok || !payload) {
@@ -287,7 +323,7 @@ export function useChatSessionController(options: {
           'Failed to create ACP session.',
         )
         setProviderHealth((current) => ({
-          provider: current?.provider ?? 'codex',
+          provider: current?.provider ?? 'codex-acp',
           ready: false,
           command: current?.command ?? '',
           args: current?.args ?? [],
@@ -303,18 +339,20 @@ export function useChatSessionController(options: {
       }
       return run
     },
-    [fetchAcp, onSessionPanelClose],
+    [fetchAcp, onSessionPanelClose, providerHealth?.provider, selectedProviderId],
   )
 
   React.useEffect(() => {
     if (USE_MOCK_DATA) {
       setProviderHealth({
-        provider: 'codex',
+        provider: 'codex-acp',
         ready: false,
         command: '',
         args: [],
         message: 'ACP unavailable in mock preview.',
       })
+      setProviders([])
+      setSelectedProviderId(null)
       setRuns([])
       setSelectedRunId(null)
       return
@@ -325,6 +363,16 @@ export function useChatSessionController(options: {
   }, [refreshProvider, refreshSessions])
 
   React.useEffect(() => {
+    if (!selectedProviderId) {
+      return
+    }
+    const selected = providers.find((provider) => provider.provider === selectedProviderId)
+    if (selected) {
+      setProviderHealth(selected)
+    }
+  }, [providers, selectedProviderId])
+
+  React.useEffect(() => {
     if (!shouldAutoCreateInitialRun(Boolean(providerHealth?.ready), runs.length, selectedRunId)) {
       return
     }
@@ -333,6 +381,20 @@ export function useChatSessionController(options: {
       await createSessionForIntent(createSession, 'bootstrap', false)
     })()
   }, [createSession, providerHealth?.ready, runs.length, selectedRunId])
+
+  React.useEffect(() => {
+    if (!selectedRunId || events.length === 0) {
+      return
+    }
+
+    setRuns((current) =>
+      current.map((run) =>
+        run.id === selectedRunId && run.status !== sessionStatus
+          ? { ...run, status: sessionStatus, updatedAt: new Date() }
+          : run,
+      ),
+    )
+  }, [events.length, selectedRunId, sessionStatus])
 
   const selectRun = React.useCallback(
     (runId: string) => {
@@ -373,7 +435,7 @@ export function useChatSessionController(options: {
             'Failed to send prompt to ACP session.',
           )
           setProviderHealth((current) => ({
-            provider: current?.provider ?? 'codex',
+        provider: current?.provider ?? 'codex-acp',
             ready: false,
             command: current?.command ?? '',
             args: current?.args ?? [],
@@ -396,6 +458,7 @@ export function useChatSessionController(options: {
     selectedRunId,
     providerHealth,
     selectedAgent,
+    agents,
     projects,
     events,
     messages,
@@ -406,5 +469,6 @@ export function useChatSessionController(options: {
     selectRun,
     createRun,
     sendPrompt,
+    selectAgent: setSelectedProviderId,
   }
 }

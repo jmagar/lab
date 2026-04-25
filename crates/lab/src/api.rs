@@ -37,6 +37,10 @@ pub mod nodes;
 /// Static Labby web asset serving helpers.
 pub mod web;
 
+/// Dev mockup file server — GET /dev and /dev/:name.
+/// Handlers live here (not in router.rs) so they survive router.rs refactors.
+pub mod dev_mockups;
+
 /// Per-service HTTP route handlers (one module per service).
 pub mod services;
 

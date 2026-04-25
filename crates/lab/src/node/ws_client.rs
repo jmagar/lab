@@ -14,13 +14,13 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::{Message, WebSocketConfig};
 use uuid::Uuid;
 
+use crate::dispatch::upstream::transport::websocket::{jitter_delay, reprobe_backoff};
 use crate::node::install::{
     AgentInstallParams, InstallComponentParams, InstallScope, handle_agent_install,
     handle_install_component,
 };
 use crate::node::queue::{NodeOutboundQueue, QueuedEnvelope};
 use crate::node::token;
-use crate::dispatch::upstream::transport::websocket::{jitter_delay, reprobe_backoff};
 
 const FLUSH_BATCH_SIZE: usize = 100;
 const IDLE_FLUSH_INTERVAL: Duration = Duration::from_secs(10);
@@ -69,7 +69,8 @@ impl TailnetIdentity {
     #[must_use]
     pub fn discover(hostname: &str) -> Self {
         Self {
-            node_key: std::env::var("LAB_TAILNET_NODE_KEY").unwrap_or_else(|_| hostname.to_string()),
+            node_key: std::env::var("LAB_TAILNET_NODE_KEY")
+                .unwrap_or_else(|_| hostname.to_string()),
             login_name: std::env::var("LAB_TAILNET_LOGIN_NAME")
                 .unwrap_or_else(|_| "unknown".to_string()),
             hostname: hostname.to_string(),
@@ -86,7 +87,11 @@ pub struct WsClient {
 }
 
 impl WsClient {
-    pub fn new(base_url: &str, node_id: impl Into<String>, token_path: impl AsRef<Path>) -> Result<Self> {
+    pub fn new(
+        base_url: &str,
+        node_id: impl Into<String>,
+        token_path: impl AsRef<Path>,
+    ) -> Result<Self> {
         let url = websocket_url_from_master_base(base_url)?;
         Ok(Self {
             url,
@@ -112,7 +117,10 @@ impl WsClient {
                 Err(error) => {
                     self.connected.store(false, Ordering::Relaxed);
                     attempt = attempt.saturating_add(1);
-                    let delay = jitter_delay(reprobe_backoff(attempt), stable_seed(&self.node_id, attempt));
+                    let delay = jitter_delay(
+                        reprobe_backoff(attempt),
+                        stable_seed(&self.node_id, attempt),
+                    );
                     tracing::warn!(
                         node_id = %self.node_id,
                         attempt,
@@ -192,8 +200,7 @@ impl WsClient {
         // worker task below drains with a Semaphore-bounded concurrency cap.
         // A full queue is the backpressure signal to stop accepting new work
         // from a flooding or compromised master.
-        let (inbound_tx, mut inbound_rx) =
-            mpsc::channel::<Value>(INBOUND_RPC_QUEUE_CAPACITY);
+        let (inbound_tx, mut inbound_rx) = mpsc::channel::<Value>(INBOUND_RPC_QUEUE_CAPACITY);
         let inbound_semaphore = Arc::new(Semaphore::new(INBOUND_RPC_WORKER_PERMITS));
 
         // Inbound-RPC worker: drain the queue, acquire a permit, dispatch.
@@ -340,8 +347,9 @@ impl WsClient {
         // This guarantees tasks are cancelled and the socket halves released
         // before `run()` proceeds to the next reconnect attempt.
         let session_result: Result<()> = async {
-            let init_response =
-                init_rx.await.context("initialize response channel closed")?;
+            let init_response = init_rx
+                .await
+                .context("initialize response channel closed")?;
             validate_success_response(&init_response, &json!(1))?;
             self.connected.store(true, Ordering::Relaxed);
 
@@ -484,7 +492,9 @@ impl WsClient {
     async fn open_websocket(
         &self,
     ) -> Result<(
-        tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
         tokio_tungstenite::tungstenite::handshake::client::Response,
     )> {
         let request = self
@@ -735,59 +745,60 @@ async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) 
 
     match method.as_str() {
         "marketplace.install_component" => {
-            let install_params: InstallComponentParams =
-                match serde_json::from_value(params.clone()) {
-                    Ok(p) => p,
-                    Err(error) => {
-                        return json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": {
-                                "code": -32602,
-                                "message": format!("invalid marketplace.install_component params: {error}")
-                            }
-                        });
-                    }
-                };
-
             // lab-zxx5.18: decode `files` with explicit encoding + enforce
             // size caps BEFORE spawning the handler. Every entry MUST carry
             // `encoding: "utf8" | "base64"` — no implicit fallback.
-            match decode_component_files(
+            let component_files = match decode_component_files(
                 params.get("files").and_then(Value::as_array),
             ) {
-                Ok(component_files) => {
-                    match handle_install_component(
-                        install_params,
-                        component_files,
-                        id.clone(),
-                        progress_tx,
-                    )
-                    .await
-                    {
-                        Ok(result) => json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "result": result,
-                        }),
-                        Err(error) => json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": {
-                                "code": -32000,
-                                "data": { "kind": error_kind(&error) },
-                                "message": format!("marketplace.install_component failed: {error}")
-                            }
-                        }),
-                    }
+                Ok(files) => files,
+                Err(err) => {
+                    return json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "data": { "kind": err.kind },
+                            "message": err.message,
+                        }
+                    });
                 }
-                Err(err) => json!({
+            };
+
+            let install_params: InstallComponentParams = match serde_json::from_value(params) {
+                Ok(p) => p,
+                Err(error) => {
+                    return json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": format!("invalid marketplace.install_component params: {error}")
+                        }
+                    });
+                }
+            };
+
+            match handle_install_component(
+                install_params,
+                component_files,
+                id.clone(),
+                progress_tx,
+            )
+            .await
+            {
+                Ok(result) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": result,
+                }),
+                Err(error) => json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "error": {
-                        "code": -32602,
-                        "data": { "kind": err.kind },
-                        "message": err.message,
+                        "code": -32000,
+                        "data": { "kind": error_kind(&error) },
+                        "message": format!("marketplace.install_component failed: {error}")
                     }
                 }),
             }
@@ -820,8 +831,14 @@ async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) 
             let scope = envelope.scope.unwrap_or(InstallScope::Global);
             let project_path = envelope.project_path.as_deref();
 
-            match handle_agent_install(envelope.params, scope, project_path, id.clone(), progress_tx)
-                .await
+            match handle_agent_install(
+                envelope.params,
+                scope,
+                project_path,
+                id.clone(),
+                progress_tx,
+            )
+            .await
             {
                 Ok(result) => json!({
                     "jsonrpc": "2.0",
@@ -862,7 +879,8 @@ pub fn websocket_url_from_master_base(base_url: &str) -> Result<url::Url> {
         "wss" => "wss",
         other => return Err(anyhow!("unsupported master base url scheme `{other}`")),
     };
-    url.set_scheme(scheme).map_err(|_| anyhow!("set websocket scheme"))?;
+    url.set_scheme(scheme)
+        .map_err(|_| anyhow!("set websocket scheme"))?;
     url.set_path("/v1/nodes/ws");
     url.set_query(None);
     url.set_fragment(None);
@@ -894,10 +912,7 @@ pub fn build_initialize_request(
     })
 }
 
-pub fn queue_envelope_to_request(
-    envelope: &QueuedEnvelope,
-    id: &str,
-) -> Result<Value> {
+pub fn queue_envelope_to_request(envelope: &QueuedEnvelope, id: &str) -> Result<Value> {
     let method = match envelope.kind.as_str() {
         "syslog_batch" => "nodes/log.event",
         "status" => "nodes/status.push",
@@ -1007,7 +1022,9 @@ mod tests {
 
     #[tokio::test]
     async fn flush_queue_once_drains_and_acks_entries_over_websocket() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind listener");
         let addr = listener.local_addr().expect("listener addr");
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("accept");
@@ -1020,14 +1037,8 @@ mod tests {
                     Message::Close(_) => break,
                     other => panic!("unexpected websocket message: {other:?}"),
                 };
-                let payload: Value =
-                    serde_json::from_str(&text).expect("parse request");
-                received_methods.push(
-                    payload["method"]
-                        .as_str()
-                        .expect("method")
-                        .to_string(),
-                );
+                let payload: Value = serde_json::from_str(&text).expect("parse request");
+                received_methods.push(payload["method"].as_str().expect("method").to_string());
                 let response = serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": payload["id"],
@@ -1096,7 +1107,7 @@ mod tests {
         let store = Arc::new(crate::node::store::NodeStore::default());
         let enrollment_store = Arc::new(
             crate::node::enrollment::store::EnrollmentStore::open(
-                std::env::temp_dir().join(format!("lab-ws-client-{}.json", uuid::Uuid::new_v4())),
+                std::env::temp_dir().join(format!("lab-ws-client-{}.json", Uuid::new_v4())),
             )
             .await
             .expect("open enrollment store"),
@@ -1115,7 +1126,10 @@ mod tests {
             })
             .await
             .expect("record pending");
-        enrollment_store.approve("device-1", None).await.expect("approve");
+        enrollment_store
+            .approve("device-1", None)
+            .await
+            .expect("approve");
         let state = AppState::new()
             .with_node_store(store.clone())
             .with_enrollment_store(enrollment_store);
@@ -1123,7 +1137,9 @@ mod tests {
             .route("/v1/nodes/ws", get(fleet::websocket_upgrade))
             .with_state(state);
 
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind listener");
         let addr = listener.local_addr().expect("listener addr");
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
@@ -1197,7 +1213,10 @@ mod tests {
             Some(false)
         );
         assert_eq!(
-            snapshot.status.as_ref().and_then(|status| status.os.as_deref()),
+            snapshot
+                .status
+                .as_ref()
+                .and_then(|status| status.os.as_deref()),
             Some("linux")
         );
 
@@ -1206,7 +1225,9 @@ mod tests {
 
     #[tokio::test]
     async fn approved_device_keeps_socket_open_for_multiple_messages() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind listener");
         let addr = listener.local_addr().expect("listener addr");
         let server = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.expect("accept");
@@ -1220,12 +1241,7 @@ mod tests {
                     other => panic!("unexpected websocket message: {other:?}"),
                 };
                 let payload: Value = serde_json::from_str(&text).expect("json");
-                methods.push(
-                    payload["method"]
-                        .as_str()
-                        .expect("method")
-                        .to_string(),
-                );
+                methods.push(payload["method"].as_str().expect("method").to_string());
                 let response = json!({
                     "jsonrpc": "2.0",
                     "id": payload["id"],
@@ -1275,9 +1291,12 @@ mod tests {
             let queue = queue.clone();
             let client = client.clone();
             async move {
-                tokio::time::timeout(Duration::from_secs(2), client.connect_and_run_session(&queue))
-                    .await
-                    .ok();
+                tokio::time::timeout(
+                    Duration::from_secs(2),
+                    client.connect_and_run_session(&queue),
+                )
+                .await
+                .ok();
             }
         });
 
@@ -1336,7 +1355,10 @@ mod tests {
                 .as_array()
                 .map(|e| !e.is_empty())
                 .unwrap_or(false);
-        assert!(has_error, "expected path traversal to be rejected: {response}");
+        assert!(
+            has_error,
+            "expected path traversal to be rejected: {response}"
+        );
     }
 
     #[tokio::test]
@@ -1360,8 +1382,14 @@ mod tests {
         });
         let response = dispatch_inbound_rpc(frame, &progress_tx).await;
         assert_eq!(response["id"], 20);
-        assert!(response.get("result").is_some(), "expected success: {response}");
-        assert_eq!(response["result"]["written"].as_array().map(|a| a.len()), Some(1));
+        assert!(
+            response.get("result").is_some(),
+            "expected success: {response}"
+        );
+        assert_eq!(
+            response["result"]["written"].as_array().map(|a| a.len()),
+            Some(1)
+        );
     }
 
     // lab-zxx5.19 item 1 + 4: send_and_await must remove the pending entry on
@@ -1480,16 +1508,20 @@ mod tests {
     #[test]
     fn decode_component_files_rejects_missing_encoding_field() {
         use base64::Engine as _;
-        let _ = base64::engine::general_purpose::STANDARD.encode(b"x");
+        drop(base64::engine::general_purpose::STANDARD.encode(b"x"));
         let files = vec![json!({ "path": "a.md", "content": "hi" })];
-        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        let err = decode_component_files(Some(&files))
+            .err()
+            .expect("must reject");
         assert_eq!(err.kind, "invalid_encoding");
     }
 
     #[test]
     fn decode_component_files_rejects_unknown_encoding() {
         let files = vec![json!({ "path": "a.md", "content": "hi", "encoding": "rot13" })];
-        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        let err = decode_component_files(Some(&files))
+            .err()
+            .expect("must reject");
         assert_eq!(err.kind, "invalid_encoding");
     }
 
@@ -1498,7 +1530,9 @@ mod tests {
         // 6 MB of 'a' > 5 MB per-file cap.
         let big = "a".repeat(6 * 1024 * 1024);
         let files = vec![json!({ "path": "big.bin", "content": big, "encoding": "utf8" })];
-        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        let err = decode_component_files(Some(&files))
+            .err()
+            .expect("must reject");
         assert_eq!(err.kind, "content_too_large");
     }
 
@@ -1510,7 +1544,9 @@ mod tests {
         let files: Vec<Value> = (0..7)
             .map(|i| json!({ "path": format!("f{i}.bin"), "content": chunk, "encoding": "utf8" }))
             .collect();
-        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        let err = decode_component_files(Some(&files))
+            .err()
+            .expect("must reject");
         assert_eq!(err.kind, "content_too_large");
     }
 
@@ -1531,21 +1567,28 @@ mod tests {
     #[test]
     fn decode_component_files_rejects_missing_path() {
         let files = vec![json!({ "content": "hi", "encoding": "utf8" })];
-        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        let err = decode_component_files(Some(&files))
+            .err()
+            .expect("must reject");
         assert_eq!(err.kind, "invalid_param");
     }
 
     #[test]
     fn decode_component_files_rejects_missing_content() {
         let files = vec![json!({ "path": "a.md", "encoding": "utf8" })];
-        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        let err = decode_component_files(Some(&files))
+            .err()
+            .expect("must reject");
         assert_eq!(err.kind, "invalid_param");
     }
 
     #[test]
     fn decode_component_files_rejects_malformed_base64() {
-        let files = vec![json!({ "path": "a.bin", "content": "!!!not-b64!!!", "encoding": "base64" })];
-        let err = decode_component_files(Some(&files)).err().expect("must reject");
+        let files =
+            vec![json!({ "path": "a.bin", "content": "!!!not-b64!!!", "encoding": "base64" })];
+        let err = decode_component_files(Some(&files))
+            .err()
+            .expect("must reject");
         assert_eq!(err.kind, "invalid_encoding");
     }
 }

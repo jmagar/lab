@@ -34,11 +34,13 @@ export function ChatShell() {
     selectedRunId,
     providerHealth,
     selectedAgent,
+    agents,
     projects,
     messages,
     selectRun,
     createRun,
     sendPrompt,
+    selectAgent,
   } = useChatSessionController({
     isMobileViewport,
     onSessionPanelClose: React.useCallback(() => setSessionPanelOpen(false), []),
@@ -182,8 +184,8 @@ export function ChatShell() {
             onSend={sendPrompt}
             disabled={!providerReady}
             selectedAgent={selectedAgent}
-            agents={[selectedAgent]}
-            onSelectAgent={() => {}}
+            agents={agents.length > 0 ? agents : [selectedAgent]}
+            onSelectAgent={selectAgent}
           />
         </div>
 

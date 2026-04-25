@@ -146,10 +146,21 @@ async fn handle_preview(
     let body = Body::from_stream(stream);
 
     let inline = crate::dispatch::fs::client::is_inline_mime(preview.content_type);
-    let disposition = if inline {
-        format!("inline; filename=\"{}\"", preview.disposition_filename)
+    let dtype = if inline { "inline" } else { "attachment" };
+    // RFC 6266: `filename=` must be a quoted-string of ASCII chars only.
+    // Substitute non-ASCII bytes with `_` for the legacy parameter and use
+    // RFC 5987 `filename*` to carry the original UTF-8 name. Without this
+    // substitution, HeaderValue parsing fails on any non-ASCII basename.
+    let ascii_fallback: String = preview
+        .disposition_filename
+        .chars()
+        .map(|c| if c.is_ascii() { c } else { '_' })
+        .collect();
+    let disposition = if ascii_fallback == preview.disposition_filename {
+        format!("{dtype}; filename=\"{}\"", preview.disposition_filename)
     } else {
-        format!("attachment; filename=\"{}\"", preview.disposition_filename)
+        let encoded = rfc5987_encode(&preview.disposition_filename);
+        format!("{dtype}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}")
     };
 
     // Security headers (nosniff, X-Frame-Options, CSP) are applied via
@@ -222,4 +233,33 @@ fn log_err(action: &'static str, elapsed_ms: u128, err: &ToolError, path: Option
             "dispatch error"
         );
     }
+}
+
+/// RFC 5987 attribute-char percent-encoding for `filename*=UTF-8''…`.
+/// Encodes any byte that isn't `attr-char` per RFC 5987 §3.2.1.
+fn rfc5987_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &b in s.as_bytes() {
+        let safe = b.is_ascii_alphanumeric()
+            || matches!(
+                b,
+                b'!' | b'#'
+                    | b'$'
+                    | b'&'
+                    | b'+'
+                    | b'-'
+                    | b'.'
+                    | b'^'
+                    | b'_'
+                    | b'`'
+                    | b'|'
+                    | b'~'
+            );
+        if safe {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }

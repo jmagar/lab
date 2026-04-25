@@ -21,9 +21,9 @@ fn logs_registry() -> lab::registry::ToolRegistry {
         description: "Search and stream local-master runtime logs",
         category: "bootstrap",
         status: "available",
-        actions: lab::mcp::services::logs::ACTIONS,
+        actions: lab::dispatch::logs::ACTIONS,
         dispatch: |action, params| {
-            Box::pin(async move { lab::mcp::services::logs::dispatch(&action, params).await })
+            Box::pin(async move { lab::dispatch::logs::dispatch(&action, params).await })
         },
     });
     registry
@@ -211,7 +211,7 @@ async fn logs_mcp_tail_matches_api_query_semantics() {
         .await
         .expect("seed event");
 
-    let mcp_value = lab::mcp::services::logs::dispatch(
+    let mcp_value = lab::dispatch::logs::dispatch(
         "logs.tail",
         serde_json::json!({ "after_ts": 0, "limit": 10 }),
     )

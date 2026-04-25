@@ -41,7 +41,10 @@ pub async fn probe_service(
 ///
 /// Results are sent to `tx` as they complete. System checks are emitted
 /// synchronously first; service probes run in parallel bounded by `Semaphore(5)`.
-pub async fn stream_audit_full(clients: Arc<ServiceClients>, tx: tokio::sync::mpsc::Sender<Finding>) {
+pub async fn stream_audit_full(
+    clients: Arc<ServiceClients>,
+    tx: tokio::sync::mpsc::Sender<Finding>,
+) {
     // Emit system checks immediately (no network I/O).
     for finding in super::system::run_system_checks() {
         if tx.send(finding).await.is_err() {
@@ -76,52 +79,212 @@ pub async fn stream_audit_full(clients: Arc<ServiceClients>, tx: tokio::sync::mp
 /// All known service names (compiled in), regardless of configuration.
 fn all_service_names() -> Vec<&'static str> {
     let mut names: Vec<&'static str> = Vec::new();
-    #[cfg(feature = "radarr")]      { names.push("radarr"); }
-    #[cfg(feature = "sonarr")]      { names.push("sonarr"); }
-    #[cfg(feature = "prowlarr")]    { names.push("prowlarr"); }
-    #[cfg(feature = "plex")]        { names.push("plex"); }
-    #[cfg(feature = "tautulli")]    { names.push("tautulli"); }
-    #[cfg(feature = "sabnzbd")]     { names.push("sabnzbd"); }
-    #[cfg(feature = "qbittorrent")] { names.push("qbittorrent"); }
-    #[cfg(feature = "tailscale")]   { names.push("tailscale"); }
-    #[cfg(feature = "linkding")]    { names.push("linkding"); }
-    #[cfg(feature = "memos")]       { names.push("memos"); }
-    #[cfg(feature = "bytestash")]   { names.push("bytestash"); }
-    #[cfg(feature = "paperless")]   { names.push("paperless"); }
-    #[cfg(feature = "arcane")]      { names.push("arcane"); }
-    #[cfg(feature = "unraid")]      { names.push("unraid"); }
-    #[cfg(feature = "overseerr")]   { names.push("overseerr"); }
-    #[cfg(feature = "gotify")]      { names.push("gotify"); }
-    #[cfg(feature = "openai")]      { names.push("openai"); }
-    #[cfg(feature = "qdrant")]      { names.push("qdrant"); }
-    #[cfg(feature = "tei")]         { names.push("tei"); }
-    #[cfg(feature = "apprise")]     { names.push("apprise"); }
+    #[cfg(feature = "radarr")]
+    {
+        names.push("radarr");
+    }
+    #[cfg(feature = "sonarr")]
+    {
+        names.push("sonarr");
+    }
+    #[cfg(feature = "prowlarr")]
+    {
+        names.push("prowlarr");
+    }
+    #[cfg(feature = "plex")]
+    {
+        names.push("plex");
+    }
+    #[cfg(feature = "tautulli")]
+    {
+        names.push("tautulli");
+    }
+    #[cfg(feature = "sabnzbd")]
+    {
+        names.push("sabnzbd");
+    }
+    #[cfg(feature = "qbittorrent")]
+    {
+        names.push("qbittorrent");
+    }
+    #[cfg(feature = "tailscale")]
+    {
+        names.push("tailscale");
+    }
+    #[cfg(feature = "linkding")]
+    {
+        names.push("linkding");
+    }
+    #[cfg(feature = "memos")]
+    {
+        names.push("memos");
+    }
+    #[cfg(feature = "bytestash")]
+    {
+        names.push("bytestash");
+    }
+    #[cfg(feature = "paperless")]
+    {
+        names.push("paperless");
+    }
+    #[cfg(feature = "arcane")]
+    {
+        names.push("arcane");
+    }
+    #[cfg(feature = "unraid")]
+    {
+        names.push("unraid");
+    }
+    #[cfg(feature = "overseerr")]
+    {
+        names.push("overseerr");
+    }
+    #[cfg(feature = "gotify")]
+    {
+        names.push("gotify");
+    }
+    #[cfg(feature = "openai")]
+    {
+        names.push("openai");
+    }
+    #[cfg(feature = "qdrant")]
+    {
+        names.push("qdrant");
+    }
+    #[cfg(feature = "tei")]
+    {
+        names.push("tei");
+    }
+    #[cfg(feature = "apprise")]
+    {
+        names.push("apprise");
+    }
     names
 }
 
 /// Names of services that have a configured (non-None) client.
 fn configured_service_names(clients: &ServiceClients) -> Vec<String> {
     let mut names = Vec::new();
-    #[cfg(feature = "radarr")]   { if clients.radarr.is_some()      { names.push("radarr".into()); } }
-    #[cfg(feature = "sonarr")]   { if clients.sonarr.is_some()      { names.push("sonarr".into()); } }
-    #[cfg(feature = "prowlarr")] { if clients.prowlarr.is_some()    { names.push("prowlarr".into()); } }
-    #[cfg(feature = "plex")]     { if clients.plex.is_some()        { names.push("plex".into()); } }
-    #[cfg(feature = "tautulli")] { if clients.tautulli.is_some()    { names.push("tautulli".into()); } }
-    #[cfg(feature = "sabnzbd")]  { if clients.sabnzbd.is_some()     { names.push("sabnzbd".into()); } }
-    #[cfg(feature = "qbittorrent")] { if clients.qbittorrent.is_some() { names.push("qbittorrent".into()); } }
-    #[cfg(feature = "tailscale")]   { if clients.tailscale.is_some()   { names.push("tailscale".into()); } }
-    #[cfg(feature = "linkding")]    { if clients.linkding.is_some()    { names.push("linkding".into()); } }
-    #[cfg(feature = "memos")]       { if clients.memos.is_some()       { names.push("memos".into()); } }
-    #[cfg(feature = "bytestash")]   { if clients.bytestash.is_some()   { names.push("bytestash".into()); } }
-    #[cfg(feature = "paperless")]   { if clients.paperless.is_some()   { names.push("paperless".into()); } }
-    #[cfg(feature = "arcane")]      { if clients.arcane.is_some()      { names.push("arcane".into()); } }
-    #[cfg(feature = "unraid")]      { if clients.unraid.is_some()      { names.push("unraid".into()); } }
-    #[cfg(feature = "overseerr")]   { if clients.overseerr.is_some()   { names.push("overseerr".into()); } }
-    #[cfg(feature = "gotify")]      { if clients.gotify.is_some()      { names.push("gotify".into()); } }
-    #[cfg(feature = "openai")]      { if clients.openai.is_some()      { names.push("openai".into()); } }
-    #[cfg(feature = "qdrant")]      { if clients.qdrant.is_some()      { names.push("qdrant".into()); } }
-    #[cfg(feature = "tei")]         { if clients.tei.is_some()         { names.push("tei".into()); } }
-    #[cfg(feature = "apprise")]     { if clients.apprise.is_some()     { names.push("apprise".into()); } }
+    #[cfg(feature = "radarr")]
+    {
+        if clients.radarr.is_some() {
+            names.push("radarr".into());
+        }
+    }
+    #[cfg(feature = "sonarr")]
+    {
+        if clients.sonarr.is_some() {
+            names.push("sonarr".into());
+        }
+    }
+    #[cfg(feature = "prowlarr")]
+    {
+        if clients.prowlarr.is_some() {
+            names.push("prowlarr".into());
+        }
+    }
+    #[cfg(feature = "plex")]
+    {
+        if clients.plex.is_some() {
+            names.push("plex".into());
+        }
+    }
+    #[cfg(feature = "tautulli")]
+    {
+        if clients.tautulli.is_some() {
+            names.push("tautulli".into());
+        }
+    }
+    #[cfg(feature = "sabnzbd")]
+    {
+        if clients.sabnzbd.is_some() {
+            names.push("sabnzbd".into());
+        }
+    }
+    #[cfg(feature = "qbittorrent")]
+    {
+        if clients.qbittorrent.is_some() {
+            names.push("qbittorrent".into());
+        }
+    }
+    #[cfg(feature = "tailscale")]
+    {
+        if clients.tailscale.is_some() {
+            names.push("tailscale".into());
+        }
+    }
+    #[cfg(feature = "linkding")]
+    {
+        if clients.linkding.is_some() {
+            names.push("linkding".into());
+        }
+    }
+    #[cfg(feature = "memos")]
+    {
+        if clients.memos.is_some() {
+            names.push("memos".into());
+        }
+    }
+    #[cfg(feature = "bytestash")]
+    {
+        if clients.bytestash.is_some() {
+            names.push("bytestash".into());
+        }
+    }
+    #[cfg(feature = "paperless")]
+    {
+        if clients.paperless.is_some() {
+            names.push("paperless".into());
+        }
+    }
+    #[cfg(feature = "arcane")]
+    {
+        if clients.arcane.is_some() {
+            names.push("arcane".into());
+        }
+    }
+    #[cfg(feature = "unraid")]
+    {
+        if clients.unraid.is_some() {
+            names.push("unraid".into());
+        }
+    }
+    #[cfg(feature = "overseerr")]
+    {
+        if clients.overseerr.is_some() {
+            names.push("overseerr".into());
+        }
+    }
+    #[cfg(feature = "gotify")]
+    {
+        if clients.gotify.is_some() {
+            names.push("gotify".into());
+        }
+    }
+    #[cfg(feature = "openai")]
+    {
+        if clients.openai.is_some() {
+            names.push("openai".into());
+        }
+    }
+    #[cfg(feature = "qdrant")]
+    {
+        if clients.qdrant.is_some() {
+            names.push("qdrant".into());
+        }
+    }
+    #[cfg(feature = "tei")]
+    {
+        if clients.tei.is_some() {
+            names.push("tei".into());
+        }
+    }
+    #[cfg(feature = "apprise")]
+    {
+        if clients.apprise.is_some() {
+            names.push("apprise".into());
+        }
+    }
     names
 }
 
@@ -159,13 +322,14 @@ async fn health_by_name_owned(clients: &ServiceClients, service: &str) -> Servic
         #[cfg(feature = "overseerr")]
         "overseerr" => probe_arc(clients.overseerr.as_ref()).await,
         #[cfg(feature = "gotify")]
-        "gotify" => {
-            match &clients.gotify {
-                Some(gc) => gc.health().health().await
-                    .unwrap_or_else(|e| ServiceStatus::unreachable(e.to_string())),
-                None => ServiceStatus::unreachable("not configured"),
-            }
-        }
+        "gotify" => match &clients.gotify {
+            Some(gc) => gc
+                .health()
+                .health()
+                .await
+                .unwrap_or_else(|e| ServiceStatus::unreachable(e.to_string())),
+            None => ServiceStatus::unreachable("not configured"),
+        },
         #[cfg(feature = "openai")]
         "openai" => probe_arc(clients.openai.as_ref()).await,
         #[cfg(feature = "qdrant")]
@@ -180,7 +344,10 @@ async fn health_by_name_owned(clients: &ServiceClients, service: &str) -> Servic
 
 async fn probe_arc<C: ServiceClient>(client: Option<&Arc<C>>) -> ServiceStatus {
     match client {
-        Some(c) => c.health().await.unwrap_or_else(|e| ServiceStatus::unreachable(e.to_string())),
+        Some(c) => c
+            .health()
+            .await
+            .unwrap_or_else(|e| ServiceStatus::unreachable(e.to_string())),
         None => ServiceStatus::unreachable("not configured"),
     }
 }
