@@ -23,19 +23,18 @@ Every push and PR to `main` must pass all jobs:
 | deny | `cargo deny check` (via `EmbarkStudios/cargo-deny-action`) |
 | test | `cargo nextest run --workspace --all-features` |
 
-Tests run on `ubuntu-latest` and `windows-latest`. All other jobs run on `ubuntu-latest` only.
+All jobs run on `ubuntu-latest`. `lab` is a Linux-targeted homelab tool — its surfaces depend on `/proc`, signal-based process management, pidfiles, and `std::os::unix` extension traits. macOS and Windows are not in the test matrix; macOS may compile (it's `cfg(unix)`), Windows generally will not. If cross-platform support becomes a goal, that's a separate epic.
 
 `RUSTFLAGS: -D warnings` is set globally — zero warnings permitted.
 
 ## Release Build Matrix (release.yml)
 
-Triggered by any tag matching `v*`. Builds all three targets:
+Triggered by any tag matching `v*`. Builds two Linux targets:
 
 | Target | Runner | Tool |
 |--------|--------|------|
 | `x86_64-unknown-linux-gnu` | ubuntu-latest | cargo |
 | `aarch64-unknown-linux-gnu` | ubuntu-latest | `cross` |
-| `x86_64-pc-windows-msvc` | windows-latest | cargo |
 
 aarch64 uses `cross` for cross-compilation — `cargo install cross --locked` runs before the build step.
 
@@ -57,7 +56,6 @@ Release builds use `--features all`, not `--all-features`. These are equivalent 
 |----------|---------|
 | Linux x86_64 | `lab-x86_64-unknown-linux-gnu.tar.gz` |
 | Linux aarch64 | `lab-aarch64-unknown-linux-gnu.tar.gz` |
-| Windows x86_64 | `lab-x86_64-pc-windows-msvc.zip` |
 
 ## Integration Tests
 
