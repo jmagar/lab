@@ -40,6 +40,7 @@ pub mod qbittorrent;
 pub mod qdrant;
 #[cfg(feature = "radarr")]
 pub mod radarr;
+pub mod path_safety;
 pub mod redact;
 #[cfg(feature = "sabnzbd")]
 pub mod sabnzbd;
@@ -55,4 +56,5 @@ pub mod tei;
 pub mod unifi;
 #[cfg(feature = "unraid")]
 pub mod unraid;
+pub mod stash;
 pub mod upstream;
