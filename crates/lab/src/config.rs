@@ -184,6 +184,17 @@ pub struct ResolvedDeviceRuntime {
 
 impl LabConfig {
     pub fn normalize_legacy_tool_search(&mut self) {
+        self.normalize_legacy_tool_search_with_root_presence(false);
+    }
+
+    pub fn normalize_legacy_tool_search_with_root_presence(
+        &mut self,
+        root_tool_search_present: bool,
+    ) {
+        if root_tool_search_present {
+            return;
+        }
+
         if self.tool_search.enabled {
             return;
         }
@@ -217,6 +228,17 @@ impl LabConfig {
                     .and_then(|prefs| prefs.master.as_deref())
             })
     }
+}
+
+pub(crate) fn root_tool_search_present(raw: &str) -> bool {
+    toml::from_str::<toml::Value>(raw)
+        .ok()
+        .and_then(|value| {
+            value
+                .as_table()
+                .map(|table| table.contains_key("tool_search"))
+        })
+        .unwrap_or(false)
 }
 
 fn default_true() -> bool {
@@ -764,7 +786,7 @@ pub fn load_toml(candidates: &[PathBuf]) -> Result<LabConfig> {
             Ok(raw) => {
                 let mut cfg = toml::from_str::<LabConfig>(&raw)
                     .with_context(|| format!("failed to parse {}", path.display()))?;
-                cfg.normalize_legacy_tool_search();
+                cfg.normalize_legacy_tool_search_with_root_presence(root_tool_search_present(&raw));
                 // Validate all upstream configs eagerly at startup so that
                 // invalid configuration (conflicting auth, bad URL scheme, etc.)
                 // is discovered immediately rather than at first OAuth attempt.
@@ -1862,6 +1884,31 @@ max_tools = 750
         assert!(cfg.tool_search.enabled);
         assert_eq!(cfg.tool_search.top_k_default, 15);
         assert_eq!(cfg.tool_search.max_tools, 750);
+    }
+
+    #[test]
+    fn explicit_root_tool_search_disable_blocks_legacy_migration() {
+        let raw = r#"
+[tool_search]
+enabled = false
+
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.tool_search]
+enabled = true
+top_k_default = 15
+max_tools = 750
+"#;
+        let mut cfg = toml::from_str::<LabConfig>(raw)
+            .expect("explicit root and legacy upstream tool_search parse");
+
+        cfg.normalize_legacy_tool_search_with_root_presence(root_tool_search_present(raw));
+
+        assert!(!cfg.tool_search.enabled);
+        assert_eq!(cfg.tool_search.top_k_default, 10);
+        assert_eq!(cfg.tool_search.max_tools, 5000);
     }
 
     #[test]

@@ -141,6 +141,15 @@ fn component_from_inline_config(
     fallback_name: &str,
     value: &Value,
 ) -> PluginComponent {
+    if let Some(path) = value.as_str() {
+        return PluginComponent {
+            kind,
+            path: path.to_string(),
+            name: path_name(path),
+            metadata: Some(value.clone()),
+        };
+    }
+
     let name = value
         .get("name")
         .and_then(Value::as_str)
@@ -552,5 +561,21 @@ mod tests {
                 .any(|component| component.kind == PluginComponentKind::Channels
                     && component.name == "team-chat")
         );
+    }
+
+    #[test]
+    fn components_from_manifest_preserves_string_channel_entries() {
+        let manifest = serde_json::json!({
+            "channels": ["channels/stable.json"]
+        });
+
+        let components = components_from_manifest_and_layout(None, Some(&manifest));
+        let channel = components
+            .iter()
+            .find(|component| component.kind == PluginComponentKind::Channels)
+            .expect("channel component");
+
+        assert_eq!(channel.path, "channels/stable.json");
+        assert_eq!(channel.name, "stable.json");
     }
 }
