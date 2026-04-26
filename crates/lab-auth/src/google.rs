@@ -54,6 +54,7 @@ impl std::fmt::Debug for GoogleProvider {
 pub struct GoogleExchange {
     pub subject: String,
     pub email: Option<String>,
+    pub email_verified: Option<bool>,
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub expires_in: Option<u64>,
@@ -76,6 +77,8 @@ struct GoogleIdTokenClaims {
     sub: String,
     #[serde(default)]
     email: Option<String>,
+    #[serde(default)]
+    email_verified: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -351,6 +354,7 @@ impl GoogleProvider {
         Ok(GoogleExchange {
             subject: claims.sub,
             email: claims.email,
+            email_verified: claims.email_verified,
             access_token: payload.access_token,
             refresh_token: payload.refresh_token,
             expires_in: payload.expires_in,
@@ -394,6 +398,7 @@ impl GoogleProvider {
         Ok(GoogleExchange {
             subject: claims.sub,
             email: claims.email,
+            email_verified: claims.email_verified,
             access_token: payload.access_token,
             refresh_token: payload.refresh_token,
             expires_in: payload.expires_in,
@@ -583,7 +588,26 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{AuthorizeUrlRequest, CachedGoogleJwks, GoogleJwk, GoogleJwks, GoogleProvider};
+    use super::{
+        AuthorizeUrlRequest, CachedGoogleJwks, GoogleExchange, GoogleJwk, GoogleJwks,
+        GoogleProvider,
+    };
+
+    #[tokio::test]
+    async fn google_exchange_exposes_email_verified_claim() {
+        // GoogleExchange must carry the `email_verified` claim through from the id_token
+        // so the email allowlist can refuse unverified emails.
+        let exchange = GoogleExchange {
+            subject: "sub".to_string(),
+            email: Some("user@example.com".to_string()),
+            email_verified: Some(false),
+            access_token: "tok".to_string(),
+            refresh_token: None,
+            expires_in: None,
+            id_token: "id".to_string(),
+        };
+        assert_eq!(exchange.email_verified, Some(false));
+    }
 
     #[test]
     fn google_authorize_url_includes_offline_access_prompt_and_pkce() {

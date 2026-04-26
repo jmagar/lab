@@ -1066,6 +1066,23 @@ pub mod tests {
             "aud": "client-id",
             "sub": "google-subject-123",
             "email": "user@example.com",
+            "email_verified": true,
+            "iat": now_unix() as usize,
+            "exp": (now_unix() + 3600) as usize,
+        });
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("test-kid".to_string());
+        encode(&header, &claims, &test_encoding_key()).unwrap()
+    }
+
+    #[allow(dead_code)]
+    fn signed_test_id_token_unverified() -> String {
+        let claims = json!({
+            "iss": "https://accounts.google.com",
+            "aud": "client-id",
+            "sub": "google-subject-123",
+            "email": "user@example.com",
+            "email_verified": false,
             "iat": now_unix() as usize,
             "exp": (now_unix() + 3600) as usize,
         });
