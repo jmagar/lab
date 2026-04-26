@@ -1,0 +1,29 @@
+name: Build gateway-admin
+description: >
+  Install Node + pnpm and run `next build` so that
+  `apps/gateway-admin/out/` exists before cargo compiles the `lab`
+  crate (its `include_dir!("../../apps/gateway-admin/out")` macro panics
+  if the directory is missing).
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: pnpm
+        cache-dependency-path: apps/gateway-admin/pnpm-lock.yaml
+
+    - name: Install gateway-admin deps
+      shell: bash
+      working-directory: apps/gateway-admin
+      run: pnpm install --frozen-lockfile
+
+    - name: Build gateway-admin
+      shell: bash
+      working-directory: apps/gateway-admin
+      run: pnpm build
