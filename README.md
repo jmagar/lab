@@ -9,6 +9,35 @@ The root README is the public entrypoint. The topic docs in [docs/](./docs/READM
 are the source of truth for implementation contracts and operator workflows. If this
 file and a topic doc disagree, update the owning topic doc and then refresh this file.
 
+## What You Can Do
+
+Lab is not only a service SDK. It is an operator console for a homelab and an AI-tooling
+control plane.
+
+| Feature Area | What Lab Provides |
+| --- | --- |
+| Marketplace browsing | Browse configured Claude Code plugin marketplaces, installed plugins, MCP Registry servers, and ACP agents from one catalog. Filter by type, inspect curated Lab metadata, sync the local MCP Registry mirror, and open installed artifact files from the web UI or API. |
+| Plugin workspace editing | Open a marketplace plugin into a Lab-managed workspace mirror, edit files through the Labby UI, save changes, preview deploy diffs, and deploy back to the local Claude Code target with explicit confirmation. |
+| Artifact forks and updates | Fork a full plugin or selected artifacts into the Lab stash, diff against upstream/base snapshots, apply patches, reset forks, preview upstream updates, and apply update strategies with conflict-aware merge suggestions. |
+| Install tools across devices | Install MCP Registry servers to Lab gateway upstreams or Claude/Codex MCP client configs on fleet devices. Cherry-pick marketplace plugin components to selected nodes and scopes. ACP agent installs currently write controller-local provider config; remote ACP agent installation returns per-node errors until implemented. |
+| Upstream MCP gateway | Add, test, reload, and remove upstream MCP servers without hand-editing config. Lab merges healthy upstream tools/resources/prompts into its MCP surface and supports exposure filters plus OAuth-backed upstream credentials. |
+| Virtual Lab servers | Expose configured Lab-backed services as virtual gateway servers, toggle CLI/API/MCP/Web UI surfaces, inspect service action metadata, and set MCP action allowlists per virtual server. |
+| Fleet nodes | Run `lab serve` on multiple machines, enroll non-controller nodes, approve or deny devices, inspect node inventory and MCP client config metadata, run the local OAuth relay on a node, and route status/log events back to the controller over the fleet WebSocket. |
+| Logs and activity | Search persisted local runtime logs, tail bounded history, stream live logs to the Labby `/logs` page over SSE, and forward peer syslog batches into the controller when enabled. |
+| Labby web UI | Serve the admin UI from the same `lab serve` process as the API and MCP endpoint. The UI covers marketplace, gateway management, registry browsing, logs, setup, activity, ACP/chat flows, settings, docs, and design-system/dev previews. |
+| Workspace filesystem browser | Browse and preview files under the configured workspace root through the guarded `fs` service for Labby attachment and editor workflows. |
+| Setup and health audits | Use `lab init`, `lab doctor`, `lab health`, `lab scaffold service`, and `lab audit onboarding` to bootstrap config, validate service reachability/auth, and keep new integrations aligned with the repo contract. |
+| Service operations | Use one action catalog across CLI, MCP, and HTTP to operate Radarr, Sonarr, Plex, UniFi, Unraid, qBittorrent, Gotify, Qdrant, OpenAI-compatible APIs, and the rest of the service integrations. |
+| Credential bootstrap | Scan local or SSH appdata paths with `lab extract`, preview diffs, and apply discovered service URLs/API keys into `~/.lab/.env` with backups and atomic writes. |
+| Deployment and monitors | Build and push the Lab release binary to SSH targets, manage rollout policy, and use monitor definitions from `plugins/monitors/monitors.json` through `lab deploy monitor`. |
+
+These features are exposed consistently:
+
+- **CLI:** operator commands such as `lab marketplace`, `lab gateway`, `lab nodes`, `lab logs`, `lab doctor`, `lab deploy`, and per-service subcommands.
+- **MCP:** compact one-tool-per-service access for agents, with generated action discovery and destructive-action confirmation.
+- **HTTP/API:** `/v1/<service>` action dispatch, OpenAPI docs, OAuth/browser sessions, and same-origin Labby integration.
+- **Web UI:** Labby pages for marketplace, gateways, logs, registry, setup, activity, and chat/ACP workflows.
+
 ## Current State
 
 Fresh catalog source: `cargo run --all-features --bin lab -- help --json`, run from this
