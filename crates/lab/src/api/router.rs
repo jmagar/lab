@@ -501,12 +501,26 @@ fn dev_mockup_newest(fragment: Option<&str>) -> Option<std::path::PathBuf> {
 fn dev_mockup_response(fragment: Option<&str>) -> axum::response::Response {
     use axum::response::Html;
     match dev_mockup_newest(fragment) {
-        None => Html(format!(
-            "<p style='font-family:sans-serif;padding:2rem'>No{} mockup found in \
-             <code>~/.superpowers/brainstorm/content/</code></p>",
-            fragment.map(|n| format!(" '{n}'")).unwrap_or_default()
-        ))
-        .into_response(),
+        None => {
+            // Escape the fragment before embedding it in HTML to prevent XSS.
+            // The name comes from a URL path segment and is user-controlled.
+            let escaped = fragment
+                .map(|n| {
+                    format!(
+                        " '{}'",
+                        n.replace('&', "&amp;")
+                            .replace('<', "&lt;")
+                            .replace('>', "&gt;")
+                            .replace('"', "&quot;")
+                    )
+                })
+                .unwrap_or_default();
+            Html(format!(
+                "<p style='font-family:sans-serif;padding:2rem'>No{escaped} mockup found in \
+                 <code>~/.superpowers/brainstorm/content/</code></p>"
+            ))
+            .into_response()
+        }
         Some(path) => match std::fs::read_to_string(&path) {
             Ok(html) => Html(html).into_response(),
             Err(e) => {
@@ -556,11 +570,14 @@ async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response
     // The UI treats MASKED_SECRET as "value already set — leave blank to keep current value".
     const MASKED_SECRET: &str = "***";
     let secret_suffixes = [
-        "_API_KEY",
+        // Deny-list for secret detection. Add new suffixes here when new secret
+        // naming conventions are introduced (e.g. LAB_AUTH_SIGNING_KEY).
+        // NOTE: `_KEY` intentionally covers `_API_KEY` and future signing-key vars.
+        //       `_SECRET` covers `_CLIENT_SECRET` — the more-specific entry is omitted.
+        "_KEY",     // covers _API_KEY, _SIGNING_KEY, _HMAC_KEY, etc.
         "_TOKEN",
         "_PASSWORD",
-        "_SECRET",
-        "_CLIENT_SECRET",
+        "_SECRET",  // covers _CLIENT_SECRET
     ];
     let service_prefixes = [
         "RADARR_",
@@ -814,9 +831,16 @@ pub fn build_router(
             .route("/token", post(auth_token));
     }
 
-    // Dev preview APIs are unauthenticated and must remain read-only.
-    // Page routes such as /dev and /dev/<feature> are owned by the Next.js app
-    // through the static fallback below.
+    // Dev routes — unauthenticated, registered BEFORE the Next.js static fallback
+    // so they win over the SPA. See docs/design/component-development.md §5
+    // (two-tier serving model) for the full rationale.
+    //
+    // /dev/api/*        → read-only dispatch endpoints (marketplace guard, nodeinfo)
+    // /dev, /dev/{name} → Tier 1 mockup file server: serves HTML from
+    //                     ~/.superpowers/brainstorm/content/{name}.html directly.
+    //                     Once a feature graduates to a real Next.js page at
+    //                     app/(admin)/dev/{name}/page.tsx, remove the corresponding
+    //                     dev_mockup_named handler entry.
     router = router
         .route("/dev/api/marketplace", post(dev_marketplace_readonly))
         .route("/dev/api/nodeinfo", get(dev_nodeinfo))
