@@ -268,6 +268,13 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     )
     .await?;
 
+    // Create the ACP session registry once, before the HTTP/stdio split, so
+    // that both transports share the same process-global dispatch slot.
+    // The HTTP path passes this Arc into AppState via `with_acp_registry`.
+    // The stdio path uses the installed slot directly (no AppState involved).
+    let acp_registry = Arc::new(crate::acp::registry::AcpSessionRegistry::new());
+    crate::dispatch::acp::install_registry(Arc::clone(&acp_registry));
+
     if stdio_mode {
         tracing::info!(
             subsystem = "api_server",
@@ -279,11 +286,6 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             phase = "disabled",
             "web server disabled for stdio transport"
         );
-        // ACP registry must be installed for stdio MCP dispatch too.
-        // The HTTP path installs it via `state.acp_registry`, but stdio
-        // never builds an `AppState`, so wire a fresh registry here.
-        let stdio_acp_registry = Arc::new(crate::acp::registry::AcpSessionRegistry::new());
-        crate::dispatch::acp::install_registry(stdio_acp_registry);
         return run_stdio(
             Arc::new(registry),
             Arc::clone(&gateway_manager),
@@ -328,8 +330,9 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
 
     let oauth_enabled = matches!(auth_config.mode, AuthMode::OAuth);
 
-    let mut state = AppState::from_registry(registry).with_config(config.clone());
-    crate::dispatch::acp::install_registry(Arc::clone(&state.acp_registry));
+    let mut state = AppState::from_registry(registry)
+        .with_config(config.clone())
+        .with_acp_registry(Arc::clone(&acp_registry));
     state = state.with_gateway_manager(Arc::clone(&gateway_manager));
     state = state.with_auth_config(auth_config);
     let web_ui_auth_disabled = resolve_web_ui_auth_disabled(

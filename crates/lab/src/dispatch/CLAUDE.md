@@ -178,6 +178,37 @@ pub async fn dispatch_with_client(
 `dispatch_with_client` is what the API handler calls with the pre-built client from
 `AppState`. `dispatch` is what MCP and CLI call.
 
+## Always-on meta-service registration
+
+Always-on meta-services (those without a feature flag) register directly from
+`dispatch::*` in `registry.rs` without a `mcp/services/` shim. This is the
+**canonical pattern** for these services, not an exception. Current examples:
+
+- `extract` — `crate::dispatch::extract::dispatch`
+- `gateway` — `crate::dispatch::gateway::dispatch`
+- `doctor` — `crate::dispatch::doctor::dispatch`
+- `logs` — `crate::dispatch::logs::dispatch`
+- `marketplace` — `crate::dispatch::marketplace::dispatch`
+- `acp` — `crate::dispatch::acp::dispatch::dispatch`
+
+`mcp/services/` is the **exception layer**, not the default. An adapter lives
+there only when it needs MCP-specific behavior that cannot be represented in
+shared dispatch alone — for example:
+
+- `deploy` sets the MCP elicitation context (`McpContext`) before calling the
+  shared dispatch, a protocol detail meaningless to CLI/API.
+- `fs` filters `fs.preview` out of MCP discovery.
+- `nodes` owns MCP-only enrollment actions with no CLI/API equivalent.
+
+Do not add a `mcp/services/<service>.rs` shim for a service unless it genuinely
+needs MCP-specific behavior. A pass-through shim that only delegates to dispatch
+adds indirection without value.
+
+There is no `Category::Acp` variant. ACP uses `Category::Ai` (set in
+`lab_apis::acp::META`), which is coherent: ACP is the agent protocol layer
+that fronts AI providers. Adding a new category variant for a single service
+would violate the stable 10-variant catalog defined in `core/plugin.rs`.
+
 ## `fs` registration
 
 `fs` registers unconditionally when the `fs` feature is enabled; runtime
