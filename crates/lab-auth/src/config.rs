@@ -78,6 +78,7 @@ pub struct AuthConfig {
     pub key_path: PathBuf,
     pub bootstrap_secret: Option<String>,
     pub allowed_client_redirect_uris: Vec<String>,
+    pub allowed_emails: Vec<String>,
     pub google: GoogleConfig,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
@@ -97,6 +98,7 @@ impl Default for AuthConfig {
             key_path: base_dir.join(DEFAULT_KEY_NAME),
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
+            allowed_emails: Vec::new(),
             google: GoogleConfig::default(),
             access_token_ttl: Duration::from_secs(DEFAULT_ACCESS_TOKEN_TTL_SECS),
             refresh_token_ttl: Duration::from_secs(DEFAULT_REFRESH_TOKEN_TTL_SECS),
@@ -124,6 +126,11 @@ impl AuthConfig {
             bootstrap_secret: read_string(&vars, "LAB_AUTH_BOOTSTRAP_SECRET"),
             allowed_client_redirect_uris: read_csv(&vars, "LAB_AUTH_ALLOWED_REDIRECT_URIS")
                 .unwrap_or_default(),
+            allowed_emails: read_csv(&vars, "LAB_AUTH_ALLOWED_EMAILS")
+                .unwrap_or_default()
+                .into_iter()
+                .map(|e| e.to_ascii_lowercase())
+                .collect(),
             google: GoogleConfig {
                 client_id: read_string(&vars, "LAB_GOOGLE_CLIENT_ID").unwrap_or_default(),
                 client_secret: read_string(&vars, "LAB_GOOGLE_CLIENT_SECRET").unwrap_or_default(),
@@ -319,6 +326,40 @@ mod tests {
         assert_eq!(cfg.sqlite_path.file_name().unwrap(), "auth.db");
         assert_eq!(cfg.key_path.file_name().unwrap(), "auth-jwt.pem");
         assert_eq!(cfg.google.callback_path, "/auth/google/callback");
+    }
+
+    #[test]
+    fn allowed_emails_defaults_to_empty_vec() {
+        let cfg = AuthConfig::from_sources(fake_env_with_many([
+            ("LAB_AUTH_MODE", "oauth"),
+            ("LAB_PUBLIC_URL", "https://lab.example.com"),
+            ("LAB_GOOGLE_CLIENT_ID", "id"),
+            ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+        ]))
+        .unwrap();
+        assert!(cfg.allowed_emails.is_empty());
+    }
+
+    #[test]
+    fn allowed_emails_normalizes_case_and_trims_whitespace() {
+        let cfg = AuthConfig::from_sources(fake_env_with_many([
+            ("LAB_AUTH_MODE", "oauth"),
+            ("LAB_PUBLIC_URL", "https://lab.example.com"),
+            ("LAB_GOOGLE_CLIENT_ID", "id"),
+            ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            (
+                "LAB_AUTH_ALLOWED_EMAILS",
+                "Alice@Example.com , BOB@EXAMPLE.COM ",
+            ),
+        ]))
+        .unwrap();
+        assert_eq!(
+            cfg.allowed_emails,
+            vec![
+                "alice@example.com".to_string(),
+                "bob@example.com".to_string()
+            ]
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use tracing::info;
+use tracing::{info, warn};
 use url::Url;
 
 use crate::config::{AuthConfig, AuthMode};
@@ -99,6 +99,22 @@ impl AuthState {
             google_scopes = ?config.google.scopes,
             "lab-auth state initialized"
         );
+
+        // Warn if LAB_AUTH_ALLOWED_EMAILS is set in env but resolved empty.
+        // This happens when the value is whitespace-only or comma-only.
+        // An empty list means ALL Google accounts are permitted — which may surprise
+        // an operator who thought they enabled the allowlist.
+        if config.allowed_emails.is_empty()
+            && std::env::var("LAB_AUTH_ALLOWED_EMAILS")
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
+        {
+            warn!(
+                env_var = "LAB_AUTH_ALLOWED_EMAILS",
+                "allowed_emails env var is set but resolved to an empty list — \
+                 all Google accounts are permitted. Check for typos or whitespace-only values."
+            );
+        }
 
         let authorize_limiter = RateLimiter::new(config.authorize_requests_per_minute);
         let register_limiter = RateLimiter::new(config.register_requests_per_minute);
@@ -203,6 +219,7 @@ mod tests {
             key_path: temp.path().join("auth.pem"),
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
+            allowed_emails: Vec::new(),
             google: GoogleConfig {
                 client_id: "client-id".to_string(),
                 client_secret: "client-secret".to_string(),
