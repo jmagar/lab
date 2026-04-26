@@ -51,19 +51,25 @@ crossterm.workspace          = true
 
 base64.workspace             = true
 fd-lock                      = "4"
+fs4                          = "1"
 tempfile                     = "3.10"
 subtle                       = "2"
 indexmap                     = { version = "2", features = ["serde"] }
 secrecy                      = "0.8"
 sha2                         = "0.10"
+xxhash-rust                  = { version = "0.8", features = ["xxh3"] }
+hmac.workspace               = true
 chacha20poly1305             = "0.10"
 dashmap                      = "6"
+diffy-imara                  = "0.3"
+arc-swap                     = "1"
 tokio-util                   = { version = "0.7", features = ["rt", "compat"] }
 strip-ansi-escapes           = "0.2"
 agent-client-protocol        = "0"
 
+hex                          = "0.4"
+
 # optional — deploy feature
-hex                          = { version = "0.4", optional = true }
 regex                        = { version = "1", optional = true }
 
 rmcp.workspace               = true
@@ -78,9 +84,16 @@ tower.workspace              = true
 tower-http.workspace         = true
 utoipa.workspace             = true
 utoipa-scalar.workspace      = true
+include_dir                  = "0.7"
 
 oauth2                       = { version = "5.0", default-features = false }
 tokio-tungstenite            = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
+
+# optional — fs feature (workspace filesystem browser)
+walkdir                      = { version = "2", optional = true }
+globset                      = { version = "0.4", optional = true }
+unicode-normalization        = { version = "0.1", optional = true }
+rustix                       = { version = "1", features = ["fs"], optional = true }
 
 [dev-dependencies]
 wiremock.workspace           = true
@@ -119,6 +132,7 @@ apprise     = ["lab-apis/apprise"]
 
 # bootstrap / registry
 mcpregistry = ["lab-apis/mcpregistry"]
+acp_registry = ["lab-apis/acp_registry"]
 
 # ai / vector / inference
 openai      = ["lab-apis/openai"]
@@ -126,12 +140,15 @@ qdrant      = ["lab-apis/qdrant"]
 tei         = ["lab-apis/tei"]
 
 # deploy — push the local lab release binary to SSH targets
-deploy      = ["lab-apis/deploy", "dep:hex", "dep:regex"]
+deploy      = ["lab-apis/deploy", "dep:regex"]
 
 # internal admin / onboarding tooling
 # Intentionally local-only — no lab-apis counterpart, lab_admin performs
 # filesystem audits only and has no external HTTP service to wrap.
 lab-admin   = []
+
+# workspace filesystem browser (Phase 2 + Phase 3 of lab-f1t2)
+fs          = ["dep:walkdir", "dep:globset", "dep:unicode-normalization", "dep:rustix"]
 
 # Expose test-only helpers (RecordingIo, orchestrate_with_io) to external
 # integration-test crates.  Never enable in production builds.
@@ -161,8 +178,10 @@ all         = [
   "qdrant",
   "tei",
   "lab-admin",
+  "fs",
   "deploy",
   "mcpregistry",
+  "acp_registry",
 ]
 
 [lints]

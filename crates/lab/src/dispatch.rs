@@ -1,3 +1,4 @@
+pub mod acp;
 #[cfg(feature = "apprise")]
 pub mod apprise;
 #[cfg(feature = "arcane")]
@@ -7,8 +8,10 @@ pub mod bytestash;
 pub mod clients;
 #[cfg(feature = "deploy")]
 pub mod deploy;
+pub mod doctor;
 pub mod error;
 pub mod extract;
+pub mod fs;
 pub mod gateway;
 #[cfg(feature = "gotify")]
 pub mod gotify;
@@ -18,10 +21,9 @@ pub mod lab_admin;
 pub mod linkding;
 pub mod logs;
 pub mod marketplace;
-#[cfg(feature = "mcpregistry")]
-pub mod mcpregistry;
 #[cfg(feature = "memos")]
 pub mod memos;
+pub mod node;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "overseerr")]

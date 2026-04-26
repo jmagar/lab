@@ -1,10 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Download, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, GitFork, RefreshCw, Trash2 } from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { CherryPickDialog } from './cherry-pick-dialog'
 import { ConfirmDialog, type ConfirmState } from './confirm-dialog'
 import { PluginFilesPanel } from './plugin-files-panel'
 import { PluginInfoPanel } from './plugin-info-panel'
@@ -37,9 +39,12 @@ function PluginAvatar({ ghUser, name, size = 44 }: { ghUser?: string; name: stri
       className="rounded-aurora-1 flex-shrink-0 overflow-hidden border border-[color-mix(in_srgb,var(--aurora-border-strong)_40%,transparent)] bg-aurora-panel-medium"
       style={style}
     >
-      <img
+      <Image
         src={`https://github.com/${ghUser}.png?size=96`}
         alt={ghUser}
+        width={size}
+        height={size}
+        unoptimized
         className="h-full w-full object-cover"
         onError={() => setImageFailed(true)}
       />
@@ -71,6 +76,7 @@ export function PluginDetailContent({ pluginId }: { pluginId: string }) {
   const [tab, setTab] = useState<DetailTab>('info')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
+  const [cherryPickOpen, setCherryPickOpen] = useState(false)
 
   const plugin = useMemo(() => plugins.find((candidate) => candidate.id === pluginId) ?? null, [pluginId, plugins])
   const marketplace = useMemo(
@@ -153,6 +159,20 @@ export function PluginDetailContent({ pluginId }: { pluginId: string }) {
               </div>
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
+              {/* Cherry-pick button — always visible when plugin data is loaded */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setCherryPickOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-aurora-border-strong bg-aurora-control-surface px-[14px] py-1.5 text-[13px] font-semibold text-aurora-text-muted transition-all duration-150 hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
+                    aria-label={`Cherry-pick components from ${plugin.name}`}
+                  >
+                    <GitFork className="size-[14px]" />
+                    Cherry-pick
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Install individual components to specific devices</TooltipContent>
+              </Tooltip>
               {isInstalled ? (
                 <>
                   {plugin.hasUpdate && (
@@ -229,6 +249,14 @@ export function PluginDetailContent({ pluginId }: { pluginId: string }) {
       </div>
 
       <ConfirmDialog state={confirm} onOpenChange={(open) => { if (!open) setConfirm(null) }} />
+
+      <CherryPickDialog
+        pluginId={plugin.id}
+        pluginName={plugin.name}
+        open={cherryPickOpen}
+        onClose={() => setCherryPickOpen(false)}
+        components={plugin.components?.map((c) => ({ type: c.kind, name: c.name, path: c.path }))}
+      />
     </>
   )
 }

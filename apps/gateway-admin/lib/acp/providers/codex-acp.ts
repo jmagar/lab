@@ -209,7 +209,9 @@ export class CodexAcpProvider implements AcpProvider {
 
     try {
       await codexHandle.connection.cancel({ sessionId: codexHandle.providerSessionId })
-    } catch {}
+    } catch {
+        // Best-effort cleanup; process exit may already have closed the handle.
+      }
 
     codexHandle.process.kill()
     this.handles.delete(handle.providerSessionId)

@@ -122,7 +122,7 @@ export interface GatewayListViewProps {
 
 export function GatewayListContent() {
   const { data: gateways, isLoading, error } = useGateways()
-  const { testGateway, reloadGateway, cleanupGateway, removeGateway, createGateway, updateGateway, enableGateway, disableGateway } =
+  const { testGateway, reloadGateway, cleanupGateway, removeGateway, removeVirtualServer, createGateway, updateGateway, enableGateway, disableGateway } =
     useGatewayMutations()
 
   const [primaryView, setPrimaryView] = useState<GatewayPrimaryLens | 'tools'>(DEFAULT_GATEWAY_LENS)
@@ -149,7 +149,7 @@ export function GatewayListContent() {
     Record<string, { preview?: CleanupHistoryEntry; cleanup?: CleanupHistoryEntry }>
   >({})
 
-  const items = gateways ?? []
+  const items = useMemo(() => gateways ?? [], [gateways])
 
   const summary = useMemo(() => {
     const configured = items.filter((gateway) => gateway.configured ?? true).length
@@ -316,8 +316,13 @@ export function GatewayListContent() {
     if (!deleteGateway) return
 
     try {
-      await removeGateway(deleteGateway.id)
-      toast.success('Gateway removed successfully')
+      if (deleteGateway.source === 'in_process') {
+        await removeVirtualServer(deleteGateway.id)
+        toast.success('Stale service removed successfully')
+      } else {
+        await removeGateway(deleteGateway.id)
+        toast.success('Gateway removed successfully')
+      }
       setDeleteGateway(null)
     } catch (requestError) {
       toast.error(getErrorMessage(requestError, 'Failed to remove gateway'))
@@ -554,11 +559,11 @@ export function GatewayListView({
                   onClick={() => onPrimaryLensChange('tools')}
                   className={cn(
                     gatewayActionTone(),
-                    'size-10 lg:hidden hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
+                    'size-9 lg:hidden hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
                   )}
                   aria-label="Switch to tools view"
                 >
-                  <SlidersHorizontal className="size-4" />
+                  <SlidersHorizontal className="size-3.5" />
                 </Button>
                 <Button
                   variant="outline"
@@ -607,11 +612,11 @@ export function GatewayListView({
               size="icon"
               className={cn(
                 gatewayActionTone('accent'),
-                'border sm:hidden',
+                'size-9 border sm:hidden',
               )}
               aria-label="Add gateway"
             >
-              <Plus className="size-4" />
+              <Plus className="size-3.5" />
             </Button>
           </div>
         }
@@ -624,7 +629,7 @@ export function GatewayListView({
         )}
       >
         <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
-          <section className={cn(AURORA_MEDIUM_PANEL, 'p-2 lg:hidden')}>
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-1.5 lg:hidden')}>
             <div className="grid grid-cols-4 gap-1">
               <MobileSummaryChip
                 metric="configured"
@@ -831,6 +836,7 @@ function MobileSummaryChip({
       onClick={onClick}
       className={cn(
         'flex h-10 items-center justify-center gap-1.5 rounded-aurora-1 border px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        'h-9 px-1.5 text-[13px]',
         active
           ? 'border-aurora-accent-primary/36 bg-aurora-accent-primary/12 text-aurora-text-primary'
           : 'border-aurora-border-strong bg-aurora-control-surface text-aurora-text-muted hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
@@ -838,7 +844,7 @@ function MobileSummaryChip({
       aria-pressed={active}
     >
       {icon}
-      <span className={cn(AURORA_DISPLAY_NUMBER, 'text-sm leading-none text-current')}>{value}</span>
+      <span className={cn(AURORA_DISPLAY_NUMBER, 'text-[13px] leading-none text-current')}>{value}</span>
     </button>
   )
 }

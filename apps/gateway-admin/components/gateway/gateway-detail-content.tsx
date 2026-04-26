@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Pencil,
   Trash2,
+  Copy,
   AlertTriangle,
   Clock,
   FileText,
@@ -15,7 +16,8 @@ import {
   Search,
   Wrench,
   Settings,
-  ChevronDown,
+  Power,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppHeader } from '@/components/app-header'
@@ -27,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { TransportBadge } from './transport-badge'
 import { ToolExposureTable } from './tool-exposure-table'
+import { PrimitiveExposureTable } from './primitive-exposure-table'
 import { GatewayFormDialog } from './gateway-form-dialog'
 import { DisableGatewayDialog } from './disable-gateway-dialog'
 import { DeleteGatewayDialog } from './delete-gateway-dialog'
@@ -44,8 +47,53 @@ import {
 import { cn, getErrorMessage } from '@/lib/utils'
 import { buildGatewayClientConfig } from '@/lib/api/gateway-client-config'
 
+function SettingRow({
+  title,
+  description,
+  checked,
+  onCheckedChange,
+  ariaLabel,
+}: {
+  title: string
+  description: string
+  checked: boolean
+  onCheckedChange: (v: boolean) => void
+  ariaLabel?: string
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border bg-aurora-control-surface/10 p-4">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-aurora-text-primary">{title}</p>
+        <p className="mt-1 text-sm text-aurora-text-muted">{description}</p>
+      </div>
+      <Switch aria-label={ariaLabel ?? title} checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  )
+}
+
 interface GatewayDetailContentProps {
   gatewayId: string | null
+}
+
+function formatGatewayTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return 'Unknown'
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(parsed)
 }
 
 export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
@@ -77,11 +125,12 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [selectedRowToolNames, setSelectedRowToolNames] = useState<string[]>([])
   const [isSavingExposure, setIsSavingExposure] = useState(false)
   const [exposureSaveError, setExposureSaveError] = useState<string | null>(null)
-  const [resourceSearch, setResourceSearch] = useState('')
-  const [promptSearch, setPromptSearch] = useState('')
-  const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set())
+  const [inventorySearch, setInventorySearch] = useState('')
+  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'tools' | 'resources' | 'prompts'>('all')
+  const [activeTab, setActiveTab] = useState<'catalog' | 'runtime' | 'config' | 'settings' | 'warnings'>('catalog')
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
   const [cleanupResult, setCleanupResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof cleanupGateway>> } | null>(null)
+  const [hasMounted, setHasMounted] = useState(false)
   const toolExposureSignature = useMemo(
     () =>
       (gateway?.discovery.tools ?? [])
@@ -97,12 +146,41 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     () => createExposureDraftFromTools(gateway?.discovery.tools ?? []),
     [gateway?.discovery.tools],
   )
+  const isLabGateway = gateway?.source === 'in_process'
+  const surfaceEntries = gateway?.surfaces
+    ? ([
+        ['cli', gateway.surfaces.cli],
+        ['api', gateway.surfaces.api],
+        ['mcp', gateway.surfaces.mcp],
+      ] as const)
+    : []
+  const exposeAllTools =
+    allToolNames.length > 0 && draftSelectedToolNames.length === allToolNames.length
+  const displayedTools = useMemo(
+    () => {
+      const draftSet = new Set(draftSelectedToolNames)
+      return (gateway?.discovery.tools ?? []).map((tool) => ({
+        ...tool,
+        exposed: draftSet.has(tool.name),
+        matched_by: draftSet.has(tool.name) ? (exposeAllTools ? '*' : tool.name) : null,
+      }))
+    },
+    [gateway?.discovery.tools, draftSelectedToolNames, exposeAllTools],
+  )
+  const clientConfigJson = useMemo(
+    () => (gateway ? JSON.stringify(buildGatewayClientConfig(gateway), null, 2) : ''),
+    [gateway],
+  )
+
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
 
   useEffect(() => {
     setDraftSelectedToolNames(currentExposedToolNames)
     setSelectedRowToolNames([])
     setManageToolsMode(false)
-  }, [gateway?.id, toolExposureSignature])
+  }, [currentExposedToolNames, gateway?.id, toolExposureSignature])
 
   if (!gatewayId) {
     return (
@@ -232,7 +310,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     }
   }
 
-  if (isLoading) {
+  if (!hasMounted || isLoading) {
     return (
       <>
         <AppHeader
@@ -285,46 +363,12 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     )
   }
 
-  const isLabGateway = gateway.source === 'in_process'
-  const surfaceEntries = gateway.surfaces
-    ? ([
-        ['cli', gateway.surfaces.cli],
-        ['api', gateway.surfaces.api],
-        ['mcp', gateway.surfaces.mcp],
-      ] as const)
-    : []
   const hasDraftChanges =
     draftSelectedToolNames.length !== currentExposedToolNames.length ||
     draftSelectedToolNames.some((toolName) => !currentExposedToolNames.includes(toolName))
   const exposureSummary = getDraftExposureSummary(allToolNames, draftSelectedToolNames)
-  const exposeAllTools =
-    allToolNames.length > 0 && draftSelectedToolNames.length === allToolNames.length
-  const draftSet = new Set(draftSelectedToolNames)
-  const displayedTools = gateway.discovery.tools.map((tool) => ({
-    ...tool,
-    exposed: draftSet.has(tool.name),
-    matched_by: draftSet.has(tool.name)
-      ? exposeAllTools
-        ? '*'
-        : tool.name
-      : null,
-  }))
-  const clientConfigJson = JSON.stringify(buildGatewayClientConfig(gateway), null, 2)
   const resourceExposureEnabled = gateway.config.proxy_resources ?? true
   const promptExposureEnabled = gateway.config.proxy_prompts ?? true
-  const filteredResources = gateway.discovery.resources.filter(
-    (resource) =>
-      resource.name.toLowerCase().includes(resourceSearch.trim().toLowerCase()) ||
-      resource.uri.toLowerCase().includes(resourceSearch.trim().toLowerCase()) ||
-      resource.description?.toLowerCase().includes(resourceSearch.trim().toLowerCase()),
-  )
-  const filteredPrompts = gateway.discovery.prompts.filter(
-    (prompt) =>
-      prompt.name.toLowerCase().includes(promptSearch.trim().toLowerCase()) ||
-      prompt.description?.toLowerCase().includes(promptSearch.trim().toLowerCase()),
-  )
-  const gatewayStatusLabel =
-    gateway.status.healthy && gateway.status.connected ? 'Connected' : 'Offline'
   const toolsTabLabel = isLabGateway ? 'Actions' : 'Tools'
   const runtimeAgeLabel = gateway.status.age_seconds
     ? gateway.status.age_seconds < 60
@@ -443,21 +487,9 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     }
   }
 
-  const togglePrompt = (name: string) => {
-    setExpandedPrompts((current) => {
-      const next = new Set(current)
-      if (next.has(name)) {
-        next.delete(name)
-      } else {
-        next.add(name)
-      }
-      return next
-    })
-  }
-
   // AppHeader actions: action buttons
   const headerActions = (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2">
       {!isLabGateway && (
         <Button
           variant="outline"
@@ -495,87 +527,25 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       >
         <Pencil className="size-4" />
       </Button>
-      <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)}>
-        <Trash2 className="size-4 mr-2" />
-        Remove
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => setDeleteOpen(true)}
+        aria-label="Remove gateway"
+        title="Remove gateway"
+      >
+        <Trash2 className="size-4" />
       </Button>
     </div>
   )
 
-  const headerStatusPills = (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
-        <span
-          className={`size-2 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
-          aria-label={gatewayStatusLabel}
-        />
-        <span className="text-xs font-medium">{gatewayStatusLabel}</span>
-      </div>
-
-      <div
-        className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1"
-        title="Expose resources"
-        aria-label="Expose resources"
-      >
-        <FileText className="size-3 text-aurora-text-muted" aria-hidden="true" />
-        <Switch
-          aria-label="Expose resources"
-          checked={resourceExposureEnabled}
-          onCheckedChange={handleProxyResourcesToggle}
-          className="scale-75"
-        />
-      </div>
-
-      <div
-        className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1"
-        title="Expose prompts"
-        aria-label="Expose prompts"
-      >
-        <MessageSquare className="size-3 text-aurora-text-muted" aria-hidden="true" />
-        <Switch
-          aria-label="Expose prompts"
-          checked={promptExposureEnabled}
-          onCheckedChange={handleProxyPromptsToggle}
-          className="scale-75"
-        />
-      </div>
-
-      <div
-        className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1"
-        title="Gateway enabled"
-        aria-label="Gateway enabled"
-      >
-        <TransportBadge transport={gateway.transport} iconOnly className="border-0 bg-transparent px-0 py-0 shadow-none" />
-        <Switch
-          aria-label="Gateway enabled"
-          checked={gateway.enabled ?? true}
-          onCheckedChange={handleEnabledToggle}
-          className="scale-75"
-        />
-      </div>
-
-      {surfaceEntries.map(([surface, state]) => (
-        <div key={surface} className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1">
-          <span
-            className={`size-2 rounded-full ${state.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
-            aria-hidden="true"
-          />
-          <span className="text-xs font-medium uppercase">{surface}</span>
-          <Switch
-            aria-label={`${surface.toUpperCase()} surface`}
-            checked={state.enabled}
-            onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
-            className="scale-75"
-          />
-        </div>
-      ))}
-
-      <div className="inline-flex items-center gap-1.5 rounded-full border bg-aurora-page-bg px-2.5 py-1 text-xs text-aurora-text-muted">
-        <Clock className="size-3" />
-        <span>Updated {new Date(gateway.updated_at).toLocaleString()}</span>
-      </div>
-    </div>
-  )
+  const updatedAtLabel = formatGatewayTimestamp(gateway.updated_at)
+  const endpointDisplay =
+    gateway.transport === 'http'
+      ? gateway.config.url
+      : isLabGateway
+        ? gateway.config.url ?? 'Lab-managed gateway configuration'
+        : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')
 
   return (
     <>
@@ -599,70 +569,72 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
             </div>
           </div>
         ) : null}
-        <Tabs defaultValue="tools" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'catalog' | 'runtime' | 'config' | 'settings' | 'warnings')} className="space-y-4">
           {/* Header card with tabs embedded */}
-          <div className="rounded-lg border bg-aurora-panel-medium p-5">
-            {/* Badge row */}
-            <div className="flex flex-wrap items-center gap-2">
-              <TransportBadge transport={gateway.transport} />
-              <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] text-aurora-text-muted">
-                {isLabGateway ? 'Lab gateway' : 'Custom gateway'}
-              </Badge>
-              {gateway.warnings.length > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge variant="outline" className="rounded-full border-aurora-warn/30 bg-aurora-warn/10 text-aurora-warn cursor-default">
-                      {gateway.warnings.length} warning{gateway.warnings.length === 1 ? '' : 's'}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    {gateway.warnings[0].message}
-                    {gateway.warnings.length > 1 && (
-                      <span className="block mt-1 text-xs opacity-70">+{gateway.warnings.length - 1} more — see Warnings tab</span>
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-
-              {headerStatusPills}
+          <div className="relative rounded-lg border bg-aurora-panel-medium p-5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="absolute right-5 top-5 inline-flex size-8 items-center justify-center rounded-full border bg-aurora-page-bg text-aurora-text-muted transition-colors hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
+                  title={updatedAtLabel}
+                  aria-label={`Last updated ${updatedAtLabel}`}
+                >
+                  <Clock className="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {updatedAtLabel}
+              </TooltipContent>
+            </Tooltip>
+            <div className="flex flex-wrap items-center gap-2 pr-28">
+              <TransportBadge transport={gateway.transport} iconOnly={gateway.transport === 'stdio'} />
             </div>
 
             {/* Name + endpoint */}
             <div className="mt-3 space-y-1">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-start gap-3">
                 <span
                   className={`size-2.5 rounded-full ${gateway.status.healthy && gateway.status.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
                   aria-hidden="true"
                 />
                 <h1 className={cn(AURORA_DISPLAY_1, 'break-words text-aurora-text-primary')}>{gateway.name}</h1>
               </div>
-              <p className="max-w-3xl break-all text-sm text-aurora-text-muted">
-                {gateway.transport === 'http'
-                  ? gateway.config.url
-                  : isLabGateway
-                    ? gateway.config.url ?? 'Lab-managed gateway configuration'
-                    : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')}
-              </p>
+              <div className="max-w-3xl">
+                <div className="flex items-center gap-2 overflow-hidden rounded-aurora-2 border bg-aurora-page-bg px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <pre className="overflow-x-hidden rounded-aurora-2 border border-aurora-border-strong/60 bg-aurora-control-surface px-3 py-2 font-mono text-[11px] leading-5 text-aurora-text-primary whitespace-pre-wrap break-all shadow-[var(--aurora-highlight-medium)]">
+                      <code className="font-mono">{endpointDisplay}</code>
+                    </pre>
+                  </div>
+                  <div className="shrink-0">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(endpointDisplay)
+                          toast.success('Copied to clipboard')
+                        } catch {
+                          toast.error('Failed to copy to clipboard')
+                        }
+                      }}
+                      aria-label="Copy command"
+                      title="Copy command"
+                    >
+                      <Copy className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Tabs directly under name/endpoint */}
             <TabsList className="-mx-1 px-1 mt-4">
-              <TabsTrigger value="tools">
-                {toolsTabLabel}
+              <TabsTrigger value="catalog">
+                Catalog
                 <Badge variant="secondary" className="ml-2 text-xs">
-                  {gateway.discovery.tools.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="resources">
-                Resources
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  {gateway.discovery.resources.length}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="prompts">
-                Prompts
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  {gateway.discovery.prompts.length}
+                  {gateway.discovery.tools.length + gateway.discovery.resources.length + gateway.discovery.prompts.length}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="runtime">
@@ -671,14 +643,14 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                   {gateway.status.likely_stale_count ?? 0}
                 </Badge>
               </TabsTrigger>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <TabsTrigger value="config" aria-label="Configuration">
-                    <Settings className="size-3" />
-                  </TabsTrigger>
-                </TooltipTrigger>
-                <TooltipContent>Configuration</TooltipContent>
-              </Tooltip>
+              <TabsTrigger value="config">Config</TabsTrigger>
+              <TabsTrigger value="settings">
+                Settings
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {/* gateway enabled + expose resources + expose prompts + lab surfaces */}
+                  {3 + surfaceEntries.length}
+                </Badge>
+              </TabsTrigger>
               {gateway.warnings.length > 0 && (
                 <TabsTrigger value="warnings" className="text-aurora-warn">
                   Warnings
@@ -691,177 +663,192 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
           </div>
 
           {/* Tab content */}
-          <TabsContent value="tools">
-            <div className="rounded-lg border bg-aurora-panel-medium p-4">
-              <ToolExposureTable
-                tools={displayedTools}
-                exposureLabel={exposureSummary.label}
-                exposeAll={exposeAllTools}
-                manageMode={manageToolsMode}
-                hasDraftChanges={hasDraftChanges}
-                isSaving={isSavingExposure}
-                selectedRowToolNames={selectedRowToolNames}
-                currentExposedToolNames={currentExposedToolNames}
-                draftSelectedToolNames={draftSelectedToolNames}
-                saveErrorMessage={exposureSaveError}
-                onExposeAllChange={handleExposeAllChange}
-                onManageModeChange={setManageToolsMode}
-                onRowSelectionChange={setSelectedRowToolNames}
-                onBulkEnableSelected={handleBulkEnableSelected}
-                onBulkDisableSelected={handleBulkDisableSelected}
-                onSaveChanges={handleSaveExposureDraft}
-                onCancelChanges={handleCancelExposureDraft}
-              />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="resources">
-            <div className="rounded-lg border bg-aurora-panel-medium p-5">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Discovered MCP Resources</h2>
-                  <p className="text-sm text-aurora-text-muted">
-                    Resource exposure is managed as a surface-level setting for this gateway.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  <div className="relative w-full min-w-[240px] lg:w-[280px]">
+          <TabsContent value="catalog">
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-aurora-panel-medium p-4">
+                <div className="space-y-3">
+                  <div className="relative">
                     <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-aurora-text-muted" />
                     <input
-                      value={resourceSearch}
-                      onChange={(event) => setResourceSearch(event.target.value)}
-                      placeholder="Search resources..."
-                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-[var(--aurora-accent-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--aurora-accent-primary)]/34"
+                      value={inventorySearch}
+                      onChange={(event) => setInventorySearch(event.target.value)}
+                      placeholder="Search tools, resources, and prompts..."
+                      name="catalog-search"
+                      aria-label="Search tools, resources, and prompts"
+                      className="flex h-10 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-[var(--aurora-accent-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--aurora-accent-primary)]/34"
                     />
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
-                    <span>{filteredResources.length}/{gateway.discovery.resources.length}</span>
-                    <span>visible</span>
-                  </div>
-                  <Badge variant="outline" className="rounded-full px-3 py-1 text-aurora-text-muted">
-                    {resourceExposureEnabled ? 'Resources exposed' : 'Resources hidden'}
-                  </Badge>
-                </div>
-              </div>
-              {gateway.discovery.resources.length === 0 ? (
-                <div className="text-center py-8 text-aurora-text-muted">
-                  <FileText className="size-8 mx-auto mb-3 opacity-50" />
-                  <p>No resources discovered</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredResources.map((resource) => (
-                    <div key={resource.name} className="flex items-start justify-between gap-4 rounded-lg border p-4">
-                      <div className="min-w-0">
-                        <code className="text-sm font-mono font-medium">{resource.name}</code>
-                        {resource.description && (
-                          <p className="text-sm text-aurora-text-muted mt-1">{resource.description}</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {([
+                      ['tools', toolsTabLabel, Wrench, gateway.discovery.tools.length],
+                      ['resources', 'Resources', FileText, gateway.discovery.resources.length],
+                      ['prompts', 'Prompts', MessageSquare, gateway.discovery.prompts.length],
+                    ] as const).map(([value, label, Icon, count]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        // Toggle: clicking an already-selected chip returns to the 'all' view.
+                        onClick={() => setInventoryFilter(inventoryFilter === value ? 'all' : value)}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[13px] font-medium transition-colors',
+                          inventoryFilter === value
+                            ? 'border-aurora-accent-primary/28 bg-[linear-gradient(180deg,rgba(16,35,48,0.96),rgba(11,25,35,0.98))] text-aurora-text-primary shadow-[var(--aurora-active-glow)]'
+                            : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-muted',
                         )}
-                      </div>
+                        aria-pressed={inventoryFilter === value}
+                        aria-label={label}
+                        title={label}
+                      >
+                        <Icon className="size-3.5" />
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px]">{count}</Badge>
+                      </button>
+                    ))}
+                    {inventoryFilter === 'tools' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setManageToolsMode((current) => !current)}
+                        className={cn(
+                          'size-8 rounded-full',
+                          manageToolsMode
+                            ? 'border-aurora-accent-primary/28 bg-[linear-gradient(180deg,rgba(16,35,48,0.96),rgba(11,25,35,0.98))] text-aurora-text-primary shadow-[var(--aurora-active-glow)]'
+                            : 'border-aurora-border-strong bg-aurora-page-bg text-aurora-text-muted',
+                        )}
+                        aria-pressed={manageToolsMode}
+                        aria-label="Manage tools"
+                        title="Manage tools"
+                      >
+                        <SlidersHorizontal className="size-3.5" />
+                      </Button>
+                    ) : null}
+                    {gateway.warnings.length > 0 ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <code className="shrink-0 max-w-[18rem] truncate text-xs text-aurora-text-muted bg-aurora-control-surface px-2 py-1 rounded cursor-default">
-                            {resource.uri}
-                          </code>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setActiveTab('warnings')}
+                            className="size-8 rounded-full border-aurora-warn/30 bg-aurora-warn/10 text-aurora-warn hover:bg-aurora-warn/14 hover:text-aurora-warn"
+                            aria-label={`Open warnings (${gateway.warnings.length})`}
+                            title={`Open warnings (${gateway.warnings.length})`}
+                          >
+                            <AlertTriangle className="size-3.5" />
+                          </Button>
                         </TooltipTrigger>
-                        <TooltipContent side="left" className="max-w-sm break-all font-mono text-xs">
-                          {resource.uri}
+                        <TooltipContent side="bottom" className="max-w-xs">
+                          {gateway.warnings[0].message}
+                          {gateway.warnings.length > 1 && (
+                            <span className="block mt-1 text-xs opacity-70">+{gateway.warnings.length - 1} more — see Warnings tab</span>
+                          )}
                         </TooltipContent>
                       </Tooltip>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="prompts">
-            <div className="rounded-lg border bg-aurora-panel-medium p-5">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Discovered MCP Prompts</h2>
-                  <p className="text-sm text-aurora-text-muted">
-                    Prompts are upstream-derived. Click a prompt to expand arguments and details.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                  <div className="relative w-full min-w-[240px] lg:w-[280px]">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-aurora-text-muted" />
-                    <input
-                      value={promptSearch}
-                      onChange={(event) => setPromptSearch(event.target.value)}
-                      placeholder="Search prompts..."
-                      className="flex h-9 w-full rounded-md border bg-aurora-page-bg px-3 py-1 pl-9 text-sm shadow-xs outline-none transition-colors focus-visible:border-[var(--aurora-accent-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--aurora-accent-primary)]/34"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border bg-aurora-control-surface/20 px-3 py-1.5 text-sm text-aurora-text-muted">
-                    <span>{filteredPrompts.length}/{gateway.discovery.prompts.length}</span>
-                    <span>visible</span>
+                    ) : null}
                   </div>
                 </div>
               </div>
-              {gateway.discovery.prompts.length === 0 ? (
-                <div className="text-center py-8 text-aurora-text-muted">
-                  <MessageSquare className="size-8 mx-auto mb-3 opacity-50" />
-                  <p>No prompts discovered</p>
+
+              {(inventoryFilter === 'all' || inventoryFilter === 'tools') ? (
+                <div className="rounded-lg border bg-aurora-panel-medium p-4">
+                  <div className="mb-4 flex items-center gap-2">
+                    <Wrench className="size-4 text-aurora-text-muted" />
+                    <h2 className="text-lg font-semibold">{toolsTabLabel}</h2>
+                  </div>
+                  <ToolExposureTable
+                    tools={displayedTools}
+                    exposureLabel={exposureSummary.label}
+                    exposeAll={exposeAllTools}
+                    manageMode={manageToolsMode}
+                    hasDraftChanges={hasDraftChanges}
+                    isSaving={isSavingExposure}
+                    selectedRowToolNames={selectedRowToolNames}
+                    currentExposedToolNames={currentExposedToolNames}
+                    draftSelectedToolNames={draftSelectedToolNames}
+                    saveErrorMessage={exposureSaveError}
+                    onExposeAllChange={handleExposeAllChange}
+                    onManageModeChange={setManageToolsMode}
+                    onRowSelectionChange={setSelectedRowToolNames}
+                    onBulkEnableSelected={handleBulkEnableSelected}
+                    onBulkDisableSelected={handleBulkDisableSelected}
+                    onSaveChanges={handleSaveExposureDraft}
+                    onCancelChanges={handleCancelExposureDraft}
+                    searchValue={inventorySearch}
+                    onSearchValueChange={setInventorySearch}
+                    hideSearchAndFilterControls
+                    hideManageModeToggle
+                  />
                 </div>
-              ) : (
-                <div className="divide-y rounded-lg border">
-                  {filteredPrompts.map((prompt) => {
-                    const isExpanded = expandedPrompts.has(prompt.name)
-                    const hasArgs = prompt.arguments && prompt.arguments.length > 0
-                    return (
-                      <div key={prompt.name} className="overflow-hidden first:rounded-t-lg last:rounded-b-lg">
-                        <button
-                          type="button"
-                          onClick={() => togglePrompt(prompt.name)}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-aurora-control-surface/30 transition-colors"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <code className="break-all text-sm font-mono font-medium">{prompt.name}</code>
-                            {hasArgs && (
-                              <Badge variant="secondary" className="text-xs shrink-0">
-                                {prompt.arguments!.length} arg{prompt.arguments!.length !== 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                          <ChevronDown
-                            className={`size-4 text-aurora-text-muted shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                          />
-                        </button>
-                        {isExpanded && (
-                          <div className="px-4 pb-4 border-t bg-aurora-control-surface/10 space-y-3">
-                            {prompt.description && (
-                              <p className="text-sm text-aurora-text-muted pt-3">{prompt.description}</p>
-                            )}
-                            {hasArgs && (
-                              <div className="space-y-2">
-                                <p className="text-xs font-medium uppercase tracking-[0.14em] text-aurora-text-muted">Arguments</p>
-                                <div className="space-y-1">
-                                  {prompt.arguments!.map((arg) => (
-                                    <div key={arg.name} className="flex items-start gap-3 rounded-md border bg-aurora-page-bg px-3 py-2">
-                                      <code className="text-xs font-mono font-medium shrink-0">
-                                        {arg.name}
-                                        {arg.required && <span className="text-destructive ml-0.5">*</span>}
-                                      </code>
-                                      {arg.description && (
-                                        <p className="text-xs text-aurora-text-muted">{arg.description}</p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {!prompt.description && !hasArgs && (
-                              <p className="text-sm text-aurora-text-muted pt-3">No additional details available.</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              ) : null}
+
+              {(inventoryFilter === 'all' || inventoryFilter === 'resources') ? (
+                <PrimitiveExposureTable
+                  title="Discovered MCP Resources"
+                  description="Search and manage which upstream resources are exposed through this gateway."
+                  searchPlaceholder="Search resources"
+                  manageLabel="Manage resources"
+                  emptyLabel="No resources discovered"
+                  exposureEnabled={resourceExposureEnabled}
+                  icon={FileText}
+                  items={gateway.discovery.resources.map((resource) => ({
+                    name: resource.name,
+                    description: resource.description,
+                    secondary: resource.uri,
+                    exposed: resource.exposed,
+                  }))}
+                  searchValue={inventorySearch}
+                  onSearchValueChange={setInventorySearch}
+                  onSaveSelection={async (selectedNames) => {
+                    try {
+                      await updateGateway(gateway.id, {
+                        config: {
+                          expose_resources: selectedNames,
+                        },
+                      })
+                      toast.success('Resource exposure updated.')
+                    } catch (error) {
+                      toast.error(getErrorMessage(error, 'Failed to update resource exposure'))
+                      throw error
+                    }
+                  }}
+                />
+              ) : null}
+
+              {(inventoryFilter === 'all' || inventoryFilter === 'prompts') ? (
+                <PrimitiveExposureTable
+                  title="Discovered MCP Prompts"
+                  description="Search and manage which upstream prompts are exposed through this gateway."
+                  searchPlaceholder="Search prompts"
+                  manageLabel="Manage prompts"
+                  emptyLabel="No prompts discovered"
+                  exposureEnabled={promptExposureEnabled}
+                  icon={MessageSquare}
+                  items={gateway.discovery.prompts.map((prompt) => ({
+                    name: prompt.name,
+                    description: prompt.description,
+                    secondary:
+                      prompt.arguments && prompt.arguments.length > 0
+                        ? `${prompt.arguments.length} arg${prompt.arguments.length === 1 ? '' : 's'}`
+                        : undefined,
+                    exposed: prompt.exposed,
+                  }))}
+                  searchValue={inventorySearch}
+                  onSearchValueChange={setInventorySearch}
+                  onSaveSelection={async (selectedNames) => {
+                    try {
+                      await updateGateway(gateway.id, {
+                        config: {
+                          expose_prompts: selectedNames,
+                        },
+                      })
+                      toast.success('Prompt exposure updated.')
+                    } catch (error) {
+                      toast.error(getErrorMessage(error, 'Failed to update prompt exposure'))
+                      throw error
+                    }
+                  }}
+                />
+              ) : null}
             </div>
           </TabsContent>
 
@@ -877,10 +864,91 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 <div className="border-b px-4 py-3">
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-aurora-text-muted">Client JSON</p>
                 </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-aurora-text-primary">
+                <pre className="aurora-scrollbar overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-aurora-text-primary">
                   <code>{clientConfigJson}</code>
                 </pre>
               </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <div className="rounded-lg border bg-aurora-panel-medium p-5 space-y-5">
+              <div>
+                <h2 className="text-lg font-semibold">Gateway settings</h2>
+                <p className="mt-1 text-sm text-aurora-text-muted">
+                  Control gateway availability, exposure of MCP resources and prompts, and individual lab surface toggles.
+                </p>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <div className="flex items-center gap-2">
+                    <Power className="size-4 text-aurora-text-muted" />
+                    <h3 className="text-sm font-semibold text-aurora-text-primary">Gateway state</h3>
+                  </div>
+                  <div className="mt-4">
+                    <SettingRow
+                      title="Gateway enabled"
+                      description="Controls whether this gateway participates in the active catalog and serves tools, resources, and prompts."
+                      checked={gateway.enabled ?? true}
+                      onCheckedChange={handleEnabledToggle}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <div className="flex items-center gap-2">
+                    <Settings className="size-4 text-aurora-text-muted" />
+                    <h3 className="text-sm font-semibold text-aurora-text-primary">Exposure surfaces</h3>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    <SettingRow
+                      title="Expose resources"
+                      description="Allow discovered MCP resources to be exposed through this gateway."
+                      checked={resourceExposureEnabled}
+                      onCheckedChange={handleProxyResourcesToggle}
+                    />
+                    <SettingRow
+                      title="Expose prompts"
+                      description="Allow discovered MCP prompts to be exposed through this gateway."
+                      checked={promptExposureEnabled}
+                      onCheckedChange={handleProxyPromptsToggle}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {surfaceEntries.length > 0 ? (
+                <div className="rounded-lg border bg-aurora-page-bg p-4">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="size-4 text-aurora-text-muted" />
+                    <h3 className="text-sm font-semibold text-aurora-text-primary">Lab surfaces</h3>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {surfaceEntries.map(([surface, state]) => (
+                      <div key={surface} className="flex items-start justify-between gap-4 rounded-lg border bg-aurora-control-surface/10 p-4">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`size-2 rounded-full ${state.connected ? 'bg-aurora-success' : 'bg-aurora-error'}`}
+                              aria-hidden="true"
+                            />
+                            <p className="text-sm font-semibold uppercase text-aurora-text-primary">{surface}</p>
+                          </div>
+                          <p className="mt-1 text-sm text-aurora-text-muted">
+                            {state.connected ? 'Connected and reachable.' : 'Configured but not currently connected.'}
+                          </p>
+                        </div>
+                        <Switch
+                          aria-label={`${surface.toUpperCase()} surface`}
+                          checked={state.enabled}
+                          onCheckedChange={(enabled) => handleSurfaceToggle(surface, enabled)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </TabsContent>
 
@@ -1039,9 +1107,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     <div className="rounded-md border bg-aurora-control-surface/10 p-3">
                       <p className="text-xs uppercase tracking-[0.14em] text-aurora-text-muted">Last reconciled</p>
                       <p className="mt-2 text-sm font-semibold text-aurora-text-primary">
-                        {gateway.status.reconciled_at
-                          ? new Date(gateway.status.reconciled_at).toLocaleString()
-                          : 'Unknown'}
+                        {formatGatewayTimestamp(gateway.status.reconciled_at)}
                       </p>
                     </div>
                   </div>
@@ -1072,7 +1138,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                         </p>
                         <p className="text-sm text-aurora-text-muted mt-0.5">{warning.message}</p>
                         <p className="text-xs text-aurora-text-muted mt-2">
-                          {new Date(warning.timestamp).toLocaleString()}
+                          {formatGatewayTimestamp(warning.timestamp)}
                         </p>
                       </div>
                     </div>

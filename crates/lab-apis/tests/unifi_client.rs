@@ -23,7 +23,7 @@ const API_PREFIX: &str = "/proxy/network/integration/v1";
 #[tokio::test]
 async fn client_history_returns_value() {
     let server = MockServer::start().await;
-    let body = serde_json::json!({"data": [{"ts": 1234567890, "event": "connected"}]});
+    let body = serde_json::json!({"data": [{"ts": 1_234_567_890, "event": "connected"}]});
     Mock::given(method("GET"))
         .and(path(format!(
             "{API_PREFIX}/sites/site-abc/clients/aa:bb:cc:dd:ee:ff/history"

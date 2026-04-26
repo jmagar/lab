@@ -147,4 +147,4 @@ this is an intentional deviation from the dispatch template's `X-Api-Key` defaul
 - **`docker.restart` implementation** — implemented as a sequential `docker_stop` + `docker_start` because no native restart mutation exists in the schema. This operation is **not cancellation-safe**: if the future is dropped after `stop` completes but before `start` is issued, the container remains permanently stopped.
 - **CLI Tier-2 only** — raw `--params` JSON object; typed Tier-1 subcommands are deferred.
 - **GraphQL subscriptions deferred** — 17 subscriptions available via `graphql-transport-ws` are not yet implemented; reserved for a separate epic.
-- **MCP registry wiring** — `crates/lab/src/mcp/services/unraid.rs` does not exist as a separate file; the MCP surface is wired directly in `crates/lab/src/mcp/registry.rs` using the shared dispatch layer.
+- **MCP registry wiring** — `crates/lab/src/registry.rs` does not exist as a separate file; the MCP surface is wired directly in `crates/lab/src/mcp/registry.rs` using the shared dispatch layer.

@@ -25,10 +25,20 @@ impl IntoResponse for ToolError {
             }
             "confirmation_required" => StatusCode::UNPROCESSABLE_ENTITY,
             "ssrf_blocked" | "no_remote_transport" => StatusCode::UNPROCESSABLE_ENTITY,
+            // lab-zxx5.18 install hardening kinds. All user-caller errors with
+            // a specific remediation; 422 for validation-style, 413 for size,
+            // 504 for timeouts.
+            "symlink_rejected"
+            | "path_traversal_rejected"
+            | "invalid_encoding" => StatusCode::UNPROCESSABLE_ENTITY,
+            "content_too_large" => StatusCode::PAYLOAD_TOO_LARGE,
+            "install_timeout" | "timeout" => StatusCode::GATEWAY_TIMEOUT,
             "oauth_needs_reauth" => StatusCode::UNAUTHORIZED,
             "oauth_state_invalid" => StatusCode::BAD_REQUEST,
-            "forbidden" => StatusCode::FORBIDDEN,
-            "unknown_action" | "unknown_subaction" | "unknown_instance" => StatusCode::BAD_REQUEST,
+            "forbidden" | "dev_preview_read_only" => StatusCode::FORBIDDEN,
+            "unknown_action" | "unknown_subaction" | "unknown_instance" => {
+                StatusCode::BAD_REQUEST
+            }
             "network_error"
             | "server_error"
             | "upstream_error"
@@ -46,7 +56,7 @@ impl IntoResponse for ToolError {
             | "verify_failed"
             | "arch_mismatch"
             | "integrity_mismatch" => StatusCode::BAD_GATEWAY,
-            "conflict" => StatusCode::CONFLICT,
+            "conflict" | "ambiguous_tool" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // Serialize self directly — byte-identical to the MCP error envelope.

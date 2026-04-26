@@ -1,6 +1,6 @@
 //! `lab serve` — start the MCP server.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,10 +17,6 @@ use tokio::sync::mpsc;
 
 use crate::api::AppState;
 use crate::config::{LabConfig, config_toml_path, resolve_auth};
-use crate::device::identity::{resolve_local_hostname, resolve_runtime_role};
-use crate::device::enrollment::store::EnrollmentStore;
-use crate::device::runtime::DeviceRuntime;
-use crate::device::store::DeviceFleetStore;
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
@@ -31,6 +27,10 @@ use crate::dispatch::logs::client::{
 };
 use crate::mcp::peers::PeerNotifier;
 use crate::mcp::server::LabMcpServer;
+use crate::node::enrollment::store::EnrollmentStore;
+use crate::node::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::node::runtime::NodeRuntime;
+use crate::node::store::NodeStore;
 #[cfg(target_os = "linux")]
 use crate::process::unix::{exe_path, terminate_sigterm};
 use crate::registry::{ToolRegistry, build_default_registry};
@@ -135,19 +135,47 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     tracing::info!(
         subsystem = "startup",
         phase = "bootstrap.device-runtime",
-        device_role = ?resolved_runtime.role,
+        node_role = ?resolved_runtime.role,
         local_host = %resolved_runtime.local_host,
         master_host = %resolved_runtime.master_host,
-        "device runtime resolved"
+        "node runtime resolved"
     );
-    let device_runtime = DeviceRuntime::from_config(resolved_runtime, config, Some(port))?;
-    let device_store = Arc::new(DeviceFleetStore::default());
+    let node_runtime = NodeRuntime::from_config(resolved_runtime, config, Some(port))?;
+    let log_retention_days = config
+        .node
+        .as_ref()
+        .and_then(|n| n.log_retention_days)
+        .unwrap_or(crate::node::log_store::DEFAULT_RETENTION_DAYS);
+    let node_log_db_path = node_runtime.home_dir().join(".lab/node-logs.sqlite");
+    let node_store = match crate::node::log_store::SqliteNodeLogStore::open(
+        node_log_db_path.clone(),
+        log_retention_days,
+    )
+    .await
+    {
+        Ok(log_store) => {
+            tracing::info!(
+                path = %node_log_db_path.display(),
+                retention_days = log_retention_days,
+                "node log store opened"
+            );
+            Arc::new(NodeStore::with_log_store(log_store))
+        }
+        Err(err) => {
+            tracing::warn!(
+                path = %node_log_db_path.display(),
+                error = %err,
+                "node log store unavailable; falling back to in-memory store"
+            );
+            Arc::new(NodeStore::default())
+        }
+    };
     let enrollment_store = Arc::new(
-        EnrollmentStore::open(device_runtime.home_dir().join(".lab/device-enrollments.json"))
+        EnrollmentStore::open(node_runtime.home_dir().join(".lab/node-enrollments.json"))
             .await
-            .context("open device enrollment store")?,
+            .context("open node enrollment store")?,
     );
-    let device_role = device_runtime.role();
+    let node_role = node_runtime.role();
 
     let stdio_mode = should_run_stdio(transport, args.command.as_ref());
     let gateway_runtime = GatewayRuntimeHandle::default();
@@ -178,8 +206,16 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         subsystem = "gateway_client",
         phase = "discovery.start",
         upstream_count = config.upstream.len(),
-        oauth_upstream_count = config.upstream.iter().filter(|upstream| upstream.oauth.is_some()).count(),
-        in_process_peer_count = registry.services().iter().filter(|service| !service.actions.is_empty()).count(),
+        oauth_upstream_count = config
+            .upstream
+            .iter()
+            .filter(|upstream| upstream.oauth.is_some())
+            .count(),
+        in_process_peer_count = registry
+            .services()
+            .iter()
+            .filter(|service| !service.actions.is_empty())
+            .count(),
         "starting upstream gateway discovery"
     );
     let mut pool_builder = crate::dispatch::upstream::pool::UpstreamPool::new();
@@ -241,10 +277,15 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             phase = "disabled",
             "web server disabled for stdio transport"
         );
+        // ACP registry must be installed for stdio MCP dispatch too.
+        // The HTTP path installs it via `state.acp_registry`, but stdio
+        // never builds an `AppState`, so wire a fresh registry here.
+        let stdio_acp_registry = Arc::new(crate::acp::registry::AcpSessionRegistry::new());
+        crate::dispatch::acp::install_registry(stdio_acp_registry);
         return run_stdio(
             Arc::new(registry),
             Arc::clone(&gateway_manager),
-            device_role,
+            node_role,
             notifier,
         )
         .await;
@@ -280,32 +321,43 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     };
 
     let web_assets_dir = resolve_web_assets_dir(&config.web);
+    let embedded_web_assets_enabled =
+        web_assets_dir.is_none() && crate::api::web::embedded_web_assets_available();
 
     let oauth_enabled = matches!(auth_config.mode, AuthMode::OAuth);
 
-    let mut state = AppState::from_registry(registry);
+    let mut state = AppState::from_registry(registry).with_config(config.clone());
+    crate::dispatch::acp::install_registry(Arc::clone(&state.acp_registry));
     state = state.with_gateway_manager(Arc::clone(&gateway_manager));
     state = state.with_auth_config(auth_config);
-    let web_ui_auth_disabled =
-        resolve_web_ui_auth_disabled(&config.web, web_assets_dir.is_some(), oauth_enabled)?;
+    let web_ui_auth_disabled = resolve_web_ui_auth_disabled(
+        &config.web,
+        web_assets_dir.is_some() || embedded_web_assets_enabled,
+        oauth_enabled,
+    )?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
-    state = state.with_device_store(Arc::clone(&device_store));
+    state = state.with_node_store(Arc::clone(&node_store));
     state = state.with_enrollment_store(Arc::clone(&enrollment_store));
     state = state.with_log_system(logs_system);
     #[cfg(feature = "mcpregistry")]
     let _registry_sync_keepalive = {
         let db_path = crate::config::registry_db_path();
-        match crate::dispatch::mcpregistry::store::RegistryStore::open(&db_path).await {
+        match crate::dispatch::marketplace::store::RegistryStore::open(&db_path).await {
             Ok(store) => {
                 let store = Arc::new(store);
                 state = state.with_registry_store(Arc::clone(&store));
                 let sync_store = Arc::clone(&store);
-                match crate::dispatch::mcpregistry::client::require_client() {
+                match crate::dispatch::marketplace::mcp_client::require_mcp_client() {
                     Ok(sync_client) => Some(tokio::spawn(async move {
                         // Fire immediately at startup — do not wait for the first interval tick.
-                        if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                            &sync_store, &sync_client, false, "startup",
-                        ).await {
+                        if let Err(e) = crate::dispatch::marketplace::sync::perform_sync(
+                            &sync_store,
+                            &sync_client,
+                            false,
+                            "startup",
+                        )
+                        .await
+                        {
                             tracing::warn!(
                                 service = "mcpregistry",
                                 event = "sync.failed",
@@ -313,17 +365,21 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
                                 "initial sync failed; will retry next hour"
                             );
                         }
-                        let mut interval =
-                            tokio::time::interval(Duration::from_secs(3600));
+                        let mut interval = tokio::time::interval(Duration::from_secs(3600));
                         // Skip missed ticks — if a sync takes >1h, Burst would fire again immediately.
                         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                         // Consume the immediate tick so the first loop iteration is at T+1h.
                         interval.tick().await;
                         loop {
                             interval.tick().await;
-                            if let Err(e) = crate::dispatch::mcpregistry::sync::perform_sync(
-                                &sync_store, &sync_client, false, "hourly",
-                            ).await {
+                            if let Err(e) = crate::dispatch::marketplace::sync::perform_sync(
+                                &sync_store,
+                                &sync_client,
+                                false,
+                                "hourly",
+                            )
+                            .await
+                            {
                                 tracing::warn!(
                                     service = "mcpregistry",
                                     event = "sync.failed",
@@ -357,15 +413,56 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     };
     // `_registry_sync_keepalive` keeps the background sync task alive for the
     // duration of `serve`; binding it by name preserves the JoinHandle.
-    state = state.with_device_role(device_role);
+    state = state.with_node_role(node_role);
+
+    // Wire the configured workspace root into AppState so the fs
+    // service serves `fs.list` / `fs.preview` without re-reading config
+    // per request. Failure is non-fatal: invalid root keeps fs calls on the
+    // structured `workspace_not_configured` path.
+    //
+    // Guarded by `feature = "fs"` so a build without fs cannot report the
+    // service as enabled at startup just because a `[workspace].root` is
+    // configured.
+    #[cfg(feature = "fs")]
+    match crate::dispatch::fs::resolve_workspace_root(config) {
+        Ok(root) => {
+            tracing::info!(
+                subsystem = "startup",
+                phase = "fs.workspace_root",
+                path = %root.display(),
+                "workspace filesystem browser enabled"
+            );
+            state = state.with_workspace_root(root);
+        }
+        Err(e) => {
+            tracing::warn!(
+                subsystem = "startup",
+                phase = "fs.workspace_root",
+                error = %e,
+                "workspace.root invalid; fs service disabled"
+            );
+        }
+    }
+
     if let Some(web_assets_dir) = web_assets_dir {
         tracing::info!(
             subsystem = "web_server",
             phase = "assets.enabled",
             path = %web_assets_dir.display(),
+            source = "filesystem",
+            cache_policy = "index:no-store, assets:public max-age=31536000 immutable",
             "web assets detected"
         );
         state = state.with_web_assets_dir(web_assets_dir);
+    } else if embedded_web_assets_enabled {
+        tracing::info!(
+            subsystem = "web_server",
+            phase = "assets.enabled",
+            source = "embedded",
+            cache_policy = "index:no-store, assets:public max-age=31536000 immutable",
+            "embedded Labby web assets detected"
+        );
+        state = state.with_embedded_web_assets();
     } else {
         tracing::info!(
             subsystem = "web_server",
@@ -377,18 +474,21 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         subsystem = "startup",
         phase = "bootstrap.plan",
         api_server_enabled = true,
-        web_server_enabled = state.web_assets_dir.is_some(),
+        web_server_enabled = state.web_assets_enabled(),
         mcp_server_enabled = matches!(transport, Transport::Http),
         gateway_client_enabled = !config.upstream.is_empty(),
-        oauth_upstream_enabled = config.upstream.iter().any(|upstream| upstream.oauth.is_some()),
+        oauth_upstream_enabled = config
+            .upstream
+            .iter()
+            .any(|upstream| upstream.oauth.is_some()),
         web_ui_auth_disabled = state.web_ui_auth_disabled,
         "startup plan resolved"
     );
 
-    let startup_runtime = device_runtime.clone();
+    let startup_runtime = node_runtime.clone();
     tokio::spawn(async move {
         if let Err(error) = startup_runtime.upload_initial_metadata().await {
-            tracing::warn!(error = %error, "initial device metadata upload failed");
+            tracing::warn!(error = %error, "initial node metadata upload failed");
         }
         if let Err(error) = startup_runtime.collect_and_queue_bootstrap_logs().await {
             tracing::warn!(error = %error, "initial device bootstrap log queueing failed");
@@ -503,9 +603,8 @@ fn resolve_web_assets_dir(web: &crate::config::WebPreferences) -> Option<PathBuf
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
     let from_config = web.assets_dir.clone();
-    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/gateway-admin/out");
 
-    [from_env, from_config, Some(fallback)]
+    [from_env, from_config]
         .into_iter()
         .flatten()
         .find(|path| path.join("index.html").is_file())
@@ -673,20 +772,27 @@ async fn run_http(
         subsystem = "api_server",
         phase = "ready",
         addr,
+        pid = std::process::id(),
         route = "/v1,/health,/ready",
         bearer_token_configured,
         "api server ready"
     );
     tracing::info!(
         subsystem = "web_server",
-        phase = if web_assets_enabled { "ready" } else { "disabled" },
+        phase = if web_assets_enabled {
+            "ready"
+        } else {
+            "disabled"
+        },
         addr,
+        pid = std::process::id(),
         route = "/",
     );
     tracing::info!(
         subsystem = "mcp_server",
         phase = if mount_http_mcp { "ready" } else { "disabled" },
         addr,
+        pid = std::process::id(),
         route = "/mcp",
         transport = "http",
     );
@@ -694,6 +800,7 @@ async fn run_http(
         subsystem = "startup",
         phase = "ready",
         addr,
+        pid = std::process::id(),
         web_server_enabled = web_assets_enabled,
         mcp_server_enabled = mount_http_mcp,
         "lab serve ready"
@@ -732,7 +839,7 @@ fn build_http_router(
 async fn run_stdio(
     registry: Arc<ToolRegistry>,
     gateway_manager: Arc<GatewayManager>,
-    device_role: crate::config::DeviceRole,
+    node_role: crate::config::NodeRole,
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
     tracing::info!(
@@ -740,7 +847,7 @@ async fn run_stdio(
         phase = "start",
         transport = "stdio",
         services = registry.services().len(),
-        device_role = ?device_role,
+        node_role = ?node_role,
         "starting stdio mcp server"
     );
     tracing::info!(
@@ -753,7 +860,7 @@ async fn run_stdio(
     let server = LabMcpServer {
         registry,
         gateway_manager: Some(Arc::clone(&gateway_manager)),
-        device_role: Some(device_role),
+        node_role: Some(node_role),
         peers: Arc::clone(&notifier.peers),
         logging_level: Arc::new(std::sync::atomic::AtomicU8::new(
             crate::mcp::logging::logging_level_rank(rmcp::model::LoggingLevel::Info),
@@ -814,7 +921,7 @@ fn build_mcp_service(
     // All HTTP sessions share the same PeerNotifier (and thus the same peers
     // vec) so that gateway reload notifications reach every connected session.
     let shared_peers = Arc::clone(&notifier.peers);
-    let device_role = state.device_role;
+    let node_role = state.node_role;
 
     Ok(StreamableHttpService::new(
         move || {
@@ -824,7 +931,7 @@ fn build_mcp_service(
             Ok(LabMcpServer {
                 registry: reg,
                 gateway_manager: manager,
-                device_role,
+                node_role,
                 peers,
                 logging_level: Arc::new(std::sync::atomic::AtomicU8::new(
                     crate::mcp::logging::logging_level_rank(rmcp::model::LoggingLevel::Info),
@@ -909,7 +1016,7 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             #[cfg(target_os = "linux")]
             {
-                if reclaim_port_if_lab(addr, port) {
+                if let Some(reclaimed_pid) = reclaim_port_if_lab(addr, port) {
                     for attempt in 1u8..=5 {
                         tokio::time::sleep(Duration::from_millis(100)).await;
                         match tokio::net::TcpListener::bind(addr).await {
@@ -919,29 +1026,33 @@ async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListene
                                     phase = "listener.reclaimed",
                                     addr,
                                     attempt,
-                                    "port reclaimed after killing stale lab process"
+                                    reclaimed_pid,
+                                    current_pid = std::process::id(),
+                                    "port reclaimed after killing stale lab process; current serve process will continue startup"
                                 );
                                 return Ok(l);
                             }
                             Err(e2) if e2.kind() == ErrorKind::AddrInUse => continue,
-                            Err(e2) => return Err(anyhow::Error::from(e2)
-                                .context(format!("failed to bind HTTP listener on `{addr}`"))),
+                            Err(e2) => {
+                                return Err(anyhow::Error::from(e2)
+                                    .context(format!("failed to bind HTTP listener on `{addr}`")));
+                            }
                         }
                     }
                 }
             }
-            Err(anyhow::Error::from(e)
-                .context(format!("failed to bind HTTP listener on `{addr}`")))
+            Err(anyhow::Error::from(e).context(format!("failed to bind HTTP listener on `{addr}`")))
         }
-        Err(e) => Err(anyhow::Error::from(e)
-            .context(format!("failed to bind HTTP listener on `{addr}`"))),
+        Err(e) => {
+            Err(anyhow::Error::from(e).context(format!("failed to bind HTTP listener on `{addr}`")))
+        }
     }
 }
 
 /// On Linux, find the PID holding `port`, confirm it's a `lab` process, and
-/// send SIGTERM. Returns `true` if a signal was sent.
+/// send SIGTERM. Returns the reclaimed PID if a signal was sent.
 #[cfg(target_os = "linux")]
-fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
+fn reclaim_port_if_lab(addr: &str, port: u16) -> Option<u32> {
     if addr.contains(':') || !matches!(addr, "127.0.0.1" | "localhost") {
         tracing::debug!(
             subsystem = "api_server",
@@ -952,10 +1063,10 @@ fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
         );
     }
     let Some(pid) = find_pid_for_port(port) else {
-        return false;
+        return None;
     };
     let Some(exe) = lab_executable_path(pid) else {
-        return false;
+        return None;
     };
     let process_name = exe
         .file_name()
@@ -971,7 +1082,7 @@ fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
             executable = %exe.display(),
             "port in use by non-lab process — not killing"
         );
-        return false;
+        return None;
     }
     tracing::warn!(
         subsystem = "api_server",
@@ -982,7 +1093,7 @@ fn reclaim_port_if_lab(addr: &str, port: u16) -> bool {
         executable = %exe.display(),
         "port held by stale lab process — sending SIGTERM"
     );
-    terminate_sigterm(pid).is_ok()
+    terminate_sigterm(pid).ok().map(|()| pid)
 }
 
 #[cfg(target_os = "linux")]
@@ -991,10 +1102,10 @@ fn lab_executable_path(pid: u32) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-fn is_lab_executable(path: &std::path::Path) -> bool {
+fn is_lab_executable(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
-        Some("lab") | Some("lab (deleted)")
+        Some("lab" | "lab (deleted)")
     )
 }
 
@@ -1010,9 +1121,13 @@ fn find_pid_for_port(port: u16) -> Option<u32> {
     let target = format!("socket:[{inode}]");
     for entry in std::fs::read_dir("/proc").ok()?.flatten() {
         let pid_str = entry.file_name();
-        let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else { continue };
+        let Ok(pid) = pid_str.to_string_lossy().parse::<u32>() else {
+            continue;
+        };
         let fd_dir = format!("/proc/{pid}/fd");
-        let Ok(fds) = std::fs::read_dir(&fd_dir) else { continue };
+        let Ok(fds) = std::fs::read_dir(&fd_dir) else {
+            continue;
+        };
         for fd in fds.flatten() {
             if let Ok(link) = std::fs::read_link(fd.path()) {
                 if link.to_string_lossy() == target {
@@ -1125,10 +1240,14 @@ mod tests {
     #[test]
     fn web_ui_auth_disabled_resolution_prefers_config_then_default() {
         assert!(
-            resolve_web_ui_auth_disabled(&WebPreferences {
-                assets_dir: None,
-                disable_auth: Some(true),
-            }, false, false)
+            resolve_web_ui_auth_disabled(
+                &WebPreferences {
+                    assets_dir: None,
+                    disable_auth: Some(true),
+                },
+                false,
+                false
+            )
             .unwrap()
         );
         assert!(resolve_web_ui_auth_disabled(&WebPreferences::default(), true, false).unwrap());

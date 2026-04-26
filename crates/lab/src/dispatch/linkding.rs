@@ -22,9 +22,16 @@ mod tests {
     fn actions_catalog_includes_core_actions() {
         let names: Vec<&str> = ACTIONS.iter().map(|a| a.name).collect();
         assert!(names.contains(&"bookmark.list"));
+        assert!(names.contains(&"bookmark.archived.list"));
+        assert!(names.contains(&"bookmark.get"));
+        assert!(names.contains(&"bookmark.check"));
         assert!(names.contains(&"bookmark.create"));
+        assert!(names.contains(&"bookmark.update"));
+        assert!(names.contains(&"bookmark.archive"));
+        assert!(names.contains(&"bookmark.unarchive"));
         assert!(names.contains(&"bookmark.delete"));
         assert!(names.contains(&"tag.list"));
+        assert!(names.contains(&"tag.get"));
         assert!(names.contains(&"tag.create"));
         assert!(names.contains(&"user.profile"));
     }

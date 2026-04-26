@@ -228,11 +228,10 @@ Scaffolding one service produces **24 file operations**: 13 new files plus 11 re
 | `crates/lab/src/dispatch/<svc>/dispatch.rs` | `dispatch_dispatch.tpl` | Action router + dispatch_with_client |
 | `crates/lab/src/dispatch/<svc>/params.rs` | `dispatch_params.tpl` | Param coercion helpers |
 | `crates/lab/src/cli/<svc>.rs` | `adapter_cli.tpl` | CLI adapter (clap Args + run()) |
-| `crates/lab/src/mcp/services/<svc>.rs` | `adapter_mcp.tpl` | MCP adapter (thin forwarder) |
 | `crates/lab/src/api/services/<svc>.rs` | `adapter_api.tpl` | API adapter (axum route group) |
 | `docs/coverage/<svc>.md` | `coverage_doc.tpl` | Coverage documentation stub |
 
-### Patched files (11)
+### Patched files (10)
 
 | File patched | Patcher function | What gets inserted |
 |-------------|------------------|--------------------|
@@ -241,7 +240,6 @@ Scaffolding one service produces **24 file operations**: 13 new files plus 11 re
 | `crates/lab/Cargo.toml` | `patch_lab_cargo` | `<svc> = ["lab-apis/<svc>"]` in `[features]` |
 | `crates/lab/src/dispatch.rs` | `patch_dispatch_rs` | `#[cfg(feature = "<svc>")] pub mod <svc>;` |
 | `crates/lab/src/cli.rs` | `patch_cli_rs` | Module decl + enum variant + dispatch arm |
-| `crates/lab/src/mcp/services.rs` | `patch_mcp_services_rs` | `#[cfg(feature = "<svc>")] pub mod <svc>;` |
 | `crates/lab/src/registry.rs` | `patch_mcp_registry_rs` | `register_service!(reg, "<svc>", <svc>);` |
 | `crates/lab/src/api/services.rs` | `patch_api_services_rs` | `#[cfg(feature = "<svc>")] pub mod <svc>;` |
 | `crates/lab/src/api/router.rs` | `patch_api_router_rs` | Feature-gated + registry-checked route mount |
@@ -323,9 +321,6 @@ Tier-2 CLI adapter: raw `action: String` + `params: Vec<String>` (key=value), de
 `run_confirmable_action_command()`. Engineers replace this with a typed Tier-1 adapter
 (`radarr.rs` is the reference) once the service has a stable action set.
 
-#### `adapter_mcp.tpl`
-Six lines: re-exports `ACTIONS` from dispatch, then `dispatch()` forwards to
-`crate::dispatch::{svc}::dispatch()`. No logic lives here.
 
 #### `adapter_api.tpl`
 Axum route group: one `POST /` route that calls `handle_action()` from the shared API helper.
@@ -380,8 +375,6 @@ Three insertions (all sequential — each feeds the result of the previous as in
 The sequential chaining is critical — each step operates on the output of the previous,
 not the original file.
 
-#### `patch_mcp_services_rs`
-Appends the feature-gated mod before EOF.
 
 #### `patch_mcp_registry_rs`
 Anchors on `"    reg\n}"` (the closing of `build_default_registry()`). Inserts
@@ -666,7 +659,6 @@ All 12 are `Fail` if the path does not exist — no skipping.
 | `crates/lab/src/dispatch/<svc>/dispatch.rs` | Action router |
 | `crates/lab/src/dispatch/<svc>/params.rs` | Param helpers |
 | `crates/lab/src/cli/<svc>.rs` | CLI adapter |
-| `crates/lab/src/mcp/services/<svc>.rs` | MCP adapter |
 | `crates/lab/src/api/services/<svc>.rs` | API adapter |
 
 ### registration (11 checks)
@@ -679,7 +671,6 @@ Token-based: `contains_check(file_content, token)` — case-sensitive substring 
 | `feature.lab` | `crates/lab/Cargo.toml` | `<svc> = ["lab-apis/<svc>"]` |
 | `lib.rs` | `crates/lab-apis/src/lib.rs` | `#[cfg(feature = "<svc>")]\npub mod <svc>;` |
 | `cli.rs` | `crates/lab/src/cli.rs` | `pub mod <svc>;` |
-| `mcp.services.rs` | `crates/lab/src/mcp/services.rs` | `#[cfg(feature = "<svc>")]\npub mod <svc>;` |
 | `mcp.registry.rs` | `crates/lab/src/registry.rs` | `register_service!(reg, "<svc>"` |
 | `api.services.rs` | `crates/lab/src/api/services.rs` | `#[cfg(feature = "<svc>")]\npub mod <svc>;` |
 | `api.router.rs` | `crates/lab/src/api/router.rs` | `nest("/<svc>"` |
@@ -717,10 +708,9 @@ Uses `file_or_skip`: returns `Pass` if the file exists, `Skip` (never `Fail`) if
 |------------|-------------|------------------------------|
 | `tests.sdk` | `crates/lab-apis/tests/<svc>_client.rs` | SDK integration test (a real test file) |
 | `impl.dispatch` | `crates/lab/src/dispatch/<svc>/dispatch.rs` | Dispatch implementation file exists |
-| `impl.mcp` | `crates/lab/src/mcp/services/<svc>.rs` | MCP adapter exists |
 | `impl.api` | `crates/lab/src/api/services/<svc>.rs` | API adapter exists |
 
-Note: `impl.dispatch`, `impl.mcp`, and `impl.api` check implementation files (not test files)
+Note: `impl.dispatch` and `impl.api` check implementation files (not test files)
 despite being in the `tests` check module. They were renamed from `tests.dispatch/mcp/api` to
 `impl.*` to reflect what they actually verify.
 
@@ -902,7 +892,7 @@ Edit `crates/lab/src/dispatch/myapi/`:
 
 - **CLI** (`cli/myapi.rs`): start with the scaffolded Tier-2 adapter; upgrade to typed
   Tier-1 once the action set is stable
-- **MCP** (`mcp/services/myapi.rs`): the scaffolded adapter is complete — no changes needed
+- **MCP**: registry wiring in `crates/lab/src/registry.rs` calls shared dispatch directly
   unless you need custom elicitation
 - **API** (`api/services/myapi.rs`): verify `state.clients.myapi` field name matches `AppState`
   field generated by `patch_api_state_rs`
@@ -956,7 +946,6 @@ causes `insert_once` to fail with a `ScaffoldError::Toml { message: "patch ancho
 | Feature in lab-apis | `<svc> = [` in `crates/lab-apis/Cargo.toml` |
 | Feature in lab | `<svc> = ["lab-apis/<svc>"]` in `crates/lab/Cargo.toml` |
 | lib.rs gated mod | `#[cfg(feature = "<svc>")]\npub mod <svc>;` in `lib.rs` |
-| MCP services mod | `#[cfg(feature = "<svc>")]\npub mod <svc>;` in `mcp/services.rs` |
 | MCP registry | `register_service!(reg, "<svc>"` in `registry.rs` |
 | API services mod | `#[cfg(feature = "<svc>")]\npub mod <svc>;` in `api/services.rs` |
 | API router mount | `nest("/<svc>"` in `api/router.rs` |
@@ -985,7 +974,7 @@ These are enforced by code and tests. Violations cause either compile errors or 
 ### Crate boundary
 
 - `lab-apis` never contains `clap`, `rmcp`, `ratatui`, `anyhow`, or `tabled`
-- Business logic never lives in `cli/`, `mcp/services/`, or `api/services/`
+- Business logic never lives in `cli/`, `api/services/`, or MCP exception adapters
 - Config loading (env reads) never happens inside `lab-apis` — always in `dispatch/*/client.rs`
 
 ### Two-guard API router mount

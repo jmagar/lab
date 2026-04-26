@@ -31,12 +31,12 @@ async fn messages_list_accepts_live_paging_shape() {
         "paging": {
             "next": "https://gotify.example/message?limit=5&since=210031",
             "size": 5,
-            "since": 210031,
+            "since": 210_031,
             "limit": 5
         },
         "messages": [
             {
-                "id": 210035,
+                "id": 210_035,
                 "appid": 14,
                 "message": "hello",
                 "title": "test",

@@ -9,14 +9,13 @@ use anyhow::Result;
 use clap::Args;
 
 use crate::cli::helpers::{action_parser, print_dry_run, run_confirmable_action_command};
-use crate::dispatch::marketplace::ACTIONS;
 use crate::output::OutputFormat;
 
 /// `lab marketplace` arguments.
 #[derive(Debug, Args)]
 pub struct MarketplaceArgs {
     /// Action to run (e.g. sources.list, plugins.list, plugin.install).
-    #[arg(default_value = "help", value_parser = action_parser(ACTIONS))]
+    #[arg(default_value = "help", value_parser = action_parser(crate::dispatch::marketplace::actions()))]
     pub action: String,
     /// Action-specific parameters as JSON.
     #[arg(long)]
@@ -46,7 +45,7 @@ pub async fn run(args: MarketplaceArgs, format: OutputFormat) -> Result<ExitCode
     }
     run_confirmable_action_command(
         "marketplace",
-        ACTIONS,
+        crate::dispatch::marketplace::actions(),
         args.action,
         params,
         args.yes,

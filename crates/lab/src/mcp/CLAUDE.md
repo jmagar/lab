@@ -4,18 +4,24 @@ This directory is the translation layer between `lab-apis` (pure SDK) and the MC
 
 ## One tool per service
 
-Each enabled service registers exactly one MCP tool in `crates/lab/src/registry.rs` (not `mcp/registry.rs`, which is a thin re-export). The tool name matches the service name (`radarr`, `sonarr`, `extract`, ...). Registration uses the `register_service!` macro and is feature-gated:
+Each enabled service registers exactly one MCP tool in `crates/lab/src/registry.rs` (not `mcp/registry.rs`, which is a thin re-export). The tool name matches the service name (`radarr`, `sonarr`, `extract`, ...). Normal services register directly from the shared dispatch layer:
 
 ```rust
 #[cfg(feature = "radarr")]
 register_service!(reg, "radarr", radarr);
 ```
 
+The default macro path reads `crate::dispatch::<service>::ACTIONS` and calls `crate::dispatch::<service>::dispatch`.
+
 ## Dispatch pattern
 
-For **migrated services**, `services/<service>.rs` is a thin bridge that delegates to `dispatch/<service>/dispatch.rs`. The dispatch module owns action routing, catalog, param validation, and client resolution. See `crates/lab/src/dispatch/CLAUDE.md` for the required layout and templates.
+For normal services, `dispatch/<service>/dispatch.rs` owns action routing, catalog, param validation, and client resolution. See `crates/lab/src/dispatch/CLAUDE.md` for the required layout and templates.
 
-For **legacy stubs** (not yet migrated), `services/<service>.rs` does the full dispatch inline. When migrating, the MCP service module becomes a one-line delegate to the shared dispatch layer.
+`mcp/services/` is now an exception layer, not the default adapter surface. Keep a module there only when it owns MCP-specific behavior that cannot live in shared dispatch. Current examples:
+
+- `deploy` sets the MCP elicitation context before calling shared deploy dispatch.
+- `fs` filters `fs.preview` out of MCP discovery and execution.
+- `nodes` owns MCP-only enrollment actions.
 
 **No business logic anywhere in `mcp/`.** If you find yourself calling `reqwest`, parsing JSON beyond param extraction, or retrying, move it to `lab-apis/src/<service>/client.rs`.
 
@@ -83,3 +89,43 @@ Never duplicate catalog logic. If you need richer data, extend the builder.
 - `lab://catalog` — the full cross-service catalog.
 
 Resources are read-only. Do not use them for mutations.
+
+## Transport auth for fs
+
+The `fs` service exposes workspace filesystem contents (`fs.list`,
+`fs.preview`). The HTTP surface refuses to mount `/v1/fs` when
+`LAB_WEB_UI_AUTH_DISABLED=true` — see `api/router.rs` and the
+corresponding gate in `cli/serve.rs`. The MCP surface has **no**
+equivalent env-driven refusal: `fs` is registered unconditionally in
+`registry.rs` whenever the `fs` feature is compiled in, regardless of
+MCP transport auth posture.
+
+Existing hard checks (enforced in code):
+
+- Router: `/v1/fs` refuses to mount when
+  `LAB_WEB_UI_AUTH_DISABLED=true` (`api/router.rs`). This is the only
+  enforcement that fires in the LAB_WEB_UI_AUTH_DISABLED + LAN-bind
+  scenario, because the bind guard below treats a configured bearer
+  token as "auth configured" even though the `/v1` middleware has been
+  bypassed.
+- Bind: `cli/serve.rs` refuses to bind on a non-loopback address when
+  no auth is configured at all (no bearer token, no OAuth). Does NOT
+  fire when `LAB_WEB_UI_AUTH_DISABLED=true` is paired with a token —
+  that case relies on the router-level fs mount refusal above.
+
+Operator-side (not enforced in code) — must be ensured before exposing
+a server that has the `fs` feature enabled:
+
+- `lab serve` (HTTP transport, the default): require
+  `LAB_MCP_HTTP_TOKEN` or `LAB_AUTH_MODE=oauth`. Do not relax this
+  while `fs` is feature-enabled.
+- `lab serve mcp --stdio`: stdio has no transport-level auth. Ensure
+  the process is not reachable by untrusted callers — do not expose it
+  through a network proxy without front-side auth.
+
+The asymmetry with `/v1/fs` is intentional: MCP registration is not
+structured to fail or skip a single service at runtime, and stdio has
+no single env var equivalent to `LAB_WEB_UI_AUTH_DISABLED`. Promoting
+this to a runtime invariant (e.g. a startup check that refuses to
+register `fs` when MCP auth posture is not verified) is tracked as
+follow-up work.

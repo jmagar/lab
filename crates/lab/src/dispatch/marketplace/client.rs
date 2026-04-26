@@ -5,20 +5,69 @@
 //! filesystem I/O plus optional `tokio::process::Command` shell-out to
 //! `claude plugin install/uninstall`.
 
+#![allow(dead_code)]
+
 use std::collections::HashSet;
+use std::future::Future;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
+
+/// Abstraction over a WebSocket-backed node RPC channel.
+///
+/// The concrete impl lives in `api/services/marketplace.rs` (a `NodeRpcPort`
+/// that wraps `dispatch::node::send::send_rpc_to_node`). CLI/MCP surfaces
+/// that have no direct WS session use `NoopNodeRpcPort`, which returns a
+/// structured `not_connected` error for any call.
+///
+/// lab-zxx5.26: uses native `async fn in trait` (Rust 1.75+) per project
+/// convention — no `#[async_trait]`, no hand-rolled `Pin<Box<dyn Future>>`.
+pub trait NodeRpcPort: Send + Sync {
+    fn send_rpc(
+        &self,
+        node_id: &str,
+        method: &str,
+        params: Value,
+    ) -> impl Future<Output = Result<Value, ToolError>> + Send;
+}
+
+/// Fallback port used by surfaces that can't reach the WS sender registry
+/// (CLI over stdio, MCP without a master transport). Every `send_rpc` call
+/// returns `not_connected` so callers get a clear, stable error kind.
+pub(super) struct NoopNodeRpcPort;
+
+impl NodeRpcPort for NoopNodeRpcPort {
+    async fn send_rpc(
+        &self,
+        node_id: &str,
+        _method: &str,
+        _params: Value,
+    ) -> Result<Value, ToolError> {
+        Err(ToolError::Sdk {
+            sdk_kind: "not_connected".into(),
+            message: format!(
+                "node RPC to `{node_id}` is unavailable on this surface (use the HTTP API)"
+            ),
+        })
+    }
+}
 
 #[cfg(test)]
 static TEST_PLUGINS_ROOT_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
 #[cfg(test)]
 static TEST_PLUGINS_ROOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Alias used by `backends/claude.rs`.
+pub(super) fn claude_plugins_root() -> Result<PathBuf, ToolError> {
+    plugins_root()
+}
 
 pub(super) fn plugins_root() -> Result<PathBuf, ToolError> {
     #[cfg(test)]
@@ -70,6 +119,15 @@ struct SyncPreview {
     skipped: Vec<String>,
     removed: Vec<String>,
     entries: Vec<DeployPreviewEntry>,
+}
+
+#[derive(Debug)]
+enum FileDiff {
+    Unchanged,
+    Changed {
+        before_content: Option<String>,
+        after_content: Option<String>,
+    },
 }
 
 pub(super) fn sync_workspace_to_target(
@@ -142,13 +200,38 @@ fn sync_tree_to_target(
             .to_string_lossy()
             .into_owned();
         let dest = current_target.join(&file_name);
-        if source.is_dir() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "sync.file_type_failed",
+                    path = %source.display(),
+                    error = %error,
+                    "could not determine file type during sync; marking failed"
+                );
+                failed.push(rel);
+                continue;
+            }
+        };
+        if ft.is_symlink() {
+            tracing::warn!(
+                service = "marketplace",
+                event = "sync.skipped",
+                path = %source.display(),
+                "skipping symlink during sync"
+            );
+            continue;
+        }
+        if ft.is_dir() {
             std::fs::create_dir_all(&dest).map_err(io_internal)?;
-            sync_tree_to_target(workspace, target, &source, changed, skipped, removed, failed)?;
+            sync_tree_to_target(
+                workspace, target, &source, changed, skipped, removed, failed,
+            )?;
             continue;
         }
 
-        if files_match(&source, &dest)? {
+        if files_match_by_metadata_or_content(&source, &dest)? {
             skipped.push(rel);
             continue;
         }
@@ -188,7 +271,11 @@ fn sync_tree_to_target(
     Ok(())
 }
 
-fn preview_tree_sync(workspace: &Path, target: &Path, current: &Path) -> Result<SyncPreview, ToolError> {
+fn preview_tree_sync(
+    workspace: &Path,
+    target: &Path,
+    current: &Path,
+) -> Result<SyncPreview, ToolError> {
     let current_rel = current.strip_prefix(workspace).unwrap_or(current);
     let current_target = if current_rel.as_os_str().is_empty() {
         target.to_path_buf()
@@ -209,7 +296,30 @@ fn preview_tree_sync(workspace: &Path, target: &Path, current: &Path) -> Result<
             .to_string_lossy()
             .into_owned();
         let dest = current_target.join(&file_name);
-        if source.is_dir() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(error) => {
+                tracing::warn!(
+                    service = "marketplace",
+                    event = "preview.file_type_failed",
+                    path = %source.display(),
+                    error = %error,
+                    rel = %rel,
+                    "could not determine file type during preview; entry will be absent from preview"
+                );
+                continue;
+            }
+        };
+        if ft.is_symlink() {
+            tracing::warn!(
+                service = "marketplace",
+                event = "preview.skipped",
+                path = %source.display(),
+                "skipping symlink during preview"
+            );
+            continue;
+        }
+        if ft.is_dir() {
             let nested = preview_tree_sync(workspace, target, &source)?;
             preview.changed.extend(nested.changed);
             preview.skipped.extend(nested.skipped);
@@ -218,18 +328,21 @@ fn preview_tree_sync(workspace: &Path, target: &Path, current: &Path) -> Result<
             continue;
         }
 
-        if files_match(&source, &dest)? {
-            preview.skipped.push(rel);
-            continue;
+        match preview_file_diff(&source, &dest)? {
+            FileDiff::Unchanged => preview.skipped.push(rel),
+            FileDiff::Changed {
+                before_content,
+                after_content,
+            } => {
+                preview.changed.push(rel.clone());
+                preview.entries.push(DeployPreviewEntry {
+                    path: rel,
+                    status: "changed",
+                    before_content,
+                    after_content,
+                });
+            }
         }
-
-        preview.changed.push(rel.clone());
-        preview.entries.push(DeployPreviewEntry {
-            path: rel,
-            status: "changed",
-            before_content: read_text_if_present(&dest),
-            after_content: read_text_if_present(&source),
-        });
     }
 
     if let Ok(target_rd) = std::fs::read_dir(&current_target) {
@@ -261,14 +374,78 @@ fn preview_tree_sync(workspace: &Path, target: &Path, current: &Path) -> Result<
     Ok(preview)
 }
 
-fn files_match(source: &Path, dest: &Path) -> Result<bool, ToolError> {
+fn files_match_by_metadata_or_content(source: &Path, dest: &Path) -> Result<bool, ToolError> {
     let source_meta = std::fs::metadata(source).map_err(io_internal)?;
     let Ok(dest_meta) = std::fs::metadata(dest) else {
         return Ok(false);
     };
-    if source_meta.len() != dest_meta.len() {
+    if !metadata_size_matches(&source_meta, &dest_meta) {
         return Ok(false);
     }
+    if metadata_fast_match(&source_meta, &dest_meta) {
+        return Ok(true);
+    }
+    files_match_by_content(source, dest)
+}
+
+fn preview_file_diff(source: &Path, dest: &Path) -> Result<FileDiff, ToolError> {
+    let source_meta = std::fs::metadata(source).map_err(io_internal)?;
+    let Ok(dest_meta) = std::fs::metadata(dest) else {
+        return Ok(FileDiff::Changed {
+            before_content: None,
+            after_content: read_text_if_present(source),
+        });
+    };
+
+    if metadata_size_matches(&source_meta, &dest_meta)
+        && metadata_fast_match(&source_meta, &dest_meta)
+    {
+        return Ok(FileDiff::Unchanged);
+    }
+
+    let source_bytes = std::fs::read(source).map_err(io_internal)?;
+    let dest_bytes = std::fs::read(dest).map_err(io_internal)?;
+    if source_bytes == dest_bytes {
+        return Ok(FileDiff::Unchanged);
+    }
+    Ok(FileDiff::Changed {
+        before_content: String::from_utf8(dest_bytes).ok(),
+        after_content: String::from_utf8(source_bytes).ok(),
+    })
+}
+
+fn metadata_size_matches(source_meta: &std::fs::Metadata, dest_meta: &std::fs::Metadata) -> bool {
+    source_meta.len() == dest_meta.len()
+}
+
+fn metadata_fast_match(source_meta: &std::fs::Metadata, dest_meta: &std::fs::Metadata) -> bool {
+    same_file_metadata(source_meta, dest_meta)
+        || matching_modified_time(source_meta.modified(), dest_meta.modified())
+}
+
+#[cfg(unix)]
+fn same_file_metadata(source_meta: &std::fs::Metadata, dest_meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    source_meta.dev() == dest_meta.dev() && source_meta.ino() == dest_meta.ino()
+}
+
+#[cfg(not(unix))]
+fn same_file_metadata(_source_meta: &std::fs::Metadata, _dest_meta: &std::fs::Metadata) -> bool {
+    false
+}
+
+fn matching_modified_time(
+    source_modified: std::io::Result<SystemTime>,
+    dest_modified: std::io::Result<SystemTime>,
+) -> bool {
+    matches!((source_modified, dest_modified), (Ok(source), Ok(dest)) if source == dest)
+}
+
+fn files_match_by_content(source: &Path, dest: &Path) -> Result<bool, ToolError> {
+    #[cfg(test)]
+    BYTE_COMPARE_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
     let source_file = std::fs::File::open(source).map_err(io_internal)?;
     let dest_file = std::fs::File::open(dest).map_err(io_internal)?;
     let mut source_reader = BufReader::new(source_file);
@@ -291,11 +468,36 @@ fn files_match(source: &Path, dest: &Path) -> Result<bool, ToolError> {
     }
 }
 
+#[cfg(test)]
+static BYTE_COMPARE_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn read_text_if_present(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
-fn io_internal(error: impl std::fmt::Display) -> ToolError {
+pub(crate) use super::dispatch::walk_artifacts;
+
+/// Cross-platform home directory (checks `HOME` then `USERPROFILE`).
+///
+/// Returns `ToolError::Sdk { sdk_kind: "internal_error", .. }` when neither env
+/// var is set. Do NOT fall back to `/root` — a silent root fallback is the
+/// Docker footgun this helper was created to avoid. Callers that legitimately
+/// need a home-less path should pass one in explicitly.
+pub(crate) fn home_dir() -> Result<PathBuf, ToolError> {
+    crate::config::home_dir().ok_or_else(|| io_internal("HOME env var not set"))
+}
+
+/// Path to the Codex TOML config file (`~/.codex/config.toml`).
+pub(crate) fn codex_config_path() -> Result<PathBuf, ToolError> {
+    Ok(home_dir()?.join(".codex").join("config.toml"))
+}
+
+/// Root of the Codex cache directory (`~/.codex/cache/`).
+pub(crate) fn codex_cache_root() -> Result<PathBuf, ToolError> {
+    Ok(home_dir()?.join(".codex").join("cache"))
+}
+
+pub(crate) fn io_internal(error: impl std::fmt::Display) -> ToolError {
     ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: error.to_string(),
@@ -314,4 +516,65 @@ pub(super) fn with_test_plugins_root<T>(home: &Path, run: impl FnOnce() -> T) ->
     let mut slot = TEST_PLUGINS_ROOT_OVERRIDE.lock().unwrap();
     *slot = previous;
     result
+}
+
+#[cfg(test)]
+pub(super) fn test_plugins_home_override() -> Option<PathBuf> {
+    TEST_PLUGINS_ROOT_OVERRIDE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|plugins| {
+            plugins
+                .parent()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf)
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use tempfile::tempdir;
+
+    #[test]
+    fn preview_sync_uses_metadata_fast_path_without_byte_compare_when_files_are_same() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        let target = dir.path().join("target");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        let source = workspace.join("plugin.json");
+        let dest = target.join("plugin.json");
+        std::fs::write(&source, r#"{"name":"demo"}"#).unwrap();
+        std::fs::hard_link(&source, &dest).unwrap();
+
+        BYTE_COMPARE_CALLS.store(0, Ordering::SeqCst);
+        let preview = preview_workspace_sync(&workspace, &target).unwrap();
+
+        assert_eq!(preview.skipped, vec!["plugin.json"]);
+        assert!(preview.changed.is_empty());
+        assert_eq!(BYTE_COMPARE_CALLS.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn deploy_sync_uses_metadata_fast_path_without_byte_compare_when_files_are_same() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        let target = dir.path().join("target");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        let source = workspace.join("plugin.json");
+        let dest = target.join("plugin.json");
+        std::fs::write(&source, r#"{"name":"demo"}"#).unwrap();
+        std::fs::hard_link(&source, &dest).unwrap();
+
+        BYTE_COMPARE_CALLS.store(0, Ordering::SeqCst);
+        let result = sync_workspace_to_target(&workspace, &target).unwrap();
+
+        assert_eq!(result.skipped, vec!["plugin.json"]);
+        assert!(result.changed.is_empty());
+        assert_eq!(BYTE_COMPARE_CALLS.load(Ordering::SeqCst), 0);
+    }
 }

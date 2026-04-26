@@ -16,6 +16,15 @@ export type AcpAgent = {
   version: string
   description?: string
   distribution: { npx?: object; uvx?: object; binary?: object }
+  installed?: boolean
+  builtin?: boolean
+  installedAt?: string
+  command?: string
+  repository?: string
+  website?: string
+  license?: string
+  icon?: string
+  authors?: string[]
 }
 
 export type MarketplaceItem =

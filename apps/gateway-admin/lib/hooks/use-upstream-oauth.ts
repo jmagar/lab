@@ -3,10 +3,17 @@ import useSWR from 'swr'
 import { upstreamOauthApi } from '@/lib/api/upstream-oauth-client'
 import type { UpstreamEntry, UpstreamOauthStatus } from '@/lib/types/upstream-oauth'
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
 export function useUpstreamOauthUpstreams() {
   return useSWR<UpstreamEntry[], Error>(
     '/v1/gateway/oauth/upstreams',
-    () => upstreamOauthApi.listUpstreams(),
+    () => {
+      if (USE_MOCK_DATA) {
+        return Promise.reject(new Error('HTTP 404'))
+      }
+      return upstreamOauthApi.listUpstreams()
+    },
     { revalidateOnFocus: true },
   )
 }
@@ -20,7 +27,12 @@ export function useUpstreamOauthStatus(
 
   return useSWR<UpstreamOauthStatus, Error>(
     name ? `/v1/gateway/oauth/status/${name}` : null,
-    () => upstreamOauthApi.status(name!),
+    () => {
+      if (USE_MOCK_DATA) {
+        return Promise.reject(new Error('HTTP 404'))
+      }
+      return upstreamOauthApi.status(name!)
+    },
     {
       refreshInterval: (data) => {
         if (!pollWhilePending || data?.authenticated) return 0

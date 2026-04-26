@@ -3,7 +3,7 @@
 **Last updated:** 2026-04-22
 **Upstream spec:** `docs/upstream-api/mcp-registry.yaml`
 **Upstream base URL (default):** `https://registry.modelcontextprotocol.io`
-**Override:** `MCPREGISTRY_URL`
+**Override:** `[mcpregistry].url` in `config.toml`
 
 ## Legend
 
@@ -30,33 +30,34 @@ Notes:
 - Path segments are percent-encoded via `PATH_SEGMENT` set so reverse-DNS names
   (`io.github.user/my-server`) round-trip correctly.
 
-## Dispatch Actions (`crates/lab/src/dispatch/mcpregistry/catalog.rs`)
+## Dispatch Actions (`crates/lab/src/dispatch/marketplace/mcp_catalog.rs`)
 
-The service exposes one MCP tool: `mcpregistry`. Action shape: `action + params` dispatch.
+MCP Registry discovery is exposed through the always-on `marketplace` service
+using `mcp.*` actions. Action shape is the standard `action + params` dispatch.
 
 | Action | Params | Destructive | Returns |
 |--------|--------|-------------|---------|
 | `help` | none | No | Catalog |
 | `schema` | `action: string` (required) | No | Schema |
-| `config` | none | No | RegistryConfig |
-| `server.list` | `search?`, `owner?`, `limit?`, `cursor?`, `version?`, `updated_since?`, `sort_by?`, `order?` | No | ServerListResponse |
-| `server.get` | `name: string` (required) | No | ServerResponse |
-| `server.versions` | `name: string` (required) | No | ServerListResponse |
-| `server.install` | (see catalog) | **Yes** | InstallResult |
-| `server.uninstall` | (see catalog) | **Yes** | UninstallResult |
-| `server.validate` | (see catalog) | No | ValidationResult |
-| `sync` | none | No | SyncResult |
+| `mcp.config` | none | No | RegistryConfig |
+| `mcp.list` | `search?`, `owner?`, `limit?`, `cursor?`, `version?`, `updated_since?`, `sort_by?`, `order?` | No | ServerListResponse |
+| `mcp.get` | `name: string` (required) | No | ServerResponse |
+| `mcp.versions` | `name: string` (required) | No | ServerListResponse |
+| `mcp.install` | (see catalog) | **Yes** | InstallResult |
+| `mcp.uninstall` | (see catalog) | **Yes** | UninstallResult |
+| `mcp.validate` | (see catalog) | No | ValidationResult |
+| `mcp.sync` | none | No | SyncResult |
 
 ### `server.list` — search and owner
 
 Callers can filter by either full-text substring or GitHub namespace:
 
 ```jsonc
-mcpregistry({ "action": "server.list", "params": { "search": "postgres" } })
-mcpregistry({ "action": "server.list", "params": { "owner": "modelcontextprotocol" } })
+marketplace({ "action": "mcp.list", "params": { "search": "postgres" } })
+marketplace({ "action": "mcp.list", "params": { "owner": "modelcontextprotocol" } })
 ```
 
-Resolution rules (`crate::dispatch::mcpregistry::resolve_search_for_rest`):
+Resolution rules (`crate::dispatch::marketplace::resolve_search_for_rest`):
 
 1. Explicit `search` wins if present — `owner` is silently ignored.
 2. `owner` is trimmed, lowercased, and expanded to `search = "io.github.{owner}/"`.
@@ -68,40 +69,41 @@ Resolution rules (`crate::dispatch::mcpregistry::resolve_search_for_rest`):
 The same resolver is used by the `/v0.1/servers` GET surface — the two paths have
 identical filtering semantics.
 
-### `server.list` — `/v1` upstream vs `/v0.1/servers` store
+### `mcp.list` — `/v1` upstream vs `/v0.1/servers` store
 
-`server.list` via the local `/v1/mcpregistry` action calls the upstream
+`mcp.list` via the local `/v1/marketplace` action calls the upstream
 registry `/v0.1/servers` endpoint directly. Sort operates within the current
 page only. For full-dataset sort and offline availability, use the local
 `GET /v0.1/servers` store endpoint described below.
 
 ## Surface Coverage
 
-| Action | MCP | CLI | API (`/v1/mcpregistry`) | REST (`/v0.1/servers`) |
+| Action | MCP | CLI | API (`/v1/marketplace`) | REST (`/v0.1/servers`) |
 |--------|-----|-----|------|------|
-| `server.list` | ✅ | ✅ | ✅ | ✅ (search + owner) |
-| `server.get` | ✅ | ✅ | ✅ | ✅ (per-name GET) |
-| `server.versions` | ✅ | ✅ | ✅ | ✅ |
-| `server.install` | ✅ | ✅ | ✅ | — |
-| `server.uninstall` | ✅ | ✅ | ✅ | — |
-| `server.validate` | ✅ | ✅ | ✅ | — |
-| `config` | ✅ | ✅ | ✅ | — |
-| `sync` | ✅ | ✅ | ✅ | — |
+| `mcp.list` | ✅ | ✅ | ✅ | ✅ (search + owner) |
+| `mcp.get` | ✅ | ✅ | ✅ | ✅ (per-name GET) |
+| `mcp.versions` | ✅ | ✅ | ✅ | ✅ |
+| `mcp.install` | ✅ | ✅ | ✅ | — |
+| `mcp.uninstall` | ✅ | ✅ | ✅ | — |
+| `mcp.validate` | ✅ | ✅ | ✅ | — |
+| `mcp.config` | ✅ | ✅ | ✅ | — |
+| `mcp.sync` | ✅ | ✅ | ✅ | — |
 
-### CLI (`crates/lab/src/cli/mcpregistry.rs`)
+### CLI (`crates/lab/src/cli/marketplace.rs`)
 
-Tier-2 shim: `lab mcpregistry <action> [--params '<json>']`.
+Tier-2 shim: `lab marketplace <mcp.* action> [--params '<json>']`.
 
-### MCP (`crates/lab/src/mcp/services/mcpregistry.rs`)
+### MCP (`crates/lab/src/registry.rs`)
 
-Thin bridge delegating to `crate::dispatch::mcpregistry::dispatch()`. One MCP tool `mcpregistry`.
+Thin bridge delegating to `crate::dispatch::marketplace::dispatch()`. One MCP
+tool `marketplace`.
 
 ### API — two mount points
 
 The service exposes **two** HTTP surfaces:
 
-1. **`POST /v1/mcpregistry`** — action+params dispatch, mirrors MCP exactly.
-   Handler: `crates/lab/src/api/services/mcpregistry.rs`.
+1. **`POST /v1/marketplace`** — action+params dispatch, mirrors MCP exactly.
+   Handler: `crates/lab/src/api/services/marketplace.rs`.
 2. **`GET /v0.1/servers/*`** — REST wire-compatible with the upstream
    MCP Registry v0.1 spec. Handler: `crates/lab/src/api/services/registry_v01.rs`.
 
@@ -119,18 +121,17 @@ The REST endpoints require bearer auth (same token as the rest of the HTTP API).
 
 ## Client Construction
 
-`crates/lab/src/dispatch/mcpregistry/client.rs`:
+`crates/lab/src/dispatch/marketplace/mcp_client.rs`:
 
-- `require_client()` — builds a client from `MCPREGISTRY_URL` (default
+- `require_client()` — builds a client from `[mcpregistry].url` (default
   `https://registry.modelcontextprotocol.io`). No auth required.
-- `client_from_env()` — `Option`-returning variant for `AppState` startup.
+- Missing config falls back to the official public registry URL.
 
 ## Config
 
-| Env var | Required | Purpose |
-|---------|----------|---------|
-| `MCPREGISTRY_URL` | No | Override the default upstream base URL |
-| `LAB_REGISTRY_DB` | No | SQLite path for the local registry store (default: `~/.lab/registry.db`) |
+| Config key | Required | Purpose |
+|------------|----------|---------|
+| `[mcpregistry].url` | No | Override the default upstream base URL |
 
 ## Error Kinds
 

@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import * as React from 'react'
@@ -236,15 +237,17 @@ function PanelBody({
     <>
       <DialogHeader className="shrink-0 space-y-0 border-b border-aurora-border-strong/60 px-6 py-5">
         <div className="flex items-start gap-4">
-          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-aurora-2 border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.8)]">
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-aurora-2 border border-aurora-border-strong/60 bg-aurora-control-surface">
             {headerAvatarSrc ? (
               <>
-                <img
+                <Image
                   src={headerAvatarSrc}
                   alt=""
                   className="size-full object-cover"
+                  height={48}
+                  width={48}
+                  unoptimized
                   referrerPolicy="no-referrer"
-                  loading="lazy"
                   onError={(e) => {
                     const img = e.currentTarget
                     if (ghAvatar && primaryIconHref && img.dataset.fallbackApplied !== 'true') {
@@ -462,7 +465,7 @@ function PanelBody({
               )}
               <div className="space-y-1">
                 <p className={AURORA_MUTED_LABEL}>Raw metadata</p>
-                <div className="aurora-scrollbar max-h-64 overflow-auto rounded border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.6)]">
+                <div className="aurora-scrollbar max-h-64 overflow-auto rounded border border-aurora-border-strong/40 bg-aurora-page-bg">
                   <pre className="w-max min-w-full p-3 font-mono text-xs leading-relaxed text-aurora-text-muted">
                     <JsonHighlight content={JSON.stringify(displayedLabMetadata, null, 2)} />
                   </pre>
@@ -478,7 +481,7 @@ function PanelBody({
               metadata={editableLabMetadataView}
               onChange={updateLabMetadata}
             />
-            <div className="rounded-aurora-2 border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.45)]">
+            <div className="rounded-aurora-2 border border-aurora-border-strong/40 bg-aurora-page-bg">
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
@@ -776,7 +779,7 @@ function ToggleField({
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-aurora-2 border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.45)] p-3">
+    <div className="flex items-start justify-between gap-3 rounded-aurora-2 border border-aurora-border-strong/40 bg-aurora-page-bg p-3">
       <div className="space-y-1">
         <Label className="text-xs font-medium text-aurora-text-primary">{label}</Label>
         <p className="text-xs leading-relaxed text-aurora-text-muted">{description}</p>
@@ -880,7 +883,7 @@ function SchemaViewer({
         <p className="py-2 text-xs text-aurora-error">{error}</p>
       )}
       {content && (
-        <div className="aurora-scrollbar max-h-80 overflow-auto rounded border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.6)]">
+        <div className="aurora-scrollbar max-h-80 overflow-auto rounded border border-aurora-border-strong/40 bg-aurora-page-bg">
           <pre className="w-max min-w-full p-3 font-mono text-xs leading-relaxed text-aurora-text-muted">
             <JsonHighlight content={content} />
           </pre>
@@ -987,12 +990,14 @@ function IconChip({ icon }: { icon: RegistryIcon }) {
       title={icon.src}
     >
       {href ? (
-        <img
+        <Image
           src={href}
           alt=""
+          width={24}
+          height={24}
           className="size-6 rounded object-contain"
           referrerPolicy="no-referrer"
-          loading="lazy"
+          unoptimized
           onError={(e) => { e.currentTarget.style.display = 'none' }}
         />
       ) : (
@@ -1038,7 +1043,7 @@ function RemoteRow({ transport }: { transport: Transport }) {
       {hasVariables && (
         <div className="space-y-1">
           <p className={AURORA_MUTED_LABEL}>Variables</p>
-          <pre className="overflow-x-auto rounded border border-aurora-border-strong/40 bg-[rgba(7,17,26,0.6)] p-2 font-mono text-xs text-aurora-text-muted">
+          <pre className="overflow-x-auto rounded border border-aurora-border-strong/40 bg-aurora-page-bg p-2 font-mono text-xs text-aurora-text-muted">
             {JSON.stringify(variables, null, 2)}
           </pre>
         </div>

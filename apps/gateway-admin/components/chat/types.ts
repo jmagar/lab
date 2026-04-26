@@ -1,4 +1,7 @@
 import type { BridgeEvent, BridgeSessionStatus } from '@/lib/acp/types'
+import type { AttachmentRef } from '@/lib/fs/types'
+
+export type { AttachmentRef }
 
 export interface ACPAgent {
   id: string

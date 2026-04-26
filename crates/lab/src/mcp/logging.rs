@@ -159,4 +159,19 @@ mod tests {
         assert_eq!(level, LoggingLevel::Error);
         assert_eq!(payload["kind"], "upstream_error");
     }
+
+    #[test]
+    fn notification_payload_does_not_include_raw_error_message() {
+        let (_level, payload) = notification_payload(
+            "lab",
+            "call_tool",
+            44,
+            DispatchLogOutcome::Failure {
+                level: LoggingLevel::Error,
+                kind: "internal_error",
+            },
+        );
+        assert!(payload.get("error").is_none());
+        assert!(payload.get("message").is_none());
+    }
 }

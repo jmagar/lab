@@ -4,7 +4,7 @@
 **API target:** Memos v1 REST API (resource-name style, RFC3339 timestamps)
 **SDK surface:** `crates/lab-apis/src/memos/client.rs` (18 public methods)
 **Shared dispatch:** `crates/lab/src/dispatch/memos/` (catalog.rs, client.rs, params.rs, dispatch.rs)
-**MCP adapter:** `crates/lab/src/mcp/services/memos.rs` (thin re-export of dispatch layer)
+**MCP registration:** `crates/lab/src/registry.rs` (direct registry entry to dispatch layer)
 **CLI surface:** `crates/lab/src/cli/memos.rs` (generic action + `--params JSON` → shared dispatch)
 **API handler:** `crates/lab/src/api/services/memos.rs` (thin POST handler over shared dispatch)
 

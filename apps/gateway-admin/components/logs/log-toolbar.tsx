@@ -100,11 +100,13 @@ export function LogToolbar({
 
       <div className={`${AURORA_MEDIUM_PANEL} p-4 sm:p-5`}>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3">
             <label className="relative min-w-[240px] flex-1">
               <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
               <Input
+                id="logs-search"
                 aria-label="Search log events"
+                name="logs-search"
                 className={cn(AURORA_CONTROL_SURFACE, 'pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
                 placeholder="Search message, action, request id"
                 value={filters.text}
@@ -117,58 +119,73 @@ export function LogToolbar({
               />
             </label>
 
-            <Select value={windowPreset} onValueChange={onWindowPresetChange}>
-              <SelectTrigger className={cn(AURORA_CONTROL_SURFACE, 'w-[150px] text-aurora-text-primary')}>
-                <SelectValue placeholder="Window" />
-              </SelectTrigger>
-              <SelectContent>
-                {WINDOW_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[150px_130px_minmax(0,1fr)]">
+              <Select value={windowPreset} onValueChange={onWindowPresetChange}>
+                <SelectTrigger
+                  id="logs-window"
+                  aria-label="Time window"
+                  name="logs-window"
+                  className={cn(AURORA_CONTROL_SURFACE, 'w-full text-aurora-text-primary')}
+                >
+                  <SelectValue placeholder="Window" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WINDOW_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <Select
-              value={String(filters.limit)}
-              onValueChange={(value) => {
-                onFiltersChange({
-                  ...filters,
-                  limit: Number(value),
-                })
-              }}
-            >
-              <SelectTrigger className={cn(AURORA_CONTROL_SURFACE, 'w-[130px] text-aurora-text-primary')}>
-                <SelectValue placeholder="Limit" />
-              </SelectTrigger>
-              <SelectContent>
-                {LIMIT_OPTIONS.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {value} lines
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select
+                value={String(filters.limit)}
+                onValueChange={(value) => {
+                  onFiltersChange({
+                    ...filters,
+                    limit: Number(value),
+                  })
+                }}
+              >
+                <SelectTrigger
+                  id="logs-limit"
+                  aria-label="Visible log line limit"
+                  name="logs-limit"
+                  className={cn(AURORA_CONTROL_SURFACE, 'w-full text-aurora-text-primary')}
+                >
+                  <SelectValue placeholder="Limit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LIMIT_OPTIONS.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {value} lines
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <Button variant="outline" className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')} onClick={onTogglePause}>
-              {streamStatus.paused ? <PlayCircle className="size-4" /> : <PauseCircle className="size-4" />}
-              {streamStatus.paused ? 'Resume' : 'Pause'}
-            </Button>
+              <div className="grid grid-cols-3 gap-2">
+                <Button variant="outline" className={cn(controlTone(), 'justify-center rounded-aurora-1 px-2 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')} onClick={onTogglePause}>
+                  {streamStatus.paused ? <PlayCircle className="size-4" /> : <PauseCircle className="size-4" />}
+                  <span className="hidden sm:inline">{streamStatus.paused ? 'Resume' : 'Pause'}</span>
+                </Button>
 
-            <Button
-              variant="outline"
-              className={cn(controlTone(), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-              onClick={onJumpToNewest}
-              disabled={streamStatus.atLiveEdge && streamStatus.buffered === 0}
-            >
-              Jump to newest
-            </Button>
+                <Button
+                  variant="outline"
+                  className={cn(controlTone(), 'justify-center rounded-aurora-1 px-2 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                  onClick={onJumpToNewest}
+                  disabled={streamStatus.atLiveEdge && streamStatus.buffered === 0}
+                >
+                  <span className="hidden sm:inline">Jump newest</span>
+                  <span className="sm:hidden">Live</span>
+                </Button>
 
-            <Button variant="outline" className={cn(controlTone('accent'), 'rounded-aurora-1 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')} onClick={onRefresh} disabled={isRefreshing}>
-              <RefreshCw className="size-4" />
-              {isRefreshing ? 'Refreshing…' : 'Refresh'}
-            </Button>
+                <Button variant="outline" className={cn(controlTone('accent'), 'justify-center rounded-aurora-1 px-2 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')} onClick={onRefresh} disabled={isRefreshing}>
+                  <RefreshCw className="size-4" />
+                  <span className="hidden sm:inline">{isRefreshing ? 'Refreshing…' : 'Refresh'}</span>
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

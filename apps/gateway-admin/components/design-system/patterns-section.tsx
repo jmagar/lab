@@ -26,6 +26,7 @@ import {
   AURORA_TAIL_ROW,
   controlTone,
 } from '@/components/aurora/tokens'
+import { formatUiTime } from '@/lib/format-ui-time'
 import { fakeLogEvents, toolbarSummaryChips } from './demo-data'
 
 export function PatternsSection() {
@@ -54,7 +55,7 @@ export function PatternsSection() {
                 Pair compact rows with a persistent detail surface.
               </p>
             </div>
-            <div className={`${AURORA_TAIL_ROW} border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] px-4 py-3 ${AURORA_MUTED_LABEL}`}>
+            <div className={`${AURORA_TAIL_ROW} border-b border-aurora-border-strong bg-aurora-page-bg px-4 py-3 ${AURORA_MUTED_LABEL}`}>
               <div>Timestamp</div>
               <div>Level</div>
               <div>Subsystem</div>
@@ -66,13 +67,13 @@ export function PatternsSection() {
                   key={event.event_id}
                   type="button"
                   className={cn(
-                    `${AURORA_TAIL_ROW} w-full px-4 py-3 text-left transition hover:bg-[rgba(7,17,26,0.52)]`,
+                    `${AURORA_TAIL_ROW} w-full px-4 py-3 text-left transition hover:bg-aurora-hover-bg/60`,
                     event.event_id === selectedEventId ? 'bg-aurora-accent-primary/12 shadow-[inset_2px_0_0_var(--aurora-accent-primary)]' : '',
                   )}
                   onClick={() => setSelectedEventId(event.event_id)}
                 >
                   <div className="font-mono text-xs leading-5 text-aurora-text-muted">
-                    {new Date(event.ts).toLocaleTimeString()}
+                    {formatUiTime(event.ts)}
                   </div>
                   <div className={`font-mono text-sm font-semibold ${AURORA_LEVEL_TEXT[event.level]}`}>
                     {event.level.toUpperCase()}
@@ -98,8 +99,8 @@ export function PatternsSection() {
             <div className="grid grid-cols-4 gap-2">
               {toolbarSummaryChips.map((chip) => (
                 <button key={chip.label} type="button" className="inline-flex items-center justify-center gap-1 rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-2 py-2 text-sm font-medium text-aurora-text-primary">
-                  {chip.tone === 'success' ? <ShieldCheck className="size-4 text-success" /> : null}
-                  {chip.tone === 'warning' ? <AlertTriangle className="size-4 text-warning" /> : null}
+                  {chip.tone === 'success' ? <ShieldCheck className="size-4 text-aurora-success" /> : null}
+                  {chip.tone === 'warning' ? <AlertTriangle className="size-4 text-aurora-warn" /> : null}
                   {chip.tone === 'info' ? <Wrench className="size-4 text-aurora-accent-primary" /> : null}
                   {chip.tone === 'default' ? <Cable className="size-4 text-aurora-text-muted" /> : null}
                   <span className="font-semibold">{chip.label.split(' ')[0]}</span>
@@ -142,7 +143,7 @@ export function PatternsSection() {
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-[1rem] border border-aurora-border-strong bg-aurora-control-surface px-4 py-4">
                 <div className="flex items-center gap-2">
-                  <UserRoundCheck className="size-4 text-success" />
+                  <UserRoundCheck className="size-4 text-aurora-success" />
                   <p className="font-medium text-aurora-text-primary">Signed in session</p>
                 </div>
                 <p className="mt-2 text-sm text-aurora-text-muted">
@@ -150,15 +151,15 @@ export function PatternsSection() {
                 </p>
                 <Badge variant="secondary" className="mt-3">Healthy auth</Badge>
               </div>
-              <div className="rounded-[1rem] border border-destructive/30 bg-destructive/8 px-4 py-4">
+              <div className="rounded-[1rem] border border-aurora-error/30 bg-aurora-error/10 px-4 py-4">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="size-4 text-destructive" />
-                  <p className="font-medium text-destructive">Setup attention</p>
+                  <AlertTriangle className="size-4 text-aurora-error" />
+                  <p className="font-medium text-aurora-error">Setup attention</p>
                 </div>
                 <p className="mt-2 text-sm text-aurora-text-muted">
                   One sample service is missing a token. Keep recovery copy direct and close to the action.
                 </p>
-                <Badge variant="outline" className="mt-3 border-destructive/40 text-destructive">Needs action</Badge>
+                <Badge variant="outline" className="mt-3 border-aurora-error/40 text-aurora-error">Needs action</Badge>
               </div>
             </div>
           </div>

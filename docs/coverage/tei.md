@@ -88,7 +88,7 @@ return a `validation_error` with message indicating the limit and recommending s
 Tier-2 shim. `lab tei <action> [--params '<json>']`. The `action` argument defaults to `help`
 when omitted. All eight actions plus `help` and `schema` are wired.
 
-### MCP (`crates/lab/src/mcp/services/tei.rs`)
+### MCP (`crates/lab/src/registry.rs`)
 
 Thin bridge delegating to `crate::dispatch::tei::dispatch()`. One MCP tool named `tei`.
 Exports `ACTIONS` from the shared dispatch catalog and `dispatch` function for the MCP registry.

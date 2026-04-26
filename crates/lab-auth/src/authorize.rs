@@ -1098,7 +1098,7 @@ pub mod tests {
         EncodingKey::from_rsa_pem(pem.as_bytes()).unwrap()
     }
 
-    const TEST_RSA_KEY_PEM: &str = r#"-----BEGIN PRIVATE KEY-----
+    const TEST_RSA_KEY_PEM: &str = r"-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC/Wa3MQnrNbKu9
 H5+ZH30lrKV3+EJeuY0ofx3qMx73ax+ArHaPFHXq3PUAalSZ+UlBqRmX89DdzwWG
 l5hqt3wzGjGe49zxhY5+nUUPLtRiI4JH0iEH4Bg3W9e9gWAAPjVemuYmZ57R9XOd
@@ -1125,5 +1125,5 @@ cjMjpRV189GwIYPOiB7nhiRYBIKfapII5bMNvJ7tAoGACMvtonFh25b7gB7j3Pep
 LEH/fA5CRiOs7Plrt2Sv54wAup4Y6+HQ8i/KFOXIejEN9vfY1YRfyD5Ajc05zg90
 uE8aLb5YtFvoaLAnc/A2ceW8sNxGgT5aPyLPUdmfSryAO4ayFDHmRlGFRsZtTUbn
 Iy60nwnOxK6B5mZV2Cs+kv8=
------END PRIVATE KEY-----"#;
+-----END PRIVATE KEY-----";
 }

@@ -1,0 +1,900 @@
+//! Dispatch for `agent.*` actions within the marketplace service.
+//!
+//! Routes ACP agent discovery and install/uninstall operations to the
+//! `lab-apis::acp_registry` SDK and the local provider config at
+//! `~/.lab/acp-providers.json`.
+//!
+//! Distribution support:
+//! - `npx` and `uvx`: write a provider config entry locally; remote via fleet WS.
+//! - `binary`: download archive (HTTPS only, SSRF-guarded), compute SHA-256,
+//!   extract with system tar/unzip, install to `~/.lab/bin/<agent_id>/`.
+//!
+//! Remote install via fleet WS supports `npx` only — the device-side `DistType`
+//! has no `Uvx` or `Binary` variant.
+
+use std::path::PathBuf;
+
+use serde_json::Value;
+
+use crate::acp::providers::{AcpProviderEntry, read_providers, remove_provider, upsert_provider};
+use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
+use crate::dispatch::marketplace::acp_catalog::ACP_ACTIONS;
+use crate::dispatch::marketplace::acp_client;
+
+#[cfg(feature = "acp_registry")]
+use crate::dispatch::node::send::send_rpc_to_node;
+
+#[cfg(feature = "acp_registry")]
+use lab_apis::acp_registry::client::AcpRegistryClient;
+#[cfg(feature = "acp_registry")]
+use lab_apis::acp_registry::types::{Agent, BinaryAsset};
+
+/// Dispatch an `agent.*` action using a freshly constructed client.
+pub async fn dispatch_acp(action: &str, params: Value) -> Result<Value, ToolError> {
+    // help/schema are universal and feature-independent.
+    match action {
+        "help" => return Ok(help_payload("marketplace", ACP_ACTIONS)),
+        "schema" => {
+            let action_name = require_str(&params, "action")?;
+            return action_schema(ACP_ACTIONS, action_name);
+        }
+        _ => {}
+    }
+
+    #[cfg(feature = "acp_registry")]
+    {
+        let client = acp_client::require_acp_client()?;
+        dispatch_acp_with_client(&client, action, params).await
+    }
+    #[cfg(not(feature = "acp_registry"))]
+    {
+        let _ = (action, params);
+        Err(acp_client::require_acp_client().unwrap_err())
+    }
+}
+
+/// Dispatch an `agent.*` action with a pre-built client (used by API handlers).
+#[cfg(feature = "acp_registry")]
+pub async fn dispatch_acp_with_client(
+    client: &AcpRegistryClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
+    match action {
+        "agent.list" => {
+            let agents = client.list_agents().await?;
+            to_json(enrich_agents_with_install_state(agents)?)
+        }
+        "agent.get" => {
+            let id = require_str(&params, "id")?.to_string();
+            let agent = client.get_agent(&id).await?.ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".to_string(),
+                message: format!("agent `{id}` not found in registry"),
+            })?;
+            to_json(enrich_agents_with_install_state(vec![agent])?.remove(0))
+        }
+        "agent.install" => dispatch_install(client, &params).await,
+        "agent.uninstall" => {
+            let id = require_str(&params, "id")?.to_string();
+            dispatch_uninstall(&id)
+        }
+        unknown => Err(ToolError::UnknownAction {
+            message: format!("unknown action `marketplace.{unknown}`"),
+            valid: ACP_ACTIONS.iter().map(|a| a.name.to_string()).collect(),
+            hint: None,
+        }),
+    }
+}
+
+#[cfg(feature = "acp_registry")]
+fn enrich_agents_with_install_state(mut agents: Vec<Agent>) -> Result<Vec<Agent>, ToolError> {
+    let providers = read_providers()?;
+    let codex_ready = crate::acp::runtime::codex_provider_health().available;
+    for agent in &mut agents {
+        let installed = providers.iter().find(|provider| provider.id == agent.id);
+        if let Some(provider) = installed {
+            agent
+                .extra
+                .insert("installed".to_string(), Value::Bool(true));
+            agent.extra.insert(
+                "installedAt".to_string(),
+                Value::String(provider.installed_at.clone()),
+            );
+            agent.extra.insert(
+                "command".to_string(),
+                Value::String(provider.command.clone()),
+            );
+        } else if agent.id == "codex-acp" && codex_ready {
+            agent
+                .extra
+                .insert("installed".to_string(), Value::Bool(true));
+            agent.extra.insert("builtin".to_string(), Value::Bool(true));
+            agent.extra.insert(
+                "command".to_string(),
+                Value::String("npx @zed-industries/codex-acp".to_string()),
+            );
+        } else {
+            agent
+                .extra
+                .insert("installed".to_string(), Value::Bool(false));
+        }
+    }
+    Ok(agents)
+}
+
+// ---------------------------------------------------------------------------
+// agent.install
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "acp_registry")]
+async fn dispatch_install(client: &AcpRegistryClient, params: &Value) -> Result<Value, ToolError> {
+    let id = require_str(params, "id")?.to_string();
+
+    let node_ids: Vec<String> = match params.get("node_ids") {
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+        Some(_) => {
+            return Err(ToolError::InvalidParam {
+                message: "`node_ids` must be an array of strings".to_string(),
+                param: "node_ids".to_string(),
+            });
+        }
+        None => {
+            return Err(ToolError::MissingParam {
+                message: "missing required parameter `node_ids`".to_string(),
+                param: "node_ids".to_string(),
+            });
+        }
+    };
+
+    if node_ids.is_empty() {
+        return Err(ToolError::InvalidParam {
+            message: "`node_ids` must not be empty".to_string(),
+            param: "node_ids".to_string(),
+        });
+    }
+
+    let platform_override = params
+        .get("platform")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    let agent = client.get_agent(&id).await?.ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "not_found".to_string(),
+        message: format!("agent `{id}` not found in registry"),
+    })?;
+
+    let mut results = Vec::with_capacity(node_ids.len());
+    for node_id in &node_ids {
+        let outcome = if is_local_node(node_id) {
+            install_local(&agent, &id, platform_override.as_deref()).await
+        } else {
+            install_remote(node_id, &agent, &id).await
+        };
+        match outcome {
+            Ok(value) => results.push(serde_json::json!({
+                "node_id": node_id,
+                "ok": true,
+                "result": value,
+            })),
+            Err(e) => results.push(serde_json::json!({
+                "node_id": node_id,
+                "ok": false,
+                "error": serde_json::to_value(&e).unwrap_or(Value::Null),
+            })),
+        }
+    }
+
+    Ok(serde_json::json!({
+        "agent_id": id,
+        "results": results,
+    }))
+}
+
+fn is_local_node(node_id: &str) -> bool {
+    if node_id.eq_ignore_ascii_case("local") {
+        return true;
+    }
+    if let Ok(host) = std::env::var("HOSTNAME")
+        && !host.is_empty()
+        && node_id.eq_ignore_ascii_case(&host)
+    {
+        return true;
+    }
+    false
+}
+
+#[cfg(feature = "acp_registry")]
+async fn install_local(
+    agent: &Agent,
+    agent_id: &str,
+    platform_override: Option<&str>,
+) -> Result<Value, ToolError> {
+    // Prefer binary if the platform is covered, then npx, then uvx.
+    if let Some(map) = &agent.distribution.binary {
+        let platform = platform_override
+            .map(str::to_string)
+            .unwrap_or_else(detect_platform);
+        let asset = map.get(&platform).ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message: format!(
+                "agent `{}` has no binary asset for platform `{}` (available: {})",
+                agent.id,
+                platform,
+                map.keys().cloned().collect::<Vec<_>>().join(", ")
+            ),
+        })?;
+        let (cmd_path, digest) = install_binary(agent_id, asset).await?;
+        let entry = AcpProviderEntry {
+            id: agent_id.to_string(),
+            name: agent.name.clone(),
+            version: agent.version.clone(),
+            distribution: "binary".to_string(),
+            command: cmd_path.to_string_lossy().into_owned(),
+            installed_at: jiff::Timestamp::now().to_string(),
+            sha256: Some(digest),
+        };
+        upsert_provider(&entry)?;
+        return serde_json::to_value(&entry)
+            .map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")));
+    }
+
+    let (distribution_kind, command, sha256) = if let Some(asset) = &agent.distribution.npx {
+        let pkg = match &asset.version {
+            Some(v) => format!("{}@{}", asset.package, v),
+            None => asset.package.clone(),
+        };
+        let mut cmd = format!("npx -y {pkg}");
+        for arg in &asset.args {
+            cmd.push(' ');
+            cmd.push_str(arg);
+        }
+        ("npx", cmd, None)
+    } else if let Some(asset) = &agent.distribution.uvx {
+        let pkg = match &asset.version {
+            Some(v) => format!("{}=={}", asset.package, v),
+            None => asset.package.clone(),
+        };
+        let mut cmd = format!("uvx {pkg}");
+        for arg in &asset.args {
+            cmd.push(' ');
+            cmd.push_str(arg);
+        }
+        ("uvx", cmd, None)
+    } else {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_supported".to_string(),
+            message: format!(
+                "agent `{agent_id}` has no supported local distribution method \
+                 (binary/npx/uvx)"
+            ),
+        });
+    };
+
+    let entry = AcpProviderEntry {
+        id: agent_id.to_string(),
+        name: agent.name.clone(),
+        version: agent.version.clone(),
+        distribution: distribution_kind.to_string(),
+        command,
+        installed_at: jiff::Timestamp::now().to_string(),
+        sha256,
+    };
+
+    upsert_provider(&entry)?;
+    serde_json::to_value(&entry)
+        .map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")))
+}
+
+fn detect_platform() -> String {
+    // Mirror the registry's `<os>-<arch>` triple convention.
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "aarch64",
+        other => other,
+    };
+    format!("{os}-{arch}")
+}
+
+// ---------------------------------------------------------------------------
+// Remote fleet RPC install
+// ---------------------------------------------------------------------------
+
+/// Send an `agent.install` JSON-RPC 2.0 message to a connected remote device.
+///
+/// Only `npx` distribution is supported because the device-side `DistType` only
+/// has an `Npx` variant. `uvx` and `binary` return a structured error.
+#[cfg(feature = "acp_registry")]
+async fn install_remote(node_id: &str, agent: &Agent, agent_id: &str) -> Result<Value, ToolError> {
+    // Remote install only supports npx; uvx and binary are device-side gaps.
+    let (package, version) = if let Some(asset) = &agent.distribution.npx {
+        (asset.package.clone(), asset.version.clone())
+    } else if agent.distribution.uvx.is_some() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_implemented".to_string(),
+            message: format!(
+                "remote install of `{agent_id}` is not supported for uvx distribution \
+                 (node runtime only handles npx)"
+            ),
+        });
+    } else if agent.distribution.binary.is_some() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_implemented".to_string(),
+            message: format!(
+                "remote install of `{agent_id}` is not supported for binary distribution \
+                 (node runtime only handles npx)"
+            ),
+        });
+    } else {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_supported".to_string(),
+            message: format!(
+                "agent `{agent_id}` has no supported remote distribution method (npx required)"
+            ),
+        });
+    };
+
+    // lab-zxx5.21: route through send_rpc_to_node so a UUIDv4 rpc_id is
+    // generated and response/progress correlation uses the same machinery
+    // as cherry-pick. Previously used send_text_to_node with hard-coded
+    // id=0, which collided under concurrency and blocked SSE progress.
+    let params = serde_json::json!({
+        "agent_id": agent_id,
+        "distribution": {
+            "type": "npx",
+            "package": package,
+            "version": version,
+        }
+    });
+
+    let result = send_rpc_to_node(node_id, "agent.install", params).await?;
+    // lab-zxx5.29: validate the node's response shape BEFORE reporting
+    // success to the caller. A well-behaved node returns
+    // `InstallComponentResult { written: [...], skipped: [...], errors: [...] }`.
+    // A malformed node that replies with {} or Null would previously propagate
+    // as `{"result": null}` — silent success. Reject with decode_error so SSE
+    // clients and CLI callers see a real failure.
+    validate_install_result(&result).map_err(|msg| ToolError::Sdk {
+        sdk_kind: "decode_error".to_string(),
+        message: format!("node `{node_id}` returned malformed agent.install result: {msg}"),
+    })?;
+
+    Ok(serde_json::json!({
+        "node_id": node_id,
+        "agent_id": agent_id,
+        "result": result,
+    }))
+}
+
+/// Validate that a node RPC result conforms to the `InstallComponentResult`
+/// shape produced by `handle_install_component` / `handle_agent_install`:
+/// `{ written: Vec<String>, skipped: Vec<String>, errors: Vec<_> }`.
+///
+/// Returns a short explanation on mismatch. Used by `install_remote` and
+/// `plugin_cherry_pick` to guard against silent-success-on-garbage.
+fn validate_install_result(result: &Value) -> Result<(), &'static str> {
+    let obj = result.as_object().ok_or("result is not an object")?;
+    for field in &["written", "skipped", "errors"] {
+        match obj.get(*field) {
+            Some(Value::Array(_)) => {}
+            Some(_) => return Err("result has a required field of the wrong type"),
+            None => return Err("result is missing a required field (written/skipped/errors)"),
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Binary distribution local install
+// ---------------------------------------------------------------------------
+
+/// Download, extract, and install a binary agent to `~/.lab/bin/<agent_id>/`.
+///
+/// Returns `(installed_path, sha256_hex)`.
+#[cfg(feature = "acp_registry")]
+async fn install_binary(
+    agent_id: &str,
+    asset: &BinaryAsset,
+) -> Result<(PathBuf, String), ToolError> {
+    validate_archive_url(&asset.archive)?;
+
+    let install_dir = agent_bin_dir(agent_id)?;
+    std::fs::create_dir_all(&install_dir).map_err(|e| {
+        ToolError::internal_message(format!("create {}: {e}", install_dir.display()))
+    })?;
+
+    // Download to a temp file next to the install dir so rename is atomic.
+    let tmp_archive = tempfile::NamedTempFile::new_in(&install_dir)
+        .map_err(|e| ToolError::internal_message(format!("temp archive: {e}")))?;
+
+    let sha256 = download_archive(&asset.archive, tmp_archive.path()).await?;
+
+    // Extract to a temp dir in the same parent so we can do an atomic move.
+    let tmp_extract = tempfile::TempDir::new_in(&install_dir)
+        .map_err(|e| ToolError::internal_message(format!("temp extract dir: {e}")))?;
+
+    extract_archive(tmp_archive.path(), tmp_extract.path(), &asset.archive)?;
+
+    // Locate the binary: `cmd` is like `"./my-agent"` or `"my-agent"`.
+    let binary_name = std::path::Path::new(asset.cmd.trim_start_matches("./"))
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(asset.cmd.trim_start_matches("./"));
+
+    let src =
+        find_binary_in_dir(tmp_extract.path(), binary_name).ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".to_string(),
+            message: format!(
+                "binary `{binary_name}` not found in extracted archive for agent `{agent_id}`"
+            ),
+        })?;
+
+    let dest = install_dir.join(binary_name);
+
+    // Symlink guard before writing.
+    if let Ok(meta) = std::fs::symlink_metadata(&dest)
+        && meta.file_type().is_symlink()
+    {
+        return Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!(
+                "refusing to overwrite symlink at {} (must be a regular file)",
+                dest.display()
+            ),
+        });
+    }
+
+    std::fs::copy(&src, &dest).map_err(|e| {
+        ToolError::internal_message(format!("copy binary to {}: {e}", dest.display()))
+    })?;
+
+    #[cfg(unix)]
+    {
+        // lab-zxx5.18: set exact 0o755 (rwxr-xr-x). Do NOT OR with existing
+        // permissions — that would preserve setuid/setgid bits (0o4000 /
+        // 0o2000) if they were set on the source. An attacker-controlled
+        // archive with setuid could silently install a privilege-escalation
+        // binary under ~/.lab/bin/. Explicitly clear.
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755)).map_err(|e| {
+            ToolError::internal_message(format!("chmod 0o755 {}: {e}", dest.display()))
+        })?;
+    }
+
+    Ok((dest, sha256))
+}
+
+/// Resolve `~/.lab/bin/<agent_id>/`.
+fn agent_bin_dir(agent_id: &str) -> Result<PathBuf, ToolError> {
+    let env_path = crate::config::dotenv_path().ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: "cannot determine ~/.lab path".to_string(),
+    })?;
+    let lab_dir = env_path
+        .parent()
+        .ok_or_else(|| ToolError::internal_message("dotenv path has no parent"))?;
+    Ok(lab_dir.join("bin").join(agent_id))
+}
+
+/// Validate an archive URL: require HTTPS, reject loopback/private hosts.
+///
+/// lab-zxx5.27 hardening:
+/// - reject `0.0.0.0` / `::` via `is_unspecified` (routes to listening
+///   loopback sockets on Linux)
+/// - reject IPv4-mapped IPv6 loopback (`::ffff:127.0.0.1`) via explicit
+///   unwrap of the mapped V4 form (Rust stable IPv6Addr::is_loopback only
+///   covers `::1`)
+/// - reject common homelab private TLDs in addition to `.local`
+///
+/// Known gap (DEFERRED): DNS rebinding is not mitigated here. The mitigation
+/// requires resolving the hostname AT CONNECT TIME and re-checking the
+/// resolved IP against the deny rules, which requires a custom
+/// `reqwest::dns::Resolve` implementation. Tracked as a follow-up.
+fn validate_archive_url(url: &str) -> Result<(), ToolError> {
+    const PRIVATE_SUFFIXES: &[&str] =
+        &[".local", ".internal", ".lan", ".intranet", ".corp", ".home"];
+
+    let parsed = url::Url::parse(url).map_err(|e| ToolError::Sdk {
+        sdk_kind: "invalid_param".to_string(),
+        message: format!("invalid archive URL `{url}`: {e}"),
+    })?;
+    if parsed.scheme() != "https" {
+        return Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("archive URL must use https, got `{}`", parsed.scheme()),
+        });
+    }
+    if let Some(host) = parsed.host_str() {
+        let host_lower = host.to_ascii_lowercase();
+        if host_lower == "localhost"
+            || host_lower.starts_with("127.")
+            || host_lower == "::1"
+            || host_lower == "0.0.0.0"
+            || PRIVATE_SUFFIXES.iter().any(|s| host_lower.ends_with(s))
+        {
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".to_string(),
+                message: format!("archive URL host `{host}` is a local/loopback address"),
+            });
+        }
+        if let Ok(addr) = host.parse::<std::net::IpAddr>() {
+            // Normalize IPv4-mapped IPv6 (::ffff:127.0.0.1) to the underlying
+            // IPv4 so the same rules apply. Rust's stable IPv6Addr::is_loopback
+            // only matches `::1`, missing mapped-v4 loopback otherwise.
+            let addr = match addr {
+                std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+                    Some(v4) => std::net::IpAddr::V4(v4),
+                    None => std::net::IpAddr::V6(v6),
+                },
+                other => other,
+            };
+            let is_private = match addr {
+                std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
+                std::net::IpAddr::V6(v6) => v6.is_unique_local() || v6.is_unicast_link_local(),
+            };
+            if is_private || addr.is_loopback() || addr.is_unspecified() {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "invalid_param".to_string(),
+                    message: format!(
+                        "archive URL host `{host}` is a private/loopback/unspecified address"
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Download `url` to `dest`, return the hex SHA-256 of the downloaded bytes.
+///
+/// Streaming implementation: chunks are fed to both the SHA-256 hasher and the
+/// file writer concurrently so no full-archive buffer is needed in RAM.
+///
+/// lab-zxx5.18: download progress watchdog — if no bytes arrive for
+/// `DOWNLOAD_STALL_TIMEOUT` (30s), the in-flight download is aborted,
+/// the partial file is cleaned up, and an `install_timeout` error is
+/// returned. This is separate from the overall reqwest timeout, which
+/// caps the total duration; the watchdog catches a stalled connection
+/// that's neither fast-failing nor completing.
+async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, ToolError> {
+    use futures::StreamExt;
+    use sha2::{Digest, Sha256};
+    use tokio::io::AsyncWriteExt;
+
+    /// Abort the download if no bytes arrive within this window. Distinct
+    /// from the overall `.timeout()` — catches stalled connections.
+    const DOWNLOAD_STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| ToolError::internal_message(format!("build http client: {e}")))?;
+
+    let resp = client.get(url).send().await.map_err(|e| ToolError::Sdk {
+        sdk_kind: "network_error".to_string(),
+        message: format!("GET {url}: {e}"),
+    })?;
+
+    if !resp.status().is_success() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "network_error".to_string(),
+            message: format!("GET {url}: HTTP {}", resp.status()),
+        });
+    }
+
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(|e| ToolError::internal_message(format!("create {}: {e}", dest.display())))?;
+
+    let mut hasher = Sha256::new();
+    let mut stream = resp.bytes_stream();
+
+    loop {
+        // Watchdog: each chunk fetch is wrapped in a stall timeout. A download
+        // that stops producing bytes within the window is treated as a fatal
+        // install_timeout rather than waiting out the full request timeout.
+        match tokio::time::timeout(DOWNLOAD_STALL_TIMEOUT, stream.next()).await {
+            Ok(Some(chunk_result)) => {
+                let chunk = chunk_result.map_err(|e| ToolError::Sdk {
+                    sdk_kind: "network_error".to_string(),
+                    message: format!("read body chunk from {url}: {e}"),
+                })?;
+                hasher.update(&chunk);
+                file.write_all(&chunk).await.map_err(|e| {
+                    ToolError::internal_message(format!("write chunk to {}: {e}", dest.display()))
+                })?;
+            }
+            Ok(None) => break,
+            Err(_) => {
+                // Stall — clean up the partial file and surface install_timeout.
+                //
+                // Safe to `remove_file(dest)` unconditionally: `dest` is the
+                // path of a `NamedTempFile` created per call in `install_binary`.
+                // A concurrent `install_binary` for the same agent_id allocates
+                // its own tempfile with a distinct random suffix, so there is
+                // no cross-call delete race here.
+                //
+                // lab-zxx5.32: log on cleanup failure so operators have
+                // visibility into orphan tempfiles. Don't promote to fatal —
+                // the install_timeout is the primary signal.
+                drop(file);
+                if let Err(e) = tokio::fs::remove_file(dest).await {
+                    tracing::warn!(
+                        surface = "dispatch",
+                        service = "marketplace",
+                        action = "download_archive.stall.cleanup",
+                        path = %dest.display(),
+                        error = %e,
+                        "stall-cleanup remove_file failed; partial archive retained"
+                    );
+                }
+                return Err(ToolError::Sdk {
+                    sdk_kind: "install_timeout".to_string(),
+                    message: format!(
+                        "download of {url} stalled for more than {:?}; aborted",
+                        DOWNLOAD_STALL_TIMEOUT
+                    ),
+                });
+            }
+        }
+    }
+
+    file.flush()
+        .await
+        .map_err(|e| ToolError::internal_message(format!("flush {}: {e}", dest.display())))?;
+    // lab-zxx5.32: durably commit before returning the SHA. Without this,
+    // the returned hash matches bytes that may not be on disk if the system
+    // crashes between flush-to-userspace-buffer and disk-commit. Matches
+    // the hardening in node/install.rs::write_atomic.
+    file.sync_all()
+        .await
+        .map_err(|e| ToolError::internal_message(format!("fsync {}: {e}", dest.display())))?;
+
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Extract `archive` into `dest_dir` using system `tar` or `unzip`.
+///
+/// lab-zxx5.24: zip-slip defense via post-extract canonical-containment walk.
+///
+/// lab-zxx5.30: partial-extraction defense. `exit.success() == true` is
+/// not sufficient — BSD tar on macOS and older unzip exit 0 in several
+/// partial scenarios (control-char entries, truncated mid-stream on some
+/// libarchive builds). We now:
+/// 1. List the archive first (`tar -tzf` / `unzip -l`) to get the expected
+///    entry-count,
+/// 2. Capture stderr during extraction (via `Command::output()`) and treat
+///    any non-empty stderr as a hard failure — these tools are silent on
+///    success,
+/// 3. Post-extract, walk `dest_dir` and count files. If the count falls
+///    below the expected minimum, fail closed.
+fn extract_archive(
+    archive: &std::path::Path,
+    dest_dir: &std::path::Path,
+    url: &str,
+) -> Result<(), ToolError> {
+    let archive_s = archive.to_string_lossy();
+    let dest_s = dest_dir.to_string_lossy();
+
+    // Step 1: list the archive to learn what should be extracted.
+    let expected_file_count = list_archive_file_count(archive, url)?;
+
+    // Step 2: extract, capturing stderr for warnings-as-errors detection.
+    let output = if url.ends_with(".zip") {
+        std::process::Command::new("unzip")
+            .args(["-q", &archive_s, "-d", &dest_s])
+            .output()
+    } else {
+        let flag = if url.ends_with(".tar.xz") || url.ends_with(".txz") {
+            "-xJf"
+        } else {
+            "-xzf"
+        };
+        std::process::Command::new("tar")
+            .args([flag, &archive_s, "-C", &dest_s, "--no-same-owner"])
+            .output()
+    };
+
+    let output = output.map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("run extraction tool: {e}"),
+    })?;
+
+    if !output.status.success() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!(
+                "extraction failed (exit {}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        });
+    }
+
+    // Step 3: any stderr content on a "successful" run is a warning that,
+    // for security-sensitive extractions, we treat as failure. tar/unzip
+    // with `-q` are silent on clean success.
+    if !output.stderr.is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Some tar implementations emit benign "Ignoring unknown extended
+        // header keyword" lines on archives generated by newer tar. Don't
+        // fail on those specifically — but fail on everything else.
+        let non_benign: Vec<&str> = stderr
+            .lines()
+            .filter(|line| !line.is_empty())
+            .filter(|line| !line.contains("Ignoring unknown extended header"))
+            .filter(|line| !line.contains("Removing leading"))
+            .collect();
+        if !non_benign.is_empty() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!(
+                    "extraction tool emitted warnings; treating as failure: {}",
+                    non_benign.join(" | ")
+                ),
+            });
+        }
+    }
+
+    // Step 4: containment walk + count verification.
+    let canonical_root = std::fs::canonicalize(dest_dir).map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("canonicalize extract root {}: {e}", dest_dir.display()),
+    })?;
+    let actual_file_count = validate_no_escape(&canonical_root, dest_dir)?;
+
+    if actual_file_count < expected_file_count {
+        return Err(ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!(
+                "partial extraction detected: expected at least {expected_file_count} files, found {actual_file_count}"
+            ),
+        });
+    }
+
+    Ok(())
+}
+
+/// Ask `tar` or `unzip` how many file entries the archive contains.
+/// Used by `extract_archive` as a pre-flight expectation. We count only
+/// regular-file-looking entries, not directories, to stay consistent with
+/// the post-extract walk in `validate_no_escape`.
+fn list_archive_file_count(archive: &std::path::Path, url: &str) -> Result<usize, ToolError> {
+    let archive_s = archive.to_string_lossy();
+    let output = if url.ends_with(".zip") {
+        // `unzip -Z -1` prints one entry per line; trailing `/` indicates a dir.
+        std::process::Command::new("unzip")
+            .args(["-Z", "-1", &archive_s])
+            .output()
+    } else {
+        // `tar -tzf` / `tar -tJf` prints one entry per line; dirs end with `/`.
+        let flag = if url.ends_with(".tar.xz") || url.ends_with(".txz") {
+            "-tJf"
+        } else {
+            "-tzf"
+        };
+        std::process::Command::new("tar")
+            .args([flag, &archive_s])
+            .output()
+    };
+    let output = output.map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("list archive: {e}"),
+    })?;
+    if !output.status.success() {
+        return Err(ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!("archive listing failed (exit {})", output.status),
+        });
+    }
+    let listing = String::from_utf8_lossy(&output.stdout);
+    let count = listing
+        .lines()
+        .filter(|line| !line.is_empty())
+        .filter(|line| !line.ends_with('/'))
+        .count();
+    Ok(count)
+}
+
+/// Recursive helper for `extract_archive`: walk `dir` and verify every
+/// entry canonicalizes under `canonical_root`. Returns the count of
+/// regular files encountered (used by `extract_archive` to detect partial
+/// extraction).
+///
+/// Rejects any symlink anywhere in the tree as a defense-in-depth measure
+/// (archives that add symlinks pointing outside are another escape vector
+/// even when the symlink itself is inside the tree).
+///
+/// lab-zxx5.31: fails CLOSED on `symlink_metadata` errors. The previous
+/// `Err(_) => continue` silently skipped entries we couldn't stat, meaning
+/// an attacker-crafted permission-denied entry could evade rejection. A
+/// stat failure in a security-critical walk is treated as a refusal to
+/// validate the tree.
+fn validate_no_escape(
+    canonical_root: &std::path::Path,
+    dir: &std::path::Path,
+) -> Result<usize, ToolError> {
+    let rd = std::fs::read_dir(dir).map_err(|e| ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: format!("walk extract dir {}: {e}", dir.display()),
+    })?;
+    let mut file_count: usize = 0;
+    for entry in rd.flatten() {
+        let path = entry.path();
+        let meta = std::fs::symlink_metadata(&path).map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!(
+                "stat {} during extract walk (failing closed): {e}",
+                path.display()
+            ),
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "path_traversal_rejected".to_string(),
+                message: format!(
+                    "archive contains symlink at `{}`; rejected (zip-slip defense)",
+                    path.display()
+                ),
+            });
+        }
+        // canonicalize resolves any remaining non-symlink indirection and
+        // lets us prefix-match against the root.
+        let canon = std::fs::canonicalize(&path).map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".to_string(),
+            message: format!("canonicalize {}: {e}", path.display()),
+        })?;
+        if !canon.starts_with(canonical_root) {
+            return Err(ToolError::Sdk {
+                sdk_kind: "path_traversal_rejected".to_string(),
+                message: format!(
+                    "archive entry `{}` escapes extract root `{}`",
+                    canon.display(),
+                    canonical_root.display()
+                ),
+            });
+        }
+        if meta.file_type().is_dir() {
+            file_count += validate_no_escape(canonical_root, &path)?;
+        } else if meta.file_type().is_file() {
+            file_count += 1;
+        }
+    }
+    Ok(file_count)
+}
+
+/// Walk `dir` recursively to find the first file whose name matches `binary_name`.
+fn find_binary_in_dir(dir: &std::path::Path, binary_name: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_binary_in_dir(&path, binary_name) {
+                return Some(found);
+            }
+        } else if path.file_name().and_then(|n| n.to_str()) == Some(binary_name) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// agent.uninstall
+// ---------------------------------------------------------------------------
+
+fn dispatch_uninstall(id: &str) -> Result<Value, ToolError> {
+    let removed = remove_provider(id)?;
+    Ok(serde_json::json!({
+        "id": id,
+        "removed": removed,
+    }))
+}

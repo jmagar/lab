@@ -1,4 +1,50 @@
-import { installServer } from '@/lib/api/mcpregistry-client'
+/**
+ * Marketplace API client - thin wrappers around POST /v1/marketplace.
+ *
+ * All functions call the lab API directly at the same origin. The Rust binary
+ * serves both the static frontend and the /v1/* API, so no proxy is needed.
+ */
+
+import { performServiceAction } from '@/lib/api/service-action-client'
+import { marketplaceActionUrl } from '@/lib/api/gateway-config'
+import type { McpServer, AcpAgent } from './types'
+
+class MarketplaceError extends Error {
+  status: number
+  code?: string
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'MarketplaceError'
+    this.status = status
+    this.code = code
+  }
+}
+
+function marketplaceAction<T>(action: string, params: object, signal?: AbortSignal): Promise<T> {
+  return performServiceAction<T, MarketplaceError>({
+    action,
+    params,
+    signal,
+    serviceLabel: 'Marketplace',
+    url: marketplaceActionUrl(),
+    createError: (msg, status, code) => new MarketplaceError(msg, status, code),
+  })
+}
+
+// MCP Servers
+
+export interface McpListResult {
+  servers: McpServer[]
+}
+
+export async function listMcpServers(signal?: AbortSignal): Promise<McpServer[]> {
+  const res = await marketplaceAction<McpListResult>('mcp.list', {}, signal)
+  return res.servers ?? []
+}
+
+export async function getMcpServer(name: string, signal?: AbortSignal): Promise<McpServer> {
+  return marketplaceAction<McpServer>('mcp.get', { name }, signal)
+}
 
 export interface McpInstallParams {
   /** MCP server name (matches ServerJSON.name) */
@@ -6,7 +52,9 @@ export interface McpInstallParams {
   /** Server version */
   version: string
   /** Gateway IDs/names to install into */
-  gateway_ids: string[]
+  gateway_ids?: string[]
+  /** Claude/Codex clients on fleet devices to install into */
+  client_targets?: Array<{ node_id: string; client: 'claude' | 'codex' }>
   /** Env var values to pass (keyed by env var name) */
   env_vars?: Record<string, string>
 }
@@ -24,38 +72,82 @@ export interface McpInstallResult {
 /**
  * Install an MCP server into one or more gateways.
  *
- * Calls `installServer` from mcpregistry-client once per selected gateway.
- * Results are collected per-gateway so the modal can show partial success.
+ * Dispatches to the backend marketplace action which handles per-gateway
+ * installation and collects partial success results.
  */
 export async function installMcpServer(
   params: McpInstallParams,
   signal?: AbortSignal,
 ): Promise<McpInstallResult> {
-  const results = await Promise.allSettled(
-    params.gateway_ids.map((gatewayId) =>
-      installServer(
-        {
-          name: params.server_name,
-          gateway_name: gatewayId,
-          version: params.version,
-        },
-        signal,
-      ),
-    ),
+  const { server_name, env_vars, ...rest } = params
+  return marketplaceAction<McpInstallResult>(
+    'mcp.install',
+    { ...rest, name: server_name, env_values: env_vars, confirm: true },
+    signal,
   )
+}
 
-  return {
-    results: results.map((result, i) => {
-      const gateway_id = params.gateway_ids[i]!
-      if (result.status === 'fulfilled') {
-        return { gateway_id, ok: true }
-      }
-      const err = result.reason
-      return {
-        gateway_id,
-        ok: false,
-        error: err instanceof Error ? err.message : 'Installation failed',
-      }
-    }),
-  }
+// ACP Agents
+
+export interface AcpListResult {
+  agents: AcpAgent[]
+}
+
+export async function listAcpAgents(signal?: AbortSignal): Promise<AcpAgent[]> {
+  const res = await marketplaceAction<AcpListResult | AcpAgent[]>('agent.list', {}, signal)
+  return Array.isArray(res) ? res : (res.agents ?? [])
+}
+
+export async function getAcpAgent(id: string, signal?: AbortSignal): Promise<AcpAgent> {
+  return marketplaceAction<AcpAgent>('agent.get', { id }, signal)
+}
+
+export interface AcpAgentInstallParams {
+  agent_id: string
+  device_ids: string[]
+  scope: 'global' | 'project'
+  project_path?: string
+  env_vars?: Record<string, string>
+}
+
+export interface AcpAgentInstallDeviceResult {
+  device_id: string
+  ok: boolean
+  message?: string
+}
+
+export interface AcpAgentInstallResult {
+  results: AcpAgentInstallDeviceResult[]
+}
+
+export async function installAcpAgent(
+  params: AcpAgentInstallParams,
+  signal?: AbortSignal,
+): Promise<AcpAgentInstallResult> {
+  return marketplaceAction<AcpAgentInstallResult>(
+    'agent.install',
+    { id: params.agent_id, node_ids: params.device_ids, confirm: true },
+    signal,
+  )
+}
+
+// Cherry-pick
+
+export interface CherryPickParams {
+  plugin_id: string
+  components: string[]
+  device_ids: string[]
+  scope: 'global' | 'project'
+  project_path?: string
+}
+
+export interface CherryPickResult {
+  rpc_id?: string
+}
+
+export async function cherryPickPlugin(
+  params: CherryPickParams,
+  signal?: AbortSignal,
+): Promise<CherryPickResult> {
+  return marketplaceAction<CherryPickResult>('plugin.cherry_pick', { ...params, confirm: true }, signal)
 }

@@ -1,10 +1,15 @@
 'use client'
 
 import * as React from 'react'
-import { Copy, Check, Brain, ChevronDown, ChevronRight } from 'lucide-react'
+import { Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import {
+  ChainOfThought,
+  ChainOfThoughtContent,
+  ChainOfThoughtHeader,
+} from '@/components/ai/chain-of-thought'
+import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai/reasoning'
 import { ToolCallDisplay } from './tool-call-display'
 import type { ACPMessage } from './types'
 import { AURORA_MUTED_LABEL } from '@/components/aurora/tokens'
@@ -47,10 +52,15 @@ function StreamingCursor() {
 export function MessageBubble({ message }: { message: ACPMessage }) {
   const isUser = message.role === 'user'
   const [reasoningOpen, setReasoningOpen] = React.useState(Boolean(message.isStreaming))
+  const [chainOpen, setChainOpen] = React.useState(Boolean(message.isStreaming))
 
   React.useEffect(() => {
-    setReasoningOpen(Boolean(message.isStreaming))
-  }, [message.isStreaming])
+    const streaming = Boolean(message.isStreaming)
+    setReasoningOpen(streaming)
+    setChainOpen(streaming || message.toolCalls.length > 0)
+  }, [message.isStreaming, message.toolCalls.length])
+
+  const hasChain = !isUser && (message.thoughts.length > 0 || message.toolCalls.length > 0)
 
   return (
     <div className={cn('group/bubble flex gap-3', isUser && 'flex-row-reverse')}>
@@ -66,62 +76,49 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
       </div>
 
       <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
-        {!isUser && message.thoughts.length > 0 && (
-          <Collapsible open={reasoningOpen} onOpenChange={setReasoningOpen}>
-            <div className="overflow-hidden rounded-aurora-2 border border-aurora-border-default/80 bg-[linear-gradient(180deg,rgba(16,23,31,0.98),rgba(11,18,25,0.98))] shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]">
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-aurora-hover-bg/25"
-                >
-                  <Brain className="size-4 shrink-0 text-aurora-text-muted/80" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold leading-[1.2] text-aurora-text-primary">
-                      {message.isStreaming
-                        ? `Thought for ${Math.max(1, message.thoughts.length)} second${message.thoughts.length === 1 ? '' : 's'}`
-                        : 'Reasoning'}
-                    </p>
-                    <p className={cn(AURORA_MUTED_LABEL, 'mt-1 text-aurora-text-muted/55')}>
-                      {message.isStreaming
-                        ? 'live'
-                        : `${message.thoughts.length} step${message.thoughts.length === 1 ? '' : 's'}`}
-                    </p>
+        {hasChain && (
+          <div className="w-full overflow-hidden rounded-aurora-3 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]">
+            <ChainOfThought
+              open={chainOpen}
+              onOpenChange={setChainOpen}
+              className="px-4 py-3"
+            >
+              <ChainOfThoughtHeader className="font-medium text-aurora-text-muted">
+                Chain of Thought
+              </ChainOfThoughtHeader>
+              <ChainOfThoughtContent className="pt-1">
+                {message.thoughts.length > 0 && (
+                  <div className="rounded-aurora-2 border border-aurora-border-default/70 bg-aurora-control-surface px-3 py-3">
+                    <Reasoning
+                      isStreaming={Boolean(message.isStreaming)}
+                      open={reasoningOpen}
+                      onOpenChange={setReasoningOpen}
+                      className="mb-0"
+                    >
+                      <ReasoningTrigger className="text-aurora-text-muted" />
+                      <ReasoningContent className="mt-3 space-y-3 text-aurora-text-primary">
+                        {message.thoughts.join('\n\n')}
+                      </ReasoningContent>
+                    </Reasoning>
                   </div>
-                  {reasoningOpen ? (
-                    <ChevronDown className="size-4 shrink-0 text-aurora-text-muted/60" />
-                  ) : (
-                    <ChevronRight className="size-4 shrink-0 text-aurora-text-muted/60" />
-                  )}
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="border-t border-aurora-border-default/60 px-4 py-3">
-                  <div className="space-y-4">
-                    {message.thoughts.map((thought, index) => (
-                      <p
-                        key={`${message.id}-thought-${index}`}
-                        className="whitespace-pre-wrap text-[14px] leading-[1.7] text-aurora-text-primary"
-                      >
-                        {thought}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              </CollapsibleContent>
-            </div>
-          </Collapsible>
-        )}
+                )}
 
-        {message.toolCalls.length > 0 && (
-          <div className="w-full border-l border-aurora-border-default/70 pl-3">
-            <div className="mb-2 flex items-center gap-2">
-              <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/60')}>
-                agent actions
-              </span>
-            </div>
-            {message.toolCalls.map((toolCall) => (
-              <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-            ))}
+                {message.toolCalls.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center gap-2 px-1">
+                      <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/60')}>
+                        agent actions
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {message.toolCalls.map((toolCall) => (
+                        <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </ChainOfThoughtContent>
+            </ChainOfThought>
           </div>
         )}
 
@@ -134,7 +131,7 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
                 : 'border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
             )}
           >
-            <p className="whitespace-pre-wrap text-[13px] leading-[1.55] text-aurora-text-primary">
+            <p className="whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary">
               {message.text}
               {message.isStreaming ? <StreamingCursor /> : null}
             </p>

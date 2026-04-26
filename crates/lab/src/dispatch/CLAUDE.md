@@ -178,6 +178,14 @@ pub async fn dispatch_with_client(
 `dispatch_with_client` is what the API handler calls with the pre-built client from
 `AppState`. `dispatch` is what MCP and CLI call.
 
+## `fs` registration
+
+`fs` registers unconditionally when the `fs` feature is enabled; runtime
+resolution returns `workspace_not_configured` when `[workspace].root` in
+`config.toml` is invalid. The catalog and `lab help` stay discoverable
+regardless of workspace state, and `cli::serve` emits a single WARN at startup
+when the configured root cannot be resolved.
+
 ## Naming
 
 Use `API` for the product surface name in comments and docs.

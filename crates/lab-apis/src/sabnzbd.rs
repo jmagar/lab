@@ -16,6 +16,7 @@ pub use client::SabnzbdClient;
 pub use error::SabnzbdError;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 
 /// Compile-time metadata for the sabnzbd module.
 pub const META: PluginMeta = PluginMeta {
@@ -30,16 +31,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the SABnzbd instance",
             example: "http://localhost:8080",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "SABNZBD_API_KEY",
             description: "API key from SABnzbd Config → General",
             example: "abc123def456...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(8080),
+    supports_multi_instance: false,
 };
 
 use std::time::Instant;

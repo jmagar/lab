@@ -4,12 +4,12 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::catalog::{Catalog, build_catalog};
-use crate::config::DeviceRole;
 use crate::acp::registry::AcpSessionRegistry;
-use crate::device::enrollment::store::EnrollmentStore;
-use crate::device::store::DeviceFleetStore;
+use crate::catalog::{Catalog, build_catalog};
+use crate::config::{LabConfig, NodeRole};
 use crate::dispatch::clients::ServiceClients;
+use crate::node::enrollment::store::EnrollmentStore;
+use crate::node::store::NodeStore;
 use crate::registry::{ToolRegistry, build_default_registry};
 
 /// Application state passed to every axum handler via `State<AppState>`.
@@ -38,31 +38,39 @@ pub struct AppState {
     /// WWW-Authenticate headers) can read from resolved config rather than
     /// re-reading env vars at request time.
     pub auth_config: Option<Arc<lab_auth::config::AuthConfig>>,
+    /// Resolved lab configuration loaded at server startup.
+    pub config: Arc<LabConfig>,
     /// OAuth-mode auth server state, mounted only when LAB_AUTH_MODE=oauth.
     pub oauth_state: Option<Arc<lab_auth::state::AuthState>>,
     /// Shared gateway manager for runtime upstream pool access and config mutation.
     ///
     /// `None` when gateway management is not wired for this process.
     pub gateway_manager: Option<Arc<crate::dispatch::gateway::manager::GatewayManager>>,
-    /// Shared fleet state store for device runtime ingestion.
-    pub device_store: Option<Arc<DeviceFleetStore>>,
+    /// Shared fleet state store for node runtime ingestion.
+    pub node_store: Option<Arc<NodeStore>>,
     /// Shared durable enrollment store for fleet websocket admission control.
     pub enrollment_store: Option<Arc<EnrollmentStore>>,
     /// Shared local-master log runtime used by API SSE and adapter-local lookups.
     pub logs_system: Option<Arc<crate::dispatch::logs::types::LogSystem>>,
     /// Shared ACP session registry for browser chat/session routes.
     pub acp_registry: Arc<AcpSessionRegistry>,
-    /// Resolved device role for the current process.
-    pub device_role: Option<DeviceRole>,
+    /// Resolved node role for the current process.
+    pub node_role: Option<NodeRole>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
+    /// Whether to serve Labby assets embedded into the lab binary.
+    pub embedded_web_assets: bool,
+    /// Canonical absolute path of the configured workspace root, or
+    /// `None` when `workspace.root` is invalid at startup.
+    /// Backs the `dispatch/fs/` service (workspace filesystem browser).
+    pub workspace_root: Option<Arc<PathBuf>>,
     /// When true, `/v1/*` skips auth middleware for hosted UI requests.
     pub web_ui_auth_disabled: bool,
     /// Shared SQLite-backed MCP registry store for `/v0.1` read endpoints.
     ///
     /// `None` when the `mcpregistry` feature is disabled or the store failed to open.
     #[cfg(feature = "mcpregistry")]
-    pub registry_store: Option<Arc<crate::dispatch::mcpregistry::store::RegistryStore>>,
+    pub registry_store: Option<Arc<crate::dispatch::marketplace::store::RegistryStore>>,
 }
 
 impl AppState {
@@ -96,14 +104,17 @@ impl AppState {
             clients,
             enabled_services: Arc::new(enabled_services),
             auth_config: None,
+            config: Arc::new(LabConfig::default()),
             oauth_state: None,
             gateway_manager: None,
-            device_store: None,
+            node_store: None,
             enrollment_store: None,
             logs_system: None,
             acp_registry: Arc::new(AcpSessionRegistry::new()),
-            device_role: None,
+            node_role: None,
             web_assets_dir: None,
+            embedded_web_assets: false,
+            workspace_root: None,
             web_ui_auth_disabled: false,
             #[cfg(feature = "mcpregistry")]
             registry_store: None,
@@ -114,6 +125,12 @@ impl AppState {
     #[must_use]
     pub fn with_auth_config(mut self, config: lab_auth::config::AuthConfig) -> Self {
         self.auth_config = Some(Arc::new(config));
+        self
+    }
+
+    #[must_use]
+    pub fn with_config(mut self, config: LabConfig) -> Self {
+        self.config = Arc::new(config);
         self
     }
 
@@ -135,8 +152,8 @@ impl AppState {
     }
 
     #[must_use]
-    pub fn with_device_store(mut self, store: Arc<DeviceFleetStore>) -> Self {
-        self.device_store = Some(store);
+    pub fn with_node_store(mut self, store: Arc<NodeStore>) -> Self {
+        self.node_store = Some(store);
         self
     }
 
@@ -153,8 +170,8 @@ impl AppState {
     }
 
     #[must_use]
-    pub fn with_device_role(mut self, role: DeviceRole) -> Self {
-        self.device_role = Some(role);
+    pub fn with_node_role(mut self, role: NodeRole) -> Self {
+        self.node_role = Some(role);
         self
     }
 
@@ -162,6 +179,29 @@ impl AppState {
     #[must_use]
     pub fn with_web_assets_dir(mut self, dir: PathBuf) -> Self {
         self.web_assets_dir = Some(Arc::new(dir));
+        self.embedded_web_assets = false;
+        self
+    }
+
+    /// Enable Labby assets embedded into the lab binary.
+    #[must_use]
+    pub fn with_embedded_web_assets(mut self) -> Self {
+        self.embedded_web_assets = true;
+        self
+    }
+
+    #[must_use]
+    pub fn web_assets_enabled(&self) -> bool {
+        self.web_assets_dir.is_some() || self.embedded_web_assets
+    }
+
+    /// Attach the canonical workspace-root path for the filesystem browser
+    /// service. Callers should pass an already-canonicalized, existing
+    /// absolute path — the fs service assumes `starts_with` checks against
+    /// this value are sound.
+    #[must_use]
+    pub fn with_workspace_root(mut self, root: PathBuf) -> Self {
+        self.workspace_root = Some(Arc::new(root));
         self
     }
 
@@ -172,9 +212,32 @@ impl AppState {
         self
     }
 
+    /// Returns `true` unless the current process is explicitly in `NonMaster` role.
+    ///
+    /// **Scope of this check vs. `require_master_store`** (lab-zxx5.27):
+    /// Both read `self.node_role` — that's the security invariant. But they
+    /// answer different questions:
+    /// - `is_master()` is used for ROUTE MOUNTING ("should this server expose
+    ///   controller-only routes at all?"). Returns `true` when `node_role` is
+    ///   `None` (unset = legacy default of master) or `Some(Master)`.
+    /// - `require_master_store()` is used PER-REQUEST ("can THIS request
+    ///   access the node store?") and additionally requires the fleet store
+    ///   to be configured. On a master-roled server without a store it
+    ///   fails closed at the handler.
+    ///
+    /// This asymmetry is intentional. Both paths fail closed on NonMaster.
+    /// A master-roled server without a store mounts controller routes (via
+    /// `is_master()`) but each request still fails at `require_master_store`
+    /// with a handler-level error, surfacing the misconfiguration. Do NOT
+    /// add the store check to `is_master()` — router-level gating on
+    /// runtime-state presence is the wrong layer.
+    ///
+    /// **Security note:** any NEW authorization gate in the codebase must
+    /// read `self.node_role` to stay consistent with this pair. Do not add
+    /// an alternate field or a separate role lookup.
     #[must_use]
     pub fn is_master(&self) -> bool {
-        !matches!(self.device_role, Some(DeviceRole::NonMaster))
+        !matches!(self.node_role, Some(NodeRole::NonMaster))
     }
 
     /// Attach the shared MCP registry store for `/v0.1` read endpoints.
@@ -182,7 +245,7 @@ impl AppState {
     #[must_use]
     pub fn with_registry_store(
         mut self,
-        store: Arc<crate::dispatch::mcpregistry::store::RegistryStore>,
+        store: Arc<crate::dispatch::marketplace::store::RegistryStore>,
     ) -> Self {
         self.registry_store = Some(store);
         self

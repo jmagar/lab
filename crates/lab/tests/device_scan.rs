@@ -21,7 +21,7 @@ command = "lab"
     )
     .unwrap();
 
-    let inventory = lab::device::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
+    let inventory = lab::node::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
     assert_eq!(inventory.len(), 3);
     assert!(inventory.iter().all(|entry| !entry.content_hash.is_empty()));
     assert_eq!(
@@ -45,6 +45,6 @@ fn skips_non_file_ai_cli_config_paths() {
     std::fs::create_dir_all(temp.path().join(".claude.json")).unwrap();
     std::fs::create_dir_all(temp.path().join(".codex/config.toml")).unwrap();
 
-    let inventory = lab::device::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
+    let inventory = lab::node::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
     assert!(inventory.is_empty());
 }

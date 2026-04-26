@@ -34,6 +34,7 @@ pub use error::AppriseError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_OPTIONAL_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the apprise module.
@@ -48,14 +49,17 @@ pub const META: PluginMeta = PluginMeta {
         description: "Base URL of the apprise-api server",
         example: "http://localhost:8000",
         secret: false,
+        ui: Some(&URL_FIELD),
     }],
     optional_env: &[EnvVar {
         name: "APPRISE_TOKEN",
         description: "Bearer token if behind auth proxy",
         example: "abc123...",
         secret: true,
+        ui: Some(&SECRET_OPTIONAL_FIELD),
     }],
     default_port: Some(8000),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for AppriseClient {

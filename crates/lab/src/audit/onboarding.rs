@@ -42,6 +42,7 @@ pub fn audit_service(name: &str, shared: &SharedContext, repo_root: &Path) -> Se
     let mut checks_out = Vec::new();
     checks_out.extend(checks::files::run(name, repo_root));
     checks_out.extend(checks::registration::run(name, shared, repo_root));
+    checks_out.extend(checks::ui_schema::run(name, repo_root));
     checks_out.extend(checks::dispatch::run(name, repo_root));
     checks_out.extend(checks::tests::run(name, repo_root));
     checks_out.extend(checks::docs::run(name, repo_root));

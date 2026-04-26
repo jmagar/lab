@@ -1,6 +1,6 @@
 'use client'
 
-import { Brain, Search, Wrench } from 'lucide-react'
+import { Brain, Wrench } from 'lucide-react'
 import { ActivityDebugCard } from './activity-debug-card'
 import { ActivityPermissionCard } from './activity-permission-card'
 import { ActivityReviewCard } from './activity-review-card'

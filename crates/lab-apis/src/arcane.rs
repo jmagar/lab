@@ -14,6 +14,7 @@ pub use error::ArcaneError;
 
 use crate::core::error::ApiError;
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::status::ServiceStatus;
 use crate::core::traits::ServiceClient;
 
@@ -30,16 +31,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL for the Arcane API (e.g. http://arcane:3000)",
             example: "http://arcane:3000",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "ARCANE_API_KEY",
             description: "API key for authentication (X-API-Key header)",
             example: "arck_xxx",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(3000),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for ArcaneClient {

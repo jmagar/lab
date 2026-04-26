@@ -133,7 +133,7 @@ A new service is not fully online until all of the following exist:
 
 1. SDK tests for core client behavior
 2. shared dispatch-layer tests for operation matching and validation
-3. MCP adapter tests for envelope and schema behavior
+3. MCP registry and shared-dispatch tests for envelope and schema behavior
 4. API adapter tests for status and JSON shape
 5. CLI tests for parsing and machine-readable output where the service exposes CLI behavior
 6. non-destructive live verification for CLI and MCP when a real instance is available

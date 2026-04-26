@@ -237,7 +237,12 @@ async fn post_graphql_returns_server_error_on_errors_array() {
                 "errors should be joined with '; ': {body}"
             );
         }
-        other => panic!("expected Server(200), got {other:?}"),
+        other => {
+            assert!(
+                matches!(other, ApiError::Server { status: 200, .. }),
+                "expected Server(200), got {other:?}"
+            );
+        }
     }
 }
 
@@ -295,6 +300,11 @@ async fn post_graphql_returns_decode_error_when_data_is_null() {
                 "message should mention missing data field: {msg}"
             );
         }
-        other => panic!("expected Decode, got {other:?}"),
+        other => {
+            assert!(
+                matches!(other, ApiError::Decode(_)),
+                "expected Decode, got {other:?}"
+            );
+        }
     }
 }

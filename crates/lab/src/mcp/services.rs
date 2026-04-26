@@ -1,74 +1,16 @@
-//! Per-service dispatch modules.
+//! MCP-specific service exception modules.
 //!
-//! Every module exports `pub const ACTIONS: &[ActionSpec]` and
-//! `pub async fn dispatch(action: &str, params: Value) -> Result<Value>`.
-//! See `radarr.rs` for the reference implementation.
+//! Normal services register directly from `crate::dispatch::<service>` in
+//! `crate::registry`. This module only declares adapters that own behavior
+//! specific to the MCP surface and cannot be represented by shared dispatch
+//! alone.
 
 #[cfg(feature = "deploy")]
 pub mod deploy;
-pub mod device;
-pub mod extract;
-pub mod gateway;
-pub mod logs;
-pub mod marketplace;
 
-#[cfg(feature = "lab-admin")]
-pub mod lab_admin;
+// Device enrollment actions are MCP-only for now and live outside the shared
+// service-dispatch pattern.
+pub mod nodes;
 
-#[cfg(feature = "radarr")]
-pub mod radarr;
-
-#[cfg(feature = "sonarr")]
-pub mod sonarr;
-
-#[cfg(feature = "prowlarr")]
-pub mod prowlarr;
-
-#[cfg(feature = "plex")]
-pub mod plex;
-
-#[cfg(feature = "sabnzbd")]
-pub mod sabnzbd;
-
-#[cfg(feature = "qbittorrent")]
-pub mod qbittorrent;
-
-#[cfg(feature = "linkding")]
-pub mod linkding;
-
-#[cfg(feature = "mcpregistry")]
-pub mod mcpregistry;
-#[cfg(feature = "memos")]
-pub mod memos;
-
-#[cfg(feature = "bytestash")]
-pub mod bytestash;
-
-#[cfg(feature = "paperless")]
-pub mod paperless;
-
-#[cfg(feature = "arcane")]
-pub mod arcane;
-
-#[cfg(feature = "unifi")]
-pub mod unifi;
-
-#[cfg(feature = "overseerr")]
-pub mod overseerr;
-
-#[cfg(feature = "gotify")]
-pub mod gotify;
-
-#[cfg(feature = "openai")]
-pub mod openai;
-
-#[cfg(feature = "qdrant")]
-pub mod qdrant;
-
-#[cfg(feature = "tei")]
-pub mod tei;
-
-#[cfg(feature = "apprise")]
-pub mod apprise;
-
-// [lab-scaffold: mcp-services]
+#[cfg(feature = "fs")]
+pub mod fs;

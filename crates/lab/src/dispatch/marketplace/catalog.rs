@@ -1,5 +1,7 @@
 use lab_apis::core::action::{ActionSpec, ParamSpec};
 
+use super::mcp_catalog::MCP_ACTIONS;
+
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         name: "help",
@@ -126,6 +128,276 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "DeployPreviewResult",
     },
     ActionSpec {
+        name: "artifact.fork",
+        description: "Fork artifact(s) or an entire plugin into your stash with upstream tracking.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifacts",
+                ty: "array",
+                required: false,
+                description: "Relative artifact paths to fork; omit for a plugin-level fork",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "ForkResult",
+    },
+    ActionSpec {
+        name: "artifact.list",
+        description: "List forked marketplace artifact stashes with drift status.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: false,
+                description: "Optional plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "ForkedPluginStatus[]",
+    },
+    ActionSpec {
+        name: "artifact.unfork",
+        description: "Remove fork tracking metadata for artifact(s) or a plugin stash.",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifacts",
+                ty: "array",
+                required: false,
+                description: "Relative artifact paths to unfork; omit for the entire plugin fork",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm this destructive operation",
+            },
+        ],
+        returns: "UnforkResult",
+    },
+    ActionSpec {
+        name: "artifact.reset",
+        description: "Reset forked artifact(s) back to their upstream base snapshot.",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifacts",
+                ty: "array",
+                required: false,
+                description: "Relative artifact paths to reset; omit for all forked artifacts",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm this destructive operation",
+            },
+        ],
+        returns: "ResetResult",
+    },
+    ActionSpec {
+        name: "artifact.diff",
+        description: "Show diffs between forked artifact content and upstream/base snapshots.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifact_path",
+                ty: "string",
+                required: false,
+                description: "Optional relative artifact path; omitted returns all fork diffs",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "ArtifactDiffResult",
+    },
+    ActionSpec {
+        name: "artifact.patch",
+        description: "Apply a patch to one forked artifact in the marketplace stash.",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifact_path",
+                ty: "string",
+                required: true,
+                description: "Relative artifact path inside the plugin stash",
+            },
+            ParamSpec {
+                name: "patch",
+                ty: "string",
+                required: true,
+                description: "Unified patch content to apply",
+            },
+            ParamSpec {
+                name: "description",
+                ty: "string",
+                required: false,
+                description: "Optional patch record description",
+            },
+            ParamSpec {
+                name: "instance",
+                ty: "string",
+                required: false,
+                description: "Multi-instance label",
+            },
+        ],
+        returns: "PatchResult",
+    },
+    ActionSpec {
+        name: "artifact.update.check",
+        description: "Check whether a forked plugin artifact stash has an upstream update",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "plugin_id",
+            ty: "string",
+            required: false,
+            description: "Optional plugin id in `name@marketplace` form; omitted scans all forked artifact stashes",
+        }],
+        returns: "UpdateCheckResult[]",
+    },
+    ActionSpec {
+        name: "artifact.update.preview",
+        description: "Preview artifact update changes and conflicts for a forked plugin stash",
+        destructive: false,
+        params: &[ParamSpec {
+            name: "plugin_id",
+            ty: "string",
+            required: true,
+            description: "Plugin id in `name@marketplace` form",
+        }],
+        returns: "UpdatePreviewResult",
+    },
+    ActionSpec {
+        name: "artifact.update.apply",
+        description: "Apply a pending upstream artifact update to a forked plugin stash",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "strategy",
+                ty: "string",
+                required: false,
+                description: "Merge strategy: keep_mine, take_upstream, always_ask, ai_suggest",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm this destructive update",
+            },
+        ],
+        returns: "ApplyResult",
+    },
+    ActionSpec {
+        name: "artifact.merge.suggest",
+        description: "Request an AI merge suggestion for one conflicted artifact file",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "artifact_path",
+                ty: "string",
+                required: true,
+                description: "Relative artifact path inside the plugin stash",
+            },
+        ],
+        returns: "MergeSuggestResult",
+    },
+    ActionSpec {
+        name: "artifact.config.set",
+        description: "Update artifact update preferences for a forked plugin stash",
+        destructive: false,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "strategy",
+                ty: "string",
+                required: false,
+                description: "Merge strategy: keep_mine, take_upstream, always_ask, ai_suggest",
+            },
+            ParamSpec {
+                name: "notify",
+                ty: "boolean",
+                required: false,
+                description: "Whether to notify when updates are available",
+            },
+        ],
+        returns: "ConfigSetResult",
+    },
+    ActionSpec {
         name: "sources.add",
         description: "Register a new marketplace via `claude plugin marketplace add`",
         destructive: true,
@@ -175,4 +447,133 @@ pub const ACTIONS: &[ActionSpec] = &[
         }],
         returns: "UninstallResult",
     },
+    // ── ACP agent actions (lab-zxx5.3) ───────────────────────────────────
+    // Mirrors `acp_catalog::ACP_ACTIONS`; this catalog drives `help`/`schema`
+    // for the marketplace MCP/CLI/API surface.
+    ActionSpec {
+        name: "agent.list",
+        description: "List ACP-compatible agents from the registry CDN",
+        destructive: false,
+        returns: "Agent[]",
+        params: &[],
+    },
+    ActionSpec {
+        name: "agent.get",
+        description: "Get details for a single ACP agent by id",
+        destructive: false,
+        returns: "Agent",
+        params: &[ParamSpec {
+            name: "id",
+            ty: "string",
+            required: true,
+            description: "Agent id (e.g. `anthropic/claude-code`)",
+        }],
+    },
+    ActionSpec {
+        name: "agent.install",
+        description: "Install an ACP agent on one or more devices. Writes a provider entry to `~/.lab/acp-providers.json`. Binary distributions are not yet supported in this build; npx/uvx are config-only.",
+        destructive: true,
+        returns: "InstallResults",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "string",
+                required: true,
+                description: "Agent id from the registry",
+            },
+            ParamSpec {
+                name: "node_ids",
+                ty: "array",
+                required: true,
+                description: "Node ids to install on (`\"local\"` for the controller host)",
+            },
+            ParamSpec {
+                name: "platform",
+                ty: "string",
+                required: false,
+                description: "Override platform triple for binary lookup (e.g. `linux-x86_64`)",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive install operation",
+            },
+        ],
+    },
+    // ── Plugin cherry-pick (lab-zxx5.6) ──────────────────────────────────────
+    ActionSpec {
+        name: "plugin.cherry_pick",
+        description: "Install selected components from a plugin to one or more devices",
+        destructive: true,
+        params: &[
+            ParamSpec {
+                name: "plugin_id",
+                ty: "string",
+                required: true,
+                description: "Plugin id in `name@marketplace` form",
+            },
+            ParamSpec {
+                name: "components",
+                ty: "array",
+                required: true,
+                description: "Component paths to install (e.g. `agents/my-agent.md`)",
+            },
+            ParamSpec {
+                name: "node_ids",
+                ty: "array",
+                required: true,
+                description: "Target node ids (`\"local\"` for the controller host)",
+            },
+            ParamSpec {
+                name: "scope",
+                ty: "string",
+                required: true,
+                description: "`global` (to `~/.claude/`) or `project` (to `project_path/.claude/`)",
+            },
+            ParamSpec {
+                name: "project_path",
+                ty: "string",
+                required: false,
+                description: "Absolute project path — required when `scope` is `project`",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be `true` to confirm this destructive operation",
+            },
+        ],
+        returns: "CherryPickResults",
+    },
+    ActionSpec {
+        name: "agent.uninstall",
+        description: "Remove an installed ACP agent entry from `~/.lab/acp-providers.json`",
+        destructive: true,
+        returns: "UninstallResult",
+        params: &[
+            ParamSpec {
+                name: "id",
+                ty: "string",
+                required: true,
+                description: "Agent id to uninstall",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true to confirm the destructive uninstall operation",
+            },
+        ],
+    },
 ];
+
+pub fn actions() -> &'static [ActionSpec] {
+    static ACTIONS: std::sync::LazyLock<&'static [ActionSpec]> = std::sync::LazyLock::new(|| {
+        let mut all = Vec::new();
+        all.extend_from_slice(self::ACTIONS);
+        all.extend_from_slice(MCP_ACTIONS);
+        Vec::leak(all)
+    });
+    &ACTIONS
+}

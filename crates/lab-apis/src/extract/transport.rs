@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use russh::{ChannelMsg, client};
-use russh_sftp::client::SftpSession;
+use russh_sftp::{
+    client::{SftpSession, error::Error as SftpError},
+    protocol::StatusCode,
+};
 
 use super::error::ExtractError;
 
@@ -267,10 +270,7 @@ impl SshFs {
         self.sftp
             .read(path.to_string_lossy().into_owned())
             .await
-            .map_err(|e| ExtractError::Ssh {
-                host: self.host.clone(),
-                message: format!("sftp read: {e}"),
-            })
+            .map_err(|e| map_sftp_error(&self.host, path, "sftp read", e))
     }
 
     async fn list_subdirs(&self, dir: &Path) -> Result<Vec<PathBuf>, ExtractError> {
@@ -278,10 +278,7 @@ impl SshFs {
             .sftp
             .read_dir(dir.to_string_lossy().into_owned())
             .await
-            .map_err(|e| ExtractError::Ssh {
-                host: self.host.clone(),
-                message: format!("sftp readdir: {e}"),
-            })?;
+            .map_err(|e| map_sftp_error(&self.host, dir, "sftp readdir", e))?;
 
         Ok(read_dir
             .filter(|entry| entry.file_type().is_dir())
@@ -340,6 +337,23 @@ impl SshFs {
         }
 
         Ok(output)
+    }
+}
+
+fn map_sftp_error(host: &str, path: &Path, context: &str, error: SftpError) -> ExtractError {
+    if matches!(
+        &error,
+        SftpError::Status(status) if status.status_code == StatusCode::NoSuchFile
+    ) {
+        ExtractError::Io {
+            path: path.to_path_buf(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, error.to_string()),
+        }
+    } else {
+        ExtractError::Ssh {
+            host: host.to_owned(),
+            message: format!("{context}: {error}"),
+        }
     }
 }
 
@@ -411,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_exit_status_is_reported_as_failure() {
+    fn missing_exit_status_is_reported_as_failure() -> Result<(), Box<dyn std::error::Error>> {
         let err = remote_command_failed(
             "media-node",
             "docker.ps",
@@ -429,10 +443,61 @@ mod tests {
             ..
         } = err
         else {
-            panic!("expected remote command error");
+            return Err("expected remote command error".into());
         };
 
         assert_eq!(exit_status, None);
         assert_eq!(message, "remote command did not report an exit status");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn local_fs_read_returns_file_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.xml");
+        tokio::fs::write(&path, b"known bytes").await.unwrap();
+
+        let bytes = LocalFs.read(&path).await.unwrap();
+
+        assert_eq!(bytes, b"known bytes");
+    }
+
+    #[tokio::test]
+    async fn local_fs_read_missing_file_returns_io_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.xml");
+
+        let err = LocalFs.read(&path).await.unwrap_err();
+
+        assert!(matches!(err, ExtractError::Io { .. }));
+    }
+
+    #[tokio::test]
+    async fn local_fs_list_subdirs_filters_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let alpha = dir.path().join("alpha");
+        let beta = dir.path().join("beta");
+        tokio::fs::create_dir(&alpha).await.unwrap();
+        tokio::fs::create_dir(&beta).await.unwrap();
+        tokio::fs::write(dir.path().join("not-a-dir"), b"file")
+            .await
+            .unwrap();
+
+        let mut entries = LocalFs.list_subdirs(dir.path()).await.unwrap();
+        entries.sort();
+
+        assert_eq!(entries, vec![alpha, beta]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires SSH agent access and a configured `tootie` host"]
+    async fn ssh_fs_reads_known_file_from_tootie() {
+        let ssh = SshFs::connect("tootie").await.unwrap();
+        let bytes = ssh
+            .read(Path::new("/mnt/cache/appdata/radarr/config.xml"))
+            .await
+            .unwrap();
+
+        assert!(!bytes.is_empty());
     }
 }

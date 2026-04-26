@@ -84,7 +84,6 @@ Per-service layout in `lab` typically includes:
 
 - `src/dispatch/<service>.rs` plus `src/dispatch/<service>/`
 - `src/cli/<service>.rs`
-- `src/mcp/services/<service>.rs`
 - `src/api/services/<service>.rs` when the service is exposed over HTTP
 
 ## Shared Contracts

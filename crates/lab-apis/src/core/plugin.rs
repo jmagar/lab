@@ -5,6 +5,8 @@
 //! port. Drives the TUI plugin manager, `lab install`, `lab doctor`, and the
 //! `.mcp.json` patcher.
 
+use super::plugin_ui::UiSchema;
+
 /// Per-service compile-time metadata.
 #[derive(Debug, Clone, Copy)]
 pub struct PluginMeta {
@@ -24,6 +26,9 @@ pub struct PluginMeta {
     pub optional_env: &'static [EnvVar],
     /// Default upstream port if conventional, used by `lab doctor`.
     pub default_port: Option<u16>,
+    /// True if this service supports multiple named instances via
+    /// `{SERVICE}_{LABEL}_URL` env-var patterns.
+    pub supports_multi_instance: bool,
 }
 
 /// One declared environment variable for a plugin.
@@ -37,6 +42,9 @@ pub struct EnvVar {
     pub example: &'static str,
     /// True if this is sensitive: TUI masks input, doctor never echoes it.
     pub secret: bool,
+    /// UI schema for the Bootstrap wizard / Settings rail. `None` means the
+    /// field is rendered with a plain text input.
+    pub ui: Option<&'static UiSchema>,
 }
 
 /// Logical category used by the TUI plugin manager and `lab help`.
@@ -62,6 +70,8 @@ pub enum Category {
     Ai,
     /// Bootstrap utilities (extract, init, doctor).
     Bootstrap,
+    /// Marketplace and registry services (Marketplace, MCP Registry).
+    Marketplace,
 }
 
 impl Category {
@@ -79,6 +89,7 @@ impl Category {
             Self::Notifications => "notifications",
             Self::Ai => "ai",
             Self::Bootstrap => "bootstrap",
+            Self::Marketplace => "marketplace",
         }
     }
 }

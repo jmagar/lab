@@ -59,7 +59,7 @@ For non-HTTP capability modules, the "source spec" may instead be:
 
 The canonical adapter and dependency-direction rules live in [DISPATCH.md](./DISPATCH.md).
 
-If you are writing logic in `crates/lab/src/cli/<service>.rs`, `crates/lab/src/mcp/services/<service>.rs`, or `crates/lab/src/api/services/<service>.rs`, the logic probably belongs in `crates/lab/src/dispatch/<service>/` or `lab-apis` instead.
+If you are writing logic in `crates/lab/src/cli/<service>.rs`, `crates/lab/src/api/services/<service>.rs`, or an MCP exception adapter, the logic probably belongs in `crates/lab/src/dispatch/<service>/` or `lab-apis` instead.
 
 ## File Layout
 
@@ -84,14 +84,12 @@ Surface code lives in:
 - `crates/lab/src/dispatch/<service>/params.rs` — all coercion from `serde_json::Value` to typed SDK request structs
 - `crates/lab/src/dispatch/<service>/dispatch.rs` — top-level action routing; exposes `dispatch()` and `dispatch_with_client()`
 - `crates/lab/src/cli/<service>.rs`
-- `crates/lab/src/mcp/services/<service>.rs`
 - `crates/lab/src/api/services/<service>.rs`
 
 Registry and metadata wiring live in:
 
 - `crates/lab/src/cli.rs` — `pub mod <service>;` declaration and subcommand registration
 - `crates/lab/src/registry.rs` — runtime registration via `build_default_registry()`
-- `crates/lab/src/mcp/services.rs` — `pub mod <service>;` module declaration (distinct from `registry.rs`)
 - `crates/lab/src/api/services.rs` — `pub mod <service>;` module declaration
 - `crates/lab/src/api/router.rs` — feature-gated `.nest("/v1/<service>", services::<service>::routes(state.clone()))` block
 - `crates/lab/src/tui/metadata.rs`
@@ -545,16 +543,13 @@ If the command is destructive, require `-y` / `--yes` to bypass confirmation. `-
 
 CLI verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
 
-## Step 7: Wire The MCP Dispatcher
+## Step 7: Wire The MCP Registration
 
-Create `crates/lab/src/mcp/services/<service>.rs`.
+Normal services do not get a `crates/lab/src/mcp/services/<service>.rs` adapter. Register the service in `crates/lab/src/registry.rs`; the default `register_service!` path calls `dispatch::<service>::dispatch(action, params)` directly and uses the shared `ToolError` envelope on every failure.
 
-The dispatcher must:
+Only create a module under `crates/lab/src/mcp/services/` when the service owns MCP-specific behavior that cannot live in shared dispatch. Current examples are `deploy` for MCP elicitation context, `fs` for MCP-only action filtering, and `nodes` for enrollment actions.
 
-- call `dispatch::<service>::dispatch(action, params)` and return its result
-- use the shared `ToolError` envelope on every failure
-
-The MCP dispatcher is a thin shim. All action routing, param validation, client construction, and business logic live in `dispatch/<service>/`. The MCP file itself should contain almost no logic.
+All action routing, param validation, client construction, and business logic live in `dispatch/<service>/`.
 
 The canonical error and envelope behavior lives in [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
 
@@ -565,10 +560,8 @@ Important rules:
 - one MCP tool per service
 - `help` and `schema` are routed by `dispatch()` — both must be declared in `catalog.rs`'s `ACTIONS` array so the `help` response lists them
 - destructive actions must be marked `destructive: true` in `ActionSpec`
-- the MCP file must not contain business logic, param coercion, or its own action catalog — it projects from `dispatch/<service>/catalog.rs` only
+- MCP exception adapters must not contain business logic, param coercion, or their own action catalog unless the catalog is intentionally MCP-specific
 - MCP elicitation for destructive ops is **not yet implemented** — MCP currently dispatches destructive actions without a confirmation gate; the `ActionSpec.destructive` flag is the single source of truth for dangerous operations across all surfaces: the HTTP surface enforces it via `handle_action` in `api/services/helpers.rs`, and the CLI enforces it via `-y/--yes` gating; both must be honored consistently
-
-Additionally, add `pub mod <service>;` to `crates/lab/src/mcp/services.rs` — this module declaration is required alongside the `registry.rs` registration.
 
 MCP verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
 
@@ -643,7 +636,6 @@ API verification is not complete unless request IDs and dispatch context are obs
 Four locations must all be touched — missing any one causes silent disappearance from a surface:
 
 1. **`crates/lab/src/registry.rs`** — runtime registration in `build_default_registry()`
-2. **`crates/lab/src/mcp/services.rs`** — `pub mod <service>;` module declaration
 3. **`crates/lab/src/api/services.rs`** — `pub mod <service>;` module declaration
 4. **`crates/lab/src/api/router.rs`** — `mount_if_enabled!(v1, state, "<feat>", "<name>", <mod>)` call (see Step 8)
 
@@ -739,7 +731,7 @@ Additional required evidence:
 - error kinds and envelopes match the shared contract where touched
 - machine-readable output matches the intended shape where touched
 
-### Required: MCP Adapter Tests (in `mcp/services/<service>.rs`)
+### Required: MCP Registry/Dispatch Tests
 
 Minimum coverage:
 - MCP success envelope shape: `ok: true`, `service`, `action`, `data` fields present
@@ -903,7 +895,6 @@ A service is ready when:
 - logging `params` at any dispatch boundary — some actions pass plaintext credentials through `params`
 - calling `handle_action` without checking that the client is `Some` — unwrapping `None` panics in the API handler
 - forgetting to add the `mount_if_enabled!(v1, state, "<feat>", "<name>", <mod>)` call in `router.rs` — routes compile but are never mounted (do not write the `#[cfg] router.nest(...)` expansion by hand)
-- adding `pub mod <service>` to `api/services.rs` but not to `mcp/services.rs`, or vice versa
 - forgetting to add the feature passthrough in `crates/lab/Cargo.toml`
 - leaving the coverage doc path or counts stale
 - treating compiled-in support as the same thing as live verification

@@ -9,6 +9,7 @@ use std::sync::atomic::AtomicU8;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
+use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, GetPromptRequestParams, GetPromptResult, LoggingLevel,
@@ -19,8 +20,8 @@ use rmcp::transport::streamable_http_client::{
 };
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::Value;
-use tokio_util::sync::CancellationToken;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::UpstreamConfig;
 use crate::mcp::logging::logging_level_rank;
@@ -34,8 +35,8 @@ use super::transport::websocket::{
 };
 use super::types;
 use super::types::{
-    ToolExposurePolicy, UpstreamCapability, UpstreamEntry, UpstreamHealth, UpstreamTool,
-    UpstreamRuntimeMetadata, UpstreamRuntimeOwner, UpstreamToolExposureRow,
+    ToolExposurePolicy, UpstreamCapability, UpstreamEntry, UpstreamHealth, UpstreamRuntimeMetadata,
+    UpstreamRuntimeOwner, UpstreamTool, UpstreamToolExposureRow,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -138,7 +139,10 @@ fn upstream_target_redacted(config: &UpstreamConfig) -> String {
                 "<invalid-url>".to_string()
             }
         }
-        None => config.command.clone().unwrap_or_else(|| "<missing>".to_string()),
+        None => config
+            .command
+            .clone()
+            .unwrap_or_else(|| "<missing>".to_string()),
     }
 }
 
@@ -374,6 +378,19 @@ struct UpstreamConnection {
     /// Runtime metadata for process-backed upstreams.
     runtime: UpstreamRuntimeMetadata,
 }
+
+struct InProcessRegistration {
+    connection: Option<UpstreamConnection>,
+    tools: Vec<rmcp::model::Tool>,
+    entry_name: Arc<str>,
+    upstream_name: String,
+}
+
+type InProcessConnector = Arc<
+    dyn Fn(RegisteredService) -> BoxFuture<'static, anyhow::Result<InProcessRegistration>>
+        + Send
+        + Sync,
+>;
 
 impl std::fmt::Debug for UpstreamConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -630,8 +647,7 @@ impl UpstreamPool {
                         prompt_health,
                         resource_health,
                         tool_unhealthy_since: None,
-                        prompt_unhealthy_since: (!prompt_health.is_routable())
-                            .then(Instant::now),
+                        prompt_unhealthy_since: (!prompt_health.is_routable()).then(Instant::now),
                         resource_unhealthy_since: (!resource_health.is_routable())
                             .then(Instant::now),
                         tool_last_error: None,
@@ -722,7 +738,9 @@ impl UpstreamPool {
     async fn reprobe_upstream(&self, config: &UpstreamConfig) -> anyhow::Result<bool> {
         let existing_peer = {
             let connections = self.connections.read().await;
-            connections.get(&config.name).map(|connection| connection.peer.clone())
+            connections
+                .get(&config.name)
+                .map(|connection| connection.peer.clone())
         };
 
         if let Some(peer) = existing_peer {
@@ -768,6 +786,13 @@ impl UpstreamPool {
         self.record_success_for(&config.name, UpstreamCapability::Tools)
             .await;
         Ok(true)
+    }
+
+    pub async fn reprobe_tools_for_upstream(
+        &self,
+        config: &UpstreamConfig,
+    ) -> anyhow::Result<bool> {
+        self.reprobe_upstream(config).await
     }
 
     async fn replace_catalog_tools(&self, config: &UpstreamConfig, tools: Vec<rmcp::model::Tool>) {
@@ -822,31 +847,56 @@ impl UpstreamPool {
     }
 
     async fn register_in_process_service_list(&self, services: Vec<RegisteredService>) {
+        let connector: InProcessConnector = Arc::new(|service| {
+            Box::pin(async move {
+                let upstream_name = in_process_upstream_name(service.name);
+                let entry_name: Arc<str> = Arc::from(upstream_name.as_str());
+                let (conn, tools) = connect_in_process_service_peer(&service).await?;
+                Ok(InProcessRegistration {
+                    connection: Some(conn),
+                    tools,
+                    entry_name,
+                    upstream_name,
+                })
+            })
+        });
+        self.register_in_process_service_list_with_connector(services, connector)
+            .await;
+    }
+
+    async fn register_in_process_service_list_with_connector(
+        &self,
+        services: Vec<RegisteredService>,
+        connector: InProcessConnector,
+    ) {
         let mut in_process_resource_names = Vec::new();
+        let mut futures = FuturesUnordered::new();
+        let mut failed_count = 0usize;
+        let mut timeout_count = 0usize;
 
         for service in services {
+            let upstream_name = in_process_upstream_name(service.name);
             tracing::info!(
-                upstream = %in_process_upstream_name(service.name),
+                upstream = %upstream_name,
                 service = service.name,
                 timeout_secs = IN_PROCESS_DISCOVERY_TIMEOUT.as_secs(),
                 "starting in-process peer registration"
             );
-            let upstream_name = in_process_upstream_name(service.name);
-            let timeout_service = service.clone();
-            match tokio::time::timeout(IN_PROCESS_DISCOVERY_TIMEOUT, async move {
-                let (conn, tools) = connect_in_process_service_peer(&timeout_service).await?;
-                Ok::<_, anyhow::Error>((
-                    conn,
-                    tools,
-                ))
-            })
-            .await
-            {
-                Ok(Ok((conn, tools))) => {
+            let connector = Arc::clone(&connector);
+            futures.push(async move {
+                let service_name = service.name;
+                let result =
+                    tokio::time::timeout(IN_PROCESS_DISCOVERY_TIMEOUT, connector(service)).await;
+                (service_name, upstream_name, result)
+            });
+        }
+
+        while let Some((service_name, upstream_name, result)) = futures.next().await {
+            match result {
+                Ok(Ok(registration)) => {
                     let mut tool_map = HashMap::new();
-                    let tool_count = tools.len();
-                    let upstream_name_arc: Arc<str> = Arc::from(upstream_name.as_str());
-                    for tool in tools {
+                    let tool_count = registration.tools.len();
+                    for tool in registration.tools {
                         let schema = if tool.input_schema.is_empty() {
                             None
                         } else {
@@ -857,20 +907,25 @@ impl UpstreamPool {
                             UpstreamTool {
                                 tool,
                                 input_schema: schema,
-                                upstream_name: Arc::clone(&upstream_name_arc),
+                                upstream_name: Arc::clone(&registration.entry_name),
                             },
                         );
                     }
 
                     self.catalog.write().await.insert(
-                        upstream_name.clone(),
-                        healthy_in_process_entry(Arc::clone(&upstream_name_arc), tool_map),
+                        registration.upstream_name.clone(),
+                        healthy_in_process_entry(Arc::clone(&registration.entry_name), tool_map),
                     );
-                    self.connections.write().await.insert(upstream_name.clone(), conn);
-                    in_process_resource_names.push(upstream_name);
+                    if let Some(conn) = registration.connection {
+                        self.connections
+                            .write()
+                            .await
+                            .insert(registration.upstream_name.clone(), conn);
+                    }
+                    in_process_resource_names.push(registration.upstream_name.clone());
                     tracing::info!(
-                        upstream = %upstream_name_arc,
-                        service = service.name,
+                        upstream = %registration.entry_name,
+                        service = service_name,
                         tool_count,
                         resource_count = 0,
                         prompt_count = 0,
@@ -878,39 +933,46 @@ impl UpstreamPool {
                     );
                 }
                 Ok(Err(error)) => {
+                    failed_count += 1;
                     let error_message =
                         format!("failed to register in-process service peer: {error}");
                     tracing::warn!(
                         upstream = %upstream_name,
-                        service = service.name,
+                        service = service_name,
                         error = %error_message,
                         "in-process peer registration failed"
                     );
                     let mut catalog = self.catalog.write().await;
-                    let name: Arc<str> = Arc::from(in_process_upstream_name(service.name));
+                    let name: Arc<str> = Arc::from(upstream_name.as_str());
                     let entry = catalog
                         .remove(&upstream_name)
-                        .map(|existing| failed_in_process_entry_from_existing(existing, error_message.clone()))
+                        .map(|existing| {
+                            failed_in_process_entry_from_existing(existing, error_message.clone())
+                        })
                         .unwrap_or_else(|| failed_in_process_entry(name, error_message));
                     catalog.insert(upstream_name, entry);
                 }
                 Err(_) => {
+                    failed_count += 1;
+                    timeout_count += 1;
                     let error_message = format!(
                         "in-process peer registration timed out after {}s",
                         IN_PROCESS_DISCOVERY_TIMEOUT.as_secs()
                     );
                     tracing::warn!(
                         upstream = %upstream_name,
-                        service = service.name,
+                        service = service_name,
                         timeout_secs = IN_PROCESS_DISCOVERY_TIMEOUT.as_secs(),
                         error = %error_message,
                         "in-process peer registration timed out"
                     );
                     let mut catalog = self.catalog.write().await;
-                    let name: Arc<str> = Arc::from(in_process_upstream_name(service.name));
+                    let name: Arc<str> = Arc::from(upstream_name.as_str());
                     let entry = catalog
                         .remove(&upstream_name)
-                        .map(|existing| failed_in_process_entry_from_existing(existing, error_message.clone()))
+                        .map(|existing| {
+                            failed_in_process_entry_from_existing(existing, error_message.clone())
+                        })
                         .unwrap_or_else(|| failed_in_process_entry(name, error_message));
                     catalog.insert(upstream_name, entry);
                 }
@@ -922,6 +984,14 @@ impl UpstreamPool {
             resource_upstreams.extend(in_process_resource_names);
             resource_upstreams.sort_unstable();
             resource_upstreams.dedup();
+        }
+
+        if failed_count > 0 {
+            tracing::warn!(
+                failed_count,
+                timeout_count,
+                "in-process peer registration completed with degraded services"
+            );
         }
     }
 
@@ -940,6 +1010,40 @@ impl UpstreamPool {
                 })
             })
             .collect()
+    }
+
+    pub async fn healthy_tools_for_upstream(&self, upstream: &str) -> Vec<UpstreamTool> {
+        let catalog = self.catalog.read().await;
+        catalog
+            .get(upstream)
+            .into_iter()
+            .filter(|entry| entry.tool_health.is_routable())
+            .flat_map(|entry| {
+                entry.tools.values().filter_map(|tool| {
+                    entry
+                        .exposure_policy
+                        .matches(tool.tool.name.as_ref())
+                        .then(|| tool.clone())
+                })
+            })
+            .collect()
+    }
+
+    pub async fn find_tool_candidates(&self, tool_name: &str) -> Vec<(String, UpstreamTool)> {
+        let catalog = self.catalog.read().await;
+        let mut matches = Vec::new();
+        for (upstream_name, entry) in catalog.iter() {
+            if !entry.tool_health.is_routable() {
+                continue;
+            }
+            if let Some(tool) = entry.tools.get(tool_name)
+                && entry.exposure_policy.matches(tool.tool.name.as_ref())
+            {
+                matches.push((upstream_name.clone(), tool.clone()));
+            }
+        }
+        matches.sort_by(|a, b| a.0.cmp(&b.0));
+        matches
     }
 
     pub async fn subject_scoped_tools(
@@ -1290,24 +1394,21 @@ impl UpstreamPool {
             subject_scoped = false,
             "upstream.request.start"
         );
-        let result = peer
-            .call_tool(params)
-            .await
-            .map_err(|e| {
-                let elapsed_ms = start.elapsed().as_millis();
-                tracing::warn!(
-                    upstream = %upstream_name,
-                    capability = "tools",
-                    operation = "tool.call",
-                    tool = %tool_name,
-                    subject_scoped = false,
-                    elapsed_ms,
-                    kind = "upstream_error",
-                    error = %e,
-                    "upstream.request.error"
-                );
-                format!("upstream call failed: {e}")
-            });
+        let result = peer.call_tool(params).await.map_err(|e| {
+            let elapsed_ms = start.elapsed().as_millis();
+            tracing::warn!(
+                upstream = %upstream_name,
+                capability = "tools",
+                operation = "tool.call",
+                tool = %tool_name,
+                subject_scoped = false,
+                elapsed_ms,
+                kind = "upstream_error",
+                error = %e,
+                "upstream.request.error"
+            );
+            format!("upstream call failed: {e}")
+        });
 
         // Enforce response size cap.
         if let Ok(ref r) = result {
@@ -2476,7 +2577,10 @@ fn runtime_origin_label(
         return Some(raw.to_string());
     }
 
-    if let Some(origin) = runtime_origin.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(origin) = runtime_origin
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         return Some(origin.to_string());
     }
 
@@ -2505,23 +2609,35 @@ fn runtime_origin_label(
 async fn connect_in_process_service_peer(
     service: &RegisteredService,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
-    tracing::info!(service = service.name, phase = "in_process.connect.start", "connecting in-process peer");
+    tracing::info!(
+        service = service.name,
+        phase = "in_process.connect.start",
+        "connecting in-process peer"
+    );
     let (server_transport, client_transport) = tokio::io::duplex(IN_PROCESS_PEER_BUFFER_BYTES);
     let mut registry = ToolRegistry::new();
     registry.register(service.clone());
     let server = LabMcpServer {
         registry: Arc::new(registry),
         gateway_manager: None,
-        device_role: None,
+        node_role: None,
         peers: Arc::new(RwLock::new(Vec::new())),
         logging_level: Arc::new(AtomicU8::new(logging_level_rank(LoggingLevel::Emergency))),
     };
     let service_name = service.name;
     let server_task = tokio::spawn(async move {
-        tracing::info!(service = service_name, phase = "in_process.server.spawned", "starting in-process server task");
+        tracing::info!(
+            service = service_name,
+            phase = "in_process.server.spawned",
+            "starting in-process server task"
+        );
         match server.serve(server_transport).await {
             Ok(running) => {
-                tracing::info!(service = service_name, phase = "in_process.server.ready", "in-process server transport ready");
+                tracing::info!(
+                    service = service_name,
+                    phase = "in_process.server.ready",
+                    "in-process server transport ready"
+                );
                 if let Err(error) = running.waiting().await {
                     tracing::warn!(service = service_name, phase = "in_process.server.waiting.error", error = %error, "in-process server exited with error");
                 }
@@ -2531,12 +2647,26 @@ async fn connect_in_process_service_peer(
             }
         }
     });
-    let client_service: rmcp::service::RunningService<RoleClient, ()> = ().serve(client_transport).await?;
-    tracing::info!(service = service.name, phase = "in_process.client.ready", "in-process client transport ready");
+    let client_service: rmcp::service::RunningService<RoleClient, ()> =
+        ().serve(client_transport).await?;
+    tracing::info!(
+        service = service.name,
+        phase = "in_process.client.ready",
+        "in-process client transport ready"
+    );
     let peer = client_service.peer().clone();
-    tracing::info!(service = service.name, phase = "in_process.list_tools.start", "requesting in-process tool list");
+    tracing::info!(
+        service = service.name,
+        phase = "in_process.list_tools.start",
+        "requesting in-process tool list"
+    );
     let tools = peer.list_all_tools().await?;
-    tracing::info!(service = service.name, phase = "in_process.list_tools.finish", tool_count = tools.len(), "in-process tool list received");
+    tracing::info!(
+        service = service.name,
+        phase = "in_process.list_tools.finish",
+        tool_count = tools.len(),
+        "in-process tool list received"
+    );
 
     Ok((
         UpstreamConnection {
@@ -2549,10 +2679,7 @@ async fn connect_in_process_service_peer(
     ))
 }
 
-fn healthy_in_process_entry(
-    name: Arc<str>,
-    tools: HashMap<String, UpstreamTool>,
-) -> UpstreamEntry {
+fn healthy_in_process_entry(name: Arc<str>, tools: HashMap<String, UpstreamTool>) -> UpstreamEntry {
     UpstreamEntry {
         name,
         tools,
@@ -2656,7 +2783,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2673,7 +2803,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2691,7 +2824,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             };
             assert!(
                 validate_upstream_config(&config).is_err(),
@@ -2712,7 +2848,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_ok());
     }
@@ -2721,6 +2860,7 @@ mod tests {
     fn validate_accepts_valid_websocket_urls() {
         for url in ["ws://localhost:8080/mcp", "wss://example.com/socket"] {
             let config = UpstreamConfig {
+                enabled: true,
                 name: "test".into(),
                 url: Some(url.into()),
                 bearer_token_env: None,
@@ -2729,9 +2869,15 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             };
-            assert!(validate_upstream_config(&config).is_ok(), "{url} should validate");
+            assert!(
+                validate_upstream_config(&config).is_ok(),
+                "{url} should validate"
+            );
         }
     }
 
@@ -2747,7 +2893,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_ok());
     }
@@ -2764,7 +2913,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2781,7 +2933,10 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
         };
         assert!(validate_upstream_config(&config).is_err());
     }
@@ -2797,6 +2952,8 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: Some(UpstreamOauthConfig {
                 mode: UpstreamOauthMode::AuthorizationCodePkce,
                 registration: UpstreamOauthRegistration::Preregistered {
@@ -2805,6 +2962,7 @@ mod tests {
                 },
                 scopes: None,
             }),
+            tool_search: crate::config::ToolSearchConfig::default(),
         }
     }
 
@@ -3110,11 +3268,7 @@ mod tests {
     fn failed_in_process_entry_from_existing_preserves_last_known_good_catalog() {
         let upstream_name: Arc<str> = Arc::from("lab::github-chat");
         let schema = Arc::new(serde_json::Map::new());
-        let tool = rmcp::model::Tool::new(
-            "query_repository",
-            "Query a GitHub repository",
-            schema,
-        );
+        let tool = rmcp::model::Tool::new("query_repository", "Query a GitHub repository", schema);
         let mut tools = HashMap::new();
         tools.insert(
             "query_repository".to_string(),
@@ -3180,6 +3334,162 @@ mod tests {
             failed.resource_last_error.as_deref(),
             Some("in-process peer registration timed out after 5s")
         );
+    }
+
+    #[tokio::test]
+    async fn in_process_registration_isolates_slow_services_from_fast_services() {
+        use futures::future::BoxFuture;
+        use lab_apis::core::action::ActionSpec;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static ACTIONS: &[ActionSpec] = &[ActionSpec {
+            name: "status.read",
+            description: "Read status",
+            destructive: false,
+            returns: "Value",
+            params: &[],
+        }];
+
+        fn dispatch(
+            _action: String,
+            _params: Value,
+        ) -> std::pin::Pin<
+            Box<dyn Future<Output = Result<Value, crate::dispatch::error::ToolError>> + Send>,
+        > {
+            Box::pin(async { Ok(Value::Null) })
+        }
+
+        fn service(name: &'static str) -> RegisteredService {
+            RegisteredService {
+                name,
+                description: "test service",
+                category: "test",
+                status: "available",
+                actions: ACTIONS,
+                dispatch,
+            }
+        }
+
+        let pool = UpstreamPool::new();
+        let fast_seen = Arc::new(AtomicUsize::new(0));
+        let fast_seen_for_connector = Arc::clone(&fast_seen);
+        let connector: InProcessConnector = Arc::new(move |service| {
+            let fast_seen = Arc::clone(&fast_seen_for_connector);
+            let future: BoxFuture<'static, anyhow::Result<InProcessRegistration>> =
+                Box::pin(async move {
+                    if service.name == "slow" {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        anyhow::bail!("slow service failed to start");
+                    }
+
+                    fast_seen.fetch_add(1, Ordering::SeqCst);
+                    let upstream_name: Arc<str> = Arc::from(in_process_upstream_name(service.name));
+                    Ok(InProcessRegistration {
+                        connection: None,
+                        tools: Vec::new(),
+                        entry_name: Arc::clone(&upstream_name),
+                        upstream_name: upstream_name.to_string(),
+                    })
+                });
+            future
+        });
+
+        let registration = tokio::spawn({
+            let pool = pool.clone();
+            async move {
+                pool.register_in_process_service_list_with_connector(
+                    vec![service("slow"), service("fast")],
+                    connector,
+                )
+                .await;
+            }
+        });
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert_eq!(
+            fast_seen.load(Ordering::SeqCst),
+            1,
+            "fast service should register before slow service finishes"
+        );
+
+        registration.await.expect("registration task");
+        assert_eq!(pool.upstream_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn failed_in_process_registration_does_not_hide_healthy_peer_tools() {
+        use futures::future::BoxFuture;
+        use lab_apis::core::action::ActionSpec;
+
+        static ACTIONS: &[ActionSpec] = &[ActionSpec {
+            name: "status.read",
+            description: "Read status",
+            destructive: false,
+            returns: "Value",
+            params: &[],
+        }];
+
+        fn dispatch(
+            _action: String,
+            _params: Value,
+        ) -> std::pin::Pin<
+            Box<dyn Future<Output = Result<Value, crate::dispatch::error::ToolError>> + Send>,
+        > {
+            Box::pin(async { Ok(Value::Null) })
+        }
+
+        fn service(name: &'static str) -> RegisteredService {
+            RegisteredService {
+                name,
+                description: "test service",
+                category: "test",
+                status: "available",
+                actions: ACTIONS,
+                dispatch,
+            }
+        }
+
+        let pool = UpstreamPool::new();
+        let connector: InProcessConnector = Arc::new(|service| {
+            let future: BoxFuture<'static, anyhow::Result<InProcessRegistration>> =
+                Box::pin(async move {
+                    if service.name == "bad" {
+                        anyhow::bail!("bad service failed to start");
+                    }
+
+                    let upstream_name: Arc<str> = Arc::from(in_process_upstream_name(service.name));
+                    let tool = rmcp::model::Tool::new(
+                        "status.read",
+                        "Read status",
+                        Arc::new(serde_json::Map::new()),
+                    );
+                    Ok(InProcessRegistration {
+                        connection: None,
+                        tools: vec![tool],
+                        entry_name: Arc::clone(&upstream_name),
+                        upstream_name: upstream_name.to_string(),
+                    })
+                });
+            future
+        });
+
+        pool.register_in_process_service_list_with_connector(
+            vec![service("bad"), service("good")],
+            connector,
+        )
+        .await;
+
+        let good_tools = pool
+            .healthy_tools_for_upstream(&in_process_upstream_name("good"))
+            .await;
+        let bad_tools = pool
+            .healthy_tools_for_upstream(&in_process_upstream_name("bad"))
+            .await;
+
+        assert_eq!(good_tools.len(), 1);
+        assert_eq!(good_tools[0].tool.name.as_ref(), "status.read");
+        assert!(bad_tools.is_empty());
+        assert_eq!(pool.upstream_count().await, 2);
     }
 
     #[test]

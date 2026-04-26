@@ -44,7 +44,7 @@ All actions are implemented end-to-end (SDK → dispatch → MCP → CLI → API
 
 **Dispatch architecture:** Shared `crates/lab/src/dispatch/sabnzbd/` layer owns all action routing, param validation, and client resolution. This layer is called by three independent adapters:
 
-- **MCP:** `crates/lab/src/mcp/services/sabnzbd.rs` — thin bridge, delegates to `dispatch::sabnzbd::dispatch()`
+- **MCP:** `crates/lab/src/registry.rs` — thin bridge, registers `dispatch::sabnzbd::dispatch()` directly
 - **CLI:** `crates/lab/src/cli/sabnzbd.rs` — thin shim, calls `dispatch::sabnzbd::dispatch()` with support for `--yes`/`-y`, `--no-confirm`, and `--dry-run` flags for destructive actions
 - **API:** `crates/lab/src/api/services/sabnzbd.rs` — calls `dispatch::sabnzbd::dispatch_with_client()` with pre-built client from `AppState`
 

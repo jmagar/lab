@@ -1,9 +1,31 @@
+#![allow(dead_code)]
+
+//! ACP persistence — JSON-file implementation (legacy) and re-export of the
+//! new `AcpPersistence` trait.
+//!
+//! `JsonFileAcpPersistence` is retained here because `registry.rs` still uses
+//! the legacy sync helpers. It will be removed once the registry migrates to
+//! `SqliteAcpPersistence` (bead 6+).
+//!
+//! The new `AcpPersistence` trait lives in `lab_apis::acp::persistence`.
+//! The SQLite implementation lives in
+//! `crates/lab/src/dispatch/acp/persistence.rs`.
+
 use std::path::{Path, PathBuf};
 
 use tokio::fs;
 
+#[allow(unused_imports)]
+pub use lab_apis::acp::persistence::AcpPersistence;
+
 use super::types::{BridgeEvent, BridgeSessionSummary};
 
+// ── Legacy JSON file persistence ──────────────────────────────────────────────
+
+/// Legacy JSON-file persistence used by `AcpSessionRegistry`.
+///
+/// Deprecated: use `SqliteAcpPersistence` from
+/// `crate::dispatch::acp::persistence` for new code.
 #[derive(Clone)]
 pub struct JsonFileAcpPersistence {
     base_dir: PathBuf,
@@ -41,10 +63,12 @@ impl JsonFileAcpPersistence {
             .collect()
     }
 
-    pub async fn save_sessions(&self, sessions: &[BridgeSessionSummary]) -> Result<(), std::io::Error> {
+    pub async fn save_sessions(
+        &self,
+        sessions: &[BridgeSessionSummary],
+    ) -> Result<(), std::io::Error> {
         fs::create_dir_all(&self.base_dir).await?;
-        let body = serde_json::to_vec_pretty(sessions)
-            .map_err(std::io::Error::other)?;
+        let body = serde_json::to_vec_pretty(sessions).map_err(std::io::Error::other)?;
         fs::write(self.base_dir.join("sessions.json"), body).await
     }
 

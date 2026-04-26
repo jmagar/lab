@@ -2,7 +2,7 @@ use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::config::{UpstreamConfig, UpstreamOauthConfig};
+use crate::config::{ToolSearchConfig, UpstreamConfig, UpstreamOauthConfig};
 use crate::dispatch::upstream::types::UpstreamRuntimeOwner;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -106,10 +106,18 @@ pub struct GatewayUpdatePatch {
     pub bearer_token_env: Option<Option<String>>,
     #[serde(default)]
     pub proxy_resources: Option<bool>,
+    #[serde(default)]
+    pub proxy_prompts: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
     pub expose_tools: Option<Option<Vec<String>>>,
     #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub expose_resources: Option<Option<Vec<String>>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub expose_prompts: Option<Option<Vec<String>>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
     pub oauth: Option<Option<UpstreamOauthConfig>>,
+    #[serde(default, deserialize_with = "deserialize_nullable")]
+    pub tool_search: Option<Option<ToolSearchConfig>>,
 }
 
 /// Distinguish absent from null for `Option<Option<T>>` patch fields.
@@ -182,4 +190,19 @@ pub struct GatewayOauthNameParams {
     pub upstream: String,
     #[serde(default)]
     pub subject: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSearchParams {
+    pub query: String,
+    #[serde(default)]
+    pub top_k: Option<usize>,
+    #[serde(default)]
+    pub include_schema: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolInvokeParams {
+    pub name: String,
+    pub arguments: serde_json::Value,
 }

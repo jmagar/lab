@@ -1,18 +1,29 @@
 //! Public marketplace types. Serde shapes match the gateway-admin TS types.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// Marketplace runtime / ecosystem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MarketplaceRuntime {
+    Claude,
+    Codex,
+    Gemini,
+}
 
 /// Marketplace source kind. Matches `MarketplaceSource` on the frontend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PluginSource {
     Github,
     Git,
+    #[default]
     Local,
 }
 
 /// A configured marketplace (local JSON file or remote repo).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Marketplace {
     pub id: String,
     pub name: String,
@@ -33,10 +44,63 @@ pub struct Marketplace {
     pub total_plugins: u32,
     #[serde(rename = "lastUpdated")]
     pub last_updated: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<MarketplaceRuntime>,
+}
+
+/// Normalized manifest summary attached to a plugin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginManifestSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interface: Option<Value>,
+}
+
+/// High-level plugin component kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginComponentKind {
+    Skills,
+    Apps,
+    McpServers,
+    LspServers,
+    Commands,
+    Agents,
+    Assets,
+    Hooks,
+    Monitors,
+    Bin,
+    Settings,
+    Files,
+}
+
+/// A semantically identified plugin component.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginComponent {
+    pub kind: PluginComponentKind,
+    pub path: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>,
+}
+
+/// Normalized install state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginInstallState {
+    pub installed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(rename = "installedAt", skip_serializing_if = "Option::is_none")]
+    pub installed_at: Option<String>,
+    #[serde(rename = "updatedAt", skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
 }
 
 /// A plugin entry within a marketplace.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Plugin {
     pub id: String,
     pub name: String,
@@ -52,6 +116,26 @@ pub struct Plugin {
     pub installed_at: Option<String>,
     #[serde(rename = "updatedAt", skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<MarketplaceRuntime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(rename = "marketplaceId", skip_serializing_if = "Option::is_none")]
+    pub marketplace_id: Option<String>,
+    #[serde(rename = "version", skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(rename = "description", skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<PluginManifestSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub components: Option<Vec<PluginComponent>>,
+    #[serde(rename = "installState", skip_serializing_if = "Option::is_none")]
+    pub install_state: Option<PluginInstallState>,
+    #[serde(rename = "sourcePath", skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(rename = "cachePath", skip_serializing_if = "Option::is_none")]
+    pub cache_path: Option<String>,
 }
 
 /// Syntax-highlight hint for plugin artifact files.

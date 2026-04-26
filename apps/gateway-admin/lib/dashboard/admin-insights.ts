@@ -1,9 +1,20 @@
 import type { Gateway } from '@/lib/types/gateway'
-import type { LogEvent } from '@/lib/types/logs'
+import type { LogEvent, LogSubsystem } from '@/lib/types/logs'
 
 export interface ActivityItem {
   id: string
-  kind: 'session' | 'tool' | 'resource' | 'prompt' | 'oauth' | 'other'
+  kind:
+    | 'artifact'
+    | 'device'
+    | 'gateway'
+    | 'marketplace'
+    | 'oauth'
+    | 'prompt'
+    | 'resource'
+    | 'session'
+    | 'settings'
+    | 'tool'
+    | 'other'
   tone: 'success' | 'warning' | 'danger' | 'info'
   title: string
   detail: string
@@ -13,11 +24,18 @@ export interface ActivityItem {
 
 /** Log events surfaced on the activity page, by subsystem. */
 export const ACTIVITY_SUBSYSTEMS = [
+  'gateway',
   'mcp_server',
+  'mcp_client',
+  'api',
+  'web',
   'oauth_relay',
+  'auth_webui',
   'auth_mcp',
   'auth_upstream',
-] as const
+  'core_runtime',
+  'syslog',
+] as const satisfies readonly LogSubsystem[]
 
 interface ActionDescriptor {
   kind: ActivityItem['kind']
@@ -25,6 +43,20 @@ interface ActionDescriptor {
 }
 
 const ACTION_LABELS: Record<string, ActionDescriptor> = {
+  // Gateway + service management
+  'gateway.add': { kind: 'gateway', label: 'Added gateway' },
+  'gateway.remove': { kind: 'gateway', label: 'Removed gateway' },
+  'gateway.update': { kind: 'gateway', label: 'Updated gateway' },
+  'gateway.reload': { kind: 'gateway', label: 'Reloaded gateway' },
+  'gateway.test': { kind: 'gateway', label: 'Tested gateway' },
+  'gateway.mcp.enable': { kind: 'gateway', label: 'Enabled gateway' },
+  'gateway.mcp.disable': { kind: 'gateway', label: 'Disabled gateway' },
+  'gateway.virtual_server.enable': { kind: 'gateway', label: 'Enabled service' },
+  'gateway.virtual_server.disable': { kind: 'gateway', label: 'Disabled service' },
+  'gateway.virtual_server.set_surface': { kind: 'gateway', label: 'Changed service exposure' },
+  'gateway.virtual_server.set_mcp_policy': { kind: 'gateway', label: 'Changed MCP exposure' },
+  'gateway.service_config.set': { kind: 'settings', label: 'Changed service settings' },
+  'gateway.server.install': { kind: 'gateway', label: 'Added registry server' },
   // MCP session lifecycle
   'session.initialized': { kind: 'session', label: 'MCP session connected' },
   // MCP tool / resource / prompt dispatch
@@ -41,11 +73,36 @@ const ACTION_LABELS: Record<string, ActionDescriptor> = {
   status: { kind: 'oauth', label: 'Checked OAuth status' },
   callback: { kind: 'oauth', label: 'OAuth callback' },
   clear: { kind: 'oauth', label: 'Cleared OAuth session' },
+  // Chat / artifacts / marketplace / devices
+  'session.created': { kind: 'session', label: 'Started chat session' },
+  'artifact.created': { kind: 'artifact', label: 'Created artifact' },
+  'artifact.removed': { kind: 'artifact', label: 'Removed artifact' },
+  'artifact.edited': { kind: 'artifact', label: 'Edited artifact' },
+  'artifact.forked': { kind: 'artifact', label: 'Forked artifact' },
+  'artifact.patched': { kind: 'artifact', label: 'Patched artifact' },
+  'marketplace.add': { kind: 'marketplace', label: 'Added marketplace' },
+  'marketplace.remove': { kind: 'marketplace', label: 'Removed marketplace' },
+  'marketplace.plugin.install': { kind: 'marketplace', label: 'Installed plugin' },
+  'marketplace.plugin.remove': { kind: 'marketplace', label: 'Removed plugin' },
+  'deploy.artifact': { kind: 'artifact', label: 'Deployed artifact' },
+  'node.status': { kind: 'device', label: 'Device status changed' },
 }
 
 function describeAction(event: LogEvent): ActionDescriptor {
   if (event.action && ACTION_LABELS[event.action]) {
     return ACTION_LABELS[event.action]
+  }
+  if (event.action?.startsWith('gateway.')) {
+    return { kind: 'gateway', label: humanizeAction(event.action) }
+  }
+  if (event.action?.startsWith('marketplace.')) {
+    return { kind: 'marketplace', label: humanizeAction(event.action) }
+  }
+  if (event.action?.startsWith('artifact.')) {
+    return { kind: 'artifact', label: humanizeAction(event.action) }
+  }
+  if (event.action?.startsWith('deploy.')) {
+    return { kind: 'artifact', label: humanizeAction(event.action) }
   }
   if (event.subsystem === 'oauth_relay' || event.subsystem.startsWith('auth_')) {
     return { kind: 'oauth', label: event.action ?? 'OAuth event' }
@@ -53,7 +110,24 @@ function describeAction(event: LogEvent): ActionDescriptor {
   if (event.subsystem === 'mcp_server') {
     return { kind: 'session', label: event.action ?? 'MCP event' }
   }
+  if (event.subsystem === 'gateway') {
+    return { kind: 'gateway', label: event.action ? humanizeAction(event.action) : 'Gateway activity' }
+  }
+  if (event.subsystem === 'api' || event.subsystem === 'web') {
+    return { kind: 'settings', label: event.action ? humanizeAction(event.action) : 'App activity' }
+  }
+  if (event.subsystem === 'syslog' || event.subsystem === 'core_runtime') {
+    return { kind: 'device', label: event.action ? humanizeAction(event.action) : 'Device activity' }
+  }
   return { kind: 'other', label: event.action ?? event.subsystem }
+}
+
+function humanizeAction(action: string): string {
+  return action
+    .split('.')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).replaceAll('_', ' '))
+    .join(' ')
 }
 
 function toneFor(event: LogEvent): ActivityItem['tone'] {
@@ -79,10 +153,17 @@ function formatDetail(event: LogEvent, descriptor: ActionDescriptor): string {
     const name = fields?.prompt_name ?? fields?.name
     if (typeof name === 'string' && name.length > 0) parts.push(name)
   }
+  for (const key of ['name', 'id', 'server', 'service', 'plugin', 'marketplace', 'artifact', 'device']) {
+    const value = fields?.[key]
+    if (typeof value === 'string' && value.length > 0 && !parts.includes(value)) {
+      parts.push(value)
+      break
+    }
+  }
 
   parts.push(event.message)
   if (event.instance) parts.push(`instance=${event.instance}`)
-  if (event.source_node_id && event.source_kind !== 'local') {
+  if (event.source_node_id) {
     parts.push(`node=${event.source_node_id}`)
   }
   return parts.filter(Boolean).join(' · ')

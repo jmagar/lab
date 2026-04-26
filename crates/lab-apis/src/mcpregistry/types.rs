@@ -115,7 +115,10 @@ pub struct ServerResponse {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResponseMeta {
     /// Official registry extensions.
-    #[serde(rename = "io.modelcontextprotocol.registry/official", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "io.modelcontextprotocol.registry/official",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub official: Option<RegistryExtensions>,
     /// Aggregator/subregistry-specific metadata, keyed by namespaced `_meta` entry.
     #[serde(flatten, default)]

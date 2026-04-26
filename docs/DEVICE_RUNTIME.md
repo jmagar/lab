@@ -1,6 +1,6 @@
 # Device Runtime
 
-`lab serve` is now the always-on device runtime for every Linux `x86_64` machine that participates in a `lab` fleet.
+`lab serve` is now the always-on node runtime for every Linux `x86_64` machine that participates in a `lab` fleet.
 
 One machine is the configured `master`. It owns the operator control plane:
 
@@ -8,10 +8,10 @@ One machine is the configured `master`. It owns the operator control plane:
 - MCP
 - `/v1/{service}` REST routes
 - `/v1/gateway`
-- device fleet inventory
+- device node inventory
 - device log ingestion and search
 
-Every other machine runs as a non-master device. Non-master devices keep only the local runtime and the `/v1/device/*` namespace.
+Every other machine runs as a non-master node. Non-master devices keep only the local runtime and the `/v1/nodes/*` namespace.
 
 ## Role Resolution
 
@@ -25,23 +25,23 @@ If `[device].master` is missing, the local host resolves itself as `master`.
 Example:
 
 ```toml
-[device]
-master = "tootie"
+[node]
+controller = "tootie"
 ```
 
 On `tootie`, `lab serve` runs as the master. On any other host, it runs as a non-master device and reports to `tootie`.
 
 ## Startup Behavior
 
-When `lab serve` starts, it resolves the local hostname and device role, creates the in-process device runtime, and then:
+When `lab serve` starts, it resolves the local hostname and device role, creates the in-process node runtime, and then:
 
 - on the master:
   - creates the shared fleet state store
   - creates the durable enrollment store at `~/.lab/device-enrollments.json`
-  - mounts the full operator control plane plus `/v1/device/*`
-  - exposes the fleet websocket endpoint at `GET /v1/fleet/ws`
+  - mounts the full operator control plane plus `/v1/nodes/*`
+  - exposes the node websocket endpoint at `GET /v1/nodes/ws`
 - on a non-master:
-  - mounts `/health`, `/ready`, and `/v1/device/*`
+  - mounts `/health`, `/ready`, and `/v1/nodes/*`
   - disables the Web UI, MCP, gateway management, and the service REST surface
   - scans local MCP config inventory and queues metadata
   - collects bootstrap logs and queues them locally
@@ -52,7 +52,7 @@ When `lab serve` starts, it resolves the local hostname and device role, creates
 Non-master devices now use a websocket-first fleet transport:
 
 1. derive `ws://` or `wss://` from the configured master base URL
-2. connect to `GET /v1/fleet/ws`
+2. connect to `GET /v1/nodes/ws`
 3. send `initialize` with:
    - `lab.device_id`
    - `lab.device_token`
@@ -67,7 +67,7 @@ Unknown devices are rejected at `initialize` and recorded as pending enrollments
 
 ## Device API Namespace
 
-The device runtime still exposes `/v1/device/*`, but websocket fleet delivery is now the canonical device-to-master path.
+The node runtime still exposes `/v1/nodes/*`, but websocket fleet delivery is now the canonical device-to-master path.
 
 Write-oriented routes:
 
@@ -107,12 +107,12 @@ This is inventory only. The master stores the uploaded metadata in memory for fl
 Device outbound delivery uses a durable local queue rooted at:
 
 ```text
-~/.lab/device-runtime-queue.jsonl
+~/.lab/node-runtime-queue.jsonl
 ```
 
 Rules:
 
-- non-master devices append metadata, status, and log envelopes locally first
+- non-controller nodes append metadata, status, and log envelopes locally first
 - the queue is acknowledged only after the master accepts each websocket request
 - failed uploads remain on disk for the next flush attempt
 - the master stores ingested normalized log events in its in-process fleet store
@@ -130,21 +130,21 @@ Enrollment is master-owned and durable.
 Operator surfaces:
 
 - CLI:
-  - `lab device enrollments list`
-  - `lab device enrollments approve <device_id> [--note ...]`
-  - `lab device enrollments deny <device_id> [--reason ...]`
+  - `lab nodes enrollments list`
+  - `lab nodes enrollments approve <device_id> [--note ...]`
+  - `lab nodes enrollments deny <device_id> [--reason ...]`
 - HTTP:
   - `GET /v1/device/enrollments`
   - `POST /v1/device/enrollments/{device_id}/approve`
   - `POST /v1/device/enrollments/{device_id}/deny`
 - MCP:
-  - `device.enrollments.list`
-  - `device.enrollments.approve`
-  - `device.enrollments.deny`
+  - `node.enrollments.list`
+  - `node.enrollments.approve`
+  - `node.enrollments.deny`
 
 ## OAuth Relay Capability
 
-The device runtime exposes the existing local OAuth relay helper through:
+The node runtime exposes the existing local OAuth relay helper through:
 
 ```http
 POST /v1/device/oauth/relay/start
@@ -161,7 +161,7 @@ Request body:
 }
 ```
 
-This starts the same local loopback forwarder used by `lab oauth relay-local`, but initiated through the device runtime on the target machine.
+This starts the same local loopback forwarder used by `lab oauth relay-local`, but initiated through the node runtime on the target machine.
 
 ## Auth Expectations
 
@@ -169,4 +169,4 @@ When `LAB_MCP_HTTP_TOKEN` is configured, the master still protects operator `/v1
 
 Device-to-master fleet delivery itself does not depend on bearer auth anymore. It is authenticated inside websocket `initialize` using the device token pinned in the enrollment store.
 
-OAuth mode still protects the public operator surface. Device fleet sessions do not mint or refresh OAuth credentials on their own.
+OAuth mode still protects the public operator surface. Device node sessions do not mint or refresh OAuth credentials on their own.

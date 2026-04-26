@@ -15,6 +15,7 @@ pub use error::RegistryError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::URL_OPTIONAL_FIELD;
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the mcpregistry module.
@@ -22,7 +23,7 @@ pub const META: PluginMeta = PluginMeta {
     name: "mcpregistry",
     display_name: "MCP Registry",
     description: "Browse and search the official MCP server registry",
-    category: Category::Bootstrap,
+    category: Category::Marketplace,
     docs_url: "https://registry.modelcontextprotocol.io",
     required_env: &[],
     optional_env: &[EnvVar {
@@ -30,8 +31,10 @@ pub const META: PluginMeta = PluginMeta {
         description: "MCP Registry base URL",
         example: "https://registry.modelcontextprotocol.io",
         secret: false,
+        ui: Some(&URL_OPTIONAL_FIELD),
     }],
     default_port: None,
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for McpRegistryClient {

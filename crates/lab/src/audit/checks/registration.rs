@@ -27,9 +27,6 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
         .unwrap_or("");
     let lab_cargo = shared.get(repo_root, "crates/lab/Cargo.toml").unwrap_or("");
     let cli = shared.get(repo_root, "crates/lab/src/cli.rs").unwrap_or("");
-    let mcp_services = shared
-        .get(repo_root, "crates/lab/src/mcp/services.rs")
-        .unwrap_or("");
     let registry = shared
         .get(repo_root, "crates/lab/src/registry.rs")
         .unwrap_or("");
@@ -56,10 +53,6 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
     ));
     out.push(("lib.rs".into(), contains_check(lib, &service_mod)));
     out.push(("cli.rs".into(), contains_check(cli, &dispatch_mod)));
-    out.push((
-        "mcp.services.rs".into(),
-        contains_check(mcp_services, &service_mod),
-    ));
     out.push((
         "registry.rs".into(),
         contains_check(registry, &mcp_registry_token),

@@ -7,14 +7,14 @@ Configuration is intentionally split between secrets and preferences.
 | Category | Where | Examples |
 |----------|-------|----------|
 | Secrets | `~/.lab/.env` | `*_API_KEY`, `*_TOKEN`, `*_PASSWORD`, `LAB_MCP_HTTP_TOKEN` |
-| URLs | `~/.lab/.env` | `*_URL`, `*_BASE_URL` |
-| Everything else | `config.toml` | logging, MCP transport, CORS, admin flags, per-service prefs |
+| Service endpoints | `~/.lab/.env` | `RADARR_URL`, `PLEX_URL`, other per-instance upstream URLs |
+| Non-secret preferences and defaults | `config.toml` | logging, MCP transport, CORS, admin flags, registry URLs, workspace roots, per-service prefs |
 
 All `config.toml` values can still be overridden by env vars. Env always wins.
 
 ## Sources
 
-Secrets and URLs live in:
+Secrets and service instance endpoints live in:
 
 - `~/.lab/.env`
 
@@ -84,7 +84,7 @@ Rules:
 
 - retention is whichever limit hits first: age or size
 - oldest events are evicted first by the shared local log subsystem
-- these knobs affect the local-master runtime log store only; they do not change fleet device log retention
+- these knobs affect the local-master runtime log store only; they do not change node log retention
 - the browser log console and `lab logs local *` commands both read this same local store contract
 
 ### `[mcp]`
@@ -104,30 +104,60 @@ Rules:
 |-----|-------------|---------|-------------|
 | `cors_origins` | `LAB_CORS_ORIGINS` | `[]` | Additional CORS origins (loopback always included) |
 
-### `[device]`
+### `[node]`
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
-| `master` | — | local hostname | Hostname of the fleet master device. |
+| `master` | — | local hostname | Hostname of the fleet master node. |
 
 Example:
 
 ```toml
-[device]
-master = "tootie"
+[node]
+controller = "tootie"
 ```
 
 Rules:
 
 - when omitted, the local machine resolves itself as `master`
-- non-master devices use this hostname plus `mcp.port` to reach `http://<master>:<port>`
-- the device runtime uses this for websocket fleet sessions, metadata/status/log delivery, and master-routed CLI commands such as `lab device list`
+- non-controller nodes use this hostname plus `mcp.port` to reach `http://<master>:<port>`
+- the node runtime uses this for websocket node sessions, metadata/status/log delivery, and master-routed CLI commands such as `lab nodes list`
 
 ### `[web]`
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
 | `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `lab serve --transport http` |
+
+### `[workspace]`
+
+Shared local workspace/stash preferences.
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `root` | — | `~/.lab/stash` | Shared Lab workspace root. Backs the read-only attachment picker and local writable stash workspaces. Marketplace editable plugin mirrors live under `<root>/plugins/`. |
+
+Example:
+
+```toml
+[workspace]
+root = "~/.lab/stash"
+```
+
+### `[mcpregistry]`
+
+MCP Registry upstream preferences.
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `url` | — | `https://registry.modelcontextprotocol.io` | Base URL for the upstream MCP Registry used by marketplace `mcp.*` actions and registry background sync. |
+
+Example:
+
+```toml
+[mcpregistry]
+url = "https://registry.modelcontextprotocol.io"
+```
 
 ### `[oauth.machines.<id>]`
 
@@ -156,7 +186,7 @@ lab oauth relay-local --machine dookie --port 38935
 
 `oauth.machines` config is TOML-only. There is no env-var override for the named machine map.
 
-The device runtime reuses the same target model when `POST /v1/device/oauth/relay/start` is used to start a local relay remotely on a fleet device.
+The node runtime reuses the same target model when `POST /v1/device/oauth/relay/start` is used to start a local relay remotely on a node.
 
 ### `[admin]`
 
@@ -298,11 +328,11 @@ Environment variables override `[auth]` values field-by-field.
 
 ## Device Runtime Auth
 
-If the master protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, master-routed `lab device` / `lab logs` commands reuse that bearer token automatically.
+If the master protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, master-routed `lab nodes` / `lab logs` commands reuse that bearer token automatically.
 
 Fleet websocket sessions are separate from that bearer auth path. Device-to-master delivery is admitted through the enrollment store using the device token presented during websocket `initialize`.
 
-There is not a separate `[device]` auth block in this implementation.
+There is not a separate `[node]` auth block in this implementation.
 
 ```toml
 [oauth.machines.dookie]

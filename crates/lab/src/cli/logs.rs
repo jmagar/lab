@@ -118,7 +118,7 @@ pub async fn run(args: LogsArgs, format: OutputFormat, config: &LabConfig) -> Re
 }
 
 pub async fn search_logs(config: &LabConfig, device_id: &str, query: &str) -> Result<Value> {
-    crate::device::master_client::MasterClient::from_config(config, None)?
+    crate::node::master_client::MasterClient::from_config(config, None)?
         .search_logs(device_id, query)
         .await
 }
