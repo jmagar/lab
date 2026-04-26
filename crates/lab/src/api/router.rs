@@ -574,10 +574,10 @@ async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response
         // naming conventions are introduced (e.g. LAB_AUTH_SIGNING_KEY).
         // NOTE: `_KEY` intentionally covers `_API_KEY` and future signing-key vars.
         //       `_SECRET` covers `_CLIENT_SECRET` — the more-specific entry is omitted.
-        "_KEY",     // covers _API_KEY, _SIGNING_KEY, _HMAC_KEY, etc.
+        "_KEY", // covers _API_KEY, _SIGNING_KEY, _HMAC_KEY, etc.
         "_TOKEN",
         "_PASSWORD",
-        "_SECRET",  // covers _CLIENT_SECRET
+        "_SECRET", // covers _CLIENT_SECRET
     ];
     let service_prefixes = [
         "RADARR_",

@@ -88,7 +88,9 @@ const TYPE_OPTIONS: Array<{ value: MarketplaceCatalogKind; label: string }> = [
   { value: 'acp_agent', label: 'ACP agents' },
   { value: 'app', label: 'Apps' },
   { value: 'hook', label: 'Hooks' },
+  { value: 'channel', label: 'Channels' },
   { value: 'executable', label: 'Executables' },
+  { value: 'theme', label: 'Themes' },
   { value: 'asset', label: 'Assets' },
   { value: 'file', label: 'Files' },
   { value: 'config', label: 'Config' },
@@ -125,7 +127,9 @@ function kindLabel(kind: MarketplaceCatalogKind): string {
   if (kind === 'command') return 'Command'
   if (kind === 'app') return 'App'
   if (kind === 'hook') return 'Hook'
+  if (kind === 'channel') return 'Channel'
   if (kind === 'executable') return 'Executable'
+  if (kind === 'theme') return 'Theme'
   if (kind === 'asset') return 'Asset'
   if (kind === 'file') return 'File'
   if (kind === 'config') return 'Config'
@@ -145,8 +149,9 @@ function kindIcon(kind: MarketplaceCatalogKind): ReactNode {
   if (kind === 'command') return <TerminalSquare className="size-4" />
   if (kind === 'app') return <Code2 className="size-4" />
   if (kind === 'hook') return <Hammer className="size-4" />
+  if (kind === 'channel') return <TerminalSquare className="size-4" />
   if (kind === 'executable') return <TerminalSquare className="size-4" />
-  if (kind === 'asset' || kind === 'file' || kind === 'config' || kind === 'settings' || kind === 'monitor' || kind === 'output_style') return <FileCode2 className="size-4" />
+  if (kind === 'asset' || kind === 'file' || kind === 'config' || kind === 'settings' || kind === 'monitor' || kind === 'theme' || kind === 'output_style') return <FileCode2 className="size-4" />
   if (kind === 'source') return <ShoppingBag className="size-4" />
   return <Boxes className="size-4" />
 }

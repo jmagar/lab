@@ -43,7 +43,11 @@ impl ToolIndex {
     ///
     /// Split out from the async fetch so callers can `spawn_blocking` the CPU work
     /// after awaiting `UpstreamPool::healthy_tools()` on the async runtime.
-    pub fn build_from_tools(config: &UpstreamConfig, healthy_tools: Vec<UpstreamTool>) -> Self {
+    pub fn build_from_tools(
+        config: &UpstreamConfig,
+        healthy_tools: Vec<UpstreamTool>,
+        max_tools: usize,
+    ) -> Self {
         let matching = healthy_tools
             .into_iter()
             .filter(|tool| tool.upstream_name.as_ref() == config.name)
@@ -52,7 +56,7 @@ impl ToolIndex {
 
         let tools = matching
             .into_iter()
-            .take(config.tool_search.max_tools)
+            .take(max_tools)
             .map(|tool| {
                 let description = tool
                     .tool

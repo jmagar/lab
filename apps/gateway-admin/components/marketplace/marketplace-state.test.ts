@@ -95,6 +95,21 @@ const plugins: Plugin[] = [
         path: 'settings.json',
         name: 'Default Settings',
       },
+      {
+        kind: 'output_styles',
+        path: 'output-styles/reviewer.md',
+        name: 'Reviewer Style',
+      },
+      {
+        kind: 'themes',
+        path: 'themes/dim.json',
+        name: 'Dim Theme',
+      },
+      {
+        kind: 'channels',
+        path: 'channels.json',
+        name: 'Team Channel',
+      },
     ],
   },
 ]
@@ -179,7 +194,7 @@ const baseFilters: MarketplaceCatalogFilterState = {
 test('buildMarketplaceCatalogItems creates unified plugin mcp agent and source rows', () => {
   const items = buildMarketplaceCatalogItems({ plugins, sources, mcpServers, acpAgents })
 
-  assert.deepEqual(items.map((item) => item.kind), ['plugin', 'plugin', 'agent', 'skill', 'command', 'mcp_server', 'lsp_server', 'monitor', 'executable', 'settings', 'mcp_server', 'acp_agent', 'source'])
+  assert.deepEqual(items.map((item) => item.kind), ['plugin', 'plugin', 'agent', 'skill', 'command', 'mcp_server', 'lsp_server', 'monitor', 'executable', 'settings', 'output_style', 'theme', 'channel', 'mcp_server', 'acp_agent', 'source'])
   assert.equal(items.find((item) => item.id === 'plugin:gateway-audit')?.ecosystem, 'Claude')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.kind, 'agent')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.name, 'code-reviewer')
@@ -191,6 +206,9 @@ test('buildMarketplaceCatalogItems creates unified plugin mcp agent and source r
   assert.equal(items.find((item) => item.id === 'component:codex-helper:monitors:monitors/monitors.json')?.kind, 'monitor')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:bin:bin/review')?.kind, 'executable')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:settings:settings.json')?.kind, 'settings')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:output_styles:output-styles/reviewer.md')?.kind, 'output_style')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:themes:themes/dim.json')?.kind, 'theme')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:channels:channels.json')?.kind, 'channel')
   assert.equal(items.find((item) => item.id === 'mcp:filesystem')?.distribution, 'npm')
   assert.equal(items.find((item) => item.id === 'agent:codex-cli')?.ecosystem, 'ACP')
   assert.deepEqual(items.find((item) => item.id === 'plugin:gateway-audit')?.avatar, { kind: 'github', owner: 'labby' })
@@ -294,7 +312,7 @@ test('marketplaceCatalogSummary counts lenses from unified rows', () => {
   const summary = marketplaceCatalogSummary(items)
 
   assert.deepEqual(summary, {
-    all: 13,
+    all: 16,
     installed: 2,
     plugins: 2,
     agents: 1,
@@ -390,6 +408,9 @@ test('filterMarketplaceCatalogItems treats sources as catalog items and facets',
     'component:codex-helper:monitors:monitors/monitors.json',
     'component:codex-helper:bin:bin/review',
     'component:codex-helper:settings:settings.json',
+    'component:codex-helper:output_styles:output-styles/reviewer.md',
+    'component:codex-helper:themes:themes/dim.json',
+    'component:codex-helper:channels:channels.json',
     'source:official',
   ])
 })
@@ -419,6 +440,9 @@ test('filterMarketplaceCatalogItems lets source filters target MCP Registry rows
       'component:codex-helper:monitors:monitors/monitors.json',
       'component:codex-helper:bin:bin/review',
       'component:codex-helper:settings:settings.json',
+      'component:codex-helper:output_styles:output-styles/reviewer.md',
+      'component:codex-helper:themes:themes/dim.json',
+      'component:codex-helper:channels:channels.json',
       'source:official',
     ],
   )

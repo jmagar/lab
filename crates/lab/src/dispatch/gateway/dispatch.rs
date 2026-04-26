@@ -12,8 +12,8 @@ use super::params::{
     GatewayAddParams, GatewayMcpCleanupParams, GatewayMcpToggleParams, GatewayNameParams,
     GatewayOauthNameParams, GatewayReloadParams, GatewayStatusParams, GatewayTestParams,
     GatewayUpdateParams, GatewayUpdatePatch, ServiceConfigGetParams, ServiceConfigSetParams,
-    ToolInvokeParams, ToolSearchParams, VirtualServerMcpPolicyParams, VirtualServerNameParams,
-    VirtualServerSurfaceParams,
+    ToolInvokeParams, ToolSearchParams, ToolSearchSetParams, VirtualServerMcpPolicyParams,
+    VirtualServerNameParams, VirtualServerSurfaceParams,
 };
 use super::types::ServiceActionView;
 
@@ -37,16 +37,10 @@ pub async fn dispatch_with_manager(
         }
         "tool_search" => {
             let params: ToolSearchParams = parse_params(params_value)?;
-            // When the caller omits `top_k`, fall back to the configured
-            // default rather than hardcoding a literal. `search_tools`
-            // searches across all enabled upstreams, each of which has its
-            // own `tool_search.top_k_default` (validated 1..=50 in
-            // config.rs); use the lab-wide config default as the canonical
-            // fallback so changes to `default_tool_search_top_k()` flow
-            // through automatically.
-            let top_k = params
-                .top_k
-                .unwrap_or_else(|| crate::config::ToolSearchConfig::default().top_k_default);
+            let top_k = match params.top_k {
+                Some(top_k) => top_k,
+                None => manager.tool_search_config().await.top_k_default,
+            };
             to_json(
                 manager
                     .search_tools(&params.query, top_k, params.include_schema)
@@ -82,6 +76,19 @@ pub async fn dispatch_with_manager(
                     message: error,
                 })?;
             to_json(result)
+        }
+        "gateway.tool_search.get" => to_json(manager.tool_search_config().await),
+        "gateway.tool_search.set" => {
+            let params: ToolSearchSetParams = parse_params(params_value)?;
+            let mut next = manager.tool_search_config().await;
+            next.enabled = params.enabled;
+            if let Some(top_k_default) = params.top_k_default {
+                next.top_k_default = top_k_default;
+            }
+            if let Some(max_tools) = params.max_tools {
+                next.max_tools = max_tools;
+            }
+            to_json(manager.set_tool_search_config(next, None, None).await?)
         }
         "gateway.list" => to_json(manager.list().await?),
         "gateway.server.get" => {
