@@ -326,10 +326,9 @@ pub async fn callback(
     )
     .is_err()
     {
-        let mut redirect_target =
-            reqwest::Url::parse(&request.redirect_uri).map_err(|error| {
-                AuthError::Server(format!("failed to parse registered redirect_uri: {error}"))
-            })?;
+        let mut redirect_target = reqwest::Url::parse(&request.redirect_uri).map_err(|error| {
+            AuthError::Server(format!("failed to parse registered redirect_uri: {error}"))
+        })?;
         redirect_target
             .query_pairs_mut()
             .append_pair("error", "access_denied")
@@ -1058,10 +1057,7 @@ pub mod tests {
             params.get("error").map(|v| v.as_ref()),
             Some("access_denied")
         );
-        assert_eq!(
-            params.get("state").map(|v| v.as_ref()),
-            Some("client-abc")
-        );
+        assert_eq!(params.get("state").map(|v| v.as_ref()), Some("client-abc"));
     }
 
     #[tokio::test]
