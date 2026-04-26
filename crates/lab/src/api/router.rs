@@ -457,6 +457,60 @@ fn build_v0_1_router() -> Router<AppState> {
     Router::new().nest("/v0.1", services::registry_v01::routes())
 }
 
+// Dev mockup file server — see docs/design/component-development.md §5 "Two-tier serving model".
+// Serves self-contained HTML from ~/.superpowers/brainstorm/content/ at /dev and /dev/{name}.
+// Lives here alongside dev_marketplace_readonly so it is not removed by sessions that refactor
+// web.rs. DO NOT move to web.rs and DO NOT delegate to serve_web_request (serves the SPA).
+fn dev_mockup_dir() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".superpowers/brainstorm/content"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".superpowers/brainstorm/content"))
+}
+fn dev_mockup_newest(fragment: Option<&str>) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dev_mockup_dir())
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("html"))
+        .filter(|e| {
+            fragment.is_none_or(|n| {
+                e.path()
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|s| s.contains(n))
+            })
+        })
+        .filter_map(|e| {
+            e.metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(|t| (e.path(), t))
+        })
+        .max_by_key(|(_, t)| *t)
+        .map(|(p, _)| p)
+}
+fn dev_mockup_response(fragment: Option<&str>) -> axum::response::Response {
+    use axum::response::Html;
+    match dev_mockup_newest(fragment) {
+        None => Html(format!("<p style='font-family:sans-serif;padding:2rem'>No{} mockup found in <code>~/.superpowers/brainstorm/content/</code></p>",
+            fragment.map(|n| format!(" '{n}'")).unwrap_or_default())).into_response(),
+        Some(path) => match std::fs::read_to_string(&path) {
+            Ok(html) => Html(html).into_response(),
+            Err(e) => { tracing::warn!(path=%path.display(), error=%e, "failed to read dev mockup"); axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response() }
+        },
+    }
+}
+async fn dev_mockup() -> axum::response::Response {
+    dev_mockup_response(None)
+}
+async fn dev_mockup_named(
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> axum::response::Response {
+    if name.contains('/') || name.contains('\\') || name.contains('.') {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
+    dev_mockup_response(Some(&name))
+}
+
 async fn dev_marketplace_readonly(
     headers: axum::http::HeaderMap,
     Json(req): Json<crate::api::ActionRequest>,
@@ -655,14 +709,16 @@ pub fn build_router(
             .route("/token", post(auth_token));
     }
 
-    // Dev routes — handlers live in crate::api::dev_mockups (not here) so they
-    // survive router.rs refactors. Registered BEFORE the static-file fallback.
+    // Dev preview routes — see docs/design/component-development.md §5.
+    // /dev/api/* are unauthenticated read-only dispatch endpoints.
+    // /dev and /dev/{name} serve HTML mockups from ~/.superpowers/brainstorm/content/
+    // and MUST be registered before the static fallback or the Next.js SPA wins.
     router = router
         .route("/dev/api/marketplace", post(dev_marketplace_readonly))
-        .route("/dev", get(crate::api::dev_mockups::serve))
-        .route("/dev/", get(crate::api::dev_mockups::serve))
-        .route("/dev/{name}", get(crate::api::dev_mockups::serve_named))
-        .route("/dev/{name}/", get(crate::api::dev_mockups::serve_named));
+        .route("/dev", get(dev_mockup))
+        .route("/dev/", get(dev_mockup))
+        .route("/dev/{name}", get(dev_mockup_named))
+        .route("/dev/{name}/", get(dev_mockup_named));
 
     // Static-file fallback for the Next.js SPA.
     if state.web_assets_dir.is_some() {
@@ -1518,6 +1574,59 @@ mod tests {
         .unwrap();
 
         let state = AppState::new().with_web_assets_dir(dir.path().to_path_buf());
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(content_type.contains("application/json"));
+    }
+
+    #[tokio::test]
+    async fn serves_embedded_web_assets_without_configured_directory() {
+        let state = AppState::new().with_embedded_web_assets();
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(content_type.contains("text/html"));
+    }
+
+    #[tokio::test]
+    async fn v1_routes_still_win_over_embedded_web_asset_fallback() {
+        let state = AppState::new().with_embedded_web_assets();
         let app = build_router_with_bearer(state, None, None);
         let response = app
             .oneshot(

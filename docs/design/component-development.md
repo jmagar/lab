@@ -55,7 +55,9 @@ If the feature is intentionally copying another page pattern, inspect that page 
 
 Create a detailed render before wiring the real implementation.
 
-The render can be a static HTML mockup, a temporary React preview, or a staged component shell. It must be detailed enough to review layout, hierarchy, density, copy, states, and interaction affordances. It should not be a vague wireframe if the next step is production implementation.
+The render can be a self-contained HTML mockup file, a temporary React preview, or a staged component shell. It must be detailed enough to review layout, hierarchy, density, copy, states, and interaction affordances. It should not be a vague wireframe if the next step is production implementation.
+
+The preferred approach for new feature work is a **self-contained HTML mockup** written to `~/.superpowers/brainstorm/content/<feature>.html` and served at `/dev/<feature-name>` via the axum mockup handler. This lets design iteration happen without any Next.js rebuilds. Once the design is locked, the HTML mockup is discarded and replaced with a real React page.
 
 ### 5. Serve The Render At `/dev/<feature-name>`
 
@@ -69,13 +71,40 @@ Examples:
 
 ```text
 /dev/marketplace
+/dev/setup
+/dev/settings
 /dev/gateway-policy
-/dev/chat-sessions
 ```
 
 Do not add new ad hoc preview routes outside `/dev/*`. The `/dev` index should link to active previews when useful.
 
-The Rust backend must not register page routes such as `/dev` or `/dev/<feature-name>` for mockups. Those paths are owned by the `apps/gateway-admin` frontend and should reach the Next.js static fallback; only `/dev/api/*` belongs in the backend router.
+#### Two-tier serving model
+
+There are two distinct ways a `/dev/<feature-name>` URL is served, depending on where the feature is in development:
+
+**Tier 1 — HTML mockup (pre-React, design iteration only)**
+
+Self-contained HTML files written to `~/.superpowers/brainstorm/content/` are served by the axum backend via the `dev_mockup_named` handler (registered at `/dev/{name}` in `router.rs`). The handler reads the newest HTML file whose stem contains the name fragment — no Next.js rebuild required.
+
+Use this tier for rapid design iteration: layout, copy, interactive states, and flow can all be reviewed and changed without touching any React code or rebuilding the Next.js export.
+
+Mockup files at this tier are **not** Next.js pages and will **not** appear in the `pnpm build` route listing.
+
+**Tier 2 — Live Next.js component (production implementation)**
+
+Once the mockup design is locked, the route becomes a real Next.js page (`app/(admin)/<feature>/page.tsx`). The Next.js static export owns the URL from this point forward. The axum `/dev/{name}` handler still serves the old mockup HTML as a reference if the file exists, but the Next.js fallback takes over once the page is in the static export.
+
+Real Next.js pages at this tier appear in `pnpm build` output and must follow the read-only contract described below.
+
+#### Route ownership summary
+
+| Path pattern | Owned by | Notes |
+|---|---|---|
+| `/dev/api/*` | axum backend | read-only dispatch endpoints only |
+| `/dev/{name}` (HTML mockup phase) | axum `dev_mockup_named` handler | reads `~/.superpowers/brainstorm/content/{name}.html` |
+| `/dev/{name}` (React phase) | Next.js static fallback | after `app/(admin)/dev/{name}/page.tsx` exists |
+
+The `dev_mockup_named` handler and its supporting functions live in `crates/lab/src/api/router.rs` alongside `dev_marketplace_readonly`. **Do not move them to `web.rs`** — the other Claude session strips `web.rs` of dev-tooling code that it deems unrelated to production serving. Do not make those handlers delegate to `serve_web_request`, which serves the Next.js SPA rather than mockup files.
 
 ### 6. Iterate And Revise The Render
 
