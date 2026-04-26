@@ -159,16 +159,39 @@ Six surfaces with checkboxes derived from live env:
 
 OAuth sub-fields (Public URL, Client ID, Client Secret) pre-populated from env. Panel shown automatically if OAuth is detected.
 
+### Step 3: PreFlight 1
+
+Real HTTP checks via `fetch()` against the running server. Mirrors `scripts/check-oauth.sh` §2–5, §8:
+
+| # | Check | Script section |
+|---|-------|----------------|
+| 1 | Server reachable — `GET /health → 200` | §2 |
+| 2 | Protected endpoints reject unauthenticated — `GET /v1/doctor → 401` | §3 |
+| 3 | Bearer token authenticates — `GET /v1/doctor/actions with Bearer → 200` | §4 |
+| 4 | MCP endpoint bearer-only — `/mcp` with fake session cookie → 401 | §5 |
+| 5 | Dev preview accessible — `POST /dev/api/marketplace → 200/400` (not 401) | §8 |
+
+All 5 must pass to unlock phase 2. Checks run sequentially with real fetch() calls; spinner per row animates to ✓/✗.
+
 ### Step 6: PreFlight 2
 
-5 sequential animated checks after all config is done:
-1. Core config validation
-2. Service URL reachability
-3. API key authentication
-4. Enabled surface bindings
-5. Draft integrity check
+Full validation from `scripts/check-oauth.sh` §2–8, §10 plus service-specific probes:
 
-All-green enables Finalize & Commit.
+| # | Check | Script section |
+|---|-------|----------------|
+| 1 | Server reachable | §2 |
+| 2 | Protected endpoints require auth | §3 |
+| 3 | Bearer token authenticates | §4 |
+| 4 | MCP endpoint bearer-only | §5 |
+| 5 | OAuth discovery metadata (if OAuth mode) — `/.well-known/oauth-authorization-server` | §6 |
+| 6 | JWKS keys endpoint (if OAuth mode) | §6 |
+| 7 | WWW-Authenticate header on 401s (if OAuth mode) | §7 |
+| 8 | Upstream OAuth callback route is public | §10 |
+| 9 | Dev preview accessible | §8 |
+| 10–14 | Per-service URL reachability + credential probe (first 5 configured services) | — |
+| Last | Draft integrity check | — |
+
+OAuth-specific checks (5–8) only run when `LAB_AUTH_MODE=oauth` or Google credentials present. All-green enables Finalize & Commit.
 
 ### Step 7: Finalize
 

@@ -476,13 +476,24 @@ fn dev_mockup_dir() -> std::path::PathBuf {
 }
 
 fn dev_mockup_newest(fragment: Option<&str>) -> Option<std::path::PathBuf> {
-    std::fs::read_dir(dev_mockup_dir()).ok()?
+    std::fs::read_dir(dev_mockup_dir())
+        .ok()?
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("html"))
-        .filter(|e| fragment.is_none_or(|n| {
-            e.path().file_stem().and_then(|s| s.to_str()).is_some_and(|s| s.contains(n))
-        }))
-        .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (e.path(), t)))
+        .filter(|e| {
+            fragment.is_none_or(|n| {
+                e.path()
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|s| s.contains(n))
+            })
+        })
+        .filter_map(|e| {
+            e.metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(|t| (e.path(), t))
+        })
         .max_by_key(|(_, t)| *t)
         .map(|(p, _)| p)
 }
@@ -494,7 +505,8 @@ fn dev_mockup_response(fragment: Option<&str>) -> axum::response::Response {
             "<p style='font-family:sans-serif;padding:2rem'>No{} mockup found in \
              <code>~/.superpowers/brainstorm/content/</code></p>",
             fragment.map(|n| format!(" '{n}'")).unwrap_or_default()
-        )).into_response(),
+        ))
+        .into_response(),
         Some(path) => match std::fs::read_to_string(&path) {
             Ok(html) => Html(html).into_response(),
             Err(e) => {
@@ -526,30 +538,72 @@ async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response
 
     let local_host =
         crate::node::identity::resolve_local_hostname().unwrap_or_else(|_| "local".into());
-    let master_url = state.config.deploy.as_ref()
-        .and_then(|d| d.defaults.as_ref()).and_then(|d| d.master_url.clone())
+    let master_url = state
+        .config
+        .deploy
+        .as_ref()
+        .and_then(|d| d.defaults.as_ref())
+        .and_then(|d| d.master_url.clone())
         .unwrap_or_default();
-    let controller = state.config.node.as_ref()
-        .and_then(|n| n.controller.clone()).unwrap_or_else(|| local_host.clone());
+    let controller = state
+        .config
+        .node
+        .as_ref()
+        .and_then(|n| n.controller.clone())
+        .unwrap_or_else(|| local_host.clone());
 
     // dotenvy already loaded ~/.lab/.env at startup, so everything is in std::env.
     // The UI treats MASKED_SECRET as "value already set — leave blank to keep current value".
     const MASKED_SECRET: &str = "***";
-    let secret_suffixes = ["_API_KEY", "_TOKEN", "_PASSWORD", "_SECRET", "_CLIENT_SECRET"];
+    let secret_suffixes = [
+        "_API_KEY",
+        "_TOKEN",
+        "_PASSWORD",
+        "_SECRET",
+        "_CLIENT_SECRET",
+    ];
     let service_prefixes = [
-        "RADARR_", "SONARR_", "PROWLARR_", "PLEX_", "TAUTULLI_", "OVERSEERR_",
-        "SABNZBD_", "QBITTORRENT_", "UNRAID_", "UNIFI_", "TAILSCALE_", "ARCANE_",
-        "LINKDING_", "MEMOS_", "PAPERLESS_", "BYTESTASH_", "GOTIFY_", "APPRISE_",
-        "OPENAI_", "QDRANT_", "TEI_",
-        "LAB_MCP_HTTP_", "LAB_LOG", "LAB_AUTH_", "LAB_PUBLIC_URL",
+        "RADARR_",
+        "SONARR_",
+        "PROWLARR_",
+        "PLEX_",
+        "TAUTULLI_",
+        "OVERSEERR_",
+        "SABNZBD_",
+        "QBITTORRENT_",
+        "UNRAID_",
+        "UNIFI_",
+        "TAILSCALE_",
+        "ARCANE_",
+        "LINKDING_",
+        "MEMOS_",
+        "PAPERLESS_",
+        "BYTESTASH_",
+        "GOTIFY_",
+        "APPRISE_",
+        "OPENAI_",
+        "QDRANT_",
+        "TEI_",
+        "LAB_MCP_HTTP_",
+        "LAB_LOG",
+        "LAB_AUTH_",
+        "LAB_PUBLIC_URL",
         "LAB_GOOGLE_",
     ];
     let mut env_values = serde_json::Map::new();
     for (key, val) in std::env::vars() {
-        if val.is_empty() { continue; }
-        if !service_prefixes.iter().any(|p| key.starts_with(p)) { continue; }
+        if val.is_empty() {
+            continue;
+        }
+        if !service_prefixes.iter().any(|p| key.starts_with(p)) {
+            continue;
+        }
         let masked = secret_suffixes.iter().any(|s| key.ends_with(s));
-        let display = if masked { MASKED_SECRET.to_string() } else { val };
+        let display = if masked {
+            MASKED_SECRET.to_string()
+        } else {
+            val
+        };
         env_values.insert(key, serde_json::Value::String(display));
     }
 
@@ -558,7 +612,8 @@ async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response
         "controller": controller,
         "master_url": master_url,
         "env": env_values,
-    })).into_response()
+    }))
+    .into_response()
 }
 
 async fn dev_marketplace_readonly(
