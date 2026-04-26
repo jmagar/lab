@@ -13,6 +13,7 @@ pub mod export;
 pub mod import;
 pub mod params;
 pub mod revision;
+pub mod service;
 pub mod store;
 
 #[allow(unused_imports)]

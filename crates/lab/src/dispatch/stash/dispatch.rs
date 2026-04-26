@@ -1,18 +1,7 @@
 //! Top-level action router for the `stash` dispatch service.
 //!
 //! `dispatch()` handles the two built-in meta-actions (`help`, `schema`) and
-//! delegates all service-specific actions to `dispatch_with_root()`.
-//!
-//! NOTE: Service-specific arms are stubbed with `todo!()` — full implementation
-//! is Wave 7 (store.rs + I/O). Callers that reach any service arm will panic
-//! until that wave lands.
-//!
-//! NOTE: `component.export` is marked `destructive: true` in the catalog but
-//! the runtime MUST additionally check `include_secrets` from params and only
-//! require confirmation when it is `true`. The `todo!()` stub below is the
-//! placeholder for that conditional logic (Wave 7).
-
-use std::path::PathBuf;
+//! delegates all service-specific actions to `dispatch_with_store()`.
 
 use serde_json::Value;
 
@@ -21,6 +10,13 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str};
 
 use super::catalog::ACTIONS;
 use super::client::require_stash_root;
+use super::params::{
+    parse_create_params, parse_deploy_params, parse_export_params, parse_get_params,
+    parse_import_params, parse_link_params, parse_provider_sync_params, parse_revisions_params,
+    parse_save_params, parse_target_add_params, parse_target_remove_params, parse_workspace_params,
+};
+use super::service;
+use super::store::StashStore;
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
@@ -38,36 +34,77 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 });
             }
             let root = require_stash_root()?;
-            dispatch_with_root(root, other, params).await
+            let store = StashStore::new(root.clone());
+            store.ensure_dirs().map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: format!("stash store init: {e}"),
+            })?;
+            dispatch_with_store(&store, other, params).await
         }
     }
 }
 
-pub async fn dispatch_with_root(
-    root: &PathBuf,
+pub async fn dispatch_with_store(
+    store: &StashStore,
     action: &str,
     params: Value,
 ) -> Result<Value, ToolError> {
-    let _ = (root, &params); // suppress unused warnings on stub arms
     match action {
-        "components.list" => todo!("stash components.list — Wave 7"),
-        "component.get" => todo!("stash component.get — Wave 7"),
-        "component.create" => todo!("stash component.create — Wave 7"),
-        "component.import" => todo!("stash component.import — Wave 7"),
-        "component.workspace" => todo!("stash component.workspace — Wave 7"),
-        "component.save" => todo!("stash component.save — Wave 7"),
-        "component.revisions" => todo!("stash component.revisions — Wave 7"),
-        // TODO(Wave-7): component.export must check `include_secrets` param;
-        //   only require MCP confirmation when include_secrets == true.
-        "component.export" => todo!("stash component.export — Wave 7"),
-        "component.deploy" => todo!("stash component.deploy — Wave 7"),
-        "providers.list" => todo!("stash providers.list — Wave 7"),
-        "provider.link" => todo!("stash provider.link — Wave 7"),
-        "provider.push" => todo!("stash provider.push — Wave 7"),
-        "provider.pull" => todo!("stash provider.pull — Wave 7"),
-        "targets.list" => todo!("stash targets.list — Wave 7"),
-        "target.add" => todo!("stash target.add — Wave 7"),
-        "target.remove" => todo!("stash target.remove — Wave 7"),
+        "components.list" => service::components_list(store),
+        "component.get" => {
+            let p = parse_get_params(&params)?;
+            service::component_get(store, p)
+        }
+        "component.create" => {
+            let p = parse_create_params(&params)?;
+            service::component_create(store, p)
+        }
+        "component.import" => {
+            let p = parse_import_params(&params)?;
+            service::component_import(store, p).await
+        }
+        "component.workspace" => {
+            let p = parse_workspace_params(&params)?;
+            service::component_workspace(store, p)
+        }
+        "component.save" => {
+            let p = parse_save_params(&params)?;
+            service::component_save(store, p).await
+        }
+        "component.revisions" => {
+            let p = parse_revisions_params(&params)?;
+            service::component_revisions(store, p)
+        }
+        "component.export" => {
+            let p = parse_export_params(&params)?;
+            service::component_export(store, p).await
+        }
+        "component.deploy" => {
+            let p = parse_deploy_params(&params)?;
+            service::component_deploy(store, p)
+        }
+        "providers.list" => service::providers_list(store, &params),
+        "provider.link" => {
+            let _p = parse_link_params(&params)?;
+            service::provider_link(store)
+        }
+        "provider.push" => {
+            let _p = parse_provider_sync_params(&params)?;
+            service::provider_push(store)
+        }
+        "provider.pull" => {
+            let _p = parse_provider_sync_params(&params)?;
+            service::provider_pull(store)
+        }
+        "targets.list" => service::targets_list(store),
+        "target.add" => {
+            let p = parse_target_add_params(&params)?;
+            service::target_add(store, p)
+        }
+        "target.remove" => {
+            let p = parse_target_remove_params(&params)?;
+            service::target_remove(store, p)
+        }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `{unknown}` for service `stash`"),
             valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),

@@ -78,11 +78,9 @@ impl StashComponentKind {
             | Self::Theme => StashWorkspaceShape::Directory,
 
             // file-shaped kinds
-            Self::Settings
-            | Self::McpConfig
-            | Self::LspConfig
-            | Self::Script
-            | Self::BinFile => StashWorkspaceShape::File,
+            Self::Settings | Self::McpConfig | Self::LspConfig | Self::Script | Self::BinFile => {
+                StashWorkspaceShape::File
+            }
         }
     }
 }
