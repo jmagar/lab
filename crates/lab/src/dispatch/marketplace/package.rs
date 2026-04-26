@@ -218,18 +218,11 @@ fn collect_components_from_layout(root: &Path, out: &mut Vec<PluginComponent>) {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .into_owned();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            out.push(PluginComponent {
-                kind,
-                path: rel,
-                name,
-                metadata: None,
-            });
+            if kind == PluginComponentKind::Agents && path.is_dir() {
+                collect_agent_markdown_entries(root, &path, out);
+                continue;
+            }
+            out.push(component_from_layout_path(root, &path, kind));
         }
     }
 
@@ -272,6 +265,107 @@ fn collect_component_file(
     }
 }
 
+fn component_from_layout_path(
+    root: &Path,
+    path: &Path,
+    kind: PluginComponentKind,
+) -> PluginComponent {
+    let rel = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned();
+    let mut name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&rel)
+        .to_string();
+    let metadata = if kind == PluginComponentKind::Agents {
+        let metadata = markdown_frontmatter(path);
+        if let Some(frontmatter_name) = metadata
+            .as_ref()
+            .and_then(|value| value.get("name"))
+            .and_then(Value::as_str)
+        {
+            name = frontmatter_name.to_string();
+        }
+        metadata.map(Value::Object)
+    } else {
+        None
+    };
+
+    PluginComponent {
+        kind,
+        path: rel,
+        name,
+        metadata,
+    }
+}
+
+fn collect_agent_markdown_entries(root: &Path, dir: &Path, out: &mut Vec<PluginComponent>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_agent_markdown_entries(root, &path, out);
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+            out.push(component_from_layout_path(
+                root,
+                &path,
+                PluginComponentKind::Agents,
+            ));
+        }
+    }
+}
+
+fn markdown_frontmatter(path: &Path) -> Option<Map<String, Value>> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let rest = content
+        .strip_prefix("---\n")
+        .or_else(|| content.strip_prefix("---\r\n"))?;
+    let end = rest
+        .find("\n---\n")
+        .or_else(|| rest.find("\n---\r\n"))
+        .or_else(|| rest.find("\r\n---\r\n"))?;
+    let block = &rest[..end];
+    let mut metadata = Map::new();
+    for line in block.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        metadata.insert(
+            key.to_string(),
+            Value::String(unquote_yaml_scalar(value.trim())),
+        );
+    }
+    (!metadata.is_empty()).then_some(metadata)
+}
+
+fn unquote_yaml_scalar(value: &str) -> String {
+    value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })
+        .unwrap_or(value)
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,7 +384,17 @@ mod tests {
         std::fs::create_dir_all(root.join("commands")).expect("commands dir");
         std::fs::write(root.join("commands/ship.md"), "Ship").expect("command");
         std::fs::create_dir_all(root.join("agents")).expect("agents dir");
-        std::fs::write(root.join("agents/reviewer.md"), "Agent").expect("agent");
+        std::fs::write(
+            root.join("agents/reviewer.md"),
+            "---\nname: code-reviewer\ndescription: Reviews code changes\nmodel: sonnet\n---\nAgent",
+        )
+        .expect("agent");
+        std::fs::create_dir_all(root.join("agents/nested")).expect("nested agents dir");
+        std::fs::write(
+            root.join("agents/nested/debugger.md"),
+            "---\nname: debugger\ndescription: Debugs failures\n---\nAgent",
+        )
+        .expect("nested agent");
         std::fs::create_dir_all(root.join("hooks")).expect("hooks dir");
         std::fs::write(root.join("hooks/hooks.json"), "{}").expect("hooks");
         std::fs::create_dir_all(root.join("monitors")).expect("monitors dir");
@@ -310,12 +414,27 @@ mod tests {
         assert!(observed.contains(&(PluginComponentKind::Skills, "skills/review")));
         assert!(observed.contains(&(PluginComponentKind::Commands, "commands/ship.md")));
         assert!(observed.contains(&(PluginComponentKind::Agents, "agents/reviewer.md")));
+        assert!(observed.contains(&(PluginComponentKind::Agents, "agents/nested/debugger.md")));
         assert!(observed.contains(&(PluginComponentKind::Hooks, "hooks/hooks.json")));
         assert!(observed.contains(&(PluginComponentKind::Monitors, "monitors/monitors.json")));
         assert!(observed.contains(&(PluginComponentKind::Bin, "bin/tool")));
         assert!(observed.contains(&(PluginComponentKind::McpServers, ".mcp.json")));
         assert!(observed.contains(&(PluginComponentKind::LspServers, ".lsp.json")));
         assert!(observed.contains(&(PluginComponentKind::Settings, "settings.json")));
+
+        let reviewer = components
+            .iter()
+            .find(|component| component.path == "agents/reviewer.md")
+            .expect("reviewer component");
+        assert_eq!(reviewer.name, "code-reviewer");
+        assert_eq!(
+            reviewer
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("description"))
+                .and_then(Value::as_str),
+            Some("Reviews code changes")
+        );
     }
 
     #[test]
