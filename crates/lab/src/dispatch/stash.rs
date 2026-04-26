@@ -11,6 +11,7 @@ pub mod client;
 pub mod dispatch;
 pub mod import;
 pub mod params;
+pub mod revision;
 pub mod store;
 
 #[allow(unused_imports)]
