@@ -121,3 +121,57 @@ ACP event handling details:
 - reconnects resume from the last seen sequence number for the active session
 - the client keeps a bounded in-memory history instead of growing without limit
 - duplicate or out-of-order events are ignored
+
+## ACP stream lifecycle contract
+
+### Ordering guarantees
+
+Events within a session carry a monotonically increasing `seq` number assigned by a
+mutex-guarded counter in the server registry. A single fanout goroutine writes to all
+subscribers, so ordering is preserved end-to-end. Events from different sessions have
+independent counters and are not ordered relative to each other.
+
+### Replay and resume semantics
+
+The SSE endpoint accepts an optional `?since=<seq>` query parameter (unsigned integer,
+defaults to `0`). On connect the server:
+
+1. Registers the subscriber channel **before** querying the backlog, eliminating the
+   subscribe-first race condition where live events could arrive between the backlog
+   query and channel registration.
+2. Loads events with `seq > since` from the SQLite store (up to the 10 000-event
+   backfill cap).
+3. Falls back to the in-memory transcript when SQLite is unavailable.
+4. Chains the backlog stream with the live channel stream. At the junction, live events
+   whose `seq` is at or below the last backlog event are discarded to prevent duplicates.
+
+Clients should persist the highest `seq` seen and pass it as `since` on reconnect to
+receive only events missed during the disconnection window.
+
+### Retention and windowing
+
+SQLite is the authoritative event store. There is no server-side expiry policy: events
+persist for the lifetime of the session unless explicitly deleted.
+
+When SQLite is unavailable the server falls back to an in-memory transcript capped at
+500 events per session (FIFO eviction). Under the fallback path a reconnect with a
+`since` value that predates the oldest in-memory event will receive a silent partial
+backlog — no gap marker is emitted. Clients that need reliable full replay should
+operate against a deployment where SQLite persistence is enabled.
+
+Regardless of persistence mode, `subscribe()` returns at most 10 000 events per
+reconnect (the `BACKFILL_CAP`).
+
+### Backpressure and subscriber eviction
+
+Each subscriber receives events through a per-subscriber bounded channel (capacity 64).
+If a subscriber cannot drain the channel fast enough and the buffer fills, the server:
+
+1. Drops the slow subscriber immediately.
+2. Emits a synthetic `ProviderInfo` event with `type: "subscriber_backpressure"` into
+   the remaining stream and persists it so it is visible in replays.
+3. Logs a `WARN` with `action = "fanout.backpressure"` and the `after_seq` at which
+   the gap begins.
+
+A client that is evicted will stop receiving events silently. Clients should treat a
+dropped SSE connection as a signal to reconnect with their last-seen `seq`.
