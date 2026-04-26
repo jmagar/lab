@@ -2,10 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.11.1
+## [Unreleased]
+
+_No changes since 0.11.1._
+
+---
+
+## [0.11.1] — 2026-04-25
 
 | Commit | Change |
 |--------|--------|
+| `82478a0b` | chore(release): v0.11.1 — marketplace P1 security follow-up + workspace fs hardening |
 | `2f6d76c6` | docs: setup+settings feature design spec + component-development doc update |
 | `07ccb54c` | fix(dev): ensure dev_mockup routes survive router.rs refactors |
 | `d10b05ec` | fix(dev/nodeinfo): read env from process (dotenvy already loaded .env at startup) |
@@ -34,6 +41,25 @@ All notable changes to this project will be documented in this file.
 | `40ac16a1` | fix(lab-zxx5): resolve multi-agent review P1+P2 findings |
 | `e7ea8528` | refactor(lab-f1t2.20): inline log_dispatch/log_dispatch_preview wrappers |
 | `01de323a` | chore: untrack crates/lab/target/ build artifacts |
+
+### Highlights
+
+- **Marketplace P1 security follow-up (lab-zxx5)** — multi-agent review P1+P2 fixes, install_component/agent.install hardening, SSRF blocklist edges, per-node caps, `redact_home` helper applied to errors and log tiering, partial-extraction detection with fail-closed walk, typed install error markers
+- **Workspace fs hardening (lab-f1t2)** — security headers via subrouter middleware, intra-workspace symlink rejection in openat2 fallback, case-insensitive credential deny-list with path redaction, MCP transport auth requirement documented, MCP↔canonical fs ActionSpec parity locked, AttachmentChip + chat-input + workspace-picker race elimination, UX polish
+- **Dev mockup routes** — mockup file server at `/dev` and `/dev/:name`, `/dev/api/nodeinfo` returning `.env` values with secrets masked, route survival across router.rs refactors
+- **Docs** — setup+settings feature design spec, component-development doc update
+
+### Version bumps
+
+- Rust workspace: `0.11.0 → 0.11.1`
+- gateway-admin: `0.5.0 → 0.5.1`
+
+---
+
+## [0.11.0] — 2026-04-24
+
+| Commit | Change |
+|--------|--------|
 | `9d83267b` | chore: bump workspace to 0.11.0 + misc uncommitted work |
 | `979bae1a` | feat(lab-zxx5.18): install_component/agent.install security hardening |
 | `bbebe993` | refactor(lab-f1t2.18): removeAttachment keys on (kind, path) compound |
@@ -100,7 +126,29 @@ All notable changes to this project will be documented in this file.
 | `9e0383ba` | fix(marketplace): address PR #29 review threads — installPath validation |
 | `299eb724` | fix(lab-jwbg.9): eliminate try_write().expect() panic in AcpSessionRegistry |
 | `526bf3e1` | feat(lab-jwbg.1): create lab-apis::acp module scaffold |
-| `2013dbdd` | feat: AI component library, ACP docs, gateway/marketplace UI refinements |
+
+### Highlights
+
+- **Workspace bumped two minors in one commit** — `9d83267b` jumped `0.9.0 → 0.11.0` directly with no `0.10.x` published; this section accumulates everything done between the `0.9.0` bump and that commit
+- **WS fleet runtime + remote install (lab-zxx5.3/.6, lab-ccc9, lab-e2tu)** — real `NodeRpcPort` master pending infra, device→node module rename, remote fleet WS install + binary agent download (streamed SHA-256), plugin.cherry_pick dispatch + cherry-pick component selector dialog, Phase 3 WS fleet method handlers + MCP demux, SQLite-backed node log persistence with 30-day TTL retention, SSE progress endpoint
+- **ACP service consolidation (lab-jwbg)** — `acp_registry` SDK client + `lab-apis::acp` scaffold, `dispatch/acp` layer (catalog, client, params, dispatch), API/ACP surface migrated to dispatch layer, `AcpSessionRegistry` rewrite with `Arc<Session>` + per-subscriber mpsc + ownership semantics, SQLite persistence (`AcpPersistence` trait), ACP agent dispatch actions (`agent.list/get/install/uninstall`), MCP server + ACP agent install modals with gateway/device/scope selection, `try_write().expect()` panic eliminated
+- **Marketplace consolidation (lab-zxx5.x)** — unified marketplace API client + `PluginComponent` types, `mcpregistry` dispatch surface deleted and migrated to marketplace, `Category::Marketplace` introduced, install_component/agent.install RPC methods, fleet WS master→device sender registry, multi-agent review P1+P2 fixes
+- **Workspace fs (lab-f1t2 entry)** — workspace root resolver + AppState field, fs registered unconditionally when feature-enabled, dispatch consolidated into single match body, MCP/canonical fs ActionSpec parity test, deny-list ASCII fast-path
+- **Doctor + bootstrap (lab-bg3e)** — doctor promoted to full Bootstrap dispatch service, `UiSchema`/`FieldKind` types + `PluginMeta.supports_multi_instance` for all 23 services
+- **Gateway admin AI component pass** — prompt-input five-fix correctness pass, file-tree accessibility, prop-spread ordering, runtime-crash + stuck-timer + unreachable-Cancel fixes, shared `useCopyTimeout` hook, AI components import-alias repair
+- **Gateway perf** — `config.read` + `current_pool` run concurrently in gateway list/get, reasoning duration accumulated across SSE reconnects
+
+### Version bumps
+
+- Rust workspace: `0.9.0 → 0.11.0` _(skipped `0.10.x`)_
+
+---
+
+## [0.9.0] — 2026-04-23
+
+| Commit | Change |
+|--------|--------|
+| `2013dbdd` | feat: AI component library, ACP docs, gateway/marketplace UI refinements — v0.9.0 |
 | `7c4fb9f` | fix(lab-kvji.10.1): validate path components in parse_plugin_id |
 | `ca66a3b` | fix(lab-kvji.10.3): validate installPath from installed_plugins.json |
 | `cd8bfa9` | fix(lab-kvji.10.2): add symlink guards to all filesystem walkers |
@@ -125,6 +173,25 @@ All notable changes to this project will be documented in this file.
 | `a51056f` | fix: address PR comments for gateway and registry docs |
 | `e5dec3d` | Add gateway ACP, marketplace, and CLI UI updates |
 | `9a0f23b` | Address PR review feedback |
+
+### Highlights
+
+- **Marketplace security hardening P1 (lab-kvji.10)** — path traversal via plugin ID blocked at parse time; symlink following eliminated from all four filesystem walkers; `installPath` from `installed_plugins.json` validated against `plugins_root` before use
+- **AI component library** — 26 new TSX components under `components/ai/` covering agents, artifacts, attachments, code blocks, reasoning, tool calls, and more
+- **Fleet websocket runtime** — initial `feat: add websocket fleet runtime`; ACP provider, session registry, SSE transport, design docs
+- **Registry metadata curation** — Lab-owned `_meta["tv.tootie.lab/registry"]` contract, validation, audit fields, server-side metadata filters, typed CLI metadata commands, gateway-admin structured metadata editing
+- **Marketplace and upstream hardening** — marketplace client/dispatch cleanup, upstream pool adjustments, browser session auth fixes, large batch of PR-review-driven repairs across gateway, registry, marketplace, chat, and deploy
+
+### Version bumps
+
+- Rust workspace: `0.7.3 → 0.9.0` _(skipped `0.8.x`)_
+
+---
+
+## [0.7.3] — 2026-04-22
+
+| Commit | Change |
+|--------|--------|
 | `681986c` | feat(gateway-chat-registry-log-ui): marketplace UI, gateway/chat/registry/log component polish, mcpregistry fixes — v0.7.3 |
 | `802d67e` | feat(marketplace): route + sidebar nav entry — Marketplace page complete |
 | `3674c5b` | feat(marketplace): all UI components — cards, panels, dialogs, modal |
@@ -140,37 +207,18 @@ All notable changes to this project will be documented in this file.
 | `9ff7ded` | feat(mcpregistry): add sync observability — start/page/finish log events |
 | `8e17b84` | fix(registry_v01): use axum 0.8 {param} route syntax instead of :param |
 | `388c22e` | fix: squash serve/dispatch warnings (unnecessary qualifications, dead code) |
-| `fca019b` | fix(gateway-admin): brand icon white bg + colored border for contrast |
 
 ### Highlights
 
-- **Marketplace P1 security follow-up (lab-zxx5)** — multi-agent review P1+P2 fixes, install_component/agent.install hardening, SSRF blocklist edges, per-node caps, `redact_home` helper applied to errors and log tiering, partial-extraction detection with fail-closed walk, typed install error markers, marketplace path helpers normalized to `Result`, plugins.list invariant test, `ambiguous_tool` → 409, mcp.* routed through `mcp_dispatch`, streamed SHA-256 during binary archive download, bounded inbound RPC dispatch with UUIDv4 request ids
-- **Workspace fs hardening (lab-f1t2)** — workspace root resolver + AppState field, fs registered unconditionally when feature-enabled, security headers via subrouter middleware, dispatch consolidated into single match body, intra-workspace symlink rejection in openat2 fallback, case-insensitive credential deny-list with path redaction, MCP transport auth requirement documented, MCP↔canonical fs ActionSpec parity locked, ASCII fast-path + redundant lstat removal, concurrent workspace preview dedupe, workspace-picker error-kind alignment, AttachmentChip and chat-input race elimination + UX polish
-- **WS fleet runtime + remote install (lab-zxx5.3/.6/lab-ccc9/lab-e2tu)** — real `NodeRpcPort` master pending infra, device→node module rename, remote fleet WS install + binary agent download, plugin.cherry_pick dispatch + cherry-pick component selector dialog, Phase 3 WS fleet method handlers + MCP demux, SQLite-backed node log persistence with 30-day TTL retention, SSE progress endpoint cherry-pick
-- **ACP service consolidation (lab-jwbg)** — `acp_registry` SDK client, dispatch/acp layer (catalog, client, params, dispatch), API/ACP surface migrated to dispatch layer, ACP service registration (PluginMeta, registry, serve wiring), `AcpSessionRegistry` rewrite with `Arc<Session>` + per-subscriber mpsc + ownership semantics, SQLite persistence layer (`AcpPersistence` trait + `SqliteAcpPersistence`), ACP agent dispatch actions (`agent.list/get/install/uninstall`), MCP server + ACP agent install modals with gateway/device/scope selection
-- **Doctor + bootstrap (lab-bg3e)** — doctor promoted to full Bootstrap dispatch service, `UiSchema`/`FieldKind` types + `PluginMeta.supports_multi_instance` for all 23 services
-- **Gateway admin AI component pass** — prompt-input five-fix correctness pass, file-tree accessibility, prop-spread ordering, runtime-crash + stuck-timer + unreachable-Cancel fixes, shared `useCopyTimeout` hook to prevent leaked setState-after-unmount, AI components import-alias repair, accessibility batch
-- **Dev mockup routes** — mockup file server at `/dev` and `/dev/:name`, `/dev/api/nodeinfo` returning `.env` values with secrets masked, route survival across router.rs refactors
-- **Docs** — setup+settings feature design spec, component-development doc update, OAUTH.md, OPERATIONS.md additions, design-system contract additions
-
-- **Marketplace security hardening (P1)** — path traversal via plugin ID blocked at parse time; symlink following eliminated from all four filesystem walkers; `installPath` from `installed_plugins.json` validated against `plugins_root` before use
-- **AI component library** — 26 new TSX components under `components/ai/` covering agents, artifacts, attachments, code blocks, reasoning, tool calls, and more
-- **Fleet websocket runtime** — new `feat: add websocket fleet runtime`; ACP provider, session registry, SSE transport, and design docs
-- **Registry metadata curation** — Lab-owned `_meta["tv.tootie.lab/registry"]` contract, validation, audit fields, server-side metadata filters, typed CLI metadata commands, and gateway-admin structured metadata editing
-- **Gateway admin refinements** — registry detail/editor upgrades, gateway filter/table improvements, chat shell and tool-call presentation cleanup, and additional tests across chat and gateway views
-- **Marketplace and upstream hardening** — marketplace client/dispatch cleanup, upstream pool adjustments, browser session auth fixes, and follow-up review-driven repairs
-- **CLI and docs** — `lab mcpregistry meta get/set/delete`, metadata contract docs, and CLI coverage for the registry metadata surface
 - **Marketplace UI** — full Marketplace page: types, mock API client, SWR hooks, card/panel/dialog/modal components, route + sidebar nav entry
-- **Gateway admin REST wiring** — listServers now calls GET /v0.1/servers; gateway/registry/log/chat UI components updated (filters, table, detail panel, session sidebar, log console)
-- **Chat UI improvements** — chat-input, chat-shell, message-bubble, message-thread, settings-panel refined; gateway tools table added
-- **mcpregistry fixes** — sync guard extraction, SSRF blocklist (Tailscale CGNAT), ON CONFLICT upsert, WAL mode, jiff timestamp, upstream error surfacing, sync observability log events
-- **Chrono → jiff migration** — removed chrono dep from workspace; log formatter uses jiff
-- **Registry v0.1 API fixes** — axum 0.8 route syntax, owner filter, ToolError normalization, coverage doc added
+- **Gateway admin REST wiring** — `listServers` now calls `GET /v0.1/servers`; gateway/registry/log/chat UI components updated (filters, table, detail panel, session sidebar, log console)
+- **mcpregistry fixes** — sync guard extraction, SSRF blocklist (Tailscale CGNAT), `ON CONFLICT` upsert, WAL mode, jiff timestamp, upstream error surfacing, sync observability log events
+- **Chrono → jiff migration** — removed `chrono` dep from workspace; log formatter uses `jiff`
+- **Registry v0.1 API fixes** — axum 0.8 `{param}` route syntax, owner filter, `ToolError` normalization
 
 ### Version bumps
 
-- Rust workspace: `0.11.0 → 0.11.1`
-- gateway-admin: `0.5.0 → 0.5.1`
+- Rust workspace: `0.7.2 → 0.7.3`
 
 ---
 

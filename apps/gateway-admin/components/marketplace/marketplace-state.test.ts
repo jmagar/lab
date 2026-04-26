@@ -66,6 +66,31 @@ const plugins: Plugin[] = [
         path: 'commands/ship.md',
         name: 'Ship Command',
       },
+      {
+        kind: 'mcp_servers',
+        path: '.mcp.json',
+        name: 'Plugin MCP Servers',
+      },
+      {
+        kind: 'lsp_servers',
+        path: '.lsp.json',
+        name: 'Plugin LSP Servers',
+      },
+      {
+        kind: 'monitors',
+        path: 'monitors/monitors.json',
+        name: 'Background Monitors',
+      },
+      {
+        kind: 'bin',
+        path: 'bin/review',
+        name: 'Review Helper',
+      },
+      {
+        kind: 'settings',
+        path: 'settings.json',
+        name: 'Default Settings',
+      },
     ],
   },
 ]
@@ -132,6 +157,7 @@ const acpAgents: AcpAgent[] = [
     distribution: { binary: {} },
     installed: true,
     installedAt: '2026-04-23T10:00:00Z',
+    repository: 'https://github.com/openai/codex',
   },
 ]
 
@@ -149,13 +175,22 @@ const baseFilters: MarketplaceCatalogFilterState = {
 test('buildMarketplaceCatalogItems creates unified plugin mcp agent and source rows', () => {
   const items = buildMarketplaceCatalogItems({ plugins, sources, mcpServers, acpAgents })
 
-  assert.deepEqual(items.map((item) => item.kind), ['plugin', 'plugin', 'agent', 'skill', 'command', 'mcp_server', 'acp_agent', 'source'])
+  assert.deepEqual(items.map((item) => item.kind), ['plugin', 'plugin', 'agent', 'skill', 'command', 'mcp_server', 'lsp_server', 'monitor', 'executable', 'settings', 'mcp_server', 'acp_agent', 'source'])
   assert.equal(items.find((item) => item.id === 'plugin:gateway-audit')?.ecosystem, 'Claude')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.kind, 'agent')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:skills:skills/tdd/SKILL.md')?.kind, 'skill')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:commands:commands/ship.md')?.kind, 'command')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:mcp_servers:.mcp.json')?.kind, 'mcp_server')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:lsp_servers:.lsp.json')?.kind, 'lsp_server')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:monitors:monitors/monitors.json')?.kind, 'monitor')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:bin:bin/review')?.kind, 'executable')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:settings:settings.json')?.kind, 'settings')
   assert.equal(items.find((item) => item.id === 'mcp:filesystem')?.distribution, 'npm')
   assert.equal(items.find((item) => item.id === 'agent:codex-cli')?.ecosystem, 'ACP')
+  assert.deepEqual(items.find((item) => item.id === 'plugin:gateway-audit')?.avatar, { kind: 'github', owner: 'labby' })
+  assert.deepEqual(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.avatar, { kind: 'github', owner: 'labby' })
+  assert.deepEqual(items.find((item) => item.id === 'agent:codex-cli')?.avatar, { kind: 'github', owner: 'openai' })
+  assert.deepEqual(items.find((item) => item.id === 'source:official')?.avatar, { kind: 'github', owner: 'labby' })
 })
 
 test('buildMarketplaceCatalogItems accepts MCP Registry server envelopes', () => {
@@ -165,7 +200,7 @@ test('buildMarketplaceCatalogItems accepts MCP Registry server envelopes', () =>
     mcpServers: [
       {
         server: {
-          name: 'acme/widgets',
+          name: 'io.github.acme/widgets',
           title: 'Acme Widgets',
           description: 'Widget MCP server',
           version: '2.1.0',
@@ -183,11 +218,56 @@ test('buildMarketplaceCatalogItems accepts MCP Registry server envelopes', () =>
     acpAgents: [],
   })
 
-  assert.equal(items[0]?.id, 'mcp:acme/widgets')
+  assert.equal(items[0]?.id, 'mcp:io.github.acme/widgets')
   assert.equal(items[0]?.name, 'Acme Widgets')
   assert.equal(items[0]?.subtitle, '@acme/widgets-mcp')
   assert.equal(items[0]?.distribution, 'npm')
   assert.equal(items[0]?.updatedAt, '2026-04-24T10:00:00Z')
+  assert.deepEqual(items[0]?.avatar, { kind: 'github', owner: 'acme' })
+})
+
+test('buildMarketplaceCatalogItems derives GitHub avatars from repository urls when owner fields are absent', () => {
+  const items = buildMarketplaceCatalogItems({
+    plugins: [
+      {
+        id: 'repo-avatar',
+        name: 'Repo Avatar',
+        marketplaceId: 'repo-source',
+        version: '1.0.0',
+        description: 'Uses repo owner avatar',
+        tags: [],
+        installed: false,
+      },
+    ],
+    sources: [
+      {
+        id: 'repo-source',
+        name: 'Repo Source',
+        owner: 'Fallback',
+        description: 'Source without githubOwner',
+        autoUpdateEnabled: true,
+        pluginCount: 1,
+        lastUpdatedAt: '2026-04-21T12:00:00Z',
+        source: 'github',
+        repository: 'octo-org/plugins',
+      },
+    ],
+    mcpServers: [
+      {
+        server: {
+          name: 'widgets',
+          description: 'Widget server',
+          version: '1.0.0',
+          repository: { url: 'https://github.com/mcp-org/widgets' },
+        },
+      },
+    ],
+    acpAgents: [],
+  })
+
+  assert.deepEqual(items.find((item) => item.id === 'plugin:repo-avatar')?.avatar, { kind: 'github', owner: 'octo-org' })
+  assert.deepEqual(items.find((item) => item.id === 'source:repo-source')?.avatar, { kind: 'github', owner: 'octo-org' })
+  assert.deepEqual(items.find((item) => item.id === 'mcp:widgets')?.avatar, { kind: 'github', owner: 'mcp-org' })
 })
 
 test('buildMarketplaceCatalogItems dedupes MCP Registry versions by server identifier', () => {
@@ -208,13 +288,14 @@ test('marketplaceCatalogSummary counts lenses from unified rows', () => {
   const summary = marketplaceCatalogSummary(items)
 
   assert.deepEqual(summary, {
-    all: 8,
+    all: 13,
     installed: 2,
     plugins: 2,
     agents: 1,
     skills: 1,
     commands: 1,
-    mcpServers: 1,
+    mcpServers: 2,
+    lspServers: 1,
     acpAgents: 1,
     sources: 1,
     updates: 1,
@@ -248,6 +329,8 @@ test('marketplaceCatalogSummary does not count bundled components as plugins', (
   assert.equal(summary.agents, 1)
   assert.equal(summary.skills, 1)
   assert.equal(summary.commands, 1)
+  assert.equal(summary.mcpServers, 0)
+  assert.equal(summary.lspServers, 0)
   assert.deepEqual(
     items.filter((item) => item.installed).map((item) => item.kind),
     ['plugin', 'agent', 'skill', 'command'],
@@ -296,6 +379,11 @@ test('filterMarketplaceCatalogItems treats sources as catalog items and facets',
     'component:codex-helper:agents:agents/reviewer.md',
     'component:codex-helper:skills:skills/tdd/SKILL.md',
     'component:codex-helper:commands:commands/ship.md',
+    'component:codex-helper:mcp_servers:.mcp.json',
+    'component:codex-helper:lsp_servers:.lsp.json',
+    'component:codex-helper:monitors:monitors/monitors.json',
+    'component:codex-helper:bin:bin/review',
+    'component:codex-helper:settings:settings.json',
     'source:official',
   ])
 })
@@ -320,6 +408,11 @@ test('filterMarketplaceCatalogItems lets source filters target MCP Registry rows
       'component:codex-helper:agents:agents/reviewer.md',
       'component:codex-helper:skills:skills/tdd/SKILL.md',
       'component:codex-helper:commands:commands/ship.md',
+      'component:codex-helper:mcp_servers:.mcp.json',
+      'component:codex-helper:lsp_servers:.lsp.json',
+      'component:codex-helper:monitors:monitors/monitors.json',
+      'component:codex-helper:bin:bin/review',
+      'component:codex-helper:settings:settings.json',
       'source:official',
     ],
   )

@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Bot,
@@ -83,12 +84,15 @@ const TYPE_OPTIONS: Array<{ value: MarketplaceCatalogKind; label: string }> = [
   { value: 'skill', label: 'Skills' },
   { value: 'command', label: 'Commands' },
   { value: 'mcp_server', label: 'MCP servers' },
+  { value: 'lsp_server', label: 'LSP servers' },
   { value: 'acp_agent', label: 'ACP agents' },
   { value: 'app', label: 'Apps' },
   { value: 'hook', label: 'Hooks' },
+  { value: 'executable', label: 'Executables' },
   { value: 'asset', label: 'Assets' },
   { value: 'file', label: 'Files' },
   { value: 'config', label: 'Config' },
+  { value: 'settings', label: 'Settings' },
   { value: 'monitor', label: 'Monitors' },
   { value: 'output_style', label: 'Output styles' },
   { value: 'source', label: 'Sources' },
@@ -114,15 +118,18 @@ function toggleValue<T extends string>(values: T[], value: T): T[] {
 
 function kindLabel(kind: MarketplaceCatalogKind): string {
   if (kind === 'mcp_server') return 'MCP server'
+  if (kind === 'lsp_server') return 'LSP server'
   if (kind === 'acp_agent') return 'ACP agent'
   if (kind === 'agent') return 'Agent'
   if (kind === 'skill') return 'Skill'
   if (kind === 'command') return 'Command'
   if (kind === 'app') return 'App'
   if (kind === 'hook') return 'Hook'
+  if (kind === 'executable') return 'Executable'
   if (kind === 'asset') return 'Asset'
   if (kind === 'file') return 'File'
   if (kind === 'config') return 'Config'
+  if (kind === 'settings') return 'Settings'
   if (kind === 'monitor') return 'Monitor'
   if (kind === 'output_style') return 'Output style'
   if (kind === 'source') return 'Source'
@@ -131,15 +138,72 @@ function kindLabel(kind: MarketplaceCatalogKind): string {
 
 function kindIcon(kind: MarketplaceCatalogKind): ReactNode {
   if (kind === 'mcp_server') return <Server className="size-4" />
+  if (kind === 'lsp_server') return <Code2 className="size-4" />
   if (kind === 'acp_agent') return <Bot className="size-4" />
   if (kind === 'agent') return <Bot className="size-4" />
   if (kind === 'skill') return <Sparkles className="size-4" />
   if (kind === 'command') return <TerminalSquare className="size-4" />
   if (kind === 'app') return <Code2 className="size-4" />
   if (kind === 'hook') return <Hammer className="size-4" />
-  if (kind === 'asset' || kind === 'file' || kind === 'config' || kind === 'monitor' || kind === 'output_style') return <FileCode2 className="size-4" />
+  if (kind === 'executable') return <TerminalSquare className="size-4" />
+  if (kind === 'asset' || kind === 'file' || kind === 'config' || kind === 'settings' || kind === 'monitor' || kind === 'output_style') return <FileCode2 className="size-4" />
   if (kind === 'source') return <ShoppingBag className="size-4" />
   return <Boxes className="size-4" />
+}
+
+function itemInitials(name: string): string {
+  return name
+    .replace(/[-_/]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+function CatalogIdentityMark({
+  item,
+  size = 40,
+}: {
+  item: MarketplaceCatalogItem
+  size?: number
+}) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const owner = item.avatar?.kind === 'github' ? item.avatar.owner : undefined
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [owner, item.name])
+
+  if (owner && !imageFailed) {
+    return (
+      <div
+        className="flex shrink-0 overflow-hidden rounded-aurora-2 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-small)]"
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={`https://github.com/${owner}.png?size=${size * 2}`}
+          alt={`${owner} GitHub avatar`}
+          width={size}
+          height={size}
+          unoptimized
+          className="h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center rounded-aurora-2 border border-aurora-border-default bg-aurora-control-surface font-display text-sm font-black text-aurora-accent-strong shadow-[var(--aurora-shadow-small)]"
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      {item.kind === 'plugin' || item.kind === 'source' ? itemInitials(item.name) : kindIcon(item.kind)}
+    </div>
+  )
 }
 
 function primaryActionLabel(item: MarketplaceCatalogItem, readOnlyPreview = false): string {
@@ -203,9 +267,7 @@ function CatalogCard({
       aria-label={`${primaryActionLabel(item)} ${item.name}`}
     >
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
-        <div className="flex size-10 items-center justify-center rounded-aurora-2 border border-aurora-border-default bg-aurora-control-surface text-aurora-accent-strong shadow-[var(--aurora-shadow-small)]">
-          {kindIcon(item.kind)}
-        </div>
+        <CatalogIdentityMark item={item} />
         <div className="min-w-0">
           <h3 className={cn(AURORA_CARD_TITLE, 'truncate text-aurora-text-primary')}>{item.name}</h3>
           <p className={cn(AURORA_DENSE_META, 'mt-1 truncate text-aurora-text-muted')}>{item.subtitle}</p>
@@ -266,9 +328,12 @@ function CatalogTable({ items, onAction }: { items: MarketplaceCatalogItem[]; on
                 className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34"
               >
                 <TableCell>
-                  <div className="max-w-[320px]">
-                    <p className="font-semibold text-aurora-text-primary">{item.name}</p>
-                    <p className={cn(AURORA_DENSE_META, 'truncate text-aurora-text-muted')}>{item.description || item.subtitle}</p>
+                  <div className="flex max-w-[320px] items-center gap-3">
+                    <CatalogIdentityMark item={item} size={32} />
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-aurora-text-primary">{item.name}</p>
+                      <p className={cn(AURORA_DENSE_META, 'truncate text-aurora-text-muted')}>{item.description || item.subtitle}</p>
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>{kindLabel(item.kind)}</TableCell>

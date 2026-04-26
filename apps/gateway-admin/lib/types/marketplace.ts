@@ -57,17 +57,20 @@ export interface MarketplaceState {
 
 export type PluginComponentKind =
   | 'agents'
-  | 'commands'
-  | 'output-styles'
-  | 'skills'
-  | 'hooks'
-  | 'monitors'
-  | 'mcp-config'
-  | 'lsp-config'
   | 'apps'
-  | 'mcp_servers'
   | 'assets'
+  | 'bin'
+  | 'commands'
   | 'files'
+  | 'hooks'
+  | 'lsp-config'
+  | 'lsp_servers'
+  | 'mcp-config'
+  | 'mcp_servers'
+  | 'monitors'
+  | 'output-styles'
+  | 'settings'
+  | 'skills'
 
 export interface PluginComponent {
   kind: PluginComponentKind

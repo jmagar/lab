@@ -60,16 +60,20 @@ pub struct PluginManifestSummary {
 }
 
 /// High-level plugin component kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginComponentKind {
     Skills,
     Apps,
     McpServers,
+    LspServers,
     Commands,
     Agents,
     Assets,
     Hooks,
+    Monitors,
+    Bin,
+    Settings,
     Files,
 }
 
