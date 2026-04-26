@@ -192,6 +192,18 @@ export interface ServiceAction {
   destructive: boolean
 }
 
+export interface ToolSearchConfig {
+  enabled: boolean
+  top_k_default: number
+  max_tools: number
+}
+
+export interface ToolSearchConfigInput {
+  enabled: boolean
+  top_k_default?: number
+  max_tools?: number
+}
+
 // Exposure policy types
 export interface ExposurePolicy {
   mode: 'expose_all' | 'allowlist'
