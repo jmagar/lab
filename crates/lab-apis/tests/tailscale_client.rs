@@ -70,7 +70,7 @@ async fn acl_set_calls_validate_before_set() {
     // Validation endpoint — returns clean
     Mock::given(method("POST"))
         .and(path("/tailnet/-/acl/validate"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&json!({})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
         .mount(&server)
         .await;
 
@@ -89,7 +89,7 @@ async fn acl_set_calls_validate_before_set() {
     assert!(
         !validation
             .get("errors")
-            .is_some_and(|v| { v.as_array().map_or(false, |arr| !arr.is_empty()) })
+            .is_some_and(|v| v.as_array().is_some_and(|arr| !arr.is_empty()))
     );
     let result = c.acl_set(&policy).await.expect("acl_set");
     assert_eq!(result, set_response);
@@ -144,7 +144,7 @@ async fn device_tag_posts_tags_body() {
 
     Mock::given(method("POST"))
         .and(path("/device/abc123/tags"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&json!({})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
         .mount(&server)
         .await;
 
@@ -163,7 +163,7 @@ async fn device_expire_posts_to_expire_endpoint() {
 
     Mock::given(method("POST"))
         .and(path("/device/abc123/expire"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(&json!({})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
         .mount(&server)
         .await;
 

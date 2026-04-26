@@ -141,7 +141,7 @@ pub async fn run(
             std::time::Duration::from_secs(interval),
             std::time::Duration::from_secs(timeout),
         )
-        .await;
+        .await?;
         return Ok(());
     }
 

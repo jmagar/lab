@@ -233,12 +233,14 @@ export function GatewayFilters({
         <div data-mobile-search={mode} className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
           <Input
-            placeholder={mode === 'tools' ? 'Search tools, descriptions, or gateways' : 'Search gateways, commands, or endpoints'}
+            aria-label={mode === 'tools' ? 'Search tools' : 'Search gateways'}
+            name={mode === 'tools' ? 'gateway-tools-search-mobile' : 'gateways-search-mobile'}
+            placeholder={mode === 'tools' ? 'Search tools' : 'Search gateways'}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             className={cn(
               AURORA_CONTROL_SURFACE,
-              'h-11 border pl-9 pr-[5.25rem] text-aurora-text-primary placeholder:text-aurora-text-muted',
+              'h-10 border pl-9 pr-[4.75rem] text-aurora-text-primary placeholder:text-aurora-text-muted',
             )}
           />
           <div className="absolute inset-y-0 right-1 flex items-center gap-1">
@@ -248,7 +250,7 @@ export function GatewayFilters({
                 variant="outline"
                 size="icon"
                 onClick={() => onSearchChange('')}
-                className={cn(gatewayActionTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                className={cn(gatewayActionTone(), 'size-7 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                 aria-label="Clear search"
               >
                 <X className="size-3.5" />
@@ -256,13 +258,13 @@ export function GatewayFilters({
             ) : null}
             <Button
               type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => onMobileSheetOpenChange(!mobileSheetOpen)}
-              className={cn(gatewayActionTone(), 'relative size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
-              aria-label="Open filters"
-            >
-              <SlidersHorizontal className="size-3.5" />
+                variant="outline"
+                size="icon"
+                onClick={() => onMobileSheetOpenChange(!mobileSheetOpen)}
+                className={cn(gatewayActionTone(), 'relative size-7 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                aria-label="Open filters"
+              >
+              <SlidersHorizontal className="size-3" />
               {activeMobilePills.length > 0 ? (
                 <span className="absolute -top-1 -right-1 rounded-full border border-aurora-accent-primary/35 bg-aurora-accent-primary/14 px-1.5 text-[10px] font-semibold leading-4 text-aurora-accent-strong">
                   {activeMobilePills.length}
@@ -315,6 +317,8 @@ export function GatewayFilters({
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
             <Input
+              aria-label={mode === 'tools' ? 'Search tools' : 'Search gateways'}
+              name={mode === 'tools' ? 'gateway-tools-search' : 'gateways-search'}
               placeholder={mode === 'tools' ? 'Search tools, descriptions, or gateways' : 'Search gateways, commands, or endpoints'}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}

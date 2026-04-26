@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Component, Path};
 use std::sync::Arc;
 
 use lab_apis::core::action::ActionSpec;
@@ -9,6 +10,61 @@ use serde_json::Value;
 
 use crate::config::scan_instances;
 use crate::dispatch::error::ToolError;
+
+/// Replace the user's home-directory prefix with literal `~` so paths
+/// embedded in log events, response bodies, and error messages don't leak
+/// the OS username.
+///
+/// Preserves per-runtime subdirs (`~/.claude/plugins/` vs `~/.codex/plugins/`
+/// vs `~/.lab/bin/<agent_id>/` remain distinguishable). Safe on any input:
+/// if `HOME` is unset or the path doesn't sit under it, the input is
+/// returned unchanged.
+///
+/// lab-zxx5.27: promoted to shared helpers so `node/` install paths can
+/// call it without reaching into a sibling service's private module.
+#[must_use]
+pub fn redact_home(path: &str) -> String {
+    let Some(home) = std::env::var_os("HOME") else {
+        return path.to_string();
+    };
+    let home = home.to_string_lossy();
+    let home = home.trim_end_matches('/');
+    if home.is_empty() {
+        return path.to_string();
+    }
+    if let Some(rest) = path.strip_prefix(home) {
+        let rest = rest.trim_start_matches('/');
+        if rest.is_empty() {
+            return "~".to_string();
+        }
+        return format!("~/{rest}");
+    }
+    path.to_string()
+}
+
+/// Reject any path input that contains a `Component::ParentDir` (`..`) segment.
+///
+/// This is a **lexical** check only. Callers that join the input against a
+/// trusted root MUST additionally `canonicalize` + `starts_with(root)` after
+/// writing to protect against symlinks escaping the jail (TOCTOU-weak, but
+/// strictly better than skipping). Windows UNC / absolute paths are rejected
+/// upstream by callers via `Path::is_absolute`.
+pub fn reject_path_traversal(rel_path: &str) -> Result<(), ToolError> {
+    for component in Path::new(rel_path).components() {
+        if matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        ) {
+            return Err(ToolError::InvalidParam {
+                message: format!(
+                    "path traversal rejected: `{rel_path}` must be a relative path with only normal components"
+                ),
+                param: "path".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
 
 /// Read an environment variable, returning `None` if absent or empty.
 pub fn env_non_empty(name: &str) -> Option<String> {
@@ -297,6 +353,44 @@ pub fn instance_env_keys(prefix: &str, label: &str) -> (String, String) {
             format!("{prefix}_{upper}_URL"),
             format!("{prefix}_{upper}_API_KEY"),
         )
+    }
+}
+
+/// Create a database file with Unix 0600 permissions if it does not already exist.
+///
+/// This is a no-op when the file already exists (uses `create_new`, so an
+/// `AlreadyExists` error is silently swallowed). On platforms that do not
+/// support `OpenOptionsExt`, this function is not compiled and callers must
+/// ensure appropriate permissions by other means.
+///
+/// # Security
+///
+/// Must be called **before** opening the file via the connection pool so that
+/// the creation and permission assignment happen atomically. Subsequent opens
+/// by the pool do not change permissions.
+#[cfg(unix)]
+#[allow(dead_code)]
+pub fn create_db_file_0600(path: &std::path::PathBuf) {
+    use std::os::unix::fs::OpenOptionsExt;
+    // Only set mode on creation; if the file already exists, leave perms
+    // alone. Any other failure (permission denied, parent missing, EROFS,
+    // etc.) is logged at WARN — silently swallowing every error here can
+    // hide real misconfigurations of the secure-DB-file path.
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to pre-create secure DB file with 0600 permissions"
+            );
+        }
     }
 }
 

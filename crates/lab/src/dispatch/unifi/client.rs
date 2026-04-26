@@ -61,11 +61,3 @@ pub fn client_from_env() -> Option<UnifiClient> {
 pub fn client_from_instance(label: Option<&str>) -> Result<Arc<UnifiClient>, ToolError> {
     pool().resolve(label)
 }
-
-#[allow(dead_code)]
-pub fn require_client() -> Result<UnifiClient, ToolError> {
-    client_from_env().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "internal_error".to_string(),
-        message: "UNIFI_URL or UNIFI_API_KEY not configured".to_string(),
-    })
-}

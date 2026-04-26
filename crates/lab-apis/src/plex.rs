@@ -20,6 +20,7 @@ pub use error::PlexError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the plex module.
@@ -35,16 +36,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Plex Media Server instance",
             example: "http://localhost:32400",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "PLEX_TOKEN",
             description: "Plex authentication token (X-Plex-Token)",
             example: "xxxxxxxxxxxxxxxxxxxx",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(32400),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for PlexClient {

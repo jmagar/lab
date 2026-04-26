@@ -77,6 +77,15 @@ mod tests {
     }
 
     #[test]
+    fn help_includes_core_read_only_actions() {
+        let names: Vec<&str> = actions().iter().map(|a| a.name).collect();
+        assert!(names.contains(&"system.status"));
+        assert!(names.contains(&"movie.list"));
+        assert!(names.contains(&"queue.list"));
+        assert!(names.contains(&"calendar.list"));
+    }
+
+    #[test]
     fn no_duplicate_action_names() {
         let names: Vec<&str> = actions().iter().map(|a| a.name).collect();
         let mut sorted = names.clone();

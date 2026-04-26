@@ -2,6 +2,20 @@ use std::io::IsTerminal;
 
 use clap::ValueEnum;
 
+// ---------------------------------------------------------------------------
+// Aurora palette — ANSI 256 constants shared by CliTheme and the log formatter.
+// The console crate (used in log_fmt) only supports ANSI 256, not truecolor,
+// so these ANSI 256 values are the single source of truth for both surfaces.
+// ---------------------------------------------------------------------------
+pub mod aurora {
+    pub const SERVICE_NAME: u8 = 211; // pink  (255,175,215)
+    pub const ACCENT_PRIMARY: u8 = 39; // bright blue (41,182,246)
+    pub const TEXT_MUTED: u8 = 250; // light grey (167,188,201)
+    pub const SUCCESS: u8 = 115; // teal (125,211,199)
+    pub const WARN: u8 = 180; // amber (198,163,107)
+    pub const ERROR: u8 = 174; // muted red (199,132,144)
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum ColorPolicy {
     #[default]
@@ -94,7 +108,11 @@ pub struct OutputFormat {
 impl OutputFormat {
     #[must_use]
     pub fn from_json_flag(json: bool, policy: ColorPolicy, env: RenderEnv) -> Self {
-        let kind = if json { OutputKind::Json } else { OutputKind::Human };
+        let kind = if json {
+            OutputKind::Json
+        } else {
+            OutputKind::Human
+        };
         Self {
             kind,
             ctx: if json {
@@ -151,7 +169,11 @@ impl CliTheme {
         format!(
             "{}\n{}",
             self.display(text),
-            self.border(&self.symbol(self.symbols().divider).repeat(text.chars().count().max(12)))
+            self.border(
+                &self
+                    .symbol(self.symbols().divider)
+                    .repeat(text.chars().count().max(12))
+            )
         )
     }
 
@@ -178,6 +200,11 @@ impl CliTheme {
     #[must_use]
     pub fn accent(self, text: &str) -> String {
         paint((41, 182, 246), 39, text, self.ctx)
+    }
+
+    #[must_use]
+    pub fn service_name(self, text: &str) -> String {
+        paint((255, 175, 215), 211, text, self.ctx)
     }
 
     #[must_use]
@@ -349,7 +376,11 @@ fn detect_color_level(policy: ColorPolicy, env: &RenderEnv) -> ColorLevel {
         return ColorLevel::Plain;
     }
 
-    let colorterm = env.colorterm.as_deref().unwrap_or_default().to_ascii_lowercase();
+    let colorterm = env
+        .colorterm
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let term = env.term.as_deref().unwrap_or_default().to_ascii_lowercase();
 
     if colorterm.contains("truecolor")
@@ -365,7 +396,13 @@ fn detect_color_level(policy: ColorPolicy, env: &RenderEnv) -> ColorLevel {
 }
 
 fn detect_symbol_mode(env: &RenderEnv) -> SymbolMode {
-    match env.lab_symbols.as_deref().unwrap_or_default().to_ascii_lowercase().as_str() {
+    match env
+        .lab_symbols
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "ascii" => return SymbolMode::Ascii,
         "unicode" => return SymbolMode::Unicode,
         _ => {}
@@ -411,7 +448,12 @@ fn paint_bg(rgb: (u8, u8, u8), ansi256: u8, text: &str, ctx: RenderContext) -> S
 mod tests {
     use super::*;
 
-    fn env(stream_is_tty: bool, no_color: bool, term: Option<&str>, colorterm: Option<&str>) -> RenderEnv {
+    fn env(
+        stream_is_tty: bool,
+        no_color: bool,
+        term: Option<&str>,
+        colorterm: Option<&str>,
+    ) -> RenderEnv {
         RenderEnv {
             stream_is_tty,
             no_color,

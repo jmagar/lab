@@ -234,6 +234,8 @@ mod tests {
             proxy_resources: false,
             proxy_prompts: false,
             expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
             oauth: Some(UpstreamOauthConfig {
                 mode: UpstreamOauthMode::AuthorizationCodePkce,
                 registration: UpstreamOauthRegistration::Preregistered {
@@ -242,6 +244,7 @@ mod tests {
                 },
                 scopes: None,
             }),
+            tool_search: crate::config::ToolSearchConfig::default(),
         }
     }
 

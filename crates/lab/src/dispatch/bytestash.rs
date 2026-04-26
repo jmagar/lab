@@ -78,4 +78,22 @@ mod tests {
             client::client_from_vars(Some("http://localhost:8080"), Some("jwt-token")).is_some()
         );
     }
+
+    #[test]
+    fn params_accept_shared_body_key_for_snippet_writes() {
+        let params = serde_json::json!({
+            "id": "snippet-1",
+            "body": {
+                "title": "Shared helper proof",
+                "description": "parsed from body",
+                "language": "rust",
+                "fragments": [],
+                "categories": []
+            }
+        });
+
+        let body = params::snippet_write_from_params(&params).expect("body should parse");
+        assert_eq!(body.title, "Shared helper proof");
+        assert_eq!(body.language.as_deref(), Some("rust"));
+    }
 }

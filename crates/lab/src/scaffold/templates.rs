@@ -5,7 +5,7 @@ mod dispatch;
 mod docs;
 mod lab_apis;
 
-pub use adapters::{adapter_api_template, adapter_cli_template, adapter_mcp_template};
+pub use adapters::{adapter_api_template, adapter_cli_template};
 pub use dispatch::{
     dispatch_catalog_template, dispatch_client_template, dispatch_dispatch_template,
     dispatch_entrypoint_template, dispatch_params_template,

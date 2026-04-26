@@ -25,6 +25,7 @@ pub use error::QdrantError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_OPTIONAL_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the qdrant module.
@@ -39,14 +40,17 @@ pub const META: PluginMeta = PluginMeta {
         description: "Base URL of the Qdrant server",
         example: "http://localhost:6333",
         secret: false,
+        ui: Some(&URL_FIELD),
     }],
     optional_env: &[EnvVar {
         name: "QDRANT_API_KEY",
         description: "API key (only if Qdrant is auth-protected)",
         example: "abc123...",
         secret: true,
+        ui: Some(&SECRET_OPTIONAL_FIELD),
     }],
     default_port: Some(6333),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for QdrantClient {

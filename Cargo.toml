@@ -3,7 +3,7 @@ resolver = "3"
 members  = ["crates/lab-apis", "crates/lab", "crates/lab-auth"]
 
 [workspace.package]
-version      = "0.8.0"
+version      = "0.11.1"
 edition      = "2024"
 rust-version = "1.90"
 license      = "MIT OR Apache-2.0"
@@ -72,13 +72,14 @@ rsa          = "0.10.0-rc.17"
 rand         = "0.9"
 rusqlite     = { version = "0.39", features = ["bundled"] }
 sha2         = "0.10"
+hmac         = "0.12"
 percent-encoding = "2.3"
 uuid         = { version = "1", features = ["v4", "serde"] }
 
 # http server (lab binary only)
 axum         = { version = "0.8", features = ["macros", "json", "tokio", "http2", "ws"] }
 tower        = { version = "0.5", features = ["util"] }
-tower-http   = { version = "0.6", features = ["trace", "cors", "compression-gzip", "timeout", "request-id"] }
+tower-http   = { version = "0.6", features = ["trace", "cors", "compression-gzip", "timeout", "request-id", "set-header"] }
 
 # openapi / docs
 utoipa       = { version = "5", features = ["axum_extras"] }
@@ -118,7 +119,6 @@ panic        = "warn"
 todo         = "warn"
 unimplemented = "warn"
 dbg_macro    = "warn"
-print_stdout = "warn"
 print_stderr = "allow"
 mod_module_files = "warn"   # forbid mod.rs — enforce foo.rs sibling to foo/ style
 
@@ -177,6 +177,16 @@ from_iter_instead_of_collect       = "allow"
 suboptimal_flops                   = "allow"
 semicolon_if_nothing_returned      = "allow"
 single_match                       = "allow"
+significant_drop_in_scrutinee      = "allow"
+trivially_copy_pass_by_ref         = "allow"
+print_stdout                       = "allow"
+needless_return                    = "allow"
+manual_contains                    = "allow"
+format_collect                     = "allow"
+explicit_into_iter_loop            = "allow"
+needless_match                     = "allow"
+match_wildcard_for_single_variants = "allow"
+case_sensitive_file_extension_comparisons = "allow"
 let_and_return                     = "allow"
 used_underscore_binding            = "allow"
 unnecessary_semicolon              = "allow"

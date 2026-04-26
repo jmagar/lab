@@ -430,9 +430,10 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn oauth_local_relay_returns_bad_gateway_for_unreachable_target() {
-        let relay_addr = available_loopback_addr().await;
         let upstream_addr = available_loopback_addr().await;
-        let relay = spawn_relay(LocalRelayConfig {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let relay_addr = listener.local_addr().unwrap();
+        let relay_config = LocalRelayConfig {
             bind_addr: relay_addr,
             resolved_target: resolve_explicit_target(
                 &format!("http://{}/callback/dookie", upstream_addr),
@@ -440,8 +441,11 @@ mod tests {
             )
             .unwrap(),
             request_timeout: Duration::from_millis(100),
-        })
-        .await;
+        };
+        let relay = tokio::spawn(async move {
+            serve_local_relay(listener, relay_config).await.unwrap();
+        });
+        sleep(Duration::from_millis(25)).await;
 
         let response = reqwest::Client::new()
             .get(format!("http://{}/callback/dookie?code=abc", relay_addr))

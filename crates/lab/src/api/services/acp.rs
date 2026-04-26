@@ -1,18 +1,22 @@
 use std::convert::Infallible;
-use std::sync::Arc;
 
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    response::sse::{Event, KeepAlive, Sse},
+    http::StatusCode,
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
-use futures::stream;
+use futures::StreamExt;
 use serde::Deserialize;
-use tokio::sync::broadcast;
+use serde_json::json;
 
-use crate::acp::types::{BridgeEvent, StartSessionInput};
 use crate::api::state::AppState;
+use crate::dispatch::acp::dispatch::dispatch_with_registry;
+use crate::dispatch::acp::dispatch::validate_subscribe_ticket;
 use crate::dispatch::error::ToolError;
 
 pub fn routes(_state: AppState) -> Router<AppState> {
@@ -24,21 +28,23 @@ pub fn routes(_state: AppState) -> Router<AppState> {
         .route("/sessions/{session_id}/events", get(stream_events))
 }
 
-async fn provider_health(State(state): State<AppState>) -> Json<serde_json::Value> {
-    Json(serde_json::json!({
-        "provider": state.acp_registry.provider_health()
-    }))
+async fn provider_health(State(state): State<AppState>) -> impl IntoResponse {
+    match dispatch_with_registry(&state.acp_registry, "provider.list", json!({})).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
-async fn list_sessions(
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, ToolError> {
-    let sessions = state.acp_registry.list_sessions().await;
-    Ok(Json(serde_json::json!({ "sessions": sessions })))
+async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
+    match dispatch_with_registry(&state.acp_registry, "session.list", json!({})).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 #[derive(Deserialize)]
 struct CreateSessionBody {
+    provider: Option<String>,
     cwd: Option<String>,
     title: Option<String>,
 }
@@ -46,23 +52,16 @@ struct CreateSessionBody {
 async fn create_session(
     State(state): State<AppState>,
     Json(body): Json<CreateSessionBody>,
-) -> Result<Json<serde_json::Value>, ToolError> {
-    let input = StartSessionInput {
-        cwd: body.cwd.unwrap_or_else(|| {
-            std::env::var("ACP_SESSION_CWD").unwrap_or_else(|_| {
-                std::env::current_dir()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|_| ".".to_string())
-            })
-        }),
-        title: body.title,
-    };
-    let session = state
-        .acp_registry
-        .clone()
-        .create_session(Some(input))
-        .await?;
-    Ok(Json(serde_json::json!({ "session": session })))
+) -> impl IntoResponse {
+    let params = json!({
+        "provider": body.provider,
+        "cwd": body.cwd,
+        "title": body.title,
+    });
+    match dispatch_with_registry(&state.acp_registry, "session.start", params).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 #[derive(Deserialize)]
@@ -74,78 +73,91 @@ async fn prompt_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(body): Json<PromptBody>,
-) -> Result<Json<serde_json::Value>, ToolError> {
-    let prompt = body.prompt.trim().to_string();
-    if prompt.is_empty() {
-        return Err(ToolError::MissingParam {
+) -> impl IntoResponse {
+    if body.prompt.trim().is_empty() {
+        return ToolError::MissingParam {
             message: "prompt is required".to_string(),
             param: "prompt".to_string(),
-        });
+        }
+        .into_response();
     }
-    state
-        .acp_registry
-        .prompt_session(&session_id, prompt)
-        .await?;
-    Ok(Json(serde_json::json!({ "ok": true })))
+    let params = json!({
+        "session_id": session_id,
+        "text": body.prompt.trim(),
+    });
+    match dispatch_with_registry(&state.acp_registry, "session.prompt", params).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 async fn cancel_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<serde_json::Value>, ToolError> {
-    state.acp_registry.cancel_session(&session_id).await?;
-    Ok(Json(serde_json::json!({ "ok": true })))
+) -> impl IntoResponse {
+    let params = json!({
+        "session_id": session_id,
+        "confirm": true,
+    });
+    match dispatch_with_registry(&state.acp_registry, "session.cancel", params).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 #[derive(Deserialize)]
 struct EventQuery {
     since: Option<u64>,
+    ticket: Option<String>,
 }
 
 async fn stream_events(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Query(query): Query<EventQuery>,
-) -> Result<Sse<impl futures::Stream<Item = Result<Event, Infallible>>>, ToolError> {
-    let (backlog, receiver): (Vec<BridgeEvent>, broadcast::Receiver<BridgeEvent>) = state
+) -> Response {
+    // Validate SSE ticket before establishing stream.
+    let principal = if let Some(ref ticket) = query.ticket {
+        match validate_subscribe_ticket(ticket) {
+            Ok((tid, principal)) => {
+                if tid != session_id {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({ "kind": "auth_failed", "message": "ticket session_id mismatch" })),
+                    )
+                        .into_response();
+                }
+                principal
+            }
+            Err(e) => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::to_value(&e).unwrap_or_default()),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        // No ticket — anonymous principal (bead 7 note: auth wired in Phase 2).
+        String::new()
+    };
+
+    let since = query.since.unwrap_or(0);
+    let stream_result = state
         .acp_registry
-        .subscribe(&session_id, query.since.unwrap_or(0))
-        .await?;
-    let stream = stream::unfold(
-        (
-            backlog.into_iter(),
-            receiver,
-            Arc::new(session_id),
-        ),
-        |(
-            mut backlog,
-            mut receiver,
-            session_id,
-        ): (
-            std::vec::IntoIter<BridgeEvent>,
-            broadcast::Receiver<BridgeEvent>,
-            Arc<String>,
-        )| async move {
-            if let Some(event) = backlog.next() {
-                return Some((Ok(sse_event(event)), (backlog, receiver, session_id)));
-            }
+        .subscribe(&session_id, since, &principal)
+        .await;
 
-            match receiver.recv().await {
-                Ok(event) => Some((Ok(sse_event(event)), (backlog, receiver, session_id))),
-                Err(broadcast::error::RecvError::Lagged(skipped)) => Some((
-                    Ok(Event::default().event("lag").data(skipped.to_string())),
-                    (backlog, receiver, session_id),
-                )),
-                Err(broadcast::error::RecvError::Closed) => None,
-            }
-        },
-    );
-
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
-}
-
-fn sse_event(event: BridgeEvent) -> Event {
-    Event::default()
-        .id(event.seq.to_string())
-        .data(serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string()))
+    match stream_result {
+        Err(e) => e.into_response(),
+        Ok(event_stream) => {
+            let sse_stream = event_stream.map(|event| {
+                let data = serde_json::to_string(&*event).unwrap_or_else(|_| "{}".to_string());
+                Ok::<Event, Infallible>(Event::default().id(event.seq().to_string()).data(data))
+            });
+            Sse::new(sse_stream)
+                .keep_alive(KeepAlive::default())
+                .into_response()
+        }
+    }
 }

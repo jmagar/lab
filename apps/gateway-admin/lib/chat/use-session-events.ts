@@ -4,13 +4,46 @@ import * as React from 'react'
 import { normalizeGatewayApiBase } from '@/lib/api/gateway-config'
 import { gatewayHeaders } from '@/lib/api/gateway-request'
 import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
-import type { BridgeEvent } from '@/lib/acp/types'
-import { appendSessionEvent, resolveLastSessionEventSeq } from './session-events'
+import type { AcpEvent, BridgeEvent } from '@/lib/acp/types'
+import {
+  appendSessionEvent,
+  bridgeEventFromAcpEvent,
+  deriveTranscriptAndActivity,
+  resolveLastSessionEventSeq,
+  resolveSessionStatusFromEvents,
+} from './session-events'
 
 export type SessionEventConnectionState = 'idle' | 'connecting' | 'open' | 'error'
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
 const sessionEventCache = new Map<string, BridgeEvent[]>()
 const sessionLastSeqCache = new Map<string, number>()
+
+function hasSequence(value: unknown): value is { seq: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'seq' in value &&
+    typeof (value as { seq?: unknown }).seq === 'number'
+  )
+}
+
+function isAcpEvent(value: unknown): value is AcpEvent {
+  return (
+    hasSequence(value) &&
+    'session_id' in value &&
+    typeof (value as { session_id?: unknown }).session_id === 'string'
+  )
+}
+
+function isBridgeEvent(value: unknown): value is BridgeEvent {
+  return (
+    hasSequence(value) &&
+    'sessionId' in value &&
+    typeof (value as { sessionId?: unknown }).sessionId === 'string'
+  )
+}
 
 export function buildSessionEventsUrl(
   acpBase: string,
@@ -46,13 +79,28 @@ export function consumeSessionEventBuffer(buffer: string, lastSeq: number) {
       continue
     }
 
-    const event = JSON.parse(dataLines.join('\n')) as BridgeEvent
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(dataLines.join('\n'))
+    } catch {
+      continue
+    }
+
+    if (!isAcpEvent(parsed) && !isBridgeEvent(parsed)) {
+      continue
+    }
+
+    const event = parsed
     if (event.seq <= nextLastSeq) {
       continue
     }
 
     nextLastSeq = event.seq
-    events.push(event)
+    if (isAcpEvent(event)) {
+      events.push(bridgeEventFromAcpEvent(event))
+    } else {
+      events.push(event)
+    }
   }
 
   return {
@@ -75,6 +123,13 @@ export function useSessionEvents(sessionId: string | null) {
 
   React.useEffect(() => {
     if (!sessionId) {
+      setEvents([])
+      setConnectionState('idle')
+      lastSeqRef.current = 0
+      return
+    }
+
+    if (USE_MOCK_DATA) {
       setEvents([])
       setConnectionState('idle')
       lastSeqRef.current = 0
@@ -158,5 +213,13 @@ export function useSessionEvents(sessionId: string | null) {
     }
   }, [acpBase, requestCredentials, sessionId])
 
-  return { events, connectionState }
+  const derived = React.useMemo(() => deriveTranscriptAndActivity(events), [events])
+
+  return {
+    events,
+    connectionState,
+    sessionStatus: resolveSessionStatusFromEvents(events),
+    messages: derived.messages,
+    activity: derived.activity,
+  }
 }

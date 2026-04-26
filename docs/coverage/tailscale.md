@@ -20,7 +20,7 @@ is fully implemented with catalog, client, params, and dispatch modules.
 |---------|--------|-------|
 | SDK (`lab-apis`) | ✅ (partial) | `TailscaleClient` in `crates/lab-apis/src/tailscale/client.rs` |
 | Dispatch layer | ✅ | `crates/lab/src/dispatch/tailscale/` — catalog, client, params, dispatch + entrypoint |
-| MCP | ✅ | `crates/lab/src/mcp/services/tailscale.rs` — thin delegate to dispatch layer |
+| MCP | ✅ | `crates/lab/src/registry.rs` — thin delegate to dispatch layer |
 | CLI | ✅ | `crates/lab/src/cli/tailscale.rs` — thin shim, action+params dispatch |
 | API | ✅ | `crates/lab/src/api/services/tailscale.rs` — axum route calling `dispatch_with_client` |
 

@@ -17,6 +17,7 @@ pub use error::TailscaleError;
 
 use crate::core::error::ApiError;
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, TEXT_OPTIONAL_FIELD, URL_OPTIONAL_FIELD};
 use crate::core::status::ServiceStatus;
 use crate::core::traits::ServiceClient;
 
@@ -32,6 +33,7 @@ pub const META: PluginMeta = PluginMeta {
         description: "Tailscale API access token (tskey-api-*)",
         example: "tskey-api-xxxxx",
         secret: true,
+        ui: Some(&SECRET_FIELD),
     }],
     optional_env: &[
         EnvVar {
@@ -39,15 +41,18 @@ pub const META: PluginMeta = PluginMeta {
             description: "Tailnet name (e.g. example.com); defaults to \"-\" (auth key's default tailnet)",
             example: "example.com",
             secret: false,
+            ui: Some(&TEXT_OPTIONAL_FIELD),
         },
         EnvVar {
             name: "TAILSCALE_BASE_URL",
             description: "Override the Tailscale API base URL (useful for self-hosted or testing)",
             example: "https://api.tailscale.com/api/v2",
             secret: false,
+            ui: Some(&URL_OPTIONAL_FIELD),
         },
     ],
     default_port: None,
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for TailscaleClient {

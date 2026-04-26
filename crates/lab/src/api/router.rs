@@ -5,9 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
-    extract::State,
+    extract::{Query, State},
     http::{HeaderName, HeaderValue, Method, Request, StatusCode, header},
     middleware::Next,
     response::{Html, IntoResponse},
@@ -24,6 +24,25 @@ use tower_http::{
 use tracing::Level;
 
 use lab_auth::error::AuthError as LabAuthError;
+
+const DEV_MARKETPLACE_READ_ACTIONS: &[&str] = &[
+    "help",
+    "schema",
+    "sources.list",
+    "plugins.list",
+    "plugin.get",
+    "plugin.artifacts",
+    "plugin.workspace",
+    "plugin.components",
+    "plugin.deploy.preview",
+    "agent.list",
+    "agent.get",
+    "mcp.config",
+    "mcp.list",
+    "mcp.get",
+    "mcp.versions",
+    "mcp.meta.get",
+];
 
 /// Constant-time byte comparison using `subtle::ConstantTimeEq` to prevent
 /// timing-based token prefix leakage (lab-63jc).
@@ -92,28 +111,28 @@ async fn auth_jwks(State(state): State<AppState>) -> Result<impl IntoResponse, L
 
 async fn auth_register(
     State(state): State<AppState>,
-    body: axum::Json<lab_auth::types::ClientRegistrationRequest>,
+    body: Json<lab_auth::types::ClientRegistrationRequest>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::register_client(State(app_auth_state(&state)?), body).await?)
 }
 
 async fn auth_authorize(
     State(state): State<AppState>,
-    query: axum::extract::Query<lab_auth::types::AuthorizeQuery>,
+    query: Query<lab_auth::types::AuthorizeQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::authorize(State(app_auth_state(&state)?), query).await?)
 }
 
 async fn auth_browser_login(
     State(state): State<AppState>,
-    query: axum::extract::Query<lab_auth::types::BrowserLoginQuery>,
+    query: Query<lab_auth::types::BrowserLoginQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::browser_login(State(app_auth_state(&state)?), query).await?)
 }
 
 async fn auth_callback(
     State(state): State<AppState>,
-    query: axum::extract::Query<lab_auth::types::CallbackQuery>,
+    query: Query<lab_auth::types::CallbackQuery>,
 ) -> Result<impl IntoResponse, LabAuthError> {
     Ok(lab_auth::authorize::callback(State(app_auth_state(&state)?), query).await?)
 }
@@ -318,7 +337,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         });
     let spec_for_route = openapi_spec;
 
-    let mut v1 = Router::new().nest("/device", super::device::routes(state.clone()));
+    let mut v1 = Router::new().nest("/nodes", super::nodes::routes(state.clone()));
 
     if is_master {
         v1 = v1.route("/{service}/actions", get(service_actions));
@@ -355,7 +374,8 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
                 get(|| async { Html(include_str!("openapi_docs.html")) }),
             )
             .nest("/extract", services::extract::routes(state.clone()))
-            .nest("/marketplace", services::marketplace::routes(state.clone()));
+            .nest("/marketplace", services::marketplace::routes(state.clone()))
+            .nest("/doctor", services::doctor::routes(state.clone()));
 
         if state
             .registry
@@ -364,6 +384,31 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
             .any(|service| service.name == "logs")
         {
             v1 = v1.nest("/logs", services::logs::routes(state.clone()));
+        }
+
+        #[cfg(feature = "fs")]
+        if state
+            .registry
+            .services()
+            .iter()
+            .any(|service| service.name == "fs")
+        {
+            // SECURITY: the /v1 route layer is removed when
+            // `web_ui_auth_disabled` is true (intended for static-asset dev
+            // flows), which would also remove bearer/session auth from
+            // /v1/fs. fs operations read workspace files, so refuse to
+            // mount them on an unauthenticated surface and surface a
+            // WARN so operators notice the misconfiguration.
+            if state.web_ui_auth_disabled {
+                tracing::warn!(
+                    subsystem = "startup",
+                    phase = "fs.mount.skipped",
+                    reason = "web_ui_auth_disabled",
+                    "fs service is configured but LAB_WEB_UI_AUTH_DISABLED=true would expose workspace files unauthenticated; refusing to mount /v1/fs"
+                );
+            } else {
+                v1 = v1.nest("/fs", services::fs::routes(state.clone()));
+            }
         }
     }
 
@@ -386,7 +431,6 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
         mount_if_enabled!(v1, state, "qbittorrent", "qbittorrent", qbittorrent);
         mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
         mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
-        mount_if_enabled!(v1, state, "mcpregistry", "mcpregistry", mcpregistry);
         mount_if_enabled!(v1, state, "memos", "memos", memos);
         mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
         mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
@@ -411,6 +455,213 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
 #[cfg(feature = "mcpregistry")]
 fn build_v0_1_router() -> Router<AppState> {
     Router::new().nest("/v0.1", services::registry_v01::routes())
+}
+
+// ── Dev mockup file server ────────────────────────────────────────────────
+// Implements the Tier 1 serving model from docs/design/component-development.md §5.
+// Serves self-contained HTML from ~/.superpowers/brainstorm/content/ at:
+//   GET /dev          → newest .html file
+//   GET /dev/{name}   → newest .html whose stem contains {name}
+//
+// Rules (enforced by the doc — do not violate):
+//   • These functions MUST live in router.rs alongside dev_marketplace_readonly.
+//     The other Claude session strips dev-tooling code from web.rs.
+//   • MUST NOT delegate to serve_web_request — that serves the Next.js SPA.
+//   • Routes MUST be registered before the static-file fallback.
+
+fn dev_mockup_dir() -> std::path::PathBuf {
+    crate::config::home_dir()
+        .map(|h| h.join(".superpowers/brainstorm/content"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".superpowers/brainstorm/content"))
+}
+
+fn dev_mockup_newest(fragment: Option<&str>) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dev_mockup_dir())
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("html"))
+        .filter(|e| {
+            fragment.is_none_or(|n| {
+                e.path()
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|s| s.contains(n))
+            })
+        })
+        .filter_map(|e| {
+            e.metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(|t| (e.path(), t))
+        })
+        .max_by_key(|(_, t)| *t)
+        .map(|(p, _)| p)
+}
+
+fn dev_mockup_response(fragment: Option<&str>) -> axum::response::Response {
+    use axum::response::Html;
+    match dev_mockup_newest(fragment) {
+        None => {
+            // Escape the fragment before embedding it in HTML to prevent XSS.
+            // The name comes from a URL path segment and is user-controlled.
+            let escaped = fragment
+                .map(|n| {
+                    format!(
+                        " '{}'",
+                        n.replace('&', "&amp;")
+                            .replace('<', "&lt;")
+                            .replace('>', "&gt;")
+                            .replace('"', "&quot;")
+                    )
+                })
+                .unwrap_or_default();
+            Html(format!(
+                "<p style='font-family:sans-serif;padding:2rem'>No{escaped} mockup found in \
+                 <code>~/.superpowers/brainstorm/content/</code></p>"
+            ))
+            .into_response()
+        }
+        Some(path) => match std::fs::read_to_string(&path) {
+            Ok(html) => Html(html).into_response(),
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "failed to read dev mockup");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        },
+    }
+}
+
+async fn dev_mockup() -> axum::response::Response {
+    dev_mockup_response(None)
+}
+
+async fn dev_mockup_named(
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> axum::response::Response {
+    if name.contains('/') || name.contains('\\') || name.contains("..") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    dev_mockup_response(Some(&name))
+}
+
+// GET /dev/api/nodeinfo — unauthenticated, read-only.
+// Returns config.toml values + ~/.lab/.env contents (secrets masked) so the
+// setup wizard can pre-populate all fields without requiring a bearer token.
+async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response {
+    use axum::Json;
+
+    let local_host =
+        crate::node::identity::resolve_local_hostname().unwrap_or_else(|_| "local".into());
+    let master_url = state
+        .config
+        .deploy
+        .as_ref()
+        .and_then(|d| d.defaults.as_ref())
+        .and_then(|d| d.master_url.clone())
+        .unwrap_or_default();
+    let controller = state
+        .config
+        .node
+        .as_ref()
+        .and_then(|n| n.controller.clone())
+        .unwrap_or_else(|| local_host.clone());
+
+    // dotenvy already loaded ~/.lab/.env at startup, so everything is in std::env.
+    // The UI treats MASKED_SECRET as "value already set — leave blank to keep current value".
+    const MASKED_SECRET: &str = "***";
+    let secret_suffixes = [
+        // Deny-list for secret detection. Add new suffixes here when new secret
+        // naming conventions are introduced (e.g. LAB_AUTH_SIGNING_KEY).
+        // NOTE: `_KEY` intentionally covers `_API_KEY` and future signing-key vars.
+        //       `_SECRET` covers `_CLIENT_SECRET` — the more-specific entry is omitted.
+        "_KEY",     // covers _API_KEY, _SIGNING_KEY, _HMAC_KEY, etc.
+        "_TOKEN",
+        "_PASSWORD",
+        "_SECRET",  // covers _CLIENT_SECRET
+    ];
+    let service_prefixes = [
+        "RADARR_",
+        "SONARR_",
+        "PROWLARR_",
+        "PLEX_",
+        "TAUTULLI_",
+        "OVERSEERR_",
+        "SABNZBD_",
+        "QBITTORRENT_",
+        "UNRAID_",
+        "UNIFI_",
+        "TAILSCALE_",
+        "ARCANE_",
+        "LINKDING_",
+        "MEMOS_",
+        "PAPERLESS_",
+        "BYTESTASH_",
+        "GOTIFY_",
+        "APPRISE_",
+        "OPENAI_",
+        "QDRANT_",
+        "TEI_",
+        "LAB_MCP_HTTP_",
+        "LAB_LOG",
+        "LAB_AUTH_",
+        "LAB_PUBLIC_URL",
+        "LAB_GOOGLE_",
+    ];
+    let mut env_values = serde_json::Map::new();
+    for (key, val) in std::env::vars() {
+        if val.is_empty() {
+            continue;
+        }
+        if !service_prefixes.iter().any(|p| key.starts_with(p)) {
+            continue;
+        }
+        let masked = secret_suffixes.iter().any(|s| key.ends_with(s));
+        let display = if masked {
+            MASKED_SECRET.to_string()
+        } else {
+            val
+        };
+        env_values.insert(key, serde_json::Value::String(display));
+    }
+
+    Json(serde_json::json!({
+        "local_host": local_host,
+        "controller": controller,
+        "master_url": master_url,
+        "env": env_values,
+    }))
+    .into_response()
+}
+
+async fn dev_marketplace_readonly(
+    headers: axum::http::HeaderMap,
+    Json(req): Json<crate::api::ActionRequest>,
+) -> Result<Json<serde_json::Value>, ToolError> {
+    let action = req.action.trim().to_string();
+    if !DEV_MARKETPLACE_READ_ACTIONS.contains(&action.as_str()) {
+        return Err(ToolError::Sdk {
+            sdk_kind: "dev_preview_read_only".to_string(),
+            message: format!("dev preview route blocked mutating marketplace action `{action}`"),
+        });
+    }
+
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    services::helpers::handle_action(
+        "marketplace",
+        "api",
+        request_id,
+        req,
+        crate::dispatch::marketplace::actions(),
+        |action, params| async move {
+            crate::dispatch::marketplace::dispatch_with_port(
+                &action,
+                params,
+                &services::marketplace::WsNodeRpcPort,
+            )
+            .await
+        },
+    )
+    .await
 }
 
 #[allow(clippy::too_many_lines)]
@@ -524,15 +775,21 @@ pub fn build_router(
     let mut router = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready))
-        // POST /v1/device/hello is self-registration — exempt from bearer auth.
-        .nest(
-            "/v1/device",
-            super::device::public_routes(state.clone()),
+        // POST /v1/nodes/hello is self-registration — exempt from bearer auth.
+        .nest("/v1/nodes", super::nodes::public_routes(state.clone()))
+        // Backward-compat alias for pre-rename self-registration clients.
+        .nest("/v1/fleet", super::nodes::public_routes(state.clone()))
+        // GET /v1/nodes/ws is outside bearer-auth middleware by design.
+        // The `initialize` JSON-RPC method performs enrollment-token validation; all
+        // subsequent node methods require an active session. See docs/FLEET_METHODS.md.
+        .route(
+            "/v1/nodes/ws",
+            get(crate::api::nodes::fleet::websocket_upgrade),
         )
-        // GET /v1/fleet/ws authenticates inside websocket initialize, not via HTTP bearer auth.
+        // Backward-compat alias for pre-rename websocket clients.
         .route(
             "/v1/fleet/ws",
-            get(crate::api::device::fleet::websocket_upgrade),
+            get(crate::api::nodes::fleet::websocket_upgrade),
         )
         .merge(v1_protected);
     #[cfg(feature = "mcpregistry")]
@@ -574,7 +831,27 @@ pub fn build_router(
             .route("/token", post(auth_token));
     }
 
-    if state.web_assets_dir.is_some() {
+    // Dev routes — unauthenticated, registered BEFORE the Next.js static fallback
+    // so they win over the SPA. See docs/design/component-development.md §5
+    // (two-tier serving model) for the full rationale.
+    //
+    // /dev/api/*        → read-only dispatch endpoints (marketplace guard, nodeinfo)
+    // /dev, /dev/{name} → Tier 1 mockup file server: serves HTML from
+    //                     ~/.superpowers/brainstorm/content/{name}.html directly.
+    //                     Once a feature graduates to a real Next.js page at
+    //                     app/(admin)/dev/{name}/page.tsx, remove the corresponding
+    //                     dev_mockup_named handler entry.
+    router = router
+        .route("/dev/api/marketplace", post(dev_marketplace_readonly))
+        .route("/dev/api/nodeinfo", get(dev_nodeinfo))
+        // Mockup page routes — MUST stay before the static fallback (docs/design/component-development.md §5)
+        .route("/dev", get(dev_mockup))
+        .route("/dev/", get(dev_mockup))
+        .route("/dev/{name}", get(dev_mockup_named))
+        .route("/dev/{name}/", get(dev_mockup_named));
+
+    // Static-file fallback for the Next.js SPA.
+    if state.web_assets_enabled() {
         router = router.fallback(crate::api::web::serve_web_request);
     }
 
@@ -689,7 +966,7 @@ fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
 async fn service_actions(
     State(state): State<AppState>,
     axum::extract::Path(service): axum::extract::Path<String>,
-) -> Result<axum::Json<serde_json::Value>, ToolError> {
+) -> Result<Json<serde_json::Value>, ToolError> {
     let entry = state
         .catalog
         .services
@@ -703,7 +980,7 @@ async fn service_actions(
         sdk_kind: "internal_error".into(),
         message: format!("serialize actions: {e}"),
     })?;
-    Ok(axum::Json(actions))
+    Ok(Json(actions))
 }
 
 #[cfg(test)]
@@ -1447,6 +1724,59 @@ mod tests {
         assert!(content_type.contains("application/json"));
     }
 
+    #[tokio::test]
+    async fn serves_embedded_web_assets_without_configured_directory() {
+        let state = AppState::new().with_embedded_web_assets();
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(content_type.contains("text/html"));
+    }
+
+    #[tokio::test]
+    async fn v1_routes_still_win_over_embedded_web_asset_fallback() {
+        let state = AppState::new().with_embedded_web_assets();
+        let app = build_router_with_bearer(state, None, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/extract/actions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        assert!(content_type.contains("application/json"));
+    }
+
     async fn test_lab_auth_state() -> lab_auth::state::AuthState {
         let dir = Box::leak(Box::new(tempfile::tempdir().unwrap()));
         let config = lab_auth::config::AuthConfig {
@@ -1564,5 +1894,108 @@ mod tests {
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(json["kind"], "service_unavailable");
         }
+    }
+
+    /// POST /dev/api/marketplace must accept whitelisted read-only actions without auth.
+    #[tokio::test]
+    async fn dev_marketplace_allows_whitelisted_read_actions() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        for action in DEV_MARKETPLACE_READ_ACTIONS {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/dev/api/marketplace")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(
+                            serde_json::to_string(&serde_json::json!({ "action": action }))
+                                .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            // 200 OK or 4xx from dispatch (action not implemented in test env) — never 403
+            assert_ne!(
+                response.status(),
+                StatusCode::FORBIDDEN,
+                "read-only action `{action}` must not be blocked by dev guard"
+            );
+        }
+    }
+
+    /// POST /dev/api/marketplace must block mutating actions without requiring auth.
+    #[tokio::test]
+    async fn dev_marketplace_blocks_mutating_actions() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        for action in &[
+            "plugin.install",
+            "plugin.uninstall",
+            "sources.add",
+            "sources.remove",
+            "plugin.workspace.save",
+            "plugin.deploy",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/dev/api/marketplace")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(
+                            serde_json::to_string(&serde_json::json!({ "action": action }))
+                                .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                response.status(),
+                StatusCode::FORBIDDEN,
+                "mutating action `{action}` must be blocked by dev guard"
+            );
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["kind"], "dev_preview_read_only");
+        }
+    }
+
+    /// POST /dev/api/marketplace must be reachable without a bearer token
+    /// (the route is intentionally outside the v1 auth middleware).
+    #[tokio::test]
+    async fn dev_marketplace_requires_no_auth() {
+        let state = AppState::new();
+        // Router configured with a bearer token — /dev/api/marketplace must bypass it.
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/dev/api/marketplace")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"action":"plugin.install"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Must reach the dev guard (403) rather than the auth middleware (401).
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "/dev/api/marketplace must be reachable unauthenticated and fail with 403, not 401"
+        );
     }
 }

@@ -16,12 +16,20 @@ export class NoopAcpSessionPersistence implements AcpSessionPersistence {
   }
 
   async loadEvents(_sessionId: string): Promise<BridgeEvent[]> {
+    void _sessionId
     return []
   }
 
-  async saveSession(_session: BridgeSessionSummary): Promise<void> {}
-  async saveEvent(_sessionId: string, _event: BridgeEvent): Promise<void> {}
-  async deleteSession(_sessionId: string): Promise<void> {}
+  async saveSession(_session: BridgeSessionSummary): Promise<void> {
+    void _session
+  }
+  async saveEvent(_sessionId: string, _event: BridgeEvent): Promise<void> {
+    void _sessionId
+    void _event
+  }
+  async deleteSession(_sessionId: string): Promise<void> {
+    void _sessionId
+  }
 }
 
 type PersistedIndex = {

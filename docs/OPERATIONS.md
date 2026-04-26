@@ -18,6 +18,27 @@ It is distinct from the product-level `lab health` surface.
 
 It is intended as a repo-local smoke test, not as the canonical SDK-level health API.
 
+### `scripts/check-oauth.sh`
+
+Purpose:
+
+- verify OAuth/auth configuration against a **running server** from outside the process
+- confirm all protected endpoints return 401 without auth and accept valid tokens
+- validate OAuth discovery metadata, issuer, JWKS, and RFC 9728 WWW-Authenticate header
+- confirm public endpoints (health, node self-registration, OAuth callbacks) are not auth-blocked
+
+Usage:
+
+```bash
+./scripts/check-oauth.sh                          # auto-loads ~/.lab/.env, defaults to localhost:8080
+./scripts/check-oauth.sh https://lab.example.com  # explicit URL
+LAB_BASE_URL=https://lab.example.com ./scripts/check-oauth.sh
+```
+
+Exit codes: `0` = pass, `1` = one or more failures. Suitable for post-deploy CI gates.
+
+Complements `lab doctor`, which checks internal state (config, file permissions, SQLite) before a server is running. `scripts/check-oauth.sh` is the external black-box probe; `lab doctor` is the internal pre-flight check.
+
 ### `just mcp-token`
 
 Purpose:
@@ -131,7 +152,7 @@ Typical checks include:
 
 ## Device Runtime Operations
 
-In the current Linux `x86_64` v1 target, every supported fleet member runs `lab serve` as a device runtime.
+In the current Linux `x86_64` v1 target, every supported fleet member runs `lab serve` as a node runtime.
 
 Setup order:
 
@@ -140,8 +161,8 @@ Setup order:
 3. On each non-master, set the master machine name in `~/.lab/config.toml`:
 
 ```toml
-[device]
-master = "tootie"
+[node]
+controller = "tootie"
 ```
 
 4. Start each non-master with `lab serve`.
@@ -150,14 +171,14 @@ master = "tootie"
 Operationally:
 
 - one device is the `master`
-- non-master devices report to the master over `/v1/device/*`
-- fleet inventory and fleet logs are queried from the master
+- non-controller nodes report to the master over `/v1/nodes/*`
+- node inventory and node logs are queried from the master
 
 Useful commands:
 
 ```bash
-lab device list
-lab device get dookie
+lab nodes list
+lab nodes get dookie
 lab logs search dookie oauth
 ```
 
@@ -172,7 +193,7 @@ Current operational limits:
 
 - fleet state is in-memory on the master
 - non-master background uploads reuse the shared static bearer token when bearer auth is enabled
-- non-master devices intentionally do not expose Web UI, gateway management, or MCP
+- non-controller nodes intentionally do not expose Web UI, gateway management, or MCP
 - the master should be reachable on its configured HTTP port before non-masters start reporting to it
 
 ## Install and Patch Workflows

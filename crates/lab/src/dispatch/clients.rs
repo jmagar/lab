@@ -51,8 +51,6 @@ pub struct ServiceClients {
     pub overseerr: Option<Arc<lab_apis::overseerr::OverseerrClient>>,
     #[cfg(feature = "openai")]
     pub openai: Option<Arc<lab_apis::openai::OpenAiClient>>,
-    #[cfg(feature = "mcpregistry")]
-    pub mcpregistry: Option<Arc<lab_apis::mcpregistry::McpRegistryClient>>,
     #[cfg(feature = "memos")]
     pub memos: Option<Arc<lab_apis::memos::MemosClient>>,
     #[cfg(feature = "tailscale")]
@@ -105,8 +103,6 @@ impl ServiceClients {
             overseerr: crate::dispatch::overseerr::client_from_env().map(Arc::new),
             #[cfg(feature = "openai")]
             openai: crate::dispatch::openai::client_from_env().map(Arc::new),
-            #[cfg(feature = "mcpregistry")]
-            mcpregistry: crate::dispatch::mcpregistry::client_from_env().map(Arc::new),
             #[cfg(feature = "memos")]
             memos: crate::dispatch::memos::client_from_env().map(Arc::new),
             #[cfg(feature = "tailscale")]

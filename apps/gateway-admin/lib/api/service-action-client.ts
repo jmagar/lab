@@ -1,4 +1,8 @@
 import { gatewayRequestInit } from './gateway-request.ts'
+import {
+  assertDevPreviewCanRunAction,
+  devPreviewActionUrl,
+} from '@/lib/dev/preview-mode'
 
 export interface ServiceActionError extends Error {
   status: number
@@ -21,6 +25,24 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
     ? error.name === 'AbortError'
     : error instanceof Error && error.name === 'AbortError'
+}
+
+export type SafeFanoutResult<TItem, TValue> =
+  | { ok: true; item: TItem; value: TValue }
+  | { ok: false; item: TItem; error: unknown }
+
+export async function safeFanout<TItem, TValue>(
+  items: readonly TItem[],
+  load: (item: TItem) => Promise<TValue>,
+): Promise<Array<SafeFanoutResult<TItem, TValue>>> {
+  return Promise.all(
+    items.map((item) =>
+      load(item).then(
+        (value) => ({ ok: true as const, item, value }),
+        (error: unknown) => ({ ok: false as const, item, error }),
+      ),
+    ),
+  )
 }
 
 async function parseActionResponse<T, TError extends ServiceActionError>(
@@ -54,9 +76,11 @@ export async function performServiceAction<T, TError extends ServiceActionError>
   url: string
   createError: ActionErrorFactory<TError>
 }): Promise<T> {
+  assertDevPreviewCanRunAction(action)
+
   let response: Response
   try {
-    response = await fetch(url, gatewayRequestInit(action, params, undefined, signal))
+    response = await fetch(devPreviewActionUrl(url), gatewayRequestInit(action, params, undefined, signal))
   } catch (error) {
     if (isAbortError(error)) {
       throw error

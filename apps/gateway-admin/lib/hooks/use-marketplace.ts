@@ -11,9 +11,14 @@ import {
   uninstallPlugin,
   addMarketplace,
 } from '../api/marketplace-client'
+import { listAcpAgents, listMcpServers } from '../marketplace/api-client'
+import { MOCK_ACP_AGENTS } from '../marketplace/mocks'
+import type { AcpAgent, McpServer } from '../marketplace/types'
 
 const MARKETPLACES_KEY = 'marketplace:sources'
 const PLUGINS_KEY = 'marketplace:plugins'
+const ACP_AGENTS_KEY = 'marketplace:acp-agents'
+const MCP_SERVERS_KEY = 'marketplace:mcp-servers'
 
 export function useMarketplaces() {
   return useSWR<Marketplace[]>(MARKETPLACES_KEY, () => fetchMarketplaces(), {
@@ -24,6 +29,20 @@ export function useMarketplaces() {
 
 export function usePlugins() {
   return useSWR<Plugin[]>(PLUGINS_KEY, () => fetchPlugins(), {
+    revalidateOnFocus: false,
+    fallbackData: [],
+  })
+}
+
+export function useAcpAgents() {
+  return useSWR<AcpAgent[]>(ACP_AGENTS_KEY, () => listAcpAgents(), {
+    revalidateOnFocus: false,
+    fallbackData: MOCK_ACP_AGENTS,
+  })
+}
+
+export function useMcpServers() {
+  return useSWR<McpServer[]>(MCP_SERVERS_KEY, () => listMcpServers(), {
     revalidateOnFocus: false,
     fallbackData: [],
   })
@@ -40,8 +59,10 @@ export function useMarketplaceMutations() {
         prev.map(p => p.id === pluginId ? { ...p, installed: true, hasUpdate: false, installedAt: new Date().toISOString() } : p)
       , { revalidate: false })
       toast.success(`Installed ${pluginName}`)
+      return true
     } catch {
       toast.error(`Failed to install ${pluginName}`)
+      return false
     }
   }, [mutatePlugins])
 
@@ -52,8 +73,10 @@ export function useMarketplaceMutations() {
         prev.map(p => p.id === pluginId ? { ...p, installed: false, hasUpdate: false, installedAt: undefined } : p)
       , { revalidate: false })
       toast.success(`Removed ${pluginName}`)
+      return true
     } catch {
       toast.error(`Failed to remove ${pluginName}`)
+      return false
     }
   }, [mutatePlugins])
 
@@ -68,7 +91,7 @@ export function useMarketplaceMutations() {
       toast.error('Failed to add marketplace')
       return null
     }
-  }, [mutateMarketplaces])
+  }, [mutateMarketplaces, mutatePlugins])
 
   return { install, uninstall, addSource }
 }

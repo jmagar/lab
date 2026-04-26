@@ -6,7 +6,6 @@
 
 pub mod audit;
 pub mod completions;
-pub mod device;
 pub mod doctor;
 pub mod extract;
 pub mod gateway;
@@ -16,6 +15,7 @@ pub mod helpers;
 pub mod install;
 pub mod logs;
 pub mod marketplace;
+pub mod nodes;
 pub mod oauth;
 pub mod params;
 pub mod plugins;
@@ -34,8 +34,6 @@ pub mod deploy;
 pub mod gotify;
 #[cfg(feature = "linkding")]
 pub mod linkding;
-#[cfg(feature = "mcpregistry")]
-pub mod mcpregistry;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "openai")]
@@ -110,9 +108,9 @@ pub enum Command {
     /// Start the MCP server (stdio or HTTP transport).
     Serve(serve::ServeArgs),
     /// Audit configured services and report problems.
-    Doctor,
-    /// Query fleet devices from the configured master.
-    Device(device::DeviceArgs),
+    Doctor(doctor::DoctorArgs),
+    /// Query nodes from the configured controller.
+    Nodes(nodes::NodesArgs),
     /// Quick reachability check for configured services.
     Health,
     /// Open the plugin manager TUI.
@@ -168,9 +166,6 @@ pub enum Command {
     /// Linkding bookmark manager.
     #[cfg(feature = "linkding")]
     Linkding(linkding::LinkdingArgs),
-    /// MCP Registry — browse and search MCP servers.
-    #[cfg(feature = "mcpregistry")]
-    Mcpregistry(mcpregistry::McpregistryArgs),
     /// Memos note-taking service.
     #[cfg(feature = "memos")]
     Memos(memos::MemosArgs),
@@ -219,8 +214,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let color = cli.color;
     match cli.command {
         Command::Serve(args) => serve::run(args, &config).await,
-        Command::Doctor => doctor::run(format),
-        Command::Device(args) => device::run(args, format, &config).await,
+        Command::Doctor(args) => doctor::run(args, format).await,
+        Command::Nodes(args) => nodes::run(args, format, &config).await,
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
         Command::Audit(args) => audit::run(args, format),
@@ -253,8 +248,6 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Tailscale(args) => tailscale::run(args, format).await,
         #[cfg(feature = "linkding")]
         Command::Linkding(args) => linkding::run(args, format).await,
-        #[cfg(feature = "mcpregistry")]
-        Command::Mcpregistry(args) => mcpregistry::run(args, format).await,
         #[cfg(feature = "memos")]
         Command::Memos(args) => memos::run(args, format).await,
         #[cfg(feature = "bytestash")]
@@ -295,13 +288,47 @@ mod tests {
     fn cli_parses_global_color_flag() {
         let cli = Cli::parse_from(["lab", "--color", "plain", "doctor"]);
         assert_eq!(cli.color, ColorPolicy::Plain);
-        assert!(matches!(cli.command, Command::Doctor));
+        assert!(matches!(cli.command, Command::Doctor(_)));
     }
 
     #[test]
     fn cli_defaults_color_policy_to_auto() {
         let cli = Cli::parse_from(["lab", "doctor"]);
         assert_eq!(cli.color, ColorPolicy::Auto);
+        assert!(matches!(cli.command, Command::Doctor(_)));
+    }
+
+    #[test]
+    fn cli_doctor_accepts_auth_subcommand() {
+        let cli = Cli::parse_from(["lab", "doctor", "auth"]);
+        assert!(matches!(
+            cli.command,
+            Command::Doctor(doctor::DoctorArgs {
+                check: Some(doctor::DoctorCheck::Auth)
+            })
+        ));
+    }
+
+    #[test]
+    fn cli_doctor_accepts_system_subcommand() {
+        let cli = Cli::parse_from(["lab", "doctor", "system"]);
+        assert!(matches!(
+            cli.command,
+            Command::Doctor(doctor::DoctorArgs {
+                check: Some(doctor::DoctorCheck::System)
+            })
+        ));
+    }
+
+    #[test]
+    fn cli_doctor_accepts_services_subcommand() {
+        let cli = Cli::parse_from(["lab", "doctor", "services"]);
+        assert!(matches!(
+            cli.command,
+            Command::Doctor(doctor::DoctorArgs {
+                check: Some(doctor::DoctorCheck::Services)
+            })
+        ));
     }
 }
 

@@ -10,7 +10,13 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type { AcpProviderKind, BridgeEvent, ProviderRuntimeEvent } from './types'
 
-function baseEvent(sessionId: string, provider: AcpProviderKind, kind: BridgeEvent['kind']): Omit<BridgeEvent, 'id' | 'seq'> {
+type PendingBridgeEvent = Omit<BridgeEvent, 'id' | 'seq'>
+
+function baseEvent(
+  sessionId: string,
+  provider: AcpProviderKind,
+  kind: BridgeEvent['kind'],
+): PendingBridgeEvent {
   return {
     sessionId,
     provider,
@@ -49,31 +55,99 @@ function contentToText(content: unknown): string {
   return '[content]'
 }
 
-function normalizeToolCall(sessionId: string, provider: AcpProviderKind, update: ToolCall): Omit<BridgeEvent, 'id' | 'seq'> {
+function toolCallMetadataEvent(
+  sessionId: string,
+  provider: AcpProviderKind,
+  toolCallId: string,
+  payload: {
+    title?: string
+    toolKind?: ToolCall['kind'] | ToolCallUpdate['kind'] | null
+    status?: ToolCall['status'] | ToolCallUpdate['status']
+    locations?: string[]
+    content?: ToolCall['content'] | ToolCallUpdate['content'] | null
+    rawOutput?: unknown
+  },
+): PendingBridgeEvent | null {
+  const locations = payload.locations ?? []
+  const hasPayload =
+    payload.title !== undefined ||
+    payload.toolKind !== undefined ||
+    payload.status !== undefined ||
+    locations.length > 0 ||
+    payload.content !== undefined ||
+    payload.rawOutput !== undefined
+
+  if (!hasPayload) {
+    return null
+  }
+
+  return {
+    ...baseEvent(sessionId, provider, 'tool_call_metadata'),
+    toolCallId,
+    title: payload.title,
+    raw: {
+      type: 'tool_call_metadata',
+      tool_call_id: toolCallId,
+      title: payload.title,
+      tool_kind: payload.toolKind ?? null,
+      status: payload.status,
+      locations,
+      content: payload.content ?? null,
+      raw_output: payload.rawOutput,
+    },
+  }
+}
+
+function normalizeToolCall(
+  sessionId: string,
+  provider: AcpProviderKind,
+  update: ToolCall,
+): PendingBridgeEvent {
   return {
     ...baseEvent(sessionId, provider, 'tool.call'),
     title: update.title,
     toolCallId: update.toolCallId,
-    toolKind: update.kind ?? null,
-    status: update.status ?? 'pending',
     rawInput: update.rawInput,
-    rawOutput: update.rawOutput,
-    toolContent: update.content ?? null,
-    locations: update.locations?.map((location) => location.path) ?? [],
   }
 }
 
-function normalizeToolUpdate(sessionId: string, provider: AcpProviderKind, update: ToolCallUpdate): Omit<BridgeEvent, 'id' | 'seq'> {
+function toolCallUpdateOutput(update: ToolCallUpdate): unknown {
+  if (update.rawOutput !== undefined) {
+    return update.rawOutput
+  }
+
+  const output: Record<string, unknown> = {}
+
+  if (update.title !== undefined) {
+    output.title = update.title
+  }
+  if (update.kind !== undefined) {
+    output.kind = update.kind
+  }
+  if (update.status !== undefined) {
+    output.status = update.status
+  }
+  if (update.content !== undefined) {
+    output.content = update.content
+  }
+  if (update.locations !== undefined) {
+    output.locations = update.locations.map((location) => location.path)
+  }
+
+  return Object.keys(output).length > 0 ? output : null
+}
+
+function normalizeToolUpdate(
+  sessionId: string,
+  provider: AcpProviderKind,
+  update: ToolCallUpdate,
+): PendingBridgeEvent {
   return {
     ...baseEvent(sessionId, provider, 'tool.update'),
-    title: update.title ?? undefined,
+    title: 'Tool call updated',
     toolCallId: update.toolCallId,
-    toolKind: update.kind ?? null,
-    status: update.status ?? undefined,
-    rawInput: update.rawInput,
-    rawOutput: update.rawOutput,
-    toolContent: update.content ?? null,
-    locations: update.locations?.map((location) => location.path) ?? [],
+    status: update.status ?? 'updated',
+    rawOutput: toolCallUpdateOutput(update),
   }
 }
 
@@ -81,7 +155,7 @@ export function normalizeProviderEvent(
   sessionId: string,
   provider: AcpProviderKind,
   event: ProviderRuntimeEvent,
-): Array<Omit<BridgeEvent, 'id' | 'seq'>> {
+): PendingBridgeEvent[] {
   switch (event.type) {
     case 'session_notification': {
       const update = event.notification.update
@@ -114,7 +188,17 @@ export function normalizeProviderEvent(
             },
           ]
         case 'tool_call':
-          return [normalizeToolCall(sessionId, provider, update)]
+          return [
+            normalizeToolCall(sessionId, provider, update),
+            toolCallMetadataEvent(sessionId, provider, update.toolCallId, {
+              title: update.title,
+              toolKind: update.kind,
+              status: update.status,
+              locations: update.locations?.map((location) => location.path),
+              content: update.content,
+              rawOutput: update.rawOutput,
+            }),
+          ].filter((pending): pending is PendingBridgeEvent => pending !== null)
         case 'tool_call_update':
           return [normalizeToolUpdate(sessionId, provider, update)]
         case 'plan':

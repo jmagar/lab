@@ -11,6 +11,7 @@
 pub mod helpers;
 
 pub mod acp;
+pub mod doctor;
 pub mod extract;
 pub mod gateway;
 pub mod logs;
@@ -43,13 +44,10 @@ pub mod tailscale;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 
-#[cfg(feature = "mcpregistry")]
-pub mod mcpregistry;
-
-#[cfg(feature = "mcpregistry")]
-pub mod registry_v01;
 #[cfg(feature = "memos")]
 pub mod memos;
+#[cfg(feature = "mcpregistry")]
+pub mod registry_v01;
 
 #[cfg(feature = "bytestash")]
 pub mod bytestash;
@@ -83,3 +81,6 @@ pub mod tei;
 
 #[cfg(feature = "apprise")]
 pub mod apprise;
+
+#[cfg(feature = "fs")]
+pub mod fs;

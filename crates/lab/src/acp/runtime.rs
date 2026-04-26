@@ -1,28 +1,48 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ConfigOptionUpdate, ContentBlock, ContentChunk,
     CreateTerminalRequest, CurrentModeUpdate, FileSystemCapabilities, Implementation,
     InitializeRequest, KillTerminalRequest, PermissionOptionKind, ProtocolVersion,
-    ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionInfoUpdate, SessionNotification, SessionUpdate, StopReason,
-    TerminalOutputRequest, WaitForTerminalExitRequest, WriteTextFileRequest, WriteTextFileResponse,
+    ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionInfoUpdate, SessionNotification, SessionUpdate, StopReason, TerminalOutputRequest,
+    WaitForTerminalExitRequest, WriteTextFileRequest, WriteTextFileResponse,
 };
-use agent_client_protocol::util::MatchDispatch;
-use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, on_receive_request};
+use agent_client_protocol::{
+    Agent, ByteStreams, Client, ConnectionTo, Dispatch, JsonRpcMessage, on_receive_request,
+};
+use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+#[cfg(unix)]
+use nix::sys::signal::{Signal, killpg};
+#[cfg(unix)]
+use nix::unistd::Pid;
+
 use super::types::{
-    BridgePermissionOption, PendingBridgeEvent, ProviderHealth, StartSessionInput,
-    StartSessionResult,
+    AcpEvent, AcpPermissionOption, AcpProviderHealth, StartSessionInput, StartSessionResult,
 };
+use crate::acp::providers::{AcpProviderEntry, read_providers};
 
 fn acp_internal_error(message: impl Into<String>) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(message.into())
+}
+
+const DEFAULT_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn acp_prompt_idle_timeout() -> Duration {
+    std::env::var("LAB_ACP_PROMPT_IDLE_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .filter(|duration| !duration.is_zero())
+        .unwrap_or(DEFAULT_PROMPT_IDLE_TIMEOUT)
 }
 
 #[derive(Clone)]
@@ -51,16 +71,102 @@ enum SessionCommand {
     Cancel,
 }
 
+#[derive(Default)]
+struct StreamMessageIds {
+    user: Option<String>,
+    assistant: Option<String>,
+}
+
+impl StreamMessageIds {
+    fn user_message_id(&mut self) -> String {
+        self.user
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+            .clone()
+    }
+
+    fn assistant_message_id(&mut self) -> String {
+        self.assistant
+            .get_or_insert_with(|| uuid::Uuid::new_v4().to_string())
+            .clone()
+    }
+}
+
 struct RuntimeStarted {
     provider_session_id: String,
     agent_name: String,
     agent_version: String,
 }
 
+#[derive(Default)]
+struct PromptLifecycle {
+    active: AtomicBool,
+    terminal_sent: AtomicBool,
+    saw_prompt_progress: AtomicBool,
+}
+
+impl PromptLifecycle {
+    fn start(&self) {
+        self.active.store(true, Ordering::SeqCst);
+        self.terminal_sent.store(false, Ordering::SeqCst);
+        self.saw_prompt_progress.store(false, Ordering::SeqCst);
+    }
+
+    fn note_prompt_progress(&self) {
+        self.saw_prompt_progress.store(true, Ordering::SeqCst);
+    }
+
+    fn finish(&self) {
+        self.terminal_sent.store(true, Ordering::SeqCst);
+        self.active.store(false, Ordering::SeqCst);
+    }
+
+    fn take_unfinished_prompt(&self) -> Option<bool> {
+        let was_active = self.active.swap(false, Ordering::SeqCst);
+        let terminal_sent = self.terminal_sent.load(Ordering::SeqCst);
+        if was_active && !terminal_sent {
+            self.terminal_sent.store(true, Ordering::SeqCst);
+            return Some(self.saw_prompt_progress.load(Ordering::SeqCst));
+        }
+        None
+    }
+}
+
+struct SessionDispatchProgress {
+    assistant_output: bool,
+    prompt_progress: bool,
+}
+
+#[derive(Clone)]
+struct CodexLaunch {
+    command: String,
+    args: Vec<String>,
+}
+
+#[derive(Clone)]
+struct ProviderLaunch {
+    id: String,
+    command: String,
+    args: Vec<String>,
+}
+
+fn codex_launch_override() -> &'static Mutex<Option<CodexLaunch>> {
+    static OVERRIDE: OnceLock<Mutex<Option<CodexLaunch>>> = OnceLock::new();
+    OVERRIDE.get_or_init(|| Mutex::new(None))
+}
+
+#[doc(hidden)]
+#[allow(dead_code)]
+pub fn set_codex_launch_override_for_tests(command: Option<String>, args: Vec<String>) {
+    let mut launch = codex_launch_override()
+        .lock()
+        .expect("codex launch override poisoned");
+    *launch = command.map(|command| CodexLaunch { command, args });
+}
+
 pub async fn launch_codex_runtime(
     session_id: String,
     input: StartSessionInput,
-    event_tx: mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: mpsc::UnboundedSender<AcpEvent>,
 ) -> Result<(RuntimeHandle, StartSessionResult), String> {
     let (started_tx, started_rx) = oneshot::channel();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
@@ -95,8 +201,32 @@ pub async fn launch_codex_runtime(
     ))
 }
 
-pub fn codex_provider_health() -> ProviderHealth {
-    let (command, args) = resolve_codex_launch();
+pub fn normalize_provider_id(provider: Option<&str>) -> String {
+    match provider.filter(|value| !value.trim().is_empty()) {
+        Some("codex") | None => "codex-acp".to_string(),
+        Some(provider) => provider.to_string(),
+    }
+}
+
+pub fn provider_healths() -> Vec<AcpProviderHealth> {
+    let mut providers: Vec<AcpProviderHealth> = read_providers()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|provider| health_for_provider_entry(&provider))
+        .collect();
+
+    if !providers
+        .iter()
+        .any(|provider| provider.provider == "codex-acp")
+    {
+        providers.insert(0, codex_provider_health());
+    }
+
+    providers
+}
+
+pub fn codex_provider_health() -> AcpProviderHealth {
+    let (command, _args) = resolve_codex_launch();
     let ready = if std::env::var("ACP_CODEX_COMMAND")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -110,21 +240,83 @@ pub fn codex_provider_health() -> ProviderHealth {
         probe.is_ok_and(|output| output.status.success())
     };
 
-    ProviderHealth {
-        provider: "codex".to_string(),
-        ready,
-        command,
-        args,
+    AcpProviderHealth {
+        provider: "codex-acp".to_string(),
+        available: ready,
+        version: None,
         message: if ready {
-            "ACP Codex provider is available.".to_string()
+            None
         } else {
-            "ACP Codex provider is unavailable. Set ACP_CODEX_COMMAND or ensure npx is on PATH."
-                .to_string()
+            Some(
+                "ACP Codex provider is unavailable. Set ACP_CODEX_COMMAND or ensure npx is on PATH."
+                    .to_string(),
+            )
         },
     }
 }
 
+fn health_for_provider_entry(provider: &AcpProviderEntry) -> AcpProviderHealth {
+    let launch = launch_from_provider_entry(provider);
+    let available = command_available(&launch.command);
+    AcpProviderHealth {
+        provider: provider.id.clone(),
+        available,
+        version: Some(provider.version.clone()),
+        message: if available {
+            None
+        } else {
+            Some(format!(
+                "ACP provider command `{}` is unavailable",
+                launch.command
+            ))
+        },
+    }
+}
+
+fn command_available(command: &str) -> bool {
+    if command.contains('/') || command.contains('\\') {
+        return Path::new(command).exists();
+    }
+    cached_command_lookup(command)
+}
+
+/// TTL cache for `which`/`where` lookups. Provider health endpoints can be
+/// polled per-request; without this each call shells out once per provider.
+fn cached_command_lookup(command: &str) -> bool {
+    const CACHE_TTL: Duration = Duration::from_secs(10);
+
+    static CACHE: OnceLock<Mutex<std::collections::HashMap<String, (Instant, bool)>>> =
+        OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+
+    if let Ok(map) = cache.lock() {
+        if let Some((stored_at, available)) = map.get(command) {
+            if stored_at.elapsed() < CACHE_TTL {
+                return *available;
+            }
+        }
+    }
+
+    let probe = std::process::Command::new(if cfg!(windows) { "where" } else { "which" })
+        .arg(command)
+        .output();
+    let available = probe.is_ok_and(|output| output.status.success());
+
+    if let Ok(mut map) = cache.lock() {
+        map.insert(command.to_string(), (Instant::now(), available));
+    }
+    available
+}
+
 fn resolve_codex_launch() -> (String, Vec<String>) {
+    if let Some(launch) = codex_launch_override()
+        .lock()
+        .expect("codex launch override poisoned")
+        .clone()
+    {
+        return (launch.command, launch.args);
+    }
+
     if let Some(command) = std::env::var("ACP_CODEX_COMMAND")
         .ok()
         .map(|value| value.trim().to_string())
@@ -142,52 +334,100 @@ fn resolve_codex_launch() -> (String, Vec<String>) {
     (command, vec!["@zed-industries/codex-acp".to_string()])
 }
 
+fn launch_from_provider_entry(provider: &AcpProviderEntry) -> ProviderLaunch {
+    let mut parts = provider.command.split_whitespace();
+    let command = parts.next().unwrap_or("").to_string();
+    let args = parts.map(ToOwned::to_owned).collect();
+    ProviderLaunch {
+        id: provider.id.clone(),
+        command,
+        args,
+    }
+}
+
+fn resolve_provider_launch(provider: Option<&str>) -> Result<ProviderLaunch, String> {
+    let provider_id = normalize_provider_id(provider);
+    if provider_id == "codex-acp" {
+        if let Some(entry) = read_providers()
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|entry| entry.id == provider_id)
+        {
+            return Ok(launch_from_provider_entry(&entry));
+        }
+        let (command, args) = resolve_codex_launch();
+        return Ok(ProviderLaunch {
+            id: provider_id,
+            command,
+            args,
+        });
+    }
+
+    read_providers()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|entry| entry.id == provider_id)
+        .map(|entry| launch_from_provider_entry(&entry))
+        .ok_or_else(|| format!("ACP provider `{provider_id}` is not installed"))
+}
+
 async fn run_codex_session(
     session_id: String,
     input: StartSessionInput,
-    event_tx: mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: mpsc::UnboundedSender<AcpEvent>,
     started_tx: oneshot::Sender<Result<RuntimeStarted, String>>,
     mut command_rx: mpsc::UnboundedReceiver<SessionCommand>,
 ) -> Result<(), String> {
-    let (command, args) = resolve_codex_launch();
-    let mut child = tokio::process::Command::new(&command)
-        .args(&args)
+    let launch = resolve_provider_launch(input.provider.as_deref())?;
+    let provider_id = launch.id.clone();
+    let mut command = tokio::process::Command::new(&launch.command);
+    command
+        .args(&launch.args)
         .current_dir(Path::new(&input.cwd))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| error.to_string())?;
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn().map_err(|error| error.to_string())?;
+    let child_process_group = child.id();
 
     let stdin = child
         .stdin
         .take()
-        .ok_or_else(|| "codex-acp stdin unavailable".to_string())?;
+        .ok_or_else(|| format!("{provider_id} stdin unavailable"))?;
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "codex-acp stdout unavailable".to_string())?;
+        .ok_or_else(|| format!("{provider_id} stdout unavailable"))?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| "codex-acp stderr unavailable".to_string())?;
+        .ok_or_else(|| format!("{provider_id} stderr unavailable"))?;
 
     let stderr_tx = event_tx.clone();
     let stderr_session = session_id.clone();
+    let stderr_provider = provider_id.clone();
     tokio::spawn(async move {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
-            drop(stderr_tx.send(PendingBridgeEvent {
-                title: Some("codex-acp stderr".to_string()),
-                text: Some(line),
-                ..PendingBridgeEvent::new(stderr_session.clone(), "codex", "debug")
-            }));
+            drop(stderr_tx.send(provider_info_event(
+                stderr_session.clone(),
+                &stderr_provider,
+                json!({
+                    "type": "stderr",
+                    "title": format!("{stderr_provider} stderr"),
+                    "text": line,
+                }),
+            )));
         }
     });
 
     let transport = ByteStreams::new(stdin.compat_write(), stdout.compat());
     let started_tx = Arc::new(Mutex::new(Some(started_tx)));
+    let prompt_lifecycle = Arc::new(PromptLifecycle::default());
+    let connection_provider = provider_id.clone();
     let run_result = Client
         .builder()
         .on_receive_request(
@@ -207,46 +447,45 @@ async fn run_codex_session(
                         })
                         .or_else(|| args.options.first());
 
-                    drop(event_tx.send(PendingBridgeEvent {
-                        title: title.clone(),
-                        tool_call_id: Some(args.tool_call.tool_call_id.to_string()),
-                        permission_options: Some(
-                            args.options
-                                .iter()
-                                .map(|option| BridgePermissionOption {
-                                    option_id: option.option_id.to_string(),
-                                    name: option.name.clone(),
-                                    kind: match option.kind {
-                                        PermissionOptionKind::AllowOnce => "allow_once",
-                                        PermissionOptionKind::AllowAlways => "allow_always",
-                                        PermissionOptionKind::RejectOnce => "reject_once",
-                                        PermissionOptionKind::RejectAlways => "reject_always",
-                                        _ => "unknown",
-                                    }
-                                    .to_string(),
-                                })
-                                .collect(),
-                        ),
-                        status: Some("requested".to_string()),
-                        raw: serde_json::to_value(&args).ok(),
-                        ..PendingBridgeEvent::new(
-                            session_id.clone(),
-                            "codex",
-                            "permission.requested",
-                        )
+                    drop(event_tx.send(AcpEvent::PermissionRequest {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: jiff::Timestamp::now().to_string(),
+                        session_id: session_id.clone(),
+                        seq: 0,
+                        request_id: args.tool_call.tool_call_id.to_string(),
+                        action_summary: title
+                            .clone()
+                            .unwrap_or_else(|| "Permission requested".to_string()),
+                        options: args
+                            .options
+                            .iter()
+                            .map(|option| AcpPermissionOption {
+                                option_id: option.option_id.to_string(),
+                                name: option.name.clone(),
+                                kind: match option.kind {
+                                    PermissionOptionKind::AllowOnce => "allow_once",
+                                    PermissionOptionKind::AllowAlways => "allow_always",
+                                    PermissionOptionKind::RejectOnce => "reject_once",
+                                    PermissionOptionKind::RejectAlways => "reject_always",
+                                    _ => "unknown",
+                                }
+                                .to_string(),
+                            })
+                            .collect(),
                     }));
 
-                    drop(event_tx.send(PendingBridgeEvent {
-                        title,
-                        tool_call_id: Some(args.tool_call.tool_call_id.to_string()),
-                        permission_selection: selected.map(|option| option.option_id.to_string()),
-                        status: Some("resolved".to_string()),
-                        raw: serde_json::to_value(&args).ok(),
-                        ..PendingBridgeEvent::new(
-                            session_id.clone(),
-                            "codex",
-                            "permission.resolved",
-                        )
+                    drop(event_tx.send(AcpEvent::PermissionOutcome {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: jiff::Timestamp::now().to_string(),
+                        session_id: session_id.clone(),
+                        seq: 0,
+                        request_id: args.tool_call.tool_call_id.to_string(),
+                        granted: selected.is_some_and(|option| {
+                            matches!(
+                                option.kind,
+                                PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
+                            )
+                        }),
                     }));
 
                     responder.respond(RequestPermissionResponse::new(match selected {
@@ -327,11 +566,15 @@ async fn run_codex_session(
             let event_tx = event_tx.clone();
             let cwd = input.cwd.clone();
             let started_tx = Arc::clone(&started_tx);
+            let prompt_lifecycle = Arc::clone(&prompt_lifecycle);
+            let provider_id = connection_provider.clone();
             move |connection: ConnectionTo<Agent>| {
                 let session_id = session_id.clone();
                 let event_tx = event_tx.clone();
                 let cwd = cwd.clone();
                 let started_tx = Arc::clone(&started_tx);
+                let prompt_lifecycle = Arc::clone(&prompt_lifecycle);
+                let provider_id = provider_id.clone();
                 async move {
                     let initialized = connection
                         .send_request(
@@ -373,7 +616,7 @@ async fn run_codex_session(
                                     .agent_info
                                     .as_ref()
                                     .map(|info| info.name.clone())
-                                    .unwrap_or_else(|| "Codex ACP".to_string())
+                                    .unwrap_or_else(|| provider_id.clone())
                             }),
                         agent_version: initialized
                             .agent_info
@@ -388,88 +631,126 @@ async fn run_codex_session(
                     while let Some(command) = command_rx.recv().await {
                         match command {
                             SessionCommand::Prompt(prompt) => {
-                                drop(event_tx.send(PendingBridgeEvent {
-                                    title: Some("Prompt started".to_string()),
-                                    text: Some(prompt.clone()),
-                                    status: Some("running".to_string()),
-                                    ..PendingBridgeEvent::new(
-                                        session_id.clone(),
-                                        "codex",
-                                        "status",
-                                    )
-                                }));
+                                prompt_lifecycle.start();
+                                let stream_message_ids =
+                                    Arc::new(Mutex::new(StreamMessageIds::default()));
+                                drop(event_tx.send(session_state_event(
+                                    session_id.clone(),
+                                    lab_apis::acp::types::AcpSessionState::Running,
+                                )));
+                                drop(event_tx.send(provider_info_event(
+                                    session_id.clone(),
+                                    &provider_id,
+                                    json!({
+                                        "type": "prompt_started",
+                                        "title": "Prompt started",
+                                        "text": prompt.clone(),
+                                    }),
+                                )));
 
                                 session
                                     .send_prompt(prompt)
                                     .map_err(|error| acp_internal_error(error.to_string()))?;
 
+                                let mut saw_assistant_output = false;
                                 loop {
-                                    match session.read_update().await {
+                                    let update = tokio::select! {
+                                        update = session.read_update() => Some(update),
+                                        () = tokio::time::sleep(acp_prompt_idle_timeout()), if saw_assistant_output => None,
+                                    };
+                                    let update = match update {
+                                        Some(update) => update,
+                                        None => {
+                                            drop(event_tx.send(session_state_event(
+                                                session_id.clone(),
+                                                lab_apis::acp::types::AcpSessionState::Completed,
+                                            )));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                &provider_id,
+                                                json!({
+                                                    "type": "idle_completion",
+                                                    "title": "Prompt completed after provider idle timeout",
+                                                    "status": "completed",
+                                                    "timeout_ms": acp_prompt_idle_timeout().as_millis(),
+                                                }),
+                                            )));
+                                            prompt_lifecycle.finish();
+                                            break;
+                                        }
+                                    };
+
+                                    match update {
                                         Ok(agent_client_protocol::SessionMessage::SessionMessage(
                                             dispatch,
                                         )) => {
-                                            MatchDispatch::new(dispatch)
-                                                .if_notification({
-                                                    let session_id = session_id.clone();
-                                                    let event_tx = event_tx.clone();
-                                                    async move |notification: SessionNotification| {
-                                                        drop(push_session_update(
-                                                            &session_id,
-                                                            &event_tx,
-                                                            notification.update,
-                                                        ));
-                                                        Ok(())
-                                                    }
-                                                })
-                                                .await
-                                                .otherwise_ignore()
-                                                .map_err(|error| acp_internal_error(error.to_string()))?;
+                                            let progress = handle_session_dispatch(
+                                                &session_id,
+                                                &event_tx,
+                                                dispatch,
+                                                &stream_message_ids,
+                                            )
+                                            .map_err(acp_internal_error)?;
+                                            saw_assistant_output |= progress.assistant_output;
+                                            if progress.prompt_progress {
+                                                prompt_lifecycle.note_prompt_progress();
+                                            }
                                         }
                                         Ok(agent_client_protocol::SessionMessage::StopReason(
                                             stop_reason,
                                         )) => {
                                             let stop_reason =
                                                 map_stop_reason(&stop_reason).to_string();
-                                            drop(event_tx.send(PendingBridgeEvent {
-                                                title: Some("Prompt completed".to_string()),
-                                                status: Some(
-                                                    if stop_reason == "cancelled" {
-                                                        "cancelled".to_string()
-                                                    } else {
-                                                        "completed".to_string()
+                                            let state = if stop_reason == "cancelled" {
+                                                lab_apis::acp::types::AcpSessionState::Cancelled
+                                            } else {
+                                                lab_apis::acp::types::AcpSessionState::Completed
+                                            };
+                                            drop(event_tx.send(session_state_event(
+                                                session_id.clone(),
+                                                state.clone(),
+                                            )));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                &provider_id,
+                                                json!({
+                                                    "type": "stop_reason",
+                                                    "title": "Prompt completed",
+                                                    "status": match state {
+                                                        lab_apis::acp::types::AcpSessionState::Cancelled => "cancelled",
+                                                        _ => "completed",
                                                     },
-                                                ),
-                                                prompt_stop_reason: Some(stop_reason),
-                                                ..PendingBridgeEvent::new(
-                                                    session_id.clone(),
-                                                    "codex",
-                                                    "status",
-                                                )
-                                            }));
+                                                    "stop_reason": stop_reason,
+                                                }),
+                                            )));
+                                            prompt_lifecycle.finish();
                                             break;
                                         }
                                         Ok(_) => {
-                                            drop(event_tx.send(PendingBridgeEvent {
-                                                title: Some("Unhandled provider update".to_string()),
-                                                status: Some("running".to_string()),
-                                                ..PendingBridgeEvent::new(
-                                                    session_id.clone(),
-                                                    "codex",
-                                                    "status",
-                                                )
-                                            }));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                &provider_id,
+                                                json!({
+                                                    "type": "unhandled_provider_message",
+                                                    "title": "Unhandled provider update",
+                                                }),
+                                            )));
                                         }
                                         Err(error) => {
-                                            drop(event_tx.send(PendingBridgeEvent {
-                                                title: Some("Provider error".to_string()),
-                                                text: Some(error.to_string()),
-                                                status: Some("failed".to_string()),
-                                                ..PendingBridgeEvent::new(
-                                                    session_id.clone(),
-                                                    "codex",
-                                                    "error",
-                                                )
-                                            }));
+                                            drop(event_tx.send(session_state_event(
+                                                session_id.clone(),
+                                                lab_apis::acp::types::AcpSessionState::Failed,
+                                            )));
+                                            drop(event_tx.send(provider_info_event(
+                                                session_id.clone(),
+                                                &provider_id,
+                                                json!({
+                                                    "type": "provider_error",
+                                                    "title": "Provider error",
+                                                    "text": error.to_string(),
+                                                }),
+                                            )));
+                                            prompt_lifecycle.finish();
                                             break;
                                         }
                                     }
@@ -492,115 +773,184 @@ async fn run_codex_session(
         })
         .await;
 
-    if let Err(error) = run_result {
+    if let Some(saw_assistant_output) = prompt_lifecycle.take_unfinished_prompt() {
+        let state = if saw_assistant_output {
+            lab_apis::acp::types::AcpSessionState::Completed
+        } else {
+            lab_apis::acp::types::AcpSessionState::Failed
+        };
+        let status = match state {
+            lab_apis::acp::types::AcpSessionState::Completed => "completed",
+            _ => "failed",
+        };
+        drop(event_tx.send(session_state_event(session_id.clone(), state)));
+        drop(event_tx.send(provider_info_event(
+            session_id.clone(),
+            &provider_id,
+            json!({
+                "type": "runtime_exit_without_stop_reason",
+                "title": "ACP provider exited before sending a prompt stop reason",
+                "status": status,
+            }),
+        )));
+    }
+
+    let run_error = run_result.err();
+
+    terminate_codex_child(&mut child, child_process_group).await;
+
+    if let Some(error) = run_error {
         if let Some(sender) = started_tx.lock().ok().and_then(|mut guard| guard.take()) {
             drop(sender.send(Err(error.to_string())));
         }
         return Err(error.to_string());
     }
 
-    drop(child.kill().await);
     Ok(())
+}
+
+async fn terminate_codex_child(
+    child: &mut tokio::process::Child,
+    child_process_group: Option<u32>,
+) {
+    #[cfg(unix)]
+    if let Some(pid) = child_process_group.and_then(|value| i32::try_from(value).ok()) {
+        let pgid = Pid::from_raw(pid);
+        let _ = killpg(pgid, Signal::SIGTERM);
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        if matches!(child.try_wait(), Ok(None)) {
+            let _ = killpg(pgid, Signal::SIGKILL);
+        }
+        drop(child.wait().await);
+        return;
+    }
+
+    drop(child.kill().await);
 }
 
 fn push_session_update(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: SessionUpdate,
+    message_ids: &mut StreamMessageIds,
 ) -> Result<(), String> {
     match update {
         SessionUpdate::UserMessageChunk(ContentChunk { content, .. }) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    role: Some("user".to_string()),
-                    text: Some(content_to_text(content)),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "message.chunk")
+                .send(AcpEvent::MessageChunk {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    role: "user".to_string(),
+                    text: content_to_text(content),
+                    message_id: message_ids.user_message_id(),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::AgentMessageChunk(ContentChunk { content, .. }) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    role: Some("assistant".to_string()),
-                    text: Some(content_to_text(content)),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "message.chunk")
+                .send(AcpEvent::MessageChunk {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    role: "assistant".to_string(),
+                    text: content_to_text(content),
+                    message_id: message_ids.assistant_message_id(),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::AgentThoughtChunk(ContentChunk { content, .. }) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    role: Some("thinking".to_string()),
-                    text: Some(content_to_text(content)),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "message.chunk")
+                .send(AcpEvent::ReasoningChunk {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    text: content_to_text(content),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::ToolCall(tool_call) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some(tool_call.title.clone()),
-                    tool_call_id: Some(tool_call.tool_call_id.to_string()),
-                    tool_kind: enum_value(&tool_call.kind),
-                    status: enum_value(&tool_call.status),
-                    raw_input: tool_call.raw_input.clone(),
-                    raw_output: tool_call.raw_output.clone(),
-                    tool_content: serde_json::to_value(&tool_call.content)
-                        .ok()
-                        .and_then(|value| value.as_array().cloned()),
-                    locations: Some(
-                        tool_call
-                            .locations
-                            .iter()
-                            .map(|location| location.path.display().to_string())
-                            .collect(),
-                    ),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "tool.call")
+                .send(AcpEvent::ToolCallStart {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    tool_call_id: tool_call.tool_call_id.to_string(),
+                    name: tool_call.title.clone(),
+                    input: tool_call.raw_input.clone().unwrap_or(Value::Null),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
+            if let Some(status) = enum_value(&tool_call.status) {
+                event_tx
+                    .send(provider_info_event(
+                        session_id.to_string(),
+                        "codex",
+                        json!({
+                            "type": "tool_call_metadata",
+                            "tool_call_id": tool_call.tool_call_id.to_string(),
+                            "title": tool_call.title.clone(),
+                            "tool_kind": enum_value(&tool_call.kind),
+                            "status": status,
+                            "locations": tool_call.locations.iter().map(|location| location.path.display().to_string()).collect::<Vec<_>>(),
+                            "content": tool_call.content.clone(),
+                            "raw_output": tool_call.raw_output.clone(),
+                        }),
+                    ))
+                    .map_err(|_| "ACP event channel closed".to_string())?;
+            }
         }
         SessionUpdate::ToolCallUpdate(update) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: update.fields.title.clone(),
-                    tool_call_id: Some(update.tool_call_id.to_string()),
-                    tool_kind: update.fields.kind.as_ref().and_then(enum_value),
-                    status: update.fields.status.as_ref().and_then(enum_value),
-                    raw_input: update.fields.raw_input.clone(),
-                    raw_output: update.fields.raw_output.clone(),
-                    tool_content: serde_json::to_value(&update.fields.content)
-                        .ok()
-                        .and_then(|value| value.as_array().cloned()),
-                    locations: update.fields.locations.as_ref().map(|locations| {
-                        locations
-                            .iter()
-                            .map(|location| location.path.display().to_string())
-                            .collect()
-                    }),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "tool.update")
+                .send(AcpEvent::ToolCallUpdate {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    created_at: jiff::Timestamp::now().to_string(),
+                    session_id: session_id.to_string(),
+                    seq: 0,
+                    tool_call_id: update.tool_call_id.to_string(),
+                    output: tool_call_update_output(&update.fields),
+                    status: update
+                        .fields
+                        .status
+                        .as_ref()
+                        .and_then(enum_value)
+                        .unwrap_or_else(|| "updated".to_string()),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::Plan(plan) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some("Execution plan updated".to_string()),
-                    plan: serde_json::to_value(&plan)
-                        .ok()
-                        .and_then(|value| value.get("entries").and_then(|entries| entries.as_array().cloned())),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "plan")
-                })
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "plan",
+                        "title": "Execution plan updated",
+                        "entries": serde_json::to_value(&plan)
+                            .ok()
+                            .and_then(|value| value.get("entries").cloned())
+                            .unwrap_or(Value::Null),
+                    }),
+                ))
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::AvailableCommandsUpdate(update) => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some("Available commands updated".to_string()),
-                    commands: serde_json::to_value(&update)
-                        .ok()
-                        .and_then(|value| value.get("commands").and_then(|commands| commands.as_array().cloned())),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "commands")
-                })
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "commands",
+                        "title": "Available commands updated",
+                        "commands": serde_json::to_value(&update)
+                            .ok()
+                            .and_then(|value| value.get("commands").cloned())
+                            .unwrap_or(Value::Null),
+                    }),
+                ))
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
         SessionUpdate::CurrentModeUpdate(update) => {
@@ -614,11 +964,15 @@ fn push_session_update(
         }
         other => {
             event_tx
-                .send(PendingBridgeEvent {
-                    title: Some("Unhandled session update".to_string()),
-                    raw: serde_json::to_value(&other).ok(),
-                    ..PendingBridgeEvent::new(session_id.to_string(), "codex", "debug")
-                })
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "debug",
+                        "title": "Unhandled session update",
+                        "payload": serde_json::to_value(&other).unwrap_or(Value::Null),
+                    }),
+                ))
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
     }
@@ -626,46 +980,189 @@ fn push_session_update(
     Ok(())
 }
 
+fn handle_session_dispatch(
+    session_id: &str,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+    dispatch: Dispatch,
+    stream_message_ids: &Arc<Mutex<StreamMessageIds>>,
+) -> Result<SessionDispatchProgress, String> {
+    match dispatch {
+        Dispatch::Notification(notification)
+            if SessionNotification::matches_method(notification.method()) =>
+        {
+            let notification =
+                SessionNotification::parse_message(notification.method(), notification.params())
+                    .map_err(|error| error.to_string())?;
+            let is_assistant_output =
+                matches!(notification.update, SessionUpdate::AgentMessageChunk(_));
+            let is_prompt_progress = is_prompt_progress_update(&notification.update);
+            let mut message_ids = stream_message_ids
+                .lock()
+                .map_err(|_| "ACP stream message id tracker poisoned".to_string())?;
+            push_session_update(session_id, event_tx, notification.update, &mut message_ids)?;
+            Ok(SessionDispatchProgress {
+                assistant_output: is_assistant_output,
+                prompt_progress: is_prompt_progress,
+            })
+        }
+        Dispatch::Notification(notification) => event_tx
+            .send(provider_info_event(
+                session_id.to_string(),
+                "codex",
+                json!({
+                    "type": "unhandled_provider_notification",
+                    "title": "Unhandled provider notification",
+                    "method": notification.method(),
+                }),
+            ))
+            .map_err(|_| "ACP event channel closed".to_string())
+            .map(|()| SessionDispatchProgress {
+                assistant_output: false,
+                prompt_progress: false,
+            }),
+        Dispatch::Request(request, responder) => {
+            drop(responder.respond_with_error(agent_client_protocol::Error::method_not_found()));
+            event_tx
+                .send(provider_info_event(
+                    session_id.to_string(),
+                    "codex",
+                    json!({
+                        "type": "unhandled_provider_request",
+                        "title": "Unhandled provider request",
+                        "method": request.method(),
+                    }),
+                ))
+                .map_err(|_| "ACP event channel closed".to_string())
+                .map(|()| SessionDispatchProgress {
+                    assistant_output: false,
+                    prompt_progress: false,
+                })
+        }
+        Dispatch::Response(_, _) => event_tx
+            .send(provider_info_event(
+                session_id.to_string(),
+                "codex",
+                json!({
+                    "type": "unhandled_provider_response",
+                    "title": "Unhandled provider response",
+                }),
+            ))
+            .map_err(|_| "ACP event channel closed".to_string())
+            .map(|()| SessionDispatchProgress {
+                assistant_output: false,
+                prompt_progress: false,
+            }),
+    }
+}
+
+fn is_prompt_progress_update(update: &SessionUpdate) -> bool {
+    matches!(
+        update,
+        SessionUpdate::AgentMessageChunk(_)
+            | SessionUpdate::AgentThoughtChunk(_)
+            | SessionUpdate::ToolCall(_)
+            | SessionUpdate::ToolCallUpdate(_)
+            | SessionUpdate::Plan(_)
+            | SessionUpdate::AvailableCommandsUpdate(_)
+    )
+}
+
 fn emit_current_mode(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: CurrentModeUpdate,
 ) -> Result<(), String> {
     event_tx
-        .send(PendingBridgeEvent {
-            title: Some("Agent mode updated".to_string()),
-            current_mode: serde_json::to_value(&update).ok(),
-            ..PendingBridgeEvent::new(session_id.to_string(), "codex", "mode")
-        })
+        .send(provider_info_event(
+            session_id.to_string(),
+            "codex",
+            json!({
+                "type": "current_mode",
+                "title": "Agent mode updated",
+                "current_mode": serde_json::to_value(&update).unwrap_or(Value::Null),
+            }),
+        ))
         .map_err(|_| "ACP event channel closed".to_string())
 }
 
 fn emit_config_update(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: ConfigOptionUpdate,
 ) -> Result<(), String> {
     event_tx
-        .send(PendingBridgeEvent {
-            title: Some("Configuration options updated".to_string()),
-            config_update: serde_json::to_value(&update).ok(),
-            ..PendingBridgeEvent::new(session_id.to_string(), "codex", "config")
-        })
+        .send(provider_info_event(
+            session_id.to_string(),
+            "codex",
+            json!({
+                "type": "config_update",
+                "title": "Configuration options updated",
+                "config_update": serde_json::to_value(&update).unwrap_or(Value::Null),
+            }),
+        ))
         .map_err(|_| "ACP event channel closed".to_string())
 }
 
 fn emit_session_info(
     session_id: &str,
-    event_tx: &mpsc::UnboundedSender<PendingBridgeEvent>,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     update: SessionInfoUpdate,
 ) -> Result<(), String> {
     event_tx
-        .send(PendingBridgeEvent {
-            title: Some("Session info updated".to_string()),
-            session_info: serde_json::to_value(&update).ok(),
-            ..PendingBridgeEvent::new(session_id.to_string(), "codex", "session.info")
-        })
+        .send(provider_info_event(
+            session_id.to_string(),
+            "codex",
+            json!({
+                "type": "session_info",
+                "title": "Session info updated",
+                "session_info": serde_json::to_value(&update).unwrap_or(Value::Null),
+            }),
+        ))
         .map_err(|_| "ACP event channel closed".to_string())
+}
+
+fn session_state_event(
+    session_id: String,
+    state: lab_apis::acp::types::AcpSessionState,
+) -> AcpEvent {
+    AcpEvent::SessionUpdate {
+        id: uuid::Uuid::new_v4().to_string(),
+        created_at: jiff::Timestamp::now().to_string(),
+        session_id,
+        seq: 0,
+        state,
+    }
+}
+
+fn provider_info_event(session_id: String, provider: &str, raw: Value) -> AcpEvent {
+    AcpEvent::ProviderInfo {
+        id: uuid::Uuid::new_v4().to_string(),
+        created_at: jiff::Timestamp::now().to_string(),
+        session_id,
+        seq: 0,
+        provider: provider.to_string(),
+        raw,
+    }
+}
+
+fn tool_call_update_output(fields: &agent_client_protocol::schema::ToolCallUpdateFields) -> Value {
+    if let Some(raw_output) = fields.raw_output.clone() {
+        return raw_output;
+    }
+
+    json!({
+        "title": fields.title.clone(),
+        "kind": fields.kind.as_ref().and_then(enum_value),
+        "status": fields.status.as_ref().and_then(enum_value),
+        "content": fields.content.clone(),
+        "locations": fields.locations.as_ref().map(|locations| {
+            locations
+                .iter()
+                .map(|location| location.path.display().to_string())
+                .collect::<Vec<_>>()
+        }),
+        "raw_input": fields.raw_input.clone(),
+    })
 }
 
 fn content_to_text(content: ContentBlock) -> String {
@@ -693,5 +1190,79 @@ fn map_stop_reason(stop_reason: &StopReason) -> &'static str {
         StopReason::MaxTurnRequests => "max_turn_requests",
         StopReason::Refusal => "refusal",
         _ => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_client_protocol::schema::{AvailableCommandsUpdate, TextContent, ToolCall};
+
+    fn text_chunk(text: &str) -> ContentChunk {
+        ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
+    }
+
+    fn received_message_id(rx: &mut mpsc::UnboundedReceiver<AcpEvent>) -> String {
+        match rx.try_recv().expect("message chunk event") {
+            AcpEvent::MessageChunk { message_id, .. } => message_id,
+            other => panic!("expected message chunk event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn streamed_message_chunks_share_stable_message_ids_per_role() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut message_ids = StreamMessageIds::default();
+
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::UserMessageChunk(text_chunk("hello ")),
+            &mut message_ids,
+        )
+        .expect("first user chunk");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::UserMessageChunk(text_chunk("world")),
+            &mut message_ids,
+        )
+        .expect("second user chunk");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::AgentMessageChunk(text_chunk("reply ")),
+            &mut message_ids,
+        )
+        .expect("first assistant chunk");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::AgentMessageChunk(text_chunk("done")),
+            &mut message_ids,
+        )
+        .expect("second assistant chunk");
+
+        let first_user_message_id = received_message_id(&mut rx);
+        let second_user_message_id = received_message_id(&mut rx);
+        let first_assistant_message_id = received_message_id(&mut rx);
+        let second_assistant_message_id = received_message_id(&mut rx);
+
+        assert_eq!(first_user_message_id, second_user_message_id);
+        assert_eq!(first_assistant_message_id, second_assistant_message_id);
+        assert_ne!(first_user_message_id, first_assistant_message_id);
+    }
+
+    #[test]
+    fn prompt_progress_includes_provider_turn_activity() {
+        assert!(is_prompt_progress_update(
+            &SessionUpdate::AgentThoughtChunk(text_chunk("thinking"))
+        ));
+        assert!(is_prompt_progress_update(&SessionUpdate::ToolCall(
+            ToolCall::new("tool-1", "Read file")
+        )));
+        assert!(is_prompt_progress_update(
+            &SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![]))
+        ));
     }
 }

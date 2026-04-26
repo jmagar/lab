@@ -29,6 +29,12 @@ pub mod marketplace;
 /// Device-runtime control-plane client shared by CLI and runtime code.
 pub mod device_runtime;
 
+/// Agent Client Protocol (ACP) — types, error, persistence trait, and provider types.
+pub mod acp;
+
+/// Doctor — bootstrap health audit: env vars, system probes, service reachability.
+pub mod doctor;
+
 /// Radarr movie management client.
 #[cfg(feature = "radarr")]
 pub mod radarr;
@@ -120,3 +126,7 @@ pub mod deploy;
 /// MCP Registry client — browse and search the official MCP server registry.
 #[cfg(feature = "mcpregistry")]
 pub mod mcpregistry;
+
+/// ACP Agent Registry client — discover and install ACP-compatible AI coding agents.
+#[cfg(feature = "acp_registry")]
+pub mod acp_registry;

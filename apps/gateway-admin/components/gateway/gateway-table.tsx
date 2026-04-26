@@ -46,20 +46,29 @@ import type { TransportType } from '@/lib/types/gateway'
 import {
   AURORA_DISPLAY_2,
   AURORA_MUTED_LABEL,
-  AURORA_STRONG_PANEL,
 } from '@/components/aurora/tokens'
 import {
-  AURORA_GATEWAY_CARD,
   AURORA_GATEWAY_DISABLED_ROW,
-  AURORA_GATEWAY_MUTED_CARD,
   AURORA_GATEWAY_ROW,
-  AURORA_GATEWAY_SUBTLE_SURFACE,
   gatewayActionTone,
   gatewayStatusTone,
 } from './gateway-theme'
 
 type SortKey = 'transport' | 'tools' | 'resources' | 'prompts'
 type SortDirection = 'asc' | 'desc'
+
+const AURORA_GATEWAY_TABLE_SHELL =
+  'border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)] rounded-aurora-1'
+
+const rowToneClass = (index: number) => (index % 2 === 0 ? 'gateway-row-tone-a' : 'gateway-row-tone-b')
+
+function isStaleVirtualServer(gateway: Gateway): boolean {
+  return gateway.source === 'in_process' && gateway.warnings.some((warning) => warning.code === 'unknown_service')
+}
+
+function canRemoveGateway(gateway: Gateway): boolean {
+  return gateway.source !== 'in_process' || isStaleVirtualServer(gateway)
+}
 
 interface GatewayTableProps {
   gateways: Gateway[]
@@ -279,67 +288,80 @@ export function GatewayTable({
 
   return (
     <>
-      <div className={cn(AURORA_STRONG_PANEL, 'overflow-hidden md:hidden')}>
-        <div className="grid grid-cols-[minmax(0,1fr)_96px_28px] gap-2 border-b border-aurora-border-strong px-3 py-2">
+      <div className={cn(AURORA_GATEWAY_TABLE_SHELL, 'overflow-hidden md:hidden')}>
+        <div className="grid grid-cols-[minmax(0,1fr)_82px_24px] gap-2 border-b border-aurora-border-strong px-2.5 py-2">
           <div className={AURORA_MUTED_LABEL}>Gateway</div>
           <div className={cn(AURORA_MUTED_LABEL, 'text-right')}>State</div>
           <div />
         </div>
         <div className="divide-y divide-aurora-border-strong/70">
-          {gateways.map((gateway) => {
+          {gateways.map((gateway, index) => {
             const supportsProbeControls = gateway.source !== 'in_process'
+            const canRemoveGatewayRow = canRemoveGateway(gateway)
             const isDisabled = !(gateway.enabled ?? true)
             const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
             const endpointPreview = buildGatewayEndpointPreview(gateway)
             const runtimeLabel = runtimeAgeLabel(gateway) ?? 'live'
             const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
+            const cleanupSummaryLabel =
+              cleanupBadgeLabel(cleanupSummary?.cleanup, 'cleaned') ??
+              cleanupBadgeLabel(cleanupSummary?.preview, 'preview')
+            const rowTone = index % 2 === 0 ? 'gateway-row-tone-a' : 'gateway-row-tone-b'
 
             return (
-              <div key={gateway.id} className={cn(AURORA_GATEWAY_ROW, isDisabled && AURORA_GATEWAY_DISABLED_ROW)}>
-                <div className={cn('grid grid-cols-[minmax(0,1fr)_96px_28px] gap-2 px-3', density === 'condensed' ? 'py-2' : 'py-2.5')}>
-                  <Link href={gatewayDetailHref(gateway.id)} className="min-w-0 space-y-1.5">
+              <div
+                key={gateway.id}
+                className={cn(
+                  rowTone,
+                  AURORA_GATEWAY_ROW,
+                  isDisabled && AURORA_GATEWAY_DISABLED_ROW,
+                )}
+              >
+                <div className={cn('grid grid-cols-[minmax(0,1fr)_82px_24px] gap-2 px-2.5', density === 'condensed' ? 'py-1.5' : 'py-2')}>
+                  <Link href={gatewayDetailHref(gateway.id)} className="min-w-0 space-y-1">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className={cn('size-2 rounded-full', statusTone.dot)} aria-label={statusTone.label} title={statusTone.label} />
-                      <span className="truncate text-[13px] font-semibold text-aurora-text-primary">{gateway.name}</span>
+                      <span className="truncate text-[12px] font-semibold text-aurora-text-primary">{gateway.name}</span>
                       {isDisabled ? (
                         <span className="rounded-full border border-aurora-border-strong px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-aurora-text-muted">
                           Off
                         </span>
                       ) : null}
                     </div>
-                    <div className="truncate text-[10px] text-aurora-text-muted" title={endpointPreview}>
+                    <div className="truncate text-[9px] text-aurora-text-muted" title={endpointPreview}>
                       {endpointPreview}
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-aurora-text-muted">
-                      <span data-mobile-metric="tools" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <Wrench className="size-3 text-aurora-text-muted" />
-                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{gateway.status.exposed_tool_count}</strong>
-                        <span>tools</span>
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[9px] text-aurora-text-muted">
+                      <span data-mobile-metric="tools" className="inline-flex items-center gap-1 whitespace-nowrap" title="Tools">
+                        <Wrench className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Tools:</span>
+                        <strong className="text-[10px] font-semibold text-aurora-text-primary">{gateway.status.exposed_tool_count}</strong>
                       </span>
-                      <span data-mobile-metric="resources" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <FileText className="size-3 text-aurora-text-muted" />
-                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{gateway.status.exposed_resource_count}</strong>
-                        <span>res</span>
+                      <span data-mobile-metric="resources" className="inline-flex items-center gap-1 whitespace-nowrap" title="Resources">
+                        <FileText className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Resources:</span>
+                        <strong className="text-[10px] font-semibold text-aurora-text-primary">{gateway.status.exposed_resource_count}</strong>
                       </span>
-                      <span data-mobile-metric="prompts" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <MessageSquare className="size-3 text-aurora-text-muted" />
-                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{gateway.status.exposed_prompt_count}</strong>
-                        <span>prompts</span>
+                      <span data-mobile-metric="prompts" className="inline-flex items-center gap-1 whitespace-nowrap" title="Prompts">
+                        <MessageSquare className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Prompts:</span>
+                        <strong className="text-[10px] font-semibold text-aurora-text-primary">{gateway.status.exposed_prompt_count}</strong>
                       </span>
-                      <span data-mobile-metric="runtime" className="inline-flex items-center gap-1 whitespace-nowrap">
-                        <RefreshCw className="size-3 text-aurora-text-muted" />
-                        <strong className="text-[11px] font-semibold text-aurora-text-primary">{runtimeLabel}</strong>
+                      <span data-mobile-metric="runtime" className="inline-flex items-center gap-1 whitespace-nowrap" title="Runtime age">
+                        <RefreshCw className="size-3 text-aurora-text-muted" aria-hidden="true" />
+                        <span className="sr-only">Runtime age:</span>
+                        <strong className="text-[10px] font-semibold text-aurora-text-primary">{runtimeLabel}</strong>
                       </span>
                     </div>
                   </Link>
 
-                  <div className="space-y-1 text-right">
-                    <div className="inline-flex items-center justify-end gap-1 text-[11px] font-semibold text-aurora-text-primary">
+                  <div className="space-y-0.5 pt-0.5 text-right">
+                    <div className="inline-flex items-center justify-end gap-1 text-[10px] font-semibold text-aurora-text-primary">
                       <span className={cn('size-1.5 rounded-full', statusTone.dot)} />
                       <span>{statusTone.label}</span>
                     </div>
-                    <div className="text-[9px] uppercase tracking-[0.12em] text-aurora-text-muted">
-                      {cleanupSummary ?? (isDisabled ? 'disabled' : gateway.warnings.length > 0 ? `${gateway.warnings.length} warn` : 'clean')}
+                    <div className="text-[8px] uppercase tracking-[0.12em] text-aurora-text-muted">
+                      {cleanupSummaryLabel ?? (isDisabled ? 'disabled' : gateway.warnings.length > 0 ? `${gateway.warnings.length} warn` : 'clean')}
                     </div>
                   </div>
 
@@ -348,9 +370,9 @@ export function GatewayTable({
                       <Button
                         variant="outline"
                         size="icon"
-                        className={cn(gatewayActionTone(), 'size-7 shrink-0 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
+                        className={cn(gatewayActionTone(), 'size-6 shrink-0 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}
                       >
-                        <MoreHorizontal className="size-3.5" />
+                        <MoreHorizontal className="size-3" />
                         <span className="sr-only">More actions</span>
                       </Button>
                     </DropdownMenuTrigger>
@@ -416,12 +438,12 @@ export function GatewayTable({
                           ) : null}
                         </>
                       ) : null}
-                      {gateway.source !== 'in_process' ? (
+                      {canRemoveGatewayRow ? (
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-aurora-error focus:text-aurora-error">
                             <Trash2 className="size-4 mr-2" />
-                            Remove gateway
+                            {gateway.source === 'in_process' ? 'Remove stale service' : 'Remove gateway'}
                           </DropdownMenuItem>
                         </>
                       ) : null}
@@ -434,7 +456,7 @@ export function GatewayTable({
         </div>
       </div>
 
-      <div className={cn(AURORA_STRONG_PANEL, 'hidden overflow-hidden md:block')}>
+      <div className={cn(AURORA_GATEWAY_TABLE_SHELL, 'hidden overflow-hidden md:block')}>
         <Table className="table-fixed">
           <TableHeader>
             <TableRow className="border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] hover:bg-[rgba(7,17,26,0.48)]">
@@ -455,17 +477,28 @@ export function GatewayTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedGateways.map((gateway) => {
+            {sortedGateways.map((gateway, index) => {
               const supportsProbeControls = gateway.source !== 'in_process'
+              const canRemoveGatewayRow = canRemoveGateway(gateway)
               const endpointPreview = buildGatewayEndpointPreview(gateway)
               const isDisabled = !(gateway.enabled ?? true)
               const statusTone = gatewayStatusTone(gateway.status.healthy, gateway.status.connected)
               const launcherState = isDisabled ? 'deactivated' : 'active'
               const runtimeChips = runtimeBadges(gateway)
               const cleanupSummary = cleanupSummaryByGatewayId[gateway.id]
+              const cleanupBadge = cleanupBadgeLabel(cleanupSummary?.cleanup, 'cleaned')
+              const previewBadge = cleanupBadgeLabel(cleanupSummary?.preview, 'preview')
+              const rowTone = rowToneClass(index)
 
               return (
-                <TableRow key={gateway.id} className={cn('group', isDisabled ? AURORA_GATEWAY_DISABLED_ROW : AURORA_GATEWAY_ROW)}>
+                <TableRow
+                  key={gateway.id}
+                  className={cn(
+                    'group',
+                    rowTone,
+                    isDisabled ? AURORA_GATEWAY_DISABLED_ROW : AURORA_GATEWAY_ROW,
+                  )}
+                >
                   <TableCell className={cn('w-[62%] px-6 align-top whitespace-normal', density === 'condensed' ? 'py-3' : 'py-4')}>
                     <div className="min-w-0 space-y-1">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -576,6 +609,17 @@ export function GatewayTable({
                           <span className="sr-only">Reload gateway</span>
                         </Button>
                       ) : null}
+                      {isStaleVirtualServer(gateway) && density === 'comfortable' ? (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={cn(gatewayActionTone(), 'size-9 opacity-100 text-destructive transition-opacity hover:bg-aurora-hover-bg hover:text-destructive md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100')}
+                          onClick={() => onDelete(gateway)}
+                        >
+                          <Trash2 className="size-4" />
+                          <span className="sr-only">Remove stale service</span>
+                        </Button>
+                      ) : null}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="icon" className={cn(gatewayActionTone(), 'size-9 hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
@@ -645,12 +689,12 @@ export function GatewayTable({
                               ) : null}
                             </>
                           ) : null}
-                          {gateway.source !== 'in_process' ? (
+                          {canRemoveGatewayRow ? (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => onDelete(gateway)} className="text-destructive focus:text-destructive">
                                 <Trash2 className="mr-2 size-4" />
-                                Remove gateway
+                                {gateway.source === 'in_process' ? 'Remove stale service' : 'Remove gateway'}
                               </DropdownMenuItem>
                             </>
                           ) : null}

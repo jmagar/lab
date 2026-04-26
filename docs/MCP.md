@@ -319,6 +319,71 @@ The same catalog builder must feed:
 
 When upstream MCP servers are configured (see [UPSTREAM.md](./UPSTREAM.md)), their tools are merged into the `list_tools` response alongside built-in service tools.
 
+## Marketplace Artifact Actions
+
+The `marketplace` service exposes artifact fork, diff, patch, and update workflows via its normal single-tool `action` + `params` shape.
+
+Artifact actions:
+
+- `artifact.fork` returns `ForkResult`
+- `artifact.list` returns `ForkedPluginStatus[]`
+- `artifact.unfork` returns `UnforkResult` and is destructive
+- `artifact.reset` returns `ResetResult` and is destructive
+- `artifact.diff` returns `ArtifactDiffResult`
+- `artifact.patch` returns `PatchResult`
+- `artifact.update.check` returns `UpdateCheckResult[]`
+- `artifact.update.preview` returns `UpdatePreviewResult`
+- `artifact.update.apply` returns `ApplyResult` and is destructive
+- `artifact.merge.suggest` returns `MergeSuggestResult`
+- `artifact.config.set` returns `ConfigSetResult`
+
+Destructive artifact actions use the shared `ActionSpec.destructive` gate. MCP clients confirm through elicitation, CLI callers use `-y` / `--yes`, and HTTP callers include `params.confirm: true`; the confirmation key is stripped before marketplace parsers and domain handlers run.
+
+`artifact.fork` accepts required `params.plugin_id` and optional `params.artifacts`. When `artifacts` is omitted, the action targets a plugin-level fork; otherwise each value must be a relative artifact path.
+
+```json
+{
+  "action": "artifact.fork",
+  "params": { "plugin_id": "demo-plugin@demo-market", "artifacts": ["agents/demo.md"] }
+}
+```
+
+`artifact.list` lists forked plugin artifact stashes. It accepts optional `params.plugin_id` to scope the result to a single plugin.
+
+`artifact.unfork` accepts required `params.plugin_id` and optional `params.artifacts`, and removes fork tracking metadata after confirmation.
+
+`artifact.reset` accepts required `params.plugin_id` and optional `params.artifacts`, and resets forked content after confirmation.
+
+`artifact.diff` accepts required `params.plugin_id` and optional `params.artifact_path`.
+
+`artifact.patch` accepts required `params.plugin_id`, `params.artifact_path`, and `params.patch`, plus optional `params.description`.
+
+`artifact.update.check` accepts an optional `params.plugin_id`. When omitted, it scans all forked `.stash.json` files under the artifact stash root. The response is an array of `{ plugin_id, current_version, available_version, update_available }` records. The checker runs a hardened `git fetch` for the owning marketplace source before reading fetched remote refs.
+
+```json
+{
+  "action": "artifact.update.check",
+  "params": { "plugin_id": "demo-plugin@demo-market" }
+}
+```
+
+`artifact.update.preview` accepts required `params.plugin_id`, computes a three-way update preview, and writes `.pending-update.json` for the later apply step.
+
+```json
+{
+  "action": "artifact.update.preview",
+  "params": { "plugin_id": "demo-plugin@demo-market" }
+}
+```
+
+The preview response includes `upstream_version`, `upstream_commit`, `clean_merges`, `conflicts`, `unchanged`, `upstream_only`, and `user_only`. Clean merges include display diffs where available, while conflicts include base/yours/theirs content and conflict line ranges.
+
+`artifact.update.apply` accepts required `params.plugin_id` and optional `params.strategy`, where strategy is one of `keep_mine`, `take_upstream`, `always_ask`, or `ai_suggest`. Because it is destructive, HTTP callers must also include `params.confirm: true`.
+
+`artifact.merge.suggest` accepts required `params.plugin_id` and `params.artifact_path`.
+
+`artifact.config.set` accepts required `params.plugin_id`, optional `params.strategy`, and optional `params.notify`.
+
 Rules:
 
 - built-in lab service tools always take precedence over upstream tools with the same name

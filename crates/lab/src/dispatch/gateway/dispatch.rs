@@ -4,15 +4,17 @@ use serde_json::Value;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json};
 
+use super::SHARED_GATEWAY_OAUTH_SUBJECT;
 use super::catalog::ACTIONS;
 use super::client::require_gateway_manager;
 use super::manager::GatewayManager;
 use super::params::{
-    GatewayAddParams, GatewayNameParams, GatewayOauthNameParams, GatewayReloadParams, GatewayStatusParams, GatewayTestParams, GatewayUpdatePatch,
-    GatewayUpdateParams, GatewayMcpCleanupParams, GatewayMcpToggleParams, ServiceConfigGetParams, ServiceConfigSetParams,
-    VirtualServerMcpPolicyParams, VirtualServerNameParams, VirtualServerSurfaceParams,
+    GatewayAddParams, GatewayMcpCleanupParams, GatewayMcpToggleParams, GatewayNameParams,
+    GatewayOauthNameParams, GatewayReloadParams, GatewayStatusParams, GatewayTestParams,
+    GatewayUpdateParams, GatewayUpdatePatch, ServiceConfigGetParams, ServiceConfigSetParams,
+    ToolInvokeParams, ToolSearchParams, VirtualServerMcpPolicyParams, VirtualServerNameParams,
+    VirtualServerSurfaceParams,
 };
-use super::SHARED_GATEWAY_OAUTH_SUBJECT;
 use super::types::ServiceActionView;
 
 fn parse_params<T: DeserializeOwned>(params_value: Value) -> Result<T, ToolError> {
@@ -33,6 +35,54 @@ pub async fn dispatch_with_manager(
             let action_name = require_str(&params_value, "action")?;
             action_schema(ACTIONS, action_name)
         }
+        "tool_search" => {
+            let params: ToolSearchParams = parse_params(params_value)?;
+            // When the caller omits `top_k`, fall back to the configured
+            // default rather than hardcoding a literal. `search_tools`
+            // searches across all enabled upstreams, each of which has its
+            // own `tool_search.top_k_default` (validated 1..=50 in
+            // config.rs); use the lab-wide config default as the canonical
+            // fallback so changes to `default_tool_search_top_k()` flow
+            // through automatically.
+            let top_k = params
+                .top_k
+                .unwrap_or_else(|| crate::config::ToolSearchConfig::default().top_k_default);
+            to_json(
+                manager
+                    .search_tools(&params.query, top_k, params.include_schema)
+                    .await?,
+            )
+        }
+        "tool_invoke" => {
+            let params: ToolInvokeParams = parse_params(params_value)?;
+            let (upstream_name, _) = manager.resolve_tool_invoke(&params.name).await?;
+            let pool = manager.current_pool().await.ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "unknown_tool".to_string(),
+                message: format!("tool `{}` is not available", params.name),
+            })?;
+            let mut upstream_params = rmcp::model::CallToolRequestParams::new(params.name);
+            upstream_params.arguments = Some(match params.arguments {
+                Value::Object(map) => map,
+                _ => {
+                    return Err(ToolError::Sdk {
+                        sdk_kind: "invalid_param".to_string(),
+                        message: "arguments must be an object".to_string(),
+                    });
+                }
+            });
+            let result = pool
+                .call_tool(&upstream_name, upstream_params)
+                .await
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "upstream_error".to_string(),
+                    message: format!("upstream `{upstream_name}` is not connected"),
+                })?
+                .map_err(|error| ToolError::Sdk {
+                    sdk_kind: "upstream_error".to_string(),
+                    message: error,
+                })?;
+            to_json(result)
+        }
         "gateway.list" => to_json(manager.list().await?),
         "gateway.server.get" => {
             let params: VirtualServerNameParams = parse_params(params_value)?;
@@ -46,6 +96,21 @@ pub async fn dispatch_with_manager(
         "gateway.virtual_server.disable" => {
             let params: VirtualServerNameParams = parse_params(params_value)?;
             to_json(manager.disable_virtual_server(&params.id).await?)
+        }
+        "gateway.virtual_server.remove" => {
+            let params: VirtualServerNameParams = parse_params(params_value)?;
+            to_json(manager.remove_virtual_server(&params.id).await?)
+        }
+        "gateway.virtual_server.quarantine.list" => {
+            to_json(manager.list_quarantined_virtual_servers().await?)
+        }
+        "gateway.virtual_server.quarantine.restore" => {
+            let params: VirtualServerNameParams = parse_params(params_value)?;
+            to_json(
+                manager
+                    .restore_quarantined_virtual_server(&params.id)
+                    .await?,
+            )
         }
         "gateway.virtual_server.set_surface" => {
             let params: VirtualServerSurfaceParams = parse_params(params_value)?;
@@ -206,7 +271,9 @@ pub async fn dispatch_with_manager(
                 .subject
                 .as_deref()
                 .unwrap_or(SHARED_GATEWAY_OAUTH_SUBJECT);
-            to_json(crate::dispatch::gateway::oauth::status(manager, &params.upstream, subject).await?)
+            to_json(
+                crate::dispatch::gateway::oauth::status(manager, &params.upstream, subject).await?,
+            )
         }
         "gateway.oauth.clear" => {
             let params: GatewayOauthNameParams = parse_params(params_value)?;
@@ -321,6 +388,9 @@ mod tests {
         assert!(names.contains(&"gateway.supported_services"));
         assert!(names.contains(&"gateway.virtual_server.enable"));
         assert!(names.contains(&"gateway.virtual_server.disable"));
+        assert!(names.contains(&"gateway.virtual_server.remove"));
+        assert!(names.contains(&"gateway.virtual_server.quarantine.list"));
+        assert!(names.contains(&"gateway.virtual_server.quarantine.restore"));
         assert!(names.contains(&"gateway.virtual_server.set_surface"));
         assert!(names.contains(&"gateway.virtual_server.get_mcp_policy"));
         assert!(names.contains(&"gateway.virtual_server.set_mcp_policy"));
@@ -349,6 +419,8 @@ mod tests {
             "gateway.add",
             "gateway.update",
             "gateway.remove",
+            "gateway.virtual_server.remove",
+            "gateway.virtual_server.quarantine.restore",
             "gateway.reload",
             "gateway.oauth.clear",
             "gateway.mcp.enable",
@@ -383,7 +455,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -416,7 +491,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -447,7 +525,10 @@ mod tests {
                 proxy_resources: true,
                 proxy_prompts: false,
                 expose_tools: Some(vec!["scrape".to_string()]),
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -860,7 +941,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -929,6 +1013,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn virtual_server_remove_deletes_configured_service_row() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "stale-registry".to_string(),
+                    service: "mcpregistry".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig {
+                        mcp: true,
+                        ..crate::config::VirtualServerSurfacesConfig::default()
+                    },
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let removed = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.remove",
+            json!({"id": "stale-registry"}),
+        )
+        .await
+        .expect("remove virtual server");
+
+        assert_eq!(removed["id"], "stale-registry");
+        assert_eq!(removed["warnings"][0]["code"], "unknown_service");
+
+        let remaining = dispatch_with_manager(&manager, "gateway.list", json!({}))
+            .await
+            .expect("list after remove");
+        assert_eq!(remaining.as_array().expect("array").len(), 0);
+    }
+
+    #[tokio::test]
+    async fn virtual_server_quarantine_list_and_restore_round_trip() {
+        let manager = test_manager();
+        manager
+            .seed_config(crate::config::LabConfig {
+                quarantined_virtual_servers: vec![crate::config::VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: crate::config::VirtualServerSurfacesConfig {
+                        mcp: true,
+                        ..crate::config::VirtualServerSurfacesConfig::default()
+                    },
+                    mcp_policy: None,
+                }],
+                ..crate::config::LabConfig::default()
+            })
+            .await;
+
+        let quarantined = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.quarantine.list",
+            json!({}),
+        )
+        .await
+        .expect("list quarantine");
+        assert_eq!(quarantined.as_array().expect("array").len(), 1);
+        assert_eq!(quarantined[0]["id"], "plex");
+
+        let restored = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.quarantine.restore",
+            json!({"id": "plex"}),
+        )
+        .await
+        .expect("restore quarantine");
+        assert_eq!(restored["id"], "plex");
+
+        let remaining = dispatch_with_manager(
+            &manager,
+            "gateway.virtual_server.quarantine.list",
+            json!({}),
+        )
+        .await
+        .expect("list after restore");
+        assert_eq!(remaining.as_array().expect("array").len(), 0);
+
+        let listed = dispatch_with_manager(&manager, "gateway.list", json!({}))
+            .await
+            .expect("list active");
+        assert_eq!(listed.as_array().expect("array").len(), 1);
+        assert_eq!(listed[0]["id"], "plex");
+    }
+
+    #[tokio::test]
     async fn invalid_gateway_specs_return_validation_errors() {
         let manager = test_manager();
 
@@ -965,7 +1139,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -1004,7 +1181,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 
@@ -1070,7 +1250,10 @@ mod tests {
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }])
             .await;
 

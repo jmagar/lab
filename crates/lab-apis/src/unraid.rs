@@ -19,6 +19,7 @@ pub use client::UnraidClient;
 pub use error::UnraidError;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 
 /// Compile-time metadata for the `unraid` module.
 pub const META: PluginMeta = PluginMeta {
@@ -33,16 +34,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Unraid Connect API (e.g. https://10.0.0.2:31337)",
             example: "https://10.0.0.2:31337",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "UNRAID_API_KEY",
             description: "Unraid API key (X-API-Key header)",
             example: "your-api-key",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(31337),
+    supports_multi_instance: false,
 };
 
 // ---------------------------------------------------------------------------

@@ -376,7 +376,7 @@ export function normalizeServerView(
     const classified = classifyWarning(message)
 
     return {
-      code: classified.code,
+      code: warning.code ?? classified.code,
       message,
       timestamp: NOW(),
     }
@@ -388,7 +388,8 @@ export function normalizeServerView(
       description: '',
       destructive: false,
     }))
-  const mcpEnabled = (view.enabled ?? true) && (view.surfaces?.mcp?.enabled ?? false)
+  const defaultMcpEnabled = view.source === 'in_process' ? (view.enabled ?? true) : false
+  const mcpEnabled = (view.enabled ?? true) && (view.surfaces?.mcp?.enabled ?? defaultMcpEnabled)
 
   return {
     id: view.id,

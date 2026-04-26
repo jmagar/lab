@@ -6,9 +6,9 @@
 //!   3. `config.toml` (searched: `./` → `~/.lab/` → `~/.config/lab/`)
 //!   4. Built-in defaults
 //!
-//! URLs and secrets belong in `.env`. Everything else (logging, CORS,
-//! MCP transport, admin flags, per-service preferences) belongs in
-//! `config.toml` but can still be overridden via env vars.
+//! Service credentials and instance endpoints belong in `.env`. Non-secret
+//! operator preferences and defaults (logging, CORS, MCP transport, admin
+//! flags, registry URLs, workspace roots) belong in `config.toml`.
 //!
 //! Multi-instance services follow the `S_<LABEL>_URL` pattern: a service
 //! like `unraid` reads `UNRAID_URL` as the default instance and
@@ -25,6 +25,8 @@ use anyhow::{Context, Result};
 use lab_apis::extract::types::ServiceCreds;
 use lab_auth::config as auth_config;
 use serde::{Deserialize, Serialize, Serializer};
+
+pub const DEFAULT_MCPREGISTRY_URL: &str = "https://registry.modelcontextprotocol.io";
 
 /// Fully-resolved `lab` configuration, assembled from env + TOML.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -47,12 +49,22 @@ pub struct LabConfig {
     /// Web UI preferences.
     #[serde(default)]
     pub web: WebPreferences,
+    /// Shared Lab workspace root. Backs the read-only attachment picker and
+    /// local writable stash workspaces.
+    #[serde(default)]
+    pub workspace: WorkspacePreferences,
+    /// MCP Registry upstream preferences.
+    #[serde(default)]
+    pub mcpregistry: McpRegistryPreferences,
     /// OAuth callback relay preferences.
     #[serde(default)]
     pub oauth: OauthPreferences,
     /// Device runtime preferences.
     #[serde(default)]
     pub device: Option<DevicePreferences>,
+    /// Node runtime preferences.
+    #[serde(default)]
+    pub node: Option<NodePreferences>,
     /// Admin tool settings.
     #[serde(default)]
     pub admin: AdminPreferences,
@@ -68,6 +80,9 @@ pub struct LabConfig {
     /// Virtual MCP servers backed by canonically configured Lab services.
     #[serde(default)]
     pub virtual_servers: Vec<VirtualServerConfig>,
+    /// Virtual servers whose backing service is no longer registered in this binary.
+    #[serde(default)]
+    pub quarantined_virtual_servers: Vec<VirtualServerConfig>,
     /// Deploy service preferences (feature-gated at the consumer level).
     #[serde(default)]
     pub deploy: Option<DeployPreferences>,
@@ -87,6 +102,8 @@ pub struct DeployPreferences {
 pub struct DeployDefaults {
     pub remote_path: Option<String>,
     pub service: Option<String>,
+    #[serde(default)]
+    pub restart: Option<RestartModel>,
     pub service_scope: Option<ServiceScope>,
     pub max_parallel: Option<u32>,
     #[serde(default)]
@@ -101,7 +118,18 @@ pub struct DeployDefaults {
 pub struct DeployHostOverride {
     pub remote_path: Option<String>,
     pub service: Option<String>,
+    #[serde(default)]
+    pub restart: Option<RestartModel>,
     pub service_scope: Option<ServiceScope>,
+}
+
+/// Restart policy used by rollout/update flows after a binary install.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum RestartModel {
+    SystemService { service: String },
+    UserService { service: String },
+    WrapperCommand { command: Vec<String> },
 }
 
 /// Systemd scope for the unit restarted by deploy.
@@ -119,12 +147,29 @@ pub struct DevicePreferences {
     pub master: Option<String>,
 }
 
+/// Node runtime preferences.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NodePreferences {
+    #[serde(default)]
+    pub controller: Option<String>,
+    /// How many days of node logs to retain in the SQLite log store.
+    /// Defaults to 30 days when absent.
+    #[serde(default)]
+    pub log_retention_days: Option<u32>,
+}
+
 /// Runtime role for the current device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceRole {
     Master,
     NonMaster,
 }
+
+/// Alias for [`DeviceRole`] used after the `device → node` module rename.
+pub type NodeRole = DeviceRole;
+
+/// Alias for [`ResolvedDeviceRuntime`] used after the `device → node` module rename.
+pub type ResolvedNodeRuntime = ResolvedDeviceRuntime;
 
 /// Resolved device runtime configuration after comparing local and master hosts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,8 +179,50 @@ pub struct ResolvedDeviceRuntime {
     pub role: DeviceRole,
 }
 
+impl LabConfig {
+    #[must_use]
+    pub fn controller_host(&self) -> Option<&str> {
+        self.node
+            .as_ref()
+            .and_then(|prefs| prefs.controller.as_deref())
+            .or_else(|| {
+                self.device
+                    .as_ref()
+                    .and_then(|prefs| prefs.master.as_deref())
+            })
+    }
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_tool_search_top_k() -> usize {
+    10
+}
+
+fn default_tool_search_max_tools() -> usize {
+    5000
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSearchConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_tool_search_top_k")]
+    pub top_k_default: usize,
+    #[serde(default = "default_tool_search_max_tools")]
+    pub max_tools: usize,
+}
+
+impl Default for ToolSearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            top_k_default: default_tool_search_top_k(),
+            max_tools: default_tool_search_max_tools(),
+        }
+    }
 }
 
 /// Configuration for a single upstream MCP server.
@@ -168,16 +255,36 @@ pub struct UpstreamConfig {
     /// Optional allowlist of tool names/patterns to expose from this upstream.
     #[serde(default)]
     pub expose_tools: Option<Vec<String>>,
+    /// Optional allowlist of resource URIs/patterns to expose from this upstream.
+    #[serde(default)]
+    pub expose_resources: Option<Vec<String>>,
+    /// Optional allowlist of prompt names/patterns to expose from this upstream.
+    #[serde(default)]
+    pub expose_prompts: Option<Vec<String>>,
     /// Optional outbound OAuth configuration. Mutually exclusive with
     /// `bearer_token_env` — setting both is a config error.
     #[serde(default)]
     pub oauth: Option<UpstreamOauthConfig>,
+    #[serde(default)]
+    pub tool_search: ToolSearchConfig,
 }
 
 impl UpstreamConfig {
     /// Validate mutually-exclusive auth shapes. `bearer_token_env` and `oauth`
     /// both configured is a config error.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if !(1..=50).contains(&self.tool_search.top_k_default) {
+            return Err(ConfigError::InvalidToolSearchTopKDefault {
+                name: self.name.clone(),
+                value: self.tool_search.top_k_default,
+            });
+        }
+        if !(1..=10_000).contains(&self.tool_search.max_tools) {
+            return Err(ConfigError::InvalidToolSearchMaxTools {
+                name: self.name.clone(),
+                value: self.tool_search.max_tools,
+            });
+        }
         if self.bearer_token_env.is_some() && self.oauth.is_some() {
             return Err(ConfigError::ConflictingAuth {
                 name: self.name.clone(),
@@ -240,6 +347,10 @@ pub enum ConfigError {
     InvalidUrl { name: String, url: String },
     #[error("upstream '{name}' has oauth configured but no url — oauth requires an HTTP url")]
     MissingOauthUrl { name: String },
+    #[error("upstream '{name}' has invalid tool_search.top_k_default={value} — expected 1..=50")]
+    InvalidToolSearchTopKDefault { name: String, value: usize },
+    #[error("upstream '{name}' has invalid tool_search.max_tools={value} — expected 1..=10000")]
+    InvalidToolSearchMaxTools { name: String, value: usize },
 }
 
 /// Outbound OAuth configuration for an upstream MCP server.
@@ -529,6 +640,35 @@ pub struct WebPreferences {
     pub disable_auth: Option<bool>,
 }
 
+/// Shared workspace root for Lab-managed files.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorkspacePreferences {
+    /// Root directory used by fs browsing and stash-backed writable workspaces.
+    /// Defaults to `~/.lab/stash`.
+    #[serde(default)]
+    pub root: Option<PathBuf>,
+}
+
+/// MCP Registry upstream preferences.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpRegistryPreferences {
+    /// Upstream MCP Registry base URL.
+    #[serde(default = "default_mcpregistry_url_option")]
+    pub url: Option<String>,
+}
+
+impl Default for McpRegistryPreferences {
+    fn default() -> Self {
+        Self {
+            url: default_mcpregistry_url_option(),
+        }
+    }
+}
+
+fn default_mcpregistry_url_option() -> Option<String> {
+    Some(DEFAULT_MCPREGISTRY_URL.to_string())
+}
+
 /// OAuth local relay preferences.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OauthPreferences {
@@ -660,10 +800,47 @@ pub fn toml_candidates() -> Vec<PathBuf> {
 /// Cross-platform home directory.
 ///
 /// Checks `HOME` (Unix) then `USERPROFILE` (Windows). No external crate needed.
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
+}
+
+#[must_use]
+pub fn mcpregistry_url(config: &LabConfig) -> &str {
+    config
+        .mcpregistry
+        .url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .unwrap_or(DEFAULT_MCPREGISTRY_URL)
+}
+
+#[must_use]
+pub fn workspace_root_for_home(config: &LabConfig, home: &Path) -> PathBuf {
+    config
+        .workspace
+        .root
+        .as_deref()
+        .map(|root| expand_home_path(root, home))
+        .unwrap_or_else(|| home.join(".lab").join("stash"))
+}
+
+pub fn workspace_root_path(config: &LabConfig) -> Result<PathBuf> {
+    let home = home_dir().ok_or_else(|| anyhow::anyhow!("HOME env var not set"))?;
+    Ok(workspace_root_for_home(config, &home))
+}
+
+fn expand_home_path(path: &Path, home: &Path) -> PathBuf {
+    let raw = path.as_os_str().to_string_lossy();
+    if raw == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        return home.join(rest);
+    }
+    path.to_path_buf()
 }
 
 /// Standard location for the `.env` file: `~/.lab/.env`.
@@ -974,7 +1151,11 @@ pub fn write_env(path: &Path, new_creds: &[ServiceCreds], force: bool) -> Result
 ///
 /// # Errors
 /// Returns an error if the tmp file cannot be written or renamed.
-pub fn write_env_pairs(path: &Path, pairs: &[(String, String)], force: bool) -> Result<Vec<String>> {
+pub fn write_env_pairs(
+    path: &Path,
+    pairs: &[(String, String)],
+    force: bool,
+) -> Result<Vec<String>> {
     let existing_raw = if path.exists() {
         std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?
     } else {
@@ -1192,6 +1373,67 @@ assets_dir = "/tmp/labby"
 
         assert!(cfg.oauth.machines.is_empty());
         assert_eq!(cfg.web.assets_dir, Some(PathBuf::from("/tmp/labby")));
+    }
+
+    #[test]
+    fn mcpregistry_url_defaults_to_official_registry() {
+        let cfg = toml::from_str::<LabConfig>("").expect("empty config should parse");
+
+        assert_eq!(
+            cfg.mcpregistry.url.as_deref(),
+            Some(DEFAULT_MCPREGISTRY_URL)
+        );
+    }
+
+    #[test]
+    fn quarantined_virtual_servers_round_trip_through_toml() {
+        let raw = r#"
+[[quarantined_virtual_servers]]
+id = "stale-registry"
+service = "mcpregistry"
+enabled = true
+
+[quarantined_virtual_servers.surfaces]
+mcp = true
+"#;
+        let cfg = toml::from_str::<LabConfig>(raw).expect("quarantine config should parse");
+        assert_eq!(cfg.quarantined_virtual_servers.len(), 1);
+        assert_eq!(cfg.quarantined_virtual_servers[0].id, "stale-registry");
+        assert_eq!(cfg.quarantined_virtual_servers[0].service, "mcpregistry");
+        assert!(cfg.quarantined_virtual_servers[0].surfaces.mcp);
+
+        let serialized = toml::to_string(&cfg).expect("config should serialize");
+        let reparsed =
+            toml::from_str::<LabConfig>(&serialized).expect("serialized config should parse");
+        assert_eq!(reparsed.quarantined_virtual_servers.len(), 1);
+        assert_eq!(reparsed.quarantined_virtual_servers[0].id, "stale-registry");
+    }
+
+    #[test]
+    fn workspace_root_defaults_to_lab_stash_under_home() {
+        let cfg = toml::from_str::<LabConfig>("").expect("empty config should parse");
+        let home = Path::new("/tmp/lab-home");
+
+        assert_eq!(
+            workspace_root_for_home(&cfg, home),
+            home.join(".lab").join("stash")
+        );
+    }
+
+    #[test]
+    fn workspace_root_reads_config_toml_value() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[workspace]
+root = "/srv/lab-stash"
+"#,
+        )
+        .expect("workspace config should parse");
+
+        assert_eq!(
+            workspace_root_for_home(&cfg, Path::new("/tmp/ignored")),
+            PathBuf::from("/srv/lab-stash")
+        );
     }
 
     #[test]

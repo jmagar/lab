@@ -5,13 +5,21 @@
 //! host transitions between `online` and `offline`, plus an initial snapshot
 //! line for every host on startup.
 //!
+//! Single-instance: refuses to start if another `lab deploy monitor` is already
+//! running, using a pidfile at `~/.lab/run/deploy-monitor.lock`. Stale pidfiles
+//! (process no longer alive) are silently overwritten.
+//!
 //! Suitable as input for Claude Code's Monitor tool (reads stdout line by line).
 
 use std::collections::HashMap;
 use std::io::Write as _;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use anyhow::{Context, Result, bail};
+use nix::sys::signal::kill;
+use nix::unistd::Pid;
 use tokio::net::TcpStream;
 use tokio::signal;
 
@@ -47,10 +55,74 @@ fn emit(event: &HostStatusEvent) {
     drop(std::io::stdout().flush());
 }
 
+/// Pidfile path used to enforce single-instance.
+fn lock_path() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join(".lab/run/deploy-monitor.lock")
+}
+
+/// Returns true if a process with the given PID is alive.
+///
+/// Uses `kill(pid, 0)` semantics: signal 0 doesn't actually send a signal,
+/// it just probes whether the process exists and we have permission to
+/// signal it. `ESRCH` means the PID is gone (stale pidfile).
+fn pid_alive(pid: i32) -> bool {
+    matches!(kill(Pid::from_raw(pid), None), Ok(()))
+}
+
+/// RAII guard for the single-instance pidfile. Removes the file on drop.
+struct LockGuard {
+    path: PathBuf,
+}
+
+impl LockGuard {
+    fn acquire(path: PathBuf) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create lock directory {}", parent.display()))?;
+        }
+
+        if let Ok(existing) = std::fs::read_to_string(&path)
+            && let Ok(pid) = existing.trim().parse::<i32>()
+            && pid_alive(pid)
+        {
+            bail!(
+                "another `lab deploy monitor` is already running (pid {pid}); \
+                 stop it or delete {} if you're sure it's stale",
+                path.display()
+            );
+        }
+
+        std::fs::write(&path, std::process::id().to_string())
+            .with_context(|| format!("write lock file {}", path.display()))?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        drop(std::fs::remove_file(&self.path));
+    }
+}
+
 /// Watch the given hosts, emitting JSON state-change events to stdout.
 ///
-/// Runs until Ctrl-C is received.
+/// Holds a single-instance pidfile lock; returns an error if another
+/// `lab deploy monitor` is already running. Runs until Ctrl-C is received.
 pub async fn watch_hosts(
+    runner: &DefaultRunner,
+    targets: Vec<String>,
+    interval: Duration,
+    probe_timeout: Duration,
+) -> Result<()> {
+    let _lock = LockGuard::acquire(lock_path())?;
+    watch_hosts_inner(runner, targets, interval, probe_timeout).await;
+    Ok(())
+}
+
+async fn watch_hosts_inner(
     runner: &DefaultRunner,
     targets: Vec<String>,
     interval: Duration,

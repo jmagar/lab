@@ -32,7 +32,8 @@ import { gatewayActionUrl } from './gateway-config'
 import { confirmGatewayParams } from './gateway-request'
 import { EXPOSE_NONE_PATTERN, stripExposeNonePattern } from './tool-exposure-draft'
 import { synthesizeLabGateway } from './gateway-list-model'
-import { performServiceAction, type ServiceActionError } from './service-action-client'
+import { performServiceAction, safeFanout, type ServiceActionError } from './service-action-client'
+import { gatewayDegradedWarningCounts, hasGatewayDegradedWarnings } from './gateway-degradation'
 
 export class GatewayApiError extends Error implements ServiceActionError {
   status: number
@@ -161,18 +162,53 @@ async function normalizeListedServerView(
   signal?: AbortSignal,
 ): Promise<Gateway> {
   if (view.source === 'in_process') {
-    const [actions, allowedActions] = await Promise.all([
-      fetchSortedServiceActions(view.name, signal),
+    // Service catalog fan-out must be fail-open; stale service rows should degrade, not break gateway.list.
+    const [actionsResult, allowedActions] = await Promise.all([
+      fetchSortedServiceActions(view.name, signal).then(
+        (actions) => ({ ok: true as const, actions }),
+        (error: unknown) => ({ ok: false as const, error }),
+      ),
       fetchVirtualServerAllowedActions(view.id, signal),
     ])
 
-    return normalizeServerView(view, {
-      tools: actions,
+    if (actionsResult.ok) {
+      return normalizeServerView(view, {
+        tools: actionsResult.actions,
+        allowed_actions: allowedActions,
+      }, runtime)
+    }
+
+    if (signal?.aborted) {
+      throw actionsResult.error
+    }
+
+    const message = actionsResult.error instanceof Error
+      ? actionsResult.error.message
+      : 'Failed to load service action catalog'
+
+    return normalizeServerView({
+      ...view,
+      warnings: [
+        ...(view.warnings ?? []),
+        {
+          code: 'service_catalog_unavailable',
+          message,
+        },
+      ],
+    }, {
+      tools: [],
       allowed_actions: allowedActions,
     }, runtime)
   }
 
   return normalizeServerView(view, undefined, runtime)
+}
+
+function logGatewayDegradation(gateways: Gateway[]) {
+  const counts = gatewayDegradedWarningCounts(gateways)
+  if (hasGatewayDegradedWarnings(counts)) {
+    console.warn('[gateway] degraded gateway rows', counts)
+  }
 }
 
 async function normalizeLabServiceServer(
@@ -259,9 +295,33 @@ export const gatewayApi = {
       gatewayAction<BackendGatewayMcpRuntimeView[]>('gateway.mcp.list', {}, signal),
     ])
     const runtimeByName = new Map(runtimeRows.map((row) => [row.name, row]))
-    return Promise.all(
-      views.map((view) => normalizeListedServerView(view, runtimeByName.get(view.name), signal)),
+    const normalizedResults = await safeFanout(
+      views,
+      (view) => normalizeListedServerView(view, runtimeByName.get(view.name), signal),
     )
+    const gateways = normalizedResults.map((result) => {
+      if (result.ok) {
+        return result.value
+      }
+      if (signal?.aborted) {
+        throw result.error
+      }
+      const message = result.error instanceof Error
+        ? result.error.message
+        : 'Failed to load gateway row details'
+      return normalizeServerView({
+        ...result.item,
+        warnings: [
+          ...(result.item.warnings ?? []),
+          {
+            code: 'service_catalog_unavailable',
+            message,
+          },
+        ],
+      }, result.item.source === 'in_process' ? { tools: [] } : undefined)
+    })
+    logGatewayDegradation(gateways)
+    return gateways
   },
 
   async get(id: string, signal?: AbortSignal): Promise<Gateway> {
@@ -323,6 +383,14 @@ export const gatewayApi = {
 
   async remove(id: string, signal?: AbortSignal): Promise<void> {
     await gatewayAction<BackendGatewayView>('gateway.remove', confirmGatewayParams({ name: id }), signal)
+  },
+
+  async removeVirtualServer(id: string, signal?: AbortSignal): Promise<void> {
+    await gatewayAction<BackendServerView>(
+      'gateway.virtual_server.remove',
+      confirmGatewayParams({ id }),
+      signal,
+    )
   },
 
   async test(id: string, signal?: AbortSignal): Promise<TestGatewayResult> {

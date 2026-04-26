@@ -12,10 +12,14 @@ use super::params::GatewayUpdatePatch;
 
 pub fn load_gateway_config(path: &Path) -> Result<LabConfig, ToolError> {
     match std::fs::read_to_string(path) {
-        Ok(raw) => toml::from_str::<LabConfig>(&raw).map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".to_string(),
-            message: format!("failed to parse {}: {e}", path.display()),
-        }),
+        Ok(raw) => {
+            let cfg = toml::from_str::<LabConfig>(&raw).map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("failed to parse {}: {e}", path.display()),
+            })?;
+            validate_upstreams(&cfg.upstream)?;
+            Ok(cfg)
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(LabConfig::default()),
         Err(e) => Err(ToolError::Sdk {
             sdk_kind: "internal_error".to_string(),
@@ -147,6 +151,9 @@ pub fn update_upstream(
     if let Some(proxy_resources) = patch.proxy_resources {
         cfg.upstream[index].proxy_resources = proxy_resources;
     }
+    if let Some(proxy_prompts) = patch.proxy_prompts {
+        cfg.upstream[index].proxy_prompts = proxy_prompts;
+    }
     if let Some(expose_tools) = patch.expose_tools {
         // Treat empty array as "clear filter" — an empty allowlist that blocks
         // all tools is never useful and is the natural way to say "remove filter".
@@ -155,8 +162,23 @@ pub fn update_upstream(
             other => other,
         };
     }
+    if let Some(expose_resources) = patch.expose_resources {
+        cfg.upstream[index].expose_resources = match expose_resources {
+            Some(ref v) if v.is_empty() => None,
+            other => other,
+        };
+    }
+    if let Some(expose_prompts) = patch.expose_prompts {
+        cfg.upstream[index].expose_prompts = match expose_prompts {
+            Some(ref v) if v.is_empty() => None,
+            other => other,
+        };
+    }
     if let Some(oauth) = patch.oauth {
         cfg.upstream[index].oauth = oauth;
+    }
+    if let Some(tool_search) = patch.tool_search {
+        cfg.upstream[index].tool_search = tool_search.unwrap_or_default();
     }
 
     validate_upstream(&cfg.upstream[index])?;
@@ -213,6 +235,16 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
         | crate::config::ConfigError::InvalidUrl { .. } => ToolError::InvalidParam {
             message: e.to_string(),
             param: "url".to_string(),
+        },
+        crate::config::ConfigError::InvalidToolSearchTopKDefault { .. } => {
+            ToolError::InvalidParam {
+                message: e.to_string(),
+                param: "tool_search.top_k_default".to_string(),
+            }
+        }
+        crate::config::ConfigError::InvalidToolSearchMaxTools { .. } => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "tool_search.max_tools".to_string(),
         },
     })?;
 
@@ -428,7 +460,10 @@ mod tests {
                     proxy_resources: false,
                     proxy_prompts: false,
                     expose_tools: None,
+                    expose_resources: None,
+                    expose_prompts: None,
                     oauth: None,
+                    tool_search: crate::config::ToolSearchConfig::default(),
                 },
                 UpstreamConfig {
                     enabled: true,
@@ -440,7 +475,10 @@ mod tests {
                     proxy_resources: false,
                     proxy_prompts: false,
                     expose_tools: None,
+                    expose_resources: None,
+                    expose_prompts: None,
                     oauth: None,
+                    tool_search: crate::config::ToolSearchConfig::default(),
                 },
             ],
             ..LabConfig::default()
@@ -456,7 +494,7 @@ mod tests {
             r#"
 [[upstream]]
 name = "a"
-url = "http://127.0.0.1:9001"
+url = "https://example.com/mcp"
 
 [[upstream]]
 name = "b"
@@ -488,7 +526,10 @@ args = ["server.js"]
                 proxy_resources: true,
                 proxy_prompts: true,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect("insert");
@@ -663,7 +704,10 @@ args = ["server.js"]
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("duplicate should fail");
@@ -686,7 +730,10 @@ args = ["server.js"]
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }],
             ..LabConfig::default()
         };
@@ -710,7 +757,10 @@ args = ["server.js"]
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             }],
             ..LabConfig::default()
         };
@@ -733,7 +783,10 @@ args = ["server.js"]
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("invalid scheme");
@@ -755,7 +808,10 @@ args = ["server.js"]
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("bind-all should be rejected");
@@ -777,7 +833,10 @@ args = ["server.js"]
                 proxy_resources: false,
                 proxy_prompts: false,
                 expose_tools: None,
+                expose_resources: None,
+                expose_prompts: None,
                 oauth: None,
+                tool_search: crate::config::ToolSearchConfig::default(),
             },
         )
         .expect_err("raw bearer token should be rejected");

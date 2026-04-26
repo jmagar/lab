@@ -22,6 +22,7 @@ use std::time::Instant;
 
 use crate::core::error::ApiError;
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, TEXT_OPTIONAL_FIELD, URL_OPTIONAL_FIELD};
 use crate::core::status::ServiceStatus;
 use crate::core::traits::ServiceClient;
 
@@ -37,6 +38,7 @@ pub const META: PluginMeta = PluginMeta {
         description: "OpenAI API key",
         example: "sk-proj-...",
         secret: true,
+        ui: Some(&SECRET_FIELD),
     }],
     optional_env: &[
         EnvVar {
@@ -44,15 +46,18 @@ pub const META: PluginMeta = PluginMeta {
             description: "Override base URL (for OpenAI-compatible servers)",
             example: "http://localhost:11434/v1",
             secret: false,
+            ui: Some(&URL_OPTIONAL_FIELD),
         },
         EnvVar {
             name: "OPENAI_ORG_ID",
             description: "Organization id for billing/quota",
             example: "org-...",
             secret: false,
+            ui: Some(&TEXT_OPTIONAL_FIELD),
         },
     ],
     default_port: None,
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for OpenAiClient {

@@ -22,7 +22,7 @@ Tautulli uses a single command-dispatch API: all requests go to `GET /api/v2` wi
 |---------|--------|-------|
 | SDK (`lab-apis`) | ✅ (full) | `TautulliClient` in `crates/lab-apis/src/tautulli/client.rs` with 23 methods |
 | Dispatch layer | ✅ | `crates/lab/src/dispatch/tautulli/` — catalog, client, params, dispatch |
-| MCP | ✅ | `crates/lab/src/mcp/services/tautulli.rs` — thin bridge to dispatch layer |
+| MCP | ✅ | `crates/lab/src/registry.rs` — direct registry entry to dispatch layer |
 | CLI | ✅ | `crates/lab/src/cli/tautulli.rs` — generic action dispatcher calling MCP dispatch |
 | API | ✅ | `crates/lab/src/api/services/tautulli.rs` — axum route calling dispatch layer |
 

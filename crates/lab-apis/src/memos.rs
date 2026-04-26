@@ -18,6 +18,7 @@ pub use error::MemosError;
 use std::time::Instant;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 use crate::core::{ApiError, ServiceClient, ServiceStatus};
 
 /// Compile-time metadata for the memos module.
@@ -33,16 +34,19 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the Memos instance",
             example: "http://localhost:5230",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "MEMOS_TOKEN",
             description: "Access token from Memos Settings → My Account → Access Tokens",
             example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(5230),
+    supports_multi_instance: false,
 };
 
 impl ServiceClient for MemosClient {

@@ -43,4 +43,6 @@ Each parser handles one artifact type (servarr `config.xml`, qBittorrent `qBitto
 
 ## Category
 
-`Category::Bootstrap` — the **only** member of this category. Don't add more.
+`Category::Bootstrap` — synthetic bootstrap/operator services. `extract` shares
+this category with peers such as `deploy`, `doctor`, and `device_runtime`; do
+not treat it as the only member.

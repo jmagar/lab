@@ -139,7 +139,7 @@ Note: If `QBITTORRENT_SID` is absent, the client is constructed with an empty co
 
 ### Surface Layers
 
-- **MCP** (`crates/lab/src/mcp/services/qbittorrent.rs`): Thin bridge that delegates `dispatch(action, params)` to the dispatch layer.
+- **MCP** (`crates/lab/src/registry.rs`): Thin bridge that registers shared dispatch directly.
 - **CLI** (`crates/lab/src/cli/qbittorrent.rs`): Thin shim using `run_action_command()` helper. Accepts `action` positional + `--params <json>` flag.
 - **API** (`crates/lab/src/api/services/qbittorrent.rs`): Feature-gated route group. Handler extracts `ActionRequest`, looks up client from `AppState`, calls `handle_action()` helper with pre-built client.
 

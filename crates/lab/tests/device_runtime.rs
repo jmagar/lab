@@ -1,26 +1,26 @@
-use lab::device::checkin::{DeviceHello, DeviceStatus};
-use lab::device::log_event::DeviceLogEvent;
-use lab::device::queue::DeviceOutboundQueue;
-use lab::device::runtime::DeviceRuntime;
-use lab::device::store::DeviceFleetStore;
+use lab::node::checkin::{NodeHello, NodeStatus};
+use lab::node::log_event::NodeLogEvent;
+use lab::node::queue::NodeOutboundQueue;
+use lab::node::runtime::NodeRuntime;
+use lab::node::store::NodeStore;
 
 #[tokio::test]
 async fn device_store_marks_hello_devices_connected_and_tracks_status() {
-    let store = DeviceFleetStore::default();
+    let store = NodeStore::default();
     store
-        .record_hello(DeviceHello {
-            device_id: "tootie".into(),
+        .record_hello(NodeHello {
+            node_id: "tootie".into(),
             role: "master".into(),
             version: "1.0.0".into(),
         })
         .await;
 
-    let snapshot = store.device("tootie").await.unwrap();
+    let snapshot = store.node("tootie").await.unwrap();
     assert!(snapshot.connected);
 
     store
-        .record_status(DeviceStatus {
-            device_id: "tootie".into(),
+        .record_status(NodeStatus {
+            node_id: "tootie".into(),
             connected: true,
             cpu_percent: Some(3.5),
             memory_used_bytes: Some(1024),
@@ -30,9 +30,9 @@ async fn device_store_marks_hello_devices_connected_and_tracks_status() {
         })
         .await;
 
-    let snapshot = store.device("tootie").await.unwrap();
+    let snapshot = store.node("tootie").await.unwrap();
     assert!(snapshot.connected);
-    assert_eq!(snapshot.device_id, "tootie");
+    assert_eq!(snapshot.node_id, "tootie");
 }
 
 #[tokio::test]
@@ -44,7 +44,7 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     )
     .unwrap();
 
-    let runtime = DeviceRuntime::non_master_for_test_with_home(
+    let runtime = NodeRuntime::non_master_for_test_with_home(
         "dookie",
         "http://master:8765".to_string(),
         temp.path(),
@@ -52,14 +52,17 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     .unwrap();
     runtime.upload_initial_metadata().await.unwrap();
 
-    let queue = DeviceOutboundQueue::open(temp.path().join(".lab/device-runtime-queue.jsonl"))
+    let queue = NodeOutboundQueue::open(temp.path().join(".lab/node-runtime-queue.jsonl"))
         .await
         .unwrap();
     let drained = queue.drain_batch(10).await.unwrap();
     assert_eq!(drained.len(), 1);
     assert_eq!(drained[0].kind, "metadata");
-    assert_eq!(drained[0].payload["device_id"], "dookie");
-    assert_eq!(drained[0].payload["discovered_configs"][0]["path"], ".claude.json");
+    assert_eq!(drained[0].payload["node_id"], "dookie");
+    assert_eq!(
+        drained[0].payload["discovered_configs"][0]["path"],
+        ".claude.json"
+    );
     assert!(
         drained[0].payload["discovered_configs"][0]["content_hash"]
             .as_str()
@@ -71,12 +74,12 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
 
 #[tokio::test]
 async fn master_store_keeps_uploaded_logs_by_device() {
-    let store = DeviceFleetStore::default();
+    let store = NodeStore::default();
     store
         .record_logs(
             "dookie",
-            vec![DeviceLogEvent {
-                device_id: "dookie".into(),
+            vec![NodeLogEvent {
+                node_id: "dookie".into(),
                 source: "journald".into(),
                 timestamp_unix_ms: 1,
                 level: Some("info".into()),
@@ -86,22 +89,22 @@ async fn master_store_keeps_uploaded_logs_by_device() {
         )
         .await;
 
-    let snapshot = store.device("dookie").await.unwrap();
+    let snapshot = store.node("dookie").await.unwrap();
     assert_eq!(snapshot.logs.len(), 1);
 }
 
 #[tokio::test]
 async fn queue_syslog_batch_appends_entries_for_websocket_delivery() {
     let temp = tempfile::tempdir().unwrap();
-    let runtime = DeviceRuntime::non_master_for_test_with_home(
+    let runtime = NodeRuntime::non_master_for_test_with_home(
         "dookie",
         "http://master:8765".to_string(),
         temp.path(),
     )
     .unwrap();
     runtime
-        .queue_syslog_batch(vec![DeviceLogEvent {
-            device_id: "dookie".into(),
+        .queue_syslog_batch(vec![NodeLogEvent {
+            node_id: "dookie".into(),
             source: "journald".into(),
             timestamp_unix_ms: 1,
             level: Some("info".into()),
@@ -111,8 +114,8 @@ async fn queue_syslog_batch_appends_entries_for_websocket_delivery() {
         .await
         .unwrap();
     runtime
-        .queue_syslog_batch(vec![DeviceLogEvent {
-            device_id: "dookie".into(),
+        .queue_syslog_batch(vec![NodeLogEvent {
+            node_id: "dookie".into(),
             source: "journald".into(),
             timestamp_unix_ms: 2,
             level: Some("warn".into()),
@@ -122,7 +125,7 @@ async fn queue_syslog_batch_appends_entries_for_websocket_delivery() {
         .await
         .unwrap();
 
-    let queue = DeviceOutboundQueue::open(temp.path().join(".lab/device-runtime-queue.jsonl"))
+    let queue = NodeOutboundQueue::open(temp.path().join(".lab/node-runtime-queue.jsonl"))
         .await
         .unwrap();
     let drained = queue.drain_batch(10).await.unwrap();
@@ -133,13 +136,13 @@ async fn queue_syslog_batch_appends_entries_for_websocket_delivery() {
 
 #[tokio::test]
 async fn device_store_search_logs_applies_offset_limit_and_retention() {
-    let store = DeviceFleetStore::default();
+    let store = NodeStore::default();
     for index in 0..10_100 {
         store
             .record_logs(
                 "dookie",
-                vec![DeviceLogEvent {
-                    device_id: "dookie".into(),
+                vec![NodeLogEvent {
+                    node_id: "dookie".into(),
                     source: "journald".into(),
                     timestamp_unix_ms: index,
                     level: Some("info".into()),
@@ -150,11 +153,11 @@ async fn device_store_search_logs_applies_offset_limit_and_retention() {
             .await;
     }
 
-    let retained = store.device("dookie").await.unwrap().logs;
+    let retained = store.node("dookie").await.unwrap().logs;
     assert_eq!(retained.len(), 10_000);
-    assert_eq!(retained.first().unwrap().message, "hello-100");
+    assert_eq!(retained.front().unwrap().message, "hello-100");
 
-    let searched = store.search_logs_for_device("dookie", "hello", 5, 3).await;
+    let searched = store.search_logs_for_node("dookie", "hello", 5, 3).await;
     assert_eq!(searched.len(), 3);
     assert_eq!(searched.first().unwrap().message, "hello-105");
 }

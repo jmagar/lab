@@ -47,6 +47,14 @@ pub enum ToolError {
         /// Known instance labels.
         valid: Vec<String>,
     },
+    /// Tool name matched multiple upstream tools; caller must qualify it
+    /// with the upstream prefix (e.g. `upstream::tool_name`).
+    AmbiguousTool {
+        /// Human-readable message.
+        message: String,
+        /// Fully-qualified candidate names the caller should choose from.
+        valid: Vec<String>,
+    },
     /// Destructive action invoked without the required confirmation signal.
     ConfirmationRequired {
         /// Human-readable message.
@@ -96,6 +104,11 @@ impl Serialize for ToolError {
                 "message": message,
                 "valid": valid,
             }),
+            Self::AmbiguousTool { message, valid } => serde_json::json!({
+                "kind": "ambiguous_tool",
+                "message": message,
+                "valid": valid,
+            }),
             Self::ConfirmationRequired { message } => serde_json::json!({
                 "kind": "confirmation_required",
                 "message": message,
@@ -138,6 +151,7 @@ impl ToolError {
             Self::MissingParam { .. } => "missing_param",
             Self::InvalidParam { .. } => "invalid_param",
             Self::UnknownInstance { .. } => "unknown_instance",
+            Self::AmbiguousTool { .. } => "ambiguous_tool",
             Self::ConfirmationRequired { .. } => "confirmation_required",
             Self::Conflict { .. } => "conflict",
             Self::Sdk { sdk_kind, .. } => sdk_kind.as_str(),
@@ -364,9 +378,9 @@ impl From<lab_apis::mcpregistry::error::RegistryError> for ToolError {
 // remain caller-fixable `invalid_param`, and upstream fetch failures surface as
 // `network_error`.
 #[cfg(feature = "mcpregistry")]
-impl From<crate::dispatch::mcpregistry::store::RegistryStoreError> for ToolError {
-    fn from(e: crate::dispatch::mcpregistry::store::RegistryStoreError) -> Self {
-        use crate::dispatch::mcpregistry::store::RegistryStoreError;
+impl From<crate::dispatch::marketplace::store::RegistryStoreError> for ToolError {
+    fn from(e: crate::dispatch::marketplace::store::RegistryStoreError) -> Self {
+        use crate::dispatch::marketplace::store::RegistryStoreError;
         let sdk_kind = match &e {
             RegistryStoreError::Upstream(_) => "network_error",
             RegistryStoreError::InvalidCursor(_) => "invalid_param",
@@ -375,6 +389,24 @@ impl From<crate::dispatch::mcpregistry::store::RegistryStoreError> for ToolError
         Self::Sdk {
             sdk_kind: sdk_kind.to_string(),
             message: format!("registry store: {e}"),
+        }
+    }
+}
+
+// acp_registry has an `Api { status, body }` variant in addition to the
+// standard `Request(ApiError)` wrapper, so it gets a hand-rolled impl
+// rather than going through the macro.
+#[cfg(feature = "acp_registry")]
+impl From<lab_apis::acp_registry::AcpRegistryError> for ToolError {
+    fn from(e: lab_apis::acp_registry::AcpRegistryError) -> Self {
+        use lab_apis::acp_registry::AcpRegistryError;
+        let sdk_kind = match &e {
+            AcpRegistryError::Request(api) => api.kind().to_string(),
+            AcpRegistryError::Api { .. } => "server_error".to_string(),
+        };
+        Self::Sdk {
+            sdk_kind,
+            message: e.to_string(),
         }
     }
 }

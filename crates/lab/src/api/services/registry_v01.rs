@@ -15,7 +15,7 @@ use serde_json::json;
 
 use crate::api::state::AppState;
 use crate::dispatch::error::ToolError;
-use crate::dispatch::mcpregistry::store::StoreListParams;
+use crate::dispatch::marketplace::store::StoreListParams;
 
 /// Query params for `GET /v0.1/servers`.
 ///
@@ -66,6 +66,7 @@ async fn list_servers(
         cursor: query.cursor,
         limit: query.limit,
         include_deleted: query.include_deleted,
+        latest_only: false,
         search: None,
         version: query.version,
         updated_since: query.updated_since,
@@ -75,7 +76,7 @@ async fn list_servers(
         hidden: query.hidden,
         tag: query.tag,
     };
-    let effective_search = crate::dispatch::mcpregistry::resolve_search_for_rest(
+    let effective_search = crate::dispatch::marketplace::resolve_search_for_rest(
         query.search.as_deref(),
         query.owner.as_deref(),
     )?;
@@ -83,10 +84,13 @@ async fn list_servers(
         params = params.with_search(search);
     }
 
-    let paged = store.list_servers(params).await.map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: format!("registry store list_servers: {e}"),
-    })?;
+    let paged = store
+        .list_servers(params)
+        .await
+        .map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: format!("registry store list_servers: {e}"),
+        })?;
 
     let body = json!({
         "servers": paged.servers,
@@ -103,9 +107,7 @@ async fn list_versions(
     if server_name.len() > SERVER_NAME_MAX_LEN {
         return Err(ToolError::Sdk {
             sdk_kind: "invalid_param".into(),
-            message: format!(
-                "serverName must be at most {SERVER_NAME_MAX_LEN} bytes"
-            ),
+            message: format!("serverName must be at most {SERVER_NAME_MAX_LEN} bytes"),
         });
     }
 
@@ -135,9 +137,7 @@ async fn get_server(
     if server_name.len() > SERVER_NAME_MAX_LEN {
         return Err(ToolError::Sdk {
             sdk_kind: "invalid_param".into(),
-            message: format!(
-                "serverName must be at most {SERVER_NAME_MAX_LEN} bytes"
-            ),
+            message: format!("serverName must be at most {SERVER_NAME_MAX_LEN} bytes"),
         });
     }
 

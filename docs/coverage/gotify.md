@@ -5,7 +5,7 @@
 **API version:** 2.0.2
 **SDK surface:** `crates/lab-apis/src/gotify/client.rs` (26 public methods)
 **Shared dispatch:** `crates/lab/src/dispatch/gotify/` (catalog.rs, client.rs, params.rs, dispatch.rs)
-**MCP adapter:** `crates/lab/src/mcp/services/gotify.rs` (thin bridge to dispatch)
+**MCP registration:** `crates/lab/src/registry.rs` (direct registry entry to dispatch)
 **CLI surface:** `crates/lab/src/cli/gotify.rs` (generic `action` + `key=value` params via `run_confirmable_action_command`)
 **API handler:** `crates/lab/src/api/services/gotify.rs` (thin adapter via `handle_action` helper)
 

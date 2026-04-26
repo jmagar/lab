@@ -11,7 +11,10 @@
 
 pub mod types;
 
-pub use types::{Artifact, ArtifactLang, Marketplace, Plugin, PluginSource};
+pub use types::{
+    Artifact, ArtifactLang, Marketplace, MarketplaceRuntime, Plugin, PluginComponent,
+    PluginComponentKind, PluginInstallState, PluginManifestSummary, PluginSource,
+};
 
 use crate::core::plugin::{Category, PluginMeta};
 
@@ -20,9 +23,10 @@ pub const META: PluginMeta = PluginMeta {
     name: "marketplace",
     display_name: "Marketplace",
     description: "Browse and install Claude Code plugins from configured marketplaces",
-    category: Category::Bootstrap,
+    category: Category::Marketplace,
     docs_url: "",
     required_env: &[],
     optional_env: &[],
     default_port: None,
+    supports_multi_instance: false,
 };

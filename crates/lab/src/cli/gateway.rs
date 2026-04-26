@@ -11,8 +11,8 @@ use tokio::time::sleep;
 use crate::cli::helpers::run_action_command;
 use crate::config::{LabConfig, config_toml_path};
 use crate::dispatch::clients::SharedServiceClients;
-use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::SHARED_GATEWAY_OAUTH_SUBJECT;
+use crate::dispatch::gateway::install_gateway_manager;
 use crate::dispatch::gateway::manager::{GatewayManager, GatewayRuntimeHandle};
 use crate::dispatch::upstream::pool::UpstreamPool;
 use crate::output::OutputFormat;
@@ -31,6 +31,7 @@ pub enum GatewayCommand {
     Add(GatewayAddArgs),
     Update(GatewayUpdateArgs),
     Remove(GatewayRemoveArgs),
+    Quarantine(GatewayQuarantineArgs),
     Reload,
     Mcp(GatewayMcpArgs),
 }
@@ -82,6 +83,23 @@ pub struct GatewayUpdateArgs {
 #[derive(Debug, Args)]
 pub struct GatewayRemoveArgs {
     pub name: String,
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayQuarantineArgs {
+    #[command(subcommand)]
+    pub command: GatewayQuarantineCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GatewayQuarantineCommand {
+    List,
+    Restore(GatewayQuarantineRestoreArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayQuarantineRestoreArgs {
+    pub id: String,
 }
 
 #[derive(Debug, Args)]
@@ -180,15 +198,12 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
     let discover_upstreams = !matches!(
         &args.command,
         GatewayCommand::Mcp(GatewayMcpArgs {
-            command:
-                GatewayMcpCommand::List
+            command: GatewayMcpCommand::List
                 | GatewayMcpCommand::Enable(_)
                 | GatewayMcpCommand::Disable(_)
                 | GatewayMcpCommand::Cleanup(_)
                 | GatewayMcpCommand::Auth(GatewayMcpAuthArgs {
-                    command:
-                        GatewayMcpAuthCommand::Status(_)
-                        | GatewayMcpAuthCommand::Clear(_),
+                    command: GatewayMcpAuthCommand::Status(_) | GatewayMcpAuthCommand::Clear(_),
                 }),
         })
     );
@@ -216,8 +231,10 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
                         json!({ "upstream": args.name, "subject": args.subject }),
                         format,
                         |action, params| async move {
-                            crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
-                                .await
+                            crate::dispatch::gateway::dispatch_with_manager(
+                                &manager, &action, params,
+                            )
+                            .await
                         },
                     )
                     .await;
@@ -229,8 +246,10 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
                         json!({ "upstream": args.name, "subject": args.subject }),
                         format,
                         |action, params| async move {
-                            crate::dispatch::gateway::dispatch_with_manager(&manager, &action, params)
-                                .await
+                            crate::dispatch::gateway::dispatch_with_manager(
+                                &manager, &action, params,
+                            )
+                            .await
                         },
                     )
                     .await;
@@ -302,8 +321,12 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
         command => {
             let (action, params) = match command {
                 GatewayCommand::List => ("gateway.list".to_string(), json!({})),
-                GatewayCommand::Get(args) => ("gateway.get".to_string(), json!({ "name": args.name })),
-                GatewayCommand::Test(args) => ("gateway.test".to_string(), json!({ "name": args.name })),
+                GatewayCommand::Get(args) => {
+                    ("gateway.get".to_string(), json!({ "name": args.name }))
+                }
+                GatewayCommand::Test(args) => {
+                    ("gateway.test".to_string(), json!({ "name": args.name }))
+                }
                 GatewayCommand::Add(args) => (
                     "gateway.add".to_string(),
                     json!({
@@ -335,10 +358,24 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
                         }
                     }),
                 ),
-                GatewayCommand::Remove(args) => {
-                    ("gateway.remove".to_string(), json!({ "name": args.name, "origin": cli_origin, "owner": cli_owner }))
-                }
-                GatewayCommand::Reload => ("gateway.reload".to_string(), json!({ "origin": cli_origin, "owner": cli_owner })),
+                GatewayCommand::Remove(args) => (
+                    "gateway.remove".to_string(),
+                    json!({ "name": args.name, "origin": cli_origin, "owner": cli_owner }),
+                ),
+                GatewayCommand::Quarantine(args) => match args.command {
+                    GatewayQuarantineCommand::List => (
+                        "gateway.virtual_server.quarantine.list".to_string(),
+                        json!({}),
+                    ),
+                    GatewayQuarantineCommand::Restore(args) => (
+                        "gateway.virtual_server.quarantine.restore".to_string(),
+                        json!({ "id": args.id }),
+                    ),
+                },
+                GatewayCommand::Reload => (
+                    "gateway.reload".to_string(),
+                    json!({ "origin": cli_origin, "owner": cli_owner }),
+                ),
                 GatewayCommand::Mcp(_) => unreachable!("handled above"),
             };
 
@@ -363,18 +400,15 @@ async fn run_gateway_oauth_start(
 ) -> Result<ExitCode> {
     let params = json!({ "upstream": args.name, "subject": args.subject });
     let start = std::time::Instant::now();
-    let value = crate::dispatch::gateway::dispatch_with_manager(
-        &manager,
-        "gateway.oauth.start",
-        params,
-    )
-    .await
-    .map_err(|error| {
-        anyhow::anyhow!(
-            "{}",
-            serde_json::to_string(&error).unwrap_or_else(|_| error.to_string())
-        )
-    })?;
+    let value =
+        crate::dispatch::gateway::dispatch_with_manager(&manager, "gateway.oauth.start", params)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "{}",
+                    serde_json::to_string(&error).unwrap_or_else(|_| error.to_string())
+                )
+            })?;
     tracing::info!(
         surface = "cli",
         service = "gateway",
@@ -385,14 +419,19 @@ async fn run_gateway_oauth_start(
 
     crate::output::print(&value, format)?;
 
-    let start_view: GatewayOauthStartView = serde_json::from_value(value.clone())
-        .map_err(|error| anyhow::anyhow!("failed to decode gateway oauth start response: {error}"))?;
+    let start_view: GatewayOauthStartView =
+        serde_json::from_value(value.clone()).map_err(|error| {
+            anyhow::anyhow!("failed to decode gateway oauth start response: {error}")
+        })?;
 
     if args.open {
         open_in_browser(&start_view.authorization_url)?;
         eprintln!("Opened authorization URL in your browser.");
     } else {
-        eprintln!("Open this URL to authorize:\n{}", start_view.authorization_url);
+        eprintln!(
+            "Open this URL to authorize:\n{}",
+            start_view.authorization_url
+        );
     }
 
     if args.wait {
@@ -418,9 +457,10 @@ async fn run_gateway_oauth_start(
                     serde_json::to_string(&error).unwrap_or_else(|_| error.to_string())
                 )
             })?;
-            let status: GatewayOauthStatusView = serde_json::from_value(status_value).map_err(
-                |error| anyhow::anyhow!("failed to decode gateway oauth status response: {error}"),
-            )?;
+            let status: GatewayOauthStatusView =
+                serde_json::from_value(status_value).map_err(|error| {
+                    anyhow::anyhow!("failed to decode gateway oauth status response: {error}")
+                })?;
             if status.authenticated {
                 eprintln!(
                     "OAuth completed for `{}`. The existing callback route stored credentials for shared subject `{}`.",
@@ -507,6 +547,8 @@ mod tests {
             .is_ok()
         );
         assert!(Cli::try_parse_from(["lab", "gateway", "remove", "fixture-http"]).is_ok());
+        assert!(Cli::try_parse_from(["lab", "gateway", "quarantine", "list"]).is_ok());
+        assert!(Cli::try_parse_from(["lab", "gateway", "quarantine", "restore", "plex"]).is_ok());
         assert!(Cli::try_parse_from(["lab", "gateway", "reload"]).is_ok());
         assert!(
             Cli::try_parse_from([
@@ -534,46 +576,15 @@ mod tests {
             .is_ok()
         );
         assert!(
-            Cli::try_parse_from([
-                "lab",
-                "gateway",
-                "mcp",
-                "auth",
-                "status",
-                "fixture-http",
-            ])
-            .is_ok()
+            Cli::try_parse_from(["lab", "gateway", "mcp", "auth", "status", "fixture-http",])
+                .is_ok()
         );
         assert!(
-            Cli::try_parse_from([
-                "lab",
-                "gateway",
-                "mcp",
-                "auth",
-                "clear",
-                "fixture-http",
-            ])
-            .is_ok()
+            Cli::try_parse_from(["lab", "gateway", "mcp", "auth", "clear", "fixture-http",])
+                .is_ok()
         );
-        assert!(
-            Cli::try_parse_from([
-                "lab",
-                "gateway",
-                "mcp",
-                "list",
-            ])
-            .is_ok()
-        );
-        assert!(
-            Cli::try_parse_from([
-                "lab",
-                "gateway",
-                "mcp",
-                "enable",
-                "fixture-http",
-            ])
-            .is_ok()
-        );
+        assert!(Cli::try_parse_from(["lab", "gateway", "mcp", "list",]).is_ok());
+        assert!(Cli::try_parse_from(["lab", "gateway", "mcp", "enable", "fixture-http",]).is_ok());
         assert!(
             Cli::try_parse_from([
                 "lab",

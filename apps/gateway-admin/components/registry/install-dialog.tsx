@@ -126,7 +126,7 @@ export function InstallDialog({ server, onClose }: InstallDialogProps) {
             )}
           </div>
 
-          <div className="rounded-md border border-aurora-border-strong/60 bg-[rgba(14,31,44,0.4)]">
+          <div className="rounded-md border border-aurora-border-strong/60 bg-aurora-control-surface/70">
             <button
               type="button"
               onClick={() => setAdvancedOpen((v) => !v)}

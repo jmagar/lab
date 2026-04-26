@@ -109,10 +109,6 @@ fn service_file_ops(service: &str) -> Vec<FileOp> {
             content: templates::adapter_cli_template(service),
         },
         FileOp {
-            path: Path::new("crates/lab/src/mcp/services").join(format!("{service}.rs")),
-            content: templates::adapter_mcp_template(service),
-        },
-        FileOp {
             path: Path::new("crates/lab/src/api/services").join(format!("{service}.rs")),
             content: templates::adapter_api_template(service),
         },

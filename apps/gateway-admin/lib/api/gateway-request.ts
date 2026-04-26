@@ -4,6 +4,8 @@ export function gatewayHeaders(
   _token?: string,
   _standaloneBearerAuth = false,
 ): HeadersInit {
+  void _token
+  void _standaloneBearerAuth
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   }
@@ -28,6 +30,8 @@ export function gatewayRequestInit(
   signal?: AbortSignal,
   _standaloneBearerAuth = false,
 ): RequestInit {
+  void _token
+  void _standaloneBearerAuth
   return {
     method: 'POST',
     headers: gatewayHeaders(),

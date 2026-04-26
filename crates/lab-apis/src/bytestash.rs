@@ -16,6 +16,7 @@ pub use client::ByteStashClient;
 pub use error::ByteStashError;
 
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
+use crate::core::plugin_ui::{SECRET_FIELD, URL_FIELD};
 
 /// Compile-time metadata for the bytestash module.
 pub const META: PluginMeta = PluginMeta {
@@ -30,14 +31,17 @@ pub const META: PluginMeta = PluginMeta {
             description: "Base URL of the ByteStash instance",
             example: "http://localhost:5000",
             secret: false,
+            ui: Some(&URL_FIELD),
         },
         EnvVar {
             name: "BYTESTASH_TOKEN",
             description: "JWT bearer token for the API",
             example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
             secret: true,
+            ui: Some(&SECRET_FIELD),
         },
     ],
     optional_env: &[],
     default_port: Some(5000),
+    supports_multi_instance: false,
 };

@@ -269,25 +269,24 @@ async fn start(
             "upstream OAuth not configured (missing SQLite store)",
         ));
     }
-    let begin =
-        crate::dispatch::gateway::oauth::begin_authorization(
-            &manager,
-            &body.upstream,
-            SHARED_GATEWAY_OAUTH_SUBJECT,
-        )
-        .await
-        .inspect_err(|error| {
-            warn!(
-                surface = "api",
-                service = "upstream_oauth",
-                action = "start",
-                subject = %auth.sub,
-                oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
-                elapsed_ms = started.elapsed().as_millis(),
-                kind = error.kind(),
-                "upstream oauth start failed"
-            );
-        })?;
+    let begin = crate::dispatch::gateway::oauth::begin_authorization(
+        &manager,
+        &body.upstream,
+        SHARED_GATEWAY_OAUTH_SUBJECT,
+    )
+    .await
+    .inspect_err(|error| {
+        warn!(
+            surface = "api",
+            service = "upstream_oauth",
+            action = "start",
+            subject = %auth.sub,
+            oauth_subject = SHARED_GATEWAY_OAUTH_SUBJECT,
+            elapsed_ms = started.elapsed().as_millis(),
+            kind = error.kind(),
+            "upstream oauth start failed"
+        );
+    })?;
     info!(
         surface = "api",
         service = "upstream_oauth",
@@ -561,11 +560,11 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{browser_routes, callback_subject, gateway_routes};
-    use crate::{api::oauth::AuthContext, api::state::AppState, config::DeviceRole};
+    use crate::{api::oauth::AuthContext, api::state::AppState, config::NodeRole};
 
     #[tokio::test]
     async fn callback_rejects_non_master_requests() {
-        let state = AppState::new().with_device_role(DeviceRole::NonMaster);
+        let state = AppState::new().with_node_role(NodeRole::NonMaster);
         let app = browser_routes(state.clone()).with_state(state);
 
         let response = app

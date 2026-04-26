@@ -32,6 +32,34 @@ build:
 build-release:
     cargo build --workspace --all-features --release
 
+# Rebuild static Labby web assets served by lab serve
+web-build:
+    cd apps/gateway-admin && pnpm build
+
+# Rebuild static Labby web assets when frontend files change
+web-watch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v watchexec >/dev/null 2>&1; then
+        echo "error: watchexec is required for web-watch" >&2
+        echo "install: cargo install watchexec-cli" >&2
+        exit 1
+    fi
+    echo "Building apps/gateway-admin once, then watching for changes..."
+    watchexec \
+      --project-origin . \
+      --watch apps/gateway-admin \
+      --ignore 'apps/gateway-admin/.next' \
+      --ignore 'apps/gateway-admin/.next/**' \
+      --ignore 'apps/gateway-admin/out' \
+      --ignore 'apps/gateway-admin/out/**' \
+      --ignore 'apps/gateway-admin/node_modules' \
+      --ignore 'apps/gateway-admin/node_modules/**' \
+      --debounce 1000ms \
+      --on-busy-update queue \
+      --wrap-process=none \
+      'cd apps/gateway-admin && pnpm build'
+
 # Run with args
 run *ARGS:
     cargo run --all-features -- {{ARGS}}
@@ -43,7 +71,8 @@ chat-local:
     export LAB_WEB_UI_DISABLE_AUTH=true
     export LAB_MCP_HTTP_TOKEN="${LAB_MCP_HTTP_TOKEN:-dev-token}"
     export LAB_CORS_ORIGINS="${LAB_CORS_ORIGINS:-http://dookie:3000,http://127.0.0.1:3000,http://localhost:3000}"
-    cargo run --all-features --bin lab -- serve --host 0.0.0.0 --port 8765
+    export LAB_CHAT_LOCAL_PORT="${LAB_CHAT_LOCAL_PORT:-8766}"
+    cargo run --all-features --bin lab -- serve --host 0.0.0.0 --port "${LAB_CHAT_LOCAL_PORT}"
 
 # Format all code
 fmt:

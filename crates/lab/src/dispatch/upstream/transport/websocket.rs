@@ -98,14 +98,15 @@ impl Worker for WebSocketClientWorker {
                 )
             })?;
         if let Some(authorization) = &self.config.authorization {
-            let header = tungstenite::http::HeaderValue::from_str(authorization).map_err(|error| {
-                WorkerQuitReason::fatal(
-                    WebSocketTransportError::new(format!(
-                        "invalid websocket authorization header: {error}"
-                    )),
-                    "build websocket authorization header",
-                )
-            })?;
+            let header =
+                tungstenite::http::HeaderValue::from_str(authorization).map_err(|error| {
+                    WorkerQuitReason::fatal(
+                        WebSocketTransportError::new(format!(
+                            "invalid websocket authorization header: {error}"
+                        )),
+                        "build websocket authorization header",
+                    )
+                })?;
             request
                 .headers_mut()
                 .insert(tungstenite::http::header::AUTHORIZATION, header);
@@ -207,15 +208,17 @@ pub fn parse_ws_url(raw: &str) -> Result<url::Url, WebSocketTransportError> {
 pub fn encode_client_message(
     message: &TxJsonRpcMessage<RoleClient>,
 ) -> Result<String, WebSocketTransportError> {
-    serde_json::to_string(message)
-        .map_err(|error| WebSocketTransportError::new(format!("failed to encode json-rpc frame: {error}")))
+    serde_json::to_string(message).map_err(|error| {
+        WebSocketTransportError::new(format!("failed to encode json-rpc frame: {error}"))
+    })
 }
 
 pub fn decode_server_message(
     payload: &str,
 ) -> Result<RxJsonRpcMessage<RoleClient>, WebSocketTransportError> {
-    serde_json::from_str(payload)
-        .map_err(|error| WebSocketTransportError::new(format!("failed to decode json-rpc frame: {error}")))
+    serde_json::from_str(payload).map_err(|error| {
+        WebSocketTransportError::new(format!("failed to decode json-rpc frame: {error}"))
+    })
 }
 
 #[must_use]

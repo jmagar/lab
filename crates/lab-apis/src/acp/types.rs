@@ -1,0 +1,280 @@
+//! ACP domain types — session state machine, events, content blocks, and
+//! supporting structs. All public types use the `Acp*` prefix.
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+// ---------------------------------------------------------------------------
+// Session state machine
+// ---------------------------------------------------------------------------
+
+/// Eight-state machine for an ACP session lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpSessionState {
+    Creating,
+    Idle,
+    Running,
+    WaitingForPermission,
+    Completed,
+    Cancelled,
+    Failed,
+    Closed,
+}
+
+impl AcpSessionState {
+    /// Returns `true` if the transition from `self` to `next` is valid.
+    pub fn can_transition_to(&self, next: &Self) -> bool {
+        matches!(
+            (self, next),
+            (Self::Creating, Self::Idle | Self::Failed)
+                | (Self::Idle, Self::Running | Self::Closed)
+                | (
+                    Self::Running,
+                    Self::Completed | Self::Failed | Self::Cancelled | Self::WaitingForPermission
+                )
+                | (
+                    Self::WaitingForPermission,
+                    Self::Running | Self::Cancelled | Self::Failed
+                )
+                | (
+                    Self::Completed | Self::Cancelled | Self::Failed,
+                    Self::Closed
+                )
+        )
+    }
+
+    /// Returns `true` if this is a terminal state (no further transitions allowed).
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Closed)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Session summary
+// ---------------------------------------------------------------------------
+
+/// Lightweight summary of an ACP session returned by list/get endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AcpSessionSummary {
+    pub id: String,
+    pub provider: String,
+    pub title: String,
+    pub cwd: String,
+    pub state: AcpSessionState,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub principal: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_version: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Permission
+// ---------------------------------------------------------------------------
+
+/// A single permission choice offered to the user during a permission request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AcpPermissionOption {
+    pub option_id: String,
+    pub name: String,
+    pub kind: String,
+}
+
+// ---------------------------------------------------------------------------
+// Provider health
+// ---------------------------------------------------------------------------
+
+/// Health report for a single ACP provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct AcpProviderHealth {
+    pub provider: String,
+    pub available: bool,
+    pub version: Option<String>,
+    pub message: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Content blocks (Phase 1 — exactly 5 variants)
+// ---------------------------------------------------------------------------
+
+/// Phase 1 content block variants.
+///
+/// Deferred to Phase 2: Image, FileTree, WebPreview, Citations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AcpContentBlock {
+    Text {
+        text: String,
+    },
+    Reasoning {
+        text: String,
+    },
+    ToolCall {
+        tool_call_id: String,
+        name: String,
+        input: Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        output: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+    },
+    Code {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        language: Option<String>,
+        code: String,
+    },
+    Unknown {
+        #[serde(rename = "type_tag")]
+        type_tag: String,
+        raw: Value,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Discriminated event enum
+// ---------------------------------------------------------------------------
+
+/// Discriminated ACP event enum. Each variant is tagged by `kind`.
+///
+/// Every variant carries the four common envelope fields:
+/// `id`, `created_at`, `session_id`, `seq`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AcpEvent {
+    MessageChunk {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        role: String,
+        text: String,
+        message_id: String,
+    },
+    ReasoningChunk {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        text: String,
+    },
+    ToolCallStart {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        tool_call_id: String,
+        name: String,
+        input: Value,
+    },
+    ToolCallUpdate {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        tool_call_id: String,
+        output: Value,
+        status: String,
+    },
+    PermissionRequest {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        request_id: String,
+        action_summary: String,
+        options: Vec<AcpPermissionOption>,
+    },
+    PermissionOutcome {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        request_id: String,
+        granted: bool,
+    },
+    UsageUpdate {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        raw: Value,
+    },
+    ContentBlocks {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        blocks: Vec<AcpContentBlock>,
+    },
+    SessionUpdate {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        state: AcpSessionState,
+    },
+    ProviderInfo {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        provider: String,
+        raw: Value,
+    },
+    Unknown {
+        id: String,
+        created_at: String,
+        session_id: String,
+        seq: u64,
+        /// The original event kind string (preserved for round-tripping unknown variants).
+        /// Named `event_kind` to avoid colliding with the `#[serde(tag = "kind")]` field.
+        #[serde(rename = "event_kind")]
+        event_kind: String,
+        raw: Value,
+    },
+}
+
+impl AcpEvent {
+    /// Returns the sequence number for this event.
+    pub fn seq(&self) -> u64 {
+        match self {
+            Self::MessageChunk { seq, .. }
+            | Self::ReasoningChunk { seq, .. }
+            | Self::ToolCallStart { seq, .. }
+            | Self::ToolCallUpdate { seq, .. }
+            | Self::PermissionRequest { seq, .. }
+            | Self::PermissionOutcome { seq, .. }
+            | Self::UsageUpdate { seq, .. }
+            | Self::ContentBlocks { seq, .. }
+            | Self::SessionUpdate { seq, .. }
+            | Self::ProviderInfo { seq, .. }
+            | Self::Unknown { seq, .. } => *seq,
+        }
+    }
+
+    /// Returns the session ID for this event.
+    pub fn session_id(&self) -> &str {
+        match self {
+            Self::MessageChunk { session_id, .. }
+            | Self::ReasoningChunk { session_id, .. }
+            | Self::ToolCallStart { session_id, .. }
+            | Self::ToolCallUpdate { session_id, .. }
+            | Self::PermissionRequest { session_id, .. }
+            | Self::PermissionOutcome { session_id, .. }
+            | Self::UsageUpdate { session_id, .. }
+            | Self::ContentBlocks { session_id, .. }
+            | Self::SessionUpdate { session_id, .. }
+            | Self::ProviderInfo { session_id, .. }
+            | Self::Unknown { session_id, .. } => session_id,
+        }
+    }
+}
