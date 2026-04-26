@@ -16,15 +16,23 @@ control plane.
 
 | Feature Area | What Lab Provides |
 | --- | --- |
-| Marketplace browsing | Browse configured Claude Code plugin marketplaces, installed plugins, MCP Registry servers, and ACP agents from one catalog. Filter by type, inspect curated Lab metadata, sync the local MCP Registry mirror, and open installed artifact files from the web UI or API. |
-| Plugin workspace editing | Open a marketplace plugin into a Lab-managed workspace mirror, edit files through the Labby UI, save changes, preview deploy diffs, and deploy back to the local Claude Code target with explicit confirmation. |
-| Artifact forks and updates | Fork a full plugin or selected artifacts into the Lab stash, diff against upstream/base snapshots, apply patches, reset forks, preview upstream updates, and apply update strategies with conflict-aware merge suggestions. |
-| Install tools across devices | Install MCP Registry servers to Lab gateway upstreams or Claude/Codex MCP client configs on fleet devices. Cherry-pick marketplace plugin components to selected nodes and scopes. ACP agent installs currently write controller-local provider config; remote ACP agent installation returns per-node errors until implemented. |
-| Upstream MCP gateway | Add, test, reload, and remove upstream MCP servers without hand-editing config. Lab merges healthy upstream tools/resources/prompts into its MCP surface and supports exposure filters plus OAuth-backed upstream credentials. |
+| Marketplace browsing | Browse configured Claude Code and Codex plugin marketplaces, installed plugins, official MCP Registry servers, and ACP Registry agents from one catalog. Filter by type, inspect curated Lab metadata, sync the local MCP Registry mirror, and open installed artifact files from the web UI or API. |
+| Stash workspaces | Open a marketplace plugin into a Lab-managed stash workspace under `~/.lab/stash`, edit files through the Labby UI, save changes, preview deploy diffs, and deploy the saved workspace back to the Claude Code or Codex target with explicit confirmation. |
+| Artifact forks and updates | Track the marketplace artifact fork/update model in the action catalog: fork metadata, upstream/base snapshots, drift checks, update previews, update apply strategies, and AI merge suggestions. The lower-level direct `artifact.fork`, `artifact.diff`, and `artifact.patch` actions are present but still return `not_implemented` until that lifecycle is completed. |
+| Device deployment and cherry-pick | Install whole plugins or cherry-pick individual skills, agents, slash commands, MCP server configs, scripts, and other plugin artifacts to any selected enrolled device and scope instead of copying files by hand. |
+| MCP Registry search and install | Search, filter, validate, and install servers from the official MCP Registry. Installs can target Lab gateway upstreams or Claude/Codex MCP client configs on fleet devices, with required env values routed to the right config surface. |
+| MCP Registry aggregator | Serve Lab's local registry mirror on `/v0.1/*` as a drop-in replacement for the official MCP Registry API, while layering Lab-owned metadata such as featured/reviewed/recommended flags, tags, audit fields, and homelab-specific curation without mutating upstream registry data. |
+| ACP Registry agents | Search the ACP Registry for compatible agents, inspect agent details, and install or uninstall agent provider entries through the same marketplace service. ACP agent installs currently write controller-local provider config; remote ACP agent installation returns per-node errors until implemented. |
+| Upstream MCP proxy | Point MCP clients at Lab instead of every individual server. Lab connects to configured HTTP or stdio upstream MCP servers, discovers their tools, optionally proxies resources, normalizes errors, applies circuit-breaker health, and republishes the merged catalog behind Lab's authenticated `/mcp` endpoint. |
+| Gateway management | Add, test, reload, and remove upstream MCP servers without hand-editing config. Lab supports exposure filters, `tool_search`/`tool_invoke` helper paths, OAuth-backed upstream credentials, and Labby/CLI/API controls for the proxy pool. |
 | Virtual Lab servers | Expose configured Lab-backed services as virtual gateway servers, toggle CLI/API/MCP/Web UI surfaces, inspect service action metadata, and set MCP action allowlists per virtual server. |
+| Authentication and OAuth | Protect hosted HTTP, MCP, Labby, registry, and gateway-management routes with static bearer auth or Lab's Google-backed OAuth mode. Lab also supports browser sessions, CSRF-protected web UI calls, OAuth metadata/JWKS endpoints, upstream MCP OAuth credential storage, and local or node-started OAuth callback relays. |
 | Fleet nodes | Run `lab serve` on multiple machines, enroll non-controller nodes, approve or deny devices, inspect node inventory and MCP client config metadata, run the local OAuth relay on a node, and route status/log events back to the controller over the fleet WebSocket. |
 | Logs and activity | Search persisted local runtime logs, tail bounded history, stream live logs to the Labby `/logs` page over SSE, and forward peer syslog batches into the controller when enabled. |
-| Labby web UI | Serve the admin UI from the same `lab serve` process as the API and MCP endpoint. The UI covers marketplace, gateway management, registry browsing, logs, setup, activity, ACP/chat flows, settings, docs, and design-system/dev previews. |
+| Labby web UI | Serve the admin UI from the same `lab serve` process as the API and MCP endpoint. The UI covers marketplace, gateway management, registry browsing, logs, setup, activity, settings, docs, and design-system/dev previews. |
+| Labby chat | Use the `/chat` web UI as a live ACP client: create/list/resume sessions, send prompts to configured providers, stream session events over SSE, inspect transcript and reasoning/activity lanes, and render tool calls, terminal output, file trees, diffs, code blocks, links, and web previews. |
+| TUI plugin manager | Run `lab plugins` to manage local service/plugin installation from a Ratatui interface that reads service metadata and patches `.mcp.json` entries without requiring hand-written MCP config. |
+| Generated API docs and catalogs | Use `lab help --json`, MCP `lab://catalog`, per-service action resources, `/v1/{service}/actions`, `/v1/openapi.json`, and `/v1/docs` to discover the exact enabled action surface programmatically. |
 | Workspace filesystem browser | Browse and preview files under the configured workspace root through the guarded `fs` service for Labby attachment and editor workflows. |
 | Setup and health audits | Use `lab init`, `lab doctor`, `lab health`, `lab scaffold service`, and `lab audit onboarding` to bootstrap config, validate service reachability/auth, and keep new integrations aligned with the repo contract. |
 | Service operations | Use one action catalog across CLI, MCP, and HTTP to operate Radarr, Sonarr, Plex, UniFi, Unraid, qBittorrent, Gotify, Qdrant, OpenAI-compatible APIs, and the rest of the service integrations. |
@@ -36,7 +44,7 @@ These features are exposed consistently:
 - **CLI:** operator commands such as `lab marketplace`, `lab gateway`, `lab nodes`, `lab logs`, `lab doctor`, `lab deploy`, and per-service subcommands.
 - **MCP:** compact one-tool-per-service access for agents, with generated action discovery and destructive-action confirmation.
 - **HTTP/API:** `/v1/<service>` action dispatch, OpenAPI docs, OAuth/browser sessions, and same-origin Labby integration.
-- **Web UI:** Labby pages for marketplace, gateways, logs, registry, setup, activity, and chat/ACP workflows.
+- **Web UI:** Labby pages for marketplace, gateways, logs, registry, setup, activity, and live ACP chat workflows.
 
 ## Current State
 
@@ -182,6 +190,12 @@ exist.
 `lab serve mcp --stdio` is the stdio-only MCP path for local editor and desktop clients.
 It does not start the hosted API or web UI.
 
+## Auth And OAuth
+
+Hosted Lab surfaces are protected by the same auth layer, with deliberately separate
+rules for local development, HTTP MCP clients, browser sessions, upstream gateways, and
+fleet node enrollment.
+
 HTTP auth modes:
 
 | Mode | Required config | Notes |
@@ -189,8 +203,43 @@ HTTP auth modes:
 | Bearer | `LAB_AUTH_MODE=bearer` or default, plus `LAB_MCP_HTTP_TOKEN` for protected deployments | Uses constant-time static bearer-token comparison |
 | OAuth | `LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, `LAB_GOOGLE_CLIENT_ID`, `LAB_GOOGLE_CLIENT_SECRET` | Enables Lab's Google-backed auth server, JWT validation, metadata, browser sessions, and callback handling |
 
+Protected route behavior:
+
+| Surface | Accepted auth | Notes |
+| --- | --- | --- |
+| `/v1/*` product API | Static bearer token, Lab OAuth JWT bearer token, or Labby browser session cookie | Browser session POSTs use CSRF protection. `LAB_WEB_UI_DISABLE_AUTH` bypasses `/v1` auth only for development. |
+| `/mcp` HTTP MCP | Static bearer token or Lab OAuth JWT bearer token | Browser session cookies are not accepted for MCP transport. |
+| `/v0.1/*` MCP Registry compatibility routes | Same as protected `/v1` routes | Mounted when the registry feature is enabled. |
+| Labby web UI | Browser session in OAuth mode, or the configured development bypass | Static assets and SPA paths are served by `lab serve`; data calls still use `/v1`. |
+| `/health`, `/ready` | No auth | Intended for probes. |
+| `/v1/nodes/hello`, `/v1/nodes/ws` | No bearer middleware | Node WebSocket `initialize` validates the enrolled `device_id` and device token before node methods run. |
+
+OAuth mode exposes `/.well-known/oauth-authorization-server`,
+`/.well-known/oauth-protected-resource`, `/jwks`, `/register`, `/authorize`,
+`/token`, `/auth/login`, `/auth/session`, `/auth/logout`, and
+`/auth/google/callback`. Lab stores Google tokens server-side and issues Lab JWTs for
+API/MCP clients.
+
+Gateway OAuth is separate from Lab login OAuth. Upstreams configured with
+`[upstream.oauth]` use `/v1/gateway/oauth/start`, `/auth/upstream/callback`,
+`/v1/gateway/oauth/status`, and `/v1/gateway/oauth/clear`; credentials are encrypted in
+Lab's auth store and shared by the web UI, CLI, and MCP gateway actions.
+
+Callback relay helpers cover split-browser/device flows:
+
+```bash
+lab oauth relay-local --machine dookie --port 38935
+lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+```
+
+The same local relay can be started through the node runtime with
+`POST /v1/nodes/oauth/relay/start`. Relays forward the final callback request only; they
+do not mint tokens, store PKCE state, or complete the OAuth exchange.
+
 When binding HTTP to a non-loopback host, configure bearer or OAuth auth. The server warns
-and refuses unsafe exposed configurations.
+and refuses unsafe exposed configurations. See [docs/OAUTH.md](./docs/OAUTH.md),
+[docs/TRANSPORT.md](./docs/TRANSPORT.md), and [docs/GATEWAY.md](./docs/GATEWAY.md) for
+the full auth contract.
 
 ## CLI
 
@@ -205,7 +254,7 @@ Top-level commands are defined in [crates/lab/src/cli.rs](./crates/lab/src/cli.r
 | `lab nodes` | Query nodes from the configured controller |
 | `lab logs` | Search fleet or local-master logs |
 | `lab plugins` | Open the Ratatui plugin manager |
-| `lab marketplace` | Manage Claude Code and MCP marketplace entries |
+| `lab marketplace` | Manage Claude Code, Codex, MCP Registry, and ACP Registry marketplace entries |
 | `lab gateway` | Manage proxied upstream MCP gateways |
 | `lab oauth` | Run local OAuth callback relay helpers |
 | `lab extract` | Scan local or SSH appdata paths and extract service credentials |

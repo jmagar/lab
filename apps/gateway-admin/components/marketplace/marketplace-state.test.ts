@@ -53,8 +53,12 @@ const plugins: Plugin[] = [
       {
         kind: 'agents',
         path: 'agents/reviewer.md',
-        name: 'Reviewer Agent',
-        metadata: { description: 'Reviews repository changes.' },
+        name: 'code-reviewer',
+        metadata: {
+          name: 'code-reviewer',
+          description: 'Reviews repository changes.',
+          model: 'sonnet',
+        },
       },
       {
         kind: 'skills',
@@ -178,6 +182,8 @@ test('buildMarketplaceCatalogItems creates unified plugin mcp agent and source r
   assert.deepEqual(items.map((item) => item.kind), ['plugin', 'plugin', 'agent', 'skill', 'command', 'mcp_server', 'lsp_server', 'monitor', 'executable', 'settings', 'mcp_server', 'acp_agent', 'source'])
   assert.equal(items.find((item) => item.id === 'plugin:gateway-audit')?.ecosystem, 'Claude')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.kind, 'agent')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.name, 'code-reviewer')
+  assert.equal(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.description, 'Reviews repository changes.')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:skills:skills/tdd/SKILL.md')?.kind, 'skill')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:commands:commands/ship.md')?.kind, 'command')
   assert.equal(items.find((item) => item.id === 'component:codex-helper:mcp_servers:.mcp.json')?.kind, 'mcp_server')
