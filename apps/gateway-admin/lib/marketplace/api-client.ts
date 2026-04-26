@@ -1,5 +1,5 @@
 /**
- * Marketplace API client — thin wrappers around POST /v1/marketplace.
+ * Marketplace API client - thin wrappers around POST /v1/marketplace.
  *
  * All functions call the lab API directly at the same origin. The Rust binary
  * serves both the static frontend and the /v1/* API, so no proxy is needed.
@@ -31,7 +31,7 @@ function marketplaceAction<T>(action: string, params: object, signal?: AbortSign
   })
 }
 
-// ── MCP Servers ──────────────────────────────────────────────────────────────
+// MCP Servers
 
 export interface McpListResult {
   servers: McpServer[]
@@ -87,7 +87,7 @@ export async function installMcpServer(
   )
 }
 
-// ── ACP Agents ───────────────────────────────────────────────────────────────
+// ACP Agents
 
 export interface AcpListResult {
   agents: AcpAgent[]
@@ -131,7 +131,7 @@ export async function installAcpAgent(
   )
 }
 
-// ── Cherry-pick ───────────────────────────────────────────────────────────────
+// Cherry-pick
 
 export interface CherryPickParams {
   plugin_id: string
