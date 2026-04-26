@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Bot,
   Boxes,
@@ -177,10 +177,6 @@ function CatalogIdentityMark({
   const [imageFailed, setImageFailed] = useState(false)
   const owner = item.avatar?.kind === 'github' ? item.avatar.owner : undefined
 
-  useEffect(() => {
-    setImageFailed(false)
-  }, [owner, item.name])
-
   if (owner && !imageFailed) {
     return (
       <div
@@ -188,6 +184,7 @@ function CatalogIdentityMark({
         style={{ width: size, height: size }}
       >
         <Image
+          key={`${owner}-${item.name}`}
           src={`https://github.com/${owner}.png?size=${size * 2}`}
           alt={`${owner} GitHub avatar`}
           width={size}
@@ -439,17 +436,14 @@ export function MarketplaceListContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const isMutatingRef = useRef(false)
   const [isMutating, setIsMutating] = useState(false)
   const [addSourceOpen, setAddSourceOpen] = useState(false)
-  const [readOnlyPreview, setReadOnlyPreview] = useState(false)
+  const readOnlyPreview = isDevPreviewRoute()
   const [previewItem, setPreviewItem] = useState<MarketplaceCatalogItem | null>(null)
   const [mcpInstallItem, setMcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
   const [acpInstallItem, setAcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
   const [componentInstallItem, setComponentInstallItem] = useState<MarketplaceCatalogItem | null>(null)
-
-  useEffect(() => {
-    setReadOnlyPreview(isDevPreviewRoute())
-  }, [])
 
   const items = useMemo(
     () => buildMarketplaceCatalogItems({ plugins, sources, mcpServers, acpAgents }),
@@ -493,11 +487,20 @@ export function MarketplaceListContent() {
     setFilters({ ...DEFAULT_FILTERS, lens: filters.lens })
   }
 
+  const isRefreshingRef = useRef(false)
+
   const handleRefresh = async () => {
+    if (isRefreshingRef.current) return
+    isRefreshingRef.current = true
     setIsRefreshing(true)
     try {
-      await Promise.all([refreshSources(), refreshPlugins(), refreshMcpServers(), refreshAcpAgents()])
+      const results = await Promise.allSettled([refreshSources(), refreshPlugins(), refreshMcpServers(), refreshAcpAgents()])
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (failures.length > 0) {
+        toast.error(`${failures.length} catalog source(s) failed to refresh.`)
+      }
     } finally {
+      isRefreshingRef.current = false
       setIsRefreshing(false)
     }
   }
@@ -538,7 +541,8 @@ export function MarketplaceListContent() {
       toast.error('This catalog item does not have a direct package action.')
       return
     }
-
+    if (isMutatingRef.current) return
+    isMutatingRef.current = true
     setIsMutating(true)
     try {
       let succeeded = false
@@ -549,6 +553,7 @@ export function MarketplaceListContent() {
       }
       if (succeeded) setPreviewItem(null)
     } finally {
+      isMutatingRef.current = false
       setIsMutating(false)
     }
   }

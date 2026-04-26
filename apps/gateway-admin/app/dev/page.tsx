@@ -11,14 +11,6 @@ import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Dev Previews — Labby' }
 
-const DEV_PREVIEWS = [
-  {
-    href: '/dev/marketplace',
-    label: 'Marketplace',
-    description: 'Browse plugins, MCP servers, and ACP agents from one live catalog. Install flows are previewable; writes are blocked.',
-  },
-]
-
 export default function DevIndexPage() {
   return (
     <main className={cn('min-h-[calc(100vh-5.5rem)] bg-aurora-page-bg text-aurora-text-primary', AURORA_PAGE_SHELL)}>
@@ -32,19 +24,18 @@ export default function DevIndexPage() {
           </p>
         </section>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {DEV_PREVIEWS.map((preview) => (
-            <Link
-              key={preview.href}
-              href={preview.href}
-              className={cn(
-                AURORA_STRONG_PANEL,
-                'block p-5 transition-[background-color,border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:bg-aurora-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
-              )}
-            >
-              <p className="font-semibold text-aurora-text-primary">{preview.label}</p>
-              <p className="mt-1 text-sm leading-[1.55] text-aurora-text-muted">{preview.description}</p>
-            </Link>
-          ))}
+          <Link
+            href="/dev/marketplace"
+            className={cn(
+              AURORA_STRONG_PANEL,
+              'block p-5 transition-[background-color,border-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:bg-aurora-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+            )}
+          >
+            <p className="font-semibold text-aurora-text-primary">Marketplace</p>
+            <p className="mt-1 text-sm leading-[1.55] text-aurora-text-muted">
+              Browse plugins, MCP servers, and ACP agents from one live catalog. Install flows are previewable; writes are blocked.
+            </p>
+          </Link>
         </div>
       </div>
     </main>

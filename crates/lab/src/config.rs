@@ -183,29 +183,40 @@ pub struct ResolvedDeviceRuntime {
 }
 
 impl LabConfig {
-    pub fn normalize_legacy_tool_search(&mut self) {
-        self.normalize_legacy_tool_search_with_root_presence(false);
-    }
-
     pub fn normalize_legacy_tool_search_with_root_presence(
         &mut self,
         root_tool_search_present: bool,
     ) {
-        if root_tool_search_present {
+        if root_tool_search_present || self.tool_search.enabled {
             return;
         }
 
-        if self.tool_search.enabled {
-            return;
-        }
-
-        if let Some(legacy) = self
+        let enabled: Vec<_> = self
             .upstream
             .iter()
-            .map(|upstream| &upstream.tool_search)
-            .find(|tool_search| tool_search.enabled)
-        {
-            self.tool_search = legacy.clone();
+            .filter(|u| u.tool_search.enabled)
+            .collect();
+
+        let Some(first) = enabled.first() else {
+            return;
+        };
+
+        self.tool_search = first.tool_search.clone();
+
+        let conflicting: Vec<&str> = enabled[1..]
+            .iter()
+            .filter(|u| u.tool_search != first.tool_search)
+            .map(|u| u.name.as_str())
+            .collect();
+
+        if !conflicting.is_empty() {
+            tracing::warn!(
+                promoted = first.name.as_str(),
+                discarded = ?conflicting,
+                "normalize_legacy_tool_search: multiple upstreams had different \
+                 tool_search configs; promoting first, discarding others — \
+                 add a root [tool_search] section to config.toml to pin the value"
+            );
         }
     }
 
@@ -253,7 +264,7 @@ fn default_tool_search_max_tools() -> usize {
     5000
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSearchConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -1879,7 +1890,7 @@ max_tools = 750
         )
         .expect("legacy upstream tool_search parses");
 
-        cfg.normalize_legacy_tool_search();
+        cfg.normalize_legacy_tool_search_with_root_presence(false);
 
         assert!(cfg.tool_search.enabled);
         assert_eq!(cfg.tool_search.top_k_default, 15);

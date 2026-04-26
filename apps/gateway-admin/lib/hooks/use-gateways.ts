@@ -499,8 +499,7 @@ export function useGatewayMutations() {
       return mockToolSearchConfig
     }
     const result = await gatewayApi.setToolSearchConfig(input)
-    await mutate(TOOL_SEARCH_CONFIG_KEY, result, false)
-    await mutate(GATEWAYS_KEY)
+    await mutate(TOOL_SEARCH_CONFIG_KEY, result)
     return result
   }, [])
 

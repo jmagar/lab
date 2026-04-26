@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { KeyRound, LifeBuoy, PlugZap, Search, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppHeader } from '@/components/app-header'
@@ -32,6 +32,7 @@ export default function SettingsPage() {
     error: toolSearchError,
   } = useGatewayToolSearchConfig()
   const { setToolSearchConfig } = useGatewayMutations()
+  const isSavingRef = useRef(false)
   const [isToolSearchSaving, setIsToolSearchSaving] = useState(false)
   const snapshot = gateways ? buildGatewaySettingsSnapshot(gateways, {
     hasStandaloneBearerAuth: isStandaloneBearerAuthMode(),
@@ -40,10 +41,8 @@ export default function SettingsPage() {
   const canToggleToolSearch = Boolean(toolSearchConfig) && !isToolSearchLoading && !isToolSearchSaving
 
   async function handleToolSearchToggle(enabled: boolean) {
-    if (!toolSearchConfig) {
-      return
-    }
-
+    if (!toolSearchConfig || isSavingRef.current) return
+    isSavingRef.current = true
     setIsToolSearchSaving(true)
     try {
       await setToolSearchConfig({
@@ -55,6 +54,7 @@ export default function SettingsPage() {
     } catch (requestError) {
       toast.error(getErrorMessage(requestError, 'Failed to update gateway tool search'))
     } finally {
+      isSavingRef.current = false
       setIsToolSearchSaving(false)
     }
   }

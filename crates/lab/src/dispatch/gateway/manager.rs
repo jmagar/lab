@@ -253,7 +253,7 @@ impl GatewayManager {
 
     pub async fn seed_config(&self, config: LabConfig) {
         let mut config = config;
-        config.normalize_legacy_tool_search();
+        config.normalize_legacy_tool_search_with_root_presence(false);
         *self.config.write().await = config;
     }
 
