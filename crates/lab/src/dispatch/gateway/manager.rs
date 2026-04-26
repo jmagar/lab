@@ -1592,6 +1592,10 @@ impl GatewayManager {
             .collect()
     }
 
+    pub async fn tool_search_enabled(&self) -> bool {
+        self.config.read().await.tool_search.enabled
+    }
+
     pub async fn tool_search_warming(&self) -> bool {
         self.tool_indexes
             .iter()

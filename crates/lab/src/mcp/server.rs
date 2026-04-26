@@ -876,12 +876,15 @@ impl ServerHandler for LabMcpServer {
         );
         let schema = Arc::new(action_schema());
         let mut tools = Vec::new();
-        let enabled_tool_search_gateways = if let Some(manager) = &self.gateway_manager {
-            manager.tool_search_enabled_gateways().await
-        } else {
-            Vec::new()
-        };
-        let tool_search_enabled = !enabled_tool_search_gateways.is_empty();
+        let (tool_search_enabled, enabled_tool_search_gateways) =
+            if let Some(manager) = &self.gateway_manager {
+                (
+                    manager.tool_search_enabled().await,
+                    manager.tool_search_enabled_gateways().await,
+                )
+            } else {
+                (false, Vec::new())
+            };
         for svc in self.registry.services() {
             if self.service_visible_on_mcp(svc.name).await {
                 tools.push(Tool::new(svc.name, svc.description, Arc::clone(&schema)));
