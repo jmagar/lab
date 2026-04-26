@@ -519,29 +519,46 @@ async fn dev_mockup_named(
 }
 
 // GET /dev/api/nodeinfo — unauthenticated, read-only.
-// Returns the local hostname and master URL from config.toml so the setup
-// mockup can show the correct "this device" name without a bearer token.
+// Returns config.toml values + ~/.lab/.env contents (secrets masked) so the
+// setup wizard can pre-populate all fields without requiring a bearer token.
 async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response {
     use axum::Json;
+
     let local_host =
         crate::node::identity::resolve_local_hostname().unwrap_or_else(|_| "local".into());
-    let master_url = state
-        .config
-        .deploy
-        .as_ref()
-        .and_then(|d| d.defaults.as_ref())
-        .and_then(|d| d.master_url.clone())
+    let master_url = state.config.deploy.as_ref()
+        .and_then(|d| d.defaults.as_ref()).and_then(|d| d.master_url.clone())
         .unwrap_or_default();
-    let controller = state
-        .config
-        .node
-        .as_ref()
-        .and_then(|n| n.controller.clone())
-        .unwrap_or_else(|| local_host.clone());
+    let controller = state.config.node.as_ref()
+        .and_then(|n| n.controller.clone()).unwrap_or_else(|| local_host.clone());
+
+    // Read ~/.lab/.env and mask secret values so they show as "***" in the UI.
+    // The UI treats "***" as "value already set — leave blank to keep".
+    let secret_suffixes = ["_API_KEY", "_TOKEN", "_PASSWORD", "_SECRET", "_CLIENT_SECRET"];
+    let mut env_values = serde_json::Map::new();
+    if let Some(home) = std::env::var_os("HOME") {
+        let env_path = std::path::PathBuf::from(home).join(".lab/.env");
+        if let Ok(contents) = std::fs::read_to_string(&env_path) {
+            for line in contents.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') { continue; }
+                if let Some((key, val)) = line.split_once('=') {
+                    let key = key.trim();
+                    let val = val.trim().trim_matches('"').trim_matches('\'');
+                    if val.is_empty() { continue; }
+                    let masked = secret_suffixes.iter().any(|s| key.ends_with(s));
+                    env_values.insert(key.to_string(),
+                        serde_json::Value::String(if masked { "***".into() } else { val.into() }));
+                }
+            }
+        }
+    }
+
     Json(serde_json::json!({
         "local_host": local_host,
         "controller": controller,
         "master_url": master_url,
+        "env": env_values,
     })).into_response()
 }
 
