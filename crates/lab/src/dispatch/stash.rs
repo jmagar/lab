@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod client;
 pub mod dispatch;
 pub mod params;
+pub mod store;
 
 #[allow(unused_imports)]
 pub use dispatch::dispatch;
