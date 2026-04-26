@@ -271,6 +271,11 @@ pub async fn callback(
             .google
             .exchange_code(&query.code, &login.provider_code_verifier)
             .await?;
+        check_email_allowlist(
+            google.email.as_deref(),
+            google.email_verified,
+            &state.config.allowed_emails,
+        )?;
         let session = create_browser_session(&state, google.subject, google.email).await?;
         let mut response = Redirect::to(&login.return_to).into_response();
         append_set_cookie(
@@ -925,6 +930,99 @@ pub mod tests {
             .find_map(|value| value.to_str().ok())
             .unwrap();
         assert!(cookie.contains("lab_session="));
+    }
+
+    #[tokio::test]
+    async fn browser_login_callback_rejects_email_not_in_allowlist() {
+        let mut config = test_auth_config();
+        // "allowed@example.com" is permitted; the mock id_token returns
+        // "user@example.com" → callback must be denied with 401.
+        config.allowed_emails = vec!["allowed@example.com".to_string()];
+        let base_state = test_auth_state_with_config(config).await;
+        base_state
+            .store
+            .register_client(RegisteredClient {
+                client_id: "client".to_string(),
+                redirect_uris: vec!["http://127.0.0.1:7777/callback".to_string()],
+                created_at: now_unix(),
+            })
+            .await
+            .unwrap();
+
+        let server = Box::leak(Box::new(MockServer::start().await));
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "google-access-token",
+                "refresh_token": "refresh-token",
+                "expires_in": 3600,
+                "id_token": signed_test_id_token(),
+            })))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/certs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(test_jwks()))
+            .mount(server)
+            .await;
+
+        let google = GoogleProvider::new(
+            "client-id".to_string(),
+            "client-secret".to_string(),
+            Url::parse("https://lab.example.com/auth/google/callback").unwrap(),
+        )
+        .unwrap()
+        .with_endpoints(
+            server.uri().parse::<Url>().unwrap(),
+            server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
+        )
+        .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap());
+
+        let state = AuthState::for_tests(
+            (*base_state.config).clone(),
+            base_state.store.clone(),
+            (*base_state.signing_keys).clone(),
+            google,
+        );
+        let app = router(state.clone());
+
+        let login = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/login?return_to=%2F")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let location = Url::parse(
+            login
+                .headers()
+                .get(header::LOCATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let upstream_state = location
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .map(|(_, value)| value.into_owned())
+            .unwrap();
+
+        let callback = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/auth/google/callback?state={upstream_state}&code=upstream-code"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(callback.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
