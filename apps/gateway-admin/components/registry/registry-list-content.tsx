@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Package, ExternalLink, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -270,12 +271,14 @@ export function RegistryListContent({ onSelectServer }: RegistryListContentProps
                     <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-aurora-border-strong/60 bg-aurora-control-surface">
                       {avatarSrc ? (
                         <>
-                          <img
+                          <Image
                             src={avatarSrc}
                             alt=""
                             className="size-full object-cover"
+                            height={40}
+                            width={40}
+                            unoptimized
                             referrerPolicy="no-referrer"
-                            loading="lazy"
                             onError={(e) => {
                               const img = e.currentTarget
                               if (ghAvatar && fallbackIconHref && img.dataset.fallbackApplied !== 'true') {

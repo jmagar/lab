@@ -20,6 +20,31 @@ const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
 const sessionEventCache = new Map<string, BridgeEvent[]>()
 const sessionLastSeqCache = new Map<string, number>()
 
+function hasSequence(value: unknown): value is { seq: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'seq' in value &&
+    typeof (value as { seq?: unknown }).seq === 'number'
+  )
+}
+
+function isAcpEvent(value: unknown): value is AcpEvent {
+  return (
+    hasSequence(value) &&
+    'session_id' in value &&
+    typeof (value as { session_id?: unknown }).session_id === 'string'
+  )
+}
+
+function isBridgeEvent(value: unknown): value is BridgeEvent {
+  return (
+    hasSequence(value) &&
+    'sessionId' in value &&
+    typeof (value as { sessionId?: unknown }).sessionId === 'string'
+  )
+}
+
 export function buildSessionEventsUrl(
   acpBase: string,
   sessionId: string,
@@ -54,13 +79,24 @@ export function consumeSessionEventBuffer(buffer: string, lastSeq: number) {
       continue
     }
 
-    const event = JSON.parse(dataLines.join('\n')) as AcpEvent | BridgeEvent
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(dataLines.join('\n'))
+    } catch {
+      continue
+    }
+
+    if (!isAcpEvent(parsed) && !isBridgeEvent(parsed)) {
+      continue
+    }
+
+    const event = parsed
     if (event.seq <= nextLastSeq) {
       continue
     }
 
     nextLastSeq = event.seq
-    if ('session_id' in event) {
+    if (isAcpEvent(event)) {
       events.push(bridgeEventFromAcpEvent(event))
     } else {
       events.push(event)

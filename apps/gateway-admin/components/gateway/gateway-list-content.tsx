@@ -149,7 +149,7 @@ export function GatewayListContent() {
     Record<string, { preview?: CleanupHistoryEntry; cleanup?: CleanupHistoryEntry }>
   >({})
 
-  const items = gateways ?? []
+  const items = useMemo(() => gateways ?? [], [gateways])
 
   const summary = useMemo(() => {
     const configured = items.filter((gateway) => gateway.configured ?? true).length

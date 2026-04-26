@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Play, ShieldCheck, AlertCircle, CheckCircle2, ChevronRight, ShieldOff, KeyRound } from 'lucide-react'
 import {
@@ -100,7 +101,7 @@ function ServiceIconBox({ serviceKey }: { serviceKey: string }) {
       }}
     >
       {logo ? (
-        <img src={logo} alt="" className="w-5 h-5 object-contain" onError={() => setImgError(true)} />
+        <Image src={logo} alt="" className="h-5 w-5 object-contain" height={20} width={20} unoptimized onError={() => setImgError(true)} />
       ) : svg ? (
         <span
           className="w-5 h-5 block"
@@ -360,7 +361,7 @@ export function GatewayFormDialog({
       nextValues[field.name] = valuePreview(field.name, configField?.value_preview)
     }
     setServiceValues(nextValues)
-  }, [serviceConfig, serviceEnvFields])
+  }, [serviceConfig, serviceEnvFields, serviceMeta])
 
   const validateCustom = () => {
     const newErrors: Record<string, string> = {}

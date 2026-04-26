@@ -125,7 +125,7 @@ pub const MCP_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "mcp.install",
-        description: "Install an MCP server from the registry as a gateway upstream for each provided gateway_id. HTTP servers are added as remote upstreams; stdio servers are added as command upstreams. Required env vars are written to ~/.lab/.env",
+        description: "Install an MCP server from the registry to Lab gateway upstreams and/or Claude/Codex MCP clients on fleet devices. HTTP servers are added as remote URLs; stdio servers are added as command configs. Required env vars are written to ~/.lab/.env for gateway installs and embedded in the MCP client config for client installs.",
         destructive: true,
         returns: "InstallResults",
         params: &[
@@ -138,8 +138,14 @@ pub const MCP_ACTIONS: &[ActionSpec] = &[
             ParamSpec {
                 name: "gateway_ids",
                 ty: "array",
-                required: true,
-                description: "Gateway names to add this server to — one gateway.add call per entry",
+                required: false,
+                description: "Lab gateway names to add this server to — one gateway.add call per entry. Either gateway_ids or client_targets must be provided.",
+            },
+            ParamSpec {
+                name: "client_targets",
+                ty: "array",
+                required: false,
+                description: "Claude/Codex MCP client targets on fleet devices. Each entry is an object with node_id and client (`claude` or `codex`). Either gateway_ids or client_targets must be provided.",
             },
             ParamSpec {
                 name: "bearer_token_env",

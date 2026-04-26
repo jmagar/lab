@@ -14,6 +14,7 @@ mod types;
 
 pub use catalog::ACTIONS;
 pub use dispatch::{dispatch, dispatch_with_clients};
+pub use system::{run_auth_checks, run_system_checks};
 #[cfg(test)]
 pub use types::service_env_checks;
 pub use types::{Finding, Report, Severity};

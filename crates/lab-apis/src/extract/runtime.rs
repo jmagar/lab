@@ -556,9 +556,9 @@ mod tests {
     #[test]
     fn tailscale_lookup_prefers_first_ipv4() {
         let ip = parse_tailscale_ipv4(
-            r#"fd7a:115c:a1e0::1234
+            r"fd7a:115c:a1e0::1234
 100.64.0.12
-100.101.55.90"#,
+100.101.55.90",
         );
 
         assert_eq!(ip.as_deref(), Some("100.64.0.12"));

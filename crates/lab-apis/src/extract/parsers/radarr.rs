@@ -148,14 +148,14 @@ pub fn parse_servarr_config_xml(
 mod tests {
     use super::*;
 
-    const RADARR_XML: &[u8] = br#"<Config>
+    const RADARR_XML: &[u8] = br"<Config>
   <Port>7878</Port>
   <BindAddress>*</BindAddress>
   <UrlBase></UrlBase>
   <EnableSsl>False</EnableSsl>
   <ApiKey>deadbeefdeadbeefdeadbeefdeadbeef</ApiKey>
   <Branch>master</Branch>
-</Config>"#;
+</Config>";
 
     #[test]
     fn happy_path() {
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn url_base_appended() {
         let xml =
-            br#"<Config><Port>7878</Port><UrlBase>/radarr</UrlBase><ApiKey>abc</ApiKey></Config>"#;
+            br"<Config><Port>7878</Port><UrlBase>/radarr</UrlBase><ApiKey>abc</ApiKey></Config>";
         let creds = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap();
         assert_eq!(
             creds.url.as_deref().unwrap(),
@@ -183,35 +183,35 @@ mod tests {
     #[test]
     fn enable_ssl_true() {
         let xml =
-            br#"<Config><Port>9898</Port><EnableSsl>True</EnableSsl><ApiKey>abc</ApiKey></Config>"#;
+            br"<Config><Port>9898</Port><EnableSsl>True</EnableSsl><ApiKey>abc</ApiKey></Config>";
         let creds = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap();
         assert!(creds.url.as_deref().unwrap().starts_with("https://"));
     }
 
     #[test]
     fn non_wildcard_bind_address() {
-        let xml = br#"<Config><Port>7878</Port><BindAddress>192.168.1.10</BindAddress><ApiKey>abc</ApiKey></Config>"#;
+        let xml = br"<Config><Port>7878</Port><BindAddress>192.168.1.10</BindAddress><ApiKey>abc</ApiKey></Config>";
         let creds = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap();
         assert!(creds.url.as_deref().unwrap().contains("192.168.1.10"));
     }
 
     #[test]
     fn empty_url_base_element() {
-        let xml = br#"<Config><Port>7878</Port><UrlBase></UrlBase><ApiKey>abc</ApiKey></Config>"#;
+        let xml = br"<Config><Port>7878</Port><UrlBase></UrlBase><ApiKey>abc</ApiKey></Config>";
         let creds = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap();
         assert_eq!(creds.url.as_deref().unwrap(), "http://localhost:7878");
     }
 
     #[test]
     fn missing_api_key_returns_error() {
-        let xml = br#"<Config><Port>7878</Port></Config>"#;
+        let xml = br"<Config><Port>7878</Port></Config>";
         let err = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap_err();
         assert!(matches!(err, ExtractError::Parse { .. }));
     }
 
     #[test]
     fn missing_port_returns_error() {
-        let xml = br#"<Config><ApiKey>abc</ApiKey></Config>"#;
+        let xml = br"<Config><ApiKey>abc</ApiKey></Config>";
         let err = parse_servarr_config_xml("radarr", "RADARR_API_KEY", xml).unwrap_err();
         assert!(matches!(err, ExtractError::Parse { .. }));
     }
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn sonarr_delegation() {
-        let xml = br#"<Config><Port>8989</Port><ApiKey>sonarr_key</ApiKey></Config>"#;
+        let xml = br"<Config><Port>8989</Port><ApiKey>sonarr_key</ApiKey></Config>";
         let creds = parse_servarr_config_xml("sonarr", "SONARR_API_KEY", xml).unwrap();
         assert_eq!(creds.env_field, "SONARR_API_KEY");
         assert_eq!(creds.url.as_deref().unwrap(), "http://localhost:8989");
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn prowlarr_delegation() {
-        let xml = br#"<Config><Port>9696</Port><ApiKey>prowlarr_key</ApiKey></Config>"#;
+        let xml = br"<Config><Port>9696</Port><ApiKey>prowlarr_key</ApiKey></Config>";
         let creds = parse_servarr_config_xml("prowlarr", "PROWLARR_API_KEY", xml).unwrap();
         assert_eq!(creds.env_field, "PROWLARR_API_KEY");
     }

@@ -80,7 +80,7 @@ test('isDevPreviewRoute: returns true for /dev and /dev/* when window is present
     })
     assert.equal(isDevPreviewRoute(), true)
 
-    globalThis.window = { location: { pathname: '/dev/marketplace' } } as Window & typeof globalThis
+    globalThis.window = { location: { pathname: '/dev/gateway-policy' } } as Window & typeof globalThis
     assert.equal(isDevPreviewRoute(), true)
 
     globalThis.window = { location: { pathname: '/dev/gateway-policy' } } as Window & typeof globalThis
@@ -127,7 +127,7 @@ test('assertDevPreviewCanRunAction: does not throw for whitelisted actions in /d
   const original = globalThis.window
 
   try {
-    globalThis.window = { location: { pathname: '/dev/marketplace' } } as Window & typeof globalThis
+    globalThis.window = { location: { pathname: '/dev/gateway-policy' } } as Window & typeof globalThis
     assert.doesNotThrow(() => assertDevPreviewCanRunAction('plugins.list'))
     assert.doesNotThrow(() => assertDevPreviewCanRunAction('plugin.components'))
   } finally {
@@ -144,7 +144,7 @@ test('assertDevPreviewCanRunAction: throws DevPreviewReadOnlyError for mutating 
   const original = globalThis.window
 
   try {
-    globalThis.window = { location: { pathname: '/dev/marketplace' } } as Window & typeof globalThis
+    globalThis.window = { location: { pathname: '/dev/gateway-policy' } } as Window & typeof globalThis
 
     const mutating = ['plugin.install', 'plugin.uninstall', 'sources.add']
     for (const action of mutating) {
@@ -187,7 +187,7 @@ test('devPreviewActionUrl: routes /v1/marketplace to /dev/api/marketplace inside
   const original = globalThis.window
 
   try {
-    globalThis.window = { location: { pathname: '/dev/marketplace' } } as Window & typeof globalThis
+    globalThis.window = { location: { pathname: '/dev/gateway-policy' } } as Window & typeof globalThis
     assert.equal(devPreviewActionUrl('/v1/marketplace'), '/dev/api/marketplace')
   } finally {
     if (original === undefined) {
@@ -203,7 +203,7 @@ test('devPreviewActionUrl: leaves non-marketplace URLs unchanged inside /dev', (
   const original = globalThis.window
 
   try {
-    globalThis.window = { location: { pathname: '/dev/marketplace' } } as Window & typeof globalThis
+    globalThis.window = { location: { pathname: '/dev/gateway-policy' } } as Window & typeof globalThis
     // Non-marketplace endpoints pass through unchanged
     assert.equal(devPreviewActionUrl('/v1/gateway'), '/v1/gateway')
     assert.equal(devPreviewActionUrl('/v1/acp'), '/v1/acp')

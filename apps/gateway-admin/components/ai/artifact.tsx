@@ -19,7 +19,7 @@ export type ArtifactProps = HTMLAttributes<HTMLDivElement>
 export const Artifact = ({ className, ...props }: ArtifactProps) => (
   <div
     className={cn(
-      "flex flex-col overflow-hidden rounded-lg border bg-background shadow-sm",
+      "flex flex-col overflow-hidden rounded-lg border bg-aurora-bg shadow-sm",
       className,
     )}
     {...props}
@@ -30,7 +30,7 @@ export type ArtifactHeaderProps = HTMLAttributes<HTMLDivElement>
 
 export const ArtifactHeader = ({ className, ...props }: ArtifactHeaderProps) => (
   <div
-    className={cn("flex items-center justify-between border-b bg-muted/50 px-4 py-3", className)}
+    className={cn("flex items-center justify-between border-b bg-aurora-panel-muted/50 px-4 py-3", className)}
     {...props}
   />
 )
@@ -45,7 +45,7 @@ export const ArtifactClose = ({
   ...props
 }: ArtifactCloseProps) => (
   <Button
-    className={cn("size-8 p-0 text-muted-foreground hover:text-foreground", className)}
+    className={cn("size-8 p-0 text-aurora-text-muted hover:text-aurora-text", className)}
     size={size}
     type="button"
     variant={variant}
@@ -59,13 +59,13 @@ export const ArtifactClose = ({
 export type ArtifactTitleProps = HTMLAttributes<HTMLParagraphElement>
 
 export const ArtifactTitle = ({ className, ...props }: ArtifactTitleProps) => (
-  <p className={cn("font-medium text-foreground text-sm", className)} {...props} />
+  <p className={cn("font-medium text-aurora-text text-sm", className)} {...props} />
 )
 
 export type ArtifactDescriptionProps = HTMLAttributes<HTMLParagraphElement>
 
 export const ArtifactDescription = ({ className, ...props }: ArtifactDescriptionProps) => (
-  <p className={cn("text-muted-foreground text-sm", className)} {...props} />
+  <p className={cn("text-aurora-text-muted text-sm", className)} {...props} />
 )
 
 export type ArtifactActionsProps = HTMLAttributes<HTMLDivElement>
@@ -92,7 +92,7 @@ export const ArtifactAction = ({
 }: ArtifactActionProps) => {
   const button = (
     <Button
-      className={cn("size-8 p-0 text-muted-foreground hover:text-foreground", className)}
+      className={cn("size-8 p-0 text-aurora-text-muted hover:text-aurora-text", className)}
       size={size}
       type="button"
       variant={variant}

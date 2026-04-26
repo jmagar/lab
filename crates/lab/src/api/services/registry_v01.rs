@@ -66,6 +66,7 @@ async fn list_servers(
         cursor: query.cursor,
         limit: query.limit,
         include_deleted: query.include_deleted,
+        latest_only: false,
         search: None,
         version: query.version,
         updated_since: query.updated_since,

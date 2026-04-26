@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use lab_apis::marketplace::{Artifact, ArtifactLang, Marketplace, Plugin, PluginSource};
+use lab_apis::marketplace::{Artifact, ArtifactLang};
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use tempfile::NamedTempFile;
 
 use crate::dispatch::error::ToolError;
@@ -38,7 +38,10 @@ pub async fn dispatch_with_port<P: client::NodeRpcPort>(
             let a = require_str(&params, "action")?;
             action_schema(catalog::actions(), a)
         }
-        "sources.list" => sources_list().await,
+        "sources.list" => {
+            let runtime = crate::dispatch::marketplace::service::runtime_from_params(&params)?;
+            to_json(crate::dispatch::marketplace::service::sources_list(runtime).await?)
+        }
         "sources.add" => {
             let repo = optional_str(&params, "repo")?.map(ToString::to_string);
             let url = optional_str(&params, "url")?.map(ToString::to_string);
@@ -46,16 +49,19 @@ pub async fn dispatch_with_port<P: client::NodeRpcPort>(
             sources_add(repo, url, auto_update).await
         }
         "plugins.list" => {
+            let runtime = crate::dispatch::marketplace::service::runtime_from_params(&params)?;
             let filter = optional_str(&params, "marketplace")?.map(ToString::to_string);
-            plugins_list(filter).await
+            to_json(crate::dispatch::marketplace::service::plugins_list(runtime, filter).await?)
         }
         "plugin.get" => {
+            let runtime = crate::dispatch::marketplace::service::runtime_from_params(&params)?;
             let id = require_str(&params, "id")?.to_string();
-            plugin_get(&id).await
+            to_json(crate::dispatch::marketplace::service::plugin_get(runtime, &id).await?)
         }
         "plugin.artifacts" => {
+            let runtime = crate::dispatch::marketplace::service::runtime_from_params(&params)?;
             let id = require_str(&params, "id")?.to_string();
-            plugin_artifacts(&id).await
+            to_json(crate::dispatch::marketplace::service::plugin_artifacts(runtime, &id).await?)
         }
         "plugin.workspace" => {
             let id = require_str(&params, "id")?.to_string();
@@ -139,157 +145,9 @@ fn read_json(path: &Path) -> Result<Value, ToolError> {
     })
 }
 
-// ---------- internal raw types (from ~/.claude/plugins/*.json) ----------
-
-fn load_known_marketplaces() -> Result<Vec<Marketplace>, ToolError> {
-    let path = client::plugins_root()?.join("known_marketplaces.json");
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let v = read_json(&path)?;
-    let Some(obj) = v.as_object() else {
-        return Ok(Vec::new());
-    };
-    let mut out = Vec::with_capacity(obj.len());
-    for (id, entry) in obj {
-        let src = entry.get("source").cloned().unwrap_or(Value::Null);
-        let (source, url, repo, path_val, gh_user) = match src {
-            Value::Object(m) => parse_source(&m),
-            _ => (PluginSource::Local, None, None, None, String::new()),
-        };
-        let auto_update = entry
-            .get("autoUpdate")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let last_updated = entry
-            .get("lastUpdated")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let install_loc = entry
-            .get("installLocation")
-            .and_then(Value::as_str)
-            .map(PathBuf::from);
-        let manifest = install_loc.as_deref().and_then(read_marketplace_manifest);
-        let plugin_count = manifest.as_ref().map(|m| m.plugins.len()).unwrap_or(0);
-        let display_name = manifest
-            .as_ref()
-            .and_then(|m| m.display_name.clone())
-            .unwrap_or_else(|| id.clone());
-        let owner = manifest
-            .as_ref()
-            .and_then(|m| m.owner_name.clone())
-            .unwrap_or_else(|| gh_user.clone());
-        let desc = manifest
-            .as_ref()
-            .and_then(|m| m.description.clone())
-            .unwrap_or_default();
-        out.push(Marketplace {
-            id: id.clone(),
-            name: display_name,
-            owner,
-            gh_user,
-            repo,
-            source,
-            url,
-            path: path_val,
-            desc,
-            auto_update,
-            total_plugins: plugin_count as u32,
-            last_updated,
-            runtime: None,
-        });
-    }
-    Ok(out)
-}
-
-fn parse_source(
-    m: &Map<String, Value>,
-) -> (
-    PluginSource,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    String,
-) {
-    let kind = m.get("source").and_then(Value::as_str).unwrap_or("local");
-    let url = m
-        .get("url")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-    let repo = m
-        .get("repo")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-    let path = m
-        .get("path")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-    let gh_user = repo
-        .as_deref()
-        .and_then(|r| r.split('/').next())
-        .unwrap_or("")
-        .to_string();
-    let source = match kind {
-        "github" => PluginSource::Github,
-        "git" => PluginSource::Git,
-        _ => PluginSource::Local,
-    };
-    (source, url, repo, path, gh_user)
-}
-
-/// Parsed representation of a marketplace.json file.
-struct MarketplaceManifest {
-    display_name: Option<String>,
-    owner_name: Option<String>,
-    description: Option<String>,
-    plugins: Vec<Value>,
-}
-
-fn read_marketplace_manifest(install_loc: &Path) -> Option<MarketplaceManifest> {
-    let candidates = [
-        install_loc.join(".claude-plugin").join("marketplace.json"),
-        install_loc.join("marketplace.json"),
-    ];
-    for p in &candidates {
-        if p.exists() {
-            if let Ok(v) = read_json(p) {
-                let plugins = v
-                    .get("plugins")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                let display_name = v
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .map(ToString::to_string);
-                let owner_name = v
-                    .get("owner")
-                    .and_then(|o| o.get("name"))
-                    .and_then(Value::as_str)
-                    .map(ToString::to_string);
-                let description = v
-                    .get("metadata")
-                    .and_then(|m| m.get("description"))
-                    .and_then(Value::as_str)
-                    .map(ToString::to_string);
-                return Some(MarketplaceManifest {
-                    display_name,
-                    owner_name,
-                    description,
-                    plugins,
-                });
-            }
-        }
-    }
-    None
-}
-
 /// Map of installed plugin id (`name@marketplace`) → installPath + timestamps.
 struct InstalledRecord {
     install_path: PathBuf,
-    installed_at: String,
-    last_updated: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -329,16 +187,6 @@ fn load_installed() -> Result<HashMap<String, InstalledRecord>, ToolError> {
                         .and_then(Value::as_str)
                         .map(PathBuf::from)
                         .unwrap_or_default(),
-                    installed_at: first
-                        .get("installedAt")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
-                    last_updated: first
-                        .get("lastUpdated")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
                 },
             );
         }
@@ -346,143 +194,7 @@ fn load_installed() -> Result<HashMap<String, InstalledRecord>, ToolError> {
     Ok(out)
 }
 
-fn build_plugin(
-    mkt_id: &str,
-    plugin_json: &Value,
-    installed: &HashMap<String, InstalledRecord>,
-) -> Option<Plugin> {
-    let name = plugin_json.get("name").and_then(Value::as_str)?.to_string();
-    let id = format!("{name}@{mkt_id}");
-    let ver = plugin_json
-        .get("version")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let desc = plugin_json
-        .get("description")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let mut tags: Vec<String> = Vec::new();
-    for key in ["tags", "keywords"] {
-        if let Some(arr) = plugin_json.get(key).and_then(Value::as_array) {
-            for v in arr {
-                if let Some(s) = v.as_str() {
-                    let s = s.to_string();
-                    if !tags.contains(&s) {
-                        tags.push(s);
-                    }
-                }
-            }
-        }
-    }
-    if let Some(cat) = plugin_json.get("category").and_then(Value::as_str) {
-        let cat = cat.to_string();
-        if !tags.contains(&cat) {
-            tags.insert(0, cat);
-        }
-    }
-    let rec = installed.get(&id);
-    Some(Plugin {
-        id,
-        name,
-        mkt: mkt_id.to_string(),
-        ver,
-        desc,
-        tags,
-        installed: rec.is_some(),
-        has_update: None,
-        installed_at: rec.map(|r| r.installed_at.clone()),
-        updated_at: rec.map(|r| r.last_updated.clone()),
-        runtime: None,
-        enabled: None,
-        marketplace_id: None,
-        version: None,
-        description: None,
-        manifest: None,
-        components: None,
-        install_state: None,
-        source_path: None,
-        cache_path: None,
-    })
-}
-
 // ---------- action handlers ----------
-
-async fn sources_list() -> Result<Value, ToolError> {
-    let markets = tokio::task::spawn_blocking(load_known_marketplaces)
-        .await
-        .map_err(join_err)??;
-    to_json(markets)
-}
-
-async fn plugins_list(filter: Option<String>) -> Result<Value, ToolError> {
-    let plugins = tokio::task::spawn_blocking(move || -> Result<Vec<Plugin>, ToolError> {
-        let markets = load_known_marketplaces()?;
-        let installed = load_installed()?;
-        let mut out = Vec::new();
-        for m in markets {
-            if let Some(ref f) = filter {
-                if &m.id != f {
-                    continue;
-                }
-            }
-            let install_loc = client::plugins_root()?.join("marketplaces").join(&m.id);
-            let Some(manifest) = read_marketplace_manifest(&install_loc) else {
-                continue;
-            };
-            for pj in &manifest.plugins {
-                if let Some(p) = build_plugin(&m.id, pj, &installed) {
-                    out.push(p);
-                }
-            }
-        }
-        Ok(out)
-    })
-    .await
-    .map_err(join_err)??;
-    to_json(plugins)
-}
-
-async fn plugin_get(id: &str) -> Result<Value, ToolError> {
-    let (name, mkt) = parse_plugin_id(id)?;
-    let (name, mkt) = (name.to_string(), mkt.to_string());
-    let found = tokio::task::spawn_blocking(move || -> Result<Option<Plugin>, ToolError> {
-        let installed = load_installed()?;
-        let install_loc = client::plugins_root()?.join("marketplaces").join(&mkt);
-        let Some(manifest) = read_marketplace_manifest(&install_loc) else {
-            return Ok(None);
-        };
-        for pj in &manifest.plugins {
-            if pj.get("name").and_then(Value::as_str) == Some(name.as_str()) {
-                return Ok(build_plugin(&mkt, pj, &installed));
-            }
-        }
-        Ok(None)
-    })
-    .await
-    .map_err(join_err)??;
-
-    match found {
-        Some(p) => to_json(p),
-        None => Err(ToolError::Sdk {
-            sdk_kind: "not_found".into(),
-            message: format!("plugin `{id}` not found"),
-        }),
-    }
-}
-
-async fn plugin_artifacts(id: &str) -> Result<Value, ToolError> {
-    parse_plugin_id(id)?;
-    let id_owned = id.to_string();
-    let artifacts = tokio::task::spawn_blocking(move || -> Result<Vec<Artifact>, ToolError> {
-        let source = source_path_for_plugin(&id_owned)?;
-        walk_artifacts(&source, &source)
-    })
-    .await
-    .map_err(join_err)??;
-    to_json(artifacts)
-}
 
 async fn plugin_workspace(id: &str) -> Result<Value, ToolError> {
     parse_plugin_id(id)?;
@@ -1509,31 +1221,6 @@ mod tests {
         assert!(target.ends_with("installed/demo-plugin"), "{target:?}");
     }
 
-    // Invariant (bead lab-zxx5.14): the base `build_plugin` path used by
-    // `plugins.list` must leave `cache_path` and `components` as `None`.
-    // Populating them at list time requires a per-plugin disk stat — the
-    // perf hazard called out in the engineering review. Backends populate
-    // these on demand for `plugin.get` / `plugin.cherry_pick`.
-    #[test]
-    fn build_plugin_leaves_cache_path_and_components_none() {
-        let installed = HashMap::new();
-        let plugin_json = json!({
-            "name": "demo-plugin",
-            "version": "1.0.0",
-            "description": "Demo plugin",
-        });
-        let plugin = build_plugin("demo-market", &plugin_json, &installed)
-            .expect("build_plugin returns Some for well-formed input");
-        assert!(
-            plugin.cache_path.is_none(),
-            "plugins.list must NOT populate cache_path (per-plugin disk stat is a perf hazard)"
-        );
-        assert!(
-            plugin.components.is_none(),
-            "plugins.list must NOT populate components (requires manifest read per plugin)"
-        );
-    }
-
     // lab-zxx5.29: install result shape validator
     #[test]
     fn validate_node_install_result_accepts_well_formed() {
@@ -1565,5 +1252,15 @@ mod tests {
     fn validate_node_install_result_rejects_wrong_field_type() {
         let result = json!({ "written": "not an array", "skipped": [], "errors": [] });
         assert!(validate_node_install_result(&result).is_err());
+    }
+
+    #[test]
+    fn shared_marketplace_dispatch_does_not_hardcode_mcp_surface_logging() {
+        let source = include_str!("dispatch.rs");
+        let spaced = ["surface = ", "\"mcp\""].concat();
+        let compact = ["surface=", "\"mcp\""].concat();
+
+        assert!(!source.contains(&spaced));
+        assert!(!source.contains(&compact));
     }
 }

@@ -1,5 +1,7 @@
 import js from '@eslint/js'
+import nextPlugin from '@next/eslint-plugin-next'
 import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 // Banned shadcn-generic tokens in product code. Aurora tokens are the source of
@@ -52,6 +54,7 @@ export default tseslint.config(
       '.next/**',
       'node_modules/**',
       'out/**',
+      '.gw_verify.mjs',
       'tsconfig.tsbuildinfo',
     ],
   },
@@ -81,8 +84,20 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    plugins: {
+      '@next/next': nextPlugin,
+      'react-hooks': reactHooks,
+    },
+    settings: {
+      next: {
+        rootDir: '.',
+      },
+    },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      '@next/next/no-img-element': 'warn',
     },
   },
   {

@@ -59,8 +59,10 @@ export function useMarketplaceMutations() {
         prev.map(p => p.id === pluginId ? { ...p, installed: true, hasUpdate: false, installedAt: new Date().toISOString() } : p)
       , { revalidate: false })
       toast.success(`Installed ${pluginName}`)
+      return true
     } catch {
       toast.error(`Failed to install ${pluginName}`)
+      return false
     }
   }, [mutatePlugins])
 
@@ -71,8 +73,10 @@ export function useMarketplaceMutations() {
         prev.map(p => p.id === pluginId ? { ...p, installed: false, hasUpdate: false, installedAt: undefined } : p)
       , { revalidate: false })
       toast.success(`Removed ${pluginName}`)
+      return true
     } catch {
       toast.error(`Failed to remove ${pluginName}`)
+      return false
     }
   }, [mutatePlugins])
 
@@ -87,7 +91,7 @@ export function useMarketplaceMutations() {
       toast.error('Failed to add marketplace')
       return null
     }
-  }, [mutateMarketplaces])
+  }, [mutateMarketplaces, mutatePlugins])
 
   return { install, uninstall, addSource }
 }

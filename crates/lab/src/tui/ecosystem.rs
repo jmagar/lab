@@ -264,7 +264,7 @@ async fn remove_claude(id: &PluginIdentifier, tx: &Sender<AppEvent>) -> anyhow::
 // ── Codex (file-based) ────────────────────────────────────────────────────────
 
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME").map_or_else(|| PathBuf::from("/root"), PathBuf::from)
+    crate::config::home_dir().unwrap_or_else(|| PathBuf::from("/root"))
 }
 
 /// Join `base` with an untrusted relative path, rejecting any `..` components.

@@ -2,10 +2,95 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — 0.10.0
+## [Unreleased] — 0.11.1
 
 | Commit | Change |
 |--------|--------|
+| `2f6d76c6` | docs: setup+settings feature design spec + component-development doc update |
+| `07ccb54c` | fix(dev): ensure dev_mockup routes survive router.rs refactors |
+| `d10b05ec` | fix(dev/nodeinfo): read env from process (dotenvy already loaded .env at startup) |
+| `991fcd1b` | feat(dev): extend nodeinfo to return .env values with secrets masked |
+| `aea3bb59` | fix(dev): restore dev_mockup handlers and page routes |
+| `b1385289` | fix(dev): restore /dev mockup routes + add /dev/api/nodeinfo |
+| `265a701e` | feat(dev): add mockup file server at /dev and /dev/:name |
+| `3e8db769` | fix(pr29): address review threads — security, fleet, ACP, marketplace, docs |
+| `f168964b` | fix(lab-zxx5.32): R2 P3 roll-up — redact_home in errors, log tiering, sync_all, dead Sized |
+| `39266dce` | refactor(lab-f1t2): address simplify + review findings on the f1t2 wave |
+| `b7f488af` | fix(lab-zxx5.30,lab-zxx5.31): partial-extraction detection + fail-closed walk |
+| `7b051062` | fix(lab-zxx5.29): validate node install result shape |
+| `12eb0ea0` | fix(lab-zxx5.28): typed error markers restore install taxonomy |
+| `ae302ef6` | docs(lab-f1t2.32): document MCP transport auth requirement for fs |
+| `86e943eb` | fix(lab-f1t2.26): redact path from deny-list oracle log events |
+| `c9be4573` | fix(lab-f1t2.30): reset AttachmentChip thumbUrl at effect start |
+| `33db1293` | fix(lab-f1t2.29): reset loading/truncated when picker closes mid-fetch |
+| `0e7a569f` | fix(lab-f1t2.24): handle help/schema before workspace_root resolution |
+| `6101fdbe` | fix(lab-zxx5.27): P3 roll-up — SSRF edges, per-node cap, redact_home, naming cleanup |
+| `3c135072` | docs(lab-f1t2.31): document fs registry uses MCP-filtered slice intentionally |
+| `b6386ad9` | fix(lab-f1t2.28): move setSending(true) inside sendingRef try |
+| `76962fc3` | fix(lab-f1t2.27): align workspace-picker error kinds with backend |
+| `c892efce` | test(lab-f1t2.25): bidirectional parity test for MCP fs catalog |
+| `85f019e4` | fix(lab-f1t2.23): case-insensitive credential deny-list |
+| `9aaa8c7a` | fix(lab-f1t2.22): reject intra-workspace symlinks in openat2 fallback |
+| `40ac16a1` | fix(lab-zxx5): resolve multi-agent review P1+P2 findings |
+| `e7ea8528` | refactor(lab-f1t2.20): inline log_dispatch/log_dispatch_preview wrappers |
+| `01de323a` | chore: untrack crates/lab/target/ build artifacts |
+| `9d83267b` | chore: bump workspace to 0.11.0 + misc uncommitted work |
+| `979bae1a` | feat(lab-zxx5.18): install_component/agent.install security hardening |
+| `bbebe993` | refactor(lab-f1t2.18): removeAttachment keys on (kind, path) compound |
+| `b41a7315` | ux(lab-f1t2.19): workspace picker polish — truncated reset + kind messages + aria |
+| `328664b4` | perf(lab-f1t2.15): dedupe concurrent workspace preview fetches |
+| `1c8b9731` | fix(lab-f1t2.16): eliminate chat input + workspace picker + preview races |
+| `d077428b` | test(lab-f1t2.11): lock MCP/canonical fs ActionSpec parity |
+| `f66823aa` | perf(lab-f1t2.14): eliminate redundant lstat + ASCII fast-path for deny-list |
+| `c844d053` | feat(lab-zxx5.16): cherry-pick SSE progress endpoint |
+| `b14cbe75` | refactor(lab-f1t2.17): consolidate fs dispatch into single match body |
+| `a718f15a` | fix(lab-f1t2.12): apply fs security headers via subrouter middleware |
+| `cfeb698a` | feat(lab-f1t2.13): register fs unconditionally when feature-enabled |
+| `12666cef` | fix(lab-zxx5.2): route mcp.* actions to mcp_dispatch in marketplace dispatch |
+| `8d0b2572` | chore(lab-f1t2): snapshot pre-review-fixes state |
+| `7610accd` | feat(lab-zxx5.6): wire real NodeRpcPort + master pending infra + rename device→node |
+| `4c7567a1` | feat(lab-zxx5.19): bounded inbound-RPC dispatch + UUIDv4 request ids |
+| `7f0f55e4` | fix(lab-zxx5.15): normalize marketplace client path helpers to Result |
+| `910037d3` | feat(lab-zxx5.14): Default derives, redact_home helper, plugins.list invariant test |
+| `d18eb12b` | feat(lab-ccc9): Phase 3 WS fleet method handlers + MCP demux |
+| `1351cad2` | feat(lab-e2tu): SQLite-backed node log persistence with 30-day TTL retention |
+| `9300b884` | fix(lab-zxx5.13): map ambiguous_tool kind to 409 Conflict + document |
+| `daeb1ef6` | fix: restore compile — add AmbiguousTool variant, fix codex backend Option/Result, update Marketplace/Plugin literals |
+| `d77fbeab` | feat(lab-f1t2.1): workspace root resolver + AppState field |
+| `462e63f6` | feat(lab-yn60): complete device→node module rename |
+| `0564a9e2` | wip(acp): chat-shell + session events + ACP runtime refactor |
+| `916ac283` | feat(lab-zxx5.8): add MCP server install modal with gateway selection |
+| `20cc45a9` | feat(lab-zxx5.3): stream SHA-256 during binary archive download |
+| `453162aa` | fix: commit node module files and resolve device→node rename breakage |
+| `ec476ba3` | feat(lab-zxx5.3): implement remote fleet WS install and binary agent download |
+| `81901791` | perf(lab-kvhi.16): run config.read + current_pool concurrently in gateway list/get |
+| `f16f43a9` | fix(lab-kvhi.14): accumulate reasoning duration across SSE reconnects |
+| `a4851368` | feat(lab-zxx5.6): add plugin.cherry_pick dispatch action |
+| `21e5f4b5` | feat(lab-zxx5.11): unified marketplace API client + PluginComponent types |
+| `e93da3ae` | feat(lab-zxx5.4): delete mcpregistry dispatch surface, migrate to marketplace |
+| `094eeba4` | feat(lab-zxx5.3): add ACP agent dispatch actions (agent.list/get/install/uninstall) |
+| `9bbfd50c` | feat(lab-zxx5.10): add cherry-pick component selector dialog |
+| `ae827055` | fix(lab-zxx5): resolve Wave 1 compile errors and test failures |
+| `0c7f4cbc` | feat(lab-bg3e.2): promote doctor to full Bootstrap dispatch service |
+| `f504e26a` | fix(gateway-admin): misc correctness + accessibility batch |
+| `d2bbdd05` | fix(gateway-admin): prop-spread ordering to prevent consumer clobbering |
+| `043920c7` | fix(gateway-admin): file-tree accessibility + dead code + handler ordering |
+| `282e18b5` | fix(gateway-admin): prompt-input five correctness fixes |
+| `41b1f167` | feat(lab-zxx5.8): add MCP server install modal with gateway selection |
+| `e7760dd9` | fix(gateway-admin): shared useCopyTimeout hook to prevent leaked setState-after-unmount |
+| `a3de2667` | feat(lab-zxx5.9): add ACP agent install modal with device and scope selection |
+| `7a76de00` | fix(gateway-admin): runtime crash + stuck timer + unreachable Cancel |
+| `eca9f7d9` | fix(gateway-admin): resolve broken ~/ import aliases in AI components |
+| `d8490870` | feat(lab-jwbg.8): ACP service registration — PluginMeta, registry, serve wiring |
+| `c2f8bd65` | feat(lab-zxx5.1): add lab-apis/src/acp_registry SDK client |
+| `1945e5b3` | fix(lab-zxx5): resolve Wave 0 compile errors and test failures |
+| `8a166f14` | feat(lab-jwbg.7): migrate API/ACP surface to dispatch/acp layer |
+| `dbf49212` | feat(lab-jwbg.6): dispatch/acp layer — catalog, client, params, dispatch |
+| `3ff6b209` | feat(lab-jwbg.5): rewrite AcpSessionRegistry — Arc<Session>, per-subscriber mpsc, ownership |
+| `78a8f7f7` | feat(lab-bg3e.1): UiSchema/FieldKind types + PluginMeta.supports_multi_instance for all 23 services |
+| `dd707162` | feat(lab-jwbg.3): SQLite persistence layer — AcpPersistence trait + SqliteAcpPersistence |
+| `c3e0f350` | feat(lab-zxx5.5): add marketplace.install_component + agent.install RPC methods |
+| `791d1196` | feat(bd-security/marketplace-p1): ACP types, fleet WS registry, marketplace UI, Category::Marketplace |
 | `f8de5bde` | feat(lab-jwbg.2): migrate ACP types — Bridge* → Acp* in lab-apis |
 | `bba30eb2` | feat(lab-zxx5.7): unified marketplace type filter + MCP/ACP item cards |
 | `3124a871` | feat(lab-zxx5.5): add fleet WS master→device sender registry |
@@ -59,6 +144,15 @@ All notable changes to this project will be documented in this file.
 
 ### Highlights
 
+- **Marketplace P1 security follow-up (lab-zxx5)** — multi-agent review P1+P2 fixes, install_component/agent.install hardening, SSRF blocklist edges, per-node caps, `redact_home` helper applied to errors and log tiering, partial-extraction detection with fail-closed walk, typed install error markers, marketplace path helpers normalized to `Result`, plugins.list invariant test, `ambiguous_tool` → 409, mcp.* routed through `mcp_dispatch`, streamed SHA-256 during binary archive download, bounded inbound RPC dispatch with UUIDv4 request ids
+- **Workspace fs hardening (lab-f1t2)** — workspace root resolver + AppState field, fs registered unconditionally when feature-enabled, security headers via subrouter middleware, dispatch consolidated into single match body, intra-workspace symlink rejection in openat2 fallback, case-insensitive credential deny-list with path redaction, MCP transport auth requirement documented, MCP↔canonical fs ActionSpec parity locked, ASCII fast-path + redundant lstat removal, concurrent workspace preview dedupe, workspace-picker error-kind alignment, AttachmentChip and chat-input race elimination + UX polish
+- **WS fleet runtime + remote install (lab-zxx5.3/.6/lab-ccc9/lab-e2tu)** — real `NodeRpcPort` master pending infra, device→node module rename, remote fleet WS install + binary agent download, plugin.cherry_pick dispatch + cherry-pick component selector dialog, Phase 3 WS fleet method handlers + MCP demux, SQLite-backed node log persistence with 30-day TTL retention, SSE progress endpoint cherry-pick
+- **ACP service consolidation (lab-jwbg)** — `acp_registry` SDK client, dispatch/acp layer (catalog, client, params, dispatch), API/ACP surface migrated to dispatch layer, ACP service registration (PluginMeta, registry, serve wiring), `AcpSessionRegistry` rewrite with `Arc<Session>` + per-subscriber mpsc + ownership semantics, SQLite persistence layer (`AcpPersistence` trait + `SqliteAcpPersistence`), ACP agent dispatch actions (`agent.list/get/install/uninstall`), MCP server + ACP agent install modals with gateway/device/scope selection
+- **Doctor + bootstrap (lab-bg3e)** — doctor promoted to full Bootstrap dispatch service, `UiSchema`/`FieldKind` types + `PluginMeta.supports_multi_instance` for all 23 services
+- **Gateway admin AI component pass** — prompt-input five-fix correctness pass, file-tree accessibility, prop-spread ordering, runtime-crash + stuck-timer + unreachable-Cancel fixes, shared `useCopyTimeout` hook to prevent leaked setState-after-unmount, AI components import-alias repair, accessibility batch
+- **Dev mockup routes** — mockup file server at `/dev` and `/dev/:name`, `/dev/api/nodeinfo` returning `.env` values with secrets masked, route survival across router.rs refactors
+- **Docs** — setup+settings feature design spec, component-development doc update, OAUTH.md, OPERATIONS.md additions, design-system contract additions
+
 - **Marketplace security hardening (P1)** — path traversal via plugin ID blocked at parse time; symlink following eliminated from all four filesystem walkers; `installPath` from `installed_plugins.json` validated against `plugins_root` before use
 - **AI component library** — 26 new TSX components under `components/ai/` covering agents, artifacts, attachments, code blocks, reasoning, tool calls, and more
 - **Fleet websocket runtime** — new `feat: add websocket fleet runtime`; ACP provider, session registry, SSE transport, and design docs
@@ -75,8 +169,8 @@ All notable changes to this project will be documented in this file.
 
 ### Version bumps
 
-- Rust workspace: `0.8.0 → 0.9.0`
-- gateway-admin: `0.3.0 → 0.4.0`
+- Rust workspace: `0.11.0 → 0.11.1`
+- gateway-admin: `0.5.0 → 0.5.1`
 
 ---
 

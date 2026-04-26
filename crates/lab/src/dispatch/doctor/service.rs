@@ -37,6 +37,34 @@ pub async fn probe_service(
     Ok(status_to_finding(service, &status))
 }
 
+/// Run only service probes, without system or auth checks.
+///
+/// Used by `lab doctor services`. Results are sent to `tx` as they complete,
+/// in parallel bounded by `Semaphore(5)`.
+pub async fn stream_service_probes(
+    clients: Arc<ServiceClients>,
+    tx: tokio::sync::mpsc::Sender<Finding>,
+) {
+    let sem = Arc::new(Semaphore::new(5));
+    let mut handles = Vec::new();
+
+    for service_name in configured_service_names(&clients) {
+        let sem = sem.clone();
+        let clients = clients.clone();
+        let tx = tx.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.expect("semaphore closed");
+            let status = health_by_name_owned(&clients, &service_name);
+            let finding = status_to_finding(&service_name, &status.await);
+            tx.send(finding).await.ok();
+        }));
+    }
+
+    for handle in handles {
+        handle.await.ok();
+    }
+}
+
 /// Run `audit.full`: system checks followed by all configured service probes.
 ///
 /// Results are sent to `tx` as they complete. System checks are emitted
@@ -45,8 +73,13 @@ pub async fn stream_audit_full(
     clients: Arc<ServiceClients>,
     tx: tokio::sync::mpsc::Sender<Finding>,
 ) {
-    // Emit system checks immediately (no network I/O).
+    // Emit system and auth checks immediately (no network I/O).
     for finding in super::system::run_system_checks() {
+        if tx.send(finding).await.is_err() {
+            return;
+        }
+    }
+    for finding in super::system::run_auth_checks() {
         if tx.send(finding).await.is_err() {
             return;
         }
@@ -361,7 +394,17 @@ fn status_to_finding(service: &str, status: &ServiceStatus) -> Finding {
         Severity::Ok
     };
     let message = match (&status.message, status.reachable, status.auth_ok) {
-        (Some(msg), _, _) => format!("{msg} ({}ms)", status.latency_ms),
+        (Some(msg), _, _) => {
+            // Truncate to prevent HTML error pages from flooding output.
+            let msg = msg.trim();
+            let truncated = if msg.chars().count() > 120 {
+                let prefix: String = msg.chars().take(120).collect();
+                format!("{prefix}…")
+            } else {
+                msg.to_string()
+            };
+            format!("{truncated} ({}ms)", status.latency_ms)
+        }
         (None, true, true) => format!("healthy ({}ms)", status.latency_ms),
         (None, true, false) => format!("reachable but auth failed ({}ms)", status.latency_ms),
         (None, false, _) => "unreachable".to_string(),

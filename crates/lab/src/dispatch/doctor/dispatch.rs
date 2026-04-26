@@ -31,6 +31,15 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 })?;
             return to_json(Report { findings });
         }
+        "auth.check" => {
+            let findings = tokio::task::spawn_blocking(system::run_auth_checks)
+                .await
+                .map_err(|e| ToolError::Sdk {
+                    sdk_kind: "internal_error".to_string(),
+                    message: format!("auth.check task panicked: {e}"),
+                })?;
+            return to_json(Report { findings });
+        }
         a if !ACTIONS.iter().any(|s| s.name == a) => {
             return Err(ToolError::UnknownAction {
                 message: format!("unknown action `{action}` for service `doctor`"),
@@ -65,15 +74,20 @@ pub async fn dispatch_with_clients(
             let a = crate::dispatch::helpers::require_str(&params, "action")?;
             action_schema(ACTIONS, a)
         }
-        "system.checks" => {
-            match tokio::task::spawn_blocking(system::run_system_checks).await {
-                Ok(findings) => to_json(Report { findings }),
-                Err(e) => Err(ToolError::Sdk {
-                    sdk_kind: "internal_error".to_string(),
-                    message: format!("system.checks task panicked: {e}"),
-                }),
-            }
-        }
+        "system.checks" => match tokio::task::spawn_blocking(system::run_system_checks).await {
+            Ok(findings) => to_json(Report { findings }),
+            Err(e) => Err(ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("system.checks task panicked: {e}"),
+            }),
+        },
+        "auth.check" => match tokio::task::spawn_blocking(system::run_auth_checks).await {
+            Ok(findings) => to_json(Report { findings }),
+            Err(e) => Err(ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message: format!("auth.check task panicked: {e}"),
+            }),
+        },
         "service.probe" => {
             let p = parse_service_probe(&params)?;
             let finding = service::probe_service(clients, p.service, p.instance).await?;

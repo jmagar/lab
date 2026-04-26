@@ -1,8 +1,22 @@
-import type { Marketplace, MarketplaceRuntime, Plugin } from '@/lib/types/marketplace'
+import type { Marketplace, MarketplaceRuntime, Plugin, PluginComponent, PluginComponentKind } from '@/lib/types/marketplace'
 import type { AcpAgent, McpServer } from '@/lib/marketplace/types'
 
-export type MarketplaceCatalogKind = 'plugin' | 'mcp_server' | 'acp_agent' | 'source'
-export type MarketplaceCatalogLens = 'all' | 'installed' | 'plugins' | 'mcp_servers' | 'acp_agents' | 'sources'
+export type MarketplaceCatalogKind =
+  | 'plugin'
+  | 'agent'
+  | 'skill'
+  | 'command'
+  | 'mcp_server'
+  | 'acp_agent'
+  | 'app'
+  | 'hook'
+  | 'asset'
+  | 'file'
+  | 'config'
+  | 'monitor'
+  | 'output_style'
+  | 'source'
+export type MarketplaceCatalogLens = 'all' | 'installed' | 'plugins' | 'agents' | 'skills' | 'commands' | 'mcp_servers' | 'acp_agents' | 'sources'
 export type MarketplaceInstallFacet = 'installed' | 'not_installed' | 'update_available' | 'builtin'
 export type MarketplaceSort = 'name' | 'source' | 'installed' | 'updated'
 
@@ -40,10 +54,18 @@ export interface MarketplaceCatalogSummary {
   all: number
   installed: number
   plugins: number
+  agents: number
+  skills: number
+  commands: number
   mcpServers: number
   acpAgents: number
   sources: number
   updates: number
+}
+
+export interface PluginComponentCatalogRaw {
+  plugin: Plugin
+  component: PluginComponent
 }
 
 interface BuildMarketplaceCatalogItemsInput {
@@ -87,6 +109,9 @@ const RUNTIME_LABELS: Record<MarketplaceRuntime, string> = {
   gemini: 'Gemini',
 }
 
+export const MCP_REGISTRY_SOURCE_ID = 'mcp-registry'
+export const MCP_REGISTRY_SOURCE_NAME = 'MCP Registry'
+
 function sourceDisplayName(source: Marketplace): string {
   return source.name || source.id
 }
@@ -100,6 +125,7 @@ function sourceSubtitle(source: Marketplace): string {
 function normalizeMcpServer(entry: McpServer | McpRegistryEnvelope): {
   server: McpRegistryEnvelope['server'] & McpServer
   updatedAt?: string
+  isLatest?: boolean
   raw: McpServer | McpRegistryEnvelope
 } {
   const envelope = entry as McpRegistryEnvelope
@@ -108,6 +134,7 @@ function normalizeMcpServer(entry: McpServer | McpRegistryEnvelope): {
   return {
     server,
     updatedAt: officialMeta?.updatedAt ?? officialMeta?.publishedAt,
+    isLatest: officialMeta?.isLatest,
     raw: entry,
   }
 }
@@ -146,6 +173,118 @@ function pluginEcosystem(plugin: Plugin): string {
   return plugin.runtime ? RUNTIME_LABELS[plugin.runtime] : 'Generic'
 }
 
+function componentCatalogKind(kind: PluginComponentKind): MarketplaceCatalogKind {
+  if (kind === 'agents') return 'agent'
+  if (kind === 'skills') return 'skill'
+  if (kind === 'commands') return 'command'
+  if (kind === 'mcp_servers' || kind === 'mcp-config') return 'mcp_server'
+  if (kind === 'apps') return 'app'
+  if (kind === 'hooks') return 'hook'
+  if (kind === 'monitors') return 'monitor'
+  if (kind === 'output-styles') return 'output_style'
+  if (kind === 'lsp-config') return 'config'
+  if (kind === 'files') return 'file'
+  return 'asset'
+}
+
+function componentDistribution(kind: MarketplaceCatalogKind): string {
+  if (kind === 'agent') return 'Agent'
+  if (kind === 'skill') return 'Skill'
+  if (kind === 'command') return 'Command'
+  if (kind === 'mcp_server') return 'MCP server'
+  if (kind === 'app') return 'App'
+  if (kind === 'hook') return 'Hook'
+  if (kind === 'monitor') return 'Monitor'
+  if (kind === 'output_style') return 'Output style'
+  if (kind === 'config') return 'Config'
+  if (kind === 'file') return 'File'
+  return 'Asset'
+}
+
+function componentDescription(component: PluginComponent, plugin: Plugin): string {
+  const metadata = component.metadata ?? {}
+  const description = metadata.description
+  return typeof description === 'string' && description.trim() ? description : plugin.description || plugin.desc || ''
+}
+
+function mcpEntryTimestamp(entry: ReturnType<typeof normalizeMcpServer>): number {
+  const timestamp = new Date(entry.updatedAt ?? 0).getTime()
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function dedupeMcpServers(entries: Array<McpServer | McpRegistryEnvelope>): Array<ReturnType<typeof normalizeMcpServer>> {
+  const byIdentifier = new Map<string, ReturnType<typeof normalizeMcpServer>>()
+  for (const entry of entries) {
+    const normalized = normalizeMcpServer(entry)
+    const identifier = mcpIdentifier(normalized.server)
+    const current = byIdentifier.get(identifier)
+    if (
+      !current
+      || (normalized.isLatest && !current.isLatest)
+      || (normalized.isLatest === current.isLatest && mcpEntryTimestamp(normalized) > mcpEntryTimestamp(current))
+    ) {
+      byIdentifier.set(identifier, normalized)
+    }
+  }
+  return [...byIdentifier.values()]
+}
+
+function pluginComponentItems(plugin: Plugin, sourceNames: Map<string, string>): MarketplaceCatalogItem[] {
+  return (plugin.components ?? []).map((component): MarketplaceCatalogItem => {
+    const kind = componentCatalogKind(component.kind)
+    return {
+      id: `component:${plugin.id}:${component.kind}:${component.path}`,
+      kind,
+      name: component.name || component.path,
+      subtitle: `${plugin.name} / ${component.path}`,
+      description: componentDescription(component, plugin),
+      version: plugin.version || plugin.ver,
+      sourceId: plugin.marketplaceId,
+      sourceName: sourceNames.get(plugin.marketplaceId) ?? plugin.marketplaceId,
+      distribution: componentDistribution(kind),
+      ecosystem: pluginEcosystem(plugin),
+      installed: plugin.installed,
+      hasUpdate: Boolean(plugin.hasUpdate),
+      builtin: false,
+      updatedAt: plugin.updatedAt,
+      tags: [plugin.name, component.path, ...(plugin.tags ?? [])],
+      raw: { plugin, component } satisfies PluginComponentCatalogRaw,
+    }
+  })
+}
+
+export function isPluginCatalogItem(item: MarketplaceCatalogItem | null): item is MarketplaceCatalogItem & { raw: Plugin } {
+  return item?.kind === 'plugin'
+}
+
+export function isMcpServerCatalogItem(item: MarketplaceCatalogItem | null): item is MarketplaceCatalogItem & { raw: McpServer | McpRegistryEnvelope } {
+  return item?.kind === 'mcp_server'
+}
+
+export function isAcpAgentCatalogItem(item: MarketplaceCatalogItem | null): item is MarketplaceCatalogItem & { raw: AcpAgent } {
+  return item?.kind === 'acp_agent'
+}
+
+export function isPluginComponentCatalogItem(item: MarketplaceCatalogItem | null): item is MarketplaceCatalogItem & { raw: PluginComponentCatalogRaw } {
+  return Boolean(
+    item
+      && item.kind !== 'plugin'
+      && item.kind !== 'mcp_server'
+      && item.kind !== 'acp_agent'
+      && item.kind !== 'source'
+      && typeof item.raw === 'object'
+      && item.raw !== null
+      && 'plugin' in item.raw
+      && 'component' in item.raw,
+  )
+}
+
+export function catalogItemMcpServer(item: MarketplaceCatalogItem): McpServer | null {
+  if (!isMcpServerCatalogItem(item)) return null
+  const envelope = item.raw as McpRegistryEnvelope
+  return (envelope.server ?? item.raw) as McpServer
+}
+
 export function buildMarketplaceCatalogItems({
   plugins,
   sources,
@@ -155,26 +294,28 @@ export function buildMarketplaceCatalogItems({
   const sourceNames = new Map(sources.map((source) => [source.id, sourceDisplayName(source)]))
 
   return [
-    ...plugins.map((plugin): MarketplaceCatalogItem => ({
-      id: `plugin:${plugin.id}`,
-      kind: 'plugin',
-      name: plugin.name,
-      subtitle: plugin.marketplaceId,
-      description: plugin.description || plugin.desc || '',
-      version: plugin.version || plugin.ver,
-      sourceId: plugin.marketplaceId,
-      sourceName: sourceNames.get(plugin.marketplaceId) ?? plugin.marketplaceId,
-      distribution: 'Plugin',
-      ecosystem: pluginEcosystem(plugin),
-      installed: plugin.installed,
-      hasUpdate: Boolean(plugin.hasUpdate),
-      builtin: false,
-      updatedAt: plugin.updatedAt,
-      tags: plugin.tags ?? [],
-      raw: plugin,
-    })),
-    ...mcpServers.map((entry): MarketplaceCatalogItem => {
-      const { server, updatedAt, raw } = normalizeMcpServer(entry)
+    ...plugins.flatMap((plugin): MarketplaceCatalogItem[] => [
+      {
+        id: `plugin:${plugin.id}`,
+        kind: 'plugin',
+        name: plugin.name,
+        subtitle: plugin.marketplaceId,
+        description: plugin.description || plugin.desc || '',
+        version: plugin.version || plugin.ver,
+        sourceId: plugin.marketplaceId,
+        sourceName: sourceNames.get(plugin.marketplaceId) ?? plugin.marketplaceId,
+        distribution: 'Plugin package',
+        ecosystem: pluginEcosystem(plugin),
+        installed: plugin.installed,
+        hasUpdate: Boolean(plugin.hasUpdate),
+        builtin: false,
+        updatedAt: plugin.updatedAt,
+        tags: plugin.tags ?? [],
+        raw: plugin,
+      },
+      ...pluginComponentItems(plugin, sourceNames),
+    ]),
+    ...dedupeMcpServers(mcpServers).map(({ server, updatedAt, raw }): MarketplaceCatalogItem => {
       return {
         id: `mcp:${mcpIdentifier(server)}`,
         kind: 'mcp_server',
@@ -182,6 +323,8 @@ export function buildMarketplaceCatalogItems({
         subtitle: mcpSubtitle(server),
         description: server.description ?? '',
         version: server.version,
+        sourceId: MCP_REGISTRY_SOURCE_ID,
+        sourceName: MCP_REGISTRY_SOURCE_NAME,
         distribution: mcpDistribution(server),
         ecosystem: 'MCP',
         installed: false,
@@ -234,6 +377,9 @@ export function marketplaceCatalogSummary(items: MarketplaceCatalogItem[]): Mark
     all: items.length,
     installed: items.filter((item) => item.installed).length,
     plugins: items.filter((item) => item.kind === 'plugin').length,
+    agents: items.filter((item) => item.kind === 'agent').length,
+    skills: items.filter((item) => item.kind === 'skill').length,
+    commands: items.filter((item) => item.kind === 'command').length,
     mcpServers: items.filter((item) => item.kind === 'mcp_server').length,
     acpAgents: items.filter((item) => item.kind === 'acp_agent').length,
     sources: items.filter((item) => item.kind === 'source').length,
@@ -245,6 +391,9 @@ function matchesLens(item: MarketplaceCatalogItem, lens: MarketplaceCatalogLens)
   if (lens === 'all') return true
   if (lens === 'installed') return item.installed
   if (lens === 'plugins') return item.kind === 'plugin'
+  if (lens === 'agents') return item.kind === 'agent'
+  if (lens === 'skills') return item.kind === 'skill'
+  if (lens === 'commands') return item.kind === 'command'
   if (lens === 'mcp_servers') return item.kind === 'mcp_server'
   if (lens === 'acp_agents') return item.kind === 'acp_agent'
   return item.kind === 'source'
@@ -310,6 +459,8 @@ export function sortMarketplaceCatalogItems(
     }
 
     if (sort === 'updated') {
+      if (left.kind === 'source' && right.kind !== 'source') return 1
+      if (right.kind === 'source' && left.kind !== 'source') return -1
       const leftTime = new Date(left.updatedAt ?? 0).getTime()
       const rightTime = new Date(right.updatedAt ?? 0).getTime()
       if (leftTime !== rightTime) return rightTime - leftTime

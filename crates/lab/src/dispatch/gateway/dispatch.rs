@@ -106,7 +106,11 @@ pub async fn dispatch_with_manager(
         }
         "gateway.virtual_server.quarantine.restore" => {
             let params: VirtualServerNameParams = parse_params(params_value)?;
-            to_json(manager.restore_quarantined_virtual_server(&params.id).await?)
+            to_json(
+                manager
+                    .restore_quarantined_virtual_server(&params.id)
+                    .await?,
+            )
         }
         "gateway.virtual_server.set_surface" => {
             let params: VirtualServerSurfaceParams = parse_params(params_value)?;

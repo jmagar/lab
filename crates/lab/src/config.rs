@@ -800,7 +800,7 @@ pub fn toml_candidates() -> Vec<PathBuf> {
 /// Cross-platform home directory.
 ///
 /// Checks `HOME` (Unix) then `USERPROFILE` (Windows). No external crate needed.
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -1406,10 +1406,7 @@ mcp = true
         let reparsed =
             toml::from_str::<LabConfig>(&serialized).expect("serialized config should parse");
         assert_eq!(reparsed.quarantined_virtual_servers.len(), 1);
-        assert_eq!(
-            reparsed.quarantined_virtual_servers[0].id,
-            "stale-registry"
-        );
+        assert_eq!(reparsed.quarantined_virtual_servers[0].id, "stale-registry");
     }
 
     #[test]

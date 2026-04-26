@@ -108,7 +108,7 @@ pub enum Command {
     /// Start the MCP server (stdio or HTTP transport).
     Serve(serve::ServeArgs),
     /// Audit configured services and report problems.
-    Doctor,
+    Doctor(doctor::DoctorArgs),
     /// Query nodes from the configured controller.
     Nodes(nodes::NodesArgs),
     /// Quick reachability check for configured services.
@@ -214,7 +214,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let color = cli.color;
     match cli.command {
         Command::Serve(args) => serve::run(args, &config).await,
-        Command::Doctor => doctor::run(format).await,
+        Command::Doctor(args) => doctor::run(args, format).await,
         Command::Nodes(args) => nodes::run(args, format, &config).await,
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),
@@ -288,13 +288,47 @@ mod tests {
     fn cli_parses_global_color_flag() {
         let cli = Cli::parse_from(["lab", "--color", "plain", "doctor"]);
         assert_eq!(cli.color, ColorPolicy::Plain);
-        assert!(matches!(cli.command, Command::Doctor));
+        assert!(matches!(cli.command, Command::Doctor(_)));
     }
 
     #[test]
     fn cli_defaults_color_policy_to_auto() {
         let cli = Cli::parse_from(["lab", "doctor"]);
         assert_eq!(cli.color, ColorPolicy::Auto);
+        assert!(matches!(cli.command, Command::Doctor(_)));
+    }
+
+    #[test]
+    fn cli_doctor_accepts_auth_subcommand() {
+        let cli = Cli::parse_from(["lab", "doctor", "auth"]);
+        assert!(matches!(
+            cli.command,
+            Command::Doctor(doctor::DoctorArgs {
+                check: Some(doctor::DoctorCheck::Auth)
+            })
+        ));
+    }
+
+    #[test]
+    fn cli_doctor_accepts_system_subcommand() {
+        let cli = Cli::parse_from(["lab", "doctor", "system"]);
+        assert!(matches!(
+            cli.command,
+            Command::Doctor(doctor::DoctorArgs {
+                check: Some(doctor::DoctorCheck::System)
+            })
+        ));
+    }
+
+    #[test]
+    fn cli_doctor_accepts_services_subcommand() {
+        let cli = Cli::parse_from(["lab", "doctor", "services"]);
+        assert!(matches!(
+            cli.command,
+            Command::Doctor(doctor::DoctorArgs {
+                check: Some(doctor::DoctorCheck::Services)
+            })
+        ));
     }
 }
 

@@ -18,6 +18,27 @@ It is distinct from the product-level `lab health` surface.
 
 It is intended as a repo-local smoke test, not as the canonical SDK-level health API.
 
+### `scripts/check-oauth.sh`
+
+Purpose:
+
+- verify OAuth/auth configuration against a **running server** from outside the process
+- confirm all protected endpoints return 401 without auth and accept valid tokens
+- validate OAuth discovery metadata, issuer, JWKS, and RFC 9728 WWW-Authenticate header
+- confirm public endpoints (health, node self-registration, OAuth callbacks) are not auth-blocked
+
+Usage:
+
+```bash
+./scripts/check-oauth.sh                          # auto-loads ~/.lab/.env, defaults to localhost:8080
+./scripts/check-oauth.sh https://lab.example.com  # explicit URL
+LAB_BASE_URL=https://lab.example.com ./scripts/check-oauth.sh
+```
+
+Exit codes: `0` = pass, `1` = one or more failures. Suitable for post-deploy CI gates.
+
+Complements `lab doctor`, which checks internal state (config, file permissions, SQLite) before a server is running. `scripts/check-oauth.sh` is the external black-box probe; `lab doctor` is the internal pre-flight check.
+
 ### `just mcp-token`
 
 Purpose:

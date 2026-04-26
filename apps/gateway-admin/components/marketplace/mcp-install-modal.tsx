@@ -1,14 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Server, Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { Bot, Cpu, Loader2, Server, CheckCircle2, XCircle } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { useGateways } from '@/lib/hooks/use-gateways'
+import { fetchFleetDevices, type FleetDevice } from '@/lib/api/device-client'
+import { deriveGatewayName, validateGatewayName } from '@/lib/utils/gateway-name'
 import { installMcpServer } from '@/lib/marketplace/api-client'
 import type { McpServer } from '@/lib/marketplace/types'
 import type { McpInstallGatewayResult } from '@/lib/marketplace/api-client'
@@ -19,16 +21,13 @@ interface McpInstallModalProps {
   onSuccess?: () => void
 }
 
-interface GatewayRow {
-  id: string
-  name: string
-  url?: string
-  enabled?: boolean
-}
-
 export function McpInstallModal({ server, onClose, onSuccess }: McpInstallModalProps) {
-  const { data: gateways = [] } = useGateways()
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [gatewayName, setGatewayName] = useState('')
+  const [installToGateway, setInstallToGateway] = useState(true)
+  const [devices, setDevices] = useState<FleetDevice[]>([])
+  const [devicesError, setDevicesError] = useState<string | null>(null)
+  const [selectedClientTargets, setSelectedClientTargets] = useState<Array<{ node_id: string; client: 'claude' | 'codex' }>>([])
+  const [nameError, setNameError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<McpInstallGatewayResult[] | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -36,7 +35,10 @@ export function McpInstallModal({ server, onClose, onSuccess }: McpInstallModalP
 
   // Reset state when server changes
   useEffect(() => {
-    setSelectedIds(new Set())
+    setGatewayName(server ? deriveGatewayName(server.name) : '')
+    setInstallToGateway(true)
+    setSelectedClientTargets([])
+    setNameError(null)
     setResults(null)
     setSubmitError(null)
   }, [server])
@@ -44,29 +46,50 @@ export function McpInstallModal({ server, onClose, onSuccess }: McpInstallModalP
   // Abort on unmount
   useEffect(() => () => { abortRef.current?.abort() }, [])
 
-  const gatewayRows: GatewayRow[] = gateways.map((g) => ({
-    id: g.id,
-    name: g.name,
-    url: g.config.url ?? undefined,
-    enabled: g.enabled,
-  }))
+  useEffect(() => {
+    if (!server) return
+    const controller = new AbortController()
+    setDevicesError(null)
+    fetchFleetDevices(controller.signal)
+      .then(setDevices)
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setDevicesError(error instanceof Error ? error.message : 'Failed to load devices')
+      })
+    return () => controller.abort()
+  }, [server])
 
-  const toggleGateway = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
+  const handleGatewayNameChange = (value: string) => {
+    setGatewayName(value)
+    if (nameError) setNameError(validateGatewayName(value))
+  }
+
+  const toggleClientTarget = (nodeId: string, client: 'claude' | 'codex') => {
+    setSelectedClientTargets((current) => {
+      const idx = current.findIndex((t) => t.node_id === nodeId && t.client === client)
+      if (idx >= 0) return current.filter((_, i) => i !== idx)
+      return [...current, { node_id: nodeId, client }]
     })
   }
 
-  const canInstall = selectedIds.size > 0 && !loading
+  const canInstall = (installToGateway || selectedClientTargets.length > 0) && !loading
+  const selectedTargetCount = (installToGateway ? 1 : 0) + selectedClientTargets.length
+  const installLabel = selectedTargetCount > 1
+    ? `Install to ${selectedTargetCount} targets`
+    : selectedClientTargets.length === 1 && !installToGateway
+      ? 'Install to client'
+      : 'Install to gateway'
 
   const handleInstall = async () => {
     if (!server || !canInstall) return
+    if (installToGateway) {
+      const validation = validateGatewayName(gatewayName)
+      if (validation) {
+        setNameError(validation)
+        return
+      }
+    }
+    setNameError(null)
     setSubmitError(null)
     setResults(null)
     setLoading(true)
@@ -79,7 +102,8 @@ export function McpInstallModal({ server, onClose, onSuccess }: McpInstallModalP
         {
           server_name: server.name,
           version: server.version ?? '0.0.0',
-          gateway_ids: Array.from(selectedIds),
+          gateway_ids: installToGateway ? [gatewayName.trim()] : undefined,
+          client_targets: selectedClientTargets.length > 0 ? selectedClientTargets : undefined,
         },
         abortRef.current.signal,
       )
@@ -128,66 +152,97 @@ export function McpInstallModal({ server, onClose, onSuccess }: McpInstallModalP
 
         {/* Body */}
         <div className="px-7 py-6 flex flex-col gap-5">
-          {/* Gateway selection */}
           <div className="flex flex-col gap-[7px]">
             <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
-              Select Gateways
+              Install Targets
             </label>
-            {gatewayRows.length === 0 ? (
-              <p className="text-[13px] text-aurora-text-muted italic py-2">
-                No gateways configured. Add a gateway first.
-              </p>
+            <label className={cn(
+              'rounded-aurora-1 border px-3 py-2.5 cursor-pointer transition-colors',
+              installToGateway
+                ? 'border-aurora-accent-primary/30 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_6%,transparent)]'
+                : 'border-aurora-border-strong bg-aurora-control-surface hover:bg-aurora-hover-bg',
+            )}>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" className="sr-only" checked={installToGateway} onChange={() => setInstallToGateway((value) => !value)} disabled={loading} />
+                <div className={cn('w-4 h-4 flex-shrink-0 rounded border flex items-center justify-center', installToGateway ? 'bg-aurora-accent-primary border-aurora-accent-primary' : 'border-aurora-border-strong')}>
+                  {installToGateway ? (
+                    <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-none stroke-white stroke-[1.8]">
+                      <path d="M1 4l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : null}
+                </div>
+                <Server className="w-4 h-4 text-aurora-accent-strong" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-aurora-text-primary">Lab Gateway</div>
+                  <div className="text-[11px] text-aurora-text-muted">Adds this MCP server as an upstream in Lab.</div>
+                </div>
+              </div>
+            </label>
+            {installToGateway ? <div className="space-y-1.5">
+              <label htmlFor="mcp-gateway-name" className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
+                Gateway name
+              </label>
+              <Input
+                id="mcp-gateway-name"
+                value={gatewayName}
+                onChange={(event) => handleGatewayNameChange(event.target.value)}
+                disabled={loading}
+                className="h-10 border-aurora-border-strong bg-aurora-control-surface"
+              />
+              {nameError ? (
+                <p className="text-[12px] text-aurora-error">{nameError}</p>
+              ) : (
+                <p className="text-[11px] text-aurora-text-muted">
+                  Creates or updates a gateway upstream with this name.
+                </p>
+              )}
+            </div> : null}
+          </div>
+
+          <div className="flex flex-col gap-[7px]">
+            <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted">
+              Claude / Codex devices
+            </label>
+            {devicesError ? (
+              <p className="text-[12px] text-aurora-error">{devicesError}</p>
+            ) : devices.length === 0 ? (
+              <p className="text-[12px] text-aurora-text-muted">No enrolled devices found.</p>
             ) : (
-              <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
-                {gatewayRows.map((gw) => {
-                  const checked = selectedIds.has(gw.id)
-                  return (
-                    <label
-                      key={gw.id}
-                      className={cn(
-                        'flex items-center gap-3 rounded-aurora-1 border px-3 py-2.5 cursor-pointer transition-colors duration-150',
-                        checked
-                          ? 'border-aurora-accent-primary/50 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_6%,transparent)]'
-                          : 'border-aurora-border-strong bg-aurora-control-surface hover:border-aurora-border-default hover:bg-aurora-hover-bg',
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={checked}
-                        onChange={() => toggleGateway(gw.id)}
-                        disabled={loading}
-                      />
-                      <div
-                        className={cn(
-                          'w-4 h-4 flex-shrink-0 rounded border flex items-center justify-center transition-colors',
-                          checked
-                            ? 'bg-aurora-accent-primary border-aurora-accent-primary'
-                            : 'border-aurora-border-strong bg-transparent',
-                        )}
-                      >
-                        {checked && (
-                          <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-none stroke-white stroke-[1.8]">
-                            <path d="M1 4l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-semibold text-aurora-text-primary">{gw.name}</span>
-                          {gw.enabled === false && (
-                            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-aurora-text-muted/60 bg-aurora-control-surface border border-aurora-border-default rounded-full px-2 py-px">
-                              disabled
-                            </span>
-                          )}
-                        </div>
-                        {gw.url && (
-                          <div className="text-[11px] text-aurora-text-muted truncate">{gw.url}</div>
-                        )}
-                      </div>
-                    </label>
-                  )
-                })}
+              <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                {devices.map((device) => (
+                  <div key={device.node_id} className="rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-3 py-2.5">
+                    <div className="mb-2 flex items-center gap-2">
+                      <Cpu className="w-4 h-4 text-aurora-text-muted" />
+                      <span className="text-[13px] font-semibold text-aurora-text-primary">{device.node_id}</span>
+                      <span className="text-[11px] text-aurora-text-muted">{device.connected ? 'Connected' : 'Offline'}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(['claude', 'codex'] as const).map((client) => {
+                        const checked = selectedClientTargets.some(
+                          (t) => t.node_id === device.node_id && t.client === client,
+                        )
+                        return (
+                          <button
+                            key={client}
+                            type="button"
+                            disabled={loading || !device.connected}
+                            onClick={() => toggleClientTarget(device.node_id, client)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-45',
+                              checked
+                                ? 'border-aurora-accent-primary/40 bg-aurora-accent-primary/12 text-aurora-accent-strong'
+                                : 'border-aurora-border-default text-aurora-text-muted hover:bg-aurora-hover-bg',
+                            )}
+                            aria-pressed={checked}
+                          >
+                            <Bot className="w-3.5 h-3.5" />
+                            {client}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -252,7 +307,7 @@ export function McpInstallModal({ server, onClose, onSuccess }: McpInstallModalP
               ) : (
                 <>
                   <Server className="w-[14px] h-[14px]" />
-                  {selectedIds.size > 1 ? `Install to ${selectedIds.size} Gateways` : 'Install to Gateway'}
+                  {installLabel}
                 </>
               )}
             </button>

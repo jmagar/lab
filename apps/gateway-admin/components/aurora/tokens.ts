@@ -35,12 +35,28 @@ export const AURORA_DISPLAY_TITLE = 'font-display tracking-[-0.02em]'
 export const AURORA_DISPLAY_NUMBER =
   'font-display text-[28px] leading-none font-extrabold tracking-[-0.04em] tabular-nums'
 
+/** Card title — dense catalog/list card titles. Manrope, compact and emphatic. */
+export const AURORA_CARD_TITLE =
+  'font-display text-[15px] leading-[1.16] font-extrabold tracking-[-0.02em]'
+
+/** Compact title — empty states and compact panel headings. Manrope, below Display 2. */
+export const AURORA_COMPACT_TITLE =
+  'font-display text-[17px] leading-[1.18] font-extrabold tracking-[-0.02em]'
+
 /**
  * Eyebrow / muted label — uppercase metadata labels.
  * Weight 700 (font-bold) per contract Eyebrow spec.
  */
 export const AURORA_MUTED_LABEL =
   'text-[11px] font-bold uppercase tracking-[0.18em] text-aurora-text-muted'
+
+/** Badge label — compact uppercase status/category badges and chips. */
+export const AURORA_BADGE_LABEL =
+  'text-[10px] leading-none font-bold uppercase tracking-[0.14em]'
+
+/** Dense metadata — subtitles, package identifiers, versions, and table support text. */
+export const AURORA_DENSE_META =
+  'text-[11px] leading-[1.35] font-medium'
 
 // ---------------------------------------------------------------------------
 // Layout

@@ -16,8 +16,8 @@ use uuid::Uuid;
 
 use crate::dispatch::upstream::transport::websocket::{jitter_delay, reprobe_backoff};
 use crate::node::install::{
-    AgentInstallParams, InstallComponentParams, InstallScope, handle_agent_install,
-    handle_install_component,
+    AgentInstallParams, InstallComponentParams, InstallScope, McpInstallParams,
+    handle_agent_install, handle_install_component, handle_mcp_install,
 };
 use crate::node::queue::{NodeOutboundQueue, QueuedEnvelope};
 use crate::node::token;
@@ -748,22 +748,21 @@ async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) 
             // lab-zxx5.18: decode `files` with explicit encoding + enforce
             // size caps BEFORE spawning the handler. Every entry MUST carry
             // `encoding: "utf8" | "base64"` — no implicit fallback.
-            let component_files = match decode_component_files(
-                params.get("files").and_then(Value::as_array),
-            ) {
-                Ok(files) => files,
-                Err(err) => {
-                    return json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": {
-                            "code": -32602,
-                            "data": { "kind": err.kind },
-                            "message": err.message,
-                        }
-                    });
-                }
-            };
+            let component_files =
+                match decode_component_files(params.get("files").and_then(Value::as_array)) {
+                    Ok(files) => files,
+                    Err(err) => {
+                        return json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32602,
+                                "data": { "kind": err.kind },
+                                "message": err.message,
+                            }
+                        });
+                    }
+                };
 
             let install_params: InstallComponentParams = match serde_json::from_value(params) {
                 Ok(p) => p,
@@ -779,13 +778,8 @@ async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) 
                 }
             };
 
-            match handle_install_component(
-                install_params,
-                component_files,
-                id.clone(),
-                progress_tx,
-            )
-            .await
+            match handle_install_component(install_params, component_files, id.clone(), progress_tx)
+                .await
             {
                 Ok(result) => json!({
                     "jsonrpc": "2.0",
@@ -851,6 +845,39 @@ async fn dispatch_inbound_rpc(frame: Value, progress_tx: &mpsc::Sender<String>) 
                     "error": {
                         "code": -32000,
                         "message": format!("agent.install failed: {error}")
+                    }
+                }),
+            }
+        }
+
+        "mcp.install" => {
+            let install_params: McpInstallParams = match serde_json::from_value(params) {
+                Ok(p) => p,
+                Err(error) => {
+                    return json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": format!("invalid mcp.install params: {error}")
+                        }
+                    });
+                }
+            };
+
+            match handle_mcp_install(install_params, id.clone(), progress_tx).await {
+                Ok(result) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": result,
+                }),
+                Err(error) => json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32000,
+                        "data": { "kind": error_kind(&error) },
+                        "message": format!("mcp.install failed: {error}")
                     }
                 }),
             }

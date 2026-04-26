@@ -270,6 +270,7 @@ impl GoogleProvider {
     }
 
     #[cfg(test)]
+    #[must_use]
     pub fn with_endpoints(mut self, authorize_endpoint: Url, token_endpoint: Url) -> Self {
         self.authorize_endpoint = authorize_endpoint;
         self.token_endpoint = token_endpoint;
@@ -277,6 +278,7 @@ impl GoogleProvider {
     }
 
     #[cfg(test)]
+    #[must_use]
     pub fn with_jwks_endpoint(mut self, jwks_endpoint: Url) -> Self {
         self.jwks_endpoint = jwks_endpoint;
         self

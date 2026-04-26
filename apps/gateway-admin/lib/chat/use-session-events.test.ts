@@ -63,6 +63,7 @@ test('consumeSessionEventBuffer tolerates SSE metadata lines and canonical brows
     '',
     'data: {"id":"evt-5","seq":5,"sessionId":"session-1","provider":"codex","kind":"error","createdAt":"2026-04-23T00:00:00Z","title":"Provider error","text":"Prompt failed","status":"failed"}',
     '',
+    '',
   ].join('\n')
 
   const consumed = consumeSessionEventBuffer(payload, 3)
@@ -75,5 +76,25 @@ test('consumeSessionEventBuffer tolerates SSE metadata lines and canonical brows
     ],
   )
   assert.equal(consumed.lastSeq, 5)
+  assert.equal(consumed.buffer, '')
+})
+
+test('consumeSessionEventBuffer skips malformed and unknown payloads without appending undefined events', () => {
+  const payload = [
+    'data: not-json',
+    '',
+    'data: {"seq":6,"kind":"message_chunk"}',
+    '',
+    'data: {"id":"evt-7","seq":7,"session_id":"session-1","created_at":"2026-04-23T00:00:00Z","kind":"message_chunk","role":"assistant","text":"hello","message_id":"msg-1"}',
+    '',
+    '',
+  ].join('\n')
+
+  const consumed = consumeSessionEventBuffer(payload, 5)
+
+  assert.deepEqual(consumed.events.map((entry) => [entry.seq, entry.kind, entry.text]), [
+    [7, 'message.chunk', 'hello'],
+  ])
+  assert.equal(consumed.lastSeq, 7)
   assert.equal(consumed.buffer, '')
 })

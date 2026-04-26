@@ -121,6 +121,9 @@ pub struct UvxAsset {
     /// Extra CLI arguments passed to uvx.
     #[serde(default)]
     pub args: Vec<String>,
+    /// Environment variable overrides (key → value).
+    #[serde(default)]
+    pub env: HashMap<String, String>,
     /// Unknown fields for forward-compatibility.
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,

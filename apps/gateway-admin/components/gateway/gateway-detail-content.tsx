@@ -16,7 +16,6 @@ import {
   Search,
   Wrench,
   Settings,
-  ChevronDown,
   Power,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -129,7 +128,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [inventorySearch, setInventorySearch] = useState('')
   const [inventoryFilter, setInventoryFilter] = useState<'all' | 'tools' | 'resources' | 'prompts'>('all')
   const [activeTab, setActiveTab] = useState<'catalog' | 'runtime' | 'config' | 'settings' | 'warnings'>('catalog')
-  const [expandedPrompts, setExpandedPrompts] = useState<Set<string>>(new Set())
   const [testResult, setTestResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof testGateway>> } | null>(null)
   const [cleanupResult, setCleanupResult] = useState<{ gateway: Gateway; result: Awaited<ReturnType<typeof cleanupGateway>> } | null>(null)
   const [hasMounted, setHasMounted] = useState(false)
@@ -158,42 +156,20 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     : []
   const exposeAllTools =
     allToolNames.length > 0 && draftSelectedToolNames.length === allToolNames.length
-  const draftSet = new Set(draftSelectedToolNames)
   const displayedTools = useMemo(
-    () =>
-      (gateway?.discovery.tools ?? []).map((tool) => ({
+    () => {
+      const draftSet = new Set(draftSelectedToolNames)
+      return (gateway?.discovery.tools ?? []).map((tool) => ({
         ...tool,
         exposed: draftSet.has(tool.name),
         matched_by: draftSet.has(tool.name) ? (exposeAllTools ? '*' : tool.name) : null,
-      })),
+      }))
+    },
     [gateway?.discovery.tools, draftSelectedToolNames, exposeAllTools],
   )
   const clientConfigJson = useMemo(
     () => (gateway ? JSON.stringify(buildGatewayClientConfig(gateway), null, 2) : ''),
     [gateway],
-  )
-  const filteredResources = useMemo(
-    () => {
-      const term = inventorySearch.trim().toLowerCase()
-      return (gateway?.discovery.resources ?? []).filter(
-        (resource) =>
-          resource.name.toLowerCase().includes(term) ||
-          resource.uri.toLowerCase().includes(term) ||
-          resource.description?.toLowerCase().includes(term),
-      )
-    },
-    [gateway?.discovery.resources, inventorySearch],
-  )
-  const filteredPrompts = useMemo(
-    () => {
-      const term = inventorySearch.trim().toLowerCase()
-      return (gateway?.discovery.prompts ?? []).filter(
-        (prompt) =>
-          prompt.name.toLowerCase().includes(term) ||
-          prompt.description?.toLowerCase().includes(term),
-      )
-    },
-    [gateway?.discovery.prompts, inventorySearch],
   )
 
   useEffect(() => {
@@ -204,7 +180,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     setDraftSelectedToolNames(currentExposedToolNames)
     setSelectedRowToolNames([])
     setManageToolsMode(false)
-  }, [gateway?.id, toolExposureSignature])
+  }, [currentExposedToolNames, gateway?.id, toolExposureSignature])
 
   if (!gatewayId) {
     return (
@@ -393,8 +369,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const exposureSummary = getDraftExposureSummary(allToolNames, draftSelectedToolNames)
   const resourceExposureEnabled = gateway.config.proxy_resources ?? true
   const promptExposureEnabled = gateway.config.proxy_prompts ?? true
-  const gatewayStatusLabel =
-    gateway.status.healthy && gateway.status.connected ? 'Connected' : 'Offline'
   const toolsTabLabel = isLabGateway ? 'Actions' : 'Tools'
   const runtimeAgeLabel = gateway.status.age_seconds
     ? gateway.status.age_seconds < 60
@@ -511,18 +485,6 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to update prompt exposure'))
     }
-  }
-
-  const togglePrompt = (name: string) => {
-    setExpandedPrompts((current) => {
-      const next = new Set(current)
-      if (next.has(name)) {
-        next.delete(name)
-      } else {
-        next.add(name)
-      }
-      return next
-    })
   }
 
   // AppHeader actions: action buttons

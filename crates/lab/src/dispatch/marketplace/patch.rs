@@ -11,7 +11,10 @@ use crate::dispatch::marketplace::params::{ArtifactDiffParams, PatchParams};
 pub(super) async fn artifact_diff(params: ArtifactDiffParams) -> Result<Value, ToolError> {
     Err(not_implemented_error(
         "artifact.diff",
-        format!("artifact diff is not implemented yet for `{}`", params.plugin_id),
+        format!(
+            "artifact diff is not implemented yet for `{}`",
+            params.plugin_id
+        ),
     ))
 }
 
