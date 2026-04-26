@@ -470,8 +470,8 @@ fn build_v0_1_router() -> Router<AppState> {
 //   • Routes MUST be registered before the static-file fallback.
 
 fn dev_mockup_dir() -> std::path::PathBuf {
-    std::env::var_os("HOME")
-        .map(|h| std::path::PathBuf::from(h).join(".superpowers/brainstorm/content"))
+    crate::config::home_dir()
+        .map(|h| h.join(".superpowers/brainstorm/content"))
         .unwrap_or_else(|| std::path::PathBuf::from(".superpowers/brainstorm/content"))
 }
 
@@ -499,7 +499,7 @@ fn dev_mockup_response(fragment: Option<&str>) -> axum::response::Response {
             Ok(html) => Html(html).into_response(),
             Err(e) => {
                 tracing::warn!(path = %path.display(), error = %e, "failed to read dev mockup");
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         },
     }
@@ -512,8 +512,8 @@ async fn dev_mockup() -> axum::response::Response {
 async fn dev_mockup_named(
     axum::extract::Path(name): axum::extract::Path<String>,
 ) -> axum::response::Response {
-    if name.contains('/') || name.contains('\\') || name.contains('.') {
-        return axum::http::StatusCode::NOT_FOUND.into_response();
+    if name.contains('/') || name.contains('\\') || name.contains("..") {
+        return StatusCode::NOT_FOUND.into_response();
     }
     dev_mockup_response(Some(&name))
 }
@@ -532,10 +532,9 @@ async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response
     let controller = state.config.node.as_ref()
         .and_then(|n| n.controller.clone()).unwrap_or_else(|| local_host.clone());
 
-    // Collect relevant env vars from the process environment.
     // dotenvy already loaded ~/.lab/.env at startup, so everything is in std::env.
-    // Mask secret values so they show as "***" in the UI — the UI treats "***" as
-    // "value already set — leave blank to keep current value".
+    // The UI treats MASKED_SECRET as "value already set — leave blank to keep current value".
+    const MASKED_SECRET: &str = "***";
     let secret_suffixes = ["_API_KEY", "_TOKEN", "_PASSWORD", "_SECRET", "_CLIENT_SECRET"];
     let service_prefixes = [
         "RADARR_", "SONARR_", "PROWLARR_", "PLEX_", "TAUTULLI_", "OVERSEERR_",
@@ -550,7 +549,8 @@ async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response
         if val.is_empty() { continue; }
         if !service_prefixes.iter().any(|p| key.starts_with(p)) { continue; }
         let masked = secret_suffixes.iter().any(|s| key.ends_with(s));
-        env_values.insert(key, serde_json::Value::String(if masked { "***".into() } else { val }));
+        let display = if masked { MASKED_SECRET.to_string() } else { val };
+        env_values.insert(key, serde_json::Value::String(display));
     }
 
     Json(serde_json::json!({
