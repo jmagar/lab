@@ -2722,7 +2722,7 @@ fn cleanup_match_view(matched: &GatewayCleanupMatch) -> super::types::GatewayCle
     }
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn current_and_parent_pids() -> std::collections::HashSet<u32> {
     let mut pids = std::collections::HashSet::from([std::process::id()]);
     let parent = nix::unistd::getppid();
@@ -2730,11 +2730,6 @@ fn current_and_parent_pids() -> std::collections::HashSet<u32> {
         pids.insert(parent.as_raw() as u32);
     }
     pids
-}
-
-#[cfg(not(unix))]
-fn current_and_parent_pids() -> std::collections::HashSet<u32> {
-    std::collections::HashSet::from([std::process::id()])
 }
 
 #[cfg(target_os = "linux")]
