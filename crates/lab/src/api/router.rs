@@ -532,26 +532,25 @@ async fn dev_nodeinfo(State(state): State<AppState>) -> axum::response::Response
     let controller = state.config.node.as_ref()
         .and_then(|n| n.controller.clone()).unwrap_or_else(|| local_host.clone());
 
-    // Read ~/.lab/.env and mask secret values so they show as "***" in the UI.
-    // The UI treats "***" as "value already set — leave blank to keep".
+    // Collect relevant env vars from the process environment.
+    // dotenvy already loaded ~/.lab/.env at startup, so everything is in std::env.
+    // Mask secret values so they show as "***" in the UI — the UI treats "***" as
+    // "value already set — leave blank to keep current value".
     let secret_suffixes = ["_API_KEY", "_TOKEN", "_PASSWORD", "_SECRET", "_CLIENT_SECRET"];
+    let service_prefixes = [
+        "RADARR_", "SONARR_", "PROWLARR_", "PLEX_", "TAUTULLI_", "OVERSEERR_",
+        "SABNZBD_", "QBITTORRENT_", "UNRAID_", "UNIFI_", "TAILSCALE_", "ARCANE_",
+        "LINKDING_", "MEMOS_", "PAPERLESS_", "BYTESTASH_", "GOTIFY_", "APPRISE_",
+        "OPENAI_", "QDRANT_", "TEI_",
+        "LAB_MCP_HTTP_", "LAB_LOG", "LAB_AUTH_", "LAB_PUBLIC_URL",
+        "LAB_GOOGLE_",
+    ];
     let mut env_values = serde_json::Map::new();
-    if let Some(home) = std::env::var_os("HOME") {
-        let env_path = std::path::PathBuf::from(home).join(".lab/.env");
-        if let Ok(contents) = std::fs::read_to_string(&env_path) {
-            for line in contents.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') { continue; }
-                if let Some((key, val)) = line.split_once('=') {
-                    let key = key.trim();
-                    let val = val.trim().trim_matches('"').trim_matches('\'');
-                    if val.is_empty() { continue; }
-                    let masked = secret_suffixes.iter().any(|s| key.ends_with(s));
-                    env_values.insert(key.to_string(),
-                        serde_json::Value::String(if masked { "***".into() } else { val.into() }));
-                }
-            }
-        }
+    for (key, val) in std::env::vars() {
+        if val.is_empty() { continue; }
+        if !service_prefixes.iter().any(|p| key.starts_with(p)) { continue; }
+        let masked = secret_suffixes.iter().any(|s| key.ends_with(s));
+        env_values.insert(key, serde_json::Value::String(if masked { "***".into() } else { val }));
     }
 
     Json(serde_json::json!({
