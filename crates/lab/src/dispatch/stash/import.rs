@@ -23,11 +23,11 @@ use crate::dispatch::stash::store::StashStore;
 /// 4. `*.sh`, `*.py`, `*.rb`, `*.js`, `*.ts` → `Script`
 /// 5. No known extension + executable bit set → `BinFile`
 /// 6. Anything else → `ambiguous_kind` error
-fn detect_file_kind(path: &Path, meta: &std::fs::Metadata) -> Result<StashComponentKind, ToolError> {
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+fn detect_file_kind(
+    path: &Path,
+    meta: &std::fs::Metadata,
+) -> Result<StashComponentKind, ToolError> {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
     // 1. *.lsp.json
     if name.ends_with(".lsp.json") {
@@ -42,11 +42,8 @@ fn detect_file_kind(path: &Path, meta: &std::fs::Metadata) -> Result<StashCompon
         return Ok(StashComponentKind::Settings);
     }
     // 4. Script extensions
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        match ext {
-            "sh" | "py" | "rb" | "js" | "ts" => return Ok(StashComponentKind::Script),
-            _ => {}
-        }
+    if let Some("sh" | "py" | "rb" | "js" | "ts") = path.extension().and_then(|e| e.to_str()) {
+        return Ok(StashComponentKind::Script);
     }
     // 5. Executable bit (no known extension)
     #[cfg(unix)]
@@ -151,7 +148,10 @@ fn walk_and_measure(dir: &Path) -> Result<(u64, Vec<PathBuf>), ToolError> {
             if meta.file_type().is_symlink() {
                 return Err(ToolError::Sdk {
                     sdk_kind: "symlink_rejected".into(),
-                    message: format!("symlink found at `{}`; stash does not track symlinks", path.display()),
+                    message: format!(
+                        "symlink found at `{}`; stash does not track symlinks",
+                        path.display()
+                    ),
                 });
             }
             if meta.is_dir() {
@@ -214,10 +214,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
             if meta.file_type().is_symlink() {
                 return Err(ToolError::Sdk {
                     sdk_kind: "symlink_rejected".into(),
-                    message: format!(
-                        "symlink at `{}` rejected during copy",
-                        src_path.display()
-                    ),
+                    message: format!("symlink at `{}` rejected during copy", src_path.display()),
                 });
             }
             let file_name = src_path.file_name().ok_or_else(|| ToolError::Sdk {
@@ -350,10 +347,7 @@ fn import_blocking(
     // For dir-shaped: walk and measure (also checks symlinks and per-file size).
     let (filename, unix_mode) = if !is_dir {
         // Path traversal check (lexical).
-        let rel = source
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let rel = source.file_name().and_then(|n| n.to_str()).unwrap_or("");
         reject_path_traversal(rel)?;
 
         // Single file size check.
@@ -425,9 +419,7 @@ fn import_blocking(
     let workspace_root = if is_dir {
         dst.clone()
     } else {
-        dst.parent()
-            .unwrap_or(&dst)
-            .to_path_buf()
+        dst.parent().unwrap_or(&dst).to_path_buf()
     };
 
     // Build and write component record under lock.
@@ -471,21 +463,30 @@ mod tests {
     fn file_kind_lsp_json() {
         let meta = std::fs::metadata(std::env::current_exe().unwrap()).unwrap();
         let p = Path::new("foo.lsp.json");
-        assert_eq!(detect_file_kind(p, &meta).unwrap(), StashComponentKind::LspConfig);
+        assert_eq!(
+            detect_file_kind(p, &meta).unwrap(),
+            StashComponentKind::LspConfig
+        );
     }
 
     #[test]
     fn file_kind_mcp_json() {
         let meta = std::fs::metadata(std::env::current_exe().unwrap()).unwrap();
         let p = Path::new("bar.mcp.json");
-        assert_eq!(detect_file_kind(p, &meta).unwrap(), StashComponentKind::McpConfig);
+        assert_eq!(
+            detect_file_kind(p, &meta).unwrap(),
+            StashComponentKind::McpConfig
+        );
     }
 
     #[test]
     fn file_kind_settings_json() {
         let meta = std::fs::metadata(std::env::current_exe().unwrap()).unwrap();
         let p = Path::new("settings.json");
-        assert_eq!(detect_file_kind(p, &meta).unwrap(), StashComponentKind::Settings);
+        assert_eq!(
+            detect_file_kind(p, &meta).unwrap(),
+            StashComponentKind::Settings
+        );
     }
 
     #[test]
@@ -517,7 +518,10 @@ mod tests {
     fn dir_kind_skill_marker() {
         let dir = tempdir().unwrap();
         std::fs::write(dir.path().join("SKILL.md"), b"skill").unwrap();
-        assert_eq!(detect_dir_kind(dir.path()).unwrap(), StashComponentKind::Skill);
+        assert_eq!(
+            detect_dir_kind(dir.path()).unwrap(),
+            StashComponentKind::Skill
+        );
     }
 
     #[test]
@@ -549,7 +553,11 @@ mod tests {
         assert_eq!(comp.workspace_shape, StashWorkspaceShape::File);
         // Workspace file should exist.
         let ws = store.workspace_path(&comp.id, comp.workspace_shape, Some("settings.json"));
-        assert!(ws.exists(), "workspace file should exist at {}", ws.display());
+        assert!(
+            ws.exists(),
+            "workspace file should exist at {}",
+            ws.display()
+        );
     }
 
     #[test]
@@ -572,7 +580,9 @@ mod tests {
         let src_dir = tempdir().unwrap();
         let src = src_dir.path().join("settings.json");
         std::fs::write(&src, b"{}").unwrap();
-        let err = rt.block_on(import_component(&store, &src, None, "", None)).unwrap_err();
+        let err = rt
+            .block_on(import_component(&store, &src, None, "", None))
+            .unwrap_err();
         assert_eq!(err.kind(), "invalid_param");
     }
 }

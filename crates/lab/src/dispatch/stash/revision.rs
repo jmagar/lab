@@ -49,7 +49,10 @@ fn collect_files(
         if meta.file_type().is_symlink() {
             return Err(ToolError::Sdk {
                 sdk_kind: "symlink_rejected".into(),
-                message: format!("symlink at `{}` rejected during revision save", path.display()),
+                message: format!(
+                    "symlink at `{}` rejected during revision save",
+                    path.display()
+                ),
             });
         }
         if meta.is_dir() {
@@ -162,40 +165,37 @@ fn save_revision_blocking(
     // Collect workspace files.
     let workspace_dir = store.workspace_dir(component_id);
 
-    let (file_entries, file_count, unix_mode) =
-        if component.workspace_shape == StashWorkspaceShape::File {
-            // Single-file workspace: the workspace dir contains exactly one file.
-            let filename = component
-                .workspace_root
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file");
-            let ws_file = store.workspace_path(
-                component_id,
-                StashWorkspaceShape::File,
-                Some(filename),
-            );
-            // Validate no symlink.
-            let meta = std::fs::symlink_metadata(&ws_file).map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".into(),
-                message: format!("symlink_metadata `{}`: {e}", ws_file.display()),
-            })?;
-            if meta.file_type().is_symlink() {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "symlink_rejected".into(),
-                    message: format!("symlink at `{}`", ws_file.display()),
-                });
-            }
-            let rel = PathBuf::from(filename);
-            let entries = vec![(rel, ws_file)];
-            let mode = component.unix_mode;
-            (entries, 1_usize, mode)
-        } else {
-            // Directory-shaped: walk workspace dir.
-            let entries = walk_files_sorted(&workspace_dir)?;
-            let count = entries.len();
-            (entries, count, None)
-        };
+    let (file_entries, file_count, unix_mode) = if component.workspace_shape
+        == StashWorkspaceShape::File
+    {
+        // Single-file workspace: the workspace dir contains exactly one file.
+        let filename = component
+            .workspace_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("file");
+        let ws_file = store.workspace_path(component_id, StashWorkspaceShape::File, Some(filename));
+        // Validate no symlink.
+        let meta = std::fs::symlink_metadata(&ws_file).map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: format!("symlink_metadata `{}`: {e}", ws_file.display()),
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "symlink_rejected".into(),
+                message: format!("symlink at `{}`", ws_file.display()),
+            });
+        }
+        let rel = PathBuf::from(filename);
+        let entries = vec![(rel, ws_file)];
+        let mode = component.unix_mode;
+        (entries, 1_usize, mode)
+    } else {
+        // Directory-shaped: walk workspace dir.
+        let entries = walk_files_sorted(&workspace_dir)?;
+        let count = entries.len();
+        (entries, count, None)
+    };
 
     // Compute content digest (all file bytes concatenated in sorted order).
     let content_digest = compute_digest(&file_entries)?;

@@ -272,9 +272,7 @@ impl StashStore {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
-        for entry in
-            std::fs::read_dir(&revisions_dir).map_err(|e| io_internal(e))?
-        {
+        for entry in std::fs::read_dir(&revisions_dir).map_err(|e| io_internal(e))? {
             let entry = entry.map_err(|e| io_internal(e))?;
             let meta_path = entry.path().join(FILE_META);
             if !meta_path.is_file() {
@@ -341,8 +339,7 @@ impl StashStore {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(io_internal(e)),
             };
-            let target: StashDeployTarget =
-                serde_json::from_slice(&bytes).map_err(decode_error)?;
+            let target: StashDeployTarget = serde_json::from_slice(&bytes).map_err(decode_error)?;
             out.push((id.to_string(), target));
         }
         Ok(out)
@@ -429,12 +426,7 @@ impl StashStore {
     /// Polls `try_write()` in a loop with `DEPLOY_LOCK_POLL_MS` sleep intervals.
     /// Returns a `Sdk { sdk_kind: "conflict" }` error if `timeout_ms` elapses
     /// before the lock is acquired.
-    pub fn with_deploy_lock<F, T>(
-        &self,
-        id: &str,
-        timeout_ms: u64,
-        f: F,
-    ) -> Result<T, ToolError>
+    pub fn with_deploy_lock<F, T>(&self, id: &str, timeout_ms: u64, f: F) -> Result<T, ToolError>
     where
         F: FnOnce() -> Result<T, ToolError>,
     {
@@ -498,16 +490,13 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), ToolErr
     let bytes = serde_json::to_vec_pretty(value).map_err(io_internal)?;
     temp.write_all(&bytes).map_err(io_internal)?;
     temp.as_file().sync_all().map_err(io_internal)?;
-    temp.persist(path)
-        .map_err(|e| io_internal(e.error))?;
+    temp.persist(path).map_err(|e| io_internal(e.error))?;
     Ok(())
 }
 
 /// Read and deserialize a JSON file, returning `None` if the file does not
 /// exist.
-fn read_json_optional<T: serde::de::DeserializeOwned>(
-    path: &Path,
-) -> Result<Option<T>, ToolError> {
+fn read_json_optional<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, ToolError> {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -679,12 +668,12 @@ mod tests {
             DIR_PROVIDERS,
             DIR_TARGETS,
         ] {
-            assert!(
-                store.root.join(sub).is_dir(),
-                "missing {sub}"
-            );
+            assert!(store.root.join(sub).is_dir(), "missing {sub}");
         }
-        assert!(!store.root.join("objects").exists(), "objects/ must not exist");
+        assert!(
+            !store.root.join("objects").exists(),
+            "objects/ must not exist"
+        );
     }
 
     // ── component I/O ────────────────────────────────────────────────────────
@@ -693,9 +682,17 @@ mod tests {
     fn component_roundtrip() {
         let (store, _dir) = make_store();
         let comp = sample_component("comp-01");
-        assert!(store.read_component("comp-01").expect("read absent").is_none());
+        assert!(
+            store
+                .read_component("comp-01")
+                .expect("read absent")
+                .is_none()
+        );
         store.write_component(&comp).expect("write");
-        let back = store.read_component("comp-01").expect("read").expect("present");
+        let back = store
+            .read_component("comp-01")
+            .expect("read")
+            .expect("present");
         assert_eq!(back.id, comp.id);
         assert_eq!(back.name, comp.name);
     }
@@ -703,13 +700,12 @@ mod tests {
     #[test]
     fn list_components_excludes_lock_files() {
         let (store, _dir) = make_store();
-        store.write_component(&sample_component("comp-01")).expect("write");
+        store
+            .write_component(&sample_component("comp-01"))
+            .expect("write");
         // Simulate a stale lock file in the same directory.
-        std::fs::write(
-            store.root.join(DIR_COMPONENTS).join("comp-01.lock"),
-            b"",
-        )
-        .expect("write lock file");
+        std::fs::write(store.root.join(DIR_COMPONENTS).join("comp-01.lock"), b"")
+            .expect("write lock file");
         let list = store.list_components().expect("list");
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, "comp-01");
@@ -718,10 +714,21 @@ mod tests {
     #[test]
     fn delete_component_record_is_idempotent() {
         let (store, _dir) = make_store();
-        store.delete_component_record("nonexistent-id").expect("delete absent");
-        store.write_component(&sample_component("comp-02")).expect("write");
-        store.delete_component_record("comp-02").expect("delete present");
-        assert!(store.read_component("comp-02").expect("read after delete").is_none());
+        store
+            .delete_component_record("nonexistent-id")
+            .expect("delete absent");
+        store
+            .write_component(&sample_component("comp-02"))
+            .expect("write");
+        store
+            .delete_component_record("comp-02")
+            .expect("delete present");
+        assert!(
+            store
+                .read_component("comp-02")
+                .expect("read after delete")
+                .is_none()
+        );
     }
 
     // ── revision I/O ─────────────────────────────────────────────────────────
@@ -734,11 +741,15 @@ mod tests {
         store.write_revision_meta(&rev1).expect("write rev1");
         store.write_revision_meta(&rev2).expect("write rev2");
 
-        let comp1_revs = store.list_revisions_for("comp-01").expect("list comp-01 revs");
+        let comp1_revs = store
+            .list_revisions_for("comp-01")
+            .expect("list comp-01 revs");
         assert_eq!(comp1_revs.len(), 1);
         assert_eq!(comp1_revs[0].id, "rev-01");
 
-        let comp2_revs = store.list_revisions_for("comp-02").expect("list comp-02 revs");
+        let comp2_revs = store
+            .list_revisions_for("comp-02")
+            .expect("list comp-02 revs");
         assert_eq!(comp2_revs.len(), 1);
         assert_eq!(comp2_revs[0].id, "rev-02");
     }
@@ -761,7 +772,12 @@ mod tests {
         };
         assert_eq!(id, "t-01");
         store.delete_target("t-01").expect("delete");
-        assert!(store.read_target("t-01").expect("read after delete").is_none());
+        assert!(
+            store
+                .read_target("t-01")
+                .expect("read after delete")
+                .is_none()
+        );
     }
 
     #[test]

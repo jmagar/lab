@@ -161,10 +161,13 @@ pub async fn export_component(
     }
 
     // 3. Load head revision.
-    let rev_id = component.head_revision_id.as_deref().ok_or_else(|| ToolError::Sdk {
-        sdk_kind: "not_found".into(),
-        message: format!("component `{component_id}` has no head revision"),
-    })?;
+    let rev_id = component
+        .head_revision_id
+        .as_deref()
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("component `{component_id}` has no head revision"),
+        })?;
     let revision = store
         .read_revision_meta(rev_id)?
         .ok_or_else(|| ToolError::Sdk {
@@ -214,10 +217,7 @@ pub async fn export_component(
             for rel in &rel_paths_ref {
                 let target = if is_file_shaped {
                     // Single-file: materialize to output_root/<filename>
-                    output_path_ref.join(
-                        rel.file_name()
-                            .unwrap_or(rel.as_os_str()),
-                    )
+                    output_path_ref.join(rel.file_name().unwrap_or(rel.as_os_str()))
                 } else {
                     output_path_ref.join(rel)
                 };
@@ -367,7 +367,9 @@ fn collect_rel_paths_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lab_apis::stash::types::{StashComponent, StashComponentKind, StashRevision, StashWorkspaceShape};
+    use lab_apis::stash::types::{
+        StashComponent, StashComponentKind, StashRevision, StashWorkspaceShape,
+    };
     use tempfile::tempdir;
 
     fn make_store() -> (StashStore, tempfile::TempDir) {
@@ -516,7 +518,10 @@ mod tests {
             &store,
             "comp-02",
             output.path(),
-            StashExportOptions { include_secrets: false, force: false },
+            StashExportOptions {
+                include_secrets: false,
+                force: false,
+            },
         )
         .await
         .unwrap_err();
@@ -541,7 +546,10 @@ mod tests {
             &store,
             "comp-03",
             output.path(),
-            StashExportOptions { include_secrets: true, force: false },
+            StashExportOptions {
+                include_secrets: true,
+                force: false,
+            },
         )
         .await
         .unwrap();
