@@ -302,7 +302,7 @@ export function McpInstallModal({ server, onClose, onSuccess }: McpInstallModalP
               {loading ? (
                 <>
                   <Loader2 className="w-[14px] h-[14px] animate-spin" />
-                  Installing…
+                  Installing...
                 </>
               ) : (
                 <>
