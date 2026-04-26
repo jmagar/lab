@@ -79,6 +79,10 @@ pub struct AuthConfig {
     pub bootstrap_secret: Option<String>,
     pub allowed_client_redirect_uris: Vec<String>,
     pub allowed_emails: Vec<String>,
+    /// True when `LAB_AUTH_ALLOWED_EMAILS` was provided but parsed to an empty
+    /// list (whitespace/comma-only). Used to surface a startup warning since an
+    /// empty allowlist means "no restriction".
+    pub allowed_emails_was_empty: bool,
     pub google: GoogleConfig,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
@@ -99,6 +103,7 @@ impl Default for AuthConfig {
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
             allowed_emails: Vec::new(),
+            allowed_emails_was_empty: false,
             google: GoogleConfig::default(),
             access_token_ttl: Duration::from_secs(DEFAULT_ACCESS_TOKEN_TTL_SECS),
             refresh_token_ttl: Duration::from_secs(DEFAULT_REFRESH_TOKEN_TTL_SECS),
@@ -131,6 +136,12 @@ impl AuthConfig {
                 .into_iter()
                 .map(|e| e.to_ascii_lowercase())
                 .collect(),
+            allowed_emails_was_empty: matches!(
+                vars.get("LAB_AUTH_ALLOWED_EMAILS"),
+                Some(raw) if !raw.is_empty()
+            ) && read_csv(&vars, "LAB_AUTH_ALLOWED_EMAILS")
+                .unwrap_or_default()
+                .is_empty(),
             google: GoogleConfig {
                 client_id: read_string(&vars, "LAB_GOOGLE_CLIENT_ID").unwrap_or_default(),
                 client_secret: read_string(&vars, "LAB_GOOGLE_CLIENT_SECRET").unwrap_or_default(),

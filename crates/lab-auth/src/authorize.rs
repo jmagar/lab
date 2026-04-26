@@ -21,15 +21,11 @@ use crate::util::{expires_at, fingerprint, now_unix, random_token};
 const AUTH_REQUEST_TTL_SECS: i64 = 300;
 const LAB_SCOPE: &str = "lab";
 
-/// Enforces the configured email allowlist for browser-login callbacks.
+/// Enforces the configured email allowlist.
 ///
-/// Returns `Ok(())` when the allowlist is empty (no restriction), or when the
-/// supplied email is verified by Google and matches an entry case-insensitively.
-/// All other cases return `AuthError::AuthFailed`.
-///
-/// `email_verified` is enforced before the email comparison: an attacker who
-/// creates a Google account with someone else's address (without verifying it)
-/// must not be able to bypass the allowlist.
+/// `email_verified` is enforced before the email comparison: without this guard,
+/// an attacker who creates a Google account with someone else's address (without
+/// verifying it) could bypass the allowlist.
 fn check_email_allowlist(
     email: Option<&str>,
     email_verified: Option<bool>,
@@ -314,11 +310,8 @@ pub async fn callback(
         .exchange_code(&query.code, &request.provider_code_verifier)
         .await?;
 
-    // Allowlist check for the OAuth-client branch.
-    // Per RFC 6749 §4.1.2.1, errors must be sent via redirect to the client's
-    // registered redirect_uri, not returned as a direct HTTP error response.
-    // Do NOT use `?` here — propagating AuthError::AuthFailed would emit a JSON 401
-    // and break registered MCP clients that expect `error=access_denied` via redirect.
+    // RFC 6749 §4.1.2.1: errors must redirect to the client's redirect_uri,
+    // not surface as a JSON HTTP error.
     if check_email_allowlist(
         google.email.as_deref(),
         google.email_verified,
@@ -1336,22 +1329,6 @@ pub mod tests {
             "sub": "google-subject-123",
             "email": "user@example.com",
             "email_verified": true,
-            "iat": now_unix() as usize,
-            "exp": (now_unix() + 3600) as usize,
-        });
-        let mut header = Header::new(Algorithm::RS256);
-        header.kid = Some("test-kid".to_string());
-        encode(&header, &claims, &test_encoding_key()).unwrap()
-    }
-
-    #[allow(dead_code)]
-    fn signed_test_id_token_unverified() -> String {
-        let claims = json!({
-            "iss": "https://accounts.google.com",
-            "aud": "client-id",
-            "sub": "google-subject-123",
-            "email": "user@example.com",
-            "email_verified": false,
             "iat": now_unix() as usize,
             "exp": (now_unix() + 3600) as usize,
         });
