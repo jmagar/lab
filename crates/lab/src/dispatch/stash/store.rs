@@ -609,6 +609,7 @@ mod tests {
             origin: None,
             workspace_root: PathBuf::from("/tmp/skill"),
             workspace_shape: StashWorkspaceShape::Directory,
+            unix_mode: None,
             created_at: "2026-04-26T12:00:00Z".to_string(),
             updated_at: "2026-04-26T12:00:00Z".to_string(),
         }

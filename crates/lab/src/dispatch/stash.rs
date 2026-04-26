@@ -9,6 +9,7 @@
 pub mod catalog;
 pub mod client;
 pub mod dispatch;
+pub mod import;
 pub mod params;
 pub mod store;
 

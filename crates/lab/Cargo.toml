@@ -68,6 +68,8 @@ strip-ansi-escapes           = "0.2"
 agent-client-protocol        = "0"
 
 hex                          = "0.4"
+ulid                         = "1"
+num_cpus                     = "1"
 
 # optional — deploy feature
 regex                        = { version = "1", optional = true }
