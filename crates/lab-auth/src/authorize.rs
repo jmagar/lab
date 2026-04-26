@@ -5,7 +5,7 @@ use axum::{Json, response::Response};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::error::AuthError;
 use crate::google::AuthorizeUrlRequest;
@@ -20,6 +20,49 @@ use crate::util::{expires_at, fingerprint, now_unix, random_token};
 
 const AUTH_REQUEST_TTL_SECS: i64 = 300;
 const LAB_SCOPE: &str = "lab";
+
+/// Enforces the configured email allowlist for browser-login callbacks.
+///
+/// Returns `Ok(())` when the allowlist is empty (no restriction), or when the
+/// supplied email is verified by Google and matches an entry case-insensitively.
+/// All other cases return `AuthError::AuthFailed`.
+///
+/// `email_verified` is enforced before the email comparison: an attacker who
+/// creates a Google account with someone else's address (without verifying it)
+/// must not be able to bypass the allowlist.
+fn check_email_allowlist(
+    email: Option<&str>,
+    email_verified: Option<bool>,
+    allowed_emails: &[String],
+) -> Result<(), AuthError> {
+    if allowed_emails.is_empty() {
+        return Ok(());
+    }
+    if email_verified != Some(true) {
+        error!("browser login rejected: google did not return a verified email address");
+        return Err(AuthError::AuthFailed(
+            "google did not return a verified email address".to_string(),
+        ));
+    }
+    match email {
+        Some(e) if allowed_emails.iter().any(|a| a.eq_ignore_ascii_case(e)) => Ok(()),
+        Some(e) => {
+            warn!(
+                email_id = %fingerprint(e),
+                "browser login rejected: email not in allowed list"
+            );
+            Err(AuthError::AuthFailed(
+                "google account is not permitted to access this gateway".to_string(),
+            ))
+        }
+        None => {
+            error!("browser login rejected: google did not return an email address");
+            Err(AuthError::AuthFailed(
+                "google did not return an email address".to_string(),
+            ))
+        }
+    }
+}
 
 pub async fn browser_login(
     State(state): State<AuthState>,
@@ -1143,4 +1186,57 @@ LEH/fA5CRiOs7Plrt2Sv54wAup4Y6+HQ8i/KFOXIejEN9vfY1YRfyD5Ajc05zg90
 uE8aLb5YtFvoaLAnc/A2ceW8sNxGgT5aPyLPUdmfSryAO4ayFDHmRlGFRsZtTUbn
 Iy60nwnOxK6B5mZV2Cs+kv8=
 -----END PRIVATE KEY-----";
+
+    mod allowlist_tests {
+        use super::super::check_email_allowlist;
+
+        #[test]
+        fn empty_allowlist_permits_any_email() {
+            assert!(check_email_allowlist(Some("anyone@example.com"), Some(true), &[]).is_ok());
+        }
+
+        #[test]
+        fn empty_allowlist_permits_even_unverified_email() {
+            // When no allowlist is configured, email_verified is not enforced.
+            assert!(check_email_allowlist(Some("anyone@example.com"), Some(false), &[]).is_ok());
+        }
+
+        #[test]
+        fn matching_verified_email_is_permitted() {
+            let list = vec!["alice@example.com".to_string()];
+            assert!(check_email_allowlist(Some("alice@example.com"), Some(true), &list).is_ok());
+        }
+
+        #[test]
+        fn matching_email_is_case_insensitive() {
+            // Allowlist is pre-normalized to lowercase at config load.
+            // Incoming email from Google may have any case.
+            let list = vec!["alice@example.com".to_string()];
+            assert!(check_email_allowlist(Some("Alice@Example.com"), Some(true), &list).is_ok());
+        }
+
+        #[test]
+        fn non_matching_email_is_rejected() {
+            let list = vec!["alice@example.com".to_string()];
+            assert!(check_email_allowlist(Some("eve@example.com"), Some(true), &list).is_err());
+        }
+
+        #[test]
+        fn unverified_email_is_rejected_even_when_in_allowlist() {
+            let list = vec!["alice@example.com".to_string()];
+            assert!(check_email_allowlist(Some("alice@example.com"), Some(false), &list).is_err());
+        }
+
+        #[test]
+        fn missing_email_verified_claim_is_rejected_when_allowlist_is_set() {
+            let list = vec!["alice@example.com".to_string()];
+            assert!(check_email_allowlist(Some("alice@example.com"), None, &list).is_err());
+        }
+
+        #[test]
+        fn none_email_is_rejected_when_allowlist_is_set() {
+            let list = vec!["alice@example.com".to_string()];
+            assert!(check_email_allowlist(None, Some(true), &list).is_err());
+        }
+    }
 }
