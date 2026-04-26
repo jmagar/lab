@@ -457,55 +457,49 @@ fn build_v0_1_router() -> Router<AppState> {
     Router::new().nest("/v0.1", services::registry_v01::routes())
 }
 
+// ── Dev mockup file server ────────────────────────────────────────────────
+// Implements the Tier 1 serving model from docs/design/component-development.md §5.
+// Serves self-contained HTML from ~/.superpowers/brainstorm/content/ at:
+//   GET /dev          → newest .html file
+//   GET /dev/{name}   → newest .html whose stem contains {name}
+//
+// Rules (enforced by the doc — do not violate):
+//   • These functions MUST live in router.rs alongside dev_marketplace_readonly.
+//     The other Claude session strips dev-tooling code from web.rs.
+//   • MUST NOT delegate to serve_web_request — that serves the Next.js SPA.
+//   • Routes MUST be registered before the static-file fallback.
+
+fn dev_mockup_dir() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".superpowers/brainstorm/content"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".superpowers/brainstorm/content"))
+}
+
 fn dev_mockup_newest(fragment: Option<&str>) -> Option<std::path::PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    let root = std::path::PathBuf::from(home)
-        .join(".superpowers")
-        .join("brainstorm")
-        .join("content");
-    let entries = std::fs::read_dir(root).ok()?;
-    entries
-        .filter_map(Result::ok)
-        .filter(|entry| {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("html") {
-                return false;
-            }
-            fragment.is_none_or(|needle| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.contains(needle))
-            })
-        })
-        .filter_map(|entry| {
-            entry
-                .metadata()
-                .ok()
-                .and_then(|metadata| metadata.modified().ok())
-                .map(|modified| (entry.path(), modified))
-        })
-        .max_by_key(|(_, modified)| *modified)
-        .map(|(path, _)| path)
+    std::fs::read_dir(dev_mockup_dir()).ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("html"))
+        .filter(|e| fragment.is_none_or(|n| {
+            e.path().file_stem().and_then(|s| s.to_str()).is_some_and(|s| s.contains(n))
+        }))
+        .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (e.path(), t)))
+        .max_by_key(|(_, t)| *t)
+        .map(|(p, _)| p)
 }
 
 fn dev_mockup_response(fragment: Option<&str>) -> axum::response::Response {
+    use axum::response::Html;
     match dev_mockup_newest(fragment) {
         None => Html(format!(
-            "<p style='font-family:sans-serif;padding:2rem'>No{} mockup found in <code>~/.superpowers/brainstorm/content/</code></p>",
-            fragment
-                .map(|name| format!(" '{name}'"))
-                .unwrap_or_default()
-        ))
-        .into_response(),
+            "<p style='font-family:sans-serif;padding:2rem'>No{} mockup found in \
+             <code>~/.superpowers/brainstorm/content/</code></p>",
+            fragment.map(|n| format!(" '{n}'")).unwrap_or_default()
+        )).into_response(),
         Some(path) => match std::fs::read_to_string(&path) {
             Ok(html) => Html(html).into_response(),
-            Err(error) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    error = %error,
-                    "failed to read dev mockup"
-                );
-                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "failed to read dev mockup");
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         },
     }
@@ -519,7 +513,7 @@ async fn dev_mockup_named(
     axum::extract::Path(name): axum::extract::Path<String>,
 ) -> axum::response::Response {
     if name.contains('/') || name.contains('\\') || name.contains('.') {
-        return StatusCode::NOT_FOUND.into_response();
+        return axum::http::StatusCode::NOT_FOUND.into_response();
     }
     dev_mockup_response(Some(&name))
 }
@@ -752,13 +746,10 @@ pub fn build_router(
     // Dev preview APIs are unauthenticated and must remain read-only.
     // Page routes such as /dev and /dev/<feature> are owned by the Next.js app
     // through the static fallback below.
-    // Dev routes — see docs/design/component-development.md §5 for the two-tier model.
-    // /dev/api/* are unauthenticated read-only endpoints — no mutations allowed.
-    // /dev and /dev/{name} serve HTML mockups from ~/.superpowers/brainstorm/content/.
-    // These MUST stay before the static fallback or the Next.js SPA wins.
     router = router
         .route("/dev/api/marketplace", post(dev_marketplace_readonly))
         .route("/dev/api/nodeinfo", get(dev_nodeinfo))
+        // Mockup page routes — MUST stay before the static fallback (docs/design/component-development.md §5)
         .route("/dev", get(dev_mockup))
         .route("/dev/", get(dev_mockup))
         .route("/dev/{name}", get(dev_mockup_named))
