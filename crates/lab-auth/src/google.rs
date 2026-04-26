@@ -588,9 +588,7 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{
-        AuthorizeUrlRequest, CachedGoogleJwks, GoogleJwk, GoogleJwks, GoogleProvider,
-    };
+    use super::{AuthorizeUrlRequest, CachedGoogleJwks, GoogleJwk, GoogleJwks, GoogleProvider};
 
     #[test]
     fn google_authorize_url_includes_offline_access_prompt_and_pkce() {

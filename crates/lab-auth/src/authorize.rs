@@ -313,14 +313,13 @@ pub async fn callback(
         .await?;
 
     // RFC 6749 §4.1.2.1: errors must redirect to the client's redirect_uri,
-    // not surface as a JSON HTTP error.
-    if check_email_allowlist(
+    // not surface as a JSON HTTP error. The denial reason is sourced from the
+    // AuthError so we only log once (inside check_email_allowlist).
+    if let Err(denial) = check_email_allowlist(
         google.email.as_deref(),
         google.email_verified,
         &state.config.allowed_emails,
-    )
-    .is_err()
-    {
+    ) {
         let mut redirect_target = url::Url::parse(&request.redirect_uri).map_err(|error| {
             // Unreachable in practice: redirect_uri was validated against the
             // client's registered URIs before being stored.
@@ -329,17 +328,8 @@ pub async fn callback(
         redirect_target
             .query_pairs_mut()
             .append_pair("error", "access_denied")
-            .append_pair(
-                "error_description",
-                "google account is not permitted to access this gateway",
-            )
+            .append_pair("error_description", &denial.to_string())
             .append_pair("state", &request.client_state);
-        warn!(
-            client_id = %request.client_id,
-            oauth_state_id = %oauth_state_id,
-            email_id = google.email.as_deref().map(fingerprint),
-            "oauth callback: email not in allowlist, redirecting client with access_denied"
-        );
         return Ok(Redirect::to(redirect_target.as_str()).into_response());
     }
 
