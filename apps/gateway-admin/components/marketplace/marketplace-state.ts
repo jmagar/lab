@@ -7,12 +7,15 @@ export type MarketplaceCatalogKind =
   | 'skill'
   | 'command'
   | 'mcp_server'
+  | 'lsp_server'
   | 'acp_agent'
   | 'app'
   | 'hook'
+  | 'executable'
   | 'asset'
   | 'file'
   | 'config'
+  | 'settings'
   | 'monitor'
   | 'output_style'
   | 'source'
@@ -35,8 +38,14 @@ export interface MarketplaceCatalogItem {
   hasUpdate: boolean
   builtin: boolean
   updatedAt?: string
+  avatar?: MarketplaceCatalogAvatar
   tags: string[]
   raw: unknown
+}
+
+export interface MarketplaceCatalogAvatar {
+  kind: 'github'
+  owner: string
 }
 
 export interface MarketplaceCatalogFilterState {
@@ -58,6 +67,7 @@ export interface MarketplaceCatalogSummary {
   skills: number
   commands: number
   mcpServers: number
+  lspServers: number
   acpAgents: number
   sources: number
   updates: number
@@ -122,6 +132,31 @@ function sourceSubtitle(source: Marketplace): string {
   return source.localPath ?? source.path ?? 'Local source'
 }
 
+function githubOwnerFromRepository(repository?: string): string | undefined {
+  if (!repository) return undefined
+  const trimmed = repository.trim()
+  if (!trimmed) return undefined
+
+  const githubUrlMatch = trimmed.match(/github\.com[:/]([^/\s]+)\/[^/\s#?]+/i)
+  if (githubUrlMatch?.[1]) return githubUrlMatch[1]
+
+  const slugMatch = trimmed.match(/^([^/\s]+)\/[^/\s]+$/)
+  return slugMatch?.[1]
+}
+
+function githubOwnerFromSource(source?: Marketplace): string | undefined {
+  if (!source) return undefined
+  if (source.githubOwner) return source.githubOwner
+  if (source.ghUser) return source.ghUser
+  return githubOwnerFromRepository(source.repository ?? source.repo ?? source.remoteUrl ?? source.url)
+}
+
+function githubAvatar(owner?: string): MarketplaceCatalogAvatar | undefined {
+  const normalized = owner?.trim()
+  if (!normalized) return undefined
+  return { kind: 'github', owner: normalized }
+}
+
 function normalizeMcpServer(entry: McpServer | McpRegistryEnvelope): {
   server: McpRegistryEnvelope['server'] & McpServer
   updatedAt?: string
@@ -147,6 +182,13 @@ function mcpIdentifier(server: McpRegistryEnvelope['server'] & McpServer): strin
   return server.name ?? server.packages?.[0]?.identifier ?? mcpDisplayName(server)
 }
 
+function githubOwnerFromMcpServer(server: McpRegistryEnvelope['server'] & McpServer): string | undefined {
+  const identifier = mcpIdentifier(server)
+  const registryNameMatch = identifier.match(/^io\.github\.([^/]+)\//i)
+  if (registryNameMatch?.[1]) return registryNameMatch[1]
+  return githubOwnerFromRepository(server.repository?.url ?? server.websiteUrl)
+}
+
 function mcpSubtitle(server: McpRegistryEnvelope['server'] & McpServer): string {
   return server.package ?? server.packages?.[0]?.identifier ?? server.repository?.url ?? 'MCP Registry'
 }
@@ -169,6 +211,10 @@ function agentDistribution(agent: AcpAgent): string {
   return 'ACP'
 }
 
+function githubOwnerFromAcpAgent(agent: AcpAgent): string | undefined {
+  return githubOwnerFromRepository(agent.repository ?? agent.website)
+}
+
 function pluginEcosystem(plugin: Plugin): string {
   return plugin.runtime ? RUNTIME_LABELS[plugin.runtime] : 'Generic'
 }
@@ -178,11 +224,13 @@ function componentCatalogKind(kind: PluginComponentKind): MarketplaceCatalogKind
   if (kind === 'skills') return 'skill'
   if (kind === 'commands') return 'command'
   if (kind === 'mcp_servers' || kind === 'mcp-config') return 'mcp_server'
+  if (kind === 'lsp_servers' || kind === 'lsp-config') return 'lsp_server'
   if (kind === 'apps') return 'app'
   if (kind === 'hooks') return 'hook'
   if (kind === 'monitors') return 'monitor'
+  if (kind === 'bin') return 'executable'
+  if (kind === 'settings') return 'settings'
   if (kind === 'output-styles') return 'output_style'
-  if (kind === 'lsp-config') return 'config'
   if (kind === 'files') return 'file'
   return 'asset'
 }
@@ -192,9 +240,12 @@ function componentDistribution(kind: MarketplaceCatalogKind): string {
   if (kind === 'skill') return 'Skill'
   if (kind === 'command') return 'Command'
   if (kind === 'mcp_server') return 'MCP server'
+  if (kind === 'lsp_server') return 'LSP server'
   if (kind === 'app') return 'App'
   if (kind === 'hook') return 'Hook'
   if (kind === 'monitor') return 'Monitor'
+  if (kind === 'executable') return 'Executable'
+  if (kind === 'settings') return 'Settings'
   if (kind === 'output_style') return 'Output style'
   if (kind === 'config') return 'Config'
   if (kind === 'file') return 'File'
@@ -229,7 +280,11 @@ function dedupeMcpServers(entries: Array<McpServer | McpRegistryEnvelope>): Arra
   return [...byIdentifier.values()]
 }
 
-function pluginComponentItems(plugin: Plugin, sourceNames: Map<string, string>): MarketplaceCatalogItem[] {
+function pluginComponentItems(
+  plugin: Plugin,
+  sourceNames: Map<string, string>,
+  sourceAvatars: Map<string, MarketplaceCatalogAvatar>,
+): MarketplaceCatalogItem[] {
   return (plugin.components ?? []).map((component): MarketplaceCatalogItem => {
     const kind = componentCatalogKind(component.kind)
     return {
@@ -247,6 +302,7 @@ function pluginComponentItems(plugin: Plugin, sourceNames: Map<string, string>):
       hasUpdate: Boolean(plugin.hasUpdate),
       builtin: false,
       updatedAt: plugin.updatedAt,
+      avatar: sourceAvatars.get(plugin.marketplaceId),
       tags: [plugin.name, component.path, ...(plugin.tags ?? [])],
       raw: { plugin, component } satisfies PluginComponentCatalogRaw,
     }
@@ -292,6 +348,12 @@ export function buildMarketplaceCatalogItems({
   acpAgents,
 }: BuildMarketplaceCatalogItemsInput): MarketplaceCatalogItem[] {
   const sourceNames = new Map(sources.map((source) => [source.id, sourceDisplayName(source)]))
+  const sourceAvatars = new Map(
+    sources.flatMap((source) => {
+      const avatar = githubAvatar(githubOwnerFromSource(source))
+      return avatar ? [[source.id, avatar] as const] : []
+    }),
+  )
 
   return [
     ...plugins.flatMap((plugin): MarketplaceCatalogItem[] => [
@@ -310,10 +372,11 @@ export function buildMarketplaceCatalogItems({
         hasUpdate: Boolean(plugin.hasUpdate),
         builtin: false,
         updatedAt: plugin.updatedAt,
+        avatar: sourceAvatars.get(plugin.marketplaceId),
         tags: plugin.tags ?? [],
         raw: plugin,
       },
-      ...pluginComponentItems(plugin, sourceNames),
+      ...pluginComponentItems(plugin, sourceNames, sourceAvatars),
     ]),
     ...dedupeMcpServers(mcpServers).map(({ server, updatedAt, raw }): MarketplaceCatalogItem => {
       return {
@@ -331,6 +394,7 @@ export function buildMarketplaceCatalogItems({
         hasUpdate: false,
         builtin: false,
         updatedAt,
+        avatar: githubAvatar(githubOwnerFromMcpServer(server)),
         tags: [server.transport?.[0], server.packages?.[0]?.registryType, server.remotes?.[0]?.type].filter(Boolean) as string[],
         raw,
       }
@@ -348,6 +412,7 @@ export function buildMarketplaceCatalogItems({
       hasUpdate: false,
       builtin: Boolean(agent.builtin),
       updatedAt: agent.installedAt,
+      avatar: githubAvatar(githubOwnerFromAcpAgent(agent)),
       tags: [agent.license, ...(agent.authors ?? [])].filter(Boolean) as string[],
       raw: agent,
     })),
@@ -366,6 +431,7 @@ export function buildMarketplaceCatalogItems({
       hasUpdate: false,
       builtin: false,
       updatedAt: source.lastUpdatedAt || source.lastUpdated,
+      avatar: sourceAvatars.get(source.id),
       tags: [source.source, source.autoUpdateEnabled || source.autoUpdate ? 'auto-update' : 'manual'],
       raw: source,
     })),
@@ -381,6 +447,7 @@ export function marketplaceCatalogSummary(items: MarketplaceCatalogItem[]): Mark
     skills: items.filter((item) => item.kind === 'skill').length,
     commands: items.filter((item) => item.kind === 'command').length,
     mcpServers: items.filter((item) => item.kind === 'mcp_server').length,
+    lspServers: items.filter((item) => item.kind === 'lsp_server').length,
     acpAgents: items.filter((item) => item.kind === 'acp_agent').length,
     sources: items.filter((item) => item.kind === 'source').length,
     updates: items.filter((item) => item.hasUpdate).length,

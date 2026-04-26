@@ -89,10 +89,13 @@ fn collect_components_from_value(manifest: &Value, out: &mut Vec<PluginComponent
         collect_component_array(obj, "apps", PluginComponentKind::Apps, out);
         collect_component_array(obj, "mcpServers", PluginComponentKind::McpServers, out);
         collect_component_array(obj, "mcp_servers", PluginComponentKind::McpServers, out);
+        collect_component_array(obj, "lspServers", PluginComponentKind::LspServers, out);
+        collect_component_array(obj, "lsp_servers", PluginComponentKind::LspServers, out);
         collect_component_array(obj, "commands", PluginComponentKind::Commands, out);
         collect_component_array(obj, "agents", PluginComponentKind::Agents, out);
         collect_component_array(obj, "assets", PluginComponentKind::Assets, out);
         collect_component_array(obj, "hooks", PluginComponentKind::Hooks, out);
+        collect_component_array(obj, "monitors", PluginComponentKind::Monitors, out);
     }
 }
 
@@ -204,6 +207,8 @@ fn collect_components_from_layout(root: &Path, out: &mut Vec<PluginComponent>) {
         ("agents", PluginComponentKind::Agents),
         ("assets", PluginComponentKind::Assets),
         ("hooks", PluginComponentKind::Hooks),
+        ("monitors", PluginComponentKind::Monitors),
+        ("bin", PluginComponentKind::Bin),
     ];
 
     for (dir_name, kind) in specs {
@@ -237,6 +242,10 @@ fn collect_components_from_layout(root: &Path, out: &mut Vec<PluginComponent>) {
             metadata: None,
         });
     }
+
+    collect_component_file(root, ".mcp.json", PluginComponentKind::McpServers, out);
+    collect_component_file(root, ".lsp.json", PluginComponentKind::LspServers, out);
+    collect_component_file(root, "settings.json", PluginComponentKind::Settings, out);
 }
 
 fn path_name(path: &str) -> String {
@@ -245,4 +254,92 @@ fn path_name(path: &str) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or(path)
         .to_string()
+}
+
+fn collect_component_file(
+    root: &Path,
+    rel_path: &str,
+    kind: PluginComponentKind,
+    out: &mut Vec<PluginComponent>,
+) {
+    if root.join(rel_path).exists() {
+        out.push(PluginComponent {
+            kind,
+            path: rel_path.into(),
+            name: path_name(rel_path),
+            metadata: None,
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn components_from_layout_matches_claude_plugin_component_locations() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        std::fs::create_dir_all(root.join("skills/review")).expect("skill dir");
+        std::fs::write(
+            root.join("skills/review/SKILL.md"),
+            "---\ndescription: Review\n---",
+        )
+        .expect("skill");
+        std::fs::create_dir_all(root.join("commands")).expect("commands dir");
+        std::fs::write(root.join("commands/ship.md"), "Ship").expect("command");
+        std::fs::create_dir_all(root.join("agents")).expect("agents dir");
+        std::fs::write(root.join("agents/reviewer.md"), "Agent").expect("agent");
+        std::fs::create_dir_all(root.join("hooks")).expect("hooks dir");
+        std::fs::write(root.join("hooks/hooks.json"), "{}").expect("hooks");
+        std::fs::create_dir_all(root.join("monitors")).expect("monitors dir");
+        std::fs::write(root.join("monitors/monitors.json"), "[]").expect("monitors");
+        std::fs::create_dir_all(root.join("bin")).expect("bin dir");
+        std::fs::write(root.join("bin/tool"), "#!/bin/sh\n").expect("bin");
+        std::fs::write(root.join(".mcp.json"), "{\"mcpServers\":{}}").expect("mcp");
+        std::fs::write(root.join(".lsp.json"), "{}").expect("lsp");
+        std::fs::write(root.join("settings.json"), "{}").expect("settings");
+
+        let components = components_from_manifest_and_layout(Some(root), None);
+        let observed: std::collections::HashSet<_> = components
+            .iter()
+            .map(|component| (component.kind, component.path.as_str()))
+            .collect();
+
+        assert!(observed.contains(&(PluginComponentKind::Skills, "skills/review")));
+        assert!(observed.contains(&(PluginComponentKind::Commands, "commands/ship.md")));
+        assert!(observed.contains(&(PluginComponentKind::Agents, "agents/reviewer.md")));
+        assert!(observed.contains(&(PluginComponentKind::Hooks, "hooks/hooks.json")));
+        assert!(observed.contains(&(PluginComponentKind::Monitors, "monitors/monitors.json")));
+        assert!(observed.contains(&(PluginComponentKind::Bin, "bin/tool")));
+        assert!(observed.contains(&(PluginComponentKind::McpServers, ".mcp.json")));
+        assert!(observed.contains(&(PluginComponentKind::LspServers, ".lsp.json")));
+        assert!(observed.contains(&(PluginComponentKind::Settings, "settings.json")));
+    }
+
+    #[test]
+    fn components_from_manifest_accepts_claude_component_fields() {
+        let manifest = serde_json::json!({
+            "skills": ["skills/review"],
+            "commands": ["commands/ship.md"],
+            "agents": ["agents/reviewer.md"],
+            "mcpServers": ".mcp.json",
+            "lspServers": ".lsp.json",
+            "monitors": "monitors/monitors.json"
+        });
+
+        let components = components_from_manifest_and_layout(None, Some(&manifest));
+        let observed: std::collections::HashSet<_> = components
+            .iter()
+            .map(|component| (component.kind, component.path.as_str()))
+            .collect();
+
+        assert!(observed.contains(&(PluginComponentKind::Skills, "skills/review")));
+        assert!(observed.contains(&(PluginComponentKind::Commands, "commands/ship.md")));
+        assert!(observed.contains(&(PluginComponentKind::Agents, "agents/reviewer.md")));
+        assert!(observed.contains(&(PluginComponentKind::McpServers, ".mcp.json")));
+        assert!(observed.contains(&(PluginComponentKind::LspServers, ".lsp.json")));
+        assert!(observed.contains(&(PluginComponentKind::Monitors, "monitors/monitors.json")));
+    }
 }
