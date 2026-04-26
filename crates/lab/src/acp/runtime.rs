@@ -886,20 +886,54 @@ fn push_session_update(
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
             if let Some(status) = enum_value(&tool_call.status) {
+                // Build the provider_info payload using a Map so that _meta is omitted
+                // entirely when absent (P4: skip null _meta — never emit the key as null).
+                let mut payload = serde_json::Map::new();
+                payload.insert("type".into(), Value::String("tool_call_metadata".into()));
+                payload.insert(
+                    "tool_call_id".into(),
+                    Value::String(tool_call.tool_call_id.to_string()),
+                );
+                payload.insert("title".into(), Value::String(tool_call.title.clone()));
+                payload.insert(
+                    "tool_kind".into(),
+                    enum_value(&tool_call.kind)
+                        .map(Value::String)
+                        .unwrap_or(Value::Null),
+                );
+                payload.insert("status".into(), Value::String(status));
+                payload.insert(
+                    "locations".into(),
+                    Value::Array(
+                        tool_call
+                            .locations
+                            .iter()
+                            .map(|location| {
+                                Value::String(location.path.display().to_string())
+                            })
+                            .collect(),
+                    ),
+                );
+                payload.insert(
+                    "content".into(),
+                    serde_json::to_value(&tool_call.content).unwrap_or(Value::Null),
+                );
+                payload.insert(
+                    "raw_output".into(),
+                    tool_call.raw_output.clone().unwrap_or(Value::Null),
+                );
+                // Preserve _meta from the ToolCall when present; omit the key entirely
+                // when absent (P4). _meta is a transparent relay — Lab does not validate
+                // or transform its contents. Never log _meta fields: they may contain
+                // terminal_info.cwd, terminal_id, signal, or terminal_output.data (R5).
+                if let Some(meta) = tool_call.meta.as_ref() {
+                    payload.insert("_meta".into(), Value::Object(meta.clone()));
+                }
                 event_tx
                     .send(provider_info_event(
                         session_id.to_string(),
                         "codex",
-                        json!({
-                            "type": "tool_call_metadata",
-                            "tool_call_id": tool_call.tool_call_id.to_string(),
-                            "title": tool_call.title.clone(),
-                            "tool_kind": enum_value(&tool_call.kind),
-                            "status": status,
-                            "locations": tool_call.locations.iter().map(|location| location.path.display().to_string()).collect::<Vec<_>>(),
-                            "content": tool_call.content.clone(),
-                            "raw_output": tool_call.raw_output.clone(),
-                        }),
+                        Value::Object(payload),
                     ))
                     .map_err(|_| "ACP event channel closed".to_string())?;
             }
@@ -912,7 +946,7 @@ fn push_session_update(
                     session_id: session_id.to_string(),
                     seq: 0,
                     tool_call_id: update.tool_call_id.to_string(),
-                    output: tool_call_update_output(&update.fields),
+                    output: tool_call_update_output(&update),
                     status: update
                         .fields
                         .status
@@ -1146,24 +1180,82 @@ fn provider_info_event(session_id: String, provider: &str, raw: Value) -> AcpEve
     }
 }
 
-fn tool_call_update_output(fields: &agent_client_protocol::schema::ToolCallUpdateFields) -> Value {
+fn tool_call_update_output(update: &agent_client_protocol::schema::ToolCallUpdate) -> Value {
+    let fields = &update.fields;
+    // A9 — outer-wins merge semantics:
+    // - If raw_output is Some(Object), inject the wrapper-level _meta into it; the outer
+    //   `_meta` key takes precedence over any `_meta` already present inside raw_output.
+    // - If raw_output is Some(non-Object), leave it unchanged — _meta has no object to
+    //   merge into; the non-object form is rare and not worth wrapping.
+    // - If raw_output is None, build a synthetic fields object and conditionally insert _meta.
+    //
+    // _meta is a transparent relay (F1). Never log _meta field values: they may contain
+    // terminal_info.cwd, terminal_id, signal, or terminal_output.data (R5).
     if let Some(raw_output) = fields.raw_output.clone() {
-        return raw_output;
+        match raw_output {
+            Value::Object(mut map) => {
+                // Outer wins: insert wrapper _meta (overwriting any inner _meta).
+                if let Some(meta) = update.meta.as_ref() {
+                    map.insert("_meta".into(), Value::Object(meta.clone()));
+                }
+                return Value::Object(map);
+            }
+            other => return other, // Non-object raw_output: pass through unchanged.
+        }
     }
 
-    json!({
-        "title": fields.title.clone(),
-        "kind": fields.kind.as_ref().and_then(enum_value),
-        "status": fields.status.as_ref().and_then(enum_value),
-        "content": fields.content.clone(),
-        "locations": fields.locations.as_ref().map(|locations| {
-            locations
-                .iter()
-                .map(|location| location.path.display().to_string())
-                .collect::<Vec<_>>()
-        }),
-        "raw_input": fields.raw_input.clone(),
-    })
+    // No raw_output: build synthetic output from fields.
+    let mut payload = serde_json::Map::new();
+    payload.insert(
+        "title".into(),
+        fields.title.clone().map(Value::String).unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "kind".into(),
+        fields
+            .kind
+            .as_ref()
+            .and_then(enum_value)
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "status".into(),
+        fields
+            .status
+            .as_ref()
+            .and_then(enum_value)
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "content".into(),
+        serde_json::to_value(&fields.content).unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "locations".into(),
+        fields
+            .locations
+            .as_ref()
+            .map(|locations| {
+                Value::Array(
+                    locations
+                        .iter()
+                        .map(|location| Value::String(location.path.display().to_string()))
+                        .collect(),
+                )
+            })
+            .unwrap_or(Value::Null),
+    );
+    payload.insert(
+        "raw_input".into(),
+        fields.raw_input.clone().unwrap_or(Value::Null),
+    );
+    // P4: omit _meta key entirely when absent; never emit as null.
+    if let Some(meta) = update.meta.as_ref() {
+        payload.insert("_meta".into(), Value::Object(meta.clone()));
+    }
+    Value::Object(payload)
 }
 
 fn content_to_text(content: ContentBlock) -> String {
@@ -1197,7 +1289,9 @@ fn map_stop_reason(stop_reason: &StopReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_client_protocol::schema::{AvailableCommandsUpdate, TextContent, ToolCall};
+    use agent_client_protocol::schema::{
+        AvailableCommandsUpdate, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    };
 
     fn text_chunk(text: &str) -> ContentChunk {
         ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
@@ -1265,5 +1359,301 @@ mod tests {
         assert!(is_prompt_progress_update(
             &SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![]))
         ));
+    }
+
+    /// Drain all pending events and return them. Panics if the channel is empty and
+    /// expected_count events have not been collected.
+    fn drain_events(rx: &mut mpsc::UnboundedReceiver<AcpEvent>, expected_count: usize) -> Vec<AcpEvent> {
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+            if events.len() == expected_count {
+                break;
+            }
+        }
+        assert_eq!(
+            events.len(),
+            expected_count,
+            "expected {expected_count} events, got {}",
+            events.len()
+        );
+        events
+    }
+
+    /// Build a minimal terminal_info Meta blob as ACP Meta (Map<String, Value>).
+    fn terminal_info_meta() -> serde_json::Map<String, Value> {
+        let mut meta = serde_json::Map::new();
+        meta.insert(
+            "terminal_info".into(),
+            json!({
+                "terminal_id": "term-secret-42",
+                "cwd": "/home/secret/projects/lab",
+            }),
+        );
+        meta
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 1: tool_call_metadata_round_trips_terminal_meta
+    //
+    // Both SessionUpdate::ToolCall and ToolCallUpdate paths must preserve the
+    // `_meta` field through to the emitted AcpEvent payload.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn tool_call_metadata_round_trips_terminal_meta() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut message_ids = StreamMessageIds::default();
+
+        // --- ToolCall path ---
+        let meta = terminal_info_meta();
+        let tool_call = ToolCall::new("tc-1", "Read file")
+            .status(agent_client_protocol::schema::ToolCallStatus::Completed)
+            .meta(meta.clone());
+        push_session_update("session-1", &tx, SessionUpdate::ToolCall(tool_call), &mut message_ids)
+            .expect("ToolCall with meta");
+
+        // Expect 2 events: ToolCallStart + provider_info (tool_call_metadata)
+        let events = drain_events(&mut rx, 2);
+
+        // First event: ToolCallStart
+        assert!(
+            matches!(&events[0], AcpEvent::ToolCallStart { .. }),
+            "expected ToolCallStart, got {:?}",
+            events[0]
+        );
+
+        // Second event: ProviderInfo carrying _meta
+        match &events[1] {
+            AcpEvent::ProviderInfo { raw, .. } => {
+                let meta_value = raw.get("_meta").expect("_meta key must be present in provider_info");
+                let terminal_info = meta_value.get("terminal_info").expect("terminal_info key present");
+                assert_eq!(
+                    terminal_info.get("terminal_id").and_then(Value::as_str),
+                    Some("term-secret-42"),
+                    "terminal_id must round-trip"
+                );
+                assert_eq!(
+                    terminal_info.get("cwd").and_then(Value::as_str),
+                    Some("/home/secret/projects/lab"),
+                    "cwd must round-trip"
+                );
+            }
+            other => panic!("expected ProviderInfo, got {other:?}"),
+        }
+
+        // --- ToolCallUpdate path ---
+        let update_meta = terminal_info_meta();
+        let fields = ToolCallUpdateFields::new();
+        let update = ToolCallUpdate::new("tc-2", fields).meta(update_meta.clone());
+        push_session_update("session-1", &tx, SessionUpdate::ToolCallUpdate(update), &mut message_ids)
+            .expect("ToolCallUpdate with meta");
+
+        let update_events = drain_events(&mut rx, 1);
+        match &update_events[0] {
+            AcpEvent::ToolCallUpdate { output, .. } => {
+                let meta_value = output.get("_meta").expect("_meta key must be present in output");
+                let terminal_info = meta_value.get("terminal_info").expect("terminal_info key present");
+                assert_eq!(
+                    terminal_info.get("terminal_id").and_then(Value::as_str),
+                    Some("term-secret-42"),
+                    "terminal_id must round-trip in ToolCallUpdate"
+                );
+            }
+            other => panic!("expected ToolCallUpdate, got {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 2: tool_call_update_output_outer_meta_wins_over_raw_output_inner_meta
+    //
+    // A9 merge semantics: when raw_output already contains _meta, the wrapper-level
+    // _meta (outer) wins.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn tool_call_update_output_outer_meta_wins_over_raw_output_inner_meta() {
+        let mut outer_meta = serde_json::Map::new();
+        outer_meta.insert("source".into(), Value::String("outer".into()));
+
+        let inner_meta_json = json!({"source": "inner", "extra": "inner-only"});
+        let raw_output_with_inner_meta = json!({
+            "result": "ok",
+            "_meta": inner_meta_json,
+        });
+
+        let fields = ToolCallUpdateFields::new().raw_output(raw_output_with_inner_meta);
+        let update = ToolCallUpdate::new("tc-merge", fields).meta(outer_meta);
+
+        let output = tool_call_update_output(&update);
+
+        // Outer _meta must win — source should be "outer", not "inner".
+        let meta_value = output.get("_meta").expect("_meta key present after merge");
+        assert_eq!(
+            meta_value.get("source").and_then(Value::as_str),
+            Some("outer"),
+            "outer _meta must overwrite inner _meta"
+        );
+        // Inner-only key should no longer be present (entire _meta replaced, not merged).
+        assert!(
+            meta_value.get("extra").is_none(),
+            "inner-only keys must not survive outer-wins replacement"
+        );
+        // Other raw_output fields must be preserved.
+        assert_eq!(
+            output.get("result").and_then(Value::as_str),
+            Some("ok"),
+            "non-_meta fields in raw_output must be preserved"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 3: tool_call_event_omits_meta_key_when_none
+    //
+    // P4: when meta is None, the `_meta` key must be absent from both the
+    // ToolCall provider_info payload and the ToolCallUpdate output.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn tool_call_event_omits_meta_key_when_none() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut message_ids = StreamMessageIds::default();
+
+        // ToolCall with no meta and a status (so the provider_info event fires)
+        let tool_call = ToolCall::new("tc-no-meta", "Read file")
+            .status(agent_client_protocol::schema::ToolCallStatus::Completed);
+        push_session_update("session-1", &tx, SessionUpdate::ToolCall(tool_call), &mut message_ids)
+            .expect("ToolCall without meta");
+
+        let events = drain_events(&mut rx, 2);
+        match &events[1] {
+            AcpEvent::ProviderInfo { raw, .. } => {
+                assert!(
+                    raw.get("_meta").is_none(),
+                    "_meta key must be absent from provider_info when ToolCall.meta is None, got: {:?}",
+                    raw.get("_meta")
+                );
+            }
+            other => panic!("expected ProviderInfo, got {other:?}"),
+        }
+
+        // ToolCallUpdate with no meta
+        let fields = ToolCallUpdateFields::new();
+        let update = ToolCallUpdate::new("tc-no-meta-update", fields);
+        push_session_update("session-1", &tx, SessionUpdate::ToolCallUpdate(update), &mut message_ids)
+            .expect("ToolCallUpdate without meta");
+
+        let update_events = drain_events(&mut rx, 1);
+        match &update_events[0] {
+            AcpEvent::ToolCallUpdate { output, .. } => {
+                assert!(
+                    output.get("_meta").is_none(),
+                    "_meta key must be absent from ToolCallUpdate output when meta is None, got: {:?}",
+                    output.get("_meta")
+                );
+            }
+            other => panic!("expected ToolCallUpdate, got {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 4: dispatch_trace_redacts_all_meta_fields
+    //
+    // R5: tracing output for a tool_call_update event with terminal_info _meta
+    // MUST NOT contain 'cwd' or any cwd value, terminal_id, signal, or
+    // raw output data from _meta.
+    //
+    // This test verifies the guard: the _meta blob is NEVER formatted into
+    // any tracing span/event. It uses a buffer-backed tracing subscriber to
+    // capture all trace output produced during push_session_update.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn dispatch_trace_redacts_all_meta_fields() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt::MakeWriter;
+
+        // A writer that captures all bytes written to it.
+        #[derive(Clone)]
+        struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for CaptureWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().expect("writer lock poisoned").extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        impl<'a> MakeWriter<'a> for CaptureWriter {
+            type Writer = CaptureWriter;
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let writer = CaptureWriter(Arc::clone(&buf));
+
+        // Install a scoped subscriber that captures trace output.
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(writer)
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut message_ids = StreamMessageIds::default();
+
+        // Build meta with sentinel values that must NOT appear in trace output.
+        let mut meta = serde_json::Map::new();
+        meta.insert(
+            "terminal_info".into(),
+            json!({
+                "terminal_id": "SENTINEL_TERMINAL_ID_99",
+                "cwd": "/SENTINEL_CWD_VALUE/secret",
+            }),
+        );
+        meta.insert(
+            "terminal_exit".into(),
+            json!({
+                "signal": "SENTINEL_SIGNAL_SIGTERM",
+                "exit_code": 1,
+            }),
+        );
+
+        let update = ToolCallUpdate::new(
+            "tc-redact",
+            ToolCallUpdateFields::new().raw_output(json!({
+                "data": "SENTINEL_OUTPUT_DATA_XYZ",
+            })),
+        )
+        .meta(meta);
+
+        push_session_update("session-1", &tx, SessionUpdate::ToolCallUpdate(update), &mut message_ids)
+            .expect("ToolCallUpdate for redaction test");
+
+        // Consume the event (required to drain the channel)
+        let _ = rx.try_recv();
+
+        // Drop the guard to flush the subscriber before reading the buffer.
+        drop(_guard);
+
+        let captured = buf.lock().expect("buf lock poisoned");
+        let trace_output = std::str::from_utf8(&captured).unwrap_or("(non-utf8)");
+
+        assert!(
+            !trace_output.contains("SENTINEL_CWD_VALUE"),
+            "cwd value must not appear in tracing output, got: {trace_output}"
+        );
+        assert!(
+            !trace_output.contains("SENTINEL_TERMINAL_ID_99"),
+            "terminal_id must not appear in tracing output, got: {trace_output}"
+        );
+        assert!(
+            !trace_output.contains("SENTINEL_SIGNAL_SIGTERM"),
+            "signal must not appear in tracing output, got: {trace_output}"
+        );
+        // Note: SENTINEL_OUTPUT_DATA_XYZ is in raw_output, not in _meta; this test
+        // focuses on _meta field redaction. raw_output tracing is a separate concern.
     }
 }
