@@ -240,6 +240,18 @@ impl AppState {
         !matches!(self.node_role, Some(NodeRole::NonMaster))
     }
 
+    /// Attach a pre-built ACP session registry.
+    ///
+    /// Use this when the registry has already been created and installed globally
+    /// (e.g. in `cli/serve.rs` before the HTTP/stdio split) so that `AppState`
+    /// shares the same `Arc` as the process-global dispatch slot rather than
+    /// constructing a separate registry instance.
+    #[must_use]
+    pub fn with_acp_registry(mut self, registry: Arc<AcpSessionRegistry>) -> Self {
+        self.acp_registry = registry;
+        self
+    }
+
     /// Attach the shared MCP registry store for `/v0.1` read endpoints.
     #[cfg(feature = "mcpregistry")]
     #[must_use]
