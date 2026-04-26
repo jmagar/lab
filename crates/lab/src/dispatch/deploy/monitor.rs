@@ -18,7 +18,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+#[cfg(unix)]
 use nix::sys::signal::kill;
+#[cfg(unix)]
 use nix::unistd::Pid;
 use tokio::net::TcpStream;
 use tokio::signal;
@@ -65,11 +67,22 @@ fn lock_path() -> PathBuf {
 
 /// Returns true if a process with the given PID is alive.
 ///
-/// Uses `kill(pid, 0)` semantics: signal 0 doesn't actually send a signal,
-/// it just probes whether the process exists and we have permission to
-/// signal it. `ESRCH` means the PID is gone (stale pidfile).
+/// Uses `kill(pid, 0)` semantics on Unix: signal 0 doesn't actually send a
+/// signal, it just probes whether the process exists and we have permission
+/// to signal it. `ESRCH` means the PID is gone (stale pidfile).
+///
+/// On non-Unix platforms there is no equivalent stdlib check without pulling
+/// in a Windows-specific dependency. Conservatively assume the process is
+/// alive — the lock-acquisition error message already tells the user how to
+/// recover from a stale pidfile (delete the file manually).
+#[cfg(unix)]
 fn pid_alive(pid: i32) -> bool {
     matches!(kill(Pid::from_raw(pid), None), Ok(()))
+}
+
+#[cfg(not(unix))]
+fn pid_alive(_pid: i32) -> bool {
+    true
 }
 
 /// RAII guard for the single-instance pidfile. Removes the file on drop.

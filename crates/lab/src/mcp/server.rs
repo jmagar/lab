@@ -876,12 +876,15 @@ impl ServerHandler for LabMcpServer {
         );
         let schema = Arc::new(action_schema());
         let mut tools = Vec::new();
-        let enabled_tool_search_gateways = if let Some(manager) = &self.gateway_manager {
-            manager.tool_search_enabled_gateways().await
-        } else {
-            Vec::new()
-        };
-        let tool_search_enabled = !enabled_tool_search_gateways.is_empty();
+        let (tool_search_enabled, enabled_tool_search_gateways) =
+            if let Some(manager) = &self.gateway_manager {
+                (
+                    manager.tool_search_enabled().await,
+                    manager.tool_search_enabled_gateways().await,
+                )
+            } else {
+                (false, Vec::new())
+            };
         for svc in self.registry.services() {
             if self.service_visible_on_mcp(svc.name).await {
                 tools.push(Tool::new(svc.name, svc.description, Arc::clone(&schema)));
@@ -1017,7 +1020,10 @@ impl ServerHandler for LabMcpServer {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let top_k = args.get("top_k").and_then(Value::as_u64).unwrap_or(10) as usize;
+            let requested_top_k = args
+                .get("top_k")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize);
             let include_schema = args
                 .get("include_schema")
                 .and_then(Value::as_bool)
@@ -1032,6 +1038,10 @@ impl ServerHandler for LabMcpServer {
                 return Ok(CallToolResult::error(vec![Content::text(
                     envelope.to_string(),
                 )]));
+            };
+            let top_k = match requested_top_k {
+                Some(value) => value,
+                None => manager.tool_search_config().await.top_k_default,
             };
             return match manager.search_tools(&query, top_k, include_schema).await {
                 Ok(results) => Ok(CallToolResult::success(vec![Content::text(

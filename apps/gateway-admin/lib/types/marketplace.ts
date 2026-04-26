@@ -60,6 +60,7 @@ export type PluginComponentKind =
   | 'apps'
   | 'assets'
   | 'bin'
+  | 'channels'
   | 'commands'
   | 'files'
   | 'hooks'
@@ -69,8 +70,10 @@ export type PluginComponentKind =
   | 'mcp_servers'
   | 'monitors'
   | 'output-styles'
+  | 'output_styles'
   | 'settings'
   | 'skills'
+  | 'themes'
 
 export interface PluginComponent {
   kind: PluginComponentKind

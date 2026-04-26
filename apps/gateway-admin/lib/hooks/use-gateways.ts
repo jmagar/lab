@@ -28,12 +28,20 @@ import type {
   ServiceConfig,
   ServiceAction,
   SupportedService,
+  ToolSearchConfig,
+  ToolSearchConfigInput,
 } from '@/lib/types/gateway'
 import { useCallback } from 'react'
 import { safeFanout } from '@/lib/api/service-action-client'
 
 // Set NEXT_PUBLIC_MOCK_DATA=true to use mock data for development
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+const DEFAULT_TOOL_SEARCH_CONFIG: ToolSearchConfig = {
+  enabled: false,
+  top_k_default: 10,
+  max_tools: 5000,
+}
+let mockToolSearchConfig: ToolSearchConfig = DEFAULT_TOOL_SEARCH_CONFIG
 
 // Simulate network delay for mock data
 const mockDelay = (ms: number = 500) => new Promise(resolve => setTimeout(resolve, ms))
@@ -84,9 +92,12 @@ const fetchGateways = async (): Promise<Gateway[]> => {
     async (service) => {
       const [configResult, actionsResult] = await safeFanout(
         ['config', 'actions'] as const,
-        (kind) => kind === 'config'
-          ? gatewayApi.getServiceConfig(service.key)
-          : gatewayApi.serviceActions(service.key),
+        async (kind): Promise<ServiceConfig | ServiceAction[]> => {
+          if (kind === 'config') {
+            return gatewayApi.getServiceConfig(service.key)
+          }
+          return gatewayApi.serviceActions(service.key)
+        },
       )
 
       return {
@@ -166,6 +177,14 @@ const fetchServiceActions = async (service: string): Promise<ServiceAction[]> =>
   return gatewayApi.serviceActions(service)
 }
 
+const fetchToolSearchConfig = async (): Promise<ToolSearchConfig> => {
+  if (USE_MOCK_DATA) {
+    await mockDelay()
+    return mockToolSearchConfig
+  }
+  return gatewayApi.getToolSearchConfig()
+}
+
 // SWR Keys
 export const GATEWAYS_KEY = '/gateways'
 export const gatewayKey = (id: string) => `/gateways/${id}`
@@ -173,6 +192,7 @@ export const exposurePolicyKey = (id: string) => `/gateways/${id}/exposure`
 export const SUPPORTED_SERVICES_KEY = '/gateway-supported-services'
 export const serviceConfigKey = (service: string) => `/gateway-service-config/${service}`
 export const serviceActionsKey = (service: string) => `/gateway-service-actions/${service}`
+export const TOOL_SEARCH_CONFIG_KEY = '/gateway-tool-search-config'
 
 async function refreshGatewayCache(id?: string, extraKeys: string[] = []) {
   const keys = [GATEWAYS_KEY, ...(id ? [gatewayKey(id)] : []), ...extraKeys]
@@ -242,6 +262,14 @@ export function useServiceActions(service: string | null) {
       revalidateOnMount: !USE_MOCK_DATA,
     }
   )
+}
+
+export function useGatewayToolSearchConfig() {
+  return useSWR<ToolSearchConfig>(TOOL_SEARCH_CONFIG_KEY, fetchToolSearchConfig, {
+    revalidateOnFocus: false,
+    fallbackData: USE_MOCK_DATA ? DEFAULT_TOOL_SEARCH_CONFIG : undefined,
+    revalidateOnMount: !USE_MOCK_DATA,
+  })
 }
 
 // Mutation hooks
@@ -460,6 +488,22 @@ export function useGatewayMutations() {
     return result
   }, [])
 
+  const setToolSearchConfig = useCallback(async (input: ToolSearchConfigInput): Promise<ToolSearchConfig> => {
+    if (USE_MOCK_DATA) {
+      await mockDelay()
+      mockToolSearchConfig = {
+        ...mockToolSearchConfig,
+        ...input,
+      }
+      await mutate(TOOL_SEARCH_CONFIG_KEY, mockToolSearchConfig, false)
+      return mockToolSearchConfig
+    }
+    const result = await gatewayApi.setToolSearchConfig(input)
+    await mutate(TOOL_SEARCH_CONFIG_KEY, result, false)
+    await mutate(GATEWAYS_KEY)
+    return result
+  }, [])
+
   const enableVirtualServer = useCallback(async (id: string): Promise<Gateway> => {
     if (USE_MOCK_DATA) {
       await mockDelay()
@@ -583,6 +627,7 @@ export function useGatewayMutations() {
     setExposurePolicy,
     previewExposurePolicy,
     saveServiceConfig,
+    setToolSearchConfig,
     enableVirtualServer,
     disableVirtualServer,
     enableGateway,

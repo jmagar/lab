@@ -71,7 +71,7 @@ mod tests {
                     {
                         "id": "gpt-4o-mini",
                         "object": "model",
-                        "created": 1706000000,
+                        "created": 1_706_000_000,
                         "owned_by": "openai"
                     }
                 ]

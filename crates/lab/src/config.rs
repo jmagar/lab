@@ -74,6 +74,9 @@ pub struct LabConfig {
     /// HTTP auth mode preferences.
     #[serde(default)]
     pub auth: Option<AuthFileConfig>,
+    /// Gateway-wide tool-search mode for all exposed upstream tools.
+    #[serde(default)]
+    pub tool_search: ToolSearchConfig,
     /// Upstream MCP servers to proxy through the gateway.
     #[serde(default)]
     pub upstream: Vec<UpstreamConfig>,
@@ -180,6 +183,40 @@ pub struct ResolvedDeviceRuntime {
 }
 
 impl LabConfig {
+    pub fn normalize_legacy_tool_search(&mut self) {
+        self.normalize_legacy_tool_search_with_root_presence(false);
+    }
+
+    pub fn normalize_legacy_tool_search_with_root_presence(
+        &mut self,
+        root_tool_search_present: bool,
+    ) {
+        if root_tool_search_present {
+            return;
+        }
+
+        if self.tool_search.enabled {
+            return;
+        }
+
+        if let Some(legacy) = self
+            .upstream
+            .iter()
+            .map(|upstream| &upstream.tool_search)
+            .find(|tool_search| tool_search.enabled)
+        {
+            self.tool_search = legacy.clone();
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.tool_search.validate()?;
+        for upstream in &self.upstream {
+            upstream.validate()?;
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn controller_host(&self) -> Option<&str> {
         self.node
@@ -191,6 +228,17 @@ impl LabConfig {
                     .and_then(|prefs| prefs.master.as_deref())
             })
     }
+}
+
+pub(crate) fn root_tool_search_present(raw: &str) -> bool {
+    toml::from_str::<toml::Value>(raw)
+        .ok()
+        .and_then(|value| {
+            value
+                .as_table()
+                .map(|table| table.contains_key("tool_search"))
+        })
+        .unwrap_or(false)
 }
 
 fn default_true() -> bool {
@@ -222,6 +270,22 @@ impl Default for ToolSearchConfig {
             top_k_default: default_tool_search_top_k(),
             max_tools: default_tool_search_max_tools(),
         }
+    }
+}
+
+impl ToolSearchConfig {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if !(1..=50).contains(&self.top_k_default) {
+            return Err(ConfigError::InvalidToolSearchTopKDefault {
+                value: self.top_k_default,
+            });
+        }
+        if !(1..=10_000).contains(&self.max_tools) {
+            return Err(ConfigError::InvalidToolSearchMaxTools {
+                value: self.max_tools,
+            });
+        }
+        Ok(())
     }
 }
 
@@ -265,7 +329,9 @@ pub struct UpstreamConfig {
     /// `bearer_token_env` — setting both is a config error.
     #[serde(default)]
     pub oauth: Option<UpstreamOauthConfig>,
-    #[serde(default)]
+    /// Deprecated compatibility field. Tool search is gateway-wide via root
+    /// `[tool_search]`; this field is only read to migrate older configs.
+    #[serde(default, skip_serializing)]
     pub tool_search: ToolSearchConfig,
 }
 
@@ -273,18 +339,6 @@ impl UpstreamConfig {
     /// Validate mutually-exclusive auth shapes. `bearer_token_env` and `oauth`
     /// both configured is a config error.
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if !(1..=50).contains(&self.tool_search.top_k_default) {
-            return Err(ConfigError::InvalidToolSearchTopKDefault {
-                name: self.name.clone(),
-                value: self.tool_search.top_k_default,
-            });
-        }
-        if !(1..=10_000).contains(&self.tool_search.max_tools) {
-            return Err(ConfigError::InvalidToolSearchMaxTools {
-                name: self.name.clone(),
-                value: self.tool_search.max_tools,
-            });
-        }
         if self.bearer_token_env.is_some() && self.oauth.is_some() {
             return Err(ConfigError::ConflictingAuth {
                 name: self.name.clone(),
@@ -347,10 +401,10 @@ pub enum ConfigError {
     InvalidUrl { name: String, url: String },
     #[error("upstream '{name}' has oauth configured but no url — oauth requires an HTTP url")]
     MissingOauthUrl { name: String },
-    #[error("upstream '{name}' has invalid tool_search.top_k_default={value} — expected 1..=50")]
-    InvalidToolSearchTopKDefault { name: String, value: usize },
-    #[error("upstream '{name}' has invalid tool_search.max_tools={value} — expected 1..=10000")]
-    InvalidToolSearchMaxTools { name: String, value: usize },
+    #[error("gateway tool_search.top_k_default={value} is invalid — expected 1..=50")]
+    InvalidToolSearchTopKDefault { value: usize },
+    #[error("gateway tool_search.max_tools={value} is invalid — expected 1..=10000")]
+    InvalidToolSearchMaxTools { value: usize },
 }
 
 /// Outbound OAuth configuration for an upstream MCP server.
@@ -730,16 +784,14 @@ pub fn load_toml(candidates: &[PathBuf]) -> Result<LabConfig> {
     for path in candidates {
         match std::fs::read_to_string(path) {
             Ok(raw) => {
-                let cfg = toml::from_str::<LabConfig>(&raw)
+                let mut cfg = toml::from_str::<LabConfig>(&raw)
                     .with_context(|| format!("failed to parse {}", path.display()))?;
+                cfg.normalize_legacy_tool_search_with_root_presence(root_tool_search_present(&raw));
                 // Validate all upstream configs eagerly at startup so that
                 // invalid configuration (conflicting auth, bad URL scheme, etc.)
                 // is discovered immediately rather than at first OAuth attempt.
-                for upstream in &cfg.upstream {
-                    upstream
-                        .validate()
-                        .with_context(|| format!("invalid upstream config '{}'", upstream.name))?;
-                }
+                cfg.validate()
+                    .with_context(|| format!("invalid config {}", path.display()))?;
                 return Ok(cfg);
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
@@ -1787,6 +1839,93 @@ strategy = "dynamic"
             ConfigError::ConflictingAuth { name } => assert_eq!(name, "acme"),
             other => panic!("expected ConflictingAuth, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn tool_search_is_root_level_config() {
+        let cfg = toml::from_str::<LabConfig>(
+            r#"
+[tool_search]
+enabled = true
+top_k_default = 20
+max_tools = 8000
+
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+"#,
+        )
+        .expect("root tool_search parses");
+
+        assert!(cfg.tool_search.enabled);
+        assert_eq!(cfg.tool_search.top_k_default, 20);
+        assert_eq!(cfg.tool_search.max_tools, 8000);
+        cfg.validate().expect("root tool_search validates");
+    }
+
+    #[test]
+    fn legacy_upstream_tool_search_migrates_to_root() {
+        let mut cfg = toml::from_str::<LabConfig>(
+            r#"
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.tool_search]
+enabled = true
+top_k_default = 15
+max_tools = 750
+"#,
+        )
+        .expect("legacy upstream tool_search parses");
+
+        cfg.normalize_legacy_tool_search();
+
+        assert!(cfg.tool_search.enabled);
+        assert_eq!(cfg.tool_search.top_k_default, 15);
+        assert_eq!(cfg.tool_search.max_tools, 750);
+    }
+
+    #[test]
+    fn explicit_root_tool_search_disable_blocks_legacy_migration() {
+        let raw = r#"
+[tool_search]
+enabled = false
+
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.tool_search]
+enabled = true
+top_k_default = 15
+max_tools = 750
+"#;
+        let mut cfg = toml::from_str::<LabConfig>(raw)
+            .expect("explicit root and legacy upstream tool_search parse");
+
+        cfg.normalize_legacy_tool_search_with_root_presence(root_tool_search_present(raw));
+
+        assert!(!cfg.tool_search.enabled);
+        assert_eq!(cfg.tool_search.top_k_default, 10);
+        assert_eq!(cfg.tool_search.max_tools, 5000);
+    }
+
+    #[test]
+    fn tool_search_validation_is_gateway_wide() {
+        let cfg = toml::from_str::<LabConfig>(
+            r"
+[tool_search]
+top_k_default = 0
+",
+        )
+        .expect("config parses; validation is a separate step");
+
+        let err = cfg.validate().expect_err("invalid top_k_default");
+        assert!(matches!(
+            err,
+            ConfigError::InvalidToolSearchTopKDefault { value: 0 }
+        ));
     }
 
     #[test]

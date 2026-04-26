@@ -1,6 +1,8 @@
 //! `lab serve` — start the MCP server.
 
-use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1009,6 +1011,7 @@ fn allowed_hosts(config_allowed_hosts: &[String], resource_url: Option<&str>) ->
 
 /// Bind a TCP listener on `addr`. If the port is already in use and the
 /// holding process is `lab` (Linux only), send SIGTERM and retry.
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
 async fn bind_or_reclaim(addr: &str, port: u16) -> Result<tokio::net::TcpListener> {
     use std::io::ErrorKind;
     match tokio::net::TcpListener::bind(addr).await {

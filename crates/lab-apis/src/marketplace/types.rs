@@ -74,6 +74,9 @@ pub enum PluginComponentKind {
     Monitors,
     Bin,
     Settings,
+    OutputStyles,
+    Themes,
+    Channels,
     Files,
 }
 

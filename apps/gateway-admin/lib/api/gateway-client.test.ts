@@ -245,6 +245,50 @@ test('gatewayApi.reload sends confirm=true with destructive gateway reloads', as
   )
 })
 
+test('gatewayApi.getToolSearchConfig reads gateway-wide tool search settings', async () => {
+  await withGatewayFetch(
+    {
+      'gateway.tool_search.get': () => ({
+        enabled: true,
+        top_k_default: 12,
+        max_tools: 8000,
+      }),
+    },
+    async (requests) => {
+      const config = await gatewayApi.getToolSearchConfig()
+
+      assert.deepEqual(config, {
+        enabled: true,
+        top_k_default: 12,
+        max_tools: 8000,
+      })
+      assert.equal(requests[0]?.action, 'gateway.tool_search.get')
+      assert.deepEqual(requests[0]?.params, {})
+    },
+  )
+})
+
+test('gatewayApi.setToolSearchConfig sends confirm=true for gateway-wide updates', async () => {
+  await withGatewayFetch(
+    {
+      'gateway.tool_search.set': (params) => params,
+    },
+    async (requests) => {
+      const config = await gatewayApi.setToolSearchConfig({
+        enabled: true,
+        top_k_default: 20,
+        max_tools: 10_000,
+      })
+
+      assert.equal(config.enabled, true)
+      assert.equal(config.top_k_default, 20)
+      assert.equal(config.max_tools, 10_000)
+      assert.equal(requests[0]?.action, 'gateway.tool_search.set')
+      assert.equal(requests[0]?.params.confirm, true)
+    },
+  )
+})
+
 test('gatewayApi.setExposurePolicy sends confirm=true when updating a gateway config', async () => {
   await withGatewayFetch(
     {

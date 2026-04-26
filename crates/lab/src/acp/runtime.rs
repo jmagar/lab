@@ -809,6 +809,7 @@ async fn run_codex_session(
     Ok(())
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 async fn terminate_codex_child(
     child: &mut tokio::process::Child,
     child_process_group: Option<u32>,

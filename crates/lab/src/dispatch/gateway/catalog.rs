@@ -35,6 +35,39 @@ pub const ACTIONS: &[ActionSpec] = &[
         params: &[],
     },
     ActionSpec {
+        name: "gateway.tool_search.get",
+        description: "Read the gateway-wide tool-search settings",
+        destructive: false,
+        returns: "ToolSearchConfig",
+        params: &[],
+    },
+    ActionSpec {
+        name: "gateway.tool_search.set",
+        description: "Enable or disable gateway-wide tool-search mode for all exposed upstream tools",
+        destructive: true,
+        returns: "ToolSearchConfig",
+        params: &[
+            ParamSpec {
+                name: "enabled",
+                ty: "boolean",
+                required: true,
+                description: "Whether tool_search/tool_invoke mode is enabled for the gateway",
+            },
+            ParamSpec {
+                name: "top_k_default",
+                ty: "integer",
+                required: false,
+                description: "Default result count for tool_search when top_k is omitted",
+            },
+            ParamSpec {
+                name: "max_tools",
+                ty: "integer",
+                required: false,
+                description: "Maximum number of tools to index per rebuild",
+            },
+        ],
+    },
+    ActionSpec {
         name: "gateway.server.get",
         description: "Get one unified server row by id",
         destructive: false,
