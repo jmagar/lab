@@ -72,6 +72,68 @@ Typical patch payloads:
 { "action": "gateway.update", "params": { "confirm": true, "name": "github", "patch": { "expose_tools": null } } }
 ```
 
+## Tool Search Mode
+
+Gateway tool-search mode is a single gateway-wide switch. It is not configured per upstream server.
+
+When enabled, Lab hides raw proxied upstream tools from MCP `list_tools()` and exposes two synthetic tools instead:
+
+| Tool | Purpose |
+|------|---------|
+| `tool_search` | Search healthy discovered upstream tools across the gateway. |
+| `tool_invoke` | Invoke one tool returned by `tool_search`. |
+
+This keeps the MCP catalog small while still allowing clients to reach every exposed upstream tool. Per-upstream `expose_tools` filters still apply before tools enter the searchable catalog.
+
+Configuration lives at root `[tool_search]` in `config.toml`:
+
+```toml
+[tool_search]
+enabled = true
+top_k_default = 10
+max_tools = 5000
+```
+
+CLI:
+
+```bash
+lab gateway tool-search status
+lab gateway tool-search enable
+lab gateway tool-search enable --top-k-default 20 --max-tools 8000
+lab gateway tool-search disable
+```
+
+HTTP/MCP gateway management actions:
+
+```json
+{ "action": "gateway.tool_search.get", "params": {} }
+```
+
+```json
+{ "action": "gateway.tool_search.set", "params": { "enabled": true, "top_k_default": 10, "max_tools": 5000 } }
+```
+
+Search call shape on the MCP surface:
+
+```json
+{ "query": "github issue search", "top_k": 10, "include_schema": false }
+```
+
+Invoke call shape on the MCP surface:
+
+```json
+{ "name": "search_issues", "arguments": { "query": "repo:jmagar/lab tool_search" } }
+```
+
+Rules:
+
+- `top_k_default` is validated in the range `1..=50`
+- `max_tools` is validated in the range `1..=10000`
+- `query` must be non-empty and no longer than 500 characters
+- `include_schema` defaults to `false`; schemas are sanitized before return when requested
+- old `[[upstream]].tool_search` blocks are accepted only as migration input and are dropped on the next gateway config write
+- `gateway.update` rejects `patch.tool_search`; use `gateway.tool_search.set` instead
+
 ## Validation
 
 - exactly one of `url` or `command` must be set

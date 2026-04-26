@@ -13,8 +13,8 @@ use tokio::time::Instant;
 use url::Url;
 
 use crate::config::{
-    LabConfig, UpstreamConfig, UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration,
-    backup_env, env_is_up_to_date, write_env,
+    LabConfig, ToolSearchConfig, UpstreamConfig, UpstreamOauthConfig, UpstreamOauthMode,
+    UpstreamOauthRegistration, backup_env, env_is_up_to_date, write_env,
 };
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
@@ -36,7 +36,7 @@ use lab_apis::extract::types::ServiceCreds;
 
 use super::config::{
     default_gateway_bearer_env_name, insert_upstream, load_gateway_config, remove_upstream,
-    update_upstream, validate_bearer_token_env_name, write_gateway_config,
+    update_upstream, validate_bearer_token_env_name, validate_tool_search, write_gateway_config,
 };
 use super::index::{SearchHit, ToolIndex};
 use super::params::GatewayUpdatePatch;
@@ -252,6 +252,8 @@ impl GatewayManager {
     }
 
     pub async fn seed_config(&self, config: LabConfig) {
+        let mut config = config;
+        config.normalize_legacy_tool_search();
         *self.config.write().await = config;
     }
 
@@ -482,7 +484,7 @@ impl GatewayManager {
                             registration,
                             scopes: metadata.scopes_supported.clone(),
                         }),
-                        tool_search: crate::config::ToolSearchConfig::default(),
+                        tool_search: ToolSearchConfig::default(),
                     };
                     let manager = UpstreamOauthManager::new(
                         sqlite.clone(),
@@ -910,6 +912,7 @@ impl GatewayManager {
 
     pub async fn get(&self, name: &str) -> Result<GatewayView, ToolError> {
         let cfg = self.config.read().await;
+        let tool_search = cfg.tool_search.clone();
         let upstream = cfg
             .upstream
             .iter()
@@ -922,7 +925,7 @@ impl GatewayManager {
         drop(cfg);
 
         Ok(GatewayView {
-            config: config_view(&upstream),
+            config: config_view(&upstream, &tool_search),
             runtime: runtime_view(
                 self.runtime.current_pool().await.as_deref(),
                 &upstream.name,
@@ -1369,6 +1372,7 @@ impl GatewayManager {
             "gateway reconcile"
         );
         let mut cfg = self.config.read().await.clone();
+        let tool_search = cfg.tool_search.clone();
         let removed = remove_upstream(&mut cfg, name)?;
         self.persist_config(cfg).await?;
         let diff = self.reload_with_origin(origin, owner).await?;
@@ -1383,12 +1387,30 @@ impl GatewayManager {
             "gateway reconcile"
         );
         Ok(GatewayView {
-            config: config_view(&removed),
+            config: config_view(&removed, &tool_search),
             runtime: GatewayRuntimeView {
                 name: removed.name,
                 ..GatewayRuntimeView::default()
             },
         })
+    }
+
+    pub async fn tool_search_config(&self) -> ToolSearchConfig {
+        self.config.read().await.tool_search.clone()
+    }
+
+    pub async fn set_tool_search_config(
+        &self,
+        next: ToolSearchConfig,
+        origin: Option<&str>,
+        owner: Option<UpstreamRuntimeOwner>,
+    ) -> Result<ToolSearchConfig, ToolError> {
+        validate_tool_search(&next)?;
+        let mut cfg = self.config.read().await.clone();
+        cfg.tool_search = next;
+        self.persist_config(cfg).await?;
+        self.reload_with_origin(origin, owner).await?;
+        Ok(self.tool_search_config().await)
     }
 
     pub async fn reload_with_origin(
@@ -1560,14 +1582,18 @@ impl GatewayManager {
     }
 
     pub async fn tool_search_enabled_gateways(&self) -> Vec<String> {
-        self.config
-            .read()
-            .await
-            .upstream
+        let cfg = self.config.read().await;
+        if !cfg.tool_search.enabled {
+            return Vec::new();
+        }
+        cfg.upstream
             .iter()
-            .filter(|upstream| upstream.tool_search.enabled)
             .map(|upstream| upstream.name.clone())
             .collect()
+    }
+
+    pub async fn tool_search_enabled(&self) -> bool {
+        self.config.read().await.tool_search.enabled
     }
 
     pub async fn tool_search_warming(&self) -> bool {
@@ -1582,6 +1608,12 @@ impl GatewayManager {
         top_k: usize,
         include_schema: bool,
     ) -> Result<Vec<GatewayToolSearchResult>, ToolError> {
+        if !self.config.read().await.tool_search.enabled {
+            return Err(ToolError::Sdk {
+                sdk_kind: "unknown_tool".to_string(),
+                message: "tool search is not enabled".to_string(),
+            });
+        }
         self.refresh_tool_search_indexes_if_stale().await;
         let trimmed = query.trim();
         if trimmed.is_empty() {
@@ -1667,10 +1699,14 @@ impl GatewayManager {
     }
 
     fn schedule_tool_search_rebuilds(&self, cfg: &LabConfig, pool: Option<Arc<UpstreamPool>>) {
+        if !cfg.tool_search.enabled {
+            self.tool_indexes.clear();
+            return;
+        }
+
         let enabled = cfg
             .upstream
             .iter()
-            .filter(|upstream| upstream.tool_search.enabled)
             .map(|upstream| upstream.name.clone())
             .collect::<std::collections::HashSet<_>>();
         self.tool_indexes.retain(|name, state| {
@@ -1689,11 +1725,7 @@ impl GatewayManager {
             return;
         };
 
-        for upstream in cfg
-            .upstream
-            .iter()
-            .filter(|upstream| upstream.tool_search.enabled)
-        {
+        for upstream in &cfg.upstream {
             let state = self
                 .tool_indexes
                 .entry(upstream.name.clone())
@@ -1710,12 +1742,13 @@ impl GatewayManager {
             let my_generation = state.generation.fetch_add(1, Ordering::Relaxed) + 1;
             let upstream = upstream.clone();
             let pool = pool.clone();
+            let max_tools = cfg.tool_search.max_tools;
             state.warming.store(true, Ordering::Relaxed);
             let state_for_task = state.clone();
             let handle = tokio::spawn(async move {
                 let healthy_tools = pool.healthy_tools_for_upstream(&upstream.name).await;
                 let built = tokio::task::spawn_blocking(move || {
-                    ToolIndex::build_from_tools(&upstream, healthy_tools)
+                    ToolIndex::build_from_tools(&upstream, healthy_tools, max_tools)
                 })
                 .await;
                 if state_for_task.generation.load(Ordering::Relaxed) == my_generation
@@ -1738,13 +1771,17 @@ impl GatewayManager {
     /// index. Remaining stale upstreams are reprobed concurrently.
     async fn refresh_tool_search_indexes_if_stale(&self) {
         let cfg = self.config.read().await.clone();
+        if !cfg.tool_search.enabled {
+            return;
+        }
         let Some(pool) = self.current_pool().await else {
             return;
         };
 
         let now = Instant::now();
+        let max_tools = cfg.tool_search.max_tools;
         let mut pending = Vec::new();
-        for upstream in cfg.upstream.into_iter().filter(|u| u.tool_search.enabled) {
+        for upstream in cfg.upstream {
             let state = self
                 .tool_indexes
                 .entry(upstream.name.clone())
@@ -1782,7 +1819,7 @@ impl GatewayManager {
             let healthy_tools = pool.healthy_tools_for_upstream(&upstream.name).await;
             let upstream_clone = upstream.clone();
             let built = tokio::task::spawn_blocking(move || {
-                ToolIndex::build_from_tools(&upstream_clone, healthy_tools)
+                ToolIndex::build_from_tools(&upstream_clone, healthy_tools, max_tools)
             })
             .await;
             if let Ok(index) = built {
@@ -2121,7 +2158,7 @@ fn quarantine_unregistered_virtual_servers(
     (cfg, migration)
 }
 
-fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
+fn config_view(upstream: &UpstreamConfig, tool_search: &ToolSearchConfig) -> GatewayConfigView {
     GatewayConfigView {
         name: upstream.name.clone(),
         enabled: upstream.enabled,
@@ -2139,9 +2176,9 @@ fn config_view(upstream: &UpstreamConfig) -> GatewayConfigView {
         expose_tools: upstream.expose_tools.clone(),
         expose_resources: upstream.expose_resources.clone(),
         expose_prompts: upstream.expose_prompts.clone(),
-        tool_search_enabled: upstream.tool_search.enabled,
-        tool_search_top_k_default: upstream.tool_search.top_k_default,
-        tool_search_max_tools: upstream.tool_search.max_tools,
+        tool_search_enabled: tool_search.enabled,
+        tool_search_top_k_default: tool_search.top_k_default,
+        tool_search_max_tools: tool_search.max_tools,
     }
 }
 
@@ -2685,7 +2722,7 @@ fn cleanup_match_view(matched: &GatewayCleanupMatch) -> super::types::GatewayCle
     }
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn current_and_parent_pids() -> std::collections::HashSet<u32> {
     let mut pids = std::collections::HashSet::from([std::process::id()]);
     let parent = nix::unistd::getppid();
@@ -2693,11 +2730,6 @@ fn current_and_parent_pids() -> std::collections::HashSet<u32> {
         pids.insert(parent.as_raw() as u32);
     }
     pids
-}
-
-#[cfg(not(unix))]
-fn current_and_parent_pids() -> std::collections::HashSet<u32> {
-    std::collections::HashSet::from([std::process::id()])
 }
 
 #[cfg(target_os = "linux")]
@@ -3060,7 +3092,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: ToolSearchConfig::default(),
         };
 
         let patterns = upstream_cleanup_patterns(&upstream, false);
@@ -3111,7 +3143,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: ToolSearchConfig::default(),
             }])
             .await;
 
@@ -3178,7 +3210,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: ToolSearchConfig::default(),
             }])
             .await;
 
@@ -3214,7 +3246,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: ToolSearchConfig::default(),
             }])
             .await;
 
@@ -3246,7 +3278,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -3272,7 +3304,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -3302,7 +3334,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: ToolSearchConfig::default(),
         };
 
         let view = server_view_from_upstream(None, &upstream).await;
@@ -3596,7 +3628,7 @@ mod tests {
                     expose_resources: None,
                     expose_prompts: None,
                     oauth: None,
-                    tool_search: crate::config::ToolSearchConfig::default(),
+                    tool_search: ToolSearchConfig::default(),
                 },
                 Some("ghp_secret".to_string()),
                 None,
@@ -4008,7 +4040,7 @@ mod tests {
                     expose_resources: None,
                     expose_prompts: None,
                     oauth: None,
-                    tool_search: crate::config::ToolSearchConfig::default(),
+                    tool_search: ToolSearchConfig::default(),
                 }],
                 ..LabConfig::default()
             },
@@ -4044,7 +4076,7 @@ mod tests {
                         registration: UpstreamOauthRegistration::Dynamic,
                         scopes: None,
                     }),
-                    tool_search: crate::config::ToolSearchConfig::default(),
+                    tool_search: ToolSearchConfig::default(),
                 }],
                 ..LabConfig::default()
             })
@@ -4108,7 +4140,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: ToolSearchConfig::default(),
             },
         )
         .await;
@@ -4170,7 +4202,7 @@ mod tests {
                 expose_resources: None,
                 expose_prompts: None,
                 oauth: None,
-                tool_search: crate::config::ToolSearchConfig::default(),
+                tool_search: ToolSearchConfig::default(),
             },
         )
         .await;
@@ -4194,7 +4226,7 @@ mod tests {
             expose_resources: None,
             expose_prompts: None,
             oauth: None,
-            tool_search: crate::config::ToolSearchConfig::default(),
+            tool_search: ToolSearchConfig::default(),
         };
         let upstream_name: Arc<str> = Arc::from("partial-upstream");
         let entry = crate::dispatch::upstream::types::UpstreamEntry {

@@ -159,6 +159,33 @@ Example:
 url = "https://registry.modelcontextprotocol.io"
 ```
 
+### `[tool_search]`
+
+Gateway-wide MCP tool-search mode.
+
+| Key | Env override | Default | Description |
+|-----|-------------|---------|-------------|
+| `enabled` | — | `false` | Replace raw proxied upstream tools with synthetic `tool_search` and `tool_invoke` tools for every gateway upstream. |
+| `top_k_default` | — | `10` | Default number of search results when a `tool_search` call omits `top_k`. Valid range: 1-50. |
+| `max_tools` | — | `5000` | Maximum number of healthy discovered tools to index per rebuild. Valid range: 1-10000. |
+
+Example:
+
+```toml
+[tool_search]
+enabled = true
+top_k_default = 10
+max_tools = 5000
+```
+
+Rules:
+
+- this is a single gateway-wide switch, not a per-`[[upstream]]` setting
+- when enabled, raw upstream tools are hidden from MCP `list_tools`; clients discover them through `tool_search` and invoke them through `tool_invoke`
+- when disabled, upstream tools are exposed normally according to each upstream's `expose_tools` policy
+- old `[[upstream]].tool_search` config is read only for migration compatibility and is dropped the next time gateway config is written
+- operators can change it without hand-editing TOML using `lab gateway tool-search status`, `lab gateway tool-search enable`, and `lab gateway tool-search disable`
+
 ### `[oauth.machines.<id>]`
 
 Named OAuth callback forwarding targets for `lab oauth relay-local`.

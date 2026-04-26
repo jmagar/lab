@@ -202,6 +202,15 @@ pub struct ToolSearchParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSearchSetParams {
+    pub enabled: bool,
+    #[serde(default)]
+    pub top_k_default: Option<usize>,
+    #[serde(default)]
+    pub max_tools: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolInvokeParams {
     pub name: String,
     pub arguments: serde_json::Value,

@@ -4,7 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-_No changes since 0.11.1._
+| Commit | Change |
+|--------|--------|
+| `0221b23f` | docs: expand product and marketplace surface |
+| `4a8a2d53` | docs: expand product feature overview |
+| `3215a9ba` | docs: describe product feature surface |
+| `18a5684b` | chore: update marketplace docs and monitors |
+| `fe09366c` | fix(dev): address code review findings |
+| `4ae40caf` | feat(lab-zxx5.8): add MCP server install modal with gateway selection |
+
+### Highlights
+
+- **Tool search config (gateway-admin)** — `ToolSearchConfig` + `ToolSearchConfigInput` types, `getToolSearchConfig`/`setToolSearchConfig` API methods, settings page UI, test coverage
+- **MCP server install modal (lab-zxx5.8)** — gateway selection during install flow
+- **Marketplace + product docs** — expanded product feature surface, marketplace surface, feature overview
+
+### Version bumps
+
+- gateway-admin: `0.5.1 → 0.6.0`
 
 ---
 

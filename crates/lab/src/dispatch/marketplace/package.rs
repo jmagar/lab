@@ -96,6 +96,75 @@ fn collect_components_from_value(manifest: &Value, out: &mut Vec<PluginComponent
         collect_component_array(obj, "assets", PluginComponentKind::Assets, out);
         collect_component_array(obj, "hooks", PluginComponentKind::Hooks, out);
         collect_component_array(obj, "monitors", PluginComponentKind::Monitors, out);
+        collect_component_array(obj, "outputStyles", PluginComponentKind::OutputStyles, out);
+        collect_component_array(obj, "output_styles", PluginComponentKind::OutputStyles, out);
+        collect_component_array(obj, "themes", PluginComponentKind::Themes, out);
+        collect_channel_components(obj, out);
+    }
+}
+
+fn collect_channel_components(obj: &Map<String, Value>, out: &mut Vec<PluginComponent>) {
+    let Some(value) = obj.get("channels") else {
+        return;
+    };
+    match value {
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                out.push(component_from_inline_config(
+                    PluginComponentKind::Channels,
+                    &index.to_string(),
+                    item,
+                ));
+            }
+        }
+        Value::Object(items) => {
+            for (name, item) in items {
+                out.push(component_from_inline_config(
+                    PluginComponentKind::Channels,
+                    name,
+                    item,
+                ));
+            }
+        }
+        Value::String(path) => out.push(PluginComponent {
+            kind: PluginComponentKind::Channels,
+            path: path.clone(),
+            name: path_name(path),
+            metadata: None,
+        }),
+        _ => {}
+    }
+}
+
+fn component_from_inline_config(
+    kind: PluginComponentKind,
+    fallback_name: &str,
+    value: &Value,
+) -> PluginComponent {
+    if let Some(path) = value.as_str() {
+        return PluginComponent {
+            kind,
+            path: path.to_string(),
+            name: path_name(path),
+            metadata: Some(value.clone()),
+        };
+    }
+
+    let name = value
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or(fallback_name)
+        .to_string();
+    PluginComponent {
+        kind,
+        path: value
+            .get("path")
+            .or_else(|| value.get("file"))
+            .and_then(Value::as_str)
+            .unwrap_or(&name)
+            .to_string(),
+        name,
+        metadata: Some(value.clone()),
     }
 }
 
@@ -209,6 +278,8 @@ fn collect_components_from_layout(root: &Path, out: &mut Vec<PluginComponent>) {
         ("hooks", PluginComponentKind::Hooks),
         ("monitors", PluginComponentKind::Monitors),
         ("bin", PluginComponentKind::Bin),
+        ("output-styles", PluginComponentKind::OutputStyles),
+        ("themes", PluginComponentKind::Themes),
     ];
 
     for (dir_name, kind) in specs {
@@ -239,6 +310,7 @@ fn collect_components_from_layout(root: &Path, out: &mut Vec<PluginComponent>) {
     collect_component_file(root, ".mcp.json", PluginComponentKind::McpServers, out);
     collect_component_file(root, ".lsp.json", PluginComponentKind::LspServers, out);
     collect_component_file(root, "settings.json", PluginComponentKind::Settings, out);
+    collect_component_file(root, "channels.json", PluginComponentKind::Channels, out);
 }
 
 fn path_name(path: &str) -> String {
@@ -401,9 +473,18 @@ mod tests {
         std::fs::write(root.join("monitors/monitors.json"), "[]").expect("monitors");
         std::fs::create_dir_all(root.join("bin")).expect("bin dir");
         std::fs::write(root.join("bin/tool"), "#!/bin/sh\n").expect("bin");
+        std::fs::create_dir_all(root.join("output-styles")).expect("output styles dir");
+        std::fs::write(
+            root.join("output-styles/reviewer.md"),
+            "---\nname: Reviewer\n---",
+        )
+        .expect("output style");
+        std::fs::create_dir_all(root.join("themes")).expect("themes dir");
+        std::fs::write(root.join("themes/dim.json"), "{}").expect("theme");
         std::fs::write(root.join(".mcp.json"), "{\"mcpServers\":{}}").expect("mcp");
         std::fs::write(root.join(".lsp.json"), "{}").expect("lsp");
         std::fs::write(root.join("settings.json"), "{}").expect("settings");
+        std::fs::write(root.join("channels.json"), "[]").expect("channels");
 
         let components = components_from_manifest_and_layout(Some(root), None);
         let observed: std::collections::HashSet<_> = components
@@ -421,6 +502,12 @@ mod tests {
         assert!(observed.contains(&(PluginComponentKind::McpServers, ".mcp.json")));
         assert!(observed.contains(&(PluginComponentKind::LspServers, ".lsp.json")));
         assert!(observed.contains(&(PluginComponentKind::Settings, "settings.json")));
+        assert!(observed.contains(&(PluginComponentKind::Channels, "channels.json")));
+        assert!(observed.contains(&(
+            PluginComponentKind::OutputStyles,
+            "output-styles/reviewer.md"
+        )));
+        assert!(observed.contains(&(PluginComponentKind::Themes, "themes/dim.json")));
 
         let reviewer = components
             .iter()
@@ -445,7 +532,10 @@ mod tests {
             "agents": ["agents/reviewer.md"],
             "mcpServers": ".mcp.json",
             "lspServers": ".lsp.json",
-            "monitors": "monitors/monitors.json"
+            "monitors": "monitors/monitors.json",
+            "outputStyles": "output-styles/reviewer.md",
+            "themes": "themes/dim.json",
+            "channels": [{ "name": "team-chat", "server": "chat" }]
         });
 
         let components = components_from_manifest_and_layout(None, Some(&manifest));
@@ -460,5 +550,32 @@ mod tests {
         assert!(observed.contains(&(PluginComponentKind::McpServers, ".mcp.json")));
         assert!(observed.contains(&(PluginComponentKind::LspServers, ".lsp.json")));
         assert!(observed.contains(&(PluginComponentKind::Monitors, "monitors/monitors.json")));
+        assert!(observed.contains(&(
+            PluginComponentKind::OutputStyles,
+            "output-styles/reviewer.md"
+        )));
+        assert!(observed.contains(&(PluginComponentKind::Themes, "themes/dim.json")));
+        assert!(
+            components
+                .iter()
+                .any(|component| component.kind == PluginComponentKind::Channels
+                    && component.name == "team-chat")
+        );
+    }
+
+    #[test]
+    fn components_from_manifest_preserves_string_channel_entries() {
+        let manifest = serde_json::json!({
+            "channels": ["channels/stable.json"]
+        });
+
+        let components = components_from_manifest_and_layout(None, Some(&manifest));
+        let channel = components
+            .iter()
+            .find(|component| component.kind == PluginComponentKind::Channels)
+            .expect("channel component");
+
+        assert_eq!(channel.path, "channels/stable.json");
+        assert_eq!(channel.name, "stable.json");
     }
 }
