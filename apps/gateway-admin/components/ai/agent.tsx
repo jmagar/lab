@@ -26,7 +26,7 @@ export type AgentHeaderProps = HTMLAttributes<HTMLDivElement> & {
 export const AgentHeader = memo(({ className, name, model, ...props }: AgentHeaderProps) => (
   <div className={cn("flex w-full items-center justify-between gap-4 p-3", className)} {...props}>
     <div className="flex items-center gap-2">
-      <BotIcon className="size-4 text-muted-foreground" />
+      <BotIcon className="size-4 text-aurora-text-muted" />
       <span className="font-medium text-sm">{name}</span>
       {model && (
         <Badge className="font-mono text-xs" variant="secondary">
@@ -50,8 +50,8 @@ export type AgentInstructionsProps = HTMLAttributes<HTMLDivElement> & {
 export const AgentInstructions = memo(
   ({ className, children, ...props }: AgentInstructionsProps) => (
     <div className={cn("space-y-2", className)} {...props}>
-      <span className="font-medium text-muted-foreground text-sm">Instructions</span>
-      <div className="rounded-md bg-muted/50 p-3 text-muted-foreground text-sm">
+      <span className="font-medium text-aurora-text-muted text-sm">Instructions</span>
+      <div className="rounded-md bg-aurora-panel-muted/50 p-3 text-aurora-text-muted text-sm">
         <p>{children}</p>
       </div>
     </div>
@@ -65,7 +65,7 @@ export type AgentToolsProps = Omit<ComponentProps<typeof Accordion>, "type"> & {
 export const AgentTools = memo(
   ({ className, wrapperClassName, ...props }: AgentToolsProps) => (
     <div className={cn("space-y-2", wrapperClassName)}>
-      <span className="font-medium text-muted-foreground text-sm">Tools</span>
+      <span className="font-medium text-aurora-text-muted text-sm">Tools</span>
       {/* className now lands on the declared target (Accordion), not the
           outer wrapper. Wrapper styling is opt-in via wrapperClassName. */}
       <Accordion
@@ -96,7 +96,7 @@ export const AgentTool = memo(({ className, tool, value, ...props }: AgentToolPr
         {tool.description ?? "No description"}
       </AccordionTrigger>
       <AccordionContent className="px-3 pb-3">
-        <div className="rounded-md bg-muted/50">
+        <div className="rounded-md bg-aurora-panel-muted/50">
           <pre className="overflow-auto p-3 font-mono text-xs">
             {JSON.stringify(schema, null, 2)}
           </pre>
@@ -112,8 +112,8 @@ export type AgentOutputProps = HTMLAttributes<HTMLDivElement> & {
 
 export const AgentOutput = memo(({ className, schema, ...props }: AgentOutputProps) => (
   <div className={cn("space-y-2", className)} {...props}>
-    <span className="font-medium text-muted-foreground text-sm">Output Schema</span>
-    <div className="rounded-md bg-muted/50">
+    <span className="font-medium text-aurora-text-muted text-sm">Output Schema</span>
+    <div className="rounded-md bg-aurora-panel-muted/50">
       <pre className="overflow-auto p-3 font-mono text-xs">{schema}</pre>
     </div>
   </div>

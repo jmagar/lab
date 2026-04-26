@@ -98,6 +98,26 @@ When a call site uses an `AURORA_DISPLAY_*` token, the token is the **complete**
 - tracking: `-0.02em`
 - use: section headers
 
+#### Compact Title
+
+- token: `AURORA_COMPACT_TITLE`
+- family: `Manrope`
+- size: `17px`
+- line-height: `1.18`
+- weight: `800`
+- tracking: `-0.02em`
+- use: empty-state titles and compact panel headings that sit below Display 2
+
+#### Card Title
+
+- token: `AURORA_CARD_TITLE`
+- family: `Manrope`
+- size: `15px`
+- line-height: `1.16`
+- weight: `800`
+- tracking: `-0.02em`
+- use: dense catalog/list card titles
+
 #### Metric Display
 
 - family: `Manrope`
@@ -131,6 +151,15 @@ When a call site uses an `AURORA_DISPLAY_*` token, the token is the **complete**
 - line-height: `1.35` to `1.5`
 - use: tables, logs, inspectors
 
+#### Dense Metadata
+
+- token: `AURORA_DENSE_META`
+- family: `Inter`
+- size: `11px`
+- line-height: `1.35`
+- weight: `500`
+- use: card subtitles, package identifiers, versions, compact helper metadata, and table support text
+
 #### Eyebrow
 
 - family: `Inter`
@@ -141,6 +170,19 @@ When a call site uses an `AURORA_DISPLAY_*` token, the token is the **complete**
 - use uppercase
 
 The single sanctioned Eyebrow implementation is `AURORA_MUTED_LABEL`. Do **not** hand-roll eyebrow styling with `text-xs uppercase tracking-*` — the 1px size delta, the 500-vs-700 weight gap, and the arbitrary tracking value all compound into visible inconsistency. A `text-xs uppercase tracking-[...]` combination in product code is a drift signal and must be migrated.
+
+#### Badge Label
+
+- token: `AURORA_BADGE_LABEL`
+- family: `Inter`
+- size: `10px`
+- line-height: `1`
+- weight: `700`
+- tracking: `0.14em`
+- use uppercase
+- use: compact status, category, active-filter, and count badges
+
+`AURORA_BADGE_LABEL` is for small badges and chips only. Do not use it for section labels; section labels must use `AURORA_MUTED_LABEL`.
 
 ## Color Contract
 
@@ -346,6 +388,8 @@ Rules:
 - selected state should use border emphasis, a subtle glow, and a clear internal indicator
 - selected pills should not use bright sheen or heavy filled gradients
 
+Dense filter rails are the approved exception to pill-style multi-select controls. Gateway-style sidebar filter rails may use compact checkbox rows when a page has many filter groups or many values per group. Checkbox-row filters must still use Aurora control surfaces, semantic borders, visible focus treatment, and compact Inter control typography.
+
 ### Inputs And Selects
 
 Rules:
@@ -465,6 +509,8 @@ Marketplace-style catalog pages should inherit the gateways interaction model wh
 - summary counts should compress into compact chips above the list instead of a long horizontal stats strip
 - sort belongs inside the filter affordance on narrow screens unless it is the primary action of the page
 - when a route uses distinct desktop and mobile control shells, hide the desktop shell on mobile instead of stacking both versions and forcing duplicate navigation or duplicated filter controls
+- desktop catalog pages may use Gateway-style checkbox-row filter rails instead of pill filters when the filter set is large enough that pill groups become noisy
+- future dropdowns or selects on catalog pages must use Aurora control surfaces, semantic borders, stable accessible names, and shared focus-ring tokens
 
 ### Authentication Surfaces
 

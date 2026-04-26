@@ -349,6 +349,53 @@ curl -H "Authorization: Bearer eyJhbG..." \
      -d '{"action":"help"}'
 ```
 
+## Verifying Auth Configuration
+
+Two complementary verification surfaces exist:
+
+### External probe — `scripts/check-oauth.sh`
+
+An operator shell script that tests a **running server** from outside, using only `curl`. Useful after deploy, in CI pipelines, or from a remote machine.
+
+```bash
+# Auto-loads ~/.lab/.env; defaults to http://localhost:8080
+./scripts/check-oauth.sh
+
+# Point at a specific server
+./scripts/check-oauth.sh https://lab.example.com
+
+# Or via env var
+LAB_BASE_URL=https://lab.example.com ./scripts/check-oauth.sh
+```
+
+The script covers:
+
+- Config presence (`LAB_MCP_HTTP_TOKEN`, `LAB_PUBLIC_URL`, Google credentials, `LAB_WEB_UI_AUTH_DISABLED`)
+- Health probes reachable without auth (`/health`, `/ready`)
+- Protected endpoints return `401 {kind:auth_failed}` when unauthenticated (`/v1/*`, `/mcp`, `/v0.1/servers`)
+- Static bearer token accepted and wrong tokens rejected
+- MCP endpoint is bearer-only (session cookies rejected)
+- OAuth discovery endpoints are public and structurally valid (`/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`, `/jwks`)
+- Issuer in `/.well-known/oauth-authorization-server` matches `LAB_PUBLIC_URL`
+- `WWW-Authenticate: Bearer resource_metadata=...` header present on 401 (RFC 9728)
+- Dev marketplace endpoint is unauthenticated for reads, blocked for mutations
+- Node self-registration endpoints are public
+- Upstream OAuth browser callback is not behind bearer auth
+
+Exit codes: `0` = all pass, `1` = one or more failures.
+
+### Internal pre-flight — `lab doctor`
+
+`lab doctor` is the in-process health audit. It checks config validity, file permissions on `auth.db` and `auth-jwt.pem`, service reachability, and auth configuration before you have a running server to probe. Use the shell script for post-deploy black-box verification; use `lab doctor` for pre-flight and service-level health.
+
+Auth-specific items `lab doctor` covers (or should cover):
+
+- `LAB_PUBLIC_URL` is set when OAuth mode is active
+- Google credentials present
+- `auth.db` and `auth-jwt.pem` exist and have restrictive permissions (`0600`)
+- SQLite store is openable (WAL mode, non-zero busy timeout)
+- Signing key is loadable
+
 ## Related Docs
 
 - [CONFIG.md](./CONFIG.md) — config loading and env var conventions

@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import * as React from 'react'
@@ -239,12 +240,14 @@ function PanelBody({
           <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-aurora-2 border border-aurora-border-strong/60 bg-aurora-control-surface">
             {headerAvatarSrc ? (
               <>
-                <img
+                <Image
                   src={headerAvatarSrc}
                   alt=""
                   className="size-full object-cover"
+                  height={48}
+                  width={48}
+                  unoptimized
                   referrerPolicy="no-referrer"
-                  loading="lazy"
                   onError={(e) => {
                     const img = e.currentTarget
                     if (ghAvatar && primaryIconHref && img.dataset.fallbackApplied !== 'true') {
@@ -987,12 +990,14 @@ function IconChip({ icon }: { icon: RegistryIcon }) {
       title={icon.src}
     >
       {href ? (
-        <img
+        <Image
           src={href}
           alt=""
+          width={24}
+          height={24}
           className="size-6 rounded object-contain"
           referrerPolicy="no-referrer"
-          loading="lazy"
+          unoptimized
           onError={(e) => { e.currentTarget.style.display = 'none' }}
         />
       ) : (

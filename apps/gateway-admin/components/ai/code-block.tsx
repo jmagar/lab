@@ -40,7 +40,7 @@ const lineNumberTransformer: ShikiTransformer = {
           "mr-4",
           "text-right",
           "select-none",
-          "text-muted-foreground",
+          "text-aurora-text-muted",
         ],
       },
       children: [{ type: "text", value: String(line) }],
@@ -105,18 +105,18 @@ export const CodeBlock = ({
     <CodeBlockContext.Provider value={{ code }}>
       <div
         className={cn(
-          "group relative w-full overflow-hidden rounded-md border bg-background text-foreground",
+          "group relative w-full overflow-hidden rounded-md border bg-aurora-bg text-aurora-text",
           className,
         )}
         {...props}
       >
         <div className="relative">
           <div
-            className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="overflow-auto dark:hidden [&>pre]:m-0 [&>pre]:bg-aurora-bg! [&>pre]:p-4 [&>pre]:text-aurora-text! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
             dangerouslySetInnerHTML={{ __html: html }}
           />
           <div
-            className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-background! [&>pre]:p-4 [&>pre]:text-foreground! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
+            className="hidden overflow-auto dark:block [&>pre]:m-0 [&>pre]:bg-aurora-bg! [&>pre]:p-4 [&>pre]:text-aurora-text! [&>pre]:text-sm [&_code]:font-mono [&_code]:text-sm"
             dangerouslySetInnerHTML={{ __html: darkHtml }}
           />
           {children && (

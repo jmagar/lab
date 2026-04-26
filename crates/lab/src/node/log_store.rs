@@ -40,7 +40,7 @@
 //! The database file is created with mode 0600 (owner read/write only) on Unix
 //! first open. Subsequent opens do not change permissions.
 
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use r2d2::Pool;
@@ -126,8 +126,7 @@ impl SqliteNodeLogStore {
     /// The database file is created with 0600 permissions on Unix.
     /// `retention_days` controls the TTL for the background retention sweep.
     pub async fn open(db_path: PathBuf, retention_days: u32) -> Result<Self, String> {
-        crate::dispatch::helpers::reject_path_traversal(&db_path.to_string_lossy())
-            .map_err(|e| format!("node log db path rejected: {e}"))?;
+        reject_db_path_traversal(&db_path)?;
 
         let path = db_path.clone();
 
@@ -596,12 +595,25 @@ fn db_search(
 
 fn resolve_db_path() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("LAB_NODE_LOG_DB") {
-        crate::dispatch::helpers::reject_path_traversal(&path)
-            .map_err(|_| format!("LAB_NODE_LOG_DB must not contain `..`: {path}"))?;
-        return Ok(PathBuf::from(path));
+        let path = PathBuf::from(path);
+        reject_db_path_traversal(&path)?;
+        return Ok(path);
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     Ok(PathBuf::from(home).join(".lab").join("node-logs.db"))
+}
+
+fn reject_db_path_traversal(path: &Path) -> Result<(), String> {
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(format!(
+            "node log db path rejected: `{}` must not contain `..`",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

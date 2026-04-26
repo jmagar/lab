@@ -1,601 +1,604 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
-import { Search, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react'
-import { AppHeader } from '@/components/app-header'
-import { MarketplaceCard } from './marketplace-card'
-import { MktSourceCard } from './mkt-source-card'
-import { MarketplaceStatsStrip } from './marketplace-stats-strip'
-import { AddMarketplaceModal } from './add-marketplace-modal'
-import { McpServerCard } from './mcp-server-card'
-import { AcpAgentCard } from './acp-agent-card'
-import { TypeFilter } from './type-filter'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useAcpAgents, useMarketplaces, usePlugins, useMarketplaceMutations } from '@/lib/hooks/use-marketplace'
-import type { Plugin as MarketplacePlugin } from '@/lib/types/marketplace'
-import type { MarketplaceItem, ItemTypeFilter } from '@/lib/marketplace/types'
-import { MOCK_MCP_SERVERS } from '@/lib/marketplace/mocks'
-import { cn } from '@/lib/utils'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
+  Bot,
+  Boxes,
+  Code2,
+  FileCode2,
+  Grid2X2,
+  Hammer,
+  LayoutList,
+  Plus,
+  RefreshCw,
+  Search,
+  Server,
+  ShoppingBag,
+  SlidersHorizontal,
+  Sparkles,
+  TerminalSquare,
+  X,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { AppHeader } from '@/components/app-header'
+import {
+  AURORA_BADGE_LABEL,
+  AURORA_CARD_TITLE,
+  AURORA_COMPACT_TITLE,
+  AURORA_DENSE_META,
   AURORA_DISPLAY_1,
   AURORA_MEDIUM_PANEL,
   AURORA_MUTED_LABEL,
+  AURORA_PAGE_FRAME,
+  AURORA_PAGE_SHELL,
+  AURORA_STRONG_PANEL,
   pillTone,
 } from '@/components/aurora/tokens'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useAcpAgents, useMarketplaceMutations, useMarketplaces, useMcpServers, usePlugins } from '@/lib/hooks/use-marketplace'
+import { isDevPreviewRoute } from '@/lib/dev/preview-mode'
+import { cn, getErrorMessage } from '@/lib/utils'
+import {
+  buildMarketplaceCatalogItems,
+  catalogItemMcpServer,
+  filterMarketplaceCatalogItems,
+  isAcpAgentCatalogItem,
+  isMcpServerCatalogItem,
+  isPluginCatalogItem,
+  isPluginComponentCatalogItem,
+  marketplaceCatalogSummary,
+  sortMarketplaceCatalogItems,
+  type MarketplaceCatalogFilterState,
+  type MarketplaceCatalogItem,
+  type MarketplaceCatalogKind,
+  type MarketplaceInstallFacet,
+  type MarketplaceSort,
+} from './marketplace-state'
+import { gatewayActionTone } from '@/components/gateway/gateway-theme'
+import { AddMarketplaceModal } from './add-marketplace-modal'
+import { AcpAgentInstallModal } from './acp-agent-install-modal'
+import { CherryPickDialog } from './cherry-pick-dialog'
+import { McpInstallModal } from './mcp-install-modal'
 
-function MobileTabChip({
-  label,
-  count,
-  active,
-  onClick,
+type ViewMode = 'cards' | 'table'
+
+const DEFAULT_FILTERS: MarketplaceCatalogFilterState = {
+  lens: 'all',
+  search: '',
+  types: [],
+  installStates: [],
+  ecosystems: [],
+  sourceIds: [],
+  distributions: [],
+  sort: 'updated',
+}
+
+const TYPE_OPTIONS: Array<{ value: MarketplaceCatalogKind; label: string }> = [
+  { value: 'plugin', label: 'Plugins' },
+  { value: 'agent', label: 'Agents' },
+  { value: 'skill', label: 'Skills' },
+  { value: 'command', label: 'Commands' },
+  { value: 'mcp_server', label: 'MCP servers' },
+  { value: 'acp_agent', label: 'ACP agents' },
+  { value: 'app', label: 'Apps' },
+  { value: 'hook', label: 'Hooks' },
+  { value: 'asset', label: 'Assets' },
+  { value: 'file', label: 'Files' },
+  { value: 'config', label: 'Config' },
+  { value: 'monitor', label: 'Monitors' },
+  { value: 'output_style', label: 'Output styles' },
+  { value: 'source', label: 'Sources' },
+]
+
+const INSTALL_OPTIONS: Array<{ value: MarketplaceInstallFacet; label: string }> = [
+  { value: 'installed', label: 'Installed' },
+  { value: 'not_installed', label: 'Not installed' },
+  { value: 'update_available', label: 'Update available' },
+  { value: 'builtin', label: 'Built-in' },
+]
+
+const SORT_OPTIONS: Array<{ value: MarketplaceSort; label: string }> = [
+  { value: 'name', label: 'A-Z' },
+  { value: 'source', label: 'Source/package' },
+  { value: 'installed', label: 'Installed first' },
+  { value: 'updated', label: 'Recently updated' },
+]
+
+function toggleValue<T extends string>(values: T[], value: T): T[] {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
+}
+
+function kindLabel(kind: MarketplaceCatalogKind): string {
+  if (kind === 'mcp_server') return 'MCP server'
+  if (kind === 'acp_agent') return 'ACP agent'
+  if (kind === 'agent') return 'Agent'
+  if (kind === 'skill') return 'Skill'
+  if (kind === 'command') return 'Command'
+  if (kind === 'app') return 'App'
+  if (kind === 'hook') return 'Hook'
+  if (kind === 'asset') return 'Asset'
+  if (kind === 'file') return 'File'
+  if (kind === 'config') return 'Config'
+  if (kind === 'monitor') return 'Monitor'
+  if (kind === 'output_style') return 'Output style'
+  if (kind === 'source') return 'Source'
+  return 'Plugin'
+}
+
+function kindIcon(kind: MarketplaceCatalogKind): ReactNode {
+  if (kind === 'mcp_server') return <Server className="size-4" />
+  if (kind === 'acp_agent') return <Bot className="size-4" />
+  if (kind === 'agent') return <Bot className="size-4" />
+  if (kind === 'skill') return <Sparkles className="size-4" />
+  if (kind === 'command') return <TerminalSquare className="size-4" />
+  if (kind === 'app') return <Code2 className="size-4" />
+  if (kind === 'hook') return <Hammer className="size-4" />
+  if (kind === 'asset' || kind === 'file' || kind === 'config' || kind === 'monitor' || kind === 'output_style') return <FileCode2 className="size-4" />
+  if (kind === 'source') return <ShoppingBag className="size-4" />
+  return <Boxes className="size-4" />
+}
+
+function primaryActionLabel(item: MarketplaceCatalogItem, readOnlyPreview = false): string {
+  if (item.kind === 'source') return 'Filter source'
+  if (item.installed) return item.hasUpdate ? 'Update' : 'Remove'
+  if (item.kind === 'acp_agent') return readOnlyPreview ? 'Preview wiring' : 'Wire agent'
+  if (item.kind === 'mcp_server') return readOnlyPreview ? 'Preview install' : 'Install'
+  if (item.kind !== 'plugin') return readOnlyPreview ? 'Preview component' : 'Install component'
+  if (readOnlyPreview) return 'Preview install'
+  return 'Install'
+}
+
+function canRunProductionMutation(item: MarketplaceCatalogItem | null): item is MarketplaceCatalogItem {
+  return isPluginCatalogItem(item)
+}
+
+function activeFilterLabels(filters: MarketplaceCatalogFilterState, sourceLabels: Map<string, string>): string[] {
+  return [
+    ...filters.types.map((value) => TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value),
+    ...filters.installStates.map((value) => INSTALL_OPTIONS.find((option) => option.value === value)?.label ?? value),
+    ...filters.ecosystems,
+    ...filters.sourceIds.map((value) => sourceLabels.get(value) ?? value),
+    ...filters.distributions,
+    ...(filters.sort === DEFAULT_FILTERS.sort ? [] : [SORT_OPTIONS.find((option) => option.value === filters.sort)?.label ?? filters.sort]),
+  ]
+}
+
+function FilterCheckbox({ checked, label, onChange }: { checked: boolean; label: string; onChange: () => void }) {
+  return (
+    <label className="flex items-center gap-2 text-[13px] font-medium leading-[1.2] text-aurora-text-primary">
+      <Checkbox checked={checked} onCheckedChange={onChange} className="border-aurora-border-strong bg-aurora-control-surface" />
+      <span>{label}</span>
+    </label>
+  )
+}
+
+function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2.5">
+      <p className={AURORA_MUTED_LABEL}>{label}</p>
+      <div className="space-y-2">{children}</div>
+    </div>
+  )
+}
+
+function CatalogCard({
+  item,
+  onAction,
 }: {
-  label: string
-  count: number
-  active: boolean
-  onClick: () => void
+  item: MarketplaceCatalogItem
+  onAction: (item: MarketplaceCatalogItem) => void
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onAction(item)}
       className={cn(
-        'rounded-aurora-2 border px-3 py-3 text-left transition-colors',
-        active ? pillTone(true) : pillTone(false),
+        AURORA_STRONG_PANEL,
+        'flex min-h-[214px] flex-col gap-3 p-4 text-left transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-px hover:bg-aurora-hover-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
       )}
+      aria-label={`${primaryActionLabel(item)} ${item.name}`}
     >
-      <div className={AURORA_MUTED_LABEL}>{label}</div>
-      <div className="mt-2 text-lg font-display font-extrabold tracking-[-0.03em] text-aurora-text-primary">
-        {count}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
+        <div className="flex size-10 items-center justify-center rounded-aurora-2 border border-aurora-border-default bg-aurora-control-surface text-aurora-accent-strong shadow-[var(--aurora-shadow-small)]">
+          {kindIcon(item.kind)}
+        </div>
+        <div className="min-w-0">
+          <h3 className={cn(AURORA_CARD_TITLE, 'truncate text-aurora-text-primary')}>{item.name}</h3>
+          <p className={cn(AURORA_DENSE_META, 'mt-1 truncate text-aurora-text-muted')}>{item.subtitle}</p>
+        </div>
+        <span className={cn(AURORA_BADGE_LABEL, 'rounded-full border px-2 py-1', pillTone(item.installed || item.hasUpdate))}>
+          {item.hasUpdate ? 'Update' : item.installed ? 'Installed' : kindLabel(item.kind)}
+        </span>
+      </div>
+      <p className="line-clamp-3 min-h-[60px] text-[13px] leading-[1.55] text-aurora-text-muted">{item.description || 'No description provided.'}</p>
+      <div className="flex flex-wrap gap-1">
+        {[item.ecosystem, item.distribution, item.sourceName, ...item.tags].filter(Boolean).slice(0, 4).map((tag) => (
+          <span key={tag} className={cn(AURORA_BADGE_LABEL, 'rounded-full border border-aurora-border-default bg-aurora-control-surface px-2 py-1 text-aurora-text-muted')}>
+            {tag}
+          </span>
+        ))}
+      </div>
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-aurora-border-default pt-2">
+        <span className={cn(AURORA_DENSE_META, 'rounded-full border border-aurora-border-default bg-aurora-control-surface px-2.5 py-1 font-semibold text-aurora-text-muted')}>
+          {item.version ? `v${item.version}` : item.kind === 'source' ? 'source' : 'latest'}
+        </span>
+        <span className={cn(gatewayActionTone(), 'inline-flex h-8 items-center rounded-aurora-1 border px-3 text-[13px] font-semibold text-aurora-text-primary')}>
+          {primaryActionLabel(item)}
+        </span>
       </div>
     </button>
   )
 }
 
-type Tab = 'browse' | 'installed' | 'marketplaces'
-type Sort = 'name' | 'marketplace' | 'installed' | 'updated'
-
-function GroupHeader({ name, count }: { name: string; count: number }) {
+function CatalogTable({ items, onAction }: { items: MarketplaceCatalogItem[]; onAction: (item: MarketplaceCatalogItem) => void }) {
   return (
-    <div className="flex items-center gap-[10px] mb-3">
-      <span className="font-sans text-[11px] font-bold uppercase tracking-[0.14em] text-aurora-text-muted whitespace-nowrap">
-        {name}
-      </span>
-      <span className="text-[11px] font-bold text-aurora-text-muted bg-aurora-control-surface rounded-full px-2 py-px border border-aurora-border-default">
-        {count}
-      </span>
-      <div className="flex-1 h-px bg-aurora-border-default" />
-    </div>
-  )
-}
-
-function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 text-center py-16 px-6">
-      <span className="text-[36px] opacity-50">{icon}</span>
-      <span className="font-display text-[17px] font-extrabold tracking-[-0.02em] text-aurora-text-primary">{title}</span>
-      <span className="text-[13px] text-aurora-text-muted">{sub}</span>
+    <div className={cn(AURORA_STRONG_PANEL, 'overflow-hidden')}>
+      <div className="aurora-scrollbar overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Item</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Source/package</TableHead>
+              <TableHead>Version</TableHead>
+              <TableHead>State</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => (
+              <TableRow
+                key={item.id}
+                tabIndex={0}
+                role="button"
+                aria-label={`${primaryActionLabel(item)} ${item.name}`}
+                onClick={() => onAction(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onAction(item)
+                  }
+                }}
+                className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34"
+              >
+                <TableCell>
+                  <div className="max-w-[320px]">
+                    <p className="font-semibold text-aurora-text-primary">{item.name}</p>
+                    <p className={cn(AURORA_DENSE_META, 'truncate text-aurora-text-muted')}>{item.description || item.subtitle}</p>
+                  </div>
+                </TableCell>
+                <TableCell>{kindLabel(item.kind)}</TableCell>
+                <TableCell>{item.sourceName ?? item.subtitle}</TableCell>
+                <TableCell>{item.version ? `v${item.version}` : '-'}</TableCell>
+                <TableCell>{item.hasUpdate ? 'Update available' : item.installed ? 'Installed' : item.builtin ? 'Built-in' : 'Available'}</TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onAction(item)
+                    }}
+                    className={cn(gatewayActionTone(), 'h-8 px-3 text-aurora-text-primary hover:bg-aurora-hover-bg')}
+                  >
+                    {primaryActionLabel(item)}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
 
 export function MarketplaceListContent() {
-  const {
-    data: marketplaces = [],
-    error: marketplacesError,
-    mutate: refreshMarketplaces,
-  } = useMarketplaces()
-  const {
-    data: plugins = [],
-    error: pluginsError,
-    mutate: refreshPlugins,
-  } = usePlugins()
-  const {
-    data: acpAgents = [],
-    mutate: refreshAcpAgents,
-  } = useAcpAgents()
-  const { addSource } = useMarketplaceMutations()
+  const { data: sources = [], error: sourcesError, mutate: refreshSources } = useMarketplaces()
+  const { data: plugins = [], error: pluginsError, mutate: refreshPlugins } = usePlugins()
+  const { data: mcpServers = [], error: mcpError, mutate: refreshMcpServers } = useMcpServers()
+  const { data: acpAgents = [], error: acpError, mutate: refreshAcpAgents } = useAcpAgents()
+  const { install, uninstall, addSource } = useMarketplaceMutations()
 
-  const [tab, setTab] = useState<Tab>('browse')
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState<Sort>('name')
-  const [addModalOpen, setAddModalOpen] = useState(false)
-  const [mktFilter, setMktFilter] = useState<string | null>(null)
-  const [typeFilter, setTypeFilter] = useState<ItemTypeFilter>('all')
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [filters, setFilters] = useState<MarketplaceCatalogFilterState>(DEFAULT_FILTERS)
+  const [viewMode, setViewMode] = useState<ViewMode>('cards')
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isMutating, setIsMutating] = useState(false)
+  const [addSourceOpen, setAddSourceOpen] = useState(false)
+  const [readOnlyPreview, setReadOnlyPreview] = useState(false)
+  const [previewItem, setPreviewItem] = useState<MarketplaceCatalogItem | null>(null)
+  const [mcpInstallItem, setMcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
+  const [acpInstallItem, setAcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
+  const [componentInstallItem, setComponentInstallItem] = useState<MarketplaceCatalogItem | null>(null)
 
-  const installedIds = useMemo(() => new Set(plugins.filter(p => p.installed).map(p => p.id)), [plugins])
-  const loadError = pluginsError ?? marketplacesError
-  const loadErrorMessage = loadError instanceof Error
-    ? loadError.message
-    : 'Failed to load marketplace data from the backend.'
+  useEffect(() => {
+    setReadOnlyPreview(isDevPreviewRoute())
+  }, [])
 
-  const handleRefresh = useCallback(async () => {
+  const items = useMemo(
+    () => buildMarketplaceCatalogItems({ plugins, sources, mcpServers, acpAgents }),
+    [acpAgents, mcpServers, plugins, sources],
+  )
+  const summary = useMemo(() => marketplaceCatalogSummary(items), [items])
+  const { sourceLabels, sourceOptions, ecosystemOptions, distributionOptions } = useMemo(() => {
+    const labels = new Map<string, string>()
+    const ecosystems = new Set<string>()
+    const distributions = new Set<string>()
+    for (const item of items) {
+      if (item.sourceId) labels.set(item.sourceId, item.sourceName ?? item.sourceId)
+      ecosystems.add(item.ecosystem)
+      if (item.distribution) distributions.add(item.distribution)
+    }
+    const options = [...labels.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }))
+    return {
+      sourceLabels: labels,
+      sourceOptions: options,
+      ecosystemOptions: [...ecosystems].sort(),
+      distributionOptions: [...distributions].sort(),
+    }
+  }, [items])
+  const activeLabels = useMemo(
+    () => activeFilterLabels(filters, sourceLabels),
+    [filters, sourceLabels],
+  )
+  const filteredItems = useMemo(
+    () => sortMarketplaceCatalogItems(filterMarketplaceCatalogItems(items, filters), filters.sort),
+    [filters, items],
+  )
+  const loadErrors = [sourcesError, pluginsError, mcpError, acpError].filter(Boolean)
+
+  const updateFilters = (patch: Partial<MarketplaceCatalogFilterState>) => {
+    setFilters((current) => ({ ...current, ...patch }))
+  }
+
+  const clearFilters = () => {
+    setFilters({ ...DEFAULT_FILTERS, lens: filters.lens })
+  }
+
+  const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      await Promise.all([refreshMarketplaces(), refreshPlugins(), refreshAcpAgents()])
+      await Promise.all([refreshSources(), refreshPlugins(), refreshMcpServers(), refreshAcpAgents()])
     } finally {
       setIsRefreshing(false)
     }
-  }, [refreshMarketplaces, refreshPlugins, refreshAcpAgents])
+  }
 
-  // Build unified item list from plugins + mocks
-  const allItems = useMemo<MarketplaceItem[]>(() => {
-    const pluginItems: MarketplaceItem[] = plugins.map(p => ({ kind: 'plugin' as const, data: p }))
-    const mcpItems: MarketplaceItem[] = MOCK_MCP_SERVERS.map(s => ({ kind: 'mcp_server' as const, data: s }))
-    const acpItems: MarketplaceItem[] = acpAgents.map(a => ({ kind: 'acp_agent' as const, data: a }))
-    return [...pluginItems, ...mcpItems, ...acpItems]
-  }, [acpAgents, plugins])
+  const handleItemAction = (item: MarketplaceCatalogItem) => {
+    if (item.kind === 'source') {
+      updateFilters({ lens: 'all', sourceIds: item.sourceId ? [item.sourceId] : [] })
+      toast.info(`Filtered catalog to ${item.name}`)
+      return
+    }
+    if (readOnlyPreview) {
+      setPreviewItem(item)
+      toast.info('Dev preview is read-only. No install or removal action was sent.')
+      return
+    }
+    if (isMcpServerCatalogItem(item)) {
+      setMcpInstallItem(item)
+      return
+    }
+    if (isAcpAgentCatalogItem(item)) {
+      setAcpInstallItem(item)
+      return
+    }
+    if (isPluginComponentCatalogItem(item)) {
+      setComponentInstallItem(item)
+      return
+    }
+    setPreviewItem(item)
+  }
 
-  const filtered = useMemo(() => {
-    let list: MarketplaceItem[] = tab === 'installed'
-      ? allItems.filter(item => item.kind === 'plugin' && installedIds.has(item.data.id))
-      : allItems
-
-    // Apply type filter
-    if (typeFilter !== 'all') {
-      list = list.filter(item => item.kind === typeFilter)
+  const handlePrimaryMutation = async () => {
+    if (!previewItem) return
+    if (readOnlyPreview) {
+      toast.info('Dev preview is read-only. No install or removal action was sent.')
+      return
+    }
+    if (!canRunProductionMutation(previewItem)) {
+      toast.error('This catalog item does not have a direct package action.')
+      return
     }
 
-    // Apply marketplace filter (only relevant for plugins)
-    if (mktFilter) {
-      list = list.filter(item =>
-        item.kind !== 'plugin' || (item.data as MarketplacePlugin).marketplaceId === mktFilter
-      )
-    }
-
-    // Apply search query
-    if (query) {
-      const q = query.toLowerCase()
-      list = list.filter(item => {
-        if (item.kind === 'plugin') {
-          const p = item.data as MarketplacePlugin
-          return (
-            p.name.toLowerCase().includes(q) ||
-            p.id.toLowerCase().includes(q) ||
-            (p.description ?? '').toLowerCase().includes(q) ||
-            (p.tags ?? []).some(t => t.toLowerCase().includes(q)) ||
-            p.marketplaceId.toLowerCase().includes(q)
-          )
-        }
-        if (item.kind === 'mcp_server') {
-          return (
-            item.data.name.toLowerCase().includes(q) ||
-            (item.data.description ?? '').toLowerCase().includes(q) ||
-            (item.data.package ?? '').toLowerCase().includes(q)
-          )
-        }
-        if (item.kind === 'acp_agent') {
-          return (
-            item.data.name.toLowerCase().includes(q) ||
-            item.data.id.toLowerCase().includes(q) ||
-            (item.data.description ?? '').toLowerCase().includes(q)
-          )
-        }
-        return false
-      })
-    }
-
-    // Sort — plugin-aware, MCP/ACP always sort by name
-    return [...list].sort((a, b) => {
-      if (a.kind !== 'plugin' || b.kind !== 'plugin') {
-        return a.data.name.localeCompare(b.data.name)
+    setIsMutating(true)
+    try {
+      let succeeded = false
+      if (previewItem.installed) {
+        succeeded = await uninstall(previewItem.id, previewItem.name)
+      } else {
+        succeeded = await install(previewItem.id, previewItem.name)
       }
-      const pa = a.data as MarketplacePlugin
-      const pb = b.data as MarketplacePlugin
-      if (sort === 'name') return pa.name.localeCompare(pb.name)
-      if (sort === 'marketplace') return pa.marketplaceId.localeCompare(pb.marketplaceId) || pa.name.localeCompare(pb.name)
-      if (sort === 'installed') {
-        const ai = installedIds.has(pa.id), bi = installedIds.has(pb.id)
-        return (ai === bi) ? pa.name.localeCompare(pb.name) : ai ? -1 : 1
-      }
-      if (sort === 'updated') return new Date(pb.updatedAt ?? 0).getTime() - new Date(pa.updatedAt ?? 0).getTime()
-      return 0
-    })
-  }, [allItems, tab, query, sort, typeFilter, mktFilter, installedIds])
-
-  const ghUserForPlugin = useCallback((p: MarketplacePlugin) => {
-    return marketplaces.find(m => m.id === p.marketplaceId)?.githubOwner
-  }, [marketplaces])
-
-  const installedCountForMkt = (mktId: string) => plugins.filter(p => p.marketplaceId === mktId && installedIds.has(p.id)).length
-
-  // Per-type counts for the type filter UI
-  const typeCounts = useMemo(() => ({
-    all: allItems.length,
-    plugin: plugins.length,
-    mcp_server: MOCK_MCP_SERVERS.length,
-    acp_agent: acpAgents.length,
-  }), [acpAgents.length, allItems.length, plugins.length])
-
-  function renderItemGrid(items: MarketplaceItem[]) {
-    return (
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-        {items.map((item, idx) => {
-          if (item.kind === 'plugin') {
-            return (
-              <MarketplaceCard
-                key={item.data.id}
-                plugin={item.data}
-                ghUser={ghUserForPlugin(item.data)}
-              />
-            )
-          }
-          if (item.kind === 'mcp_server') {
-            return <McpServerCard key={`mcp-${item.data.name}-${idx}`} server={item.data} />
-          }
-          if (item.kind === 'acp_agent') {
-            return <AcpAgentCard key={`acp-${item.data.id}`} agent={item.data} />
-          }
-          return null
-        })}
-      </div>
-    )
-  }
-
-  function renderBrowseGrid() {
-    if (loadError) {
-      return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
+      if (succeeded) setPreviewItem(null)
+    } finally {
+      setIsMutating(false)
     }
-    if (!filtered.length) return <EmptyState icon="🔍" title="No results" sub={`No items match "${query}"`} />
-    return renderItemGrid(filtered)
   }
 
-  function renderInstalledGroups() {
-    if (loadError) {
-      return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
-    }
-    if (query) return renderBrowseGrid()
-    const groups: Record<string, MarketplacePlugin[]> = {}
-    filtered.forEach(item => {
-      if (item.kind === 'plugin') {
-        const p = item.data as MarketplacePlugin
-        if (!groups[p.marketplaceId]) groups[p.marketplaceId] = []
-        groups[p.marketplaceId].push(p)
-      }
-    })
-    if (!Object.keys(groups).length) return <EmptyState icon="📦" title="Nothing installed" sub="Browse plugins above to get started" />
-    return (
-      <div className="flex flex-col gap-7">
-        {Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([mktId, list]) => {
-          const m = marketplaces.find(x => x.id === mktId)
-          return (
-            <div key={mktId}>
-              <GroupHeader name={m?.name ?? mktId} count={list.length} />
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-                {list.map(p => (
-                  <MarketplaceCard
-                    key={p.id}
-                    plugin={p}
-                    ghUser={ghUserForPlugin(p)}
-                  />
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    )
-  }
-
-  function renderMarketplacesGrid() {
-    if (loadError) {
-      return <EmptyState icon="⚠️" title="Marketplace load failed" sub={loadErrorMessage} />
-    }
-    return (
-      <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
-        {marketplaces.map(m => (
-          <MktSourceCard
-            key={m.id}
-            marketplace={m}
-            installedCount={installedCountForMkt(m.id)}
-            onClick={() => { setMktFilter(m.id); setTab('browse') }}
-          />
-        ))}
-      </div>
-    )
-  }
-
-  const browseCount = allItems.length
-  const installedCount = installedIds.size
-  const mktCount = marketplaces.length
-  const mobileFilterCount = (sort !== 'name' ? 1 : 0) + (mktFilter ? 1 : 0)
+  const filterGroups = (
+    <div className="space-y-4">
+      <FilterGroup label="Sort">
+        <div className="flex flex-wrap gap-2">
+          {SORT_OPTIONS.map((option) => (
+            <button key={option.value} type="button" onClick={() => updateFilters({ sort: option.value })} className={cn('rounded-full border px-3 py-2 text-[13px] font-medium', pillTone(filters.sort === option.value))} aria-pressed={filters.sort === option.value}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </FilterGroup>
+      <FilterGroup label="Type">
+        {TYPE_OPTIONS.map((option) => <FilterCheckbox key={option.value} checked={filters.types.includes(option.value)} label={option.label} onChange={() => updateFilters({ types: toggleValue(filters.types, option.value) })} />)}
+      </FilterGroup>
+      <FilterGroup label="Install state">
+        {INSTALL_OPTIONS.map((option) => <FilterCheckbox key={option.value} checked={filters.installStates.includes(option.value)} label={option.label} onChange={() => updateFilters({ installStates: toggleValue(filters.installStates, option.value) })} />)}
+      </FilterGroup>
+      <FilterGroup label="Ecosystem">
+        {ecosystemOptions.map((option) => <FilterCheckbox key={option} checked={filters.ecosystems.includes(option)} label={option} onChange={() => updateFilters({ ecosystems: toggleValue(filters.ecosystems, option) })} />)}
+      </FilterGroup>
+      <FilterGroup label="Source">
+        {sourceOptions.map((source) => <FilterCheckbox key={source.id} checked={filters.sourceIds.includes(source.id)} label={source.label} onChange={() => updateFilters({ sourceIds: toggleValue(filters.sourceIds, source.id) })} />)}
+      </FilterGroup>
+      <FilterGroup label="Distribution">
+        {distributionOptions.map((option) => <FilterCheckbox key={option} checked={filters.distributions.includes(option)} label={option} onChange={() => updateFilters({ distributions: toggleValue(filters.distributions, option) })} />)}
+      </FilterGroup>
+    </div>
+  )
 
   return (
     <>
       <AppHeader
         breadcrumbs={[{ label: 'Labby', href: '/' }, { label: 'Marketplace' }]}
-        actions={
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setAddModalOpen(true)}
-                  className="inline-flex size-9 items-center justify-center rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-transparent text-aurora-text-muted border border-aurora-border-strong hover:bg-aurora-hover-bg hover:text-aurora-text-primary transition-all duration-150"
-                  aria-label="Add marketplace"
-                >
-                  <Plus className="w-[14px] h-[14px]" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Add marketplace</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => { void handleRefresh() }}
-                  disabled={isRefreshing}
-                  className="inline-flex size-9 items-center justify-center rounded-lg font-sans text-[13px] font-semibold cursor-pointer bg-aurora-accent-primary text-aurora-page-bg hover:bg-aurora-accent-strong transition-all duration-150"
-                  aria-label={isRefreshing ? 'Refreshing marketplaces' : 'Refresh marketplace'}
-                >
-                  <RefreshCw className={cn('w-[14px] h-[14px]', isRefreshing && 'animate-spin')} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>{isRefreshing ? 'Refreshing marketplaces' : 'Refresh marketplace'}</TooltipContent>
-            </Tooltip>
-          </>
-        }
+        actions={<div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => setViewMode('cards')} className={cn(gatewayActionTone(), 'hidden size-9 lg:inline-flex', viewMode === 'cards' && 'border-aurora-accent-primary/45 text-aurora-accent-strong')} aria-label="Card view" aria-pressed={viewMode === 'cards'}><Grid2X2 className="size-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => setViewMode('table')} className={cn(gatewayActionTone(), 'hidden size-9 lg:inline-flex', viewMode === 'table' && 'border-aurora-accent-primary/45 text-aurora-accent-strong')} aria-label="Table view" aria-pressed={viewMode === 'table'}><LayoutList className="size-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => readOnlyPreview ? toast.info('Dev preview is read-only. Source add flow is visible but writes are blocked.') : setAddSourceOpen(true)} className={cn(gatewayActionTone(), 'size-9')} aria-label="Add marketplace source"><Plus className="size-4" /></Button>
+          <Button size="icon" onClick={() => { void handleRefresh() }} disabled={isRefreshing} className={cn(gatewayActionTone('accent'), 'size-9 border')} aria-label="Refresh marketplace catalog"><RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} /></Button>
+        </div>}
       />
 
-      <div className="px-4 pt-4 sm:px-6">
-        <section className={cn(AURORA_MEDIUM_PANEL, 'p-4 sm:p-5')}>
-          <div className={AURORA_MUTED_LABEL}>Plugin operations</div>
-          <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Marketplace</h1>
-          <p className="mt-3 max-w-3xl text-[14px] leading-[1.55] text-aurora-text-muted">
-            Browse, install, and update operator plugins with a denser mobile-first catalog layout.
-          </p>
-        </section>
-      </div>
-
-      {/* Tabs */}
-      <div className="hidden gap-0 overflow-x-auto px-4 sm:px-6 border-b border-aurora-border-default bg-transparent flex-shrink-0 aurora-scrollbar lg:flex">
-        {([
-          { id: 'browse' as const, label: 'Browse', count: browseCount },
-          { id: 'installed' as const, label: 'Installed', count: installedCount },
-          { id: 'marketplaces' as const, label: 'Marketplaces', count: mktCount },
-        ]).map(({ id, label, count }) => (
-          <button
-            key={id}
-            onClick={() => { setTab(id); setMktFilter(null) }}
-            className={cn(
-              'flex items-center gap-[7px] px-[18px] py-3 font-sans text-[13px] font-semibold border-b-2 cursor-pointer bg-transparent border-t-0 border-l-0 border-r-0 transition-colors duration-150',
-              tab === id
-                ? 'text-aurora-accent-primary border-aurora-accent-primary [&_.tab-badge]:bg-[color-mix(in_srgb,var(--aurora-accent-primary)_15%,transparent)] [&_.tab-badge]:text-aurora-accent-primary'
-                : 'text-aurora-text-muted border-transparent hover:text-aurora-text-primary',
-            )}
-          >
-            {label}
-            <span className="tab-badge text-[11px] font-bold bg-aurora-control-surface text-aurora-text-muted rounded-full px-[7px] py-px transition-[background,color] duration-150">
-              {count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Main scroll */}
-      <div className="aurora-scrollbar flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin] [scrollbar-color:var(--aurora-border-default)_transparent] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-aurora-border-default [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb:hover]:bg-aurora-border-strong">
-        <div className="max-w-[1740px] w-full mx-auto px-4 py-4 pb-8 sm:px-6 sm:py-6 flex flex-col gap-5">
-
-          <section className="grid grid-cols-3 gap-2 lg:hidden">
-            <MobileTabChip label="Browse" count={browseCount} active={tab === 'browse'} onClick={() => { setTab('browse'); setMktFilter(null) }} />
-            <MobileTabChip label="Installed" count={installedCount} active={tab === 'installed'} onClick={() => { setTab('installed'); setMktFilter(null) }} />
-            <MobileTabChip label="Sources" count={mktCount} active={tab === 'marketplaces'} onClick={() => { setTab('marketplaces'); setMktFilter(null) }} />
+      <main className={cn('min-h-[calc(100vh-3.5rem)] bg-aurora-page-bg text-aurora-text-primary', AURORA_PAGE_SHELL)}>
+        <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
+            <p className={AURORA_MUTED_LABEL}>Plugin operations</p>
+            <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Marketplace</h1>
+            <p className="mt-3 max-w-3xl text-[14px] leading-[1.55] text-aurora-text-muted">
+              Browse plugins, MCP servers, ACP agents, skills, commands, and marketplace sources from one live catalog.
+            </p>
+            {readOnlyPreview ? <p className="mt-3 text-[12px] font-semibold text-aurora-accent-strong">Dev preview: live backend reads are enabled; install, remove, source, and wiring mutations are blocked.</p> : null}
           </section>
 
-          {tab !== 'marketplaces' && (
-            <>
+          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
+            <aside>
               <div className="space-y-3 lg:hidden">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-aurora-text-muted pointer-events-none" />
-                  <input
-                    type="text"
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    placeholder="Search plugins"
-                    aria-label="Search plugins"
-                    name="marketplace-search"
-                    className="w-full bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/80 pl-10 pr-[4.75rem] py-[10px] text-[13px] font-medium outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-small),var(--aurora-highlight-medium)]"
-                  />
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
+                  <Input value={filters.search} onChange={(event) => updateFilters({ search: event.target.value })} name="marketplace-search-mobile" aria-label="Search marketplace catalog" placeholder="Search marketplace" className="h-10 border border-aurora-border-strong bg-aurora-control-surface pl-9 pr-[4.75rem] text-aurora-text-primary placeholder:text-aurora-text-muted" />
                   <div className="absolute inset-y-0 right-1 flex items-center gap-1">
-                    {query ? (
-                      <button
-                        type="button"
-                        onClick={() => setQuery('')}
-                        className="inline-flex size-7 items-center justify-center rounded-full border border-aurora-border-default bg-transparent text-aurora-text-muted transition-colors hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
-                        aria-label="Clear search"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setMobileSheetOpen((current) => !current)}
-                      className="relative inline-flex size-7 items-center justify-center rounded-full border border-aurora-border-default bg-transparent text-aurora-text-muted transition-colors hover:bg-aurora-hover-bg hover:text-aurora-text-primary"
-                      aria-label="Open filters"
-                    >
-                      <SlidersHorizontal className="size-3.5" />
-                      {mobileFilterCount > 0 ? (
-                        <span className="absolute -top-1 -right-1 rounded-full border border-aurora-accent-primary/35 bg-aurora-accent-primary/14 px-1.5 text-[10px] font-semibold leading-4 text-aurora-accent-strong">
-                          {mobileFilterCount}
-                        </span>
-                      ) : null}
-                    </button>
+                    {filters.search ? <Button type="button" variant="outline" size="icon" onClick={() => updateFilters({ search: '' })} className={cn(gatewayActionTone(), 'size-7 rounded-full')} aria-label="Clear search"><X className="size-3.5" /></Button> : null}
+                    <Button type="button" variant="outline" size="icon" onClick={() => setMobileSheetOpen(!mobileSheetOpen)} className={cn(gatewayActionTone(), 'relative size-7 rounded-full')} aria-label="Open filters"><SlidersHorizontal className="size-3.5" />{activeLabels.length ? <span className={cn(AURORA_BADGE_LABEL, 'absolute -top-1 -right-1 rounded-full border border-aurora-accent-primary/35 bg-aurora-accent-primary/14 px-2 leading-4 text-aurora-accent-strong')}>{activeLabels.length}</span> : null}</Button>
                   </div>
                 </div>
-
-                {(mktFilter || sort !== 'name') ? (
-                  <div className="flex flex-wrap gap-2">
-                    {mktFilter ? (
-                      <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]', pillTone(true))}>
-                        {marketplaces.find(m => m.id === mktFilter)?.name ?? mktFilter}
-                      </span>
-                    ) : null}
-                    {sort !== 'name' ? (
-                      <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]', pillTone(true))}>
-                        {sort === 'marketplace' ? 'Marketplace sort' : sort === 'installed' ? 'Installed first' : 'Recent'}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {mobileSheetOpen ? (
-                  <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 p-4')}>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className={AURORA_MUTED_LABEL}>Filters</p>
-                      {mobileFilterCount > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSort('name')
-                            setMktFilter(null)
-                          }}
-                          className="inline-flex items-center gap-1 rounded-full border border-aurora-border-default px-3 py-1.5 text-[12px] font-medium text-aurora-text-primary transition-colors hover:bg-aurora-hover-bg"
-                        >
-                          <X className="size-3.5" />
-                          Clear filters
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-2.5">
-                      <p className={AURORA_MUTED_LABEL}>Sort</p>
-                      <div className="flex flex-wrap gap-2">
-                        {([
-                          ['name', 'A–Z'],
-                          ['marketplace', 'Marketplace'],
-                          ['installed', 'Installed first'],
-                          ['updated', 'Recent'],
-                        ] as const).map(([value, label]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setSort(value)}
-                            className={cn(
-                              'rounded-full border px-3 py-1.5 text-[13px] leading-[1.2] font-medium transition-colors',
-                              pillTone(sort === value),
-                            )}
-                            aria-pressed={sort === value}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2.5">
-                      <p className={AURORA_MUTED_LABEL}>Marketplace</p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setMktFilter(null)}
-                          className={cn(
-                            'rounded-full border px-3 py-1.5 text-[13px] leading-[1.2] font-medium transition-colors',
-                            pillTone(mktFilter === null),
-                          )}
-                          aria-pressed={mktFilter === null}
-                        >
-                          All sources
-                        </button>
-                        {marketplaces.map((marketplace) => (
-                          <button
-                            key={marketplace.id}
-                            type="button"
-                            onClick={() => setMktFilter(marketplace.id)}
-                            className={cn(
-                              'rounded-full border px-3 py-1.5 text-[13px] leading-[1.2] font-medium transition-colors',
-                              pillTone(mktFilter === marketplace.id),
-                            )}
-                            aria-pressed={mktFilter === marketplace.id}
-                          >
-                            {marketplace.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                {activeLabels.length ? <div className="flex flex-wrap gap-2">{activeLabels.map((label) => <span key={label} className={cn(AURORA_BADGE_LABEL, 'rounded-full border px-2.5 py-1', pillTone(true))}>{label}</span>)}</div> : null}
+                {mobileSheetOpen ? <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 p-4')}><div className="flex items-center justify-between"><p className={AURORA_MUTED_LABEL}>Filter catalog</p><Button variant="outline" size="sm" onClick={clearFilters} className={cn(gatewayActionTone(), 'h-8 px-3')}>Clear</Button></div>{filterGroups}</div> : null}
               </div>
 
-              <div className="hidden lg:flex gap-[10px] items-center w-full">
-              <div className="relative flex-[0_1_auto] min-w-[160px] max-w-[480px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-aurora-text-muted pointer-events-none" />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  placeholder="Search plugins, MCP servers, agents…"
-                  aria-label="Search marketplace catalog"
-                  name="marketplace-search-desktop"
-                  className="w-full bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 text-aurora-text-primary placeholder:text-aurora-text-muted/80 pl-10 pr-[14px] py-[10px] text-[13px] font-medium outline-none focus:border-aurora-accent-primary focus:shadow-[0_0_0_3px_var(--aurora-focus-ring)] transition-[border-color,box-shadow] shadow-[var(--aurora-shadow-small),var(--aurora-highlight-medium)]"
-                />
-              </div>
-              <select
-                value={sort}
-                onChange={e => setSort(e.target.value as Sort)}
-                aria-label="Sort marketplace catalog"
-                name="marketplace-sort"
-                className="bg-aurora-control-surface border border-aurora-border-default rounded-aurora-1 text-aurora-text-muted px-3 py-[9px] text-[13px] font-medium outline-none cursor-pointer flex-shrink-0 focus:border-aurora-accent-primary transition-[border-color] shadow-[var(--aurora-shadow-small),var(--aurora-highlight-medium)]"
-              >
-                <option value="name">A–Z</option>
-                <option value="marketplace">Marketplace</option>
-                <option value="installed">Installed first</option>
-                <option value="updated">Recent</option>
-              </select>
-              {mktFilter && (
-                <div className="flex items-center gap-[6px] px-[10px] py-[6px] rounded-aurora-1 bg-[color-mix(in_srgb,var(--aurora-accent-primary)_12%,transparent)] border border-[color-mix(in_srgb,var(--aurora-accent-primary)_30%,transparent)] flex-shrink-0">
-                  <span className="text-[12px] font-semibold text-aurora-accent-strong whitespace-nowrap">
-                    {marketplaces.find(m => m.id === mktFilter)?.name ?? mktFilter}
-                  </span>
-                  <button
-                    onClick={() => setMktFilter(null)}
-                    className="text-aurora-accent-strong hover:text-aurora-text-primary bg-transparent border-none cursor-pointer p-0 leading-none"
-                    aria-label="Clear marketplace filter"
-                  >
-                    ×
-                  </button>
+              <div className={cn(AURORA_MEDIUM_PANEL, 'hidden space-y-4 p-4 lg:block')}>
+                <div className="space-y-2">
+                  <p className={AURORA_MUTED_LABEL}>Search</p>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-aurora-text-muted" />
+                    <Input value={filters.search} onChange={(event) => updateFilters({ search: event.target.value })} name="marketplace-search" aria-label="Search marketplace catalog" placeholder="Search plugins, MCP servers, agents" className="h-11 border border-aurora-border-strong bg-aurora-control-surface pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted" />
+                  </div>
                 </div>
+                <div className="flex items-center justify-between gap-3">
+                  <p className={AURORA_MUTED_LABEL}>Filter catalog</p>
+                  {activeLabels.length || filters.search ? <Button variant="outline" size="sm" onClick={clearFilters} className={cn(gatewayActionTone(), 'h-8 px-3')}>Clear</Button> : null}
+                </div>
+                {filterGroups}
+              </div>
+            </aside>
+
+            <section className="aurora-scrollbar min-w-0">
+              {loadErrors.length ? <div className={cn(AURORA_MEDIUM_PANEL, 'mb-4 p-4 text-[13px] text-aurora-warn')}>Partial catalog load issue: {loadErrors.map((error) => getErrorMessage(error, 'load failed')).join(' / ')}</div> : null}
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className={AURORA_MUTED_LABEL}>{filteredItems.length} results</p>
+                {summary.updates ? <span className={cn(AURORA_DENSE_META, 'rounded-full border border-aurora-warn/35 bg-aurora-control-surface px-2.5 py-1 font-semibold text-aurora-warn')}>{summary.updates} updates</span> : null}
+              </div>
+              {filteredItems.length === 0 ? (
+                <div className={cn(AURORA_STRONG_PANEL, 'p-8 text-center')}><p className={cn(AURORA_COMPACT_TITLE, 'text-aurora-text-primary')}>No matching marketplace items</p><p className="mt-2 text-sm text-aurora-text-muted">Adjust search or filters to return plugins, MCP servers, ACP agents, or sources.</p></div>
+              ) : viewMode === 'table' ? (
+                <CatalogTable items={filteredItems} onAction={handleItemAction} />
+              ) : (
+                <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">{filteredItems.map((item) => <CatalogCard key={item.id} item={item} onAction={handleItemAction} />)}</div>
               )}
-              <MarketplaceStatsStrip
-                plugins={plugins}
-                marketplaces={marketplaces}
-                installedIds={installedIds}
-                variant="browse"
-                mcpCount={MOCK_MCP_SERVERS.length}
-                acpCount={acpAgents.length}
-              />
-              </div>
-
-              {/* Type filter — item-type filter for browse/installed views */}
-              <div className="flex items-center gap-3">
-                <TypeFilter
-                  value={typeFilter}
-                  onChange={setTypeFilter}
-                  counts={typeCounts}
-                />
-              </div>
-            </>
-          )}
-
-          <div className="flex items-center justify-between">
-            <span className="font-sans text-[11px] font-bold uppercase tracking-[0.14em] text-aurora-text-muted">
-              {tab === 'browse'
-                ? `${filtered.length} Items`
-                : tab === 'installed'
-                  ? `${filtered.length} Installed Plugins`
-                  : `${marketplaces.length} Marketplaces`}
-            </span>
+            </section>
           </div>
-
-          {tab === 'browse' && renderBrowseGrid()}
-          {tab === 'installed' && renderInstalledGroups()}
-          {tab === 'marketplaces' && renderMarketplacesGrid()}
         </div>
-      </div>
+      </main>
+
+      <Dialog open={previewItem !== null} onOpenChange={(open) => !open && setPreviewItem(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{previewItem ? primaryActionLabel(previewItem) : 'Preview action'}</DialogTitle>
+            <DialogDescription>
+              {previewItem?.kind === 'acp_agent'
+                ? 'This would wire an Agent Client Protocol implementation for compatible ACP clients. It does not automatically make the agent available in /chat unless that backend flow is implemented.'
+                : readOnlyPreview
+                  ? 'This is a live read-only dev preview. The final mutation is blocked before it reaches the backend.'
+                  : 'Review the action before continuing.'}
+            </DialogDescription>
+          </DialogHeader>
+          {previewItem ? <div className="rounded-aurora-2 border border-aurora-border-strong bg-aurora-control-surface p-4"><p className="font-semibold text-aurora-text-primary">{previewItem.name}</p><p className="mt-1 text-sm text-aurora-text-muted">{previewItem.description || previewItem.subtitle}</p></div> : null}
+          <Button
+            type="button"
+            disabled={isMutating || readOnlyPreview || !canRunProductionMutation(previewItem)}
+            onClick={() => { void handlePrimaryMutation() }}
+            className="mt-2"
+          >
+            {readOnlyPreview
+              ? 'Read-only preview: mutation disabled'
+              : canRunProductionMutation(previewItem)
+                ? isMutating
+                  ? 'Working...'
+                  : primaryActionLabel(previewItem)
+                : 'No direct package action'}
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       <AddMarketplaceModal
-        open={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        onAdd={addSource}
+        open={addSourceOpen}
+        onClose={() => setAddSourceOpen(false)}
+        onAdd={async (input) => {
+          const source = await addSource(input)
+          if (source) setAddSourceOpen(false)
+          return source
+        }}
       />
+
+      <McpInstallModal
+        server={mcpInstallItem ? catalogItemMcpServer(mcpInstallItem) : null}
+        onClose={() => setMcpInstallItem(null)}
+        onSuccess={() => { void refreshMcpServers() }}
+      />
+
+      {acpInstallItem && isAcpAgentCatalogItem(acpInstallItem) ? (
+        <AcpAgentInstallModal
+          agent={acpInstallItem.raw}
+          open
+          onClose={() => {
+            setAcpInstallItem(null)
+            void refreshAcpAgents()
+          }}
+        />
+      ) : null}
+
+      {componentInstallItem && isPluginComponentCatalogItem(componentInstallItem) ? (
+        <CherryPickDialog
+          pluginId={componentInstallItem.raw.plugin.id}
+          pluginName={componentInstallItem.raw.plugin.name}
+          open
+          onClose={() => {
+            setComponentInstallItem(null)
+            void refreshPlugins()
+          }}
+          components={[
+            {
+              type: componentInstallItem.raw.component.kind,
+              name: componentInstallItem.raw.component.name,
+              path: componentInstallItem.raw.component.path,
+            },
+          ]}
+        />
+      ) : null}
     </>
   )
 }

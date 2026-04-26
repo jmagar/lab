@@ -77,6 +77,8 @@ pub struct StoreListParams {
     pub limit: Option<u32>,
     /// Include rows with `status = 'deleted'`. Default: false.
     pub include_deleted: bool,
+    /// Only return upstream-designated latest versions. Default: false.
+    pub latest_only: bool,
     /// Filter to featured Lab-curated entries.
     pub featured: Option<bool>,
     /// Filter to reviewed Lab-curated entries.
@@ -483,6 +485,9 @@ fn list_servers_sync(
     // Status filter.
     if !params.include_deleted {
         sql.push_str(" AND s.status != 'deleted'");
+    }
+    if params.latest_only {
+        sql.push_str(" AND s.is_latest = 1");
     }
 
     // LIKE search on server_name.
@@ -1341,6 +1346,24 @@ mod tests {
         let page2 = store.list_servers(params2).await.unwrap();
         assert_eq!(page2.servers.len(), 2);
         assert!(page2.next_cursor.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_servers_can_filter_to_latest_versions() {
+        let store = temp_store().await;
+
+        let old = make_server_response("io.github.user/weather", "1.0.0", false);
+        let latest = make_server_response("io.github.user/weather", "2.0.0", true);
+        store.upsert_page(&[old, latest]).await.unwrap();
+
+        let params = StoreListParams {
+            latest_only: true,
+            ..Default::default()
+        };
+        let page = store.list_servers(params).await.unwrap();
+
+        assert_eq!(page.servers.len(), 1);
+        assert_eq!(page.servers[0].server.version, "2.0.0");
     }
 
     #[tokio::test]

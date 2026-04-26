@@ -132,9 +132,7 @@ pub(super) fn parse_fork_params(params: &Value) -> Result<ForkParams, ToolError>
     })
 }
 
-pub(super) fn parse_artifact_list_params(
-    params: &Value,
-) -> Result<ArtifactListParams, ToolError> {
+pub(super) fn parse_artifact_list_params(params: &Value) -> Result<ArtifactListParams, ToolError> {
     let plugin_id = optional_owned_str(params, "plugin_id")?;
     if let Some(plugin_id) = &plugin_id {
         parse_plugin_id(plugin_id)?;
@@ -167,9 +165,7 @@ pub(super) fn parse_artifact_reset_params(
     })
 }
 
-pub(super) fn parse_artifact_diff_params(
-    params: &Value,
-) -> Result<ArtifactDiffParams, ToolError> {
+pub(super) fn parse_artifact_diff_params(params: &Value) -> Result<ArtifactDiffParams, ToolError> {
     let plugin_id = parse_required_plugin_id(params)?;
     let artifact_path = optional_owned_str(params, "artifact_path")?;
     if let Some(path) = &artifact_path {
@@ -196,9 +192,7 @@ pub(super) fn parse_patch_params(params: &Value) -> Result<PatchParams, ToolErro
     })
 }
 
-pub(super) fn parse_update_apply_params(
-    params: &Value,
-) -> Result<UpdateApplyParams, ToolError> {
+pub(super) fn parse_update_apply_params(params: &Value) -> Result<UpdateApplyParams, ToolError> {
     let plugin_id = parse_required_plugin_id(params)?;
     Ok(UpdateApplyParams {
         plugin_id,
@@ -207,9 +201,7 @@ pub(super) fn parse_update_apply_params(
     })
 }
 
-pub(super) fn parse_merge_suggest_params(
-    params: &Value,
-) -> Result<MergeSuggestParams, ToolError> {
+pub(super) fn parse_merge_suggest_params(params: &Value) -> Result<MergeSuggestParams, ToolError> {
     let plugin_id = parse_required_plugin_id(params)?;
     let artifact_path = require_str(params, "artifact_path")?.to_string();
     validate_artifact_path(&artifact_path, "artifact_path")?;

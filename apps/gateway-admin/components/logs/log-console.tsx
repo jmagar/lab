@@ -131,7 +131,7 @@ export function LogConsole({ initialText = "" }: { initialText?: string }) {
   const [manualPause, setManualPause] = React.useState(false)
   const [atLiveEdge, setAtLiveEdge] = React.useState(true)
   const [lastEventTs, setLastEventTs] = React.useState<number | null>(null)
-  const [refreshToken, setRefreshToken] = React.useState(0)
+  const [, setRefreshToken] = React.useState(0)
   const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null)
   const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null)
 
@@ -146,7 +146,7 @@ export function LogConsole({ initialText = "" }: { initialText?: string }) {
   const afterTs = React.useMemo(() => {
     const windowMs = WINDOW_TO_MS[windowPreset]
     return windowMs == null ? null : Date.now() - windowMs
-  }, [windowPreset, refreshToken])
+  }, [windowPreset])
 
   React.useLayoutEffect(() => {
     filtersRef.current = filters

@@ -64,7 +64,7 @@ export const WebPreview = ({
   return (
     <WebPreviewContext.Provider value={contextValue}>
       <div
-        className={cn("flex size-full flex-col rounded-lg border bg-card", className)}
+        className={cn("flex size-full flex-col rounded-lg border bg-aurora-panel-medium", className)}
         {...props}
       >
         {children}
@@ -100,7 +100,7 @@ export const WebPreviewNavigationButton = ({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          className="h-8 w-8 p-0 hover:text-foreground"
+          className="h-8 w-8 p-0 hover:text-aurora-text"
           disabled={disabled}
           onClick={onClick}
           size="sm"
@@ -201,14 +201,14 @@ export const WebPreviewConsole = ({
 
   return (
     <Collapsible
-      className={cn("border-t bg-muted/50 font-mono text-sm", className)}
+      className={cn("border-t bg-aurora-panel-muted/50 font-mono text-sm", className)}
       onOpenChange={setConsoleOpen}
       open={consoleOpen}
       {...props}
     >
       <CollapsibleTrigger asChild>
         <Button
-          className="flex w-full items-center justify-between p-4 text-left font-medium hover:bg-muted/50"
+          className="flex w-full items-center justify-between p-4 text-left font-medium hover:bg-aurora-panel-muted/50"
           variant="ghost"
         >
           Console
@@ -225,7 +225,7 @@ export const WebPreviewConsole = ({
       >
         <div className="max-h-48 space-y-1 overflow-y-auto">
           {logs.length === 0 ? (
-            <p className="text-muted-foreground">No console output</p>
+            <p className="text-aurora-text-muted">No console output</p>
           ) : (
             logs.map((log, index) => (
               <div
@@ -233,11 +233,11 @@ export const WebPreviewConsole = ({
                   "text-xs",
                   log.level === "error" && "text-destructive",
                   log.level === "warn" && "text-yellow-600",
-                  log.level === "log" && "text-foreground",
+                  log.level === "log" && "text-aurora-text",
                 )}
                 key={`${log.timestamp.getTime()}-${index}`}
               >
-                <span className="text-muted-foreground">{log.timestamp.toLocaleTimeString()}</span>{" "}
+                <span className="text-aurora-text-muted">{log.timestamp.toLocaleTimeString()}</span>{" "}
                 {log.message}
               </div>
             ))

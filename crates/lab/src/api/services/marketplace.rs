@@ -36,7 +36,10 @@ pub fn routes(_state: AppState) -> Router<AppState> {
             post(handle_artifact_update_preview),
         )
         .route("/artifact/update/apply", post(handle_artifact_update_apply))
-        .route("/artifact/merge/suggest", post(handle_artifact_merge_suggest))
+        .route(
+            "/artifact/merge/suggest",
+            post(handle_artifact_merge_suggest),
+        )
         .route("/artifact/config/set", post(handle_artifact_config_set))
         .route("/cherry-pick/progress", get(cherry_pick_progress))
 }

@@ -99,7 +99,10 @@ mod tests {
             NEXT_ID.fetch_add(1, Ordering::Relaxed)
         ));
         (
-            Arc::new(GatewayManager::new(path.clone(), GatewayRuntimeHandle::default())),
+            Arc::new(GatewayManager::new(
+                path.clone(),
+                GatewayRuntimeHandle::default(),
+            )),
             path,
         )
     }
@@ -226,10 +229,7 @@ mod tests {
         let migrated = load_gateway_config(&path).expect("load migrated config");
         assert!(migrated.virtual_servers.is_empty());
         assert_eq!(migrated.quarantined_virtual_servers.len(), 1);
-        assert_eq!(
-            migrated.quarantined_virtual_servers[0].id,
-            "stale-registry"
-        );
+        assert_eq!(migrated.quarantined_virtual_servers[0].id, "stale-registry");
     }
 
     #[tokio::test]

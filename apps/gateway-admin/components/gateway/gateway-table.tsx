@@ -46,14 +46,10 @@ import type { TransportType } from '@/lib/types/gateway'
 import {
   AURORA_DISPLAY_2,
   AURORA_MUTED_LABEL,
-  AURORA_STRONG_PANEL,
 } from '@/components/aurora/tokens'
 import {
-  AURORA_GATEWAY_CARD,
   AURORA_GATEWAY_DISABLED_ROW,
-  AURORA_GATEWAY_MUTED_CARD,
   AURORA_GATEWAY_ROW,
-  AURORA_GATEWAY_SUBTLE_SURFACE,
   gatewayActionTone,
   gatewayStatusTone,
 } from './gateway-theme'

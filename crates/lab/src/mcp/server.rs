@@ -2025,20 +2025,16 @@ mod tests {
 
     #[tokio::test]
     async fn extract_error_info_preserves_unknown_action_from_real_dispatch_downcast() {
-        let err =
-            crate::dispatch::lab_admin::dispatch("definitely.unknown", serde_json::json!({}))
-                .await
-                .expect_err("unknown lab_admin action should fail");
+        let err = crate::dispatch::lab_admin::dispatch("definitely.unknown", serde_json::json!({}))
+            .await
+            .expect_err("unknown lab_admin action should fail");
         let dispatch_error = DispatchError::from(err);
         let anyhow_error = anyhow::Error::from(dispatch_error);
 
         let (kind, message, extra) = extract_error_info(&anyhow_error);
 
         assert_eq!(kind, "unknown_action");
-        assert_eq!(
-            message,
-            "unknown action `lab_admin.definitely.unknown`"
-        );
+        assert_eq!(message, "unknown action `lab_admin.definitely.unknown`");
         let extra = extra.expect("unknown_action should preserve valid action extras");
         assert_eq!(extra["valid"][0], "help");
         assert_eq!(extra["param"], Value::Null);
@@ -2059,10 +2055,7 @@ mod tests {
         let (kind, message, extra) = extract_error_info(&anyhow_error);
 
         assert_eq!(kind, "unknown_action");
-        assert_eq!(
-            message,
-            "unknown action `movie.serch` for service `radarr`"
-        );
+        assert_eq!(message, "unknown action `movie.serch` for service `radarr`");
         let extra = extra.expect("json fallback should preserve structured extras");
         assert_eq!(
             extra["valid"],
@@ -2227,9 +2220,7 @@ mod tests {
     fn noop_dispatch(
         _action: String,
         _params: Value,
-    ) -> std::pin::Pin<
-        Box<dyn Future<Output = Result<Value, ToolError>> + Send>,
-    > {
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<Value, ToolError>> + Send>> {
         Box::pin(async { Ok(Value::Null) })
     }
 
@@ -2281,10 +2272,8 @@ mod tests {
     fn completion_prompt_service_arguments_filter_service_names() {
         let registry = completion_test_registry();
 
-        let run_action =
-            super::complete_prompt_arg(&registry, "run-action", "service", "ra");
-        let discover =
-            super::complete_prompt_arg(&registry, "service-discover", "service", "so");
+        let run_action = super::complete_prompt_arg(&registry, "run-action", "service", "ra");
+        let discover = super::complete_prompt_arg(&registry, "service-discover", "service", "so");
 
         assert_eq!(run_action.values, vec!["radarr".to_string()]);
         assert_eq!(discover.values, vec!["sonarr".to_string()]);

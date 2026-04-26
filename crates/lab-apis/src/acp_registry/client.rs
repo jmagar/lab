@@ -297,13 +297,69 @@ mod tests {
 
         let client = make_client(&server.uri());
         let result = client.list_agents().await;
-        assert!(result.is_ok(), "hybrid distribution should decode: {result:?}");
+        assert!(
+            result.is_ok(),
+            "hybrid distribution should decode: {result:?}"
+        );
         let agents = result.unwrap();
         assert_eq!(agents[0].id, "acme/hybrid");
         assert!(agents[0].distribution.binary.is_some());
         assert!(agents[0].distribution.npx.is_some());
         let bin = agents[0].distribution.binary.as_ref().unwrap();
         assert_eq!(bin["linux-x86_64"].args, vec!["--acp"]);
+    }
+
+    #[tokio::test]
+    async fn test_npx_and_uvx_assets_preserve_optional_args_and_env() {
+        let server = MockServer::start().await;
+        let manifest = serde_json::json!({
+            "version": "1.0.0",
+            "agents": [
+                {
+                    "id": "acme/npm",
+                    "name": "NPM Agent",
+                    "version": "1.0.0",
+                    "distribution": {
+                        "npx": {
+                            "package": "@acme/npm-agent",
+                            "args": ["--stdio"],
+                            "env": { "ACME_MODE": "npx" }
+                        }
+                    }
+                },
+                {
+                    "id": "acme/python",
+                    "name": "Python Agent",
+                    "version": "1.0.0",
+                    "distribution": {
+                        "uvx": {
+                            "package": "acme-agent",
+                            "args": ["--stdio"],
+                            "env": { "ACME_MODE": "uvx" }
+                        }
+                    }
+                }
+            ],
+            "extensions": []
+        });
+        Mock::given(method("GET"))
+            .and(path("/registry/v1/latest/registry.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(manifest))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let agents = client.list_agents().await.unwrap();
+
+        let npx = agents[0].distribution.npx.as_ref().unwrap();
+        assert_eq!(npx.version, None);
+        assert_eq!(npx.args, vec!["--stdio"]);
+        assert_eq!(npx.env["ACME_MODE"], "npx");
+
+        let uvx = agents[1].distribution.uvx.as_ref().unwrap();
+        assert_eq!(uvx.version, None);
+        assert_eq!(uvx.args, vec!["--stdio"]);
+        assert_eq!(uvx.env["ACME_MODE"], "uvx");
     }
 
     // -----------------------------------------------------------------------

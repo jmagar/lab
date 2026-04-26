@@ -52,7 +52,9 @@ export interface McpInstallParams {
   /** Server version */
   version: string
   /** Gateway IDs/names to install into */
-  gateway_ids: string[]
+  gateway_ids?: string[]
+  /** Claude/Codex clients on fleet devices to install into */
+  client_targets?: Array<{ node_id: string; client: 'claude' | 'codex' }>
   /** Env var values to pass (keyed by env var name) */
   env_vars?: Record<string, string>
 }

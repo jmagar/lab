@@ -1,6 +1,7 @@
 "use client"
 
 import type { ChatStatus, FileUIPart } from "ai"
+import Image from "next/image"
 import {
   CornerDownLeftIcon,
   ImageIcon,
@@ -283,24 +284,25 @@ export function PromptInputAttachment({ data, className, ...props }: PromptInput
       <HoverCardTrigger asChild>
         <div
           className={cn(
-            "group relative flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md border border-border px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+            "group relative flex h-8 cursor-pointer select-none items-center gap-1.5 rounded-md border border-aurora-border-subtle px-1.5 font-medium text-sm transition-all hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
             className,
           )}
           key={data.id}
           {...props}
         >
           <div className="relative size-5 shrink-0">
-            <div className="absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded bg-background transition-opacity group-hover:opacity-0">
+            <div className="absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded bg-aurora-bg transition-opacity group-hover:opacity-0">
               {isImage ? (
-                <img
+                <Image
                   alt={filename || "attachment"}
                   className="size-5 object-cover"
                   height={20}
                   src={data.url}
                   width={20}
+                  unoptimized
                 />
               ) : (
-                <div className="flex size-5 items-center justify-center text-muted-foreground">
+                <div className="flex size-5 items-center justify-center text-aurora-text-muted">
                   <PaperclipIcon className="size-3" />
                 </div>
               )}
@@ -327,12 +329,13 @@ export function PromptInputAttachment({ data, className, ...props }: PromptInput
         <div className="w-auto space-y-3">
           {isImage && (
             <div className="flex max-h-96 w-96 items-center justify-center overflow-hidden rounded-md border">
-              <img
+              <Image
                 alt={filename || "attachment preview"}
                 className="max-h-full max-w-full object-contain"
                 height={384}
                 src={data.url}
                 width={448}
+                unoptimized
               />
             </div>
           )}
@@ -342,7 +345,7 @@ export function PromptInputAttachment({ data, className, ...props }: PromptInput
                 {filename || (isImage ? "Image" : "Attachment")}
               </h4>
               {data.mediaType && (
-                <p className="truncate font-mono text-muted-foreground text-xs">{data.mediaType}</p>
+                <p className="truncate font-mono text-aurora-text-muted text-xs">{data.mediaType}</p>
               )}
             </div>
           </div>
@@ -678,7 +681,6 @@ export const PromptInput = ({
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup only on unmount; filesRef always current
     [usingProvider],
   )
 
@@ -739,7 +741,9 @@ export const PromptInput = ({
 
     // Convert blob URLs to data URLs asynchronously
     Promise.all(
-      files.map(async ({ id, ...item }) => {
+      files.map(async itemWithId => {
+        const { id, ...item } = itemWithId
+        void id
         if (item.url?.startsWith("blob:")) {
           const dataUrl = await convertBlobUrlToDataUrl(item.url)
           // If conversion failed, keep the original blob URL
@@ -1193,8 +1197,8 @@ export const PromptInputSelectTrigger = ({
 }: PromptInputSelectTriggerProps) => (
   <SelectTrigger
     className={cn(
-      "border-none bg-transparent font-medium text-muted-foreground shadow-none transition-colors",
-      "hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
+      "border-none bg-transparent font-medium text-aurora-text-muted shadow-none transition-colors",
+      "hover:bg-accent hover:text-aurora-text aria-expanded:bg-accent aria-expanded:text-aurora-text",
       className,
     )}
     {...props}
@@ -1258,7 +1262,7 @@ export const PromptInputTab = ({ className, ...props }: PromptInputTabProps) => 
 export type PromptInputTabLabelProps = HTMLAttributes<HTMLHeadingElement>
 
 export const PromptInputTabLabel = ({ className, ...props }: PromptInputTabLabelProps) => (
-  <h3 className={cn("mb-2 px-3 font-medium text-muted-foreground text-xs", className)} {...props} />
+  <h3 className={cn("mb-2 px-3 font-medium text-aurora-text-muted text-xs", className)} {...props} />
 )
 
 export type PromptInputTabBodyProps = HTMLAttributes<HTMLDivElement>

@@ -34,7 +34,7 @@ export type TestResultsProps = HTMLAttributes<HTMLDivElement> & {
 
 export const TestResults = ({ summary, className, children, ...props }: TestResultsProps) => (
   <TestResultsContext.Provider value={{ summary }}>
-    <div className={cn("rounded-lg border bg-background", className)} {...props}>
+    <div className={cn("rounded-lg border bg-aurora-bg", className)} {...props}>
       {children ??
         (summary && (
           <TestResultsHeader>
@@ -110,7 +110,7 @@ export const TestResultsDuration = ({
   const formatDuration = (ms: number) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(2)}s`)
 
   return (
-    <span className={cn("text-muted-foreground text-sm", className)} {...props}>
+    <span className={cn("text-aurora-text-muted text-sm", className)} {...props}>
       {children ?? formatDuration(summary.duration)}
     </span>
   )
@@ -134,11 +134,11 @@ export const TestResultsProgress = ({
     <div className={cn("space-y-2", className)} {...props}>
       {children ?? (
         <>
-          <div className="flex h-2 overflow-hidden rounded-full bg-muted">
+          <div className="flex h-2 overflow-hidden rounded-full bg-aurora-panel-muted">
             <div className="bg-green-500 transition-all" style={{ width: `${passedPercent}%` }} />
             <div className="bg-red-500 transition-all" style={{ width: `${failedPercent}%` }} />
           </div>
-          <div className="flex justify-between text-muted-foreground text-xs">
+          <div className="flex justify-between text-aurora-text-muted text-xs">
             <span>
               {summary.passed}/{summary.total} tests passed
             </span>
@@ -186,12 +186,12 @@ export const TestSuiteName = ({ className, children, ...props }: TestSuiteNamePr
   return (
     <CollapsibleTrigger
       className={cn(
-        "group flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/50",
+        "group flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-aurora-panel-muted/50",
         className,
       )}
       {...props}
     >
-      <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
+      <ChevronRightIcon className="size-4 shrink-0 text-aurora-text-muted transition-transform group-data-[state=open]:rotate-90" />
       <TestStatusIcon status={status} />
       <span className="font-medium text-sm">{children ?? name}</span>
     </CollapsibleTrigger>
@@ -307,7 +307,7 @@ export const TestDuration = ({ className, children, ...props }: TestDurationProp
   const { duration } = useContext(TestContext)
   if (duration === undefined) return null
   return (
-    <span className={cn("ml-auto text-muted-foreground text-xs", className)} {...props}>
+    <span className={cn("ml-auto text-aurora-text-muted text-xs", className)} {...props}>
       {children ?? `${duration}ms`}
     </span>
   )

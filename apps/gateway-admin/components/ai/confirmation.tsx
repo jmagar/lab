@@ -157,7 +157,7 @@ export default function ConfirmationDemo() {
         <ConfirmationTitle>
           <ConfirmationRequest>
             This tool wants to delete the file{" "}
-            <code className="inline rounded bg-muted px-1.5 py-0.5 text-sm">/tmp/example.txt</code>.
+            <code className="inline rounded bg-aurora-panel-muted px-1.5 py-0.5 text-sm">/tmp/example.txt</code>.
             Do you approve this action?
           </ConfirmationRequest>
           <ConfirmationAccepted>

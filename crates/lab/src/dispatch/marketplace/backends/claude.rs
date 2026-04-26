@@ -321,7 +321,15 @@ impl MarketplaceBackend for ClaudeMarketplaceBackend {
                 continue;
             };
             for plugin_json in &manifest.plugins {
-                if let Some(plugin) = self.build_plugin(&market.id, plugin_json, &installed) {
+                if let Some(mut plugin) = self.build_plugin(&market.id, plugin_json, &installed) {
+                    // The frontend catalog expands each plugin into one item
+                    // per component, so list_plugins must populate components.
+                    // Per-plugin disk walk is acknowledged perf hazard — see
+                    // build_plugin_leaves_cache_path_and_components_none test
+                    // for the no-walk invariant on the base path.
+                    let source = install_loc.join(&plugin.name);
+                    plugin.components =
+                        Some(components_from_manifest_and_layout(Some(&source), None));
                     out.push(plugin);
                 }
             }

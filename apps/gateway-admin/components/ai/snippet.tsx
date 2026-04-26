@@ -39,7 +39,7 @@ export type SnippetAddonProps = HTMLAttributes<HTMLDivElement>
 export const SnippetAddon = ({ className, ...props }: SnippetAddonProps) => (
   <div
     className={cn(
-      "flex h-9 items-center rounded-l-md border border-r-0 bg-muted px-3 text-muted-foreground text-sm",
+      "flex h-9 items-center rounded-l-md border border-r-0 bg-aurora-panel-muted px-3 text-aurora-text-muted text-sm",
       className,
     )}
     {...props}
@@ -49,7 +49,7 @@ export const SnippetAddon = ({ className, ...props }: SnippetAddonProps) => (
 export type SnippetTextProps = HTMLAttributes<HTMLSpanElement>
 
 export const SnippetText = ({ className, ...props }: SnippetTextProps) => (
-  <span className={cn("font-normal text-muted-foreground", className)} {...props} />
+  <span className={cn("font-normal text-aurora-text-muted", className)} {...props} />
 )
 
 export type SnippetInputProps = Omit<ComponentProps<typeof Input>, "readOnly" | "value">
@@ -59,7 +59,7 @@ export const SnippetInput = ({ className, ...props }: SnippetInputProps) => {
 
   return (
     <Input
-      className={cn("rounded-none border-r-0 text-foreground", className)}
+      className={cn("rounded-none border-r-0 text-aurora-text", className)}
       readOnly
       value={code}
       {...props}

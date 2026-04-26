@@ -243,17 +243,7 @@ fn rfc5987_encode(s: &str) -> String {
         let safe = b.is_ascii_alphanumeric()
             || matches!(
                 b,
-                b'!' | b'#'
-                    | b'$'
-                    | b'&'
-                    | b'+'
-                    | b'-'
-                    | b'.'
-                    | b'^'
-                    | b'_'
-                    | b'`'
-                    | b'|'
-                    | b'~'
+                b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
             );
         if safe {
             out.push(b as char);

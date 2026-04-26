@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { Plugin } from '@/lib/types/marketplace'
@@ -31,9 +32,12 @@ function PluginAvatar({ ghUser, name }: { ghUser?: string; name: string }) {
 
   return (
     <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-[11px] border border-aurora-border-default bg-aurora-panel-medium">
-      <img
+      <Image
         src={`https://github.com/${ghUser}.png?size=80`}
         alt={ghUser}
+        width={40}
+        height={40}
+        unoptimized
         className="w-full h-full object-cover"
         onError={() => setImageFailed(true)}
       />

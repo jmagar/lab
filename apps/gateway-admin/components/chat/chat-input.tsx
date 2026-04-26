@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import * as React from 'react'
 import { Send, Paperclip, Wrench, ChevronDown, X, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -390,10 +391,13 @@ function AttachmentChip({
       )}
     >
       {thumb && thumb.forPath === attachment.path ? (
-        <img
+        <Image
           src={thumb.url}
           alt=""
           className="size-4 rounded-[2px] object-cover"
+          height={16}
+          width={16}
+          unoptimized
         />
       ) : (
         <FileText className="size-3 text-aurora-text-muted" />

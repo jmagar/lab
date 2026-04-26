@@ -32,6 +32,7 @@ test('previewWorkspaceFile dedupes concurrent same-path fetches', async () => {
   __resetPreviewCache()
   let fetchCalls = 0
   g.fetch = (async (_input: RequestInfo | URL) => {
+    void _input
     fetchCalls += 1
     return makeStreamingResponse('hello-bytes')
   }) as typeof fetch

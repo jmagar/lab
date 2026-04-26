@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import {
   AURORA_DISPLAY_1,
   AURORA_MEDIUM_PANEL,
@@ -21,14 +20,7 @@ export default function DevIndexPage() {
             Public, read-only feature previews live under <code className="rounded bg-aurora-control-surface px-1.5 py-0.5">/dev/&lt;feature-name&gt;</code>.
             They use live backend read data where available and block mutating actions.
           </p>
-          <div className="mt-5">
-            <Link
-              href="/dev/marketplace"
-              className="inline-flex rounded-aurora-1 border border-aurora-accent-primary/35 bg-aurora-control-surface px-4 py-2 text-sm font-semibold text-aurora-accent-strong hover:bg-aurora-hover-bg"
-            >
-              Marketplace preview
-            </Link>
-          </div>
+          <p className="mt-5 text-sm text-aurora-text-muted">No active dev previews are registered.</p>
         </section>
       </div>
     </main>

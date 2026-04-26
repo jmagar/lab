@@ -894,9 +894,7 @@ async fn handle_initialize(
                 map.insert(node_id.clone(), now);
                 // Inline GC: drop entries whose debounce window has expired so
                 // the map can't grow unbounded across distinct node_ids.
-                map.retain(|_, last_seen| {
-                    now.duration_since(*last_seen) < INITIALIZE_DEBOUNCE
-                });
+                map.retain(|_, last_seen| now.duration_since(*last_seen) < INITIALIZE_DEBOUNCE);
             }
 
             // Pending enrollment cap check.

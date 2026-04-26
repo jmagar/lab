@@ -595,7 +595,7 @@ async fn load_gemini_plugins() -> Vec<(MarketplacePlugin, bool)> {
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME").map_or_else(|| PathBuf::from("/root"), PathBuf::from)
+    crate::config::home_dir().unwrap_or_else(|| PathBuf::from("/root"))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

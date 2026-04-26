@@ -35,6 +35,13 @@ pub enum DistType {
     Npx,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum McpClient {
+    Claude,
+    Codex,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct InstallComponentParams {
     #[allow(dead_code)] // Forwarded in RPC params; available for logging/auditing.
@@ -59,6 +66,13 @@ pub struct AgentDistribution {
     pub dist_type: DistType,
     pub package: String,
     pub version: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct McpInstallParams {
+    pub name: String,
+    pub client: McpClient,
+    pub config: Value,
 }
 
 // --------------------------------------------------------------------------
@@ -686,6 +700,170 @@ pub async fn handle_agent_install(
     Ok(result)
 }
 
+pub async fn handle_mcp_install(
+    params: McpInstallParams,
+    rpc_id: Value,
+    progress_tx: &mpsc::Sender<String>,
+) -> Result<InstallComponentResult> {
+    send_progress(
+        progress_tx,
+        &InstallProgressNotification::started(rpc_id.clone()),
+    )
+    .await;
+
+    let mut result = InstallComponentResult::default();
+    let target = match params.client {
+        McpClient::Claude => claude_config_path()?,
+        McpClient::Codex => codex_config_path()?,
+    };
+
+    if let Err(error) = reject_symlink(&target).await {
+        result.errors.push(InstallError {
+            file: target_file_label(params.client).to_string(),
+            error: error.to_string(),
+        });
+        return Ok(result);
+    }
+
+    let contents = match params.client {
+        McpClient::Claude => render_claude_mcp_config(&target, &params.name, params.config).await?,
+        McpClient::Codex => render_codex_mcp_config(&target, &params.name, params.config).await?,
+    };
+
+    if let Some(parent) = target.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("create {}", red_path(parent)))?;
+    }
+
+    match write_atomic(&target, contents.as_bytes()).await {
+        Ok(()) => {
+            let label = target_file_label(params.client).to_string();
+            result.written.push(label.clone());
+            send_progress(
+                progress_tx,
+                &InstallProgressNotification::file_written(rpc_id, label),
+            )
+            .await;
+        }
+        Err(error) => {
+            result.errors.push(InstallError {
+                file: target_file_label(params.client).to_string(),
+                error: error.to_string(),
+            });
+        }
+    }
+
+    Ok(result)
+}
+
+fn home_dir() -> Result<PathBuf> {
+    crate::config::home_dir()
+        .ok_or_else(|| anyhow!("{ERR_VALIDATION}: HOME environment variable is not set"))
+}
+
+fn claude_config_path() -> Result<PathBuf> {
+    Ok(home_dir()?.join(".claude.json"))
+}
+
+fn codex_config_path() -> Result<PathBuf> {
+    Ok(home_dir()?.join(".codex").join("config.toml"))
+}
+
+fn target_file_label(client: McpClient) -> &'static str {
+    match client {
+        McpClient::Claude => ".claude.json",
+        McpClient::Codex => ".codex/config.toml",
+    }
+}
+
+async fn render_claude_mcp_config(path: &Path, name: &str, config: Value) -> Result<String> {
+    let mut root = if path.is_file() {
+        let raw = tokio::fs::read_to_string(path)
+            .await
+            .with_context(|| format!("read {}", red_path(path)))?;
+        serde_json::from_str::<Value>(&raw).with_context(|| format!("parse {}", red_path(path)))?
+    } else {
+        serde_json::json!({})
+    };
+
+    if !root.is_object() {
+        return Err(anyhow!(
+            "{ERR_VALIDATION}: Claude config root must be an object"
+        ));
+    }
+    if root.get("mcpServers").is_none() {
+        root["mcpServers"] = serde_json::json!({});
+    }
+    let servers = root
+        .get_mut("mcpServers")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| anyhow!("{ERR_VALIDATION}: mcpServers must be an object"))?;
+    servers.insert(name.to_string(), config);
+
+    serde_json::to_string_pretty(&root).context("serialize Claude MCP config")
+}
+
+async fn render_codex_mcp_config(path: &Path, name: &str, config: Value) -> Result<String> {
+    let raw = if path.is_file() {
+        tokio::fs::read_to_string(path)
+            .await
+            .with_context(|| format!("read {}", red_path(path)))?
+    } else {
+        String::new()
+    };
+    let mut root = if raw.trim().is_empty() {
+        toml::Value::Table(toml::map::Map::new())
+    } else {
+        toml::from_str::<toml::Value>(&raw).with_context(|| format!("parse {}", red_path(path)))?
+    };
+
+    let table = root
+        .as_table_mut()
+        .ok_or_else(|| anyhow!("{ERR_VALIDATION}: Codex config root must be a table"))?;
+    let servers = table
+        .entry("mcp_servers".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()))
+        .as_table_mut()
+        .ok_or_else(|| anyhow!("{ERR_VALIDATION}: mcp_servers must be a table"))?;
+    servers.insert(name.to_string(), json_to_toml(config)?);
+
+    toml::to_string_pretty(&root).context("serialize Codex MCP config")
+}
+
+fn json_to_toml(value: Value) -> Result<toml::Value> {
+    match value {
+        Value::Null => Err(anyhow!(
+            "{ERR_VALIDATION}: TOML has no null; remove the field or use a concrete value"
+        )),
+        Value::Bool(value) => Ok(toml::Value::Boolean(value)),
+        Value::Number(value) => {
+            if let Some(value) = value.as_i64() {
+                Ok(toml::Value::Integer(value))
+            } else if let Some(value) = value.as_u64() {
+                let value = i64::try_from(value)
+                    .map_err(|_| anyhow!("{ERR_VALIDATION}: TOML integer is out of range"))?;
+                Ok(toml::Value::Integer(value))
+            } else if let Some(value) = value.as_f64() {
+                Ok(toml::Value::Float(value))
+            } else {
+                Err(anyhow!("{ERR_VALIDATION}: unsupported number value"))
+            }
+        }
+        Value::String(value) => Ok(toml::Value::String(value)),
+        Value::Array(values) => values
+            .into_iter()
+            .map(json_to_toml)
+            .collect::<Result<Vec<_>>>()
+            .map(toml::Value::Array),
+        Value::Object(values) => values
+            .into_iter()
+            .map(|(key, value)| json_to_toml(value).map(|value| (key, value)))
+            .collect::<Result<toml::map::Map<_, _>>>()
+            .map(toml::Value::Table),
+    }
+}
+
 // --------------------------------------------------------------------------
 // Tests
 // --------------------------------------------------------------------------
@@ -900,6 +1078,82 @@ mod tests {
         .expect_err("absolute agent_id should fail");
 
         assert!(err.to_string().contains("non-normal component"));
+    }
+
+    #[tokio::test]
+    async fn render_claude_mcp_config_preserves_existing_config_and_sets_server() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let path = tempdir.path().join(".claude.json");
+        tokio::fs::write(
+            &path,
+            r#"{"theme":"dark","mcpServers":{"existing":{"command":"node"}}}"#,
+        )
+        .await
+        .expect("seed config");
+
+        let rendered = render_claude_mcp_config(
+            &path,
+            "demo",
+            serde_json::json!({"command":"npx","args":["-y","@example/server"]}),
+        )
+        .await
+        .expect("render");
+        let parsed: Value = serde_json::from_str(&rendered).expect("parse rendered");
+
+        assert_eq!(parsed["theme"], "dark");
+        assert_eq!(parsed["mcpServers"]["existing"]["command"], "node");
+        assert_eq!(parsed["mcpServers"]["demo"]["command"], "npx");
+        assert_eq!(parsed["mcpServers"]["demo"]["args"][1], "@example/server");
+    }
+
+    #[tokio::test]
+    async fn render_codex_mcp_config_preserves_existing_config_and_sets_server() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let path = tempdir.path().join(".codex/config.toml");
+        tokio::fs::create_dir_all(path.parent().expect("parent"))
+            .await
+            .expect("mkdir");
+        tokio::fs::write(
+            &path,
+            r#"
+model = "gpt-5"
+
+[mcp_servers.existing]
+command = "node"
+"#,
+        )
+        .await
+        .expect("seed config");
+
+        let rendered = render_codex_mcp_config(
+            &path,
+            "demo",
+            serde_json::json!({"command":"npx","args":["-y","@example/server"],"env":{"TOKEN":"abc"}}),
+        )
+        .await
+        .expect("render");
+        let parsed: toml::Value = toml::from_str(&rendered).expect("parse rendered");
+
+        assert_eq!(parsed["model"].as_str(), Some("gpt-5"));
+        assert_eq!(
+            parsed["mcp_servers"]["existing"]["command"].as_str(),
+            Some("node")
+        );
+        assert_eq!(
+            parsed["mcp_servers"]["demo"]["command"].as_str(),
+            Some("npx")
+        );
+        assert_eq!(
+            parsed["mcp_servers"]["demo"]["args"]
+                .as_array()
+                .expect("args")[1]
+                .as_str(),
+            Some("@example/server")
+        );
+        assert_eq!(
+            parsed["mcp_servers"]["demo"]["env"]["TOKEN"].as_str(),
+            Some("abc")
+        );
     }
 
     // ------------------------------------------------------------------

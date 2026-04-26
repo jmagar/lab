@@ -52,11 +52,11 @@ export const SandboxHeader = ({ className, title, state, ...props }: SandboxHead
     {...props}
   >
     <div className="flex items-center gap-2">
-      <Code className="size-4 text-muted-foreground" />
+      <Code className="size-4 text-aurora-text-muted" />
       <span className="font-medium text-sm">{title}</span>
       {getStatusBadge(state)}
     </div>
-    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+    <ChevronDownIcon className="size-4 text-aurora-text-muted transition-transform group-data-[state=open]:rotate-180" />
   </CollapsibleTrigger>
 )
 
@@ -82,7 +82,7 @@ export type SandboxTabsBarProps = ComponentProps<"div">
 
 export const SandboxTabsBar = ({ className, ...props }: SandboxTabsBarProps) => (
   <div
-    className={cn("flex w-full items-center border-border border-t border-b", className)}
+    className={cn("flex w-full items-center border-aurora-border-subtle border-t border-b", className)}
     {...props}
   />
 )
@@ -101,7 +101,7 @@ export type SandboxTabsTriggerProps = ComponentProps<typeof TabsTrigger>
 export const SandboxTabsTrigger = ({ className, ...props }: SandboxTabsTriggerProps) => (
   <TabsTrigger
     className={cn(
-      "rounded-none border-0 border-transparent border-b-2 px-4 py-2 font-medium text-muted-foreground text-sm transition-colors data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none",
+      "rounded-none border-0 border-transparent border-b-2 px-4 py-2 font-medium text-aurora-text-muted text-sm transition-colors data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-aurora-text data-[state=active]:shadow-none",
       className,
     )}
     {...props}
@@ -139,10 +139,10 @@ console.log(fibonacci(10));`
               </SandboxTabsList>
             </SandboxTabsBar>
             <SandboxTabContent value="code">
-              <pre className="overflow-auto bg-muted/30 p-4 font-mono text-xs">{sampleCode}</pre>
+              <pre className="overflow-auto bg-aurora-panel-muted/30 p-4 font-mono text-xs">{sampleCode}</pre>
             </SandboxTabContent>
             <SandboxTabContent value="console">
-              <pre className="overflow-auto bg-muted/30 p-4 font-mono text-xs text-green-600">
+              <pre className="overflow-auto bg-aurora-panel-muted/30 p-4 font-mono text-xs text-green-600">
                 {sampleOutput}
               </pre>
             </SandboxTabContent>

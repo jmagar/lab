@@ -1,206 +1,215 @@
 # Marketplace Catalog — Feature Design Spec
 
-**Status:** Approved (retroactive — documents current implementation)
+**Status:** Migrating into production `/marketplace`.
 **Component:** `components/marketplace/marketplace-list-content.tsx`
-**Routes:** `/marketplace` (production), `/dev/marketplace` (read-only preview)
-**Design reference:** [Design System Contract](../../../docs/design/design-system-contract.md)
+**State module:** `components/marketplace/marketplace-state.ts`
+**Routes:** `/marketplace` renders the migrated Marketplace catalog. `/dev/marketplace` is removed; future dev previews should use their own temporary `/dev/<feature-name>` routes and be deleted when promoted.
+**Design references:** [Design System Contract](../../../docs/design/design-system-contract.md), [Component Development Process](../../../docs/design/component-development.md), and the Gateway page filter/list patterns.
 
----
+## Problem And Scope
 
-## Problem and Scope
-
-Labby admins need a single place to discover, install, update, and remove operator tooling across three distribution formats: gateway plugins (first-party artifacts), MCP servers (npm/uvx packages for AI tool use), and ACP agents (autonomous agents for device-side operation). The catalog must support large lists with fast search and filtering, show live install state, and be reviewable in a public read-only preview without any auth.
-
----
+Labby admins need one catalog surface for gateway plugins, MCP servers, ACP agents, bundled agents, skills, commands, and marketplace sources. The migrated Marketplace replaces the old tab-heavy layout with a Gateway-style filter rail, summary lenses, and a density switch so large catalogs remain scannable.
 
 ## Page Structure
 
+```text
+AppHeader
+  breadcrumbs: Labby / Marketplace
+  actions: card view, table view, add source preview, refresh
+
+Hero panel
+  eyebrow: Plugin operations
+  title: Marketplace
+  description
+  read-only preview notice only if temporarily rendered under /dev/*
+
+Summary lenses
+  All, Installed, Plugins, MCP servers, ACP agents, Sources
+
+Content grid
+  left: Gateway-style filter rail on desktop, collapsible filter panel on mobile
+  right: results header, partial-load warning, card grid or dense table
+
+Preview dialog
+  opens for install/remove/wire/update actions
+  final mutation button follows the route mode and item capability
 ```
-AppHeader (breadcrumb: Labby / Marketplace | actions: + Add, Refresh)
-│
-├── Hero panel (Display 1 heading, muted description)
-│
-├── Tab bar [Browse | Installed | Marketplaces] — desktop only (hidden lg:flex)
-│
-└── Scroll region (flex-1, overflow-y-auto)
-    ├── Mobile tab chips [Browse | Installed | Sources] — mobile only (lg:hidden)
-    ├── Mobile search + filter sheet (lg:hidden)
-    ├── Desktop search + sort + stats strip (hidden lg:flex)
-    ├── Type filter pills [All | Plugins | MCP Servers | ACP Agents]
-    ├── Result count label
-    └── Content grid (auto-fill, minmax(300px, 1fr))
-```
 
----
+## Interaction Model
 
-## Tabs
+The migrated Marketplace removes both old tab groups:
 
-| Tab | Content | Item types |
-|-----|---------|-----------|
-| Browse | All items, full catalog | plugins + MCP servers + ACP agents |
-| Installed | Installed plugins only, grouped by marketplace source | plugins only |
-| Marketplaces | Marketplace source cards | sources |
+- `Browse / Installed / Marketplaces`
+- `All / Plugins / MCP Servers / ACP Agents`
 
-Tab switching resets the marketplace filter. Clicking a source card in Marketplaces switches to Browse with that source pre-filtered.
+Those concepts are now handled by summary lenses and check-box filters. The lenses are high-level shortcuts, while the rail handles precise filtering.
 
----
+The filter rail intentionally uses Gateway-style checkbox rows instead of pill checkboxes. This is now an approved design-system pattern for dense Marketplace/Gateway filter rails because it scans better across many filter groups and values.
+
+Clicking a source card filters the catalog to that source instead of navigating away. Clicking plugin, MCP server, or ACP agent actions opens the review dialog. ACP copy must stay explicit: wiring an ACP implementation does not automatically make it available in `/chat` unless a separate backend flow exists.
 
 ## Data Sources
 
-| Item type | Source | Hook | Notes |
-|-----------|--------|------|-------|
-| Plugins | `/dev/api/marketplace` (dev) or `/v1/marketplace` (prod) via `fetchPlugins()` | `usePlugins()` | SWR, `fallbackData: []` |
-| Marketplaces | Same endpoint via `fetchMarketplaces()` | `useMarketplaces()` | SWR, `fallbackData: []` |
-| ACP agents | `listAcpAgents()` via `lib/marketplace/api-client` | `useAcpAgents()` | SWR, `fallbackData: MOCK_ACP_AGENTS` |
-| MCP servers | `MOCK_MCP_SERVERS` constant | inline in component | Static mock, no fetch |
+| Item type | Hook | Backend action | Dev route |
+| --- | --- | --- | --- |
+| Marketplace sources | `useMarketplaces()` | `sources.list` | `/dev/api/marketplace` |
+| Plugin packages and bundled components | `usePlugins()` | `plugins.list` | `/dev/api/marketplace` |
+| MCP servers | `useMcpServers()` | `mcp.list` | `/dev/api/marketplace` |
+| ACP agents | `useAcpAgents()` | `agent.list` | `/dev/api/marketplace` |
 
-MCP servers are currently mocked. When a real MCP registry API is available, `MOCK_MCP_SERVERS` should be replaced with a `useMcpServers()` hook backed by `listMcpServers()`.
+The production API remains `/v1/marketplace`. In dev preview mode, `devPreviewActionUrl()` maps marketplace reads to `/dev/api/marketplace`.
 
----
+MCP servers and ACP agents are no longer static-only UI mocks. They use live hooks and can fall back to safe local fallback data only where the hook explicitly defines fallback data.
 
-## Filters and Sort
+Plugin packages are not the only catalog items derived from `plugins.list`. When a package includes `components`, Marketplace emits separate catalog rows for bundled agents, skills, commands, apps, hooks, assets, files, config, monitors, output styles, and plugin-distributed MCP servers. This prevents package contents from being counted as generic plugins.
 
-### Type filter (browse + installed tabs)
+## Filters And Sort
 
-Pills: All / Plugins / MCP Servers / ACP Agents. Counts are derived from live data lengths.
+Filter state lives in `MarketplaceCatalogFilterState`.
 
-### Marketplace filter (browse tab, plugins only)
+| Filter | Values |
+| --- | --- |
+| Lens | all, installed, plugin packages, agents, skills, commands, MCP servers, ACP agents, sources |
+| Search | name, subtitle, description, source, distribution, ecosystem, tags |
+| Type | plugin package, agent, skill, command, MCP server, ACP agent, app, hook, asset, file, config, monitor, output style, source |
+| Install state | installed, not installed, update available, built-in |
+| Ecosystem | derived from loaded items |
+| Source | live marketplace sources |
+| Distribution | derived from loaded items |
+| Sort | recently updated default, A-Z, source, installed first |
 
-Active filter shown as a badge chip with a dismiss button on desktop. On mobile, shown as a pill in the active-filters strip. Resets on tab change.
+`clearFilters()` preserves the current lens and clears the detailed rail filters plus search. The default sort is recently updated so the first view emphasizes fresh plugin packages, MCP servers, and ACP agents instead of an alphabetical catalog dump.
 
-### Search
+Standalone MCP Registry rows use the synthetic source id `mcp-registry` and source name `MCP Registry`. This keeps MCP rows attached to the same source-filter model as plugin packages and prevents them from appearing as an unfilterable global block.
 
-Single text input. Matches against:
-- Plugins: name, id, description, tags, marketplaceId
-- MCP servers: name, description, package
-- ACP agents: name, id, description
-
-### Sort (plugins only)
-
-| Value | Label | Behavior |
-|-------|-------|---------|
-| `name` | A–Z | Alphabetical by name (default) |
-| `marketplace` | Marketplace | By marketplace id, then name |
-| `installed` | Installed first | Installed plugins before uninstalled |
-| `updated` | Recent | By `updatedAt` descending |
-
-MCP servers and ACP agents always sort by name regardless of sort setting.
-
----
+Sort is currently implemented as pill buttons inside the filter rail. If this becomes a dropdown or select later, it must use Aurora control surfaces, semantic borders, stable accessible naming, and the shared focus-ring tokens.
 
 ## View Modes
 
-**Desktop (`lg` and up):** Inline search input + sort select + stats strip. Type filter below.
+Desktop supports both cards and table:
 
-**Mobile (below `lg`):** Three stat chips for tab navigation. Collapsible filter sheet triggered by a `SlidersHorizontal` button in the search bar. Filter chip count badge on the trigger when filters are active.
+- Cards are the default discovery mode and preserve the current big-card marketplace feel.
+- Table mode is the condensed scan mode for dense catalogs.
 
----
+Mobile uses cards only. The table toggle is hidden below `lg` because horizontal table scanning is weaker than the card stack on small screens.
 
-## Cards
+## Components
 
-| Kind | Component | Key props |
-|------|-----------|-----------|
-| Plugin | `MarketplaceCard` | plugin, ghUser (derived from marketplace owner) |
-| MCP server | `McpServerCard` | server |
-| ACP agent | `AcpAgentCard` | agent |
-| Marketplace source | `MktSourceCard` | marketplace, installedCount, onClick |
-
----
-
-## Dialogs and Modals
-
-| Dialog | Trigger | Mutating |
-|--------|---------|---------|
-| Add marketplace | `+` button in header | Yes — `sources.add` |
-| Install MCP server | Install button on `McpServerCard` | Yes — `mcp.install` |
-| Install ACP agent | Install button on `AcpAgentCard` | Yes — `agent.install` |
-| Plugin install/uninstall | Buttons on `MarketplaceCard` | Yes — `plugin.install` / `plugin.uninstall` |
-
-In `/dev/*` mode all mutating actions are blocked before `fetch` by `assertDevPreviewCanRunAction`. Dialogs may open but submit actions throw `DevPreviewReadOnlyError`.
-
----
-
-## States
-
-| State | Trigger | Rendering |
-|-------|---------|-----------|
-| Populated | Data loaded | Item grid |
-| Empty search | Query with no matches | EmptyState icon 🔍 |
-| Nothing installed | Installed tab, zero installed | EmptyState icon 📦 |
-| Load error | `pluginsError` or `marketplacesError` | EmptyState icon ⚠️ with message |
-| Refreshing | `handleRefresh` in flight | Refresh button spins, data stale |
-
-There is no explicit skeleton loading state. SWR's `fallbackData: []` means the empty grid renders immediately, then populates when data arrives. An empty grid during initial load is acceptable and consistent with the pattern used on the Gateway list.
-
----
+| Area | Component/function |
+| --- | --- |
+| Page | `MarketplaceListContent` |
+| Item normalization | `buildMarketplaceCatalogItems()` |
+| Summary counts | `marketplaceCatalogSummary()` |
+| Filtering | `filterMarketplaceCatalogItems()` |
+| Sorting | `sortMarketplaceCatalogItems()` |
+| Summary lens | `SummaryLens` |
+| Filter checkboxes | `FilterCheckbox` |
+| Cards | `CatalogCard` |
+| Table | `CatalogTable` |
+| Action review | shadcn `Dialog` in `MarketplaceListContent` |
 
 ## Actions
 
-| Action | Kind | Dev preview |
-|--------|------|-------------|
-| Refresh all | Read (re-fetches) | Allowed |
-| Search / filter / sort | Local state | Allowed |
-| Browse → Marketplaces link | Tab switch | Allowed |
-| Add marketplace | Mutating | Blocked |
-| Install plugin | Mutating | Blocked |
-| Uninstall plugin | Mutating | Blocked |
-| Install MCP server | Mutating | Blocked |
-| Install ACP agent | Mutating | Blocked |
+| Action | Kind | `/dev/*` behavior |
+| --- | --- | --- |
+| Refresh catalog | Read | Allowed |
+| Search, filter, sort, switch view mode | Local state | Allowed |
+| Source card click | Local filter change | Allowed |
+| Add marketplace source | Mutation | Preview message only; no write sent |
+| Install/update/remove plugin | Mutation | Dialog opens; final button disabled |
+| Install MCP server | Mutation | Dialog opens; final button disabled |
+| Wire ACP agent | Mutation | Dialog opens; final button disabled |
 
----
+The production `/marketplace` route supports source-add, plugin install/remove, MCP install, ACP agent install/wiring, and bundled component cherry-pick flows through the existing Marketplace hooks and dialogs. MCP registry servers install to explicit targets: a Lab Gateway upstream, Claude/Codex MCP client config on any connected fleet device, or any combination of those targets. The modal must not present Lab service integrations such as Radarr or Sonarr as MCP install destinations.
 
-## Responsive Behavior
+## `/dev/*` Read-Only Enforcement
 
-| Breakpoint | Change |
-|-----------|--------|
-| `< lg` | Tab chips replace tab bar; filter sheet replaces inline controls |
-| `lg+` | Tab bar, inline search/sort/stats |
+Read-only behavior is enforced in two layers.
 
-Grid uses `auto-fill, minmax(300px, 1fr)` — no explicit column count breakpoints.
+Frontend:
 
----
+- `apps/gateway-admin/lib/dev/preview-mode.ts` detects `/dev/*` for temporary previews.
+- `READ_ONLY_ACTIONS` allows only whitelisted marketplace read actions.
+- Mutating actions are blocked before `fetch`.
+- Marketplace reads are routed from `/v1/marketplace` to `/dev/api/marketplace`.
+
+Backend:
+
+- `crates/lab/src/api/router.rs` mounts `POST /dev/api/marketplace` outside the authenticated `/v1/*` API.
+- `DEV_MARKETPLACE_READ_ACTIONS` mirrors the frontend read whitelist.
+- The handler rejects non-whitelisted actions with `403` and kind `dev_preview_read_only`.
+- Allowed reads reuse the real marketplace dispatch path.
+
+Marketplace should not depend on `/dev/marketplace`. Backend dev APIs remain available under `/dev/api/*` for temporary read-only previews.
+
+## States
+
+| State | Rendering |
+| --- | --- |
+| Populated | Card grid or table |
+| Empty filters/search | Strong panel with reset guidance |
+| Partial load issue | Warning panel above results |
+| Refreshing | Refresh button disabled with spinner |
+| Dev read-only | Hero notice plus disabled final mutation button |
+
+There is no dedicated skeleton state yet. SWR fallback data keeps the page interactive while reads resolve.
+
+## Responsive Rules
+
+Desktop:
+
+- Fixed `280px` filter rail.
+- Summary lenses render in a compact wrapping strip.
+- Cards use responsive columns; table mode is available.
+
+Mobile:
+
+- Summary lenses render as a compact grid.
+- Search appears above results.
+- Filter rail collapses into an inline panel opened from the search control.
+- Active filter count appears on the filter button.
 
 ## Accessibility
 
-- Search inputs have `aria-label` and `name`
-- Sort select has `aria-label`
-- Filter buttons have `aria-pressed`
-- Add/Refresh buttons have `aria-label`
-- Mobile filter trigger has `aria-label="Open filters"`
-- Tab chips and tab bar buttons are `<button type="button">`
-
----
+- Summary lenses and sort pills use buttons with `aria-pressed`.
+- Search inputs have names and `aria-label`s.
+- View-mode buttons have `aria-label` and `aria-pressed`.
+- Refresh and add-source preview controls have `aria-label`s.
+- The action review uses `DialogTitle` and `DialogDescription`.
+- Keyboard focus must remain visible on filters, lenses, cards, table action buttons, and dialog controls.
 
 ## Design System Compliance
 
-- Typography: `font-display font-extrabold` for hero and metric displays; `font-sans` for UI
-- Colors: Aurora semantic tokens throughout; no raw hex except for `color-mix` composites on accent backgrounds
-- Elevation: hero panel uses `AURORA_MEDIUM_PANEL`; filter sheet uses `AURORA_MEDIUM_PANEL`
-- Radius: `rounded-aurora-1`, `rounded-aurora-2`
-- Scrollbar: `aurora-scrollbar` class on the main scroll region
-- Pill active state: `pillTone(true/false)` from aurora tokens
+Marketplace follows the design-system contract:
 
----
+- `Manrope` display slots for hero and card titles.
+- `Inter` UI/body text through existing application font classes.
+- Aurora semantic tokens for surfaces, borders, text, accent, warning, hover, and focus states.
+- Gateway-style `AURORA_MEDIUM_PANEL` and `AURORA_STRONG_PANEL` surfaces.
+- `rounded-aurora-*` radii and contract spacing.
+- Existing button, input, table, dialog, pill, and card primitives.
+- Gateway-style checkbox-row filter rails, which are approved for dense catalog filtering in the design-system contract.
 
-## Dev Preview (`/dev/marketplace`)
+Approved deviations: none.
 
-Route: `app/dev/marketplace/page.tsx` — renders `<MarketplaceListContent />` directly.
+## Review Notes
 
-Layout: `app/dev/layout.tsx` wraps with `AppSidebar` + dev preview banner. `AuthBootstrap` is not present in this layout, so the session store remains at `loading` state. `AppSidebar` handles this correctly: the user card in the footer only renders for `authenticated` status, so unauthenticated visitors see clean navigation and theme toggle with no network errors.
+Browser review on April 25, 2026 covered:
 
-Data: routes through `devPreviewActionUrl()` to `/dev/api/marketplace` (Rust backend, no auth required). Read-only action whitelist enforced at both frontend and backend layers.
+- desktop dark mode
+- desktop light mode
+- mobile dark mode
+- search/filter interaction
+- card/table switching
+- keyboard focus from the search field
+- console errors
+- network routing for the preview route used during the review pass
 
----
+Observed non-blocking browser behavior: desktop sidebar links can emit aborted `HEAD` prefetch requests when inspected under Playwright.
 
-## Known Gaps and Future Work
+## Known Gaps
 
-- MCP servers are mocked. Replace `MOCK_MCP_SERVERS` with a live `useMcpServers()` hook when the MCP registry API is available.
-- The Installed tab only shows plugins. When MCP server and ACP agent install tracking is added, extend the installed view to include them.
-- No skeleton loading state. Add skeletons when backend latency is a concern.
-- Plugin detail view (navigate to individual plugin) is handled by `plugin-detail-content.tsx` but not yet linked from the catalog cards — the `MarketplaceCard` component does not have an href to the detail page.
-
----
-
-## Deviations from Design System Contract
-
-None approved. The implementation follows the design system contract throughout.
+- Very large catalogs render as full lists. Add pagination or virtualization if catalog size creates measurable performance issues.
+- No skeleton loading state exists yet.
+- Very large catalogs render as full lists. Add pagination or virtualization if catalog size creates measurable performance issues.
+- Install state for MCP servers depends on backend support; current catalog normalization treats MCP registry entries as available unless the API provides install state.

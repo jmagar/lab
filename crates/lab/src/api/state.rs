@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::acp::registry::AcpSessionRegistry;
 use crate::catalog::{Catalog, build_catalog};
-use crate::config::NodeRole;
+use crate::config::{LabConfig, NodeRole};
 use crate::dispatch::clients::ServiceClients;
 use crate::node::enrollment::store::EnrollmentStore;
 use crate::node::store::NodeStore;
@@ -38,6 +38,8 @@ pub struct AppState {
     /// WWW-Authenticate headers) can read from resolved config rather than
     /// re-reading env vars at request time.
     pub auth_config: Option<Arc<lab_auth::config::AuthConfig>>,
+    /// Resolved lab configuration loaded at server startup.
+    pub config: Arc<LabConfig>,
     /// OAuth-mode auth server state, mounted only when LAB_AUTH_MODE=oauth.
     pub oauth_state: Option<Arc<lab_auth::state::AuthState>>,
     /// Shared gateway manager for runtime upstream pool access and config mutation.
@@ -56,6 +58,8 @@ pub struct AppState {
     pub node_role: Option<NodeRole>,
     /// Optional directory containing exported Labby web assets.
     pub web_assets_dir: Option<Arc<PathBuf>>,
+    /// Whether to serve Labby assets embedded into the lab binary.
+    pub embedded_web_assets: bool,
     /// Canonical absolute path of the configured workspace root, or
     /// `None` when `workspace.root` is invalid at startup.
     /// Backs the `dispatch/fs/` service (workspace filesystem browser).
@@ -100,6 +104,7 @@ impl AppState {
             clients,
             enabled_services: Arc::new(enabled_services),
             auth_config: None,
+            config: Arc::new(LabConfig::default()),
             oauth_state: None,
             gateway_manager: None,
             node_store: None,
@@ -108,6 +113,7 @@ impl AppState {
             acp_registry: Arc::new(AcpSessionRegistry::new()),
             node_role: None,
             web_assets_dir: None,
+            embedded_web_assets: false,
             workspace_root: None,
             web_ui_auth_disabled: false,
             #[cfg(feature = "mcpregistry")]
@@ -119,6 +125,12 @@ impl AppState {
     #[must_use]
     pub fn with_auth_config(mut self, config: lab_auth::config::AuthConfig) -> Self {
         self.auth_config = Some(Arc::new(config));
+        self
+    }
+
+    #[must_use]
+    pub fn with_config(mut self, config: LabConfig) -> Self {
+        self.config = Arc::new(config);
         self
     }
 
@@ -167,7 +179,20 @@ impl AppState {
     #[must_use]
     pub fn with_web_assets_dir(mut self, dir: PathBuf) -> Self {
         self.web_assets_dir = Some(Arc::new(dir));
+        self.embedded_web_assets = false;
         self
+    }
+
+    /// Enable Labby assets embedded into the lab binary.
+    #[must_use]
+    pub fn with_embedded_web_assets(mut self) -> Self {
+        self.embedded_web_assets = true;
+        self
+    }
+
+    #[must_use]
+    pub fn web_assets_enabled(&self) -> bool {
+        self.web_assets_dir.is_some() || self.embedded_web_assets
     }
 
     /// Attach the canonical workspace-root path for the filesystem browser

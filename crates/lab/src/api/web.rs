@@ -1,14 +1,22 @@
 use std::path::{Component, Path, PathBuf};
 
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use include_dir::{Dir, include_dir};
 
 use super::state::AppState;
 use crate::config::NodeRole;
+
+static EMBEDDED_WEB_ASSETS: Dir<'static> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../apps/gateway-admin/out");
+
+pub fn embedded_web_assets_available() -> bool {
+    EMBEDDED_WEB_ASSETS.get_file("index.html").is_some()
+}
 
 fn sanitize_relative_path(path: &str) -> PathBuf {
     let trimmed = path.trim_start_matches('/');
@@ -76,6 +84,50 @@ async fn resolve_asset_path(base_dir: &Path, request_path: &str) -> PathBuf {
     }
 }
 
+fn embedded_asset_path(request_path: &str) -> PathBuf {
+    let relative = sanitize_relative_path(request_path);
+    if relative.as_os_str().is_empty() {
+        PathBuf::from("index.html")
+    } else {
+        relative
+    }
+}
+
+fn resolve_embedded_asset(request_path: &str) -> Option<(&'static [u8], PathBuf)> {
+    let relative = embedded_asset_path(request_path);
+    if let Some(file) = EMBEDDED_WEB_ASSETS.get_file(&relative) {
+        return Some((file.contents(), relative));
+    }
+
+    let index_path = relative.join("index.html");
+    if let Some(file) = EMBEDDED_WEB_ASSETS.get_file(&index_path) {
+        return Some((file.contents(), index_path));
+    }
+
+    EMBEDDED_WEB_ASSETS
+        .get_file("index.html")
+        .map(|file| (file.contents(), PathBuf::from("index.html")))
+}
+
+fn web_asset_response(bytes: Bytes, path: &Path, method: &Method) -> Response {
+    let content_type = guess_content_type(path);
+    let cache_control = cache_control_for(path);
+    let mut response = Response::new(if *method == Method::HEAD {
+        Body::empty()
+    } else {
+        Body::from(bytes)
+    });
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(content_type),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static(cache_control),
+    );
+    response
+}
+
 pub async fn serve_web_request(State(state): State<AppState>, request: Request) -> Response {
     if !matches!(*request.method(), Method::GET | Method::HEAD) {
         return StatusCode::NOT_FOUND.into_response();
@@ -93,11 +145,16 @@ pub async fn serve_web_request(State(state): State<AppState>, request: Request) 
             .into_response();
     }
 
+    let request_path = request.uri().path();
     let Some(base_dir) = state.web_assets_dir.as_deref() else {
+        if state.embedded_web_assets
+            && let Some((bytes, path)) = resolve_embedded_asset(request_path)
+        {
+            return web_asset_response(Bytes::from_static(bytes), &path, request.method());
+        }
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    let request_path = request.uri().path();
     let resolved = resolve_asset_path(base_dir, request_path).await;
 
     let canonical_base = match canonicalize_if_exists(base_dir).await {
@@ -127,24 +184,7 @@ pub async fn serve_web_request(State(state): State<AppState>, request: Request) 
     };
 
     match read_asset_file(&canonical_resolved).await {
-        Ok(bytes) => {
-            let content_type = guess_content_type(&canonical_resolved);
-            let cache_control = cache_control_for(&canonical_resolved);
-            let mut response = Response::new(if request.method() == Method::HEAD {
-                Body::empty()
-            } else {
-                Body::from(bytes)
-            });
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                header::HeaderValue::from_static(content_type),
-            );
-            response.headers_mut().insert(
-                header::CACHE_CONTROL,
-                header::HeaderValue::from_static(cache_control),
-            );
-            response
-        }
+        Ok(bytes) => web_asset_response(Bytes::from(bytes), &canonical_resolved, request.method()),
         Err(error) => {
             tracing::warn!(path = %resolved.display(), error = %error, "failed to serve web asset");
             StatusCode::NOT_FOUND.into_response()

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Download, GitFork, RefreshCw, Trash2 } from 'lucide-react'
 import { AppHeader } from '@/components/app-header'
@@ -38,9 +39,12 @@ function PluginAvatar({ ghUser, name, size = 44 }: { ghUser?: string; name: stri
       className="rounded-aurora-1 flex-shrink-0 overflow-hidden border border-[color-mix(in_srgb,var(--aurora-border-strong)_40%,transparent)] bg-aurora-panel-medium"
       style={style}
     >
-      <img
+      <Image
         src={`https://github.com/${ghUser}.png?size=96`}
         alt={ghUser}
+        width={size}
+        height={size}
+        unoptimized
         className="h-full w-full object-cover"
         onError={() => setImageFailed(true)}
       />

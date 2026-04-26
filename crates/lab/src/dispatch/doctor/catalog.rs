@@ -54,4 +54,11 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "stream<Finding>",
         params: &[],
     },
+    ActionSpec {
+        name: "auth.check",
+        description: "Check auth/OAuth configuration: env vars, file presence, and Unix file permissions",
+        destructive: false,
+        returns: "DoctorReport",
+        params: &[],
+    },
 ];

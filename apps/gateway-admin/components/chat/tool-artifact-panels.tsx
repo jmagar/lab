@@ -407,7 +407,12 @@ export function ToolPayloadPreview({
     return null
   }
 
-  const isTerminal = /(^\$ |^\x1b|\n\$ |\n> )/m.test(text)
+  const escapeCharacter = String.fromCharCode(27)
+  const isTerminal =
+    text.startsWith('$ ') ||
+    text.startsWith(escapeCharacter) ||
+    text.includes('\n$ ') ||
+    text.includes('\n> ')
   const looksLikeCode =
     preferredPath != null ||
     /(^\s*(function|const|let|class|export|import)\s)|([{};]\s*$)/m.test(text)

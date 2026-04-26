@@ -12,6 +12,7 @@ use std::future::Future;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -120,6 +121,15 @@ struct SyncPreview {
     entries: Vec<DeployPreviewEntry>,
 }
 
+#[derive(Debug)]
+enum FileDiff {
+    Unchanged,
+    Changed {
+        before_content: Option<String>,
+        after_content: Option<String>,
+    },
+}
+
 pub(super) fn sync_workspace_to_target(
     workspace: &Path,
     target: &Path,
@@ -221,7 +231,7 @@ fn sync_tree_to_target(
             continue;
         }
 
-        if files_match(&source, &dest)? {
+        if files_match_by_metadata_or_content(&source, &dest)? {
             skipped.push(rel);
             continue;
         }
@@ -318,18 +328,21 @@ fn preview_tree_sync(
             continue;
         }
 
-        if files_match(&source, &dest)? {
-            preview.skipped.push(rel);
-            continue;
+        match preview_file_diff(&source, &dest)? {
+            FileDiff::Unchanged => preview.skipped.push(rel),
+            FileDiff::Changed {
+                before_content,
+                after_content,
+            } => {
+                preview.changed.push(rel.clone());
+                preview.entries.push(DeployPreviewEntry {
+                    path: rel,
+                    status: "changed",
+                    before_content,
+                    after_content,
+                });
+            }
         }
-
-        preview.changed.push(rel.clone());
-        preview.entries.push(DeployPreviewEntry {
-            path: rel,
-            status: "changed",
-            before_content: read_text_if_present(&dest),
-            after_content: read_text_if_present(&source),
-        });
     }
 
     if let Ok(target_rd) = std::fs::read_dir(&current_target) {
@@ -361,14 +374,78 @@ fn preview_tree_sync(
     Ok(preview)
 }
 
-fn files_match(source: &Path, dest: &Path) -> Result<bool, ToolError> {
+fn files_match_by_metadata_or_content(source: &Path, dest: &Path) -> Result<bool, ToolError> {
     let source_meta = std::fs::metadata(source).map_err(io_internal)?;
     let Ok(dest_meta) = std::fs::metadata(dest) else {
         return Ok(false);
     };
-    if source_meta.len() != dest_meta.len() {
+    if !metadata_size_matches(&source_meta, &dest_meta) {
         return Ok(false);
     }
+    if metadata_fast_match(&source_meta, &dest_meta) {
+        return Ok(true);
+    }
+    files_match_by_content(source, dest)
+}
+
+fn preview_file_diff(source: &Path, dest: &Path) -> Result<FileDiff, ToolError> {
+    let source_meta = std::fs::metadata(source).map_err(io_internal)?;
+    let Ok(dest_meta) = std::fs::metadata(dest) else {
+        return Ok(FileDiff::Changed {
+            before_content: None,
+            after_content: read_text_if_present(source),
+        });
+    };
+
+    if metadata_size_matches(&source_meta, &dest_meta)
+        && metadata_fast_match(&source_meta, &dest_meta)
+    {
+        return Ok(FileDiff::Unchanged);
+    }
+
+    let source_bytes = std::fs::read(source).map_err(io_internal)?;
+    let dest_bytes = std::fs::read(dest).map_err(io_internal)?;
+    if source_bytes == dest_bytes {
+        return Ok(FileDiff::Unchanged);
+    }
+    Ok(FileDiff::Changed {
+        before_content: String::from_utf8(dest_bytes).ok(),
+        after_content: String::from_utf8(source_bytes).ok(),
+    })
+}
+
+fn metadata_size_matches(source_meta: &std::fs::Metadata, dest_meta: &std::fs::Metadata) -> bool {
+    source_meta.len() == dest_meta.len()
+}
+
+fn metadata_fast_match(source_meta: &std::fs::Metadata, dest_meta: &std::fs::Metadata) -> bool {
+    same_file_metadata(source_meta, dest_meta)
+        || matching_modified_time(source_meta.modified(), dest_meta.modified())
+}
+
+#[cfg(unix)]
+fn same_file_metadata(source_meta: &std::fs::Metadata, dest_meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    source_meta.dev() == dest_meta.dev() && source_meta.ino() == dest_meta.ino()
+}
+
+#[cfg(not(unix))]
+fn same_file_metadata(_source_meta: &std::fs::Metadata, _dest_meta: &std::fs::Metadata) -> bool {
+    false
+}
+
+fn matching_modified_time(
+    source_modified: std::io::Result<SystemTime>,
+    dest_modified: std::io::Result<SystemTime>,
+) -> bool {
+    matches!((source_modified, dest_modified), (Ok(source), Ok(dest)) if source == dest)
+}
+
+fn files_match_by_content(source: &Path, dest: &Path) -> Result<bool, ToolError> {
+    #[cfg(test)]
+    BYTE_COMPARE_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
     let source_file = std::fs::File::open(source).map_err(io_internal)?;
     let dest_file = std::fs::File::open(dest).map_err(io_internal)?;
     let mut source_reader = BufReader::new(source_file);
@@ -391,6 +468,9 @@ fn files_match(source: &Path, dest: &Path) -> Result<bool, ToolError> {
     }
 }
 
+#[cfg(test)]
+static BYTE_COMPARE_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn read_text_if_present(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
@@ -404,10 +484,7 @@ pub(crate) use super::dispatch::walk_artifacts;
 /// Docker footgun this helper was created to avoid. Callers that legitimately
 /// need a home-less path should pass one in explicitly.
 pub(crate) fn home_dir() -> Result<PathBuf, ToolError> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .ok_or_else(|| io_internal("HOME env var not set"))
+    crate::config::home_dir().ok_or_else(|| io_internal("HOME env var not set"))
 }
 
 /// Path to the Codex TOML config file (`~/.codex/config.toml`).
@@ -453,4 +530,51 @@ pub(super) fn test_plugins_home_override() -> Option<PathBuf> {
                 .and_then(Path::parent)
                 .map(Path::to_path_buf)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use tempfile::tempdir;
+
+    #[test]
+    fn preview_sync_uses_metadata_fast_path_without_byte_compare_when_files_are_same() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        let target = dir.path().join("target");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        let source = workspace.join("plugin.json");
+        let dest = target.join("plugin.json");
+        std::fs::write(&source, r#"{"name":"demo"}"#).unwrap();
+        std::fs::hard_link(&source, &dest).unwrap();
+
+        BYTE_COMPARE_CALLS.store(0, Ordering::SeqCst);
+        let preview = preview_workspace_sync(&workspace, &target).unwrap();
+
+        assert_eq!(preview.skipped, vec!["plugin.json"]);
+        assert!(preview.changed.is_empty());
+        assert_eq!(BYTE_COMPARE_CALLS.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn deploy_sync_uses_metadata_fast_path_without_byte_compare_when_files_are_same() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        let target = dir.path().join("target");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        let source = workspace.join("plugin.json");
+        let dest = target.join("plugin.json");
+        std::fs::write(&source, r#"{"name":"demo"}"#).unwrap();
+        std::fs::hard_link(&source, &dest).unwrap();
+
+        BYTE_COMPARE_CALLS.store(0, Ordering::SeqCst);
+        let result = sync_workspace_to_target(&workspace, &target).unwrap();
+
+        assert_eq!(result.skipped, vec!["plugin.json"]);
+        assert!(result.changed.is_empty());
+        assert_eq!(BYTE_COMPARE_CALLS.load(Ordering::SeqCst), 0);
+    }
 }

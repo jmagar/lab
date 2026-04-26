@@ -56,7 +56,7 @@ export const FileTree = ({
   return (
     <FileTreeContext.Provider value={{ expandedPaths, togglePath, selectedPath, onSelect }}>
       <div
-        className={cn("rounded-lg border bg-background font-mono text-sm", className)}
+        className={cn("rounded-lg border bg-aurora-bg font-mono text-sm", className)}
         role="tree"
         {...props}
       >
@@ -91,15 +91,15 @@ export const FileTreeFolder = ({
         <CollapsibleTrigger asChild>
           <button
             className={cn(
-              "flex w-full items-center gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50",
-              isSelected && "bg-muted",
+              "flex w-full items-center gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-aurora-panel-muted/50",
+              isSelected && "bg-aurora-panel-muted",
             )}
             onClick={() => onSelect?.(path)}
             type="button"
           >
             <ChevronRightIcon
               className={cn(
-                "size-4 shrink-0 text-muted-foreground transition-transform",
+                "size-4 shrink-0 text-aurora-text-muted transition-transform",
                 isExpanded && "rotate-90",
               )}
             />
@@ -149,8 +149,8 @@ export const FileTreeFile = ({
   return (
     <div
       className={cn(
-        "flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-muted/50",
-        isSelected && "bg-muted",
+        "flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-aurora-panel-muted/50",
+        isSelected && "bg-aurora-panel-muted",
         className,
       )}
       role="treeitem"
@@ -163,7 +163,7 @@ export const FileTreeFile = ({
         <>
           <span className="size-4" />
           <FileTreeIcon>
-            {icon ?? <FileIcon className="size-4 text-muted-foreground" />}
+            {icon ?? <FileIcon className="size-4 text-aurora-text-muted" />}
           </FileTreeIcon>
           <FileTreeName>{name}</FileTreeName>
         </>

@@ -166,7 +166,7 @@ export const StackTrace = memo(
       <StackTraceContext.Provider value={contextValue}>
         <div
           className={cn(
-            "not-prose w-full overflow-hidden rounded-lg border bg-background font-mono text-sm",
+            "not-prose w-full overflow-hidden rounded-lg border bg-aurora-bg font-mono text-sm",
             className,
           )}
           {...props}
@@ -188,7 +188,7 @@ export const StackTraceHeader = memo(({ className, children, ...props }: StackTr
       <CollapsibleTrigger asChild {...props}>
         <div
           className={cn(
-            "flex w-full cursor-pointer items-center gap-3 p-3 text-left transition-colors hover:bg-muted/50",
+            "flex w-full cursor-pointer items-center gap-3 p-3 text-left transition-colors hover:bg-aurora-panel-muted/50",
             className,
           )}
         >
@@ -227,7 +227,7 @@ export const StackTraceErrorMessage = memo(
   ({ className, children, ...props }: StackTraceErrorMessageProps) => {
     const { trace } = useStackTrace()
     return (
-      <span className={cn("truncate text-foreground", className)} {...props}>
+      <span className={cn("truncate text-aurora-text", className)} {...props}>
         {children ?? trace.errorMessage}
       </span>
     )
@@ -310,7 +310,7 @@ export const StackTraceExpandButton = memo(
       <div className={cn("flex size-7 items-center justify-center", className)} {...props}>
         <ChevronDownIcon
           className={cn(
-            "size-4 text-muted-foreground transition-transform",
+            "size-4 text-aurora-text-muted transition-transform",
             isOpen ? "rotate-180" : "rotate-0",
           )}
         />
@@ -329,7 +329,7 @@ export const StackTraceContent = memo(
     return (
       <Collapsible open={isOpen}>
         <CollapsibleContent
-          className={cn("overflow-auto border-t bg-muted/30", className)}
+          className={cn("overflow-auto border-t bg-aurora-panel-muted/30", className)}
           style={{ maxHeight }}
           {...props}
         >
@@ -355,19 +355,19 @@ export const StackTraceFrames = memo(
           <div
             className={cn(
               "text-xs",
-              frame.isInternal ? "text-muted-foreground/50" : "text-foreground/90",
+              frame.isInternal ? "text-aurora-text-muted/50" : "text-aurora-text/90",
             )}
             key={`${frame.raw}-${index}`}
           >
-            <span className="text-muted-foreground">at </span>
+            <span className="text-aurora-text-muted">at </span>
             {frame.functionName && (
-              <span className={frame.isInternal ? "" : "text-foreground"}>
+              <span className={frame.isInternal ? "" : "text-aurora-text"}>
                 {frame.functionName}{" "}
               </span>
             )}
             {frame.filePath && (
               <>
-                <span className="text-muted-foreground">(</span>
+                <span className="text-aurora-text-muted">(</span>
                 <button
                   className={cn(
                     "underline decoration-dotted hover:text-primary",
@@ -388,7 +388,7 @@ export const StackTraceFrames = memo(
                   {frame.lineNumber !== null && `:${frame.lineNumber}`}
                   {frame.columnNumber !== null && `:${frame.columnNumber}`}
                 </button>
-                <span className="text-muted-foreground">)</span>
+                <span className="text-aurora-text-muted">)</span>
               </>
             )}
             {!(frame.filePath || frame.functionName) && (
@@ -397,7 +397,7 @@ export const StackTraceFrames = memo(
           </div>
         ))}
         {framesToShow.length === 0 && (
-          <div className="text-muted-foreground text-xs">No stack frames</div>
+          <div className="text-aurora-text-muted text-xs">No stack frames</div>
         )}
       </div>
     )

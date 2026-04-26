@@ -23,18 +23,33 @@ const ALLOWED_RUNTIME_HINTS: &[&str] = &[
     "npx", "uvx", "docker", "dnx", "pipx", "node", "python", "python3", "deno",
 ];
 
-/// Argv flags that can execute arbitrary code strings when passed to any allowed runtime.
-/// These are blocked regardless of which runtimeHint is used.
-const DANGEROUS_ARGV_FLAGS: &[&str] = &[
-    "--eval",    // node, deno: evaluate a JS string
-    "-e",        // node: short for --eval
-    "--exec",    // various
-    "--stdin",   // node: read script from stdin
-    "-c",        // python/shell: execute a command string
-    "--require", // node: pre-require a module before the main script
-    "-r",        // node: short for --require
-    "--import",  // node 20+: unconditional ES module import before script
+/// Environment variables that registry-provided packages may not write.
+const DENIED_ENV_NAMES: &[&str] = &[
+    "PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "HOME",
+    "SHELL",
+    "IFS",
+    "USER",
+    "PWD",
 ];
+
+/// Docker flags that grant broad host access.
+const DANGEROUS_DOCKER_FLAGS: &[&str] = &[
+    "--privileged",
+    "--cap-add",
+    "--volume",
+    "-v",
+    "--device",
+    "--network",
+    "--pid",
+    "--ipc",
+];
+
+/// Node-family flags that can preload/evaluate arbitrary code or expose debug surfaces.
+const DANGEROUS_NODE_FLAGS: &[&str] =
+    &["--inspect", "--require", "-r", "--experimental", "--allow"];
 
 /// Validate a `runtimeHint` string against the static allowlist.
 ///
@@ -44,7 +59,7 @@ pub fn validate_runtime_hint(hint: &str) -> Result<(), ToolError> {
         Ok(())
     } else {
         Err(ToolError::Sdk {
-            sdk_kind: "invalid_param".to_string(),
+            sdk_kind: "unsupported_runtime_hint".to_string(),
             message: format!(
                 "runtimeHint '{hint}' is not in the allowed list; must be one of: {}",
                 ALLOWED_RUNTIME_HINTS.join(", ")
@@ -53,22 +68,42 @@ pub fn validate_runtime_hint(hint: &str) -> Result<(), ToolError> {
     }
 }
 
-/// Validate that none of the argv strings is a dangerous code-execution flag.
-///
-/// Checks both exact matches and `--flag=value` prefix forms.
-pub fn validate_stdio_argv(args: &[String]) -> Result<(), ToolError> {
+/// Validate that none of the argv strings violates runtime-specific security policy.
+pub fn validate_stdio_argv(runtime_hint: &str, args: &[String]) -> Result<(), ToolError> {
     for arg in args {
-        let normalized = arg.split('=').next().unwrap_or(arg);
-        if DANGEROUS_ARGV_FLAGS.contains(&normalized) {
+        if arg.contains('\n') || arg.contains('\r') || arg.contains('\0') {
             return Err(ToolError::Sdk {
                 sdk_kind: "invalid_param".to_string(),
-                message: format!(
-                    "argv flag '{arg}' is not allowed — it can execute arbitrary code"
-                ),
+                message: "argv values must not contain newline, carriage return, or null bytes"
+                    .to_string(),
             });
         }
+        validate_runtime_argv_flag(runtime_hint, arg)?;
     }
     Ok(())
+}
+
+fn validate_runtime_argv_flag(runtime_hint: &str, arg: &str) -> Result<(), ToolError> {
+    let flag = arg.split('=').next().unwrap_or(arg);
+    let denied = match runtime_hint {
+        "docker" => {
+            DANGEROUS_DOCKER_FLAGS.contains(&flag)
+                || matches!(arg, "--network=host" | "--pid=host" | "--ipc=host")
+        }
+        "node" | "npx" => DANGEROUS_NODE_FLAGS
+            .iter()
+            .any(|prefix| flag == *prefix || flag.starts_with(*prefix)),
+        _ => false,
+    };
+
+    if denied {
+        Err(ToolError::Sdk {
+            sdk_kind: "invalid_param".to_string(),
+            message: format!("argv flag '{arg}' is not allowed for runtimeHint '{runtime_hint}'"),
+        })
+    } else {
+        Ok(())
+    }
 }
 
 /// Validate an environment variable name: must match `^[A-Z][A-Z0-9_]*$`.
@@ -79,22 +114,28 @@ pub fn validate_env_var_name(name: &str) -> Result<(), ToolError> {
             .chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
 
-    if valid {
+    let denied = DENIED_ENV_NAMES.contains(&name) || name.starts_with("LAB_");
+
+    if valid && !denied {
         Ok(())
     } else {
         Err(ToolError::Sdk {
             sdk_kind: "invalid_param".to_string(),
-            message: format!("env var name '{name}' is invalid; must match ^[A-Z][A-Z0-9_]*$"),
+            message: format!(
+                "env var name '{name}' is invalid; must match ^[A-Z][A-Z0-9_]*$ and must not be a protected process or LAB_* variable"
+            ),
         })
     }
 }
 
-/// Validate an environment variable value: must not contain embedded newlines.
+/// Validate an environment variable value: must not contain embedded control separators.
 pub fn validate_env_value(key: &str, value: &str) -> Result<(), ToolError> {
-    if value.contains('\n') || value.contains('\r') {
+    if value.contains('\n') || value.contains('\r') || value.contains('\0') {
         Err(ToolError::Sdk {
             sdk_kind: "invalid_param".to_string(),
-            message: format!("env var '{key}' value must not contain newlines"),
+            message: format!(
+                "env var '{key}' value must not contain newline, carriage return, or null bytes"
+            ),
         })
     } else {
         Ok(())
@@ -401,5 +442,53 @@ pub fn require_name(params: &Value) -> Result<String, ToolError> {
             message: "missing required parameter `name`".to_string(),
             param: "name".to_string(),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_hint_rejects_unrecognized_commands() {
+        let err = validate_runtime_hint("/tmp/evil").unwrap_err();
+
+        assert_eq!(err.kind(), "unsupported_runtime_hint");
+    }
+
+    #[test]
+    fn stdio_argv_rejects_docker_privileged_flag() {
+        let err = validate_stdio_argv("docker", &["--privileged".to_string()]).unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn stdio_argv_rejects_node_inspect_prefix() {
+        let err = validate_stdio_argv("npx", &["--inspect=0.0.0.0:9229".to_string()]).unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn stdio_argv_rejects_control_characters() {
+        let err = validate_stdio_argv("uvx", &["safe\nunsafe".to_string()]).unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[test]
+    fn env_var_name_rejects_process_and_lab_names() {
+        for name in ["PATH", "LD_PRELOAD", "LAB_TOKEN", "foo bar"] {
+            let err = validate_env_var_name(name).unwrap_err();
+            assert_eq!(err.kind(), "invalid_param", "{name}");
+        }
+    }
+
+    #[test]
+    fn env_value_rejects_null_bytes() {
+        let err = validate_env_value("TOKEN", "abc\0def").unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_param");
     }
 }

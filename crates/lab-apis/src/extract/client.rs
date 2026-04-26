@@ -1024,7 +1024,7 @@ mod tests {
         );
         host.files.insert(
             PathBuf::from("/srv/appdata/radarr/config.xml"),
-            br#"<Config><Port>7878</Port><BindAddress>*</BindAddress><UrlBase>/radarr</UrlBase><EnableSsl>False</EnableSsl><ApiKey>secret-key</ApiKey></Config>"#.to_vec(),
+            br"<Config><Port>7878</Port><BindAddress>*</BindAddress><UrlBase>/radarr</UrlBase><EnableSsl>False</EnableSsl><ApiKey>secret-key</ApiKey></Config>".to_vec(),
         );
 
         let report = client
@@ -1079,7 +1079,7 @@ mod tests {
         );
         host.files.insert(
             PathBuf::from("/srv/appdata/radarr/config.xml"),
-            br#"<Config><Port>7878</Port><BindAddress>*</BindAddress><EnableSsl>True</EnableSsl><UrlBase>/radarr</UrlBase><ApiKey>secret-key</ApiKey></Config>"#.to_vec(),
+            br"<Config><Port>7878</Port><BindAddress>*</BindAddress><EnableSsl>True</EnableSsl><UrlBase>/radarr</UrlBase><ApiKey>secret-key</ApiKey></Config>".to_vec(),
         );
 
         // Filesystem scan finds the config file and returns the cred even though
@@ -1185,7 +1185,7 @@ mod tests {
         );
         host.files.insert(
             PathBuf::from("/srv/appdata/radarr/config.xml"),
-            br#"<Config><Port>7878</Port><BindAddress>*</BindAddress><UrlBase>/radarr</UrlBase><EnableSsl>True</EnableSsl><ApiKey>secret-key</ApiKey></Config>"#.to_vec(),
+            br"<Config><Port>7878</Port><BindAddress>*</BindAddress><UrlBase>/radarr</UrlBase><EnableSsl>True</EnableSsl><ApiKey>secret-key</ApiKey></Config>".to_vec(),
         );
 
         let probed = Arc::new(Mutex::new(Vec::new()));
