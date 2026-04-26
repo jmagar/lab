@@ -200,6 +200,11 @@ pub struct StashComponent {
     pub workspace_root: PathBuf,
     /// Whether the workspace root is a file or a directory.
     pub workspace_shape: StashWorkspaceShape,
+    /// Unix permission bits for `BinFile` components only.
+    ///
+    /// Stored as `mode & 0o0755` (execute bits only; setuid/setgid/sticky
+    /// always stripped). `None` for non-`BinFile` components.
+    pub unix_mode: Option<u32>,
     /// ISO-8601 creation timestamp.
     pub created_at: String,
     /// ISO-8601 last-updated timestamp.
