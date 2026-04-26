@@ -25,6 +25,7 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 | `LAB_AUTH_SQLITE_PATH` | no | Override path for the SQLite auth database. |
 | `LAB_AUTH_KEY_PATH` | no | Override path for the persisted JWT signing key. |
 | `LAB_AUTH_ALLOWED_REDIRECT_URIS` | no | Comma-separated redirect URI patterns allowed for dynamic client registration in addition to loopback callbacks. |
+| `LAB_AUTH_ALLOWED_EMAILS` | no | Comma-separated list of Google email addresses permitted to log in. Entries are normalized to lowercase at startup. When empty (the default), any Google account that completes the OAuth flow is allowed. When set, the `email_verified` claim in Google's id_token is also enforced — accounts with unverified email addresses are rejected even if their address is in the list. |
 | `LAB_GOOGLE_CALLBACK_PATH` | no | Callback path appended to `LAB_PUBLIC_URL`. Defaults to `/auth/google/callback`. |
 | `LAB_GOOGLE_SCOPES` | no | Comma-separated Google scopes. Defaults to `openid,email,profile`. |
 | `LAB_AUTH_REGISTER_REQUESTS_PER_MINUTE` | no | Process-local rate limit for `POST /register`. Defaults to `20`. |
