@@ -5,7 +5,7 @@ use axum::{Json, response::Response};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sha2::{Digest, Sha256};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::error::AuthError;
 use crate::google::AuthorizeUrlRequest;
@@ -35,29 +35,31 @@ fn check_email_allowlist(
         return Ok(());
     }
     if email_verified != Some(true) {
-        error!("browser login rejected: google did not return a verified email address");
+        warn!("oauth callback rejected: google did not return a verified email address");
         return Err(AuthError::AuthFailed(
             "google did not return a verified email address".to_string(),
         ));
     }
-    match email {
-        Some(e) if allowed_emails.iter().any(|a| a.eq_ignore_ascii_case(e)) => Ok(()),
-        Some(e) => {
-            warn!(
-                email_id = %fingerprint(e),
-                "browser login rejected: email not in allowed list"
-            );
-            Err(AuthError::AuthFailed(
-                "google account is not permitted to access this gateway".to_string(),
-            ))
-        }
-        None => {
-            error!("browser login rejected: google did not return an email address");
-            Err(AuthError::AuthFailed(
-                "google did not return an email address".to_string(),
-            ))
-        }
+    let Some(e) = email else {
+        warn!("oauth callback rejected: google did not return an email address");
+        return Err(AuthError::AuthFailed(
+            "google did not return an email address".to_string(),
+        ));
+    };
+    let trimmed = e.trim();
+    if allowed_emails
+        .iter()
+        .any(|a| a.eq_ignore_ascii_case(trimmed))
+    {
+        return Ok(());
     }
+    warn!(
+        email_id = %fingerprint(trimmed),
+        "oauth callback rejected: email not in allowed list"
+    );
+    Err(AuthError::AuthFailed(
+        "google account is not permitted to access this gateway".to_string(),
+    ))
 }
 
 pub async fn browser_login(
@@ -319,8 +321,10 @@ pub async fn callback(
     )
     .is_err()
     {
-        let mut redirect_target = reqwest::Url::parse(&request.redirect_uri).map_err(|error| {
-            AuthError::Server(format!("failed to parse registered redirect_uri: {error}"))
+        let mut redirect_target = url::Url::parse(&request.redirect_uri).map_err(|error| {
+            // Unreachable in practice: redirect_uri was validated against the
+            // client's registered URIs before being stored.
+            AuthError::Config(format!("failed to parse registered redirect_uri: {error}"))
         })?;
         redirect_target
             .query_pairs_mut()
@@ -333,6 +337,7 @@ pub async fn callback(
         warn!(
             client_id = %request.client_id,
             oauth_state_id = %oauth_state_id,
+            email_id = google.email.as_deref().map(fingerprint),
             "oauth callback: email not in allowlist, redirecting client with access_denied"
         );
         return Ok(Redirect::to(redirect_target.as_str()).into_response());

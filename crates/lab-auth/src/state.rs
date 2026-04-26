@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use tracing::{info, warn};
+use tracing::info;
 use url::Url;
 
 use crate::config::{AuthConfig, AuthMode};
@@ -99,14 +99,6 @@ impl AuthState {
             google_scopes = ?config.google.scopes,
             "lab-auth state initialized"
         );
-
-        if config.allowed_emails_was_empty {
-            warn!(
-                env_var = "LAB_AUTH_ALLOWED_EMAILS",
-                "allowed_emails env var is set but resolved to an empty list — \
-                 all Google accounts are permitted. Check for typos or whitespace-only values."
-            );
-        }
 
         let authorize_limiter = RateLimiter::new(config.authorize_requests_per_minute);
         let register_limiter = RateLimiter::new(config.register_requests_per_minute);
@@ -212,7 +204,6 @@ mod tests {
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
             allowed_emails: Vec::new(),
-            allowed_emails_was_empty: false,
             google: GoogleConfig {
                 client_id: "client-id".to_string(),
                 client_secret: "client-secret".to_string(),

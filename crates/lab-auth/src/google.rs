@@ -589,25 +589,8 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::{
-        AuthorizeUrlRequest, CachedGoogleJwks, GoogleExchange, GoogleJwk, GoogleJwks,
-        GoogleProvider,
+        AuthorizeUrlRequest, CachedGoogleJwks, GoogleJwk, GoogleJwks, GoogleProvider,
     };
-
-    #[tokio::test]
-    async fn google_exchange_exposes_email_verified_claim() {
-        // GoogleExchange must carry the `email_verified` claim through from the id_token
-        // so the email allowlist can refuse unverified emails.
-        let exchange = GoogleExchange {
-            subject: "sub".to_string(),
-            email: Some("user@example.com".to_string()),
-            email_verified: Some(false),
-            access_token: "tok".to_string(),
-            refresh_token: None,
-            expires_in: None,
-            id_token: "id".to_string(),
-        };
-        assert_eq!(exchange.email_verified, Some(false));
-    }
 
     #[test]
     fn google_authorize_url_includes_offline_access_prompt_and_pkce() {

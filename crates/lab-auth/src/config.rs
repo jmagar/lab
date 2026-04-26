@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use url::Url;
 
 use crate::error::AuthError;
@@ -79,10 +80,6 @@ pub struct AuthConfig {
     pub bootstrap_secret: Option<String>,
     pub allowed_client_redirect_uris: Vec<String>,
     pub allowed_emails: Vec<String>,
-    /// True when `LAB_AUTH_ALLOWED_EMAILS` was provided but parsed to an empty
-    /// list (whitespace/comma-only). Used to surface a startup warning since an
-    /// empty allowlist means "no restriction".
-    pub allowed_emails_was_empty: bool,
     pub google: GoogleConfig,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
@@ -103,7 +100,6 @@ impl Default for AuthConfig {
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
             allowed_emails: Vec::new(),
-            allowed_emails_was_empty: false,
             google: GoogleConfig::default(),
             access_token_ttl: Duration::from_secs(DEFAULT_ACCESS_TOKEN_TTL_SECS),
             refresh_token_ttl: Duration::from_secs(DEFAULT_REFRESH_TOKEN_TTL_SECS),
@@ -121,6 +117,19 @@ impl AuthConfig {
     ) -> Result<Self, AuthError> {
         let vars = normalize(vars);
         let mode = AuthMode::parse(vars.get("LAB_AUTH_MODE").map(String::as_str))?;
+        let raw_allowed_emails = vars.get("LAB_AUTH_ALLOWED_EMAILS").cloned();
+        let allowed_emails: Vec<String> = read_csv(&vars, "LAB_AUTH_ALLOWED_EMAILS")
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| e.to_ascii_lowercase())
+            .collect();
+        if raw_allowed_emails.is_some() && allowed_emails.is_empty() {
+            warn!(
+                env_var = "LAB_AUTH_ALLOWED_EMAILS",
+                "allowed_emails env var is set but resolved to an empty list — \
+                 all Google accounts are permitted. Check for typos or whitespace-only values."
+            );
+        }
         let config = Self {
             mode,
             public_url: read_url(&vars, "LAB_PUBLIC_URL")?,
@@ -131,17 +140,7 @@ impl AuthConfig {
             bootstrap_secret: read_string(&vars, "LAB_AUTH_BOOTSTRAP_SECRET"),
             allowed_client_redirect_uris: read_csv(&vars, "LAB_AUTH_ALLOWED_REDIRECT_URIS")
                 .unwrap_or_default(),
-            allowed_emails: read_csv(&vars, "LAB_AUTH_ALLOWED_EMAILS")
-                .unwrap_or_default()
-                .into_iter()
-                .map(|e| e.to_ascii_lowercase())
-                .collect(),
-            allowed_emails_was_empty: matches!(
-                vars.get("LAB_AUTH_ALLOWED_EMAILS"),
-                Some(raw) if !raw.is_empty()
-            ) && read_csv(&vars, "LAB_AUTH_ALLOWED_EMAILS")
-                .unwrap_or_default()
-                .is_empty(),
+            allowed_emails,
             google: GoogleConfig {
                 client_id: read_string(&vars, "LAB_GOOGLE_CLIENT_ID").unwrap_or_default(),
                 client_secret: read_string(&vars, "LAB_GOOGLE_CLIENT_SECRET").unwrap_or_default(),
