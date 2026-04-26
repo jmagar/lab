@@ -32,6 +32,7 @@ import {
   AURORA_MUTED_LABEL,
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
+  AURORA_STAT_PANEL,
   AURORA_STRONG_PANEL,
   pillTone,
 } from '@/components/aurora/tokens'
@@ -59,7 +60,7 @@ import {
   type MarketplaceInstallFacet,
   type MarketplaceSort,
 } from './marketplace-state'
-import { AURORA_GATEWAY_STAT, gatewayActionTone } from '@/components/gateway/gateway-theme'
+import { gatewayActionTone } from '@/components/gateway/gateway-theme'
 import { AddMarketplaceModal } from './add-marketplace-modal'
 import { AcpAgentInstallModal } from './acp-agent-install-modal'
 import { CherryPickDialog } from './cherry-pick-dialog'
@@ -118,42 +119,34 @@ function toggleValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
 }
 
+const KIND_META: Record<MarketplaceCatalogKind, { label: string; icon: ReactNode }> = {
+  plugin:       { label: 'Plugin',       icon: <Boxes className="size-4" /> },
+  mcp_server:   { label: 'MCP server',   icon: <Server className="size-4" /> },
+  lsp_server:   { label: 'LSP server',   icon: <Code2 className="size-4" /> },
+  acp_agent:    { label: 'ACP agent',    icon: <Bot className="size-4" /> },
+  agent:        { label: 'Agent',        icon: <Bot className="size-4" /> },
+  skill:        { label: 'Skill',        icon: <Sparkles className="size-4" /> },
+  command:      { label: 'Command',      icon: <TerminalSquare className="size-4" /> },
+  app:          { label: 'App',          icon: <Code2 className="size-4" /> },
+  hook:         { label: 'Hook',         icon: <Hammer className="size-4" /> },
+  channel:      { label: 'Channel',      icon: <TerminalSquare className="size-4" /> },
+  executable:   { label: 'Executable',   icon: <TerminalSquare className="size-4" /> },
+  theme:        { label: 'Theme',        icon: <FileCode2 className="size-4" /> },
+  asset:        { label: 'Asset',        icon: <FileCode2 className="size-4" /> },
+  file:         { label: 'File',         icon: <FileCode2 className="size-4" /> },
+  config:       { label: 'Config',       icon: <FileCode2 className="size-4" /> },
+  settings:     { label: 'Settings',     icon: <FileCode2 className="size-4" /> },
+  monitor:      { label: 'Monitor',      icon: <FileCode2 className="size-4" /> },
+  output_style: { label: 'Output style', icon: <FileCode2 className="size-4" /> },
+  source:       { label: 'Source',       icon: <ShoppingBag className="size-4" /> },
+}
+
 function kindLabel(kind: MarketplaceCatalogKind): string {
-  if (kind === 'mcp_server') return 'MCP server'
-  if (kind === 'lsp_server') return 'LSP server'
-  if (kind === 'acp_agent') return 'ACP agent'
-  if (kind === 'agent') return 'Agent'
-  if (kind === 'skill') return 'Skill'
-  if (kind === 'command') return 'Command'
-  if (kind === 'app') return 'App'
-  if (kind === 'hook') return 'Hook'
-  if (kind === 'channel') return 'Channel'
-  if (kind === 'executable') return 'Executable'
-  if (kind === 'theme') return 'Theme'
-  if (kind === 'asset') return 'Asset'
-  if (kind === 'file') return 'File'
-  if (kind === 'config') return 'Config'
-  if (kind === 'settings') return 'Settings'
-  if (kind === 'monitor') return 'Monitor'
-  if (kind === 'output_style') return 'Output style'
-  if (kind === 'source') return 'Source'
-  return 'Plugin'
+  return KIND_META[kind].label
 }
 
 function kindIcon(kind: MarketplaceCatalogKind): ReactNode {
-  if (kind === 'mcp_server') return <Server className="size-4" />
-  if (kind === 'lsp_server') return <Code2 className="size-4" />
-  if (kind === 'acp_agent') return <Bot className="size-4" />
-  if (kind === 'agent') return <Bot className="size-4" />
-  if (kind === 'skill') return <Sparkles className="size-4" />
-  if (kind === 'command') return <TerminalSquare className="size-4" />
-  if (kind === 'app') return <Code2 className="size-4" />
-  if (kind === 'hook') return <Hammer className="size-4" />
-  if (kind === 'channel') return <TerminalSquare className="size-4" />
-  if (kind === 'executable') return <TerminalSquare className="size-4" />
-  if (kind === 'asset' || kind === 'file' || kind === 'config' || kind === 'settings' || kind === 'monitor' || kind === 'theme' || kind === 'output_style') return <FileCode2 className="size-4" />
-  if (kind === 'source') return <ShoppingBag className="size-4" />
-  return <Boxes className="size-4" />
+  return KIND_META[kind].icon
 }
 
 function itemInitials(name: string): string {
@@ -382,7 +375,7 @@ function LensCard({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        AURORA_GATEWAY_STAT,
+        AURORA_STAT_PANEL,
         'cursor-pointer text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
         !active && 'bg-aurora-panel/72 hover:border-aurora-accent-primary/28 hover:bg-aurora-hover-bg hover:shadow-[0_0_0_1px_rgba(87,190,255,0.08)]',
         active && 'border-aurora-accent-primary/40 bg-aurora-accent-primary/8 shadow-[inset_0_0_0_1px_rgba(87,190,255,0.12)]',

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::path::Path;
 
 use lab_apis::marketplace::{PluginComponent, PluginComponentKind, PluginManifestSummary};
@@ -84,6 +82,9 @@ pub fn components_from_manifest_and_layout(
 }
 
 fn collect_components_from_value(manifest: &Value, out: &mut Vec<PluginComponent>) {
+    // Manifests may use camelCase (Claude Code convention) or snake_case
+    // (generic ecosystem convention). Both are collected; dedup in the caller
+    // removes duplicates from manifests that include both spellings.
     if let Some(obj) = manifest.as_object() {
         collect_component_array(obj, "skills", PluginComponentKind::Skills, out);
         collect_component_array(obj, "apps", PluginComponentKind::Apps, out);
