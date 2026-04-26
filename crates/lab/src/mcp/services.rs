@@ -8,6 +8,8 @@
 #[cfg(feature = "deploy")]
 pub mod deploy;
 
+pub mod stash;
+
 // Device enrollment actions are MCP-only for now and live outside the shared
 // service-dispatch pattern.
 pub mod nodes;

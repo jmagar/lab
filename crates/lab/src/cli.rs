@@ -21,6 +21,7 @@ pub mod params;
 pub mod plugins;
 pub mod scaffold;
 pub mod serve;
+pub mod stash;
 
 #[cfg(feature = "apprise")]
 pub mod apprise;
@@ -139,6 +140,8 @@ pub enum Command {
     Logs(logs::LogsArgs),
     /// Claude plugin marketplace manager.
     Marketplace(marketplace::MarketplaceArgs),
+    /// Component versioning and deployment.
+    Stash(stash::StashArgs),
     /// Radarr movie collection manager.
     #[cfg(feature = "radarr")]
     Radarr(radarr::RadarrArgs),
@@ -230,6 +233,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Oauth(args) => oauth::run(args, &config).await,
         Command::Logs(args) => logs::run(args, format, &config).await,
         Command::Marketplace(args) => marketplace::run(args, format).await,
+        Command::Stash(args) => stash::run(args, format).await,
         #[cfg(feature = "radarr")]
         Command::Radarr(args) => radarr::run(args, format).await,
         #[cfg(feature = "sonarr")]
