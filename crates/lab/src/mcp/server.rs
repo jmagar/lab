@@ -1017,7 +1017,10 @@ impl ServerHandler for LabMcpServer {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let top_k = args.get("top_k").and_then(Value::as_u64).unwrap_or(10) as usize;
+            let requested_top_k = args
+                .get("top_k")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize);
             let include_schema = args
                 .get("include_schema")
                 .and_then(Value::as_bool)
@@ -1032,6 +1035,10 @@ impl ServerHandler for LabMcpServer {
                 return Ok(CallToolResult::error(vec![Content::text(
                     envelope.to_string(),
                 )]));
+            };
+            let top_k = match requested_top_k {
+                Some(value) => value,
+                None => manager.tool_search_config().await.top_k_default,
             };
             return match manager.search_tools(&query, top_k, include_schema).await {
                 Ok(results) => Ok(CallToolResult::success(vec![Content::text(

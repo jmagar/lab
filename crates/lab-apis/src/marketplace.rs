@@ -1,4 +1,4 @@
-//! Marketplace: browse and manage Claude Code plugins.
+//! Marketplace: browse and manage plugin, MCP Registry, and ACP Registry entries.
 //!
 //! `marketplace` is a synthetic service — it has the same module shape as a
 //! real API client but its "client" is the local filesystem plus (optionally)
@@ -22,7 +22,7 @@ use crate::core::plugin::{Category, PluginMeta};
 pub const META: PluginMeta = PluginMeta {
     name: "marketplace",
     display_name: "Marketplace",
-    description: "Browse and install Claude Code plugins from configured marketplaces",
+    description: "Browse Claude Code/Codex marketplaces, MCP Registry servers, ACP agents, and installable components",
     category: Category::Marketplace,
     docs_url: "",
     required_env: &[],

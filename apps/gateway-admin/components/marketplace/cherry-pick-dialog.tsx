@@ -42,6 +42,13 @@ const COMPONENT_GROUPS: Array<{
   { key: 'hooks', label: 'Hooks' },
   { key: 'apps', label: 'Apps' },
   { key: 'mcp_servers', label: 'MCP Servers' },
+  { key: 'lsp_servers', label: 'LSP Servers' },
+  { key: 'monitors', label: 'Monitors' },
+  { key: 'channels', label: 'Channels' },
+  { key: 'output_styles', label: 'Output Styles' },
+  { key: 'themes', label: 'Themes' },
+  { key: 'bin', label: 'Executables' },
+  { key: 'settings', label: 'Settings' },
   { key: 'assets', label: 'Assets' },
   { key: 'files', label: 'Config Files' },
 ]

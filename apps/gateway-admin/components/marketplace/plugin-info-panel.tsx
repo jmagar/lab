@@ -1,6 +1,6 @@
 'use client'
 
-import { Bot, Terminal, Zap, Link2, Cpu, FileText } from 'lucide-react'
+import { Bot, Brush, Cpu, FileJson, FileText, Link2, Palette, Radio, Settings, Terminal, Zap } from 'lucide-react'
 import type { Plugin, Artifact } from '@/lib/types/marketplace'
 
 interface PluginInfoPanelProps {
@@ -58,6 +58,14 @@ function CountChip({ value, label }: { value: number; label: string }) {
     skills: <Zap className="size-3.5" />,
     hook: <Link2 className="size-3.5" />,
     hooks: <Link2 className="size-3.5" />,
+    mcp: <Cpu className="size-3.5" />,
+    lsp: <FileText className="size-3.5" />,
+    monitor: <Radio className="size-3.5" />,
+    executable: <Terminal className="size-3.5" />,
+    settings: <Settings className="size-3.5" />,
+    'output style': <Brush className="size-3.5" />,
+    theme: <Palette className="size-3.5" />,
+    channel: <FileJson className="size-3.5" />,
   }[label]
 
   return (
@@ -94,6 +102,12 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
   hook: <Link2 className="w-4 h-4" />,
   mcp: <Cpu className="w-4 h-4" />,
   lsp: <FileText className="w-4 h-4" />,
+  monitor: <Radio className="w-4 h-4" />,
+  executable: <Terminal className="w-4 h-4" />,
+  settings: <Settings className="w-4 h-4" />,
+  'output style': <Brush className="w-4 h-4" />,
+  theme: <Palette className="w-4 h-4" />,
+  channel: <FileJson className="w-4 h-4" />,
 }
 
 export function PluginInfoPanel({ plugin, artifacts }: PluginInfoPanelProps) {
@@ -101,7 +115,15 @@ export function PluginInfoPanel({ plugin, artifacts }: PluginInfoPanelProps) {
   const commands = artifacts.filter(a => a.path.startsWith('commands/')).map(a => ({ name: a.path.split('/').pop()!.replace(/\.md$/, ''), type: 'command' }))
   const skills   = artifacts.filter(a => a.path.startsWith('skills/')).map(a => ({ name: a.path.split('/').pop()!.replace(/\.md$/, ''), type: 'skill' }))
   const hooks    = artifacts.filter(a => a.path.startsWith('hooks/')).map(a => ({ name: a.path.split('/').pop()!, type: 'hook' }))
-  const included = [...agents, ...commands, ...skills, ...hooks]
+  const mcpServers = artifacts.filter(a => a.path === '.mcp.json').map(() => ({ name: '.mcp.json', type: 'mcp' }))
+  const lspServers = artifacts.filter(a => a.path === '.lsp.json').map(() => ({ name: '.lsp.json', type: 'lsp' }))
+  const monitors = artifacts.filter(a => a.path.startsWith('monitors/')).map(a => ({ name: a.path.split('/').pop()!, type: 'monitor' }))
+  const executables = artifacts.filter(a => a.path.startsWith('bin/')).map(a => ({ name: a.path.split('/').pop()!, type: 'executable' }))
+  const settings = artifacts.filter(a => a.path === 'settings.json').map(() => ({ name: 'settings.json', type: 'settings' }))
+  const outputStyles = artifacts.filter(a => a.path.startsWith('output-styles/')).map(a => ({ name: a.path.split('/').pop()!.replace(/\.md$/, ''), type: 'output style' }))
+  const themes = artifacts.filter(a => a.path.startsWith('themes/')).map(a => ({ name: a.path.split('/').pop()!, type: 'theme' }))
+  const channels = artifacts.filter(a => a.path === 'channels.json').map(() => ({ name: 'channels.json', type: 'channel' }))
+  const included = [...agents, ...commands, ...skills, ...hooks, ...mcpServers, ...lspServers, ...monitors, ...executables, ...settings, ...outputStyles, ...themes, ...channels]
 
   const readme = artifacts.find(a => a.path === 'README.md')
 
@@ -115,6 +137,14 @@ export function PluginInfoPanel({ plugin, artifacts }: PluginInfoPanelProps) {
           <CountChip value={commands.length} label={commands.length === 1 ? 'command' : 'commands'} />
           <CountChip value={skills.length} label={skills.length === 1 ? 'skill' : 'skills'} />
           <CountChip value={hooks.length} label={hooks.length === 1 ? 'hook' : 'hooks'} />
+          <CountChip value={mcpServers.length} label="mcp" />
+          <CountChip value={lspServers.length} label="lsp" />
+          <CountChip value={monitors.length} label="monitor" />
+          <CountChip value={executables.length} label="executable" />
+          <CountChip value={settings.length} label="settings" />
+          <CountChip value={outputStyles.length} label="output style" />
+          <CountChip value={themes.length} label="theme" />
+          <CountChip value={channels.length} label="channel" />
         </div>
       )}
 

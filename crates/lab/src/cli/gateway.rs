@@ -32,6 +32,7 @@ pub enum GatewayCommand {
     Update(GatewayUpdateArgs),
     Remove(GatewayRemoveArgs),
     Quarantine(GatewayQuarantineArgs),
+    ToolSearch(GatewayToolSearchArgs),
     Reload,
     Mcp(GatewayMcpArgs),
 }
@@ -100,6 +101,27 @@ pub enum GatewayQuarantineCommand {
 #[derive(Debug, Args)]
 pub struct GatewayQuarantineRestoreArgs {
     pub id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayToolSearchArgs {
+    #[command(subcommand)]
+    pub command: GatewayToolSearchCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GatewayToolSearchCommand {
+    Status,
+    Enable(GatewayToolSearchSetArgs),
+    Disable,
+}
+
+#[derive(Debug, Args)]
+pub struct GatewayToolSearchSetArgs {
+    #[arg(long)]
+    pub top_k_default: Option<usize>,
+    #[arg(long)]
+    pub max_tools: Option<usize>,
 }
 
 #[derive(Debug, Args)]
@@ -370,6 +392,23 @@ pub async fn run(args: GatewayArgs, format: OutputFormat, config: &LabConfig) ->
                     GatewayQuarantineCommand::Restore(args) => (
                         "gateway.virtual_server.quarantine.restore".to_string(),
                         json!({ "id": args.id }),
+                    ),
+                },
+                GatewayCommand::ToolSearch(args) => match args.command {
+                    GatewayToolSearchCommand::Status => {
+                        ("gateway.tool_search.get".to_string(), json!({}))
+                    }
+                    GatewayToolSearchCommand::Enable(args) => (
+                        "gateway.tool_search.set".to_string(),
+                        json!({
+                            "enabled": true,
+                            "top_k_default": args.top_k_default,
+                            "max_tools": args.max_tools,
+                        }),
+                    ),
+                    GatewayToolSearchCommand::Disable => (
+                        "gateway.tool_search.set".to_string(),
+                        json!({ "enabled": false }),
                     ),
                 },
                 GatewayCommand::Reload => (

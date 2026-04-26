@@ -312,7 +312,8 @@ pub fn run_auth_checks() -> Vec<Finding> {
     } else if is_oauth {
         (
             Severity::Fail,
-            "LAB_PUBLIC_URL not set — required for OAuth (JWT issuer, audience, metadata URLs)".into(),
+            "LAB_PUBLIC_URL not set — required for OAuth (JWT issuer, audience, metadata URLs)"
+                .into(),
         )
     } else {
         (

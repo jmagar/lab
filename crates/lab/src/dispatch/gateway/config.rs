@@ -13,11 +13,12 @@ use super::params::GatewayUpdatePatch;
 pub fn load_gateway_config(path: &Path) -> Result<LabConfig, ToolError> {
     match std::fs::read_to_string(path) {
         Ok(raw) => {
-            let cfg = toml::from_str::<LabConfig>(&raw).map_err(|e| ToolError::Sdk {
+            let mut cfg = toml::from_str::<LabConfig>(&raw).map_err(|e| ToolError::Sdk {
                 sdk_kind: "internal_error".to_string(),
                 message: format!("failed to parse {}: {e}", path.display()),
             })?;
-            validate_upstreams(&cfg.upstream)?;
+            cfg.normalize_legacy_tool_search();
+            validate_config(&cfg)?;
             Ok(cfg)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(LabConfig::default()),
@@ -36,7 +37,7 @@ pub fn load_gateway_config(path: &Path) -> Result<LabConfig, ToolError> {
 /// A future migration to `toml_edit` would preserve unknown keys and comments,
 /// but that is deferred as a P2 change.
 pub fn write_gateway_config(path: &Path, cfg: &LabConfig) -> Result<(), ToolError> {
-    validate_upstreams(&cfg.upstream)?;
+    validate_config(cfg)?;
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| ToolError::Sdk {
@@ -177,8 +178,13 @@ pub fn update_upstream(
     if let Some(oauth) = patch.oauth {
         cfg.upstream[index].oauth = oauth;
     }
-    if let Some(tool_search) = patch.tool_search {
-        cfg.upstream[index].tool_search = tool_search.unwrap_or_default();
+    if patch.tool_search.is_some() {
+        return Err(ToolError::InvalidParam {
+            message:
+                "tool_search is gateway-wide; use gateway.tool_search.set instead of gateway.update"
+                    .to_string(),
+            param: "tool_search".to_string(),
+        });
     }
 
     validate_upstream(&cfg.upstream[index])?;
@@ -195,6 +201,32 @@ pub fn remove_upstream(cfg: &mut LabConfig, name: &str) -> Result<UpstreamConfig
             message: format!("gateway `{name}` not found"),
         })?;
     Ok(cfg.upstream.remove(index))
+}
+
+fn validate_config(cfg: &LabConfig) -> Result<(), ToolError> {
+    validate_tool_search(&cfg.tool_search)?;
+    validate_upstreams(&cfg.upstream)
+}
+
+pub fn validate_tool_search(
+    tool_search: &crate::config::ToolSearchConfig,
+) -> Result<(), ToolError> {
+    tool_search.validate().map_err(|e| match e {
+        crate::config::ConfigError::InvalidToolSearchTopKDefault { .. } => {
+            ToolError::InvalidParam {
+                message: e.to_string(),
+                param: "tool_search.top_k_default".to_string(),
+            }
+        }
+        crate::config::ConfigError::InvalidToolSearchMaxTools { .. } => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "tool_search.max_tools".to_string(),
+        },
+        _ => ToolError::InvalidParam {
+            message: e.to_string(),
+            param: "tool_search".to_string(),
+        },
+    })
 }
 
 fn validate_upstreams(upstreams: &[UpstreamConfig]) -> Result<(), ToolError> {
@@ -236,15 +268,10 @@ fn validate_upstream(upstream: &UpstreamConfig) -> Result<(), ToolError> {
             message: e.to_string(),
             param: "url".to_string(),
         },
-        crate::config::ConfigError::InvalidToolSearchTopKDefault { .. } => {
-            ToolError::InvalidParam {
-                message: e.to_string(),
-                param: "tool_search.top_k_default".to_string(),
-            }
-        }
-        crate::config::ConfigError::InvalidToolSearchMaxTools { .. } => ToolError::InvalidParam {
+        crate::config::ConfigError::InvalidToolSearchTopKDefault { .. }
+        | crate::config::ConfigError::InvalidToolSearchMaxTools { .. } => ToolError::InvalidParam {
             message: e.to_string(),
-            param: "tool_search.max_tools".to_string(),
+            param: "tool_search".to_string(),
         },
     })?;
 
@@ -596,7 +623,7 @@ args = ["server.js"]
 
     #[test]
     fn expose_tools_patch_distinguishes_absent_null_empty_and_values() {
-        let absent: GatewayUpdatePatch = serde_json::from_str(r#"{}"#).unwrap();
+        let absent: GatewayUpdatePatch = serde_json::from_str(r"{}").unwrap();
         let null: GatewayUpdatePatch = serde_json::from_str(r#"{"expose_tools": null}"#).unwrap();
         let empty: GatewayUpdatePatch = serde_json::from_str(r#"{"expose_tools": []}"#).unwrap();
         let with_values: GatewayUpdatePatch =

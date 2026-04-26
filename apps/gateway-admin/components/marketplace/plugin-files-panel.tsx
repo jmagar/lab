@@ -57,6 +57,8 @@ const FOLDER_ICON: Record<string, string> = {
   hooks: '🔗',
   monitors: '📊',
   bin: '⚙️',
+  'output-styles': '🖋️',
+  themes: '🎨',
   scripts: '📜',
 }
 
