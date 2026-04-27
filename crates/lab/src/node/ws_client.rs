@@ -1065,11 +1065,8 @@ mod tests {
             "node_id": "device-1",
             "events": [{"message": "hello", "source": "application"}]
         }));
-        let request = queue_envelope_to_request(
-            &envelope,
-            "44444444-4444-4444-8444-444444444444",
-        )
-        .expect("request");
+        let request = queue_envelope_to_request(&envelope, "44444444-4444-4444-8444-444444444444")
+            .expect("request");
         assert_eq!(request["method"], "nodes/log.event");
         assert_eq!(
             request["params"]["events"][0]["source"].as_str(),
@@ -1098,9 +1095,8 @@ mod tests {
         let envelope = &drained[0];
         assert_eq!(envelope.kind, "application_log_batch");
 
-        let request =
-            queue_envelope_to_request(envelope, "55555555-5555-4555-8555-555555555555")
-                .expect("request");
+        let request = queue_envelope_to_request(envelope, "55555555-5555-4555-8555-555555555555")
+            .expect("request");
         assert_eq!(request["method"], "nodes/log.event");
         assert_eq!(request["params"], payload);
     }
