@@ -31,14 +31,34 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "plugins.list",
-        description: "List all plugins across marketplaces with installed state",
+        description: "List plugins across marketplaces. Supports server-side filtering by kind, installed state, and text query. All filter params are optional and additive.",
         destructive: false,
-        params: &[ParamSpec {
-            name: "marketplace",
-            ty: "string",
-            required: false,
-            description: "Filter to a single marketplace id",
-        }],
+        params: &[
+            ParamSpec {
+                name: "marketplace",
+                ty: "string",
+                required: false,
+                description: "Filter to a single marketplace id",
+            },
+            ParamSpec {
+                name: "kind",
+                ty: "string",
+                required: false,
+                description: "Filter by component kind (plugin, mcp_server, acp_agent, source, agent, skill, command, app, hook, channel, executable, theme, asset, file, config, settings, monitor, output_style, lsp_server)",
+            },
+            ParamSpec {
+                name: "installed",
+                ty: "bool",
+                required: false,
+                description: "When true, return only installed items; when false, return only uninstalled items",
+            },
+            ParamSpec {
+                name: "query",
+                ty: "string",
+                required: false,
+                description: "Case-insensitive substring filter applied to name, description, and tags",
+            },
+        ],
         returns: "Plugin[]",
     },
     ActionSpec {

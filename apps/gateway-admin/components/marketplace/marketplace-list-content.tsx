@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Bot,
   Boxes,
@@ -32,6 +32,7 @@ import {
   AURORA_MUTED_LABEL,
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
+  AURORA_STAT_PANEL,
   AURORA_STRONG_PANEL,
   pillTone,
 } from '@/components/aurora/tokens'
@@ -118,42 +119,34 @@ function toggleValue<T extends string>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
 }
 
+const KIND_META: Record<MarketplaceCatalogKind, { label: string; icon: ReactNode }> = {
+  plugin:       { label: 'Plugin',       icon: <Boxes className="size-4" /> },
+  mcp_server:   { label: 'MCP server',   icon: <Server className="size-4" /> },
+  lsp_server:   { label: 'LSP server',   icon: <Code2 className="size-4" /> },
+  acp_agent:    { label: 'ACP agent',    icon: <Bot className="size-4" /> },
+  agent:        { label: 'Agent',        icon: <Bot className="size-4" /> },
+  skill:        { label: 'Skill',        icon: <Sparkles className="size-4" /> },
+  command:      { label: 'Command',      icon: <TerminalSquare className="size-4" /> },
+  app:          { label: 'App',          icon: <Code2 className="size-4" /> },
+  hook:         { label: 'Hook',         icon: <Hammer className="size-4" /> },
+  channel:      { label: 'Channel',      icon: <TerminalSquare className="size-4" /> },
+  executable:   { label: 'Executable',   icon: <TerminalSquare className="size-4" /> },
+  theme:        { label: 'Theme',        icon: <FileCode2 className="size-4" /> },
+  asset:        { label: 'Asset',        icon: <FileCode2 className="size-4" /> },
+  file:         { label: 'File',         icon: <FileCode2 className="size-4" /> },
+  config:       { label: 'Config',       icon: <FileCode2 className="size-4" /> },
+  settings:     { label: 'Settings',     icon: <FileCode2 className="size-4" /> },
+  monitor:      { label: 'Monitor',      icon: <FileCode2 className="size-4" /> },
+  output_style: { label: 'Output style', icon: <FileCode2 className="size-4" /> },
+  source:       { label: 'Source',       icon: <ShoppingBag className="size-4" /> },
+}
+
 function kindLabel(kind: MarketplaceCatalogKind): string {
-  if (kind === 'mcp_server') return 'MCP server'
-  if (kind === 'lsp_server') return 'LSP server'
-  if (kind === 'acp_agent') return 'ACP agent'
-  if (kind === 'agent') return 'Agent'
-  if (kind === 'skill') return 'Skill'
-  if (kind === 'command') return 'Command'
-  if (kind === 'app') return 'App'
-  if (kind === 'hook') return 'Hook'
-  if (kind === 'channel') return 'Channel'
-  if (kind === 'executable') return 'Executable'
-  if (kind === 'theme') return 'Theme'
-  if (kind === 'asset') return 'Asset'
-  if (kind === 'file') return 'File'
-  if (kind === 'config') return 'Config'
-  if (kind === 'settings') return 'Settings'
-  if (kind === 'monitor') return 'Monitor'
-  if (kind === 'output_style') return 'Output style'
-  if (kind === 'source') return 'Source'
-  return 'Plugin'
+  return KIND_META[kind].label
 }
 
 function kindIcon(kind: MarketplaceCatalogKind): ReactNode {
-  if (kind === 'mcp_server') return <Server className="size-4" />
-  if (kind === 'lsp_server') return <Code2 className="size-4" />
-  if (kind === 'acp_agent') return <Bot className="size-4" />
-  if (kind === 'agent') return <Bot className="size-4" />
-  if (kind === 'skill') return <Sparkles className="size-4" />
-  if (kind === 'command') return <TerminalSquare className="size-4" />
-  if (kind === 'app') return <Code2 className="size-4" />
-  if (kind === 'hook') return <Hammer className="size-4" />
-  if (kind === 'channel') return <TerminalSquare className="size-4" />
-  if (kind === 'executable') return <TerminalSquare className="size-4" />
-  if (kind === 'asset' || kind === 'file' || kind === 'config' || kind === 'settings' || kind === 'monitor' || kind === 'theme' || kind === 'output_style') return <FileCode2 className="size-4" />
-  if (kind === 'source') return <ShoppingBag className="size-4" />
-  return <Boxes className="size-4" />
+  return KIND_META[kind].icon
 }
 
 function itemInitials(name: string): string {
@@ -177,10 +170,6 @@ function CatalogIdentityMark({
   const [imageFailed, setImageFailed] = useState(false)
   const owner = item.avatar?.kind === 'github' ? item.avatar.owner : undefined
 
-  useEffect(() => {
-    setImageFailed(false)
-  }, [owner, item.name])
-
   if (owner && !imageFailed) {
     return (
       <div
@@ -188,6 +177,7 @@ function CatalogIdentityMark({
         style={{ width: size, height: size }}
       >
         <Image
+          key={`${owner}-${item.name}`}
           src={`https://github.com/${owner}.png?size=${size * 2}`}
           alt={`${owner} GitHub avatar`}
           width={size}
@@ -368,6 +358,66 @@ function CatalogTable({ items, onAction }: { items: MarketplaceCatalogItem[]; on
   )
 }
 
+function LensCard({
+  label,
+  value,
+  active,
+  onClick,
+}: {
+  label: string
+  value: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        AURORA_STAT_PANEL,
+        'cursor-pointer text-left transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        !active && 'bg-aurora-panel/72 hover:border-aurora-accent-primary/28 hover:bg-aurora-hover-bg hover:shadow-[0_0_0_1px_rgba(87,190,255,0.08)]',
+        active && 'border-aurora-accent-primary/40 bg-aurora-accent-primary/8 shadow-[inset_0_0_0_1px_rgba(87,190,255,0.12)]',
+      )}
+    >
+      <p className={cn(AURORA_MUTED_LABEL, 'truncate')}>{label}</p>
+      <p className="mt-2 font-display text-[1.5rem] font-extrabold tracking-[-0.03em] tabular-nums text-aurora-text-primary leading-none">
+        {value}
+      </p>
+    </button>
+  )
+}
+
+function LensChip({
+  label,
+  value,
+  active,
+  onClick,
+}: {
+  label: string
+  value: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'flex h-9 flex-col items-center justify-center rounded-aurora-1 border px-2 text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/34',
+        active
+          ? 'border-aurora-accent-primary/40 bg-aurora-accent-primary/8 text-aurora-accent-strong'
+          : 'border-aurora-border-strong bg-aurora-panel-medium text-aurora-text-muted hover:bg-aurora-hover-bg',
+      )}
+    >
+      <span className="tabular-nums text-aurora-text-primary font-bold">{value}</span>
+      <span className="text-[10px] leading-none mt-0.5 truncate w-full text-center">{label}</span>
+    </button>
+  )
+}
+
 export function MarketplaceListContent() {
   const { data: sources = [], error: sourcesError, mutate: refreshSources } = useMarketplaces()
   const { data: plugins = [], error: pluginsError, mutate: refreshPlugins } = usePlugins()
@@ -379,17 +429,14 @@ export function MarketplaceListContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('cards')
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const isMutatingRef = useRef(false)
   const [isMutating, setIsMutating] = useState(false)
   const [addSourceOpen, setAddSourceOpen] = useState(false)
-  const [readOnlyPreview, setReadOnlyPreview] = useState(false)
+  const readOnlyPreview = isDevPreviewRoute()
   const [previewItem, setPreviewItem] = useState<MarketplaceCatalogItem | null>(null)
   const [mcpInstallItem, setMcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
   const [acpInstallItem, setAcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
   const [componentInstallItem, setComponentInstallItem] = useState<MarketplaceCatalogItem | null>(null)
-
-  useEffect(() => {
-    setReadOnlyPreview(isDevPreviewRoute())
-  }, [])
 
   const items = useMemo(
     () => buildMarketplaceCatalogItems({ plugins, sources, mcpServers, acpAgents }),
@@ -433,11 +480,20 @@ export function MarketplaceListContent() {
     setFilters({ ...DEFAULT_FILTERS, lens: filters.lens })
   }
 
+  const isRefreshingRef = useRef(false)
+
   const handleRefresh = async () => {
+    if (isRefreshingRef.current) return
+    isRefreshingRef.current = true
     setIsRefreshing(true)
     try {
-      await Promise.all([refreshSources(), refreshPlugins(), refreshMcpServers(), refreshAcpAgents()])
+      const results = await Promise.allSettled([refreshSources(), refreshPlugins(), refreshMcpServers(), refreshAcpAgents()])
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (failures.length > 0) {
+        toast.error(`${failures.length} catalog source(s) failed to refresh.`)
+      }
     } finally {
+      isRefreshingRef.current = false
       setIsRefreshing(false)
     }
   }
@@ -478,7 +534,8 @@ export function MarketplaceListContent() {
       toast.error('This catalog item does not have a direct package action.')
       return
     }
-
+    if (isMutatingRef.current) return
+    isMutatingRef.current = true
     setIsMutating(true)
     try {
       let succeeded = false
@@ -489,6 +546,7 @@ export function MarketplaceListContent() {
       }
       if (succeeded) setPreviewItem(null)
     } finally {
+      isMutatingRef.current = false
       setIsMutating(false)
     }
   }
@@ -537,12 +595,34 @@ export function MarketplaceListContent() {
       <main className={cn('min-h-[calc(100vh-3.5rem)] bg-aurora-page-bg text-aurora-text-primary', AURORA_PAGE_SHELL)}>
         <div className={cn(AURORA_PAGE_FRAME, 'gap-6')}>
           <section className={cn(AURORA_MEDIUM_PANEL, 'p-5')}>
-            <p className={AURORA_MUTED_LABEL}>Plugin operations</p>
+            <p className={AURORA_MUTED_LABEL}>Operator catalog</p>
             <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Marketplace</h1>
             <p className="mt-3 max-w-3xl text-[14px] leading-[1.55] text-aurora-text-muted">
-              Browse plugins, MCP servers, ACP agents, skills, commands, and marketplace sources from one live catalog.
+              Browse plugins, MCP servers, and ACP agents from one live catalog. Preview install flows safely from the read-only dev route.
             </p>
             {readOnlyPreview ? <p className="mt-3 text-[12px] font-semibold text-aurora-accent-strong">Dev preview: live backend reads are enabled; install, remove, source, and wiring mutations are blocked.</p> : null}
+          </section>
+
+          <section className={cn(AURORA_MEDIUM_PANEL, 'p-1.5 lg:hidden')}>
+            <div className="grid grid-cols-3 gap-1">
+              <LensChip label="All" value={summary.all} active={filters.lens === 'all'} onClick={() => updateFilters({ lens: 'all' })} />
+              <LensChip label="Installed" value={summary.installed} active={filters.lens === 'installed'} onClick={() => updateFilters({ lens: 'installed' })} />
+              <LensChip label="Plugins" value={summary.plugins} active={filters.lens === 'plugins'} onClick={() => updateFilters({ lens: 'plugins' })} />
+              <LensChip label="MCP servers" value={summary.mcpServers} active={filters.lens === 'mcp_servers'} onClick={() => updateFilters({ lens: 'mcp_servers' })} />
+              <LensChip label="ACP agents" value={summary.acpAgents} active={filters.lens === 'acp_agents'} onClick={() => updateFilters({ lens: 'acp_agents' })} />
+              <LensChip label="Sources" value={summary.sources} active={filters.lens === 'sources'} onClick={() => updateFilters({ lens: 'sources' })} />
+            </div>
+          </section>
+
+          <section className={cn(AURORA_MEDIUM_PANEL, 'hidden p-1.5 lg:block')}>
+            <div className="grid grid-cols-6 gap-1">
+              <LensCard label="All" value={summary.all} active={filters.lens === 'all'} onClick={() => updateFilters({ lens: 'all' })} />
+              <LensCard label="Installed" value={summary.installed} active={filters.lens === 'installed'} onClick={() => updateFilters({ lens: 'installed' })} />
+              <LensCard label="Plugins" value={summary.plugins} active={filters.lens === 'plugins'} onClick={() => updateFilters({ lens: 'plugins' })} />
+              <LensCard label="MCP servers" value={summary.mcpServers} active={filters.lens === 'mcp_servers'} onClick={() => updateFilters({ lens: 'mcp_servers' })} />
+              <LensCard label="ACP agents" value={summary.acpAgents} active={filters.lens === 'acp_agents'} onClick={() => updateFilters({ lens: 'acp_agents' })} />
+              <LensCard label="Sources" value={summary.sources} active={filters.lens === 'sources'} onClick={() => updateFilters({ lens: 'sources' })} />
+            </div>
           </section>
 
           <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
